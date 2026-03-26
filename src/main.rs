@@ -1,0 +1,45 @@
+mod assets;
+mod models;
+mod ssh;
+mod storage;
+mod terminal;
+mod ui;
+
+use gpui::*;
+use gpui_component::Root;
+
+use crate::storage::{load_local_ssh_hosts, load_saved_state};
+use crate::ui::TermiRustApp;
+
+fn main() {
+    let mut saved_state = load_saved_state().unwrap_or_default();
+    if let Ok(imported_hosts) = load_local_ssh_hosts() {
+        saved_state.merge_imported_profiles(imported_hosts);
+    }
+    let app = Application::new().with_assets(crate::assets::Assets);
+
+    app.run(move |cx| {
+        gpui_component::init(cx);
+
+        let initial_state = saved_state.clone();
+        let bounds = Bounds::centered(None, size(px(1480.), px(960.)), cx);
+
+        cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                titlebar: Some(TitlebarOptions {
+                    title: Some("TermiRust".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            |window, cx| {
+                let view = cx.new(|cx| TermiRustApp::new(initial_state.clone(), window, cx));
+                cx.new(|cx| Root::new(view, window, cx))
+            },
+        )
+        .unwrap();
+
+        cx.activate(true);
+    });
+}
