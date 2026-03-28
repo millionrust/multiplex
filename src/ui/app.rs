@@ -9,6 +9,7 @@ use gpui::{
     MouseMoveEvent, MouseUpEvent, ScrollDelta, ScrollWheelEvent, StatefulInteractiveElement as _,
     font, *,
 };
+use gpui_component::IconName;
 use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::input::{Input, InputState};
 use gpui_component::scroll::ScrollableElement as _;
@@ -37,15 +38,12 @@ const PANE_HEADER_HEIGHT: f32 = 34.0;
 const TERMINAL_INNER_PADDING_X: f32 = 18.0;
 const TERMINAL_INNER_PADDING_Y: f32 = 18.0;
 const MAX_SPLIT_PANES: usize = 4;
-const ICON_FOLDER_OPEN: &str = "icons/folder-open.svg";
 const ICON_KEY: &str = "icons/key.svg";
-const ICON_SEARCH: &str = "icons/magnifying-glass.svg";
-const ICON_NOTEBOOK: &str = "icons/notebook.svg";
-const ICON_PLUS: &str = "icons/plus.svg";
 const ICON_SHIELD_CHECK: &str = "icons/shield-check.svg";
-const ICON_TERMINAL_WINDOW: &str = "icons/terminal-window.svg";
-const ICON_TRASH: &str = "icons/trash.svg";
-const ICON_X: &str = "icons/x.svg";
+
+fn app_icon(path: &'static str) -> Icon {
+    Icon::new(Icon::empty().path(path))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum NavSection {
@@ -65,18 +63,14 @@ impl NavSection {
         }
     }
 
-    fn icon_path(self) -> &'static str {
+    fn icon(self) -> Icon {
         match self {
-            Self::Hosts => ICON_TERMINAL_WINDOW,
-            Self::Keychain => ICON_KEY,
-            Self::KnownHosts => ICON_SHIELD_CHECK,
-            Self::Logs => ICON_NOTEBOOK,
+            Self::Hosts => IconName::SquareTerminal.into(),
+            Self::Keychain => app_icon(ICON_KEY),
+            Self::KnownHosts => app_icon(ICON_SHIELD_CHECK),
+            Self::Logs => IconName::BookOpen.into(),
         }
     }
-}
-
-fn app_icon(path: &'static str) -> Icon {
-    Icon::new(Icon::empty().path(path))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -220,21 +214,24 @@ impl Render for WorkspaceTabDragPreview {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .id("workspace-tab-drag-preview")
-            .gap_2()
+            .gap(px(6.))
             .items_center()
-            .px_3()
-            .py_2()
-            .rounded(px(10.))
-            .bg(theme::chrome_tab_active())
-            .border_1()
-            .border_color(theme::with_alpha(theme::text_muted_dark(), 0.24))
-            .shadow_md()
-            .opacity(0.9)
+            .pl(px(10.))
+            .pr(px(12.))
+            .py(px(6.))
+            .rounded(px(8.))
+            .bg(theme::accent())
+            .shadow_lg()
+            .child(
+                Icon::new(IconName::SquareTerminal)
+                    .size(px(13.))
+                    .text_color(Hsla::white()),
+            )
             .child(
                 div()
-                    .text_size(px(11.))
+                    .text_size(px(11.5))
                     .font_semibold()
-                    .text_color(theme::text_on_dark())
+                    .text_color(Hsla::white())
                     .child(self.title.clone()),
             )
     }
@@ -1995,6 +1992,7 @@ impl TermiRustApp {
     fn render_chrome_tab(
         &self,
         id: impl Into<ElementId>,
+        icon: Icon,
         label: impl Into<SharedString>,
         active: bool,
         indicators: Option<WorkspaceIndicators>,
@@ -2003,27 +2001,42 @@ impl TermiRustApp {
         let label: SharedString = label.into();
         h_flex()
             .id(id)
-            .gap_2()
+            .gap(px(6.))
             .items_center()
-            .px_3()
-            .py_2()
-            .rounded(px(10.))
+            .pl(px(10.))
+            .pr(if close_button.is_some() {
+                px(6.)
+            } else {
+                px(12.)
+            })
+            .h(px(32.))
+            .rounded(px(8.))
             .bg(if active {
                 theme::chrome_tab_active()
             } else {
-                theme::chrome_tab()
+                gpui::transparent_black()
             })
-            .border_1()
-            .border_color(theme::with_alpha(theme::text_muted_dark(), 0.18))
+            .when(!active, |this| {
+                this.hover(|style| style.bg(theme::chrome_tab()))
+            })
+            .child(icon.size(px(13.)).text_color(if active {
+                theme::accent()
+            } else {
+                theme::text_muted_dark()
+            }))
             .child(
                 div()
-                    .max_w(px(180.))
+                    .max_w(px(140.))
                     .overflow_hidden()
                     .text_ellipsis()
                     .whitespace_nowrap()
-                    .text_size(px(11.))
-                    .font_semibold()
-                    .text_color(theme::text_on_dark())
+                    .text_size(px(11.5))
+                    .font_medium()
+                    .text_color(if active {
+                        theme::text_on_dark()
+                    } else {
+                        theme::with_alpha(theme::text_on_dark(), 0.72)
+                    })
                     .child(label),
             )
             .when_some(indicators, |this, indicators| {
@@ -2033,27 +2046,23 @@ impl TermiRustApp {
     }
 
     fn render_top_chrome(&self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let library_active = self.active_workspace_id.is_none();
+
         h_flex()
             .h(px(theme::CHROME_HEIGHT))
             .w_full()
-            .px_3()
-            .gap_2()
+            .px(px(12.))
+            .gap(px(2.))
             .items_center()
             .bg(theme::chrome_bg())
             .border_b_1()
             .border_color(theme::border_dark())
             .child(
-                self.render_chrome_tab("chrome-vaults", "Vaults", false, None, None)
-                    .cursor_pointer()
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.activate_library(window, cx);
-                    })),
-            )
-            .child(
                 self.render_chrome_tab(
                     "chrome-hosts",
+                    Icon::new(IconName::Globe),
                     "Hosts",
-                    self.active_workspace_id.is_none(),
+                    library_active,
                     None,
                     None,
                 )
@@ -2062,9 +2071,19 @@ impl TermiRustApp {
                     this.activate_library(window, cx);
                 })),
             )
+            .when(!self.workspaces.is_empty(), |this| {
+                this.child(
+                    div()
+                        .w(px(1.))
+                        .h(px(20.))
+                        .mx(px(4.))
+                        .bg(theme::with_alpha(theme::text_muted_dark(), 0.2)),
+                )
+            })
             .children(self.workspaces.iter().map(|workspace| {
                 let workspace_id = workspace.id;
                 let close_id = workspace.id;
+                let active = self.active_workspace_id == Some(workspace.id);
                 let drag_info = WorkspaceTabDrag {
                     workspace_id,
                     title: workspace.title.clone(),
@@ -2072,17 +2091,30 @@ impl TermiRustApp {
                 let indicators = self.workspace_indicators(workspace);
                 self.render_chrome_tab(
                     ("chrome-workspace", workspace.id),
+                    Icon::new(IconName::SquareTerminal),
                     workspace.title.clone(),
-                    self.active_workspace_id == Some(workspace.id),
+                    active,
                     Some(indicators),
                     Some(
-                        Button::new(("chrome-close", workspace.id))
-                            .ghost()
-                            .xsmall()
-                            .icon(app_icon(ICON_X))
+                        div()
+                            .id(("chrome-close-wrap", workspace.id))
+                            .size(px(18.))
+                            .rounded(px(4.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .hover(|style| {
+                                style.bg(theme::with_alpha(theme::text_muted_dark(), 0.2))
+                            })
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.close_workspace(close_id, cx);
                             }))
+                            .child(
+                                Icon::new(IconName::Close)
+                                    .size(px(12.))
+                                    .text_color(theme::text_muted_dark()),
+                            )
                             .into_any_element(),
                     ),
                 )
@@ -2096,14 +2128,17 @@ impl TermiRustApp {
                     if drag.workspace_id == workspace_id {
                         style
                     } else {
-                        style.border_l_2().border_color(theme::accent())
+                        style
+                            .ml(px(2.))
+                            .border_l_2()
+                            .border_color(theme::accent())
+                            .bg(theme::with_alpha(theme::accent(), 0.12))
                     }
                 })
                 .on_drop(cx.listener(move |this, drag: &WorkspaceTabDrag, _, cx| {
                     if drag.workspace_id != workspace_id {
                         this.reorder_workspace_tabs(drag.workspace_id, Some(workspace_id), false);
                         this.error_message.clear();
-                        this.status_message = "Workspace tabs reordered.".to_string();
                         cx.notify();
                     }
                 }))
@@ -2117,38 +2152,36 @@ impl TermiRustApp {
                 div()
                     .id("chrome-workspace-drop-tail")
                     .h_full()
-                    .w(px(18.))
-                    .rounded(px(8.))
+                    .flex_1()
+                    .min_w(px(24.))
                     .drag_over::<WorkspaceTabDrag>(|style, _, _, _| {
-                        style.bg(theme::with_alpha(theme::accent(), 0.16))
+                        style.bg(theme::with_alpha(theme::accent(), 0.08))
                     })
                     .on_drop(cx.listener(|this, drag: &WorkspaceTabDrag, _, cx| {
                         this.reorder_workspace_tabs(drag.workspace_id, None, true);
                         this.error_message.clear();
-                        this.status_message = "Workspace tabs reordered.".to_string();
                         cx.notify();
                     })),
             )
             .child(
-                Button::new("chrome-new")
-                    .ghost()
-                    .small()
-                    .icon(app_icon(ICON_PLUS))
+                div()
+                    .id("chrome-new-btn")
+                    .size(px(28.))
+                    .rounded(px(6.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .hover(|style| style.bg(theme::chrome_tab()))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.activate_library(window, cx);
                         this.open_editor_for_new_host(window, cx);
-                    })),
-            )
-            .child(div().flex_1())
-            .child(
-                div()
-                    .text_size(px(10.))
-                    .text_color(theme::text_muted_dark())
-                    .child(if self.active_workspace_id.is_some() {
-                        "Split panes, terminal search, mouse, clipboard, scrollback"
-                    } else {
-                        "Native SSH workspace"
-                    }),
+                    }))
+                    .child(
+                        Icon::new(IconName::Plus)
+                            .size(px(14.))
+                            .text_color(theme::text_muted_dark()),
+                    ),
             )
     }
 
@@ -2164,37 +2197,32 @@ impl TermiRustApp {
             .id(id)
             .w_full()
             .items_center()
-            .gap_2()
-            .px_3()
-            .py_2()
-            .rounded(px(12.))
+            .gap(px(8.))
+            .px(px(10.))
+            .h(px(34.))
+            .rounded(px(8.))
             .bg(if active {
-                theme::hover()
+                theme::library_card()
             } else {
-                theme::library_sidebar()
+                gpui::transparent_black()
             })
-            .border_1()
-            .border_color(if active {
-                theme::with_alpha(theme::accent(), 0.45)
-            } else {
-                theme::library_sidebar()
-            })
+            .when(active, |this| this.shadow_sm())
             .cursor_pointer()
-            .hover(|style| style.bg(theme::hover()))
-            .child(
-                app_icon(section.icon_path())
-                    .size(px(14.))
-                    .text_color(if active {
-                        theme::accent()
-                    } else {
-                        theme::text_muted()
-                    }),
-            )
+            .hover(|style| style.bg(theme::library_card()))
+            .child(section.icon().size(px(16.)).text_color(if active {
+                theme::accent()
+            } else {
+                theme::text_muted()
+            }))
             .child(
                 div()
-                    .text_size(px(12.))
+                    .text_size(px(12.5))
                     .font_medium()
-                    .text_color(theme::text_main())
+                    .text_color(if active {
+                        theme::text_main()
+                    } else {
+                        theme::text_muted()
+                    })
                     .child(section.label()),
             )
     }
@@ -2204,9 +2232,10 @@ impl TermiRustApp {
             .w(px(theme::HOST_SIDEBAR_WIDTH))
             .flex_none()
             .h_full()
-            .gap_2()
-            .px_3()
-            .pt_4()
+            .gap(px(2.))
+            .px(px(8.))
+            .pt(px(12.))
+            .pb(px(12.))
             .bg(theme::library_sidebar())
             .border_r_1()
             .border_color(theme::border())
@@ -2284,7 +2313,7 @@ impl TermiRustApp {
                         .items_center()
                         .justify_center()
                         .child(
-                            app_icon(ICON_TERMINAL_WINDOW)
+                            Icon::new(IconName::SquareTerminal)
                                 .size(px(18.))
                                 .text_color(theme::library_card()),
                         ),
@@ -2607,7 +2636,7 @@ impl TermiRustApp {
                                     Button::new("pick-key-file")
                                         .small()
                                         .ghost()
-                                        .icon(app_icon(ICON_FOLDER_OPEN))
+                                        .icon(IconName::FolderOpen)
                                         .label("Browse")
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.pick_key_file(window, cx);
@@ -2628,16 +2657,17 @@ impl TermiRustApp {
                         Button::new("editor-delete")
                             .small()
                             .ghost()
-                            .icon(app_icon(ICON_TRASH))
-                            .label("Delete")
+                            .icon(IconName::Delete)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.remove_selected_profile(window, cx);
                             })),
                     )
+                    .child(div().flex_1())
                     .child(
                         Button::new("editor-save")
                             .small()
                             .custom(Self::action_button_style(theme::accent_soft(), cx))
+                            .icon(IconName::Check)
                             .label("Save")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.save_profile(window, cx);
@@ -2647,6 +2677,7 @@ impl TermiRustApp {
                         Button::new("editor-connect")
                             .small()
                             .custom(Self::action_button_style(theme::accent(), cx))
+                            .icon(IconName::ArrowRight)
                             .label("Connect")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.connect_current(window, cx);
@@ -2687,7 +2718,7 @@ impl TermiRustApp {
                             .flex_1()
                             .appearance(true)
                             .prefix(
-                                app_icon(ICON_SEARCH)
+                                Icon::new(IconName::Search)
                                     .size(px(14.))
                                     .text_color(theme::text_muted()),
                             ),
@@ -2802,7 +2833,7 @@ impl TermiRustApp {
                                 Button::new("keychain-browse")
                                     .small()
                                     .custom(Self::action_button_style(theme::hover(), cx))
-                                    .icon(app_icon(ICON_FOLDER_OPEN))
+                                    .icon(IconName::FolderOpen)
                                     .label("Add Key File")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.pick_key_file(window, cx);
@@ -3044,7 +3075,7 @@ impl TermiRustApp {
                                 Button::new(("remove-known-host", index))
                                     .ghost()
                                     .xsmall()
-                                    .icon(app_icon(ICON_TRASH))
+                                    .icon(IconName::Delete)
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         match this.known_hosts.remove(&remove_endpoint) {
                                             Ok(true) => {
@@ -3340,19 +3371,25 @@ impl TermiRustApp {
         h_flex()
             .h(px(theme::WORKSPACE_HEADER_HEIGHT))
             .w_full()
-            .px_4()
-            .gap_3()
+            .px(px(16.))
+            .gap_2()
             .items_center()
             .justify_between()
-            .bg(theme::terminal_bg())
+            .bg(theme::chrome_bg())
             .border_b_1()
             .border_color(theme::border_dark())
             .child(
-                v_flex()
-                    .gap(px(2.))
+                h_flex()
+                    .gap(px(10.))
+                    .items_center()
+                    .child(
+                        Icon::new(IconName::SquareTerminal)
+                            .size(px(16.))
+                            .text_color(theme::accent()),
+                    )
                     .child(
                         div()
-                            .text_size(px(15.))
+                            .text_size(px(13.))
                             .font_semibold()
                             .text_color(theme::text_on_dark())
                             .child(workspace.title.clone()),
@@ -3395,7 +3432,7 @@ impl TermiRustApp {
                         Button::new("workspace-scroll-top")
                             .ghost()
                             .small()
-                            .label("Top")
+                            .icon(IconName::ArrowUp)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.scroll_active_pane_top(cx);
                             })),
@@ -3404,7 +3441,7 @@ impl TermiRustApp {
                         Button::new("workspace-scroll-bottom")
                             .ghost()
                             .small()
-                            .label("Bottom")
+                            .icon(IconName::ArrowDown)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.scroll_active_pane_bottom(cx);
                             })),
@@ -3413,7 +3450,7 @@ impl TermiRustApp {
                         Button::new("workspace-search")
                             .ghost()
                             .small()
-                            .label("Search")
+                            .icon(IconName::Search)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.toggle_workspace_search(window, cx);
                             })),
@@ -3422,7 +3459,7 @@ impl TermiRustApp {
                         Button::new("workspace-split-right")
                             .ghost()
                             .small()
-                            .label("Split Right")
+                            .icon(IconName::PanelRight)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.split_active_workspace(SplitAxis::Horizontal, window, cx);
                             })),
@@ -3431,7 +3468,7 @@ impl TermiRustApp {
                         Button::new("workspace-split-down")
                             .ghost()
                             .small()
-                            .label("Split Down")
+                            .icon(IconName::PanelBottom)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.split_active_workspace(SplitAxis::Vertical, window, cx);
                             })),
@@ -3441,6 +3478,7 @@ impl TermiRustApp {
                             Button::new("workspace-reconnect")
                                 .small()
                                 .custom(Self::action_button_style(theme::success(), cx))
+                                .icon(IconName::Redo)
                                 .label("Reconnect")
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     if let Some(pane_id) = this.active_pane().map(|p| p.id) {
@@ -3515,7 +3553,7 @@ impl TermiRustApp {
                     Button::new("workspace-search-close")
                         .ghost()
                         .small()
-                        .icon(app_icon(ICON_X))
+                        .icon(IconName::Close)
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.toggle_workspace_search(window, cx);
                         })),
@@ -3630,36 +3668,47 @@ impl TermiRustApp {
             .map(|workspace| self.workspace_visible_matches(workspace, pane))
             .unwrap_or_default();
 
+        let is_active_pane = self.active_workspace().map(|w| w.active_pane_id) == Some(pane.id);
+        let status_color = if pane.connected {
+            theme::success()
+        } else if pane.closed && pane.status == "Error" {
+            theme::danger()
+        } else if pane.closed {
+            theme::text_muted_dark()
+        } else {
+            theme::warning()
+        };
+
         v_flex()
             .id(("terminal-pane", pane.id))
             .flex_1()
-            .rounded(px(theme::CARD_RADIUS))
+            .rounded(px(10.))
             .border_1()
-            .border_color(
-                if self.active_workspace().map(|w| w.active_pane_id) == Some(pane.id) {
-                    theme::accent()
-                } else {
-                    theme::border_dark()
-                },
-            )
+            .border_color(if is_active_pane {
+                theme::with_alpha(theme::accent(), 0.6)
+            } else {
+                theme::with_alpha(theme::border_dark(), 0.5)
+            })
             .bg(theme::terminal_panel())
             .overflow_hidden()
             .child(
                 h_flex()
                     .h(px(PANE_HEADER_HEIGHT))
-                    .px_3()
+                    .px(px(10.))
                     .items_center()
                     .justify_between()
-                    .bg(theme::with_alpha(theme::chrome_bg(), 0.82))
+                    .bg(theme::chrome_bg())
                     .border_b_1()
-                    .border_color(theme::border_dark())
+                    .border_color(theme::with_alpha(theme::border_dark(), 0.6))
                     .child(
-                        v_flex()
-                            .gap(px(1.))
+                        h_flex()
+                            .gap(px(8.))
+                            .items_center()
+                            .child(div().size(px(7.)).rounded(px(999.)).bg(status_color))
                             .child(
                                 div()
                                     .text_size(px(11.))
-                                    .font_semibold()
+                                    .font_medium()
                                     .text_color(theme::text_on_dark())
                                     .child(pane.title.clone()),
                             )
@@ -3667,7 +3716,7 @@ impl TermiRustApp {
                                 div()
                                     .text_size(px(10.))
                                     .text_color(theme::text_muted_dark())
-                                    .child(format!("{}  •  {}", pane.endpoint, pane.status)),
+                                    .child(pane.endpoint.clone()),
                             ),
                     )
                     .child(
@@ -3694,7 +3743,7 @@ impl TermiRustApp {
                                         Button::new(("close-pane", pane.id))
                                             .ghost()
                                             .xsmall()
-                                            .icon(app_icon(ICON_X))
+                                            .icon(IconName::Close)
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 this.close_pane(pane_id, cx);
                                             })),
@@ -3791,16 +3840,23 @@ impl TermiRustApp {
             })
             .collect::<Vec<_>>();
 
+        let gap = px(PANE_GAP);
         let content = match workspace.split_axis {
-            SplitAxis::Horizontal => h_flex().flex_1().gap_3().children(panes).into_any_element(),
-            SplitAxis::Vertical => v_flex().flex_1().gap_3().children(panes).into_any_element(),
+            SplitAxis::Horizontal => h_flex()
+                .flex_1()
+                .gap(gap)
+                .children(panes)
+                .into_any_element(),
+            SplitAxis::Vertical => v_flex()
+                .flex_1()
+                .gap(gap)
+                .children(panes)
+                .into_any_element(),
         };
 
         v_flex()
             .flex_1()
-            .px(px(WORKSPACE_PADDING))
-            .pt(px(WORKSPACE_PADDING))
-            .pb(px(WORKSPACE_PADDING))
+            .p(px(WORKSPACE_PADDING))
             .bg(theme::terminal_bg())
             .child(content)
     }
@@ -3837,12 +3893,13 @@ impl Render for TermiRustApp {
                     .child(content)
                     .child(
                         h_flex()
-                            .min_h(px(theme::STATUS_HEIGHT))
-                            .px_4()
-                            .py_2()
+                            .h(px(theme::STATUS_HEIGHT))
+                            .px(px(12.))
+                            .gap_2()
+                            .items_center()
                             .justify_between()
                             .bg(if self.active_workspace_id.is_some() {
-                                theme::terminal_bg()
+                                theme::chrome_bg()
                             } else {
                                 theme::library_sidebar()
                             })
@@ -3853,23 +3910,42 @@ impl Render for TermiRustApp {
                                 theme::border()
                             })
                             .child(
-                                div()
-                                    .text_size(px(11.))
-                                    .text_color(if self.active_workspace_id.is_some() {
-                                        theme::text_muted_dark()
-                                    } else {
-                                        theme::text_muted()
+                                h_flex()
+                                    .gap(px(6.))
+                                    .items_center()
+                                    .when(!self.error_message.is_empty(), |this| {
+                                        this.child(
+                                            Icon::new(IconName::TriangleAlert)
+                                                .size(px(12.))
+                                                .text_color(theme::danger()),
+                                        )
                                     })
-                                    .child(self.status_message.clone()),
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .text_color(if !self.error_message.is_empty() {
+                                                theme::danger()
+                                            } else if self.active_workspace_id.is_some() {
+                                                theme::text_muted_dark()
+                                            } else {
+                                                theme::text_muted()
+                                            })
+                                            .child(if !self.error_message.is_empty() {
+                                                self.error_message.clone()
+                                            } else {
+                                                self.status_message.clone()
+                                            }),
+                                    ),
                             )
-                            .when(!self.error_message.is_empty(), |this| {
-                                this.child(
-                                    div()
-                                        .text_size(px(11.))
-                                        .text_color(theme::danger())
-                                        .child(self.error_message.clone()),
-                                )
-                            }),
+                            .child(
+                                div()
+                                    .text_size(px(10.))
+                                    .text_color(theme::text_muted_dark())
+                                    .child(format!(
+                                        "{} sessions",
+                                        self.panes.iter().filter(|p| p.connected).count()
+                                    )),
+                            ),
                     ),
             )
     }

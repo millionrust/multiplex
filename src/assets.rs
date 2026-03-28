@@ -4,49 +4,70 @@ use gpui::{AssetSource, Result, SharedString};
 
 pub struct Assets;
 
-const ASSET_PATHS: &[&str] = &[
-    "icons/folder-open.svg",
-    "icons/key.svg",
-    "icons/magnifying-glass.svg",
-    "icons/notebook.svg",
-    "icons/plus.svg",
-    "icons/shield-check.svg",
-    "icons/terminal-window.svg",
-    "icons/trash.svg",
-    "icons/x.svg",
+macro_rules! icon {
+    ($path:literal) => {
+        (
+            concat!("icons/", $path, ".svg"),
+            include_bytes!(concat!("../assets/icons/", $path, ".svg")).as_slice(),
+        )
+    };
+}
+
+const ICONS: &[(&str, &[u8])] = &[
+    icon!("arrow-down"),
+    icon!("arrow-left"),
+    icon!("arrow-right"),
+    icon!("arrow-up"),
+    icon!("book-open"),
+    icon!("check"),
+    icon!("chevron-down"),
+    icon!("chevron-left"),
+    icon!("chevron-right"),
+    icon!("chevron-up"),
+    icon!("circle-check"),
+    icon!("close"),
+    icon!("copy"),
+    icon!("delete"),
+    icon!("ellipsis"),
+    icon!("folder-open"),
+    icon!("globe"),
+    icon!("info"),
+    icon!("key"),
+    icon!("magnifying-glass"),
+    icon!("maximize"),
+    icon!("minimize"),
+    icon!("notebook"),
+    icon!("panel-bottom"),
+    icon!("panel-right"),
+    icon!("plus"),
+    icon!("redo"),
+    icon!("search"),
+    icon!("settings"),
+    icon!("shield-check"),
+    icon!("square-terminal"),
+    icon!("terminal-window"),
+    icon!("trash"),
+    icon!("triangle-alert"),
+    icon!("user"),
+    icon!("x"),
 ];
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
-        let bytes = match path {
-            "icons/folder-open.svg" => {
-                Some(include_bytes!("../assets/icons/folder-open.svg").as_slice())
+        for (icon_path, bytes) in ICONS {
+            if *icon_path == path {
+                return Ok(Some(Cow::Borrowed(bytes)));
             }
-            "icons/key.svg" => Some(include_bytes!("../assets/icons/key.svg").as_slice()),
-            "icons/magnifying-glass.svg" => {
-                Some(include_bytes!("../assets/icons/magnifying-glass.svg").as_slice())
-            }
-            "icons/notebook.svg" => Some(include_bytes!("../assets/icons/notebook.svg").as_slice()),
-            "icons/plus.svg" => Some(include_bytes!("../assets/icons/plus.svg").as_slice()),
-            "icons/shield-check.svg" => {
-                Some(include_bytes!("../assets/icons/shield-check.svg").as_slice())
-            }
-            "icons/terminal-window.svg" => {
-                Some(include_bytes!("../assets/icons/terminal-window.svg").as_slice())
-            }
-            "icons/trash.svg" => Some(include_bytes!("../assets/icons/trash.svg").as_slice()),
-            "icons/x.svg" => Some(include_bytes!("../assets/icons/x.svg").as_slice()),
-            _ => None,
-        };
+        }
 
-        Ok(bytes.map(Cow::Borrowed))
+        Ok(None)
     }
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
-        Ok(ASSET_PATHS
+        Ok(ICONS
             .iter()
-            .filter(|entry| path.is_empty() || entry.starts_with(path))
-            .map(|entry| (*entry).into())
+            .filter(|(icon_path, _)| path.is_empty() || icon_path.starts_with(path))
+            .map(|(icon_path, _)| (*icon_path).into())
             .collect())
     }
 }

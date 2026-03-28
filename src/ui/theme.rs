@@ -99,8 +99,8 @@ pub fn with_alpha(color: Hsla, alpha: f32) -> Hsla {
     }
 }
 
-pub const HOST_SIDEBAR_WIDTH: f32 = 182.0;
-pub const CHROME_HEIGHT: f32 = 54.0;
-pub const STATUS_HEIGHT: f32 = 30.0;
-pub const WORKSPACE_HEADER_HEIGHT: f32 = 58.0;
-pub const CARD_RADIUS: f32 = 16.0;
+pub const HOST_SIDEBAR_WIDTH: f32 = 180.0;
+pub const CHROME_HEIGHT: f32 = 46.0;
+pub const STATUS_HEIGHT: f32 = 28.0;
+pub const WORKSPACE_HEADER_HEIGHT: f32 = 50.0;
+pub const CARD_RADIUS: f32 = 12.0;
