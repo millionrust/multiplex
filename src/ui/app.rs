@@ -2481,9 +2481,9 @@ impl TermiRustApp {
                     self.selected_profile_id.as_deref() == Some(profile.id.as_str()),
                     cx,
                 )
-                .w(px(HOST_CARD_WIDTH))
-                .flex_shrink_0()
-                .flex_grow()
+                .min_w(px(HOST_CARD_WIDTH))
+                .max_w(px(HOST_CARD_WIDTH * 1.3))
+                .flex_1()
                 .into_any_element()
             }))
             .when(profiles.is_empty(), |this| {
@@ -4419,38 +4419,36 @@ impl TermiRustApp {
                         cx.stop_propagation();
                     })
                     .child(
-                        h_flex()
-                            .justify_between()
+                        div()
+                            .absolute()
+                            .top(px(12.))
+                            .right(px(12.))
+                            .id("editor-dialog-close")
+                            .size(px(30.))
+                            .rounded(px(8.))
+                            .flex()
                             .items_center()
-                            .px_5()
-                            .pt_5()
-                            .pb_2()
+                            .justify_center()
+                            .cursor_pointer()
+                            .bg(theme::with_alpha(theme::hover(), 0.6))
+                            .hover(|style| style.bg(theme::hover()))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.close_editor_dialog(window, cx);
+                            }))
                             .child(
-                                div()
-                                    .text_size(px(16.))
-                                    .font_semibold()
-                                    .text_color(theme::text_main())
-                                    .child(title),
-                            )
-                            .child(
-                                div()
-                                    .id("editor-dialog-close")
-                                    .size(px(28.))
-                                    .rounded(px(6.))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .cursor_pointer()
-                                    .hover(|style| style.bg(theme::hover()))
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.close_editor_dialog(window, cx);
-                                    }))
-                                    .child(
-                                        Icon::new(IconName::Close)
-                                            .size(px(14.))
-                                            .text_color(theme::text_muted()),
-                                    ),
+                                Icon::new(IconName::Close)
+                                    .size(px(14.))
+                                    .text_color(theme::text_muted()),
                             ),
+                    )
+                    .child(
+                        v_flex().px_5().pt_5().pb_2().child(
+                            div()
+                                .text_size(px(16.))
+                                .font_semibold()
+                                .text_color(theme::text_main())
+                                .child(title),
+                        ),
                     )
                     .child(v_flex().px_5().pb_5().child(self.render_editor_panel(cx))),
             )
