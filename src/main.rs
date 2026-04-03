@@ -12,6 +12,18 @@ use crate::storage::{load_local_ssh_hosts, load_saved_state};
 use crate::ui::TermiRustApp;
 
 fn main() {
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("=== PANIC ===");
+        eprintln!("{info}");
+        if let Some(location) = info.location() {
+            eprintln!("  at {}:{}:{}", location.file(), location.line(), location.column());
+        }
+        let bt = std::backtrace::Backtrace::force_capture();
+        eprintln!("{bt}");
+        eprintln!("=== END PANIC ===");
+    }));
+
+    eprintln!("[main] starting termirust...");
     let mut saved_state = load_saved_state().unwrap_or_default();
     if let Ok(imported_hosts) = load_local_ssh_hosts() {
         saved_state.merge_imported_profiles(imported_hosts);

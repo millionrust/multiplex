@@ -780,12 +780,14 @@ impl TermiRustApp {
         let pane_id = request.session_id;
         let endpoint = request.address();
         let title = request.title.clone();
+        eprintln!("[app] spawn_pane: pane_id={pane_id} title='{title}' endpoint={endpoint}");
         let terminal_focus = cx.focus_handle().tab_stop(true);
         let runtime = spawn_session(
             request.clone(),
             self.known_hosts.clone(),
             self.event_tx.clone(),
         );
+        eprintln!("[app] spawn_pane: session spawned, creating pane state...");
 
         let log_entry = SessionLogEntry::new(&request);
         let log_id = log_entry.id.clone();
@@ -814,10 +816,21 @@ impl TermiRustApp {
     }
 
     fn connect_current(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        eprintln!("[app] connect_current: building request from draft...");
         let _ = self.ensure_default_identity_selected(window, cx);
         match self.build_request_for_current_draft(cx) {
             Ok(request) => {
+                eprintln!(
+                    "[app] connect_current: request ok — title='{}' address='{}' auth={:?}",
+                    request.title,
+                    request.address(),
+                    match &request.auth {
+                        AuthConfig::Password { .. } => "password",
+                        AuthConfig::PrivateKey { key_path, .. } => key_path.as_str(),
+                    }
+                );
                 let pane_id = self.spawn_pane(request.clone(), window, cx);
+                eprintln!("[app] connect_current: pane spawned, pane_id={pane_id}");
                 let workspace_id = self.next_workspace_id();
 
                 self.workspaces.push(WorkspaceTab {
@@ -838,13 +851,16 @@ impl TermiRustApp {
                 self.status_message = format!("Connecting to {}...", request.address());
                 self.error_message.clear();
                 self.set_terminal_search_input("", window, cx);
+                eprintln!("[app] connect_current: syncing terminal layout...");
                 self.sync_terminal_layout(window, cx);
                 if let Some(pane) = self.pane(pane_id) {
                     pane.terminal_focus.focus(window);
                 }
+                eprintln!("[app] connect_current: done, workspace_id={workspace_id}");
                 cx.notify();
             }
             Err(error) => {
+                eprintln!("[app] connect_current: draft error — {error}");
                 self.error_message = error.to_string();
                 cx.notify();
             }
@@ -1081,6 +1097,7 @@ impl TermiRustApp {
                     session_id,
                     trusted_new_host,
                 } => {
+                    eprintln!("[app] event: Connected session_id={session_id} trusted_new={trusted_new_host}");
                     if let Some(workspace_id) = self.pane_workspace_id(session_id) {
                         self.record_workspace_activity(workspace_id);
                     }
@@ -1092,6 +1109,8 @@ impl TermiRustApp {
                         self.saved
                             .update_session_log(&log_id, |e| e.mark_connected());
                         let _ = save_saved_state(&self.saved);
+                    } else {
+                        eprintln!("[app] WARNING: Connected event for unknown pane session_id={session_id}");
                     }
 
                     self.status_message = if trusted_new_host {
@@ -1118,6 +1137,7 @@ impl TermiRustApp {
                     session_id,
                     message,
                 } => {
+                    eprintln!("[app] event: Error session_id={session_id} message={message}");
                     if let Some(workspace_id) = self.pane_workspace_id(session_id) {
                         self.record_workspace_activity(workspace_id);
                     }
@@ -1137,6 +1157,7 @@ impl TermiRustApp {
                     session_id,
                     message,
                 } => {
+                    eprintln!("[app] event: Disconnected session_id={session_id} message={message}");
                     if let Some(workspace_id) = self.pane_workspace_id(session_id) {
                         self.record_workspace_activity(workspace_id);
                     }
