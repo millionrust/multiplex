@@ -54,6 +54,13 @@ enum NavSection {
     Logs,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum KeychainTab {
+    #[default]
+    Keys,
+    Identities,
+}
+
 impl NavSection {
     fn label(self) -> &'static str {
         match self {
@@ -259,6 +266,7 @@ pub struct TermiRustApp {
     error_message: String,
     imported_identities: Vec<ImportedIdentity>,
     known_hosts: Arc<KnownHostStore>,
+    keychain_tab: KeychainTab,
     _window_bounds_subscription: Option<Subscription>,
 }
 
@@ -317,6 +325,7 @@ impl TermiRustApp {
             error_message: String::new(),
             imported_identities,
             known_hosts,
+            keychain_tab: KeychainTab::Keys,
             _window_bounds_subscription: None,
         };
 
@@ -620,7 +629,7 @@ impl TermiRustApp {
         self.show_editor_panel = true;
     }
 
-    fn close_editor_dialog(&mut self, cx: &mut Context<Self>) {
+    fn close_editor_dialog(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.show_editor_panel = false;
         cx.notify();
     }
@@ -2278,30 +2287,11 @@ impl TermiRustApp {
             .flex_none()
             .h_full()
             .px(px(10.))
-            .pt(px(16.))
+            .pt(px(12.))
             .pb(px(12.))
             .bg(theme::library_sidebar())
             .border_r_1()
             .border_color(theme::border())
-            .child(
-                h_flex()
-                    .gap(px(8.))
-                    .items_center()
-                    .px(px(10.))
-                    .pb(px(16.))
-                    .child(
-                        Icon::new(IconName::SquareTerminal)
-                            .size(px(18.))
-                            .text_color(theme::accent()),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(14.))
-                            .font_semibold()
-                            .text_color(theme::text_main())
-                            .child("TermiRust"),
-                    ),
-            )
             .child(
                 v_flex().gap(px(2.)).children(
                     [NavSection::Hosts, NavSection::Keychain]
@@ -2465,6 +2455,7 @@ impl TermiRustApp {
                     .custom(Self::action_button_style(theme::accent_soft(), cx))
                     .label("Connect")
                     .on_click(cx.listener(move |this, _, window, cx| {
+                        this.show_editor_panel = false;
                         this.load_profile_into_inputs(&connect_profile_id, window, cx);
                         this.connect_current(window, cx);
                     })),
@@ -2642,59 +2633,13 @@ impl TermiRustApp {
         let auth_mode = self.draft_auth_mode;
 
         v_flex()
-            .w(px(440.))
-            .flex_none()
-            .gap_5()
-            .p_6()
-            .rounded(px(theme::CARD_RADIUS))
-            .bg(theme::library_card())
-            .border_1()
-            .border_color(theme::border())
-            .shadow_lg()
+            .w_full()
+            .gap_4()
             .child(
-                h_flex()
-                    .justify_between()
-                    .items_center()
-                    .child(
-                        v_flex()
-                            .gap_1()
-                            .child(
-                                div()
-                                    .text_size(px(16.))
-                                    .font_semibold()
-                                    .text_color(theme::text_main())
-                                    .child(if self.selected_profile_id.is_some() {
-                                        "Host Details"
-                                    } else {
-                                        "New Host"
-                                    }),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(11.))
-                                    .text_color(theme::text_muted())
-                                    .child("Passwords never touch disk. Key paths are stored only for reconnects."),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .id("editor-close")
-                            .size(px(28.))
-                            .rounded(px(6.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .hover(|style| style.bg(theme::hover()))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.close_editor_dialog(cx);
-                            }))
-                            .child(
-                                Icon::new(IconName::Close)
-                                    .size(px(14.))
-                                    .text_color(theme::text_muted()),
-                            ),
-                    ),
+                div()
+                    .text_size(px(11.))
+                    .text_color(theme::text_muted())
+                    .child("Passwords never touch disk. Key paths are stored only for reconnects."),
             )
             .child(self.form_field("Label", Input::new(&self.inputs.label)))
             .child(self.form_field("Host", Input::new(&self.inputs.host)))
@@ -2826,7 +2771,7 @@ impl TermiRustApp {
                             .icon(IconName::Delete)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.remove_selected_profile(window, cx);
-                                this.show_editor_panel = false;
+                                this.close_editor_dialog(window, cx);
                             })),
                     )
                     .child(div().flex_1())
@@ -2847,7 +2792,7 @@ impl TermiRustApp {
                             .icon(IconName::ArrowRight)
                             .label("Connect")
                             .on_click(cx.listener(|this, _, window, cx| {
-                                this.show_editor_panel = false;
+                                this.close_editor_dialog(window, cx);
                                 this.connect_current(window, cx);
                             })),
                     ),
@@ -2952,22 +2897,95 @@ impl TermiRustApp {
             )
     }
 
-    fn render_keychain_view(&self, cx: &Context<Self>) -> Div {
+    fn keychain_tab_control(&self, cx: &Context<Self>) -> Div {
+        let tab = self.keychain_tab;
+        h_flex()
+            .p(px(3.))
+            .rounded(px(8.))
+            .bg(theme::hover())
+            .child(
+                div()
+                    .id("keychain-tab-keys")
+                    .flex_1()
+                    .h(px(28.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(6.))
+                    .rounded(px(6.))
+                    .text_size(px(12.))
+                    .font_medium()
+                    .cursor_pointer()
+                    .when(tab == KeychainTab::Keys, |this| {
+                        this.bg(theme::library_card())
+                            .shadow_sm()
+                            .text_color(theme::text_main())
+                    })
+                    .when(tab != KeychainTab::Keys, |this| {
+                        this.text_color(theme::text_muted())
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.keychain_tab = KeychainTab::Keys;
+                        cx.notify();
+                    }))
+                    .child(app_icon(ICON_KEY).size(px(12.)).text_color(
+                        if tab == KeychainTab::Keys {
+                            theme::accent()
+                        } else {
+                            theme::text_muted()
+                        },
+                    ))
+                    .child("Keys"),
+            )
+            .child(
+                div()
+                    .id("keychain-tab-identities")
+                    .flex_1()
+                    .h(px(28.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(6.))
+                    .rounded(px(6.))
+                    .text_size(px(12.))
+                    .font_medium()
+                    .cursor_pointer()
+                    .when(tab == KeychainTab::Identities, |this| {
+                        this.bg(theme::library_card())
+                            .shadow_sm()
+                            .text_color(theme::text_main())
+                    })
+                    .when(tab != KeychainTab::Identities, |this| {
+                        this.text_color(theme::text_muted())
+                    })
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.keychain_tab = KeychainTab::Identities;
+                        cx.notify();
+                    }))
+                    .child(Icon::new(IconName::User).size(px(12.)).text_color(
+                        if tab == KeychainTab::Identities {
+                            theme::accent()
+                        } else {
+                            theme::text_muted()
+                        },
+                    ))
+                    .child("Identities"),
+            )
+    }
+
+    fn render_keychain_keys(&self, cx: &Context<Self>) -> Div {
         v_flex()
             .flex_1()
-            .gap_4()
-            .p_5()
-            .bg(theme::library_bg())
+            .gap_3()
             .child(
                 h_flex()
                     .justify_between()
                     .items_center()
                     .child(
                         div()
-                            .text_size(px(18.))
-                            .font_semibold()
-                            .text_color(theme::text_main())
-                            .child("Keychain"),
+                            .text_size(px(12.))
+                            .text_color(theme::text_muted())
+                            .child("Private keys imported from ~/.ssh at launch."),
                     )
                     .child(
                         h_flex()
@@ -3006,13 +3024,6 @@ impl TermiRustApp {
                     ),
             )
             .child(
-                div()
-                    .text_size(px(12.))
-                    .line_height(relative(1.5))
-                    .text_color(theme::text_muted())
-                    .child("Private-key identities imported from ~/.ssh at launch. Click any key to use it in the host editor. Use \"Add Key File\" to pick a key from another location."),
-            )
-            .child(
                 v_flex()
                     .flex_1()
                     .gap_2()
@@ -3025,7 +3036,7 @@ impl TermiRustApp {
                                 .exists();
 
                             h_flex()
-                                .id(("keychain-identity", index))
+                                .id(("keychain-key", index))
                                 .justify_between()
                                 .items_center()
                                 .gap_4()
@@ -3152,6 +3163,173 @@ impl TermiRustApp {
                         )
                     }),
             )
+    }
+
+    fn render_keychain_identities(&self, cx: &Context<Self>) -> Div {
+        let profiles_with_password: Vec<_> = self
+            .saved
+            .profiles
+            .iter()
+            .filter(|p| p.auth_mode == AuthMode::Password)
+            .collect();
+
+        v_flex()
+            .flex_1()
+            .gap_3()
+            .child(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(theme::text_muted())
+                            .child("Saved host identities with password authentication."),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .child(format!(
+                                "{} {}",
+                                profiles_with_password.len(),
+                                if profiles_with_password.len() == 1 {
+                                    "identity"
+                                } else {
+                                    "identities"
+                                }
+                            )),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .gap_2()
+                    .overflow_y_scrollbar()
+                    .children(
+                        profiles_with_password
+                            .iter()
+                            .enumerate()
+                            .map(|(index, profile)| {
+                                let profile_id = profile.id.clone();
+                                h_flex()
+                                    .id(("identity-card", index))
+                                    .justify_between()
+                                    .items_center()
+                                    .gap_4()
+                                    .p_4()
+                                    .rounded(px(theme::CARD_RADIUS))
+                                    .bg(theme::library_card())
+                                    .border_1()
+                                    .border_color(theme::border())
+                                    .cursor_pointer()
+                                    .hover(|style| {
+                                        style.bg(theme::with_alpha(theme::hover(), 0.82))
+                                    })
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.load_profile_into_inputs(&profile_id, window, cx);
+                                    }))
+                                    .child(
+                                        h_flex()
+                                            .gap_3()
+                                            .items_center()
+                                            .child(
+                                                div()
+                                                    .size(px(36.))
+                                                    .rounded(px(12.))
+                                                    .bg(theme::with_alpha(theme::accent(), 0.1))
+                                                    .flex()
+                                                    .items_center()
+                                                    .justify_center()
+                                                    .child(
+                                                        Icon::new(IconName::User)
+                                                            .size(px(16.))
+                                                            .text_color(theme::accent()),
+                                                    ),
+                                            )
+                                            .child(
+                                                v_flex()
+                                                    .gap(px(2.))
+                                                    .child(
+                                                        div()
+                                                            .text_size(px(12.))
+                                                            .font_semibold()
+                                                            .text_color(theme::text_main())
+                                                            .child(profile.display_name()),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .text_size(px(10.))
+                                                            .text_color(theme::text_muted())
+                                                            .child(format!(
+                                                                "{}@{}",
+                                                                profile.username, profile.host
+                                                            )),
+                                                    ),
+                                            ),
+                                    )
+                                    .child(self.status_badge(
+                                        "password",
+                                        theme::library_bg(),
+                                        theme::text_muted(),
+                                    ))
+                                    .into_any_element()
+                            }),
+                    )
+                    .when(profiles_with_password.is_empty(), |this| {
+                        this.child(
+                            v_flex()
+                                .items_center()
+                                .justify_center()
+                                .p_8()
+                                .rounded(px(theme::CARD_RADIUS))
+                                .bg(theme::library_card())
+                                .border_1()
+                                .border_color(theme::border())
+                                .gap_2()
+                                .child(
+                                    Icon::new(IconName::User)
+                                        .size(px(28.))
+                                        .text_color(theme::with_alpha(theme::text_muted(), 0.4)),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .font_medium()
+                                        .text_color(theme::text_muted())
+                                        .child("No password identities saved"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .text_color(theme::with_alpha(theme::text_muted(), 0.7))
+                                        .child("Save a host with password auth to see it here"),
+                                ),
+                        )
+                    }),
+            )
+    }
+
+    fn render_keychain_view(&self, cx: &Context<Self>) -> Div {
+        v_flex()
+            .flex_1()
+            .gap_4()
+            .p_5()
+            .bg(theme::library_bg())
+            .child(
+                h_flex().justify_between().items_center().child(
+                    div()
+                        .text_size(px(18.))
+                        .font_semibold()
+                        .text_color(theme::text_main())
+                        .child("Keychain"),
+                ),
+            )
+            .child(self.keychain_tab_control(cx))
+            .child(match self.keychain_tab {
+                KeychainTab::Keys => self.render_keychain_keys(cx),
+                KeychainTab::Identities => self.render_keychain_identities(cx),
+            })
     }
 
     fn render_known_hosts_view(&self, cx: &Context<Self>) -> Div {
@@ -4072,35 +4250,6 @@ impl TermiRustApp {
             .child(content)
     }
 
-    fn render_editor_dialog(&self, cx: &Context<Self>) -> Stateful<Div> {
-        div()
-            .id("editor-dialog-overlay")
-            .absolute()
-            .top_0()
-            .left_0()
-            .size_full()
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(theme::with_alpha(gpui::rgb(0x000000).into(), 0.4))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _, _, cx| {
-                    this.close_editor_dialog(cx);
-                }),
-            )
-            .child(
-                div()
-                    .id("editor-dialog-card")
-                    .max_h(px(640.))
-                    .overflow_y_scrollbar()
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
-                        cx.stop_propagation();
-                    })
-                    .child(self.render_editor_panel(cx)),
-            )
-    }
-
     fn render_workspace_shell(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         v_flex()
             .flex_1()
@@ -4120,8 +4269,6 @@ impl Render for TermiRustApp {
         } else {
             self.render_library_shell(window, cx).into_any_element()
         };
-
-        let show_dialog = self.show_editor_panel;
 
         div()
             .size_full()
@@ -4227,9 +4374,86 @@ impl Render for TermiRustApp {
                             )
                     }),
             )
-            .when(show_dialog, |this| {
-                this.child(self.render_editor_dialog(cx))
+            .when(self.show_editor_panel, |this| {
+                this.child(self.render_editor_dialog(window, cx))
             })
+    }
+}
+
+impl TermiRustApp {
+    fn render_editor_dialog(&self, _window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
+        let title = if self.selected_profile_id.is_some() {
+            "Host Details"
+        } else {
+            "New Host"
+        };
+
+        div()
+            .id("editor-dialog-overlay")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(theme::with_alpha(gpui::rgb(0x000000).into(), 0.4))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    this.close_editor_dialog(window, cx);
+                }),
+            )
+            .child(
+                v_flex()
+                    .id("editor-dialog-card")
+                    .w(px(460.))
+                    .max_h(px(640.))
+                    .overflow_y_scrollbar()
+                    .rounded(px(theme::CARD_RADIUS))
+                    .bg(theme::library_card())
+                    .border_1()
+                    .border_color(theme::border())
+                    .shadow_lg()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                        cx.stop_propagation();
+                    })
+                    .child(
+                        h_flex()
+                            .justify_between()
+                            .items_center()
+                            .px_5()
+                            .pt_5()
+                            .pb_2()
+                            .child(
+                                div()
+                                    .text_size(px(16.))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child(title),
+                            )
+                            .child(
+                                div()
+                                    .id("editor-dialog-close")
+                                    .size(px(28.))
+                                    .rounded(px(6.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .cursor_pointer()
+                                    .hover(|style| style.bg(theme::hover()))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.close_editor_dialog(window, cx);
+                                    }))
+                                    .child(
+                                        Icon::new(IconName::Close)
+                                            .size(px(14.))
+                                            .text_color(theme::text_muted()),
+                                    ),
+                            ),
+                    )
+                    .child(v_flex().px_5().pb_5().child(self.render_editor_panel(cx))),
+            )
     }
 }
 
