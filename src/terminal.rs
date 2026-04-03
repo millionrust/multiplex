@@ -149,21 +149,32 @@ impl TerminalState {
         };
         let total_rows = max_scrollback + viewport_rows;
         let mut all_rows = Vec::with_capacity(total_rows);
-        let mut start = 0usize;
 
-        while start < total_rows {
+        let full_pages = max_scrollback / viewport_rows;
+        let remainder = max_scrollback % viewport_rows;
+
+        for page in 0..full_pages {
             let mut view = screen.clone();
-            let offset = max_scrollback.saturating_sub(start);
-            view.set_scrollback(offset);
-
-            for row in view
-                .rows(0, cols)
-                .take((total_rows - start).min(viewport_rows))
-            {
+            view.set_scrollback(max_scrollback - page * viewport_rows);
+            for row in view.rows(0, cols) {
                 all_rows.push(row);
             }
+        }
 
-            start += viewport_rows;
+        if remainder > 0 {
+            let mut view = screen.clone();
+            view.set_scrollback(remainder);
+            for row in view.rows(0, cols).take(remainder) {
+                all_rows.push(row);
+            }
+        }
+
+        {
+            let mut view = screen.clone();
+            view.set_scrollback(0);
+            for row in view.rows(0, cols) {
+                all_rows.push(row);
+            }
         }
 
         all_rows

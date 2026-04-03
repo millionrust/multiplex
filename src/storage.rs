@@ -296,9 +296,10 @@ fn strip_ssh_comment(line: &str) -> &str {
 }
 
 fn split_ssh_directive(line: &str) -> Option<(&str, &str)> {
-    let mut parts = line.splitn(2, char::is_whitespace);
-    let key = parts.next()?.trim();
-    let value = parts.next()?.trim();
+    let sep = line.find(|c: char| c == '=' || c.is_ascii_whitespace())?;
+    let key = line[..sep].trim();
+    let rest = line[sep..].trim_start_matches(|c: char| c == '=' || c.is_ascii_whitespace());
+    let value = rest.trim();
     if key.is_empty() || value.is_empty() {
         None
     } else {
@@ -504,5 +505,31 @@ Host tunnel-box
         assert_eq!(hosts[0].auth_mode, AuthMode::PrivateKey);
         assert_eq!(hosts[0].source, ProfileSource::SshConfig);
         assert!(hosts[0].key_path.ends_with("/.ssh/id_ed25519"));
+    }
+
+    #[test]
+    fn parses_ssh_config_with_equals_delimiter() {
+        let hosts = parse_ssh_config_hosts(
+            r#"
+Host eq-host
+  HostName=10.0.0.1
+  User=deploy
+  Port=3022
+
+Host eq-spaced
+  HostName = 10.0.0.2
+  User = admin
+"#,
+        );
+
+        assert_eq!(hosts.len(), 2);
+        let eq_host = hosts.iter().find(|h| h.label == "eq-host").unwrap();
+        assert_eq!(eq_host.host, "10.0.0.1");
+        assert_eq!(eq_host.username, "deploy");
+        assert_eq!(eq_host.port, 3022);
+
+        let eq_spaced = hosts.iter().find(|h| h.label == "eq-spaced").unwrap();
+        assert_eq!(eq_spaced.host, "10.0.0.2");
+        assert_eq!(eq_spaced.username, "admin");
     }
 }
