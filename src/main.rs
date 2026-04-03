@@ -16,7 +16,12 @@ fn main() {
         eprintln!("=== PANIC ===");
         eprintln!("{info}");
         if let Some(location) = info.location() {
-            eprintln!("  at {}:{}:{}", location.file(), location.line(), location.column());
+            eprintln!(
+                "  at {}:{}:{}",
+                location.file(),
+                location.line(),
+                location.column()
+            );
         }
         let bt = std::backtrace::Backtrace::force_capture();
         eprintln!("{bt}");

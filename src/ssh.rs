@@ -54,7 +54,10 @@ pub fn spawn_session(
     let session_id = request.session_id;
     let thread_name = format!("ssh-session-{session_id}");
 
-    eprintln!("[ssh][{session_id}] spawn_session: address={}", request.address());
+    eprintln!(
+        "[ssh][{session_id}] spawn_session: address={}",
+        request.address()
+    );
 
     let fallback_tx = event_tx.clone();
     let spawn_result = thread::Builder::new().name(thread_name).spawn(move || {
@@ -128,7 +131,10 @@ async fn run_session(
         .await
         .context("Unable to open the SSH transport")?;
 
-    eprintln!("[ssh][{session_id}] transport open, authenticating as '{}'...", request.username);
+    eprintln!(
+        "[ssh][{session_id}] transport open, authenticating as '{}'...",
+        request.username
+    );
     authenticate(&mut handle, &request).await?;
 
     eprintln!("[ssh][{session_id}] authenticated, opening channel...");
@@ -228,7 +234,10 @@ async fn authenticate(
             key_path,
             passphrase,
         } => {
-            eprintln!("[ssh] loading private key from {key_path} (passphrase={})", passphrase.is_some());
+            eprintln!(
+                "[ssh] loading private key from {key_path} (passphrase={})",
+                passphrase.is_some()
+            );
             let key = match russh::keys::load_secret_key(key_path, passphrase.as_deref()) {
                 Ok(k) => k,
                 Err(e) => {
@@ -240,7 +249,8 @@ async fn authenticate(
                             key_path
                         );
                     }
-                    return Err(e).with_context(|| format!("Unable to load private key from {}", key_path));
+                    return Err(e)
+                        .with_context(|| format!("Unable to load private key from {}", key_path));
                 }
             };
             let rsa_hash = handle

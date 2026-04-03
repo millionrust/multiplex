@@ -38,6 +38,7 @@ const PANE_HEADER_HEIGHT: f32 = 38.0;
 const TERMINAL_INNER_PADDING_X: f32 = 20.0;
 const TERMINAL_INNER_PADDING_Y: f32 = 14.0;
 const MAX_SPLIT_PANES: usize = 4;
+const HOST_CARD_WIDTH: f32 = 300.0;
 const ICON_KEY: &str = "icons/key.svg";
 const ICON_SHIELD_CHECK: &str = "icons/shield-check.svg";
 
@@ -619,6 +620,11 @@ impl TermiRustApp {
         self.show_editor_panel = true;
     }
 
+    fn close_editor_dialog(&mut self, cx: &mut Context<Self>) {
+        self.show_editor_panel = false;
+        cx.notify();
+    }
+
     fn focus_terminal_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.shell_inputs
             .terminal_search
@@ -1097,7 +1103,9 @@ impl TermiRustApp {
                     session_id,
                     trusted_new_host,
                 } => {
-                    eprintln!("[app] event: Connected session_id={session_id} trusted_new={trusted_new_host}");
+                    eprintln!(
+                        "[app] event: Connected session_id={session_id} trusted_new={trusted_new_host}"
+                    );
                     if let Some(workspace_id) = self.pane_workspace_id(session_id) {
                         self.record_workspace_activity(workspace_id);
                     }
@@ -1110,7 +1118,9 @@ impl TermiRustApp {
                             .update_session_log(&log_id, |e| e.mark_connected());
                         let _ = save_saved_state(&self.saved);
                     } else {
-                        eprintln!("[app] WARNING: Connected event for unknown pane session_id={session_id}");
+                        eprintln!(
+                            "[app] WARNING: Connected event for unknown pane session_id={session_id}"
+                        );
                     }
 
                     self.status_message = if trusted_new_host {
@@ -1157,7 +1167,9 @@ impl TermiRustApp {
                     session_id,
                     message,
                 } => {
-                    eprintln!("[app] event: Disconnected session_id={session_id} message={message}");
+                    eprintln!(
+                        "[app] event: Disconnected session_id={session_id} message={message}"
+                    );
                     if let Some(workspace_id) = self.pane_workspace_id(session_id) {
                         self.record_workspace_activity(workspace_id);
                     }
@@ -2465,29 +2477,24 @@ impl TermiRustApp {
             .into_iter()
             .enumerate()
             .collect::<Vec<_>>();
-        let rows = profiles
-            .chunks(3)
-            .map(|chunk| {
-                h_flex()
-                    .w_full()
-                    .gap_3()
-                    .children(chunk.iter().map(|(card_ix, profile)| {
-                        self.host_card(
-                            *card_ix,
-                            profile,
-                            self.selected_profile_id.as_deref() == Some(profile.id.as_str()),
-                            cx,
-                        )
-                        .flex_1()
-                        .into_any_element()
-                    }))
-                    .into_any_element()
-            })
-            .collect::<Vec<_>>();
 
-        v_flex()
+        div()
+            .w_full()
+            .flex()
+            .flex_wrap()
             .gap_3()
-            .children(rows)
+            .children(profiles.iter().map(|(card_ix, profile)| {
+                self.host_card(
+                    *card_ix,
+                    profile,
+                    self.selected_profile_id.as_deref() == Some(profile.id.as_str()),
+                    cx,
+                )
+                .w(px(HOST_CARD_WIDTH))
+                .flex_shrink_0()
+                .flex_grow()
+                .into_any_element()
+            }))
             .when(profiles.is_empty(), |this| {
                 this.child(
                     v_flex()
@@ -2635,34 +2642,58 @@ impl TermiRustApp {
         let auth_mode = self.draft_auth_mode;
 
         v_flex()
-            .w(px(380.))
+            .w(px(440.))
             .flex_none()
             .gap_5()
-            .p_5()
+            .p_6()
             .rounded(px(theme::CARD_RADIUS))
             .bg(theme::library_card())
             .border_1()
             .border_color(theme::border())
-            .shadow_sm()
+            .shadow_lg()
             .child(
-                v_flex()
-                    .gap_1()
+                h_flex()
+                    .justify_between()
+                    .items_center()
                     .child(
-                        div()
-                            .text_size(px(16.))
-                            .font_semibold()
-                            .text_color(theme::text_main())
-                            .child(if self.selected_profile_id.is_some() {
-                                "Host Details"
-                            } else {
-                                "New Host"
-                            }),
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(16.))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child(if self.selected_profile_id.is_some() {
+                                        "Host Details"
+                                    } else {
+                                        "New Host"
+                                    }),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(theme::text_muted())
+                                    .child("Passwords never touch disk. Key paths are stored only for reconnects."),
+                            ),
                     )
                     .child(
                         div()
-                            .text_size(px(11.))
-                            .text_color(theme::text_muted())
-                            .child("Passwords never touch disk. Key paths are stored only for reconnects."),
+                            .id("editor-close")
+                            .size(px(28.))
+                            .rounded(px(6.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .hover(|style| style.bg(theme::hover()))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.close_editor_dialog(cx);
+                            }))
+                            .child(
+                                Icon::new(IconName::Close)
+                                    .size(px(14.))
+                                    .text_color(theme::text_muted()),
+                            ),
                     ),
             )
             .child(self.form_field("Label", Input::new(&self.inputs.label)))
@@ -2795,6 +2826,7 @@ impl TermiRustApp {
                             .icon(IconName::Delete)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.remove_selected_profile(window, cx);
+                                this.show_editor_panel = false;
                             })),
                     )
                     .child(div().flex_1())
@@ -2815,6 +2847,7 @@ impl TermiRustApp {
                             .icon(IconName::ArrowRight)
                             .label("Connect")
                             .on_click(cx.listener(|this, _, window, cx| {
+                                this.show_editor_panel = false;
                                 this.connect_current(window, cx);
                             })),
                     ),
@@ -2902,28 +2935,20 @@ impl TermiRustApp {
                     ),
             )
             .child(
-                h_flex()
+                v_flex()
                     .flex_1()
-                    .gap_4()
+                    .gap_3()
                     .px_4()
                     .pb_4()
+                    .overflow_y_scrollbar()
                     .child(
-                        v_flex()
-                            .flex_1()
-                            .gap_3()
-                            .overflow_y_scrollbar()
-                            .child(
-                                div()
-                                    .text_size(px(13.))
-                                    .font_semibold()
-                                    .text_color(theme::text_main())
-                                    .child("Hosts"),
-                            )
-                            .child(self.render_host_grid(cx)),
+                        div()
+                            .text_size(px(13.))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child("Hosts"),
                     )
-                    .when(self.show_editor_panel, |this| {
-                        this.child(self.render_editor_panel(cx))
-                    }),
+                    .child(self.render_host_grid(cx)),
             )
     }
 
@@ -4047,6 +4072,35 @@ impl TermiRustApp {
             .child(content)
     }
 
+    fn render_editor_dialog(&self, cx: &Context<Self>) -> Stateful<Div> {
+        div()
+            .id("editor-dialog-overlay")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(theme::with_alpha(gpui::rgb(0x000000).into(), 0.4))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.close_editor_dialog(cx);
+                }),
+            )
+            .child(
+                div()
+                    .id("editor-dialog-card")
+                    .max_h(px(640.))
+                    .overflow_y_scrollbar()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                        cx.stop_propagation();
+                    })
+                    .child(self.render_editor_panel(cx)),
+            )
+    }
+
     fn render_workspace_shell(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         v_flex()
             .flex_1()
@@ -4066,6 +4120,8 @@ impl Render for TermiRustApp {
         } else {
             self.render_library_shell(window, cx).into_any_element()
         };
+
+        let show_dialog = self.show_editor_panel;
 
         div()
             .size_full()
@@ -4171,6 +4227,9 @@ impl Render for TermiRustApp {
                             )
                     }),
             )
+            .when(show_dialog, |this| {
+                this.child(self.render_editor_dialog(cx))
+            })
     }
 }
 
