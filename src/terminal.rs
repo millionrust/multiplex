@@ -3,7 +3,7 @@ use std::mem;
 use gpui::Hsla;
 use vt100::{Color, MouseProtocolEncoding, MouseProtocolMode, Parser};
 
-const DEFAULT_FG_HEX: u32 = 0xdde7f5;
+const DEFAULT_FG_HEX: u32 = 0xe2e8f0;
 const DEFAULT_BG_HEX: u32 = 0x091521;
 pub const DEFAULT_SCROLLBACK: usize = 10_000;
 

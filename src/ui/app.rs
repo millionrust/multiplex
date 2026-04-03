@@ -28,15 +28,15 @@ use crate::terminal::{
 };
 use crate::ui::theme;
 
-const TERMINAL_FONT_SIZE: f32 = 13.0;
-const TERMINAL_LINE_HEIGHT: f32 = 1.35;
+const TERMINAL_FONT_SIZE: f32 = 13.5;
+const TERMINAL_LINE_HEIGHT: f32 = 1.3;
 const LIBRARY_TOOLBAR_HEIGHT: f32 = 56.0;
 const WORKSPACE_SEARCH_ROW_HEIGHT: f32 = 52.0;
 const WORKSPACE_PADDING: f32 = 18.0;
 const PANE_GAP: f32 = 12.0;
-const PANE_HEADER_HEIGHT: f32 = 34.0;
-const TERMINAL_INNER_PADDING_X: f32 = 18.0;
-const TERMINAL_INNER_PADDING_Y: f32 = 18.0;
+const PANE_HEADER_HEIGHT: f32 = 38.0;
+const TERMINAL_INNER_PADDING_X: f32 = 20.0;
+const TERMINAL_INNER_PADDING_Y: f32 = 14.0;
 const MAX_SPLIT_PANES: usize = 4;
 const ICON_KEY: &str = "icons/key.svg";
 const ICON_SHIELD_CHECK: &str = "icons/shield-check.svg";
@@ -214,24 +214,26 @@ impl Render for WorkspaceTabDragPreview {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .id("workspace-tab-drag-preview")
-            .gap(px(6.))
+            .gap(px(7.))
             .items_center()
-            .pl(px(10.))
-            .pr(px(12.))
-            .py(px(6.))
-            .rounded(px(8.))
-            .bg(theme::accent())
+            .pl(px(12.))
+            .pr(px(14.))
+            .py(px(7.))
+            .rounded(px(10.))
+            .bg(theme::with_alpha(theme::chrome_bg(), 0.92))
+            .border_1()
+            .border_color(theme::with_alpha(theme::accent(), 0.4))
             .shadow_lg()
             .child(
                 Icon::new(IconName::SquareTerminal)
-                    .size(px(13.))
-                    .text_color(Hsla::white()),
+                    .size(px(14.))
+                    .text_color(theme::accent()),
             )
             .child(
                 div()
-                    .text_size(px(11.5))
+                    .text_size(px(12.))
                     .font_semibold()
-                    .text_color(Hsla::white())
+                    .text_color(theme::text_on_dark())
                     .child(self.title.clone()),
             )
     }
@@ -2001,15 +2003,15 @@ impl TermiRustApp {
         let label: SharedString = label.into();
         h_flex()
             .id(id)
-            .gap(px(6.))
+            .gap(px(7.))
             .items_center()
-            .pl(px(10.))
+            .pl(px(12.))
             .pr(if close_button.is_some() {
                 px(6.)
             } else {
-                px(12.)
+                px(14.)
             })
-            .h(px(32.))
+            .h(px(34.))
             .rounded(px(8.))
             .bg(if active {
                 theme::chrome_tab_active()
@@ -2019,7 +2021,7 @@ impl TermiRustApp {
             .when(!active, |this| {
                 this.hover(|style| style.bg(theme::chrome_tab()))
             })
-            .child(icon.size(px(13.)).text_color(if active {
+            .child(icon.size(px(14.)).text_color(if active {
                 theme::accent()
             } else {
                 theme::text_muted_dark()
@@ -2030,7 +2032,7 @@ impl TermiRustApp {
                     .overflow_hidden()
                     .text_ellipsis()
                     .whitespace_nowrap()
-                    .text_size(px(11.5))
+                    .text_size(px(12.))
                     .font_medium()
                     .text_color(if active {
                         theme::text_on_dark()
@@ -2051,8 +2053,9 @@ impl TermiRustApp {
         h_flex()
             .h(px(theme::CHROME_HEIGHT))
             .w_full()
-            .px(px(12.))
-            .gap(px(2.))
+            .pl(px(theme::CHROME_INSET_LEFT))
+            .pr(px(12.))
+            .gap(px(3.))
             .items_center()
             .bg(theme::chrome_bg())
             .border_b_1()
@@ -2142,7 +2145,7 @@ impl TermiRustApp {
                         cx.notify();
                     }
                 }))
-                .cursor_pointer()
+                .cursor_grab()
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.activate_workspace(workspace_id, window, cx);
                 }))
@@ -2166,13 +2169,19 @@ impl TermiRustApp {
             .child(
                 div()
                     .id("chrome-new-btn")
-                    .size(px(28.))
-                    .rounded(px(6.))
+                    .size(px(30.))
+                    .rounded(px(7.))
                     .flex()
                     .items_center()
                     .justify_center()
                     .cursor_pointer()
-                    .hover(|style| style.bg(theme::chrome_tab()))
+                    .border_1()
+                    .border_color(theme::with_alpha(theme::text_muted_dark(), 0.15))
+                    .hover(|style| {
+                        style
+                            .bg(theme::chrome_tab())
+                            .border_color(theme::with_alpha(theme::text_muted_dark(), 0.3))
+                    })
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.activate_library(window, cx);
                         this.open_editor_for_new_host(window, cx);
@@ -2198,15 +2207,18 @@ impl TermiRustApp {
             .w_full()
             .items_center()
             .gap(px(8.))
-            .px(px(10.))
-            .h(px(34.))
+            .pl(px(12.))
+            .pr(px(10.))
+            .h(px(36.))
             .rounded(px(8.))
             .bg(if active {
                 theme::library_card()
             } else {
                 gpui::transparent_black()
             })
-            .when(active, |this| this.shadow_sm())
+            .when(active, |this| {
+                this.border_l_3().border_color(theme::accent()).pl(px(9.))
+            })
             .cursor_pointer()
             .hover(|style| style.bg(theme::library_card()))
             .child(section.icon().size(px(16.)).text_color(if active {
@@ -2232,42 +2244,80 @@ impl TermiRustApp {
             .w(px(theme::HOST_SIDEBAR_WIDTH))
             .flex_none()
             .h_full()
-            .gap(px(2.))
-            .px(px(8.))
-            .pt(px(12.))
+            .px(px(10.))
+            .pt(px(16.))
             .pb(px(12.))
             .bg(theme::library_sidebar())
             .border_r_1()
             .border_color(theme::border())
-            .children(
-                [
-                    NavSection::Hosts,
-                    NavSection::Keychain,
-                    NavSection::KnownHosts,
-                    NavSection::Logs,
-                ]
-                .into_iter()
-                .map(|section| {
-                    let active = self.nav_section == section;
-                    self.nav_card(("nav-card", nav_section_key(section)), section, active, cx)
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.nav_section = section;
-                            this.error_message.clear();
-                            cx.notify();
-                        }))
-                        .into_any_element()
-                }),
+            .child(
+                h_flex()
+                    .gap(px(8.))
+                    .items_center()
+                    .px(px(10.))
+                    .pb(px(16.))
+                    .child(
+                        Icon::new(IconName::SquareTerminal)
+                            .size(px(18.))
+                            .text_color(theme::accent()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(14.))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child("TermiRust"),
+                    ),
             )
-    }
-
-    fn host_chip_color(profile: &HostProfile) -> Hsla {
-        if profile.host.to_ascii_lowercase().contains("ubuntu") {
-            theme::ubuntu()
-        } else if profile.auth_mode == AuthMode::PrivateKey {
-            theme::slate()
-        } else {
-            theme::ubuntu()
-        }
+            .child(
+                v_flex().gap(px(2.)).children(
+                    [NavSection::Hosts, NavSection::Keychain]
+                        .into_iter()
+                        .map(|section| {
+                            let active = self.nav_section == section;
+                            self.nav_card(
+                                ("nav-card", nav_section_key(section)),
+                                section,
+                                active,
+                                cx,
+                            )
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.nav_section = section;
+                                this.error_message.clear();
+                                cx.notify();
+                            }))
+                            .into_any_element()
+                        }),
+                ),
+            )
+            .child(
+                div()
+                    .h(px(1.))
+                    .w_full()
+                    .my(px(8.))
+                    .bg(theme::with_alpha(theme::border(), 0.6)),
+            )
+            .child(
+                v_flex().gap(px(2.)).children(
+                    [NavSection::KnownHosts, NavSection::Logs]
+                        .into_iter()
+                        .map(|section| {
+                            let active = self.nav_section == section;
+                            self.nav_card(
+                                ("nav-card", nav_section_key(section)),
+                                section,
+                                active,
+                                cx,
+                            )
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.nav_section = section;
+                                this.error_message.clear();
+                                cx.notify();
+                            }))
+                            .into_any_element()
+                        }),
+                ),
+            )
     }
 
     fn host_card(
@@ -2279,11 +2329,16 @@ impl TermiRustApp {
     ) -> Stateful<Div> {
         let profile_id = profile.id.clone();
         let connect_profile_id = profile.id.clone();
-        let accent = Self::host_chip_color(profile);
+        let accent = theme::host_chip_color(&profile.display_name());
         let protocols = if profile.auth_mode == AuthMode::PrivateKey {
-            "ssh, key auth"
+            "key auth"
         } else {
-            "ssh, password"
+            "password"
+        };
+        let protocol_icon = if profile.auth_mode == AuthMode::PrivateKey {
+            app_icon(ICON_KEY)
+        } else {
+            Icon::new(IconName::User)
         };
 
         h_flex()
@@ -2301,23 +2356,33 @@ impl TermiRustApp {
                 theme::border()
             })
             .cursor_pointer()
-            .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.7)))
+            .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.5)).shadow_sm())
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.load_profile_into_inputs(&profile_id, window, cx);
             }))
             .child(
-                div().size(px(42.)).rounded(px(14.)).bg(accent).child(
-                    div()
-                        .size_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            Icon::new(IconName::SquareTerminal)
-                                .size(px(18.))
-                                .text_color(theme::library_card()),
-                        ),
-                ),
+                div()
+                    .size(px(44.))
+                    .rounded(px(14.))
+                    .bg(accent)
+                    .shadow(vec![gpui::BoxShadow {
+                        color: theme::with_alpha(accent, 0.3),
+                        offset: point(px(0.), px(2.)),
+                        blur_radius: px(6.),
+                        spread_radius: px(0.),
+                    }])
+                    .child(
+                        div()
+                            .size_full()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(
+                                Icon::new(IconName::SquareTerminal)
+                                    .size(px(20.))
+                                    .text_color(theme::library_card()),
+                            ),
+                    ),
             )
             .child(
                 v_flex()
@@ -2343,10 +2408,16 @@ impl TermiRustApp {
                             }),
                     )
                     .child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(theme::text_muted())
-                            .child(protocols),
+                        h_flex()
+                            .gap_1()
+                            .items_center()
+                            .child(protocol_icon.size(px(11.)).text_color(theme::text_muted()))
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(theme::text_muted())
+                                    .child(protocols),
+                            ),
                     )
                     .child(
                         div()
@@ -2357,8 +2428,8 @@ impl TermiRustApp {
             )
             .child(
                 Button::new(("connect-host-card", card_ix))
-                    .ghost()
                     .small()
+                    .custom(Self::action_button_style(theme::accent_soft(), cx))
                     .label("Connect")
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.load_profile_into_inputs(&connect_profile_id, window, cx);
@@ -2398,15 +2469,33 @@ impl TermiRustApp {
             .children(rows)
             .when(profiles.is_empty(), |this| {
                 this.child(
-                    div()
-                        .p_5()
+                    v_flex()
+                        .items_center()
+                        .justify_center()
+                        .p_8()
                         .rounded(px(theme::CARD_RADIUS))
-                        .bg(theme::library_card())
+                        .bg(theme::with_alpha(theme::library_card(), 0.6))
                         .border_1()
-                        .border_color(theme::border())
-                        .text_size(px(12.))
-                        .text_color(theme::text_muted())
-                        .child("No hosts match the current filter."),
+                        .border_color(theme::with_alpha(theme::border(), 0.5))
+                        .gap_2()
+                        .child(
+                            Icon::new(IconName::Search)
+                                .size(px(28.))
+                                .text_color(theme::with_alpha(theme::text_muted(), 0.4)),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .font_medium()
+                                .text_color(theme::text_muted())
+                                .child("No hosts match the current filter"),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.))
+                                .text_color(theme::with_alpha(theme::text_muted(), 0.7))
+                                .child("Try a different search or add a new host"),
+                        ),
                 )
             })
     }
@@ -2525,30 +2614,35 @@ impl TermiRustApp {
         let auth_mode = self.draft_auth_mode;
 
         v_flex()
-            .w(px(344.))
+            .w(px(380.))
             .flex_none()
-            .gap_4()
-            .p_4()
+            .gap_5()
+            .p_5()
             .rounded(px(theme::CARD_RADIUS))
             .bg(theme::library_card())
             .border_1()
             .border_color(theme::border())
+            .shadow_sm()
             .child(
-                div()
-                    .text_size(px(15.))
-                    .font_semibold()
-                    .text_color(theme::text_main())
-                    .child(if self.selected_profile_id.is_some() {
-                        "Host Details"
-                    } else {
-                        "New Host"
-                    }),
-            )
-            .child(
-                div()
-                    .text_size(px(11.))
-                    .text_color(theme::text_muted())
-                    .child("Passwords never touch disk. Key paths are stored only for reconnects."),
+                v_flex()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_size(px(16.))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child(if self.selected_profile_id.is_some() {
+                                "Host Details"
+                            } else {
+                                "New Host"
+                            }),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .child("Passwords never touch disk. Key paths are stored only for reconnects."),
+                    ),
             )
             .child(self.form_field("Label", Input::new(&self.inputs.label)))
             .child(self.form_field("Host", Input::new(&self.inputs.host)))
@@ -2569,46 +2663,66 @@ impl TermiRustApp {
                     .gap_2()
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(12.))
                             .font_medium()
                             .text_color(theme::text_main())
                             .child("Auth"),
                     )
                     .child(
                         h_flex()
-                            .gap_2()
+                            .p(px(3.))
+                            .rounded(px(8.))
+                            .bg(theme::hover())
                             .child(
-                                Button::new("auth-password")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        if auth_mode == AuthMode::Password {
-                                            theme::accent()
-                                        } else {
-                                            theme::hover()
-                                        },
-                                        cx,
-                                    ))
-                                    .label("Password")
+                                div()
+                                    .id("auth-password")
+                                    .flex_1()
+                                    .h(px(28.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(6.))
+                                    .text_size(px(12.))
+                                    .font_medium()
+                                    .cursor_pointer()
+                                    .when(auth_mode == AuthMode::Password, |this| {
+                                        this.bg(theme::library_card())
+                                            .shadow_sm()
+                                            .text_color(theme::text_main())
+                                    })
+                                    .when(auth_mode != AuthMode::Password, |this| {
+                                        this.text_color(theme::text_muted())
+                                    })
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.set_auth_mode(AuthMode::Password, cx);
-                                    })),
+                                    }))
+                                    .child("Password"),
                             )
                             .child(
-                                Button::new("auth-key")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        if auth_mode == AuthMode::PrivateKey {
-                                            theme::accent()
-                                        } else {
-                                            theme::hover()
-                                        },
-                                        cx,
-                                    ))
-                                    .label("Private Key")
+                                div()
+                                    .id("auth-key")
+                                    .flex_1()
+                                    .h(px(28.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(6.))
+                                    .text_size(px(12.))
+                                    .font_medium()
+                                    .cursor_pointer()
+                                    .when(auth_mode == AuthMode::PrivateKey, |this| {
+                                        this.bg(theme::library_card())
+                                            .shadow_sm()
+                                            .text_color(theme::text_main())
+                                    })
+                                    .when(auth_mode != AuthMode::PrivateKey, |this| {
+                                        this.text_color(theme::text_muted())
+                                    })
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.set_auth_mode(AuthMode::PrivateKey, cx);
                                         let _ = this.ensure_default_identity_selected(window, cx);
-                                    })),
+                                    }))
+                                    .child("Private Key"),
                             ),
                     ),
             )
@@ -2692,7 +2806,7 @@ impl TermiRustApp {
             .gap_2()
             .child(
                 div()
-                    .text_size(px(11.))
+                    .text_size(px(12.))
                     .font_medium()
                     .text_color(theme::text_main())
                     .child(label),
@@ -2963,25 +3077,31 @@ impl TermiRustApp {
                     .when(self.imported_identities.is_empty(), |this| {
                         this.child(
                             v_flex()
-                                .gap_3()
-                                .p_5()
+                                .items_center()
+                                .justify_center()
+                                .p_8()
                                 .rounded(px(theme::CARD_RADIUS))
                                 .bg(theme::library_card())
                                 .border_1()
                                 .border_color(theme::border())
+                                .gap_2()
+                                .child(
+                                    app_icon(ICON_KEY)
+                                        .size(px(28.))
+                                        .text_color(theme::with_alpha(theme::text_muted(), 0.4)),
+                                )
                                 .child(
                                     div()
-                                        .text_size(px(12.))
+                                        .text_size(px(13.))
+                                        .font_medium()
                                         .text_color(theme::text_muted())
-                                        .child(
-                                            "No supported private keys found in ~/.ssh.",
-                                        ),
+                                        .child("No private keys found in ~/.ssh"),
                                 )
                                 .child(
                                     div()
                                         .text_size(px(11.))
-                                        .text_color(theme::text_muted())
-                                        .child("Use \"Add Key File\" above to import a key from another location, or create SSH keys with: ssh-keygen -t ed25519"),
+                                        .text_color(theme::with_alpha(theme::text_muted(), 0.7))
+                                        .child("Use \"Add Key File\" above or create keys with ssh-keygen -t ed25519"),
                                 ),
                         )
                     }),
@@ -3100,15 +3220,33 @@ impl TermiRustApp {
                     }))
                     .when(entries.is_empty(), |this| {
                         this.child(
-                            div()
-                                .p_5()
+                            v_flex()
+                                .items_center()
+                                .justify_center()
+                                .p_8()
                                 .rounded(px(theme::CARD_RADIUS))
                                 .bg(theme::library_card())
                                 .border_1()
                                 .border_color(theme::border())
-                                .text_size(px(12.))
-                                .text_color(theme::text_muted())
-                                .child("No hosts have been pinned yet. Connect to a server to trust its key."),
+                                .gap_2()
+                                .child(
+                                    app_icon(ICON_SHIELD_CHECK)
+                                        .size(px(28.))
+                                        .text_color(theme::with_alpha(theme::text_muted(), 0.4)),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .font_medium()
+                                        .text_color(theme::text_muted())
+                                        .child("No hosts pinned yet"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .text_color(theme::with_alpha(theme::text_muted(), 0.7))
+                                        .child("Connect to a server to trust its key"),
+                                ),
                         )
                     }),
             )
@@ -3282,16 +3420,32 @@ impl TermiRustApp {
                     }))
                     .when(logs.is_empty() && self.panes.is_empty(), |this| {
                         this.child(
-                            div()
-                                .p_5()
+                            v_flex()
+                                .items_center()
+                                .justify_center()
+                                .p_8()
                                 .rounded(px(theme::CARD_RADIUS))
                                 .bg(theme::library_card())
                                 .border_1()
                                 .border_color(theme::border())
-                                .text_size(px(12.))
-                                .text_color(theme::text_muted())
+                                .gap_2()
                                 .child(
-                                    "No session history yet. Connect to a host to see logs here.",
+                                    Icon::new(IconName::BookOpen)
+                                        .size(px(28.))
+                                        .text_color(theme::with_alpha(theme::text_muted(), 0.4)),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .font_medium()
+                                        .text_color(theme::text_muted())
+                                        .child("No session history yet"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .text_color(theme::with_alpha(theme::text_muted(), 0.7))
+                                        .child("Connect to a host to see logs here"),
                                 ),
                         )
                     }),
@@ -3356,22 +3510,12 @@ impl TermiRustApp {
         let Some(pane) = self.active_pane() else {
             return v_flex();
         };
-        let focused = pane.terminal_focus.is_focused(window);
-        let selection_status = pane
-            .selection
-            .and_then(normalized_selection)
-            .map(|_| "selection ready")
-            .unwrap_or("live");
-        let scrollback = if pane.terminal.scrollback() > 0 {
-            format!("scrollback {}", pane.terminal.scrollback())
-        } else {
-            "bottom".to_string()
-        };
+        let _focused = pane.terminal_focus.is_focused(window);
 
         h_flex()
             .h(px(theme::WORKSPACE_HEADER_HEIGHT))
             .w_full()
-            .px(px(16.))
+            .px(px(18.))
             .gap_2()
             .items_center()
             .justify_between()
@@ -3398,15 +3542,12 @@ impl TermiRustApp {
                         div()
                             .text_size(px(11.))
                             .text_color(theme::text_muted_dark())
-                            .child(format!(
-                                "{}  •  {}  •  {}",
-                                pane.endpoint, scrollback, selection_status
-                            )),
+                            .child(pane.endpoint.clone()),
                     ),
             )
             .child(
                 h_flex()
-                    .gap_2()
+                    .gap(px(3.))
                     .items_center()
                     .child(self.status_badge(
                         pane.status.clone(),
@@ -3417,15 +3558,6 @@ impl TermiRustApp {
                             theme::warning()
                         } else {
                             theme::accent()
-                        },
-                    ))
-                    .child(self.status_badge(
-                        if focused { "focused" } else { "inactive" },
-                        theme::terminal_panel(),
-                        if focused {
-                            theme::accent()
-                        } else {
-                            theme::text_muted_dark()
                         },
                     ))
                     .child(
@@ -3445,6 +3577,12 @@ impl TermiRustApp {
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.scroll_active_pane_bottom(cx);
                             })),
+                    )
+                    .child(
+                        div()
+                            .w(px(1.))
+                            .h(px(18.))
+                            .bg(theme::with_alpha(theme::text_muted_dark(), 0.2)),
                     )
                     .child(
                         Button::new("workspace-search")
@@ -3472,6 +3610,12 @@ impl TermiRustApp {
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.split_active_workspace(SplitAxis::Vertical, window, cx);
                             })),
+                    )
+                    .child(
+                        div()
+                            .w(px(1.))
+                            .h(px(18.))
+                            .bg(theme::with_alpha(theme::text_muted_dark(), 0.2)),
                     )
                     .when(pane.closed, |this| {
                         this.child(
@@ -3685,16 +3829,24 @@ impl TermiRustApp {
             .rounded(px(10.))
             .border_1()
             .border_color(if is_active_pane {
-                theme::with_alpha(theme::accent(), 0.6)
+                theme::focus_ring()
             } else {
                 theme::with_alpha(theme::border_dark(), 0.5)
+            })
+            .when(is_active_pane, |this| {
+                this.shadow(vec![gpui::BoxShadow {
+                    color: theme::with_alpha(theme::accent(), 0.15),
+                    offset: point(px(0.), px(0.)),
+                    blur_radius: px(12.),
+                    spread_radius: px(1.),
+                }])
             })
             .bg(theme::terminal_panel())
             .overflow_hidden()
             .child(
                 h_flex()
                     .h(px(PANE_HEADER_HEIGHT))
-                    .px(px(10.))
+                    .px(px(12.))
                     .items_center()
                     .justify_between()
                     .bg(theme::chrome_bg())
@@ -3704,17 +3856,17 @@ impl TermiRustApp {
                         h_flex()
                             .gap(px(8.))
                             .items_center()
-                            .child(div().size(px(7.)).rounded(px(999.)).bg(status_color))
+                            .child(div().size(px(9.)).rounded(px(999.)).bg(status_color))
                             .child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(px(12.))
                                     .font_medium()
                                     .text_color(theme::text_on_dark())
                                     .child(pane.title.clone()),
                             )
                             .child(
                                 div()
-                                    .text_size(px(10.))
+                                    .text_size(px(10.5))
                                     .text_color(theme::text_muted_dark())
                                     .child(pane.endpoint.clone()),
                             ),
@@ -3822,11 +3974,24 @@ impl TermiRustApp {
                 .bg(theme::terminal_bg())
                 .items_center()
                 .justify_center()
+                .gap_3()
+                .child(
+                    Icon::new(IconName::SquareTerminal)
+                        .size(px(36.))
+                        .text_color(theme::with_alpha(theme::text_muted_dark(), 0.3)),
+                )
                 .child(
                     div()
-                        .text_size(px(16.))
+                        .text_size(px(15.))
+                        .font_medium()
                         .text_color(theme::text_on_dark())
-                        .child("Open a host to start a workspace."),
+                        .child("Open a host to start a workspace"),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(theme::text_muted_dark())
+                        .child("Select a host from the library or use quick connect"),
                 );
         };
 
@@ -3891,20 +4056,28 @@ impl Render for TermiRustApp {
                     .size_full()
                     .child(self.render_top_chrome(window, cx))
                     .child(content)
-                    .child(
+                    .child({
+                        let active_count = self.panes.iter().filter(|p| p.connected).count();
+                        let is_workspace = self.active_workspace_id.is_some();
+                        let muted_color = if is_workspace {
+                            theme::text_muted_dark()
+                        } else {
+                            theme::text_muted()
+                        };
+
                         h_flex()
                             .h(px(theme::STATUS_HEIGHT))
-                            .px(px(12.))
+                            .px(px(14.))
                             .gap_2()
                             .items_center()
                             .justify_between()
-                            .bg(if self.active_workspace_id.is_some() {
+                            .bg(if is_workspace {
                                 theme::chrome_bg()
                             } else {
                                 theme::library_sidebar()
                             })
                             .border_t_1()
-                            .border_color(if self.active_workspace_id.is_some() {
+                            .border_color(if is_workspace {
                                 theme::border_dark()
                             } else {
                                 theme::border()
@@ -3922,13 +4095,11 @@ impl Render for TermiRustApp {
                                     })
                                     .child(
                                         div()
-                                            .text_size(px(10.5))
+                                            .text_size(px(11.))
                                             .text_color(if !self.error_message.is_empty() {
                                                 theme::danger()
-                                            } else if self.active_workspace_id.is_some() {
-                                                theme::text_muted_dark()
                                             } else {
-                                                theme::text_muted()
+                                                muted_color
                                             })
                                             .child(if !self.error_message.is_empty() {
                                                 self.error_message.clone()
@@ -3938,15 +4109,46 @@ impl Render for TermiRustApp {
                                     ),
                             )
                             .child(
-                                div()
-                                    .text_size(px(10.))
-                                    .text_color(theme::text_muted_dark())
-                                    .child(format!(
-                                        "{} sessions",
-                                        self.panes.iter().filter(|p| p.connected).count()
-                                    )),
-                            ),
-                    ),
+                                h_flex()
+                                    .gap(px(10.))
+                                    .items_center()
+                                    .child(
+                                        h_flex()
+                                            .gap(px(5.))
+                                            .items_center()
+                                            .when(active_count > 0, |this| {
+                                                this.child(
+                                                    div()
+                                                        .size(px(7.))
+                                                        .rounded(px(999.))
+                                                        .bg(theme::success()),
+                                                )
+                                            })
+                                            .child(
+                                                div()
+                                                    .text_size(px(10.5))
+                                                    .text_color(muted_color)
+                                                    .child(format!(
+                                                        "{} {}",
+                                                        active_count,
+                                                        if active_count == 1 {
+                                                            "session"
+                                                        } else {
+                                                            "sessions"
+                                                        }
+                                                    )),
+                                            ),
+                                    )
+                                    .when(is_workspace, |this| {
+                                        this.child(
+                                            div()
+                                                .text_size(px(10.))
+                                                .text_color(theme::with_alpha(muted_color, 0.6))
+                                                .child("Cmd+F Search  Cmd+W Close"),
+                                        )
+                                    }),
+                            )
+                    }),
             )
     }
 }
