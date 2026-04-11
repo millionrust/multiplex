@@ -25,6 +25,7 @@ Other things worth knowing about:
 - Workspace tabs are draggable. You can reorder them.
 - Hosts can be organized into groups in the library.
 - Reusable identities can be imported and reused across hosts.
+- Saved snippets can be reused and sent into the active terminal.
 - TOFU host key pinning, with a Known Hosts view where you can review or delete pinned keys.
 - A keys view shows imported key types and lets you add key files from disk.
 - Session logs track your connection history with timestamps and duration across app restarts.
@@ -46,7 +47,6 @@ This is early alpha. The following are on the radar but don't exist yet:
 
 - SFTP / file transfers
 - Port forwarding
-- Snippets or command templates
 - Drag-reordering split panes
 - Platform-specific packaging polish
 

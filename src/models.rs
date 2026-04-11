@@ -688,8 +688,8 @@ impl SavedState {
 mod tests {
     use super::{
         AuthConfig, AuthMode, ConnectRequest, DraftProfile, IdentitySource, ImportedIdentity,
-        QuickConnect, RestorableAuth, RestorableConnection, SavedIdentity, SavedState,
-        SavedWorkspace, SplitAxis, identity_id_for_path,
+        QuickConnect, RestorableAuth, RestorableConnection, SavedIdentity, SavedSnippet,
+        SavedState, SavedWorkspace, SplitAxis, identity_id_for_path,
     };
 
     #[test]
@@ -877,5 +877,40 @@ mod tests {
 
         let profile = draft.to_profile("profile-1".to_string()).unwrap();
         assert_eq!(profile.identity_id.as_deref(), Some("identity-123"));
+    }
+
+    #[test]
+    fn snippets_are_sorted_by_display_name() {
+        let mut state = SavedState::default();
+        state.upsert_snippet(SavedSnippet {
+            id: "b".to_string(),
+            label: "Restart".to_string(),
+            group: "Ops".to_string(),
+            command: "sudo systemctl restart app".to_string(),
+        });
+        state.upsert_snippet(SavedSnippet {
+            id: "a".to_string(),
+            label: "Deploy".to_string(),
+            group: "Ops".to_string(),
+            command: "./deploy.sh".to_string(),
+        });
+
+        assert_eq!(state.snippets.len(), 2);
+        assert_eq!(state.snippets[0].label, "Deploy");
+        assert_eq!(state.snippets[1].label, "Restart");
+    }
+
+    #[test]
+    fn snippets_can_be_removed() {
+        let mut state = SavedState::default();
+        state.upsert_snippet(SavedSnippet {
+            id: "snippet-1".to_string(),
+            label: "Tail logs".to_string(),
+            group: String::new(),
+            command: "tail -f /var/log/app.log".to_string(),
+        });
+
+        state.remove_snippet("snippet-1");
+        assert!(state.snippets.is_empty());
     }
 }

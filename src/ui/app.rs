@@ -205,9 +205,8 @@ impl SnippetInputs {
         Self {
             label: cx.new(|cx| InputState::new(window, cx).placeholder("Restart service")),
             group: cx.new(|cx| InputState::new(window, cx).placeholder("Ops / Deploy")),
-            command: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("sudo systemctl restart app")
-            }),
+            command: cx
+                .new(|cx| InputState::new(window, cx).placeholder("sudo systemctl restart app")),
         }
     }
 }
@@ -657,6 +656,135 @@ impl TermiRustApp {
         self.status_message = "Draft cleared. Define a host to save or connect.".into();
         self.error_message.clear();
         cx.notify();
+    }
+
+    fn current_snippet_draft(&self, cx: &App) -> SavedSnippet {
+        SavedSnippet {
+            id: self
+                .selected_snippet_id
+                .clone()
+                .unwrap_or_else(SavedSnippet::snippet_id),
+            label: self.snippet_inputs.label.read(cx).value().to_string(),
+            group: self.snippet_inputs.group.read(cx).value().to_string(),
+            command: self.snippet_inputs.command.read(cx).value().to_string(),
+        }
+    }
+
+    fn load_snippet_into_inputs(
+        &mut self,
+        snippet_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(snippet) = self
+            .saved
+            .snippets
+            .iter()
+            .find(|item| item.id == snippet_id)
+        else {
+            return;
+        };
+
+        Self::set_input_value(
+            &self.snippet_inputs.label,
+            snippet.label.clone(),
+            window,
+            cx,
+        );
+        Self::set_input_value(
+            &self.snippet_inputs.group,
+            snippet.group.clone(),
+            window,
+            cx,
+        );
+        Self::set_input_value(
+            &self.snippet_inputs.command,
+            snippet.command.clone(),
+            window,
+            cx,
+        );
+        self.selected_snippet_id = Some(snippet.id.clone());
+        self.nav_section = NavSection::Snippets;
+        self.status_message = format!("Loaded snippet '{}'.", snippet.display_name());
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn clear_snippet_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        Self::set_input_value(&self.snippet_inputs.label, "", window, cx);
+        Self::set_input_value(&self.snippet_inputs.group, "", window, cx);
+        Self::set_input_value(&self.snippet_inputs.command, "", window, cx);
+        self.selected_snippet_id = None;
+        self.nav_section = NavSection::Snippets;
+        self.status_message = "Snippet draft cleared.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn save_snippet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let snippet = self.current_snippet_draft(cx);
+        if snippet.command.trim().is_empty() {
+            self.error_message = "Snippet command is required.".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.saved.upsert_snippet(snippet.clone());
+        if let Err(error) = save_saved_state(&self.saved) {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
+        }
+
+        self.selected_snippet_id = Some(snippet.id.clone());
+        if snippet.label.trim().is_empty() {
+            Self::set_input_value(
+                &self.snippet_inputs.label,
+                snippet.display_name(),
+                window,
+                cx,
+            );
+        }
+        self.status_message = format!("Saved snippet '{}'.", snippet.display_name());
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn remove_selected_snippet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(snippet_id) = self.selected_snippet_id.clone() else {
+            return;
+        };
+
+        self.saved.remove_snippet(&snippet_id);
+        if let Err(error) = save_saved_state(&self.saved) {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
+        }
+
+        self.clear_snippet_form(window, cx);
+        self.status_message = "Snippet removed.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn run_snippet_command(&mut self, command: &str, cx: &mut Context<Self>) {
+        let Some(pane_id) = self.active_pane().map(|pane| pane.id) else {
+            self.error_message = "Open a terminal session to run a snippet.".to_string();
+            cx.notify();
+            return;
+        };
+
+        let mut bytes = command.as_bytes().to_vec();
+        if !command.ends_with('\n') {
+            bytes.push(b'\n');
+        }
+
+        if self.send_input_bytes(pane_id, bytes, cx) {
+            self.status_message = "Snippet sent to the active session.".to_string();
+            self.error_message.clear();
+            cx.notify();
+        }
     }
 
     fn pick_key_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -2757,23 +2885,22 @@ impl TermiRustApp {
             .border_color(theme::border())
             .child(
                 v_flex().gap(px(2.)).children(
-                    [NavSection::Hosts, NavSection::Keychain]
-                        .into_iter()
-                        .map(|section| {
-                            let active = self.nav_section == section;
-                            self.nav_card(
-                                ("nav-card", nav_section_key(section)),
-                                section,
-                                active,
-                                cx,
-                            )
+                    [
+                        NavSection::Hosts,
+                        NavSection::Keychain,
+                        NavSection::Snippets,
+                    ]
+                    .into_iter()
+                    .map(|section| {
+                        let active = self.nav_section == section;
+                        self.nav_card(("nav-card", nav_section_key(section)), section, active, cx)
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.nav_section = section;
                                 this.error_message.clear();
                                 cx.notify();
                             }))
                             .into_any_element()
-                        }),
+                    }),
                 ),
             )
             .child(
@@ -3979,6 +4106,7 @@ impl TermiRustApp {
                     .children(entries.iter().enumerate().map(|(index, (endpoint, key))| {
                         let remove_endpoint = endpoint.clone();
                         h_flex()
+                            .id(("snippet-card", index))
                             .justify_between()
                             .items_center()
                             .gap_3()
@@ -4276,10 +4404,219 @@ impl TermiRustApp {
             )
     }
 
+    fn render_snippets_view(&self, _cx: &Context<Self>) -> Div {
+        let snippets = self.saved.snippets.clone();
+
+        v_flex()
+            .flex_1()
+            .gap_4()
+            .p_5()
+            .bg(theme::library_bg())
+            .child(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_size(px(18.))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child("Snippets"),
+                    )
+                    .when(!snippets.is_empty(), |this| {
+                        this.child(
+                            div()
+                                .text_size(px(11.))
+                                .text_color(theme::text_muted())
+                                .child(format!(
+                                    "{} {}",
+                                    snippets.len(),
+                                    if snippets.len() == 1 {
+                                        "snippet"
+                                    } else {
+                                        "snippets"
+                                    }
+                                )),
+                        )
+                    }),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .line_height(relative(1.5))
+                    .text_color(theme::text_muted())
+                    .child("Save repeatable commands and send them to the active terminal in one click."),
+            )
+            .child(
+                v_flex()
+                    .gap_3()
+                    .p_4()
+                    .rounded(px(theme::CARD_RADIUS))
+                    .bg(theme::library_card())
+                    .border_1()
+                    .border_color(theme::border())
+                    .child(self.form_field("Label", Input::new(&self.snippet_inputs.label)))
+                    .child(self.form_field("Group", Input::new(&self.snippet_inputs.group)))
+                    .child(self.form_field("Command", Input::new(&self.snippet_inputs.command)))
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("snippet-new")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Neutral,
+                                        _cx,
+                                    ))
+                                    .label("New")
+                                    .on_click(_cx.listener(|this, _, window, cx| {
+                                        this.clear_snippet_form(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("snippet-save")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        _cx,
+                                    ))
+                                    .label("Save")
+                                    .on_click(_cx.listener(|this, _, window, cx| {
+                                        this.save_snippet(window, cx);
+                                    })),
+                            )
+                            .when(self.selected_snippet_id.is_some(), |this| {
+                                this.child(
+                                    Button::new("snippet-delete")
+                                        .small()
+                                        .ghost()
+                                        .icon(IconName::Delete)
+                                        .label("Delete")
+                                        .on_click(_cx.listener(|this, _, window, cx| {
+                                            this.remove_selected_snippet(window, cx);
+                                        })),
+                                )
+                            }),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .gap_2()
+                    .overflow_y_scrollbar()
+                    .children(snippets.iter().enumerate().map(|(index, snippet)| {
+                        let snippet_id = snippet.id.clone();
+                        let run_command = snippet.command.clone();
+                        let group_label = snippet.group.trim().to_string();
+
+                        h_flex()
+                            .id(("snippet-card", index))
+                            .justify_between()
+                            .items_center()
+                            .gap_3()
+                            .p_4()
+                            .rounded(px(theme::CARD_RADIUS))
+                            .bg(theme::library_card())
+                            .border_1()
+                            .border_color(if self.selected_snippet_id.as_deref()
+                                == Some(snippet.id.as_str())
+                            {
+                                theme::accent()
+                            } else {
+                                theme::border()
+                            })
+                            .cursor_pointer()
+                            .hover(|style| style.bg(theme::card_hover_subtle()))
+                            .on_click(_cx.listener(move |this, _, window, cx| {
+                                this.load_snippet_into_inputs(&snippet_id, window, cx);
+                            }))
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .gap(px(2.))
+                                    .child(
+                                        h_flex()
+                                            .gap_2()
+                                            .items_center()
+                                            .child(
+                                                div()
+                                                    .text_size(px(12.))
+                                                    .font_semibold()
+                                                    .text_color(theme::text_main())
+                                                    .child(snippet.display_name()),
+                                            )
+                                            .when(!group_label.is_empty(), |this| {
+                                                this.child(self.status_badge(
+                                                    group_label.clone(),
+                                                    theme::library_bg(),
+                                                    theme::slate(),
+                                                ))
+                                            }),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.))
+                                            .text_color(theme::text_muted())
+                                            .child(snippet.command.clone()),
+                                    ),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        Button::new(("snippet-run", index))
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Success,
+                                                _cx,
+                                            ))
+                                            .label("Run")
+                                            .on_click(_cx.listener(move |this, _, _, cx| {
+                                                this.run_snippet_command(&run_command, cx);
+                                            })),
+                                    ),
+                            )
+                            .into_any_element()
+                    }))
+                    .when(snippets.is_empty(), |this| {
+                        this.child(
+                            v_flex()
+                                .items_center()
+                                .justify_center()
+                                .p_8()
+                                .rounded(px(theme::CARD_RADIUS))
+                                .bg(theme::library_card())
+                                .border_1()
+                                .border_color(theme::border())
+                                .gap_2()
+                                .child(
+                                    Icon::new(IconName::BookOpen)
+                                        .size(px(28.))
+                                        .text_color(theme::with_alpha(theme::text_muted(), 0.4)),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .font_medium()
+                                        .text_color(theme::text_muted())
+                                        .child("No snippets yet"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .text_color(theme::with_alpha(theme::text_muted(), 0.7))
+                                        .child("Save a reusable command above to build a snippets library"),
+                                ),
+                        )
+                    }),
+            )
+    }
+
     fn render_library_content(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         match self.nav_section {
             NavSection::Hosts => self.render_hosts_view(window, cx).into_any_element(),
             NavSection::Keychain => self.render_keychain_view(cx).into_any_element(),
+            NavSection::Snippets => self.render_snippets_view(cx).into_any_element(),
             NavSection::KnownHosts => self.render_known_hosts_view(cx).into_any_element(),
             NavSection::Logs => self.render_logs_view(cx).into_any_element(),
         }
@@ -5105,8 +5442,9 @@ fn nav_section_key(section: NavSection) -> u64 {
     match section {
         NavSection::Hosts => 0,
         NavSection::Keychain => 1,
-        NavSection::KnownHosts => 2,
-        NavSection::Logs => 3,
+        NavSection::Snippets => 2,
+        NavSection::KnownHosts => 3,
+        NavSection::Logs => 4,
     }
 }
 
