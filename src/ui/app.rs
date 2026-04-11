@@ -528,7 +528,16 @@ impl TermiRustApp {
         self.draft_auth_mode = profile.auth_mode;
         self.show_editor_panel = true;
         self.nav_section = NavSection::Hosts;
-        self.status_message = format!("Loaded host '{}'.", profile.display_name());
+        self.status_message = if profile.auth_mode == AuthMode::Password
+            && profile.password_credential_id.is_some()
+        {
+            format!(
+                "Loaded host '{}'. Password is available from macOS Keychain.",
+                profile.display_name()
+            )
+        } else {
+            format!("Loaded host '{}'.", profile.display_name())
+        };
         self.error_message.clear();
         cx.notify();
     }
@@ -566,7 +575,7 @@ impl TermiRustApp {
 
     fn save_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let _ = self.ensure_default_identity_selected(window, cx);
-        let draft = self.current_profile_draft(cx);
+        let mut draft = self.current_profile_draft(cx);
         let profile_source = self
             .selected_profile_id
             .as_ref()
@@ -582,6 +591,40 @@ impl TermiRustApp {
             .selected_profile_id
             .clone()
             .unwrap_or_else(DraftProfile::profile_id);
+        let existing_password_credential_id = self
+            .selected_profile_id
+            .as_ref()
+            .and_then(|profile_id| {
+                self.saved
+                    .profiles
+                    .iter()
+                    .find(|item| &item.id == profile_id)
+                    .and_then(|profile| profile.password_credential_id.clone())
+            });
+
+        if draft.auth_mode == AuthMode::Password {
+            let password = draft.password.trim().to_string();
+            if !password.is_empty() {
+                let credential_id = credentials::profile_password_credential_id(&profile_id);
+                if let Err(error) = self.persist_password_to_keychain(&credential_id, &password) {
+                    self.error_message = error.to_string();
+                    cx.notify();
+                    return;
+                }
+                draft.password_credential_id = Some(credential_id);
+            } else {
+                draft.password_credential_id = existing_password_credential_id.clone();
+            }
+        } else {
+            if let Some(credential_id) = existing_password_credential_id.as_deref() {
+                if let Err(error) = credentials::delete_password(credential_id) {
+                    self.error_message = error.to_string();
+                    cx.notify();
+                    return;
+                }
+            }
+            draft.password_credential_id = None;
+        }
 
         match draft.to_profile(profile_id.clone()) {
             Ok(mut profile) => {
@@ -598,16 +641,27 @@ impl TermiRustApp {
                 Self::set_input_value(&self.inputs.password, "", window, cx);
                 Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
                 self.show_editor_panel = true;
-                self.status_message = if profile_source == ProfileSource::SshConfig {
+                self.status_message = if profile.auth_mode == AuthMode::Password
+                    && profile.password_credential_id.is_some()
+                {
+                    if profile_source == ProfileSource::SshConfig {
+                        format!(
+                            "Saved local copy of imported host '{}'. Password stored in macOS Keychain.",
+                            profile.display_name()
+                        )
+                    } else {
+                        format!(
+                            "Saved '{}'. Password stored in macOS Keychain.",
+                            profile.display_name()
+                        )
+                    }
+                } else if profile_source == ProfileSource::SshConfig {
                     format!(
-                        "Saved local copy of imported host '{}'. Passwords remain in memory only.",
+                        "Saved local copy of imported host '{}'.",
                         profile.display_name()
                     )
                 } else {
-                    format!(
-                        "Saved '{}'. Passwords remain in memory only.",
-                        profile.display_name()
-                    )
+                    format!("Saved '{}'.", profile.display_name())
                 };
                 self.error_message.clear();
                 cx.notify();
@@ -623,6 +677,12 @@ impl TermiRustApp {
         let Some(profile_id) = self.selected_profile_id.clone() else {
             return;
         };
+        let credential_id = self
+            .saved
+            .profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .and_then(|profile| profile.password_credential_id.clone());
         if self
             .saved
             .profiles
@@ -635,6 +695,14 @@ impl TermiRustApp {
                 "Imported SSH config hosts are read from ~/.ssh/config. Edit the config or save a local copy instead.".to_string();
             cx.notify();
             return;
+        }
+
+        if let Some(credential_id) = credential_id.as_deref() {
+            if let Err(error) = credentials::delete_password(credential_id) {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
         }
 
         self.saved.remove_profile(&profile_id);
@@ -986,8 +1054,23 @@ impl TermiRustApp {
     }
 
     fn build_request_for_current_draft(&mut self, cx: &App) -> anyhow::Result<ConnectRequest> {
-        self.current_profile_draft(cx)
-            .to_connect_request(self.next_session_id())
+        let mut draft = self.current_profile_draft(cx);
+
+        if draft.auth_mode == AuthMode::Password {
+            let password = draft.password.trim().to_string();
+            if !password.is_empty() {
+                let credential_id = self.draft_password_credential_id(&draft)?;
+                self.persist_password_to_keychain(&credential_id, &password)?;
+                draft.password_credential_id = Some(credential_id.clone());
+
+                if let Some(profile) = self.selected_profile_mut() {
+                    profile.password_credential_id = Some(credential_id);
+                }
+                let _ = save_saved_state(&self.saved);
+            }
+        }
+
+        draft.to_connect_request(self.next_session_id())
     }
 
     fn spawn_pane(
@@ -1045,6 +1128,7 @@ impl TermiRustApp {
                     request.address(),
                     match &request.auth {
                         AuthConfig::Password { .. } => "password",
+                        AuthConfig::PasswordRef { .. } => "keychain-password",
                         AuthConfig::PrivateKey { key_path, .. } => key_path.as_str(),
                     }
                 );
@@ -1069,6 +1153,7 @@ impl TermiRustApp {
                 self.show_editor_panel = false;
                 self.status_message = format!("Connecting to {}...", request.address());
                 self.error_message.clear();
+                Self::set_input_value(&self.inputs.password, "", window, cx);
                 self.set_terminal_search_input("", window, cx);
                 eprintln!("[app] connect_current: syncing terminal layout...");
                 self.sync_terminal_layout(window, cx);
@@ -1134,8 +1219,18 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) {
         let session_id = self.next_session_id();
-        let auth = if let Some(password) = password {
-            AuthConfig::Password { password }
+        let credential_id =
+            credentials::connection_password_credential_id(&qc.username, &qc.host, qc.port);
+        let password = password.unwrap_or_default().trim().to_string();
+        let auth = if !password.is_empty() {
+            if let Err(error) = self.persist_password_to_keychain(&credential_id, &password) {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
+            AuthConfig::PasswordRef { credential_id }
+        } else if credentials::load_password(&credential_id).is_ok() {
+            AuthConfig::PasswordRef { credential_id }
         } else if let Some(identity) = self.preferred_identity().cloned() {
             AuthConfig::PrivateKey {
                 key_path: identity.path,
@@ -1143,7 +1238,8 @@ impl TermiRustApp {
             }
         } else {
             self.error_message =
-                "Quick connect needs a password or an SSH key in ~/.ssh.".to_string();
+                "Quick connect needs a password, a stored Keychain password, or an SSH key in ~/.ssh."
+                    .to_string();
             cx.notify();
             return;
         };
@@ -1170,6 +1266,7 @@ impl TermiRustApp {
         self.status_message = format!("Connecting to {}...", request.address());
         self.error_message.clear();
         self.set_terminal_search_input("", window, cx);
+        self.set_quick_connect_password_input("", window, cx);
         self.sync_terminal_layout(window, cx);
         if let Some(pane) = self.pane(pane_id) {
             pane.terminal_focus.focus(window);
@@ -2842,6 +2939,17 @@ impl TermiRustApp {
 
     fn render_editor_panel(&self, cx: &Context<Self>) -> Div {
         let auth_mode = self.draft_auth_mode;
+        let has_stored_password = self
+            .selected_profile_id
+            .as_ref()
+            .and_then(|profile_id| {
+                self.saved
+                    .profiles
+                    .iter()
+                    .find(|item| &item.id == profile_id)
+                    .and_then(|profile| profile.password_credential_id.as_ref())
+            })
+            .is_some();
 
         v_flex()
             .w_full()
@@ -2850,7 +2958,9 @@ impl TermiRustApp {
                 div()
                     .text_size(px(11.))
                     .text_color(theme::text_muted())
-                    .child("Passwords never touch disk. Key paths are stored only for reconnects."),
+                    .child(
+                        "Passwords are stored in macOS Keychain when you save or reconnect with them. Key paths are stored only for reconnects.",
+                    ),
             )
             .child(self.form_field("Label", Input::new(&self.inputs.label)))
             .child(self.form_field("Host", Input::new(&self.inputs.host)))
@@ -2935,9 +3045,18 @@ impl TermiRustApp {
                     ),
             )
             .when(auth_mode == AuthMode::Password, |this| {
-                this.child(
-                    self.form_field("Password", Input::new(&self.inputs.password).mask_toggle()),
-                )
+                this.child(v_flex().gap_2().child(self.form_field(
+                    "Password",
+                    Input::new(&self.inputs.password).mask_toggle(),
+                ))
+                .when(has_stored_password, |this| {
+                    this.child(
+                        div()
+                            .text_size(px(10.))
+                            .text_color(theme::success())
+                            .child("A saved password is already available from macOS Keychain."),
+                    )
+                }))
             })
             .when(auth_mode == AuthMode::PrivateKey, |this| {
                 this.child(
@@ -3026,6 +3145,8 @@ impl TermiRustApp {
 
     fn render_hosts_view(&self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let quick_connect = self.try_quick_connect_from_search(cx);
+        let has_quick_connect = quick_connect.is_some();
+        let quick_connect_password = self.current_quick_connect_password(cx);
 
         v_flex()
             .flex_1()
@@ -3050,23 +3171,28 @@ impl TermiRustApp {
                     .when_some(quick_connect, |this, qc| {
                         let label = format!("Connect {}", qc.display_name());
                         this.child(
+                            Input::new(&self.shell_inputs.quick_connect_password)
+                                .w(px(220.))
+                                .mask_toggle(),
+                        )
+                        .child(
                             Button::new("library-quick-connect")
                                 .small()
                                 .custom(Self::action_button_style(theme::success(), cx))
                                 .label(label)
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     if let Some(qc) = this.try_quick_connect_from_search(cx) {
-                                        if this.preferred_identity().is_some() {
-                                            this.quick_connect(
-                                                qc,
-                                                None,
-                                                window,
-                                                cx,
-                                            );
-                                        } else {
-                                            this.error_message = "Add a password or SSH key to quick-connect. Use the host editor for password auth.".to_string();
-                                            cx.notify();
-                                        }
+                                        let password = this.current_quick_connect_password(cx);
+                                        this.quick_connect(
+                                            qc,
+                                            if password.trim().is_empty() {
+                                                None
+                                            } else {
+                                                Some(password)
+                                            },
+                                            window,
+                                            cx,
+                                        );
                                     }
                                 })),
                         )
@@ -3090,6 +3216,15 @@ impl TermiRustApp {
                             })),
                     ),
             )
+            .when(!quick_connect_password.trim().is_empty() && !has_quick_connect, |this| {
+                this.child(
+                    div()
+                        .px_4()
+                        .text_size(px(10.5))
+                        .text_color(theme::text_muted())
+                        .child("Quick-connect password stays local until you connect."),
+                )
+            })
             .child(
                 v_flex()
                     .flex_1()

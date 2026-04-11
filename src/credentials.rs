@@ -18,7 +18,7 @@ pub fn connection_password_credential_id(username: &str, host: &str, port: u16) 
 
 #[cfg(target_os = "macos")]
 pub fn store_password(credential_id: &str, password: &str) -> Result<()> {
-    let output = Command::new("security")
+    let output = Command::new("/usr/bin/security")
         .args([
             "add-generic-password",
             "-U",
@@ -46,7 +46,7 @@ pub fn store_password(_credential_id: &str, _password: &str) -> Result<()> {
 
 #[cfg(target_os = "macos")]
 pub fn load_password(credential_id: &str) -> Result<String> {
-    let output = Command::new("security")
+    let output = Command::new("/usr/bin/security")
         .args([
             "find-generic-password",
             "-a",
@@ -75,7 +75,7 @@ pub fn load_password(_credential_id: &str) -> Result<String> {
 
 #[cfg(target_os = "macos")]
 pub fn delete_password(credential_id: &str) -> Result<bool> {
-    let output = Command::new("security")
+    let output = Command::new("/usr/bin/security")
         .args([
             "delete-generic-password",
             "-a",

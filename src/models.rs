@@ -677,7 +677,9 @@ mod tests {
                 assert_eq!(key_path, "/tmp/id_ed25519");
                 assert_eq!(passphrase, None);
             }
-            AuthConfig::Password { .. } => panic!("expected private key auth"),
+            AuthConfig::Password { .. } | AuthConfig::PasswordRef { .. } => {
+                panic!("expected private key auth")
+            }
         }
     }
 
