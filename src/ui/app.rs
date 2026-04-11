@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
@@ -555,6 +556,22 @@ impl TermiRustApp {
         &self,
         jump_host_id: &str,
     ) -> anyhow::Result<JumpHostConnection> {
+        let mut visited = HashSet::new();
+        if let Some(profile_id) = self.selected_profile_id.as_ref() {
+            visited.insert(profile_id.clone());
+        }
+        self.resolve_jump_host_connection_recursive(jump_host_id, &mut visited)
+    }
+
+    fn resolve_jump_host_connection_recursive(
+        &self,
+        jump_host_id: &str,
+        visited: &mut HashSet<String>,
+    ) -> anyhow::Result<JumpHostConnection> {
+        if !visited.insert(jump_host_id.to_string()) {
+            anyhow::bail!("Jump host chain contains a cycle");
+        }
+
         let profile = self
             .saved
             .profiles
@@ -578,12 +595,20 @@ impl TermiRustApp {
             },
         };
 
+        let nested_jump_host = profile
+            .jump_host_id
+            .as_deref()
+            .map(|nested_id| self.resolve_jump_host_connection_recursive(nested_id, visited))
+            .transpose()?
+            .map(Box::new);
+
         Ok(JumpHostConnection {
             title: profile.display_name(),
             host: profile.host.clone(),
             port: profile.port,
             username: profile.username.clone(),
             auth,
+            jump_host: nested_jump_host,
         })
     }
 

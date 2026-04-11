@@ -532,6 +532,7 @@ pub struct JumpHostConnection {
     pub port: u16,
     pub username: String,
     pub auth: AuthConfig,
+    pub jump_host: Option<Box<JumpHostConnection>>,
 }
 
 impl JumpHostConnection {
@@ -550,6 +551,11 @@ impl JumpHostConnection {
             port: self.port,
             username: self.username.clone(),
             auth: self.auth.to_restorable()?,
+            jump_host: self
+                .jump_host
+                .as_deref()
+                .and_then(JumpHostConnection::to_restorable)
+                .map(Box::new),
         })
     }
 }
@@ -611,6 +617,8 @@ pub struct RestorableJumpHostConnection {
     pub port: u16,
     pub username: String,
     pub auth: RestorableAuth,
+    #[serde(default)]
+    pub jump_host: Option<Box<RestorableJumpHostConnection>>,
 }
 
 impl RestorableJumpHostConnection {
@@ -631,6 +639,11 @@ impl RestorableJumpHostConnection {
             port: self.port,
             username: self.username.clone(),
             auth,
+            jump_host: self
+                .jump_host
+                .as_deref()
+                .map(RestorableJumpHostConnection::to_jump_host_connection)
+                .map(Box::new),
         }
     }
 }
@@ -944,6 +957,17 @@ mod tests {
                     key_path: "/tmp/jump_id_ed25519".to_string(),
                     passphrase: None,
                 },
+                jump_host: Some(Box::new(JumpHostConnection {
+                    title: "edge".to_string(),
+                    host: "edge.example.com".to_string(),
+                    port: 22,
+                    username: "ubuntu".to_string(),
+                    auth: AuthConfig::PrivateKey {
+                        key_path: "/tmp/edge_id_ed25519".to_string(),
+                        passphrase: None,
+                    },
+                    jump_host: None,
+                })),
             }),
             local_forward: Some(LocalPortForward {
                 local_host: "127.0.0.1".to_string(),
@@ -969,6 +993,14 @@ mod tests {
         assert_eq!(
             request.jump_host.as_ref().map(|jump| jump.title.clone()),
             Some("bastion".to_string())
+        );
+        assert_eq!(
+            request
+                .jump_host
+                .as_ref()
+                .and_then(|jump| jump.jump_host.as_ref())
+                .map(|jump| jump.title.clone()),
+            Some("edge".to_string())
         );
         match request.auth {
             AuthConfig::PrivateKey {

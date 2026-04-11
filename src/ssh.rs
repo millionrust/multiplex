@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::credentials;
-use crate::models::{AuthConfig, ConnectRequest, LocalPortForward};
+use crate::models::{AuthConfig, ConnectRequest, JumpHostConnection, LocalPortForward};
 use crate::storage::{HostKeyDecision, KnownHostStore};
 use crate::terminal::TerminalSize;
 
@@ -52,7 +52,7 @@ pub struct SessionRuntimeHandle {
 struct EstablishedSession {
     target_handle: Arc<Mutex<client::Handle<SessionHandler>>>,
     trusted_new_host: bool,
-    _jump_handle: Option<client::Handle<SessionHandler>>,
+    _jump_handles: Vec<client::Handle<SessionHandler>>,
 }
 
 pub fn spawn_session(
@@ -295,60 +295,136 @@ async fn establish_session(
     request: ConnectRequest,
     known_hosts: Arc<KnownHostStore>,
 ) -> Result<EstablishedSession> {
-    if let Some(jump_host) = request.jump_host.clone() {
-        let (jump_handle, jump_trusted) = connect_and_authenticate(
+    let (target_handle, jump_handles, trusted_new_host) =
+        if let Some(jump_host) = request.jump_host.clone() {
+            connect_via_jump_chain(
+                config,
+                request.host.clone(),
+                request.port,
+                request.known_host_key(),
+                request.username.clone(),
+                request.auth.clone(),
+                jump_host,
+                known_hosts,
+            )
+            .await?
+        } else {
+            let (target_handle, target_trusted) = connect_and_authenticate(
+                config,
+                request.address(),
+                request.known_host_key(),
+                request.username.clone(),
+                request.auth.clone(),
+                known_hosts,
+            )
+            .await?;
+            (
+                target_handle,
+                Vec::new(),
+                target_trusted.swap(false, Ordering::SeqCst),
+            )
+        };
+
+    Ok(EstablishedSession {
+        target_handle: Arc::new(Mutex::new(target_handle)),
+        trusted_new_host,
+        _jump_handles: jump_handles,
+    })
+}
+
+async fn connect_via_jump_chain(
+    config: Arc<client::Config>,
+    target_host: String,
+    target_port: u16,
+    target_endpoint: String,
+    target_username: String,
+    target_auth: AuthConfig,
+    jump_host: JumpHostConnection,
+    known_hosts: Arc<KnownHostStore>,
+) -> Result<(
+    client::Handle<SessionHandler>,
+    Vec<client::Handle<SessionHandler>>,
+    bool,
+)> {
+    let chain = flatten_jump_chain(jump_host);
+    let first_hop = chain
+        .first()
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("Jump host chain is empty"))?;
+    let (mut current_handle, current_trusted) = connect_and_authenticate(
+        config.clone(),
+        first_hop.address(),
+        first_hop.known_host_key(),
+        first_hop.username.clone(),
+        first_hop.auth.clone(),
+        known_hosts.clone(),
+    )
+    .await?;
+    let mut jump_handles = Vec::new();
+    let mut trusted_new_host = current_trusted.swap(false, Ordering::SeqCst);
+
+    for hop in chain.into_iter().skip(1) {
+        eprintln!(
+            "[ssh] opening jump channel via {} to {}",
+            hop.title,
+            hop.address()
+        );
+        let channel = current_handle
+            .channel_open_direct_tcpip(hop.host.clone(), hop.port.into(), "127.0.0.1", 0)
+            .await
+            .with_context(|| format!("Unable to open jump-host tunnel to {}", hop.address()))?;
+        let (next_handle, next_trusted) = connect_and_authenticate_stream(
             config.clone(),
-            jump_host.address(),
-            jump_host.known_host_key(),
-            jump_host.username.clone(),
-            jump_host.auth.clone(),
+            channel.into_stream(),
+            hop.known_host_key(),
+            hop.username.clone(),
+            hop.auth.clone(),
             known_hosts.clone(),
         )
         .await?;
-
-        eprintln!(
-            "[ssh][{}] opening jump channel via {}",
-            request.session_id,
-            jump_host.address()
-        );
-        let jump_channel = jump_handle
-            .channel_open_direct_tcpip(request.host.clone(), request.port.into(), "127.0.0.1", 0)
-            .await
-            .context("Unable to open jump-host tunnel to the target")?;
-
-        let (target_handle, target_trusted) = connect_and_authenticate_stream(
-            config,
-            jump_channel.into_stream(),
-            request.known_host_key(),
-            request.username.clone(),
-            request.auth.clone(),
-            known_hosts,
-        )
-        .await?;
-
-        Ok(EstablishedSession {
-            target_handle: Arc::new(Mutex::new(target_handle)),
-            trusted_new_host: jump_trusted.swap(false, Ordering::SeqCst)
-                || target_trusted.swap(false, Ordering::SeqCst),
-            _jump_handle: Some(jump_handle),
-        })
-    } else {
-        let (target_handle, target_trusted) = connect_and_authenticate(
-            config,
-            request.address(),
-            request.known_host_key(),
-            request.username.clone(),
-            request.auth.clone(),
-            known_hosts,
-        )
-        .await?;
-
-        Ok(EstablishedSession {
-            target_handle: Arc::new(Mutex::new(target_handle)),
-            trusted_new_host: target_trusted.swap(false, Ordering::SeqCst),
-            _jump_handle: None,
-        })
+        trusted_new_host |= next_trusted.swap(false, Ordering::SeqCst);
+        jump_handles.push(current_handle);
+        current_handle = next_handle;
     }
+
+    eprintln!(
+        "[ssh] opening jump channel to target {}:{}",
+        target_host, target_port
+    );
+    let jump_channel = current_handle
+        .channel_open_direct_tcpip(target_host, target_port.into(), "127.0.0.1", 0)
+        .await
+        .context("Unable to open jump-host tunnel to the target")?;
+
+    let (target_handle, target_trusted) = connect_and_authenticate_stream(
+        config,
+        jump_channel.into_stream(),
+        target_endpoint,
+        target_username,
+        target_auth,
+        known_hosts,
+    )
+    .await?;
+
+    trusted_new_host |= target_trusted.swap(false, Ordering::SeqCst);
+    jump_handles.push(current_handle);
+    Ok((target_handle, jump_handles, trusted_new_host))
+}
+
+fn flatten_jump_chain(jump_host: JumpHostConnection) -> Vec<JumpHostConnection> {
+    let mut chain = Vec::new();
+    let mut current = Some(jump_host);
+
+    while let Some(jump) = current {
+        current = jump.jump_host.as_deref().cloned();
+        chain.push(JumpHostConnection {
+            jump_host: None,
+            ..jump
+        });
+    }
+
+    chain.reverse();
+    chain
 }
 
 async fn connect_and_authenticate(

@@ -27,7 +27,7 @@ Other things worth knowing about:
 - Reusable identities can be imported and reused across hosts.
 - Saved snippets can be reused and sent into the active terminal.
 - Hosts can optionally start a local TCP forward when they connect.
-- Hosts can optionally connect through a saved jump host.
+- Hosts can optionally connect through saved jump-host chains.
 - TOFU host key pinning, with a Known Hosts view where you can review or delete pinned keys.
 - A keys view shows imported key types and lets you add key files from disk.
 - Session logs track your connection history with timestamps and duration across app restarts.
