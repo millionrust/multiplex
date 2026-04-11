@@ -97,20 +97,13 @@ pub fn load_local_ssh_identities() -> Result<Vec<ImportedIdentity>> {
             continue;
         }
 
-        let bytes = match fs::read(&path) {
-            Ok(bytes) => bytes,
-            Err(_) => continue,
-        };
-
-        let preview = String::from_utf8_lossy(&bytes[..bytes.len().min(4096)]);
-        let Some(kind) = detect_identity_kind(&preview) else {
+        let Some(identity) = inspect_identity_file(&path)? else {
             continue;
         };
 
         identities.push(ImportedIdentity {
             label: label.clone(),
-            path: path.display().to_string(),
-            kind: kind.to_string(),
+            ..identity
         });
     }
 
@@ -125,6 +118,30 @@ pub fn load_local_ssh_identities() -> Result<Vec<ImportedIdentity>> {
     });
 
     Ok(identities)
+}
+
+pub fn inspect_identity_file(path: &std::path::Path) -> Result<Option<ImportedIdentity>> {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(_) => return Ok(None),
+    };
+
+    let preview = String::from_utf8_lossy(&bytes[..bytes.len().min(4096)]);
+    let Some(kind) = detect_identity_kind(&preview) else {
+        return Ok(None);
+    };
+
+    let label = path
+        .file_name()
+        .map(|name| name.to_string_lossy().trim().to_string())
+        .filter(|label| !label.is_empty())
+        .unwrap_or_else(|| path.display().to_string());
+
+    Ok(Some(ImportedIdentity {
+        label,
+        path: path.display().to_string(),
+        kind: kind.to_string(),
+    }))
 }
 
 fn should_skip_ssh_entry(name: &str) -> bool {
@@ -299,6 +316,7 @@ fn flush_ssh_config_block(
                 username,
                 auth_mode,
                 key_path,
+                identity_id: None,
                 password_credential_id: None,
                 source: ProfileSource::SshConfig,
             },

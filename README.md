@@ -24,6 +24,7 @@ Other things worth knowing about:
 - Your user SSH config and key directory are imported automatically at launch, so your servers should already be there when you first open it.
 - Workspace tabs are draggable. You can reorder them.
 - Hosts can be organized into groups in the library.
+- Reusable identities can be imported and reused across hosts.
 - TOFU host key pinning, with a Known Hosts view where you can review or delete pinned keys.
 - A keys view shows imported key types and lets you add key files from disk.
 - Session logs track your connection history with timestamps and duration across app restarts.

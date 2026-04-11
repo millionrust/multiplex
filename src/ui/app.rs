@@ -19,12 +19,14 @@ use vt100::{MouseProtocolEncoding, MouseProtocolMode};
 
 use crate::credentials;
 use crate::models::{
-    AuthConfig, AuthMode, ConnectRequest, DraftProfile, HostProfile, ImportedIdentity,
-    ProfileSource, QuickConnect, SavedState, SavedWorkspace, SessionLogEntry, SessionLogStatus,
+    AuthConfig, AuthMode, ConnectRequest, DraftProfile, HostProfile, ProfileSource, QuickConnect,
+    SavedIdentity, SavedSnippet, SavedState, SavedWorkspace, SessionLogEntry, SessionLogStatus,
     SplitAxis,
 };
 use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent, spawn_session};
-use crate::storage::{KnownHostStore, load_local_ssh_identities, save_saved_state};
+use crate::storage::{
+    KnownHostStore, inspect_identity_file, load_local_ssh_identities, save_saved_state,
+};
 use crate::terminal::{
     DEFAULT_SCROLLBACK, TerminalCell, TerminalRow, TerminalSize, TerminalState, TerminalStyle,
 };
@@ -85,6 +87,7 @@ fn ssh_config_path_label() -> &'static str {
 enum NavSection {
     Hosts,
     Keychain,
+    Snippets,
     KnownHosts,
     Logs,
 }
@@ -101,6 +104,7 @@ impl NavSection {
         match self {
             Self::Hosts => "Hosts",
             Self::Keychain => "Keys",
+            Self::Snippets => "Snippets",
             Self::KnownHosts => "Known Hosts",
             Self::Logs => "Logs",
         }
@@ -110,6 +114,7 @@ impl NavSection {
         match self {
             Self::Hosts => IconName::SquareTerminal.into(),
             Self::Keychain => app_icon(ICON_KEY),
+            Self::Snippets => IconName::BookOpen.into(),
             Self::KnownHosts => app_icon(ICON_SHIELD_CHECK),
             Self::Logs => IconName::BookOpen.into(),
         }
@@ -187,6 +192,24 @@ struct ShellInputs {
     host_search: Entity<InputState>,
     quick_connect_password: Entity<InputState>,
     terminal_search: Entity<InputState>,
+}
+
+struct SnippetInputs {
+    label: Entity<InputState>,
+    group: Entity<InputState>,
+    command: Entity<InputState>,
+}
+
+impl SnippetInputs {
+    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+        Self {
+            label: cx.new(|cx| InputState::new(window, cx).placeholder("Restart service")),
+            group: cx.new(|cx| InputState::new(window, cx).placeholder("Ops / Deploy")),
+            command: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("sudo systemctl restart app")
+            }),
+        }
+    }
 }
 
 impl ShellInputs {
@@ -289,6 +312,7 @@ pub struct TermiRustApp {
     saved: SavedState,
     inputs: DraftInputs,
     shell_inputs: ShellInputs,
+    snippet_inputs: SnippetInputs,
     draft_auth_mode: AuthMode,
     nav_section: NavSection,
     show_editor_panel: bool,
@@ -298,24 +322,26 @@ pub struct TermiRustApp {
     workspaces: Vec<WorkspaceTab>,
     active_workspace_id: Option<u64>,
     selected_profile_id: Option<String>,
+    selected_snippet_id: Option<String>,
     next_session_id: u64,
     next_workspace_id: u64,
     status_message: String,
     error_message: String,
-    imported_identities: Vec<ImportedIdentity>,
+    draft_identity_id: Option<String>,
     known_hosts: Arc<KnownHostStore>,
     keychain_tab: KeychainTab,
     _window_bounds_subscription: Option<Subscription>,
 }
 
 impl TermiRustApp {
-    pub fn new(saved: SavedState, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(mut saved: SavedState, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let inputs = DraftInputs::new(window, cx);
         let shell_inputs = ShellInputs::new(window, cx);
+        let snippet_inputs = SnippetInputs::new(window, cx);
         let (event_tx, event_rx) = mpsc::channel();
         let known_hosts =
             Arc::new(KnownHostStore::load().expect("unable to initialize known host storage"));
-        let imported_identities = load_local_ssh_identities().unwrap_or_default();
+        saved.merge_imported_identities(load_local_ssh_identities().unwrap_or_default());
 
         let draft_auth_mode = saved
             .selected_profile_id
@@ -334,13 +360,13 @@ impl TermiRustApp {
             .iter()
             .filter(|profile| profile.source == ProfileSource::SshConfig)
             .count();
-        let initial_status = if imported_identities.is_empty() && imported_host_count == 0 {
+        let initial_status = if saved.identities.is_empty() && imported_host_count == 0 {
             "Choose a host or create a new entry.".to_string()
         } else {
             format!(
                 "Imported {} hosts and {} identities from {}. Choose a host or create a new entry.",
                 imported_host_count,
-                imported_identities.len(),
+                saved.identities.len(),
                 ssh_directory_label()
             )
         };
@@ -350,6 +376,7 @@ impl TermiRustApp {
             saved,
             inputs,
             shell_inputs,
+            snippet_inputs,
             draft_auth_mode,
             nav_section: NavSection::Hosts,
             show_editor_panel: false,
@@ -358,11 +385,12 @@ impl TermiRustApp {
             panes: Vec::new(),
             workspaces: Vec::new(),
             active_workspace_id: None,
+            selected_snippet_id: None,
             next_session_id: 1,
             next_workspace_id: 1,
             status_message: initial_status,
             error_message: String::new(),
-            imported_identities,
+            draft_identity_id: None,
             known_hosts,
             keychain_tab: KeychainTab::Keys,
             _window_bounds_subscription: None,
@@ -404,6 +432,19 @@ impl TermiRustApp {
     }
 
     fn current_profile_draft(&self, cx: &App) -> DraftProfile {
+        let key_path = self.inputs.key_path.read(cx).value().to_string();
+        let identity_id = self
+            .draft_identity_id
+            .clone()
+            .filter(|identity_id| {
+                self.identity_by_id(identity_id)
+                    .is_some_and(|identity| identity.key_path == key_path)
+            })
+            .or_else(|| {
+                self.identity_for_key_path(&key_path)
+                    .map(|identity| identity.id.clone())
+            });
+
         DraftProfile {
             label: self.inputs.label.read(cx).value().to_string(),
             group: self.inputs.group.read(cx).value().to_string(),
@@ -411,7 +452,8 @@ impl TermiRustApp {
             port: self.inputs.port.read(cx).value().to_string(),
             username: self.inputs.username.read(cx).value().to_string(),
             password: self.inputs.password.read(cx).value().to_string(),
-            key_path: self.inputs.key_path.read(cx).value().to_string(),
+            key_path,
+            identity_id,
             key_passphrase: self.inputs.key_passphrase.read(cx).value().to_string(),
             password_credential_id: self.selected_profile_id.as_ref().and_then(|profile_id| {
                 self.saved
@@ -441,12 +483,26 @@ impl TermiRustApp {
         input.update(cx, |state, cx| state.set_value(value.clone(), window, cx));
     }
 
-    fn preferred_identity(&self) -> Option<&ImportedIdentity> {
-        self.imported_identities.first()
+    fn preferred_identity(&self) -> Option<&SavedIdentity> {
+        self.saved.identities.first()
     }
 
     fn current_key_path(&self, cx: &App) -> String {
         self.inputs.key_path.read(cx).value().trim().to_string()
+    }
+
+    fn identity_by_id(&self, identity_id: &str) -> Option<&SavedIdentity> {
+        self.saved
+            .identities
+            .iter()
+            .find(|identity| identity.id == identity_id)
+    }
+
+    fn identity_for_key_path(&self, key_path: &str) -> Option<&SavedIdentity> {
+        self.saved
+            .identities
+            .iter()
+            .find(|identity| identity.key_path == key_path)
     }
 
     fn current_quick_connect_password(&self, cx: &App) -> String {
@@ -513,23 +569,25 @@ impl TermiRustApp {
             return false;
         };
 
-        Self::set_input_value(&self.inputs.key_path, identity.path.clone(), window, cx);
-        self.status_message = format!("Using imported identity '{}'.", identity.label);
+        self.draft_identity_id = Some(identity.id.clone());
+        Self::set_input_value(&self.inputs.key_path, identity.key_path.clone(), window, cx);
+        self.status_message = format!("Using identity '{}'.", identity.label);
         self.error_message.clear();
         true
     }
 
-    fn use_imported_identity(
+    fn use_identity(
         &mut self,
-        identity: &ImportedIdentity,
+        identity: &SavedIdentity,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.nav_section = NavSection::Hosts;
         self.show_editor_panel = true;
         self.draft_auth_mode = AuthMode::PrivateKey;
-        Self::set_input_value(&self.inputs.key_path, identity.path.clone(), window, cx);
-        self.status_message = format!("Imported identity '{}' selected.", identity.label);
+        self.draft_identity_id = Some(identity.id.clone());
+        Self::set_input_value(&self.inputs.key_path, identity.key_path.clone(), window, cx);
+        self.status_message = format!("Identity '{}' selected.", identity.label);
         self.error_message.clear();
         cx.notify();
     }
@@ -558,6 +616,10 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.password, "", window, cx);
         Self::set_input_value(&self.inputs.key_path, draft.key_path, window, cx);
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
+        self.draft_identity_id = draft.identity_id.or_else(|| {
+            self.identity_for_key_path(profile.key_path.as_str())
+                .map(|identity| identity.id.clone())
+        });
 
         self.selected_profile_id = Some(profile.id.clone());
         self.saved.selected_profile_id = Some(profile.id.clone());
@@ -587,6 +649,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.password, "", window, cx);
         Self::set_input_value(&self.inputs.key_path, "", window, cx);
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
+        self.draft_identity_id = None;
         self.selected_profile_id = None;
         self.saved.selected_profile_id = None;
         self.draft_auth_mode = AuthMode::Password;
@@ -598,15 +661,31 @@ impl TermiRustApp {
 
     fn pick_key_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(path) = FileDialog::new().pick_file() {
-            Self::set_input_value(
-                &self.inputs.key_path,
-                path.display().to_string(),
-                window,
-                cx,
-            );
-            self.status_message = "Private key selected.".to_string();
-            self.error_message.clear();
-            cx.notify();
+            match inspect_identity_file(&path) {
+                Ok(Some(imported)) => {
+                    let identity = imported.into_saved();
+                    let label = identity.label.clone();
+                    self.saved.upsert_identity(identity.clone());
+                    if let Err(error) = save_saved_state(&self.saved) {
+                        self.error_message = error.to_string();
+                        cx.notify();
+                        return;
+                    }
+                    self.use_identity(&identity, window, cx);
+                    self.status_message = format!("Identity '{}' added.", label);
+                    self.error_message.clear();
+                    cx.notify();
+                }
+                Ok(None) => {
+                    self.error_message =
+                        "That file does not look like a supported private key.".to_string();
+                    cx.notify();
+                }
+                Err(error) => {
+                    self.error_message = error.to_string();
+                    cx.notify();
+                }
+            }
         }
     }
 
@@ -1308,7 +1387,7 @@ impl TermiRustApp {
             AuthConfig::PasswordRef { credential_id }
         } else if let Some(identity) = self.preferred_identity().cloned() {
             AuthConfig::PrivateKey {
-                key_path: identity.path,
+                key_path: identity.key_path,
                 passphrase: None,
             }
         } else {
@@ -2738,6 +2817,11 @@ impl TermiRustApp {
         let connect_profile_id = profile.id.clone();
         let accent = theme::host_chip_color(&profile.display_name());
         let group_label = profile.group.trim().to_string();
+        let identity_label = profile
+            .identity_id
+            .as_deref()
+            .and_then(|identity_id| self.identity_by_id(identity_id))
+            .map(|identity| identity.label.clone());
         let protocols = if profile.auth_mode == AuthMode::PrivateKey {
             "key auth"
         } else {
@@ -2819,6 +2903,13 @@ impl TermiRustApp {
                                     group_label.clone(),
                                     theme::library_bg(),
                                     theme::slate(),
+                                ))
+                            })
+                            .when_some(identity_label.clone(), |this, identity_label| {
+                                this.child(self.status_badge(
+                                    identity_label,
+                                    theme::library_bg(),
+                                    theme::success(),
                                 ))
                             }),
                     )
@@ -2945,6 +3036,7 @@ impl TermiRustApp {
 
     fn render_identity_picker(&self, cx: &Context<Self>) -> Div {
         let selected_path = self.current_key_path(cx);
+        let identities = self.saved.identities.clone();
 
         v_flex()
             .gap_2()
@@ -2953,9 +3045,9 @@ impl TermiRustApp {
                     .text_size(px(11.))
                     .font_medium()
                     .text_color(theme::text_main())
-                    .child(format!("Imported from {}", ssh_directory_label())),
+                    .child("Saved identities"),
             )
-            .when(self.imported_identities.is_empty(), |this| {
+            .when(identities.is_empty(), |this| {
                 this.child(
                     div()
                         .p_3()
@@ -2965,23 +3057,20 @@ impl TermiRustApp {
                         .border_color(theme::border())
                         .text_size(px(10.))
                         .text_color(theme::text_muted())
-                        .child(format!(
-                            "No supported private keys were found in {}.",
-                            ssh_directory_label()
-                        )),
+                        .child("No saved identities yet. Add a key file or use one imported at launch."),
                 )
             })
-            .when(!self.imported_identities.is_empty(), |this| {
+            .when(!identities.is_empty(), |this| {
                 this.child(
                     v_flex()
                         .max_h(px(148.))
                         .overflow_y_scrollbar()
                         .gap_2()
-                        .children(self.imported_identities.iter().enumerate().map(
+                        .children(identities.iter().enumerate().map(
                             |(index, identity)| {
                                 let display_identity = identity.clone();
                                 let click_identity = identity.clone();
-                                let is_selected = display_identity.path == selected_path;
+                                let is_selected = display_identity.key_path == selected_path;
 
                                 h_flex()
                                     .id(("editor-identity", index))
@@ -3005,7 +3094,7 @@ impl TermiRustApp {
                                     .cursor_pointer()
                                     .hover(|style| style.bg(theme::hover()))
                                     .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.use_imported_identity(&click_identity, window, cx);
+                                        this.use_identity(&click_identity, window, cx);
                                     }))
                                     .child(
                                         v_flex()
@@ -3028,6 +3117,17 @@ impl TermiRustApp {
                                                             theme::accent(),
                                                         ))
                                                     })
+                                                    .when(
+                                                        display_identity.source
+                                                            == crate::models::IdentitySource::Imported,
+                                                        |this| {
+                                                            this.child(self.status_badge(
+                                                                "Imported",
+                                                                theme::library_card(),
+                                                                theme::slate(),
+                                                            ))
+                                                        },
+                                                    )
                                                     .when(is_selected, |this| {
                                                         this.child(self.status_badge(
                                                             "Selected",
@@ -3046,7 +3146,7 @@ impl TermiRustApp {
                                                 div()
                                                     .text_size(px(9.))
                                                     .text_color(theme::text_muted())
-                                                    .child(display_identity.path.clone()),
+                                                    .child(display_identity.key_path.clone()),
                                             ),
                                     )
                                     .into_any_element()
@@ -3058,6 +3158,15 @@ impl TermiRustApp {
 
     fn render_editor_panel(&self, cx: &Context<Self>) -> Div {
         let auth_mode = self.draft_auth_mode;
+        let selected_identity = self
+            .draft_identity_id
+            .as_deref()
+            .and_then(|identity_id| self.identity_by_id(identity_id))
+            .cloned()
+            .or_else(|| {
+                self.identity_for_key_path(&self.current_key_path(cx))
+                    .cloned()
+            });
         let has_stored_password = self
             .selected_profile_id
             .as_ref()
@@ -3204,6 +3313,17 @@ impl TermiRustApp {
                                         })),
                                 ),
                         )
+                        .when_some(selected_identity, |this, identity| {
+                            this.child(
+                                div()
+                                    .text_size(px(10.))
+                                    .text_color(theme::success())
+                                    .child(format!(
+                                        "Selected identity: {} ({})",
+                                        identity.label, identity.kind
+                                    )),
+                            )
+                        })
                         .child(self.form_field(
                             "Passphrase",
                             Input::new(&self.inputs.key_passphrase).mask_toggle(),
@@ -3443,6 +3563,8 @@ impl TermiRustApp {
     }
 
     fn render_keychain_keys(&self, cx: &Context<Self>) -> Div {
+        let identities = self.saved.identities.clone();
+
         v_flex()
             .flex_1()
             .gap_3()
@@ -3454,24 +3576,21 @@ impl TermiRustApp {
                         div()
                             .text_size(px(12.))
                             .text_color(theme::text_muted())
-                            .child(format!(
-                                "Private keys imported from {} at launch.",
-                                ssh_directory_label()
-                            )),
+                            .child("Reusable identities for host authentication."),
                     )
                     .child(
                         h_flex()
                             .gap_2()
                             .items_center()
-                            .when(!self.imported_identities.is_empty(), |this| {
+                            .when(!identities.is_empty(), |this| {
                                 this.child(
                                     div()
                                         .text_size(px(11.))
                                         .text_color(theme::text_muted())
                                         .child(format!(
                                             "{} {}",
-                                            self.imported_identities.len(),
-                                            if self.imported_identities.len() == 1 {
+                                            identities.len(),
+                                            if identities.len() == 1 {
                                                 "key"
                                             } else {
                                                 "keys"
@@ -3496,15 +3615,15 @@ impl TermiRustApp {
                     ),
             )
             .child(
-                v_flex()
-                    .flex_1()
-                    .gap_2()
-                    .overflow_y_scrollbar()
-                    .children(self.imported_identities.iter().enumerate().map(
+                    v_flex()
+                        .flex_1()
+                        .gap_2()
+                        .overflow_y_scrollbar()
+                    .children(identities.iter().enumerate().map(
                         |(index, identity)| {
                             let card_identity = identity.clone();
                             let button_identity = identity.clone();
-                            let has_pub = std::path::Path::new(&format!("{}.pub", identity.path))
+                            let has_pub = std::path::Path::new(&format!("{}.pub", identity.key_path))
                                 .exists();
 
                             h_flex()
@@ -3524,7 +3643,7 @@ impl TermiRustApp {
                                 .cursor_pointer()
                                 .hover(|style| style.bg(theme::card_hover()))
                                 .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.use_imported_identity(&card_identity, window, cx);
+                                    this.use_identity(&card_identity, window, cx);
                                 }))
                                 .child(
                                     h_flex()
@@ -3565,6 +3684,17 @@ impl TermiRustApp {
                                                             theme::library_bg(),
                                                             theme::slate(),
                                                         ))
+                                                        .when(
+                                                            button_identity.source
+                                                                == crate::models::IdentitySource::Imported,
+                                                            |this| {
+                                                                this.child(self.status_badge(
+                                                                    "Imported",
+                                                                    theme::library_bg(),
+                                                                    theme::accent(),
+                                                                ))
+                                                            },
+                                                        )
                                                         .when(index == 0, |this| {
                                                             this.child(self.status_badge(
                                                                 "Default",
@@ -3584,7 +3714,7 @@ impl TermiRustApp {
                                                     div()
                                                         .text_size(px(10.))
                                                         .text_color(theme::text_muted())
-                                                        .child(button_identity.path.clone()),
+                                                        .child(button_identity.key_path.clone()),
                                                 ),
                                         ),
                                 )
@@ -3597,13 +3727,13 @@ impl TermiRustApp {
                                         ))
                                         .label("Use")
                                         .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.use_imported_identity(&button_identity, window, cx);
+                                            this.use_identity(&button_identity, window, cx);
                                         })),
                                 )
                                 .into_any_element()
                         },
                     ))
-                    .when(self.imported_identities.is_empty(), |this| {
+                    .when(identities.is_empty(), |this| {
                         this.child(
                             v_flex()
                                 .items_center()
@@ -3624,16 +3754,13 @@ impl TermiRustApp {
                                         .text_size(px(13.))
                                         .font_medium()
                                         .text_color(theme::text_muted())
-                                        .child(format!(
-                                            "No private keys found in {}",
-                                            ssh_directory_label()
-                                        )),
+                                        .child("No identities available"),
                                 )
                                 .child(
                                     div()
                                         .text_size(px(11.))
                                         .text_color(theme::with_alpha(theme::text_muted(), 0.7))
-                                        .child("Use \"Add Key File\" above or create keys with ssh-keygen -t ed25519"),
+                                        .child("Use \"Add Key File\" above to add a reusable identity"),
                                 ),
                         )
                     }),
