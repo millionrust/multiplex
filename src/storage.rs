@@ -208,7 +208,8 @@ struct SshConfigBlock {
     user: Option<String>,
     port: Option<u16>,
     identity_file: Option<String>,
-    unsupported_proxy: bool,
+    proxy_jump: Option<String>,
+    unsupported_proxy_command: bool,
 }
 
 fn parse_ssh_config_hosts(content: &str) -> Vec<HostProfile> {
@@ -258,7 +259,12 @@ fn parse_ssh_config_hosts(content: &str) -> Vec<HostProfile> {
                     block.identity_file = Some(expand_home_path(value));
                 }
             }
-            "proxycommand" | "proxyjump" => block.unsupported_proxy = true,
+            "proxyjump" => {
+                if block.proxy_jump.is_none() {
+                    block.proxy_jump = parse_proxyjump_alias(value);
+                }
+            }
+            "proxycommand" => block.unsupported_proxy_command = true,
             _ => {}
         }
     }
@@ -275,7 +281,7 @@ fn flush_ssh_config_block(
     aliases: &[String],
     block: &SshConfigBlock,
 ) {
-    if aliases.is_empty() || block.unsupported_proxy {
+    if aliases.is_empty() || block.unsupported_proxy_command {
         return;
     }
 
@@ -317,12 +323,31 @@ fn flush_ssh_config_block(
                 auth_mode,
                 key_path,
                 identity_id: None,
+                jump_host_id: block
+                    .proxy_jump
+                    .as_ref()
+                    .map(|alias| imported_host_id(alias)),
                 local_forward: None,
                 password_credential_id: None,
                 source: ProfileSource::SshConfig,
             },
         );
     }
+}
+
+fn parse_proxyjump_alias(value: &str) -> Option<String> {
+    let first = value.split(',').next()?.trim();
+    if first.is_empty() {
+        return None;
+    }
+
+    let host_part = first.rsplit('@').next().unwrap_or(first);
+    let alias = host_part.split(':').next().unwrap_or(host_part).trim();
+    if alias.is_empty() || !is_importable_host_alias(alias) {
+        return None;
+    }
+
+    Some(alias.to_string())
 }
 
 fn strip_ssh_comment(line: &str) -> &str {
@@ -565,5 +590,26 @@ Host eq-spaced
         let eq_spaced = hosts.iter().find(|h| h.label == "eq-spaced").unwrap();
         assert_eq!(eq_spaced.host, "10.0.0.2");
         assert_eq!(eq_spaced.username, "admin");
+    }
+
+    #[test]
+    fn parses_proxyjump_alias_as_jump_host_reference() {
+        let hosts = parse_ssh_config_hosts(
+            r#"
+Host bastion
+  HostName 198.51.100.10
+  User ubuntu
+  IdentityFile ~/.ssh/id_ed25519
+
+Host app-prod
+  HostName 10.0.0.15
+  User deploy
+  ProxyJump bastion
+"#,
+        );
+
+        assert_eq!(hosts.len(), 2);
+        let app = hosts.iter().find(|host| host.label == "app-prod").unwrap();
+        assert_eq!(app.jump_host_id.as_deref(), Some("ssh-config-bastion"));
     }
 }

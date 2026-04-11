@@ -68,6 +68,8 @@ pub struct HostProfile {
     #[serde(default)]
     pub identity_id: Option<String>,
     #[serde(default)]
+    pub jump_host_id: Option<String>,
+    #[serde(default)]
     pub local_forward: Option<LocalPortForward>,
     #[serde(default)]
     pub password_credential_id: Option<String>,
@@ -284,6 +286,7 @@ pub struct DraftProfile {
     pub password: String,
     pub key_path: String,
     pub identity_id: Option<String>,
+    pub jump_host_id: Option<String>,
     pub forward_local_port: String,
     pub forward_remote_host: String,
     pub forward_remote_port: String,
@@ -303,6 +306,7 @@ impl DraftProfile {
             password: String::new(),
             key_path: profile.key_path.clone(),
             identity_id: profile.identity_id.clone(),
+            jump_host_id: profile.jump_host_id.clone(),
             forward_local_port: profile
                 .local_forward
                 .as_ref()
@@ -404,6 +408,7 @@ impl DraftProfile {
             } else {
                 None
             },
+            jump_host_id: self.jump_host_id.clone(),
             local_forward: self.parse_local_forward()?,
             password_credential_id: if self.auth_mode == AuthMode::Password {
                 self.password_credential_id.clone()
@@ -441,6 +446,7 @@ impl DraftProfile {
             port: profile.port,
             username: profile.username,
             auth,
+            jump_host: None,
             local_forward: profile.local_forward,
         })
     }
@@ -490,6 +496,7 @@ pub struct ConnectRequest {
     pub port: u16,
     pub username: String,
     pub auth: AuthConfig,
+    pub jump_host: Option<JumpHostConnection>,
     pub local_forward: Option<LocalPortForward>,
 }
 
@@ -509,7 +516,40 @@ impl ConnectRequest {
             port: self.port,
             username: self.username.clone(),
             auth: self.auth.to_restorable()?,
+            jump_host: self
+                .jump_host
+                .as_ref()
+                .and_then(JumpHostConnection::to_restorable),
             local_forward: self.local_forward.clone(),
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct JumpHostConnection {
+    pub title: String,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub auth: AuthConfig,
+}
+
+impl JumpHostConnection {
+    pub fn address(&self) -> String {
+        format!("{}:{}", self.host, self.port)
+    }
+
+    pub fn known_host_key(&self) -> String {
+        self.address()
+    }
+
+    pub fn to_restorable(&self) -> Option<RestorableJumpHostConnection> {
+        Some(RestorableJumpHostConnection {
+            title: self.title.clone(),
+            host: self.host.clone(),
+            port: self.port,
+            username: self.username.clone(),
+            auth: self.auth.to_restorable()?,
         })
     }
 }
@@ -529,6 +569,8 @@ pub struct RestorableConnection {
     pub port: u16,
     pub username: String,
     pub auth: RestorableAuth,
+    #[serde(default)]
+    pub jump_host: Option<RestorableJumpHostConnection>,
     #[serde(default)]
     pub local_forward: Option<LocalPortForward>,
 }
@@ -552,7 +594,43 @@ impl RestorableConnection {
             port: self.port,
             username: self.username.clone(),
             auth,
+            jump_host: self
+                .jump_host
+                .as_ref()
+                .map(RestorableJumpHostConnection::to_jump_host_connection),
             local_forward: self.local_forward.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RestorableJumpHostConnection {
+    pub title: String,
+    pub host: String,
+    #[serde(default = "default_ssh_port")]
+    pub port: u16,
+    pub username: String,
+    pub auth: RestorableAuth,
+}
+
+impl RestorableJumpHostConnection {
+    pub fn to_jump_host_connection(&self) -> JumpHostConnection {
+        let auth = match &self.auth {
+            RestorableAuth::PasswordKeychain { credential_id } => AuthConfig::PasswordRef {
+                credential_id: credential_id.clone(),
+            },
+            RestorableAuth::PrivateKey { key_path } => AuthConfig::PrivateKey {
+                key_path: key_path.clone(),
+                passphrase: None,
+            },
+        };
+
+        JumpHostConnection {
+            title: self.title.clone(),
+            host: self.host.clone(),
+            port: self.port,
+            username: self.username.clone(),
+            auth,
         }
     }
 }
@@ -736,6 +814,7 @@ impl QuickConnect {
             port: self.port,
             username: self.username.clone(),
             auth,
+            jump_host: None,
             local_forward: None,
         }
     }
@@ -763,8 +842,8 @@ impl SavedState {
 mod tests {
     use super::{
         AuthConfig, AuthMode, ConnectRequest, DraftProfile, IdentitySource, ImportedIdentity,
-        LocalPortForward, QuickConnect, RestorableAuth, RestorableConnection, SavedIdentity,
-        SavedSnippet, SavedState, SavedWorkspace, SplitAxis, identity_id_for_path,
+        JumpHostConnection, LocalPortForward, QuickConnect, RestorableAuth, RestorableConnection,
+        SavedIdentity, SavedSnippet, SavedState, SavedWorkspace, SplitAxis, identity_id_for_path,
     };
 
     #[test]
@@ -812,6 +891,7 @@ mod tests {
             auth: AuthConfig::Password {
                 password: "secret".to_string(),
             },
+            jump_host: None,
             local_forward: None,
         };
 
@@ -829,6 +909,7 @@ mod tests {
             auth: AuthConfig::PasswordRef {
                 credential_id: "profile:app".to_string(),
             },
+            jump_host: None,
             local_forward: None,
         };
 
@@ -854,6 +935,16 @@ mod tests {
                 key_path: "/tmp/id_ed25519".to_string(),
                 passphrase: Some("ignored".to_string()),
             },
+            jump_host: Some(JumpHostConnection {
+                title: "bastion".to_string(),
+                host: "bastion.example.com".to_string(),
+                port: 22,
+                username: "ubuntu".to_string(),
+                auth: AuthConfig::PrivateKey {
+                    key_path: "/tmp/jump_id_ed25519".to_string(),
+                    passphrase: None,
+                },
+            }),
             local_forward: Some(LocalPortForward {
                 local_host: "127.0.0.1".to_string(),
                 local_port: 15432,
@@ -874,6 +965,10 @@ mod tests {
                 .as_ref()
                 .map(LocalPortForward::display_name),
             Some("127.0.0.1:15432 -> 127.0.0.1:5432".to_string())
+        );
+        assert_eq!(
+            request.jump_host.as_ref().map(|jump| jump.title.clone()),
+            Some("bastion".to_string())
         );
         match request.auth {
             AuthConfig::PrivateKey {
@@ -903,6 +998,7 @@ mod tests {
                 auth: RestorableAuth::PasswordKeychain {
                     credential_id: "profile:prod".to_string(),
                 },
+                jump_host: None,
                 local_forward: None,
             }],
         };
@@ -961,6 +1057,7 @@ mod tests {
             password: String::new(),
             key_path: "/tmp/id_ed25519".to_string(),
             identity_id: Some("identity-123".to_string()),
+            jump_host_id: None,
             forward_local_port: String::new(),
             forward_remote_host: String::new(),
             forward_remote_port: String::new(),
@@ -1019,6 +1116,7 @@ mod tests {
             password: String::new(),
             key_path: "/tmp/id_ed25519".to_string(),
             identity_id: Some("identity-123".to_string()),
+            jump_host_id: None,
             forward_local_port: "15432".to_string(),
             forward_remote_host: "127.0.0.1".to_string(),
             forward_remote_port: "5432".to_string(),

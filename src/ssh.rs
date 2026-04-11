@@ -49,6 +49,12 @@ pub struct SessionRuntimeHandle {
     pub command_tx: UnboundedSender<SessionCommand>,
 }
 
+struct EstablishedSession {
+    target_handle: Arc<Mutex<client::Handle<SessionHandler>>>,
+    trusted_new_host: bool,
+    _jump_handle: Option<client::Handle<SessionHandler>>,
+}
+
 pub fn spawn_session(
     request: ConnectRequest,
     known_hosts: Arc<KnownHostStore>,
@@ -123,29 +129,17 @@ async fn run_session(
     let address = request.address();
 
     eprintln!("[ssh][{session_id}] connecting to {address}...");
-    let trusted_new_host = Arc::new(AtomicBool::new(false));
-    let handler = SessionHandler {
-        endpoint: request.known_host_key(),
-        known_hosts,
-        trusted_new_host: trusted_new_host.clone(),
-    };
-
     let config = Arc::new(client::Config::default());
-    let mut handle = client::connect(config, address.clone(), handler)
-        .await
-        .context("Unable to open the SSH transport")?;
-
-    eprintln!(
-        "[ssh][{session_id}] transport open, authenticating as '{}'...",
-        request.username
-    );
-    authenticate(&mut handle, &request).await?;
+    let established = establish_session(config, request.clone(), known_hosts).await?;
 
     eprintln!("[ssh][{session_id}] authenticated, opening channel...");
-    let channel = handle
-        .channel_open_session()
-        .await
-        .context("Unable to open an SSH session channel")?;
+    let channel = {
+        let handle = established.target_handle.lock().await;
+        handle
+            .channel_open_session()
+            .await
+            .context("Unable to open an SSH session channel")?
+    };
 
     eprintln!("[ssh][{session_id}] channel open, requesting PTY...");
     channel
@@ -159,15 +153,14 @@ async fn run_session(
         .await
         .context("Unable to start an interactive shell")?;
 
-    let shared_handle = Arc::new(Mutex::new(handle));
     if let Some(forward) = request.local_forward.clone() {
-        start_local_forwarder(shared_handle.clone(), session_id, forward).await?;
+        start_local_forwarder(established.target_handle.clone(), session_id, forward).await?;
     }
 
     eprintln!("[ssh][{session_id}] shell started, sending Connected event");
     let _ = event_tx.send(SshEvent::Connected {
         session_id,
-        trusted_new_host: trusted_new_host.swap(false, Ordering::SeqCst),
+        trusted_new_host: established.trusted_new_host,
     });
 
     let (mut reader_half, write_half) = channel.split();
@@ -232,11 +225,12 @@ async fn run_session(
 
 async fn authenticate(
     handle: &mut client::Handle<SessionHandler>,
-    request: &ConnectRequest,
+    username: &str,
+    auth: &AuthConfig,
 ) -> Result<()> {
-    let auth_result = match &request.auth {
+    let auth_result = match auth {
         AuthConfig::Password { password } => handle
-            .authenticate_password(request.username.clone(), password.clone())
+            .authenticate_password(username.to_string(), password.clone())
             .await
             .context("Password authentication failed")?,
         AuthConfig::PasswordRef { credential_id } => {
@@ -248,7 +242,7 @@ async fn authenticate(
             })?;
 
             handle
-                .authenticate_password(request.username.clone(), password)
+                .authenticate_password(username.to_string(), password)
                 .await
                 .context("Password authentication failed")?
         }
@@ -283,7 +277,7 @@ async fn authenticate(
             let key = PrivateKeyWithHashAlg::new(Arc::new(key), rsa_hash);
 
             handle
-                .authenticate_publickey(request.username.clone(), key)
+                .authenticate_publickey(username.to_string(), key)
                 .await
                 .context("Public key authentication failed")?
         }
@@ -294,6 +288,114 @@ async fn authenticate(
     }
 
     Ok(())
+}
+
+async fn establish_session(
+    config: Arc<client::Config>,
+    request: ConnectRequest,
+    known_hosts: Arc<KnownHostStore>,
+) -> Result<EstablishedSession> {
+    if let Some(jump_host) = request.jump_host.clone() {
+        let (jump_handle, jump_trusted) = connect_and_authenticate(
+            config.clone(),
+            jump_host.address(),
+            jump_host.known_host_key(),
+            jump_host.username.clone(),
+            jump_host.auth.clone(),
+            known_hosts.clone(),
+        )
+        .await?;
+
+        eprintln!(
+            "[ssh][{}] opening jump channel via {}",
+            request.session_id,
+            jump_host.address()
+        );
+        let jump_channel = jump_handle
+            .channel_open_direct_tcpip(request.host.clone(), request.port.into(), "127.0.0.1", 0)
+            .await
+            .context("Unable to open jump-host tunnel to the target")?;
+
+        let (target_handle, target_trusted) = connect_and_authenticate_stream(
+            config,
+            jump_channel.into_stream(),
+            request.known_host_key(),
+            request.username.clone(),
+            request.auth.clone(),
+            known_hosts,
+        )
+        .await?;
+
+        Ok(EstablishedSession {
+            target_handle: Arc::new(Mutex::new(target_handle)),
+            trusted_new_host: jump_trusted.swap(false, Ordering::SeqCst)
+                || target_trusted.swap(false, Ordering::SeqCst),
+            _jump_handle: Some(jump_handle),
+        })
+    } else {
+        let (target_handle, target_trusted) = connect_and_authenticate(
+            config,
+            request.address(),
+            request.known_host_key(),
+            request.username.clone(),
+            request.auth.clone(),
+            known_hosts,
+        )
+        .await?;
+
+        Ok(EstablishedSession {
+            target_handle: Arc::new(Mutex::new(target_handle)),
+            trusted_new_host: target_trusted.swap(false, Ordering::SeqCst),
+            _jump_handle: None,
+        })
+    }
+}
+
+async fn connect_and_authenticate(
+    config: Arc<client::Config>,
+    address: String,
+    endpoint: String,
+    username: String,
+    auth: AuthConfig,
+    known_hosts: Arc<KnownHostStore>,
+) -> Result<(client::Handle<SessionHandler>, Arc<AtomicBool>)> {
+    let trusted_new_host = Arc::new(AtomicBool::new(false));
+    let handler = SessionHandler {
+        endpoint,
+        known_hosts,
+        trusted_new_host: trusted_new_host.clone(),
+    };
+
+    let mut handle = client::connect(config, address, handler)
+        .await
+        .context("Unable to open the SSH transport")?;
+    authenticate(&mut handle, &username, &auth).await?;
+    Ok((handle, trusted_new_host))
+}
+
+async fn connect_and_authenticate_stream<R>(
+    config: Arc<client::Config>,
+    stream: R,
+    endpoint: String,
+    username: String,
+    auth: AuthConfig,
+    known_hosts: Arc<KnownHostStore>,
+) -> Result<(client::Handle<SessionHandler>, Arc<AtomicBool>)>
+where
+    R: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let trusted_new_host = Arc::new(AtomicBool::new(false));
+    let handler = SessionHandler {
+        endpoint,
+        known_hosts,
+        trusted_new_host: trusted_new_host.clone(),
+    };
+
+    let mut handle = client::connect_stream(config, stream, handler)
+        .await
+        .context("Unable to open the SSH transport through the jump host")?;
+    authenticate(&mut handle, &username, &auth).await?;
+    Ok((handle, trusted_new_host))
 }
 
 async fn start_local_forwarder(

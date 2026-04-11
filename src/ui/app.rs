@@ -19,9 +19,9 @@ use vt100::{MouseProtocolEncoding, MouseProtocolMode};
 
 use crate::credentials;
 use crate::models::{
-    AuthConfig, AuthMode, ConnectRequest, DraftProfile, HostProfile, ProfileSource, QuickConnect,
-    SavedIdentity, SavedSnippet, SavedState, SavedWorkspace, SessionLogEntry, SessionLogStatus,
-    SplitAxis,
+    AuthConfig, AuthMode, ConnectRequest, DraftProfile, HostProfile, JumpHostConnection,
+    ProfileSource, QuickConnect, SavedIdentity, SavedSnippet, SavedState, SavedWorkspace,
+    SessionLogEntry, SessionLogStatus, SplitAxis,
 };
 use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent, spawn_session};
 use crate::storage::{
@@ -156,6 +156,7 @@ struct PaneLayout {
 struct DraftInputs {
     label: Entity<InputState>,
     group: Entity<InputState>,
+    jump_host: Entity<InputState>,
     host: Entity<InputState>,
     port: Entity<InputState>,
     username: Entity<InputState>,
@@ -172,6 +173,7 @@ impl DraftInputs {
         Self {
             label: cx.new(|cx| InputState::new(window, cx).placeholder("New host label")),
             group: cx.new(|cx| InputState::new(window, cx).placeholder("Production / Staging")),
+            jump_host: cx.new(|cx| InputState::new(window, cx).placeholder("Optional saved host")),
             host: cx.new(|cx| InputState::new(window, cx).placeholder("user@hostname or IP")),
             port: cx.new(|cx| InputState::new(window, cx).default_value("22")),
             username: cx.new(|cx| InputState::new(window, cx).placeholder("root")),
@@ -436,7 +438,7 @@ impl TermiRustApp {
         app
     }
 
-    fn current_profile_draft(&self, cx: &App) -> DraftProfile {
+    fn current_profile_draft(&self, cx: &App) -> anyhow::Result<DraftProfile> {
         let key_path = self.inputs.key_path.read(cx).value().to_string();
         let identity_id = self
             .draft_identity_id
@@ -449,8 +451,10 @@ impl TermiRustApp {
                 self.identity_for_key_path(&key_path)
                     .map(|identity| identity.id.clone())
             });
+        let jump_host_value = self.inputs.jump_host.read(cx).value().trim().to_string();
+        let jump_host_id = self.resolve_jump_host_reference(&jump_host_value)?;
 
-        DraftProfile {
+        Ok(DraftProfile {
             label: self.inputs.label.read(cx).value().to_string(),
             group: self.inputs.group.read(cx).value().to_string(),
             host: self.inputs.host.read(cx).value().to_string(),
@@ -459,6 +463,7 @@ impl TermiRustApp {
             password: self.inputs.password.read(cx).value().to_string(),
             key_path,
             identity_id,
+            jump_host_id,
             forward_local_port: self.inputs.forward_local_port.read(cx).value().to_string(),
             forward_remote_host: self.inputs.forward_remote_host.read(cx).value().to_string(),
             forward_remote_port: self.inputs.forward_remote_port.read(cx).value().to_string(),
@@ -471,7 +476,7 @@ impl TermiRustApp {
                     .and_then(|profile| profile.password_credential_id.clone())
             }),
             auth_mode: self.draft_auth_mode,
-        }
+        })
     }
 
     fn set_auth_mode(&mut self, auth_mode: AuthMode, cx: &mut Context<Self>) {
@@ -511,6 +516,75 @@ impl TermiRustApp {
             .identities
             .iter()
             .find(|identity| identity.key_path == key_path)
+    }
+
+    fn resolve_jump_host_reference(&self, value: &str) -> anyhow::Result<Option<String>> {
+        let value = value.trim();
+        if value.is_empty() {
+            return Ok(None);
+        }
+
+        let normalized = value.to_ascii_lowercase();
+        let matched = self.saved.profiles.iter().find(|profile| {
+            profile.id.eq_ignore_ascii_case(value)
+                || profile.label.eq_ignore_ascii_case(value)
+                || profile.display_name().to_ascii_lowercase() == normalized
+                || profile.host.eq_ignore_ascii_case(value)
+        });
+
+        let Some(profile) = matched else {
+            anyhow::bail!("Jump host '{value}' does not match a saved host");
+        };
+
+        if self.selected_profile_id.as_deref() == Some(profile.id.as_str()) {
+            anyhow::bail!("A host cannot use itself as its jump host");
+        }
+
+        Ok(Some(profile.id.clone()))
+    }
+
+    fn jump_host_display_name(&self, jump_host_id: &str) -> Option<String> {
+        self.saved
+            .profiles
+            .iter()
+            .find(|profile| profile.id == jump_host_id)
+            .map(HostProfile::display_name)
+    }
+
+    fn resolve_jump_host_connection(
+        &self,
+        jump_host_id: &str,
+    ) -> anyhow::Result<JumpHostConnection> {
+        let profile = self
+            .saved
+            .profiles
+            .iter()
+            .find(|profile| profile.id == jump_host_id)
+            .ok_or_else(|| anyhow::anyhow!("Jump host is no longer available"))?;
+
+        let auth = match profile.auth_mode {
+            AuthMode::Password => {
+                let Some(credential_id) = profile.password_credential_id.clone() else {
+                    anyhow::bail!(
+                        "Jump host '{}' needs a saved password in the system credential store",
+                        profile.display_name()
+                    );
+                };
+                AuthConfig::PasswordRef { credential_id }
+            }
+            AuthMode::PrivateKey => AuthConfig::PrivateKey {
+                key_path: profile.key_path.clone(),
+                passphrase: None,
+            },
+        };
+
+        Ok(JumpHostConnection {
+            title: profile.display_name(),
+            host: profile.host.clone(),
+            port: profile.port,
+            username: profile.username.clone(),
+            auth,
+        })
     }
 
     fn current_quick_connect_password(&self, cx: &App) -> String {
@@ -618,6 +692,16 @@ impl TermiRustApp {
         let draft = DraftProfile::from_profile(profile);
         Self::set_input_value(&self.inputs.label, draft.label, window, cx);
         Self::set_input_value(&self.inputs.group, draft.group, window, cx);
+        Self::set_input_value(
+            &self.inputs.jump_host,
+            draft
+                .jump_host_id
+                .as_deref()
+                .and_then(|jump_host_id| self.jump_host_display_name(jump_host_id))
+                .unwrap_or_default(),
+            window,
+            cx,
+        );
         Self::set_input_value(&self.inputs.host, draft.host, window, cx);
         Self::set_input_value(&self.inputs.port, draft.port, window, cx);
         Self::set_input_value(&self.inputs.username, draft.username, window, cx);
@@ -669,6 +753,7 @@ impl TermiRustApp {
     fn clear_profile_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         Self::set_input_value(&self.inputs.label, "", window, cx);
         Self::set_input_value(&self.inputs.group, "", window, cx);
+        Self::set_input_value(&self.inputs.jump_host, "", window, cx);
         Self::set_input_value(&self.inputs.host, "", window, cx);
         Self::set_input_value(&self.inputs.port, "22", window, cx);
         Self::set_input_value(&self.inputs.username, "", window, cx);
@@ -849,7 +934,14 @@ impl TermiRustApp {
 
     fn save_profile(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let _ = self.ensure_default_identity_selected(window, cx);
-        let mut draft = self.current_profile_draft(cx);
+        let mut draft = match self.current_profile_draft(cx) {
+            Ok(draft) => draft,
+            Err(error) => {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
+        };
         let profile_source = self
             .selected_profile_id
             .as_ref()
@@ -1366,7 +1458,7 @@ impl TermiRustApp {
     }
 
     fn build_request_for_current_draft(&mut self, cx: &App) -> anyhow::Result<ConnectRequest> {
-        let mut draft = self.current_profile_draft(cx);
+        let mut draft = self.current_profile_draft(cx)?;
 
         if draft.auth_mode == AuthMode::Password {
             let password = draft.password.trim().to_string();
@@ -1382,7 +1474,13 @@ impl TermiRustApp {
             }
         }
 
-        draft.to_connect_request(self.next_session_id())
+        let jump_host_id = draft.jump_host_id.clone();
+        let mut request = draft.to_connect_request(self.next_session_id())?;
+        if let Some(jump_host_id) = jump_host_id {
+            request.jump_host = Some(self.resolve_jump_host_connection(&jump_host_id)?);
+        }
+
+        Ok(request)
     }
 
     fn spawn_pane(
@@ -2979,6 +3077,11 @@ impl TermiRustApp {
             .as_deref()
             .and_then(|identity_id| self.identity_by_id(identity_id))
             .map(|identity| identity.label.clone());
+        let jump_host_label = profile
+            .jump_host_id
+            .as_deref()
+            .and_then(|jump_host_id| self.jump_host_display_name(jump_host_id))
+            .map(|label| format!("Via {label}"));
         let forward_label = profile
             .local_forward
             .as_ref()
@@ -3071,6 +3174,13 @@ impl TermiRustApp {
                                     identity_label,
                                     theme::library_bg(),
                                     theme::success(),
+                                ))
+                            })
+                            .when_some(jump_host_label.clone(), |this, jump_host_label| {
+                                this.child(self.status_badge(
+                                    jump_host_label,
+                                    theme::library_bg(),
+                                    theme::accent(),
                                 ))
                             })
                             .when_some(forward_label.clone(), |this, forward_label| {
@@ -3360,6 +3470,7 @@ impl TermiRustApp {
             )
             .child(self.form_field("Label", Input::new(&self.inputs.label)))
             .child(self.form_field("Group", Input::new(&self.inputs.group)))
+            .child(self.form_field("Jump Host", Input::new(&self.inputs.jump_host)))
             .child(self.form_field("Host", Input::new(&self.inputs.host)))
             .child(
                 h_flex()
@@ -4780,7 +4891,21 @@ impl TermiRustApp {
                             .text_size(px(11.))
                             .text_color(theme::text_muted_dark())
                             .child(pane.endpoint.clone()),
-                    ),
+                    )
+                    .when_some(pane.request.jump_host.as_ref(), |this, jump_host| {
+                        this.child(self.status_badge(
+                            format!("Via {}", jump_host.title),
+                            theme::terminal_panel(),
+                            theme::accent(),
+                        ))
+                    })
+                    .when_some(pane.request.local_forward.as_ref(), |this, forward| {
+                        this.child(self.status_badge(
+                            format!("Local {}", forward.local_port),
+                            theme::terminal_panel(),
+                            theme::warning(),
+                        ))
+                    }),
             )
             .child(
                 h_flex()
