@@ -48,6 +48,39 @@ fn app_icon(path: &'static str) -> Icon {
     Icon::new(Icon::empty().path(path))
 }
 
+fn primary_shortcut_label() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "Cmd"
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        "Ctrl"
+    }
+}
+
+fn ssh_directory_label() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "%USERPROFILE%\\.ssh"
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        "~/.ssh"
+    }
+}
+
+fn ssh_config_path_label() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "%USERPROFILE%\\.ssh\\config"
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        "~/.ssh/config"
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum NavSection {
     Hosts,
@@ -67,7 +100,7 @@ impl NavSection {
     fn label(self) -> &'static str {
         match self {
             Self::Hosts => "Hosts",
-            Self::Keychain => "Keychain",
+            Self::Keychain => "Keys",
             Self::KnownHosts => "Known Hosts",
             Self::Logs => "Logs",
         }
@@ -137,7 +170,8 @@ impl DraftInputs {
                     .masked(true)
                     .placeholder("Session-only password")
             }),
-            key_path: cx.new(|cx| InputState::new(window, cx).placeholder("/path/to/id_ed25519")),
+            key_path: cx
+                .new(|cx| InputState::new(window, cx).placeholder("Path to private key file")),
             key_passphrase: cx.new(|cx| {
                 InputState::new(window, cx)
                     .masked(true)
@@ -302,9 +336,10 @@ impl TermiRustApp {
             "Choose a host or create a new entry.".to_string()
         } else {
             format!(
-                "Imported {} hosts and {} identities from ~/.ssh. Choose a host or create a new entry.",
+                "Imported {} hosts and {} identities from {}. Choose a host or create a new entry.",
                 imported_host_count,
-                imported_identities.len()
+                imported_identities.len(),
+                ssh_directory_label()
             )
         };
 
@@ -686,8 +721,10 @@ impl TermiRustApp {
             .is_some_and(|profile| profile.source == ProfileSource::SshConfig)
         {
             self.error_message.clear();
-            self.status_message =
-                "Imported SSH config hosts are read from ~/.ssh/config. Edit the config or save a local copy instead.".to_string();
+            self.status_message = format!(
+                "Imported SSH config hosts are read from {}. Edit the config or save a local copy instead.",
+                ssh_config_path_label()
+            );
             cx.notify();
             return;
         }
@@ -1123,7 +1160,7 @@ impl TermiRustApp {
                     request.address(),
                     match &request.auth {
                         AuthConfig::Password { .. } => "password",
-                        AuthConfig::PasswordRef { .. } => "keychain-password",
+                        AuthConfig::PasswordRef { .. } => "stored-password",
                         AuthConfig::PrivateKey { key_path, .. } => key_path.as_str(),
                     }
                 );
@@ -1232,9 +1269,10 @@ impl TermiRustApp {
                 passphrase: None,
             }
         } else {
-            self.error_message =
-                "Quick connect needs a password, a stored system password, or an SSH key in ~/.ssh."
-                    .to_string();
+            self.error_message = format!(
+                "Quick connect needs a password, a stored system password, or an SSH key in {}.",
+                ssh_directory_label()
+            );
             cx.notify();
             return;
         };
@@ -2832,7 +2870,7 @@ impl TermiRustApp {
                     .text_size(px(11.))
                     .font_medium()
                     .text_color(theme::text_main())
-                    .child("Imported from ~/.ssh"),
+                    .child(format!("Imported from {}", ssh_directory_label())),
             )
             .when(self.imported_identities.is_empty(), |this| {
                 this.child(
@@ -2844,7 +2882,10 @@ impl TermiRustApp {
                         .border_color(theme::border())
                         .text_size(px(10.))
                         .text_color(theme::text_muted())
-                        .child("No supported private keys were found in ~/.ssh."),
+                        .child(format!(
+                            "No supported private keys were found in {}.",
+                            ssh_directory_label()
+                        )),
                 )
             })
             .when(!self.imported_identities.is_empty(), |this| {
@@ -3329,7 +3370,10 @@ impl TermiRustApp {
                         div()
                             .text_size(px(12.))
                             .text_color(theme::text_muted())
-                            .child("Private keys imported from ~/.ssh at launch."),
+                            .child(format!(
+                                "Private keys imported from {} at launch.",
+                                ssh_directory_label()
+                            )),
                     )
                     .child(
                         h_flex()
@@ -3496,7 +3540,10 @@ impl TermiRustApp {
                                         .text_size(px(13.))
                                         .font_medium()
                                         .text_color(theme::text_muted())
-                                        .child("No private keys found in ~/.ssh"),
+                                        .child(format!(
+                                            "No private keys found in {}",
+                                            ssh_directory_label()
+                                        )),
                                 )
                                 .child(
                                     div()
@@ -3666,7 +3713,7 @@ impl TermiRustApp {
                         .text_size(px(18.))
                         .font_semibold()
                         .text_color(theme::text_main())
-                        .child("Keychain"),
+                        .child("Keys"),
                 ),
             )
             .child(self.keychain_tab_control(cx))
@@ -4712,7 +4759,11 @@ impl Render for TermiRustApp {
                                             div()
                                                 .text_size(px(10.))
                                                 .text_color(theme::with_alpha(muted_color, 0.6))
-                                                .child("Cmd+F Search  Cmd+W Close"),
+                                                .child(format!(
+                                                    "{}+F Search  {}+W Close",
+                                                    primary_shortcut_label(),
+                                                    primary_shortcut_label()
+                                                )),
                                         )
                                     }),
                             )

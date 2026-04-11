@@ -2,7 +2,9 @@
 
 A native desktop SSH client. Save your servers, connect in a click, split terminals side by side. No Electron, no browser -- just a Rust binary talking to your boxes over SSH.
 
+![Windows](https://img.shields.io/badge/platform-Windows-lightgrey)
 ![macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
+![Linux](https://img.shields.io/badge/platform-Linux-lightgrey)
 ![Rust](https://img.shields.io/badge/language-Rust-orange)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Status](https://img.shields.io/badge/status-early%20alpha-yellow)
@@ -19,18 +21,20 @@ The terminal itself does VT100 rendering, scrollback, in-terminal search, text s
 
 Other things worth knowing about:
 
-- Your `~/.ssh/config` hosts and `~/.ssh` keys are imported automatically at launch, so your servers should already be there when you first open it.
+- Your user SSH config and key directory are imported automatically at launch, so your servers should already be there when you first open it.
 - Workspace tabs are draggable. You can reorder them.
 - TOFU host key pinning, with a Known Hosts view where you can review or delete pinned keys.
-- A keychain view shows imported key types and lets you add key files from disk.
+- A keys view shows imported key types and lets you add key files from disk.
 - Session logs track your connection history with timestamps and duration across app restarts.
 - One-click reconnect when a session drops.
 - Password-backed hosts can store credentials in the system credential manager.
 - Reopenable workspaces are restored after relaunch, including password sessions that can reconnect through the system credential manager.
 
-## macOS only (for now)
+## Platforms
 
-GPUI's Linux support is in progress upstream. Once that lands, Linux builds should follow. Windows is further out.
+The app is being built as a native Rust desktop client for Windows, macOS, and Linux. Secure credentials use each platform's native credential backend through `keyring`, and config/state storage already uses cross-platform user directories.
+
+Cross-platform parity work is still in progress in the UI and packaging layers, so expect rough edges outside the primary development environment.
 
 ## Not built yet
 
@@ -40,7 +44,7 @@ This is early alpha. The following are on the radar but don't exist yet:
 - Port forwarding
 - Snippets or command templates
 - Drag-reordering split panes
-- Linux and Windows builds
+- Platform-specific packaging polish
 
 ## License
 

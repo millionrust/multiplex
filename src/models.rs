@@ -391,17 +391,6 @@ pub enum SessionLogStatus {
     Error,
 }
 
-impl SessionLogStatus {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Connecting => "Connecting",
-            Self::Connected => "Connected",
-            Self::Disconnected => "Disconnected",
-            Self::Error => "Error",
-        }
-    }
-}
-
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SessionLogEntry {
     pub id: String,
@@ -562,10 +551,6 @@ impl SavedState {
         if let Some(entry) = self.session_logs.iter_mut().find(|e| e.id == log_id) {
             updater(entry);
         }
-    }
-
-    pub fn clear_session_logs(&mut self) {
-        self.session_logs.clear();
     }
 }
 
