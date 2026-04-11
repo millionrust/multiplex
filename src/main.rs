@@ -1,4 +1,5 @@
 mod assets;
+mod credentials;
 mod models;
 mod ssh;
 mod storage;

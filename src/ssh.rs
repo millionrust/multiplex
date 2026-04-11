@@ -10,6 +10,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::runtime::Builder;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
+use crate::credentials;
 use crate::models::{AuthConfig, ConnectRequest};
 use crate::storage::{HostKeyDecision, KnownHostStore};
 use crate::terminal::TerminalSize;
@@ -230,6 +231,19 @@ async fn authenticate(
             .authenticate_password(request.username.clone(), password.clone())
             .await
             .context("Password authentication failed")?,
+        AuthConfig::PasswordRef { credential_id } => {
+            let password = credentials::load_password(credential_id).with_context(|| {
+                format!(
+                    "Unable to load password '{}' from macOS Keychain",
+                    credential_id
+                )
+            })?;
+
+            handle
+                .authenticate_password(request.username.clone(), password)
+                .await
+                .context("Password authentication failed")?
+        }
         AuthConfig::PrivateKey {
             key_path,
             passphrase,

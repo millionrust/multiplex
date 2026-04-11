@@ -31,6 +31,14 @@ pub enum ProfileSource {
     SshConfig,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SplitAxis {
+    #[default]
+    Horizontal,
+    Vertical,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct HostProfile {
     pub id: String,
@@ -43,6 +51,8 @@ pub struct HostProfile {
     pub auth_mode: AuthMode,
     #[serde(default)]
     pub key_path: String,
+    #[serde(default)]
+    pub password_credential_id: Option<String>,
     #[serde(default)]
     pub source: ProfileSource,
 }
@@ -69,6 +79,10 @@ pub struct SavedState {
     pub selected_profile_id: Option<String>,
     #[serde(default)]
     pub session_logs: Vec<SessionLogEntry>,
+    #[serde(default)]
+    pub restored_workspaces: Vec<SavedWorkspace>,
+    #[serde(default)]
+    pub active_workspace_index: Option<usize>,
 }
 
 impl SavedState {
@@ -125,6 +139,7 @@ pub struct DraftProfile {
     pub password: String,
     pub key_path: String,
     pub key_passphrase: String,
+    pub password_credential_id: Option<String>,
     pub auth_mode: AuthMode,
 }
 
@@ -138,6 +153,7 @@ impl DraftProfile {
             password: String::new(),
             key_path: profile.key_path.clone(),
             key_passphrase: String::new(),
+            password_credential_id: profile.password_credential_id.clone(),
             auth_mode: profile.auth_mode,
         }
     }
@@ -191,6 +207,11 @@ impl DraftProfile {
             username: username.to_string(),
             auth_mode: self.auth_mode,
             key_path: key_path.to_string(),
+            password_credential_id: if self.auth_mode == AuthMode::Password {
+                self.password_credential_id.clone()
+            } else {
+                None
+            },
             source: ProfileSource::User,
         })
     }
@@ -201,10 +222,13 @@ impl DraftProfile {
         let auth = match self.auth_mode {
             AuthMode::Password => {
                 let password = self.password.trim().to_string();
-                if password.is_empty() {
+                if !password.is_empty() {
+                    AuthConfig::Password { password }
+                } else if let Some(credential_id) = self.password_credential_id.clone() {
+                    AuthConfig::PasswordRef { credential_id }
+                } else {
                     bail!("Password is required for password authentication");
                 }
-                AuthConfig::Password { password }
             }
             AuthMode::PrivateKey => AuthConfig::PrivateKey {
                 key_path: profile.key_path.clone(),
@@ -236,10 +260,27 @@ pub enum AuthConfig {
     Password {
         password: String,
     },
+    PasswordRef {
+        credential_id: String,
+    },
     PrivateKey {
         key_path: String,
         passphrase: Option<String>,
     },
+}
+
+impl AuthConfig {
+    pub fn to_restorable(&self) -> Option<RestorableAuth> {
+        match self {
+            Self::Password { .. } => None,
+            Self::PasswordRef { credential_id } => Some(RestorableAuth::PasswordKeychain {
+                credential_id: credential_id.clone(),
+            }),
+            Self::PrivateKey { key_path, .. } => Some(RestorableAuth::PrivateKey {
+                key_path: key_path.clone(),
+            }),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -259,6 +300,77 @@ impl ConnectRequest {
 
     pub fn known_host_key(&self) -> String {
         self.address()
+    }
+
+    pub fn to_restorable(&self) -> Option<RestorableConnection> {
+        Some(RestorableConnection {
+            title: self.title.clone(),
+            host: self.host.clone(),
+            port: self.port,
+            username: self.username.clone(),
+            auth: self.auth.to_restorable()?,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RestorableAuth {
+    PasswordKeychain { credential_id: String },
+    PrivateKey { key_path: String },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RestorableConnection {
+    pub title: String,
+    pub host: String,
+    #[serde(default = "default_ssh_port")]
+    pub port: u16,
+    pub username: String,
+    pub auth: RestorableAuth,
+}
+
+impl RestorableConnection {
+    pub fn to_connect_request(&self, session_id: u64) -> ConnectRequest {
+        let auth = match &self.auth {
+            RestorableAuth::PasswordKeychain { credential_id } => AuthConfig::PasswordRef {
+                credential_id: credential_id.clone(),
+            },
+            RestorableAuth::PrivateKey { key_path } => AuthConfig::PrivateKey {
+                key_path: key_path.clone(),
+                passphrase: None,
+            },
+        };
+
+        ConnectRequest {
+            session_id,
+            title: self.title.clone(),
+            host: self.host.clone(),
+            port: self.port,
+            username: self.username.clone(),
+            auth,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SavedWorkspace {
+    pub title: String,
+    #[serde(default)]
+    pub split_axis: SplitAxis,
+    #[serde(default)]
+    pub active_pane_index: usize,
+    #[serde(default)]
+    pub panes: Vec<RestorableConnection>,
+}
+
+impl SavedWorkspace {
+    pub fn normalize(&mut self) {
+        if self.panes.is_empty() {
+            self.active_pane_index = 0;
+        } else {
+            self.active_pane_index = self.active_pane_index.min(self.panes.len() - 1);
+        }
     }
 }
 
@@ -459,7 +571,10 @@ impl SavedState {
 
 #[cfg(test)]
 mod tests {
-    use super::QuickConnect;
+    use super::{
+        AuthConfig, ConnectRequest, QuickConnect, RestorableAuth, RestorableConnection,
+        SavedWorkspace, SplitAxis,
+    };
 
     #[test]
     fn parses_user_at_host() {
@@ -493,5 +608,97 @@ mod tests {
     fn rejects_empty() {
         assert!(QuickConnect::parse("").is_none());
         assert!(QuickConnect::parse("   ").is_none());
+    }
+
+    #[test]
+    fn password_sessions_are_not_restorable() {
+        let request = ConnectRequest {
+            session_id: 1,
+            title: "app".to_string(),
+            host: "example.com".to_string(),
+            port: 22,
+            username: "deploy".to_string(),
+            auth: AuthConfig::Password {
+                password: "secret".to_string(),
+            },
+        };
+
+        assert!(request.to_restorable().is_none());
+    }
+
+    #[test]
+    fn keychain_password_sessions_are_restorable() {
+        let request = ConnectRequest {
+            session_id: 1,
+            title: "app".to_string(),
+            host: "example.com".to_string(),
+            port: 22,
+            username: "deploy".to_string(),
+            auth: AuthConfig::PasswordRef {
+                credential_id: "profile:app".to_string(),
+            },
+        };
+
+        let restored = request.to_restorable().unwrap();
+        let request = restored.to_connect_request(2);
+        match request.auth {
+            AuthConfig::PasswordRef { credential_id } => {
+                assert_eq!(credential_id, "profile:app");
+            }
+            _ => panic!("expected keychain-backed password auth"),
+        }
+    }
+
+    #[test]
+    fn private_key_sessions_round_trip_as_restorable() {
+        let request = ConnectRequest {
+            session_id: 7,
+            title: "prod".to_string(),
+            host: "prod.example.com".to_string(),
+            port: 2222,
+            username: "ubuntu".to_string(),
+            auth: AuthConfig::PrivateKey {
+                key_path: "/tmp/id_ed25519".to_string(),
+                passphrase: Some("ignored".to_string()),
+            },
+        };
+
+        let restored = request.to_restorable().unwrap();
+        assert_eq!(restored.title, "prod");
+        assert_eq!(restored.port, 2222);
+
+        let request = restored.to_connect_request(9);
+        assert_eq!(request.session_id, 9);
+        match request.auth {
+            AuthConfig::PrivateKey {
+                key_path,
+                passphrase,
+            } => {
+                assert_eq!(key_path, "/tmp/id_ed25519");
+                assert_eq!(passphrase, None);
+            }
+            AuthConfig::Password { .. } => panic!("expected private key auth"),
+        }
+    }
+
+    #[test]
+    fn saved_workspace_normalizes_active_pane() {
+        let mut workspace = SavedWorkspace {
+            title: "prod".to_string(),
+            split_axis: SplitAxis::Vertical,
+            active_pane_index: 5,
+            panes: vec![RestorableConnection {
+                title: "prod".to_string(),
+                host: "prod.example.com".to_string(),
+                port: 22,
+                username: "ubuntu".to_string(),
+                auth: RestorableAuth::PasswordKeychain {
+                    credential_id: "profile:prod".to_string(),
+                },
+            }],
+        };
+
+        workspace.normalize();
+        assert_eq!(workspace.active_pane_index, 0);
     }
 }

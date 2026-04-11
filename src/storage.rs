@@ -45,6 +45,13 @@ pub fn save_saved_state(state: &SavedState) -> Result<()> {
     persisted
         .profiles
         .retain(|profile| profile.source == ProfileSource::User);
+    persisted
+        .restored_workspaces
+        .iter_mut()
+        .for_each(|workspace| workspace.normalize());
+    persisted
+        .restored_workspaces
+        .retain(|workspace| !workspace.panes.is_empty());
     if persisted
         .selected_profile_id
         .as_ref()
@@ -52,6 +59,12 @@ pub fn save_saved_state(state: &SavedState) -> Result<()> {
     {
         persisted.selected_profile_id =
             persisted.profiles.first().map(|profile| profile.id.clone());
+    }
+    if persisted
+        .active_workspace_index
+        .is_some_and(|index| index >= persisted.restored_workspaces.len())
+    {
+        persisted.active_workspace_index = None;
     }
 
     let content = serde_json::to_string_pretty(&persisted)?;
@@ -285,6 +298,7 @@ fn flush_ssh_config_block(
                 username,
                 auth_mode,
                 key_path,
+                password_credential_id: None,
                 source: ProfileSource::SshConfig,
             },
         );

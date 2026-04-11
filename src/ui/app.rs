@@ -17,9 +17,11 @@ use gpui_component::{ActiveTheme, Icon, Sizable, StyledExt as _, h_flex, v_flex}
 use rfd::FileDialog;
 use vt100::{MouseProtocolEncoding, MouseProtocolMode};
 
+use crate::credentials;
 use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, DraftProfile, HostProfile, ImportedIdentity,
-    ProfileSource, QuickConnect, SavedState, SessionLogEntry, SessionLogStatus,
+    ProfileSource, QuickConnect, SavedState, SavedWorkspace, SessionLogEntry,
+    SessionLogStatus, SplitAxis,
 };
 use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent, spawn_session};
 use crate::storage::{KnownHostStore, load_local_ssh_identities, save_saved_state};
@@ -79,12 +81,6 @@ impl NavSection {
             Self::Logs => IconName::BookOpen.into(),
         }
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum SplitAxis {
-    Horizontal,
-    Vertical,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -153,6 +149,7 @@ impl DraftInputs {
 
 struct ShellInputs {
     host_search: Entity<InputState>,
+    quick_connect_password: Entity<InputState>,
     terminal_search: Entity<InputState>,
 }
 
@@ -161,6 +158,11 @@ impl ShellInputs {
         Self {
             host_search: cx.new(|cx| {
                 InputState::new(window, cx).placeholder("Find a host or ssh user@hostname...")
+            }),
+            quick_connect_password: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .masked(true)
+                    .placeholder("Password")
             }),
             terminal_search: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Search terminal output")),
@@ -329,9 +331,13 @@ impl TermiRustApp {
             _window_bounds_subscription: None,
         };
 
-        if let Some(profile_id) = app.selected_profile_id.clone() {
-            app.show_editor_panel = true;
-            app.load_profile_into_inputs(&profile_id, window, cx);
+        app.restore_saved_workspaces(window, cx);
+
+        if app.workspaces.is_empty() {
+            if let Some(profile_id) = app.selected_profile_id.clone() {
+                app.show_editor_panel = true;
+                app.load_profile_into_inputs(&profile_id, window, cx);
+            }
         }
 
         let window_bounds_subscription = cx.observe_window_bounds(window, |this, window, cx| {
@@ -369,6 +375,16 @@ impl TermiRustApp {
             password: self.inputs.password.read(cx).value().to_string(),
             key_path: self.inputs.key_path.read(cx).value().to_string(),
             key_passphrase: self.inputs.key_passphrase.read(cx).value().to_string(),
+            password_credential_id: self
+                .selected_profile_id
+                .as_ref()
+                .and_then(|profile_id| {
+                    self.saved
+                        .profiles
+                        .iter()
+                        .find(|item| &item.id == profile_id)
+                        .and_then(|profile| profile.password_credential_id.clone())
+                }),
             auth_mode: self.draft_auth_mode,
         }
     }
@@ -396,6 +412,53 @@ impl TermiRustApp {
 
     fn current_key_path(&self, cx: &App) -> String {
         self.inputs.key_path.read(cx).value().trim().to_string()
+    }
+
+    fn current_quick_connect_password(&self, cx: &App) -> String {
+        self.shell_inputs
+            .quick_connect_password
+            .read(cx)
+            .value()
+            .to_string()
+    }
+
+    fn set_quick_connect_password_input(
+        &mut self,
+        value: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        Self::set_input_value(&self.shell_inputs.quick_connect_password, value, window, cx);
+    }
+
+    fn selected_profile_mut(&mut self) -> Option<&mut HostProfile> {
+        let selected_profile_id = self.selected_profile_id.as_ref()?;
+        self.saved
+            .profiles
+            .iter_mut()
+            .find(|item| &item.id == selected_profile_id)
+    }
+
+    fn persist_password_to_keychain(
+        &mut self,
+        credential_id: &str,
+        password: &str,
+    ) -> anyhow::Result<()> {
+        credentials::store_password(credential_id, password)?;
+        Ok(())
+    }
+
+    fn draft_password_credential_id(&self, draft: &DraftProfile) -> anyhow::Result<String> {
+        if let Some(profile_id) = self.selected_profile_id.as_ref() {
+            return Ok(credentials::profile_password_credential_id(profile_id));
+        }
+
+        let preview = draft.to_profile("preview".to_string())?;
+        Ok(credentials::connection_password_credential_id(
+            &preview.username,
+            &preview.host,
+            preview.port,
+        ))
     }
 
     fn ensure_default_identity_selected(
@@ -655,7 +718,146 @@ impl TermiRustApp {
         self.set_terminal_search_input("", window, cx);
         self.status_message = "Host library ready.".to_string();
         self.error_message.clear();
+        self.persist_runtime_state();
         cx.notify();
+    }
+
+    fn persist_runtime_state(&mut self) {
+        let mut restored_workspaces = Vec::new();
+        let mut active_workspace_index = None;
+
+        for workspace in &self.workspaces {
+            let mut panes = Vec::new();
+            let mut active_pane_index = 0;
+
+            for pane_id in &workspace.pane_ids {
+                let Some(pane) = self.pane(*pane_id) else {
+                    continue;
+                };
+                let Some(restorable) = pane.request.to_restorable() else {
+                    continue;
+                };
+
+                if workspace.active_pane_id == *pane_id {
+                    active_pane_index = panes.len();
+                }
+                panes.push(restorable);
+            }
+
+            if panes.is_empty() {
+                continue;
+            }
+
+            let mut saved_workspace = SavedWorkspace {
+                title: workspace.title.clone(),
+                split_axis: workspace.split_axis,
+                active_pane_index,
+                panes,
+            };
+            saved_workspace.normalize();
+
+            if self.active_workspace_id == Some(workspace.id) {
+                active_workspace_index = Some(restored_workspaces.len());
+            }
+
+            restored_workspaces.push(saved_workspace);
+        }
+
+        self.saved.restored_workspaces = restored_workspaces;
+        self.saved.active_workspace_index = active_workspace_index;
+
+        if let Err(error) = save_saved_state(&self.saved) {
+            self.error_message = error.to_string();
+        }
+    }
+
+    fn restore_saved_workspaces(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mut saved_workspaces = self.saved.restored_workspaces.clone();
+        if saved_workspaces.is_empty() {
+            return;
+        }
+
+        let restore_active_index = self.saved.active_workspace_index;
+        self.saved.restored_workspaces.clear();
+        self.saved.active_workspace_index = None;
+
+        let mut restored_workspace_ids = Vec::new();
+        let mut restored_panes = 0usize;
+
+        for saved_workspace in &mut saved_workspaces {
+            saved_workspace.normalize();
+            if saved_workspace.panes.is_empty() {
+                continue;
+            }
+
+            let workspace_id = self.next_workspace_id();
+            let mut pane_ids = Vec::with_capacity(saved_workspace.panes.len());
+            let mut active_pane_id = None;
+
+            for (pane_index, pane_state) in saved_workspace.panes.iter().enumerate() {
+                let request = pane_state.to_connect_request(self.next_session_id());
+                let pane_id = self.spawn_pane(request, window, cx);
+                if pane_index == saved_workspace.active_pane_index {
+                    active_pane_id = Some(pane_id);
+                }
+                pane_ids.push(pane_id);
+                restored_panes += 1;
+            }
+
+            let Some(active_pane_id) = active_pane_id.or_else(|| pane_ids.first().copied()) else {
+                continue;
+            };
+
+            let title = if saved_workspace.title.trim().is_empty() {
+                self.pane(active_pane_id)
+                    .map(|pane| pane.title.clone())
+                    .unwrap_or_else(|| "Restored session".to_string())
+            } else {
+                saved_workspace.title.trim().to_string()
+            };
+
+            self.workspaces.push(WorkspaceTab {
+                id: workspace_id,
+                title,
+                pane_ids,
+                active_pane_id,
+                unread_events: 0,
+                split_axis: saved_workspace.split_axis,
+                search_visible: false,
+                search_query: String::new(),
+                search_results: Vec::new(),
+                active_search_index: None,
+            });
+            restored_workspace_ids.push(workspace_id);
+        }
+
+        self.active_workspace_id = restore_active_index
+            .and_then(|index| restored_workspace_ids.get(index).copied());
+
+        if let Some(workspace_id) = self.active_workspace_id {
+            if let Some(active_pane_id) = self.workspace(workspace_id).map(|w| w.active_pane_id) {
+                if let Some(pane) = self.pane(active_pane_id) {
+                    pane.terminal_focus.focus(window);
+                }
+            }
+            self.sync_terminal_layout(window, cx);
+        }
+
+        if !restored_workspace_ids.is_empty() {
+            self.status_message = format!(
+                "Restored {} workspace{} and {} pane{}.",
+                restored_workspace_ids.len(),
+                if restored_workspace_ids.len() == 1 {
+                    ""
+                } else {
+                    "s"
+                },
+                restored_panes,
+                if restored_panes == 1 { "" } else { "s" }
+            );
+            self.error_message.clear();
+            self.persist_runtime_state();
+        }
     }
 
     fn active_workspace(&self) -> Option<&WorkspaceTab> {
@@ -718,6 +920,7 @@ impl TermiRustApp {
 
         self.workspaces
             .insert(insert_index.min(self.workspaces.len()), workspace);
+        self.persist_runtime_state();
     }
 
     fn pane(&self, pane_id: u64) -> Option<&SessionPane> {
@@ -766,6 +969,7 @@ impl TermiRustApp {
         }
         self.sync_terminal_layout(window, cx);
         self.error_message.clear();
+        self.persist_runtime_state();
         cx.notify();
     }
 
@@ -871,6 +1075,7 @@ impl TermiRustApp {
                 if let Some(pane) = self.pane(pane_id) {
                     pane.terminal_focus.focus(window);
                 }
+                self.persist_runtime_state();
                 eprintln!("[app] connect_current: done, workspace_id={workspace_id}");
                 cx.notify();
             }
@@ -917,6 +1122,7 @@ impl TermiRustApp {
         if let Some(pane) = self.pane(new_pane_id) {
             pane.terminal_focus.focus(window);
         }
+        self.persist_runtime_state();
         cx.notify();
     }
 
@@ -968,6 +1174,7 @@ impl TermiRustApp {
         if let Some(pane) = self.pane(pane_id) {
             pane.terminal_focus.focus(window);
         }
+        self.persist_runtime_state();
         cx.notify();
     }
 
@@ -1018,6 +1225,7 @@ impl TermiRustApp {
         if let Some(pane) = self.pane(pane_id) {
             pane.terminal_focus.focus(window);
         }
+        self.persist_runtime_state();
         cx.notify();
     }
 
@@ -1068,6 +1276,7 @@ impl TermiRustApp {
         } else {
             self.status_message = "Pane closed.".to_string();
             self.error_message.clear();
+            self.persist_runtime_state();
             cx.notify();
         }
     }
@@ -1097,6 +1306,7 @@ impl TermiRustApp {
             self.status_message = "Workspace closed.".to_string();
         }
         self.error_message.clear();
+        self.persist_runtime_state();
         cx.notify();
     }
 
@@ -1655,6 +1865,7 @@ impl TermiRustApp {
         if let Some(pane) = self.pane(pane_id) {
             pane.terminal_focus.focus(window);
         }
+        self.persist_runtime_state();
         cx.notify();
     }
 

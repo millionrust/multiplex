@@ -25,6 +25,7 @@ Other things worth knowing about:
 - A keychain view shows imported key types and lets you add key files from disk.
 - Session logs track your connection history with timestamps and duration across app restarts.
 - One-click reconnect when a session drops.
+- Reopenable workspaces are restored after relaunch for sessions that can reconnect without storing passwords.
 
 ## macOS only (for now)
 
@@ -37,7 +38,7 @@ This is early alpha. The following are on the radar but don't exist yet:
 - SFTP / file transfers
 - Port forwarding
 - Snippets or command templates
-- Restoring open tabs after relaunch
+- Securely restoring password-auth tabs after relaunch
 - Drag-reordering split panes
 - Linux and Windows builds
 
