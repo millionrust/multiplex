@@ -25,8 +25,8 @@ Other things worth knowing about:
 - A keychain view shows imported key types and lets you add key files from disk.
 - Session logs track your connection history with timestamps and duration across app restarts.
 - One-click reconnect when a session drops.
-- Password-backed hosts can store credentials in macOS Keychain.
-- Reopenable workspaces are restored after relaunch, including password sessions that can reconnect through macOS Keychain.
+- Password-backed hosts can store credentials in the system credential manager.
+- Reopenable workspaces are restored after relaunch, including password sessions that can reconnect through the system credential manager.
 
 ## macOS only (for now)
 

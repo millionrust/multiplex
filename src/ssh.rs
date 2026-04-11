@@ -234,7 +234,7 @@ async fn authenticate(
         AuthConfig::PasswordRef { credential_id } => {
             let password = credentials::load_password(credential_id).with_context(|| {
                 format!(
-                    "Unable to load password '{}' from macOS Keychain",
+                    "Unable to load password '{}' from the system credential store",
                     credential_id
                 )
             })?;

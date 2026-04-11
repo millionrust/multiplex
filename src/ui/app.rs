@@ -20,8 +20,8 @@ use vt100::{MouseProtocolEncoding, MouseProtocolMode};
 use crate::credentials;
 use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, DraftProfile, HostProfile, ImportedIdentity,
-    ProfileSource, QuickConnect, SavedState, SavedWorkspace, SessionLogEntry,
-    SessionLogStatus, SplitAxis,
+    ProfileSource, QuickConnect, SavedState, SavedWorkspace, SessionLogEntry, SessionLogStatus,
+    SplitAxis,
 };
 use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent, spawn_session};
 use crate::storage::{KnownHostStore, load_local_ssh_identities, save_saved_state};
@@ -375,16 +375,13 @@ impl TermiRustApp {
             password: self.inputs.password.read(cx).value().to_string(),
             key_path: self.inputs.key_path.read(cx).value().to_string(),
             key_passphrase: self.inputs.key_passphrase.read(cx).value().to_string(),
-            password_credential_id: self
-                .selected_profile_id
-                .as_ref()
-                .and_then(|profile_id| {
-                    self.saved
-                        .profiles
-                        .iter()
-                        .find(|item| &item.id == profile_id)
-                        .and_then(|profile| profile.password_credential_id.clone())
-                }),
+            password_credential_id: self.selected_profile_id.as_ref().and_then(|profile_id| {
+                self.saved
+                    .profiles
+                    .iter()
+                    .find(|item| &item.id == profile_id)
+                    .and_then(|profile| profile.password_credential_id.clone())
+            }),
             auth_mode: self.draft_auth_mode,
         }
     }
@@ -532,7 +529,7 @@ impl TermiRustApp {
             && profile.password_credential_id.is_some()
         {
             format!(
-                "Loaded host '{}'. Password is available from macOS Keychain.",
+                "Loaded host '{}'. Password is available from the system credential store.",
                 profile.display_name()
             )
         } else {
@@ -591,10 +588,8 @@ impl TermiRustApp {
             .selected_profile_id
             .clone()
             .unwrap_or_else(DraftProfile::profile_id);
-        let existing_password_credential_id = self
-            .selected_profile_id
-            .as_ref()
-            .and_then(|profile_id| {
+        let existing_password_credential_id =
+            self.selected_profile_id.as_ref().and_then(|profile_id| {
                 self.saved
                     .profiles
                     .iter()
@@ -646,12 +641,12 @@ impl TermiRustApp {
                 {
                     if profile_source == ProfileSource::SshConfig {
                         format!(
-                            "Saved local copy of imported host '{}'. Password stored in macOS Keychain.",
+                            "Saved local copy of imported host '{}'. Password stored in the system credential store.",
                             profile.display_name()
                         )
                     } else {
                         format!(
-                            "Saved '{}'. Password stored in macOS Keychain.",
+                            "Saved '{}'. Password stored in the system credential store.",
                             profile.display_name()
                         )
                     }
@@ -899,8 +894,8 @@ impl TermiRustApp {
             restored_workspace_ids.push(workspace_id);
         }
 
-        self.active_workspace_id = restore_active_index
-            .and_then(|index| restored_workspace_ids.get(index).copied());
+        self.active_workspace_id =
+            restore_active_index.and_then(|index| restored_workspace_ids.get(index).copied());
 
         if let Some(workspace_id) = self.active_workspace_id {
             if let Some(active_pane_id) = self.workspace(workspace_id).map(|w| w.active_pane_id) {
@@ -1238,7 +1233,7 @@ impl TermiRustApp {
             }
         } else {
             self.error_message =
-                "Quick connect needs a password, a stored Keychain password, or an SSH key in ~/.ssh."
+                "Quick connect needs a password, a stored system password, or an SSH key in ~/.ssh."
                     .to_string();
             cx.notify();
             return;
@@ -2959,7 +2954,7 @@ impl TermiRustApp {
                     .text_size(px(11.))
                     .text_color(theme::text_muted())
                     .child(
-                        "Passwords are stored in macOS Keychain when you save or reconnect with them. Key paths are stored only for reconnects.",
+                        "Passwords are stored in the system credential store when you save or reconnect with them. Key paths are stored only for reconnects.",
                     ),
             )
             .child(self.form_field("Label", Input::new(&self.inputs.label)))
@@ -3054,7 +3049,7 @@ impl TermiRustApp {
                         div()
                             .text_size(px(10.))
                             .text_color(theme::success())
-                            .child("A saved password is already available from macOS Keychain."),
+                            .child("A saved password is already available from the system credential store."),
                     )
                 }))
             })
@@ -3216,15 +3211,18 @@ impl TermiRustApp {
                             })),
                     ),
             )
-            .when(!quick_connect_password.trim().is_empty() && !has_quick_connect, |this| {
-                this.child(
-                    div()
-                        .px_4()
-                        .text_size(px(10.5))
-                        .text_color(theme::text_muted())
-                        .child("Quick-connect password stays local until you connect."),
-                )
-            })
+            .when(
+                !quick_connect_password.trim().is_empty() && !has_quick_connect,
+                |this| {
+                    this.child(
+                        div()
+                            .px_4()
+                            .text_size(px(10.5))
+                            .text_color(theme::text_muted())
+                            .child("Quick-connect password stays local until you connect."),
+                    )
+                },
+            )
             .child(
                 v_flex()
                     .flex_1()
