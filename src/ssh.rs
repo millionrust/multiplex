@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use russh::ChannelMsg;
 use russh::client;
 use russh::keys::PublicKey;
 use russh::keys::key::PrivateKeyWithHashAlg;
@@ -7,11 +8,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::thread;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::Builder;
+use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::credentials;
-use crate::models::{AuthConfig, ConnectRequest};
+use crate::models::{AuthConfig, ConnectRequest, LocalPortForward};
 use crate::storage::{HostKeyDecision, KnownHostStore};
 use crate::terminal::TerminalSize;
 
@@ -156,6 +159,11 @@ async fn run_session(
         .await
         .context("Unable to start an interactive shell")?;
 
+    let shared_handle = Arc::new(Mutex::new(handle));
+    if let Some(forward) = request.local_forward.clone() {
+        start_local_forwarder(shared_handle.clone(), session_id, forward).await?;
+    }
+
     eprintln!("[ssh][{session_id}] shell started, sending Connected event");
     let _ = event_tx.send(SshEvent::Connected {
         session_id,
@@ -283,6 +291,116 @@ async fn authenticate(
 
     if !auth_result.success() {
         bail!("Authentication was rejected by the server");
+    }
+
+    Ok(())
+}
+
+async fn start_local_forwarder(
+    handle: Arc<Mutex<client::Handle<SessionHandler>>>,
+    session_id: u64,
+    forward: LocalPortForward,
+) -> Result<()> {
+    let bind_addr = format!("{}:{}", forward.local_host, forward.local_port);
+    let listener = TcpListener::bind(&bind_addr)
+        .await
+        .with_context(|| format!("Unable to bind local forward on {bind_addr}"))?;
+
+    eprintln!(
+        "[ssh][{session_id}] local forward listening on {} -> {}:{}",
+        bind_addr, forward.remote_host, forward.remote_port
+    );
+
+    tokio::spawn(async move {
+        loop {
+            match listener.accept().await {
+                Ok((stream, originator_addr)) => {
+                    let handle = handle.clone();
+                    let forward = forward.clone();
+                    tokio::spawn(async move {
+                        if let Err(error) = proxy_local_forward_connection(
+                            handle,
+                            stream,
+                            originator_addr,
+                            &forward,
+                        )
+                        .await
+                        {
+                            eprintln!(
+                                "[ssh][{session_id}] local forward {} failed: {error:#}",
+                                forward.display_name()
+                            );
+                        }
+                    });
+                }
+                Err(error) => {
+                    eprintln!("[ssh][{session_id}] local forward accept loop stopped: {error:#}");
+                    break;
+                }
+            }
+        }
+    });
+
+    Ok(())
+}
+
+async fn proxy_local_forward_connection(
+    handle: Arc<Mutex<client::Handle<SessionHandler>>>,
+    mut stream: TcpStream,
+    originator_addr: std::net::SocketAddr,
+    forward: &LocalPortForward,
+) -> Result<()> {
+    let mut channel = {
+        let handle = handle.lock().await;
+        handle
+            .channel_open_direct_tcpip(
+                forward.remote_host.clone(),
+                forward.remote_port.into(),
+                originator_addr.ip().to_string(),
+                originator_addr.port().into(),
+            )
+            .await
+            .with_context(|| format!("Unable to open remote forward {}", forward.display_name()))?
+    };
+
+    let mut socket_closed = false;
+    let mut buffer = vec![0_u8; 65536];
+    loop {
+        tokio::select! {
+            read = stream.read(&mut buffer), if !socket_closed => {
+                match read {
+                    Ok(0) => {
+                        socket_closed = true;
+                        channel.eof().await.context("Unable to signal EOF to forwarded channel")?;
+                    }
+                    Ok(bytes_read) => {
+                        channel
+                            .data(&buffer[..bytes_read])
+                            .await
+                            .context("Unable to write to forwarded SSH channel")?;
+                    }
+                    Err(error) => return Err(error).context("Unable to read from local forwarded socket"),
+                }
+            }
+            maybe_msg = channel.wait() => {
+                match maybe_msg {
+                    Some(ChannelMsg::Data { data }) => {
+                        stream
+                            .write_all(&data)
+                            .await
+                            .context("Unable to write forwarded data to local socket")?;
+                    }
+                    Some(ChannelMsg::Eof) | None => {
+                        if !socket_closed {
+                            let _ = channel.eof().await;
+                        }
+                        break;
+                    }
+                    Some(ChannelMsg::WindowAdjusted { .. }) => {}
+                    Some(_) => {}
+                }
+            }
+        }
     }
 
     Ok(())

@@ -6,6 +6,10 @@ fn default_ssh_port() -> u16 {
     22
 }
 
+fn default_local_forward_host() -> String {
+    "127.0.0.1".to_string()
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthMode {
@@ -64,6 +68,8 @@ pub struct HostProfile {
     #[serde(default)]
     pub identity_id: Option<String>,
     #[serde(default)]
+    pub local_forward: Option<LocalPortForward>,
+    #[serde(default)]
     pub password_credential_id: Option<String>,
     #[serde(default)]
     pub source: ProfileSource,
@@ -91,6 +97,24 @@ pub struct SavedIdentity {
     pub kind: String,
     #[serde(default)]
     pub source: IdentitySource,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalPortForward {
+    #[serde(default = "default_local_forward_host")]
+    pub local_host: String,
+    pub local_port: u16,
+    pub remote_host: String,
+    pub remote_port: u16,
+}
+
+impl LocalPortForward {
+    pub fn display_name(&self) -> String {
+        format!(
+            "{}:{} -> {}:{}",
+            self.local_host, self.local_port, self.remote_host, self.remote_port
+        )
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -260,6 +284,9 @@ pub struct DraftProfile {
     pub password: String,
     pub key_path: String,
     pub identity_id: Option<String>,
+    pub forward_local_port: String,
+    pub forward_remote_host: String,
+    pub forward_remote_port: String,
     pub key_passphrase: String,
     pub password_credential_id: Option<String>,
     pub auth_mode: AuthMode,
@@ -276,6 +303,21 @@ impl DraftProfile {
             password: String::new(),
             key_path: profile.key_path.clone(),
             identity_id: profile.identity_id.clone(),
+            forward_local_port: profile
+                .local_forward
+                .as_ref()
+                .map(|forward| forward.local_port.to_string())
+                .unwrap_or_default(),
+            forward_remote_host: profile
+                .local_forward
+                .as_ref()
+                .map(|forward| forward.remote_host.clone())
+                .unwrap_or_default(),
+            forward_remote_port: profile
+                .local_forward
+                .as_ref()
+                .map(|forward| forward.remote_port.to_string())
+                .unwrap_or_default(),
             key_passphrase: String::new(),
             password_credential_id: profile.password_credential_id.clone(),
             auth_mode: profile.auth_mode,
@@ -308,6 +350,31 @@ impl DraftProfile {
             .with_context(|| format!("Invalid SSH port '{port}'"))
     }
 
+    fn parse_local_forward(&self) -> Result<Option<LocalPortForward>> {
+        let local_port = self.forward_local_port.trim();
+        let remote_host = self.forward_remote_host.trim();
+        let remote_port = self.forward_remote_port.trim();
+
+        if local_port.is_empty() && remote_host.is_empty() && remote_port.is_empty() {
+            return Ok(None);
+        }
+
+        if local_port.is_empty() || remote_host.is_empty() || remote_port.is_empty() {
+            bail!("Local forwarding requires local port, remote host, and remote port");
+        }
+
+        Ok(Some(LocalPortForward {
+            local_host: default_local_forward_host(),
+            local_port: local_port
+                .parse::<u16>()
+                .with_context(|| format!("Invalid local forward port '{local_port}'"))?,
+            remote_host: remote_host.to_string(),
+            remote_port: remote_port
+                .parse::<u16>()
+                .with_context(|| format!("Invalid remote forward port '{remote_port}'"))?,
+        }))
+    }
+
     pub fn to_profile(&self, id: String) -> Result<HostProfile> {
         let host = self.host.trim();
         let username = self.username.trim();
@@ -337,6 +404,7 @@ impl DraftProfile {
             } else {
                 None
             },
+            local_forward: self.parse_local_forward()?,
             password_credential_id: if self.auth_mode == AuthMode::Password {
                 self.password_credential_id.clone()
             } else {
@@ -373,6 +441,7 @@ impl DraftProfile {
             port: profile.port,
             username: profile.username,
             auth,
+            local_forward: profile.local_forward,
         })
     }
 }
@@ -421,6 +490,7 @@ pub struct ConnectRequest {
     pub port: u16,
     pub username: String,
     pub auth: AuthConfig,
+    pub local_forward: Option<LocalPortForward>,
 }
 
 impl ConnectRequest {
@@ -439,6 +509,7 @@ impl ConnectRequest {
             port: self.port,
             username: self.username.clone(),
             auth: self.auth.to_restorable()?,
+            local_forward: self.local_forward.clone(),
         })
     }
 }
@@ -458,6 +529,8 @@ pub struct RestorableConnection {
     pub port: u16,
     pub username: String,
     pub auth: RestorableAuth,
+    #[serde(default)]
+    pub local_forward: Option<LocalPortForward>,
 }
 
 impl RestorableConnection {
@@ -479,6 +552,7 @@ impl RestorableConnection {
             port: self.port,
             username: self.username.clone(),
             auth,
+            local_forward: self.local_forward.clone(),
         }
     }
 }
@@ -662,6 +736,7 @@ impl QuickConnect {
             port: self.port,
             username: self.username.clone(),
             auth,
+            local_forward: None,
         }
     }
 }
@@ -688,8 +763,8 @@ impl SavedState {
 mod tests {
     use super::{
         AuthConfig, AuthMode, ConnectRequest, DraftProfile, IdentitySource, ImportedIdentity,
-        QuickConnect, RestorableAuth, RestorableConnection, SavedIdentity, SavedSnippet,
-        SavedState, SavedWorkspace, SplitAxis, identity_id_for_path,
+        LocalPortForward, QuickConnect, RestorableAuth, RestorableConnection, SavedIdentity,
+        SavedSnippet, SavedState, SavedWorkspace, SplitAxis, identity_id_for_path,
     };
 
     #[test]
@@ -737,6 +812,7 @@ mod tests {
             auth: AuthConfig::Password {
                 password: "secret".to_string(),
             },
+            local_forward: None,
         };
 
         assert!(request.to_restorable().is_none());
@@ -753,6 +829,7 @@ mod tests {
             auth: AuthConfig::PasswordRef {
                 credential_id: "profile:app".to_string(),
             },
+            local_forward: None,
         };
 
         let restored = request.to_restorable().unwrap();
@@ -777,6 +854,12 @@ mod tests {
                 key_path: "/tmp/id_ed25519".to_string(),
                 passphrase: Some("ignored".to_string()),
             },
+            local_forward: Some(LocalPortForward {
+                local_host: "127.0.0.1".to_string(),
+                local_port: 15432,
+                remote_host: "127.0.0.1".to_string(),
+                remote_port: 5432,
+            }),
         };
 
         let restored = request.to_restorable().unwrap();
@@ -785,6 +868,13 @@ mod tests {
 
         let request = restored.to_connect_request(9);
         assert_eq!(request.session_id, 9);
+        assert_eq!(
+            request
+                .local_forward
+                .as_ref()
+                .map(LocalPortForward::display_name),
+            Some("127.0.0.1:15432 -> 127.0.0.1:5432".to_string())
+        );
         match request.auth {
             AuthConfig::PrivateKey {
                 key_path,
@@ -813,6 +903,7 @@ mod tests {
                 auth: RestorableAuth::PasswordKeychain {
                     credential_id: "profile:prod".to_string(),
                 },
+                local_forward: None,
             }],
         };
 
@@ -870,6 +961,9 @@ mod tests {
             password: String::new(),
             key_path: "/tmp/id_ed25519".to_string(),
             identity_id: Some("identity-123".to_string()),
+            forward_local_port: String::new(),
+            forward_remote_host: String::new(),
+            forward_remote_port: String::new(),
             key_passphrase: String::new(),
             password_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
@@ -912,5 +1006,34 @@ mod tests {
 
         state.remove_snippet("snippet-1");
         assert!(state.snippets.is_empty());
+    }
+
+    #[test]
+    fn draft_profile_parses_local_forward() {
+        let draft = DraftProfile {
+            label: "db".to_string(),
+            group: "Data".to_string(),
+            host: "db.example.com".to_string(),
+            port: "22".to_string(),
+            username: "postgres".to_string(),
+            password: String::new(),
+            key_path: "/tmp/id_ed25519".to_string(),
+            identity_id: Some("identity-123".to_string()),
+            forward_local_port: "15432".to_string(),
+            forward_remote_host: "127.0.0.1".to_string(),
+            forward_remote_port: "5432".to_string(),
+            key_passphrase: String::new(),
+            password_credential_id: None,
+            auth_mode: AuthMode::PrivateKey,
+        };
+
+        let profile = draft.to_profile("profile-2".to_string()).unwrap();
+        assert_eq!(
+            profile
+                .local_forward
+                .as_ref()
+                .map(LocalPortForward::display_name),
+            Some("127.0.0.1:15432 -> 127.0.0.1:5432".to_string())
+        );
     }
 }

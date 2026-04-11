@@ -317,6 +317,7 @@ fn flush_ssh_config_block(
                 auth_mode,
                 key_path,
                 identity_id: None,
+                local_forward: None,
                 password_credential_id: None,
                 source: ProfileSource::SshConfig,
             },

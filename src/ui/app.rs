@@ -161,6 +161,9 @@ struct DraftInputs {
     username: Entity<InputState>,
     password: Entity<InputState>,
     key_path: Entity<InputState>,
+    forward_local_port: Entity<InputState>,
+    forward_remote_host: Entity<InputState>,
+    forward_remote_port: Entity<InputState>,
     key_passphrase: Entity<InputState>,
 }
 
@@ -179,6 +182,9 @@ impl DraftInputs {
             }),
             key_path: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Path to private key file")),
+            forward_local_port: cx.new(|cx| InputState::new(window, cx).placeholder("15432")),
+            forward_remote_host: cx.new(|cx| InputState::new(window, cx).placeholder("127.0.0.1")),
+            forward_remote_port: cx.new(|cx| InputState::new(window, cx).placeholder("5432")),
             key_passphrase: cx.new(|cx| {
                 InputState::new(window, cx)
                     .masked(true)
@@ -453,6 +459,9 @@ impl TermiRustApp {
             password: self.inputs.password.read(cx).value().to_string(),
             key_path,
             identity_id,
+            forward_local_port: self.inputs.forward_local_port.read(cx).value().to_string(),
+            forward_remote_host: self.inputs.forward_remote_host.read(cx).value().to_string(),
+            forward_remote_port: self.inputs.forward_remote_port.read(cx).value().to_string(),
             key_passphrase: self.inputs.key_passphrase.read(cx).value().to_string(),
             password_credential_id: self.selected_profile_id.as_ref().and_then(|profile_id| {
                 self.saved
@@ -614,6 +623,24 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.username, draft.username, window, cx);
         Self::set_input_value(&self.inputs.password, "", window, cx);
         Self::set_input_value(&self.inputs.key_path, draft.key_path, window, cx);
+        Self::set_input_value(
+            &self.inputs.forward_local_port,
+            draft.forward_local_port,
+            window,
+            cx,
+        );
+        Self::set_input_value(
+            &self.inputs.forward_remote_host,
+            draft.forward_remote_host,
+            window,
+            cx,
+        );
+        Self::set_input_value(
+            &self.inputs.forward_remote_port,
+            draft.forward_remote_port,
+            window,
+            cx,
+        );
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
         self.draft_identity_id = draft.identity_id.or_else(|| {
             self.identity_for_key_path(profile.key_path.as_str())
@@ -647,6 +674,9 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.username, "", window, cx);
         Self::set_input_value(&self.inputs.password, "", window, cx);
         Self::set_input_value(&self.inputs.key_path, "", window, cx);
+        Self::set_input_value(&self.inputs.forward_local_port, "", window, cx);
+        Self::set_input_value(&self.inputs.forward_remote_host, "", window, cx);
+        Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
         self.draft_identity_id = None;
         self.selected_profile_id = None;
@@ -2949,6 +2979,10 @@ impl TermiRustApp {
             .as_deref()
             .and_then(|identity_id| self.identity_by_id(identity_id))
             .map(|identity| identity.label.clone());
+        let forward_label = profile
+            .local_forward
+            .as_ref()
+            .map(|forward| format!("Forward {}", forward.local_port));
         let protocols = if profile.auth_mode == AuthMode::PrivateKey {
             "key auth"
         } else {
@@ -3037,6 +3071,13 @@ impl TermiRustApp {
                                     identity_label,
                                     theme::library_bg(),
                                     theme::success(),
+                                ))
+                            })
+                            .when_some(forward_label.clone(), |this, forward_label| {
+                                this.child(self.status_badge(
+                                    forward_label,
+                                    theme::library_bg(),
+                                    theme::warning(),
                                 ))
                             }),
                     )
@@ -3330,6 +3371,45 @@ impl TermiRustApp {
                     .child(
                         self.form_field("Username", Input::new(&self.inputs.username))
                             .flex_1(),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child("Local Forward"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.))
+                            .text_color(theme::text_muted())
+                            .child("Optional local tunnel bound on 127.0.0.1."),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_3()
+                            .child(
+                                self.form_field("Local Port", Input::new(&self.inputs.forward_local_port))
+                                    .flex_1(),
+                            )
+                            .child(
+                                self.form_field(
+                                    "Remote Host",
+                                    Input::new(&self.inputs.forward_remote_host),
+                                )
+                                .flex_1(),
+                            )
+                            .child(
+                                self.form_field(
+                                    "Remote Port",
+                                    Input::new(&self.inputs.forward_remote_port),
+                                )
+                                .flex_1(),
+                            ),
                     ),
             )
             .child(
