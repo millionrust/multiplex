@@ -43,6 +43,8 @@ pub enum SplitAxis {
 pub struct HostProfile {
     pub id: String,
     pub label: String,
+    #[serde(default)]
+    pub group: String,
     pub host: String,
     #[serde(default = "default_ssh_port")]
     pub port: u16,
@@ -133,6 +135,7 @@ pub struct ImportedIdentity {
 #[derive(Clone, Debug, Default)]
 pub struct DraftProfile {
     pub label: String,
+    pub group: String,
     pub host: String,
     pub port: String,
     pub username: String,
@@ -147,6 +150,7 @@ impl DraftProfile {
     pub fn from_profile(profile: &HostProfile) -> Self {
         Self {
             label: profile.label.clone(),
+            group: profile.group.clone(),
             host: profile.host.clone(),
             port: profile.port.to_string(),
             username: profile.username.clone(),
@@ -202,6 +206,7 @@ impl DraftProfile {
         Ok(HostProfile {
             id,
             label: self.label.trim().to_string(),
+            group: self.group.trim().to_string(),
             host: host.to_string(),
             port: self.parse_port()?,
             username: username.to_string(),

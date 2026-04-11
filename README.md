@@ -23,6 +23,7 @@ Other things worth knowing about:
 
 - Your user SSH config and key directory are imported automatically at launch, so your servers should already be there when you first open it.
 - Workspace tabs are draggable. You can reorder them.
+- Hosts can be organized into groups in the library.
 - TOFU host key pinning, with a Known Hosts view where you can review or delete pinned keys.
 - A keys view shows imported key types and lets you add key files from disk.
 - Session logs track your connection history with timestamps and duration across app restarts.
@@ -35,6 +36,8 @@ Other things worth knowing about:
 The app is being built as a native Rust desktop client for Windows, macOS, and Linux. Secure credentials use each platform's native credential backend through `keyring`, and config/state storage already uses cross-platform user directories.
 
 Cross-platform parity work is still in progress in the UI and packaging layers, so expect rough edges outside the primary development environment.
+
+The tracked parity target is documented in [docs/termius-parity.md](docs/termius-parity.md).
 
 ## Not built yet
 

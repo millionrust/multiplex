@@ -293,6 +293,7 @@ fn flush_ssh_config_block(
             HostProfile {
                 id: imported_host_id(alias),
                 label: alias.trim().to_string(),
+                group: String::new(),
                 host,
                 port: block.port.unwrap_or(22),
                 username,

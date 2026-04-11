@@ -150,6 +150,7 @@ struct PaneLayout {
 
 struct DraftInputs {
     label: Entity<InputState>,
+    group: Entity<InputState>,
     host: Entity<InputState>,
     port: Entity<InputState>,
     username: Entity<InputState>,
@@ -162,6 +163,7 @@ impl DraftInputs {
     fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
         Self {
             label: cx.new(|cx| InputState::new(window, cx).placeholder("New host label")),
+            group: cx.new(|cx| InputState::new(window, cx).placeholder("Production / Staging")),
             host: cx.new(|cx| InputState::new(window, cx).placeholder("user@hostname or IP")),
             port: cx.new(|cx| InputState::new(window, cx).default_value("22")),
             username: cx.new(|cx| InputState::new(window, cx).placeholder("root")),
@@ -404,6 +406,7 @@ impl TermiRustApp {
     fn current_profile_draft(&self, cx: &App) -> DraftProfile {
         DraftProfile {
             label: self.inputs.label.read(cx).value().to_string(),
+            group: self.inputs.group.read(cx).value().to_string(),
             host: self.inputs.host.read(cx).value().to_string(),
             port: self.inputs.port.read(cx).value().to_string(),
             username: self.inputs.username.read(cx).value().to_string(),
@@ -548,6 +551,7 @@ impl TermiRustApp {
 
         let draft = DraftProfile::from_profile(profile);
         Self::set_input_value(&self.inputs.label, draft.label, window, cx);
+        Self::set_input_value(&self.inputs.group, draft.group, window, cx);
         Self::set_input_value(&self.inputs.host, draft.host, window, cx);
         Self::set_input_value(&self.inputs.port, draft.port, window, cx);
         Self::set_input_value(&self.inputs.username, draft.username, window, cx);
@@ -576,6 +580,7 @@ impl TermiRustApp {
 
     fn clear_profile_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         Self::set_input_value(&self.inputs.label, "", window, cx);
+        Self::set_input_value(&self.inputs.group, "", window, cx);
         Self::set_input_value(&self.inputs.host, "", window, cx);
         Self::set_input_value(&self.inputs.port, "22", window, cx);
         Self::set_input_value(&self.inputs.username, "", window, cx);
@@ -775,6 +780,7 @@ impl TermiRustApp {
             .filter(|profile| {
                 let haystacks = [
                     profile.display_name(),
+                    profile.group.clone(),
                     profile.host.clone(),
                     profile.username.clone(),
                     profile.endpoint(),
@@ -784,6 +790,43 @@ impl TermiRustApp {
                     .any(|value| value.to_ascii_lowercase().contains(&query))
             })
             .collect()
+    }
+
+    fn profile_group_name(profile: &HostProfile) -> String {
+        let group = profile.group.trim();
+        if !group.is_empty() {
+            group.to_string()
+        } else if profile.source == ProfileSource::SshConfig {
+            "Imported".to_string()
+        } else {
+            "Ungrouped".to_string()
+        }
+    }
+
+    fn group_sort_key(group: &str) -> (u8, String) {
+        match group {
+            "Imported" => (1, group.to_ascii_lowercase()),
+            "Ungrouped" => (2, group.to_ascii_lowercase()),
+            _ => (0, group.to_ascii_lowercase()),
+        }
+    }
+
+    fn grouped_profiles(&self, cx: &App) -> Vec<(String, Vec<HostProfile>)> {
+        let mut groups: Vec<(String, Vec<HostProfile>)> = Vec::new();
+
+        for profile in self.filtered_profiles(cx) {
+            let group_name = Self::profile_group_name(&profile);
+            if let Some((_, items)) = groups.iter_mut().find(|(name, _)| *name == group_name) {
+                items.push(profile);
+            } else {
+                groups.push((group_name, vec![profile]));
+            }
+        }
+
+        groups.sort_by(|(left, _), (right, _)| {
+            Self::group_sort_key(left).cmp(&Self::group_sort_key(right))
+        });
+        groups
     }
 
     fn open_editor_for_new_host(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -2694,6 +2737,7 @@ impl TermiRustApp {
         let profile_id = profile.id.clone();
         let connect_profile_id = profile.id.clone();
         let accent = theme::host_chip_color(&profile.display_name());
+        let group_label = profile.group.trim().to_string();
         let protocols = if profile.auth_mode == AuthMode::PrivateKey {
             "key auth"
         } else {
@@ -2720,7 +2764,7 @@ impl TermiRustApp {
                 theme::border()
             })
             .cursor_pointer()
-            .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.5)).shadow_sm())
+            .hover(|style| style.bg(theme::card_hover_subtle()).shadow_sm())
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.load_profile_into_inputs(&profile_id, window, cx);
             }))
@@ -2730,7 +2774,7 @@ impl TermiRustApp {
                     .rounded(px(14.))
                     .bg(accent)
                     .shadow(vec![gpui::BoxShadow {
-                        color: theme::with_alpha(accent, 0.3),
+                        color: theme::avatar_glow(accent),
                         offset: point(px(0.), px(2.)),
                         blur_radius: px(6.),
                         spread_radius: px(0.),
@@ -2769,6 +2813,13 @@ impl TermiRustApp {
                                     theme::library_bg(),
                                     theme::accent(),
                                 ))
+                            })
+                            .when(!group_label.is_empty(), |this| {
+                                this.child(self.status_badge(
+                                    group_label.clone(),
+                                    theme::library_bg(),
+                                    theme::slate(),
+                                ))
                             }),
                     )
                     .child(
@@ -2793,7 +2844,7 @@ impl TermiRustApp {
             .child(
                 Button::new(("connect-host-card", card_ix))
                     .small()
-                    .custom(Self::action_button_style(theme::accent_soft(), cx))
+                    .custom(Self::action_button_style(theme::ActionTone::AccentSoft, cx))
                     .label("Connect")
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.show_editor_panel = false;
@@ -2804,30 +2855,62 @@ impl TermiRustApp {
     }
 
     fn render_host_grid(&self, cx: &Context<Self>) -> Div {
-        let profiles = self
-            .filtered_profiles(cx)
-            .into_iter()
-            .enumerate()
-            .collect::<Vec<_>>();
+        let groups = self.grouped_profiles(cx);
 
-        div()
-            .w_full()
-            .flex()
-            .flex_wrap()
-            .gap_3()
-            .children(profiles.iter().map(|(card_ix, profile)| {
-                self.host_card(
-                    *card_ix,
-                    profile,
-                    self.selected_profile_id.as_deref() == Some(profile.id.as_str()),
-                    cx,
+        let mut sections = Vec::new();
+        let mut card_ix = 0usize;
+        for (group_name, profiles) in &groups {
+            let header = h_flex()
+                .justify_between()
+                .items_center()
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .font_semibold()
+                        .text_color(theme::text_main())
+                        .child(group_name.clone()),
                 )
-                .min_w(px(HOST_CARD_WIDTH))
-                .max_w(px(HOST_CARD_WIDTH * 1.3))
-                .flex_1()
-                .into_any_element()
-            }))
-            .when(profiles.is_empty(), |this| {
+                .child(
+                    div()
+                        .text_size(px(10.))
+                        .text_color(theme::text_muted())
+                        .child(format!(
+                            "{} {}",
+                            profiles.len(),
+                            if profiles.len() == 1 { "host" } else { "hosts" }
+                        )),
+                );
+
+            let cards = div().w_full().flex().flex_wrap().gap_3().children(
+                profiles.iter().enumerate().map(|(group_ix, profile)| {
+                    self.host_card(
+                        card_ix + group_ix,
+                        profile,
+                        self.selected_profile_id.as_deref() == Some(profile.id.as_str()),
+                        cx,
+                    )
+                    .min_w(px(HOST_CARD_WIDTH))
+                    .max_w(px(HOST_CARD_WIDTH * 1.3))
+                    .flex_1()
+                    .into_any_element()
+                }),
+            );
+
+            sections.push(
+                v_flex()
+                    .gap_3()
+                    .child(header)
+                    .child(cards)
+                    .into_any_element(),
+            );
+            card_ix += profiles.len();
+        }
+
+        v_flex()
+            .w_full()
+            .gap_5()
+            .children(sections)
+            .when(groups.is_empty(), |this| {
                 this.child(
                     v_flex()
                         .items_center()
@@ -2999,6 +3082,7 @@ impl TermiRustApp {
                     ),
             )
             .child(self.form_field("Label", Input::new(&self.inputs.label)))
+            .child(self.form_field("Group", Input::new(&self.inputs.group)))
             .child(self.form_field("Host", Input::new(&self.inputs.host)))
             .child(
                 h_flex()
@@ -3144,7 +3228,7 @@ impl TermiRustApp {
                     .child(
                         Button::new("editor-save")
                             .small()
-                            .custom(Self::action_button_style(theme::accent_soft(), cx))
+                            .custom(Self::action_button_style(theme::ActionTone::AccentSoft, cx))
                             .icon(IconName::Check)
                             .label("Save")
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -3154,7 +3238,7 @@ impl TermiRustApp {
                     .child(
                         Button::new("editor-connect")
                             .small()
-                            .custom(Self::action_button_style(theme::accent(), cx))
+                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                             .icon(IconName::ArrowRight)
                             .label("Connect")
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -3214,7 +3298,7 @@ impl TermiRustApp {
                         .child(
                             Button::new("library-quick-connect")
                                 .small()
-                                .custom(Self::action_button_style(theme::success(), cx))
+                                .custom(Self::action_button_style(theme::ActionTone::Success, cx))
                                 .label(label)
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     if let Some(qc) = this.try_quick_connect_from_search(cx) {
@@ -3236,7 +3320,7 @@ impl TermiRustApp {
                     .child(
                         Button::new("library-new-host")
                             .small()
-                            .custom(Self::action_button_style(theme::hover(), cx))
+                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                             .label("New Host")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.open_editor_for_new_host(window, cx);
@@ -3245,7 +3329,7 @@ impl TermiRustApp {
                     .child(
                         Button::new("library-connect")
                             .small()
-                            .custom(Self::action_button_style(theme::accent(), cx))
+                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                             .label("Connect")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.connect_current(window, cx);
@@ -3398,7 +3482,7 @@ impl TermiRustApp {
                             .child(
                                 Button::new("keychain-browse")
                                     .small()
-                                    .custom(Self::action_button_style(theme::hover(), cx))
+                                    .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                                     .icon(IconName::FolderOpen)
                                     .label("Add Key File")
                                     .on_click(cx.listener(|this, _, window, cx| {
@@ -3438,7 +3522,7 @@ impl TermiRustApp {
                                     theme::border()
                                 })
                                 .cursor_pointer()
-                                .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.82)))
+                                .hover(|style| style.bg(theme::card_hover()))
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     this.use_imported_identity(&card_identity, window, cx);
                                 }))
@@ -3508,7 +3592,7 @@ impl TermiRustApp {
                                     Button::new(("keychain-use", index))
                                         .small()
                                         .custom(Self::action_button_style(
-                                            theme::accent_soft(),
+                                            theme::ActionTone::AccentSoft,
                                             cx,
                                         ))
                                         .label("Use")
@@ -3614,9 +3698,7 @@ impl TermiRustApp {
                                     .border_1()
                                     .border_color(theme::border())
                                     .cursor_pointer()
-                                    .hover(|style| {
-                                        style.bg(theme::with_alpha(theme::hover(), 0.82))
-                                    })
+                                    .hover(|style| style.bg(theme::card_hover()))
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.load_profile_into_inputs(&profile_id, window, cx);
                                     }))
@@ -4105,17 +4187,13 @@ impl TermiRustApp {
             .child(label)
     }
 
-    fn action_button_style(color: Hsla, cx: &App) -> ButtonCustomVariant {
+    fn action_button_style(tone: theme::ActionTone, cx: &App) -> ButtonCustomVariant {
         ButtonCustomVariant::new(cx)
-            .color(color)
-            .foreground(if color == theme::accent() {
-                theme::library_card()
-            } else {
-                theme::text_main()
-            })
-            .border(theme::with_alpha(color, 0.4))
-            .hover(theme::with_alpha(color, 0.92))
-            .active(theme::with_alpha(color, 0.8))
+            .color(theme::action_fill(tone))
+            .foreground(theme::action_foreground(tone))
+            .border(theme::action_border(tone))
+            .hover(theme::action_hover(tone))
+            .active(theme::action_active(tone))
     }
 
     fn render_workspace_toolbar(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
@@ -4236,7 +4314,7 @@ impl TermiRustApp {
                         this.child(
                             Button::new("workspace-reconnect")
                                 .small()
-                                .custom(Self::action_button_style(theme::success(), cx))
+                                .custom(Self::action_button_style(theme::ActionTone::Success, cx))
                                 .icon(IconName::Redo)
                                 .label("Reconnect")
                                 .on_click(cx.listener(|this, _, window, cx| {
@@ -4250,7 +4328,7 @@ impl TermiRustApp {
                         this.child(
                             Button::new("workspace-disconnect")
                                 .small()
-                                .custom(Self::action_button_style(theme::danger(), cx))
+                                .custom(Self::action_button_style(theme::ActionTone::Danger, cx))
                                 .label("Disconnect")
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     if let Some(workspace_id) = this.active_workspace_id {
@@ -4450,7 +4528,7 @@ impl TermiRustApp {
             })
             .when(is_active_pane, |this| {
                 this.shadow(vec![gpui::BoxShadow {
-                    color: theme::with_alpha(theme::accent(), 0.15),
+                    color: theme::pane_focus_glow(),
                     offset: point(px(0.), px(0.)),
                     blur_radius: px(12.),
                     spread_radius: px(1.),
@@ -4792,7 +4870,7 @@ impl TermiRustApp {
             .flex()
             .items_center()
             .justify_center()
-            .bg(theme::with_alpha(gpui::rgb(0x000000).into(), 0.4))
+            .bg(theme::modal_scrim())
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, _, window, cx| {
@@ -4960,14 +5038,14 @@ fn style_for_render(
     let mut style = cell.style;
     if matched {
         style.bg = if active_match {
-            theme::with_alpha(theme::accent(), 0.52)
+            theme::terminal_search_active_match_bg()
         } else {
-            theme::with_alpha(theme::warning(), 0.38)
+            theme::terminal_search_match_bg()
         };
     }
     if selected {
-        style.bg = theme::accent_soft();
-        style.fg = theme::text_main();
+        style.bg = theme::terminal_selection_bg();
+        style.fg = theme::terminal_selection_fg();
     }
     style
 }
