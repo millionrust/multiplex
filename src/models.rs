@@ -206,6 +206,15 @@ pub struct SavedSnippet {
     pub command: String,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedCommandHistoryEntry {
+    pub command: String,
+    #[serde(default)]
+    pub scope_key: String,
+    #[serde(default)]
+    pub scope_label: String,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SavedVault {
     pub id: String,
@@ -376,6 +385,8 @@ pub struct SavedState {
     #[serde(default)]
     pub command_history: Vec<String>,
     #[serde(default)]
+    pub scoped_command_history: Vec<SavedCommandHistoryEntry>,
+    #[serde(default)]
     pub selected_profile_id: Option<String>,
     #[serde(default)]
     pub session_logs: Vec<SessionLogEntry>,
@@ -399,6 +410,40 @@ impl SavedState {
         if self.command_history.len() > MAX_COMMAND_HISTORY {
             let drain_count = self.command_history.len() - MAX_COMMAND_HISTORY;
             self.command_history.drain(..drain_count);
+        }
+    }
+
+    pub fn record_command_history_for_scope(
+        &mut self,
+        command: &str,
+        scope_key: &str,
+        scope_label: &str,
+    ) {
+        let command = command.trim();
+        if command.is_empty() {
+            return;
+        }
+
+        self.record_command_history(command);
+
+        let scope_key = scope_key.trim();
+        let scope_label = scope_label.trim();
+        if scope_key.is_empty() {
+            return;
+        }
+
+        self.scoped_command_history
+            .retain(|existing| !(existing.command == command && existing.scope_key == scope_key));
+        self.scoped_command_history.push(SavedCommandHistoryEntry {
+            command: command.to_string(),
+            scope_key: scope_key.to_string(),
+            scope_label: scope_label.to_string(),
+        });
+
+        const MAX_SCOPED_COMMAND_HISTORY: usize = 400;
+        if self.scoped_command_history.len() > MAX_SCOPED_COMMAND_HISTORY {
+            let drain_count = self.scoped_command_history.len() - MAX_SCOPED_COMMAND_HISTORY;
+            self.scoped_command_history.drain(..drain_count);
         }
     }
 
@@ -958,6 +1003,32 @@ impl ConnectRequest {
         self.address()
     }
 
+    pub fn history_scope_key(&self) -> String {
+        match self.kind {
+            ConnectionKind::Ssh => format!("ssh:{}@{}:{}", self.username, self.host, self.port),
+            ConnectionKind::LocalShell => format!(
+                "local:{}",
+                self.local_shell
+                    .as_ref()
+                    .map(LocalShellConfig::display_name)
+                    .unwrap_or_else(|| "default".to_string())
+            ),
+        }
+    }
+
+    pub fn history_scope_label(&self) -> String {
+        match self.kind {
+            ConnectionKind::Ssh => {
+                if self.title.trim().is_empty() {
+                    format!("{}@{}:{}", self.username, self.host, self.port)
+                } else {
+                    self.title.trim().to_string()
+                }
+            }
+            ConnectionKind::LocalShell => self.endpoint_label(),
+        }
+    }
+
     pub fn to_restorable(&self) -> Option<RestorableConnection> {
         match self.kind {
             ConnectionKind::Ssh => Some(RestorableConnection {
@@ -1367,9 +1438,9 @@ mod tests {
     use super::{
         AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
         IdentitySource, ImportedIdentity, JumpHostConnection, LocalPortForward, LocalShellConfig,
-        QuickConnect, RestorableAuth, RestorableConnection, SavedIdentity, SavedSnippet,
-        SavedState, SavedVault, SavedVaultMember, SavedWorkspace, SplitAxis, VaultKind,
-        VaultMemberRole, identity_id_for_path,
+        QuickConnect, RestorableAuth, RestorableConnection, SavedCommandHistoryEntry,
+        SavedIdentity, SavedSnippet, SavedState, SavedVault, SavedVaultMember, SavedWorkspace,
+        SplitAxis, VaultKind, VaultMemberRole, identity_id_for_path,
     };
 
     #[test]
@@ -1812,5 +1883,58 @@ mod tests {
             state.command_history,
             vec!["git status".to_string(), "ls -la".to_string()]
         );
+    }
+
+    #[test]
+    fn scoped_command_history_is_deduplicated_per_target() {
+        let mut state = SavedState::default();
+        state.record_command_history_for_scope("git status", "ssh:ops@example:22", "Ops");
+        state.record_command_history_for_scope("git pull", "ssh:web@example:22", "Web");
+        state.record_command_history_for_scope("git status", "ssh:ops@example:22", "Ops");
+
+        assert_eq!(
+            state.command_history,
+            vec!["git pull".to_string(), "git status".to_string()]
+        );
+        assert_eq!(
+            state.scoped_command_history,
+            vec![
+                SavedCommandHistoryEntry {
+                    command: "git pull".to_string(),
+                    scope_key: "ssh:web@example:22".to_string(),
+                    scope_label: "Web".to_string(),
+                },
+                SavedCommandHistoryEntry {
+                    command: "git status".to_string(),
+                    scope_key: "ssh:ops@example:22".to_string(),
+                    scope_label: "Ops".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn connect_request_builds_stable_history_scope_keys() {
+        let ssh = ConnectRequest {
+            session_id: 1,
+            title: "Production".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: "prod.example.com".to_string(),
+            port: 22,
+            username: "deploy".to_string(),
+            auth: None,
+            jump_host: None,
+            local_forward: None,
+            local_shell: None,
+        };
+        assert_eq!(
+            ssh.history_scope_key(),
+            "ssh:deploy@prod.example.com:22".to_string()
+        );
+        assert_eq!(ssh.history_scope_label(), "Production".to_string());
+
+        let local = ConnectRequest::local_shell(2);
+        assert!(local.history_scope_key().starts_with("local:"));
+        assert_eq!(local.history_scope_label(), local.endpoint_label());
     }
 }

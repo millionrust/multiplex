@@ -31,7 +31,7 @@ Other things worth knowing about:
 - Every workspace can switch into an SFTP remote-files view for browse, upload, download, and delete against the active host.
 - A native local terminal can be opened directly from the chrome and behaves like a normal workspace tab or split pane.
 - Vaults are now first-class local containers for hosts, snippets, and identities, with a dedicated library view plus local shared-vault member/role management.
-- The active terminal now gets inline command autocomplete from recent command history, snippets, and built-in shell shortcuts.
+- The active terminal now gets keyboard-selectable, target-aware inline command autocomplete, ranked from current-host history, snippets, and built-in shell shortcuts.
 - TOFU host key pinning, with a Known Hosts view where you can review or delete pinned keys.
 - A keys view shows imported key types and lets you add key files from disk.
 - Session logs track your connection history with timestamps and duration across app restarts.
