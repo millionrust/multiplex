@@ -64,6 +64,25 @@ impl VaultKind {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum VaultMemberRole {
+    Owner,
+    #[default]
+    Editor,
+    Viewer,
+}
+
+impl VaultMemberRole {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Owner => "Owner",
+            Self::Editor => "Editor",
+            Self::Viewer => "Viewer",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SplitAxis {
     #[default]
     Horizontal,
@@ -195,6 +214,17 @@ pub struct SavedVault {
     pub description: String,
     #[serde(default)]
     pub kind: VaultKind,
+    #[serde(default)]
+    pub members: Vec<SavedVaultMember>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SavedVaultMember {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    #[serde(default)]
+    pub role: VaultMemberRole,
 }
 
 impl SavedVault {
@@ -204,6 +234,7 @@ impl SavedVault {
             label: "Personal".to_string(),
             description: "Local vault for private hosts, snippets, and identities.".to_string(),
             kind: VaultKind::Personal,
+            members: vec![SavedVaultMember::you()],
         }
     }
 
@@ -221,6 +252,90 @@ impl SavedVault {
 
     pub fn is_personal(&self) -> bool {
         self.id == DEFAULT_VAULT_ID || self.kind == VaultKind::Personal
+    }
+
+    pub fn ensure_members(&mut self) {
+        if self.is_personal() {
+            self.kind = VaultKind::Personal;
+            if self.members.is_empty() {
+                self.members.push(SavedVaultMember::you());
+            }
+        } else if self.members.is_empty()
+            || !self
+                .members
+                .iter()
+                .any(|member| member.role == VaultMemberRole::Owner)
+        {
+            self.members.push(SavedVaultMember::owner_you());
+        }
+
+        self.members.sort_by(|left, right| {
+            role_sort_key(left.role)
+                .cmp(&role_sort_key(right.role))
+                .then_with(|| {
+                    left.display_name()
+                        .to_ascii_lowercase()
+                        .cmp(&right.display_name().to_ascii_lowercase())
+                })
+        });
+    }
+
+    pub fn upsert_member(&mut self, member: SavedVaultMember) {
+        let mut member = member;
+        if member.id.trim().is_empty() {
+            member.id = SavedVaultMember::member_id();
+        }
+
+        if let Some(existing) = self.members.iter_mut().find(|item| item.id == member.id) {
+            *existing = member;
+        } else if let Some(existing) = self
+            .members
+            .iter_mut()
+            .find(|item| item.email.eq_ignore_ascii_case(&member.email))
+        {
+            *existing = member;
+        } else {
+            self.members.push(member);
+        }
+
+        self.ensure_members();
+    }
+
+    pub fn remove_member(&mut self, member_id: &str) -> bool {
+        let before = self.members.len();
+        self.members.retain(|member| member.id != member_id);
+        self.ensure_members();
+        before != self.members.len()
+    }
+}
+
+impl SavedVaultMember {
+    pub fn member_id() -> String {
+        format!("member-{}", now_millis())
+    }
+
+    pub fn display_name(&self) -> String {
+        if !self.name.trim().is_empty() {
+            self.name.trim().to_string()
+        } else {
+            self.email.trim().to_string()
+        }
+    }
+
+    pub fn you() -> Self {
+        Self {
+            id: "member-you".to_string(),
+            name: current_username(),
+            email: "local@device".to_string(),
+            role: VaultMemberRole::Owner,
+        }
+    }
+
+    pub fn owner_you() -> Self {
+        Self {
+            role: VaultMemberRole::Owner,
+            ..Self::you()
+        }
     }
 }
 
@@ -285,6 +400,10 @@ impl SavedState {
             }
         }
 
+        for vault in &mut self.vaults {
+            vault.ensure_members();
+        }
+
         self.vaults.sort_by(|left, right| {
             left.is_personal()
                 .cmp(&right.is_personal())
@@ -338,6 +457,7 @@ impl SavedState {
             vault.id = DEFAULT_VAULT_ID.to_string();
             vault.kind = VaultKind::Personal;
         }
+        vault.ensure_members();
 
         if let Some(existing) = self.vaults.iter_mut().find(|item| item.id == vault.id) {
             *existing = vault;
@@ -716,6 +836,14 @@ fn current_username() -> String {
     std::env::var("USER")
         .or_else(|_| std::env::var("USERNAME"))
         .unwrap_or_else(|_| "local".to_string())
+}
+
+fn role_sort_key(role: VaultMemberRole) -> u8 {
+    match role {
+        VaultMemberRole::Owner => 0,
+        VaultMemberRole::Editor => 1,
+        VaultMemberRole::Viewer => 2,
+    }
 }
 
 fn default_local_shell_config() -> LocalShellConfig {
@@ -1222,7 +1350,8 @@ mod tests {
         AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
         IdentitySource, ImportedIdentity, JumpHostConnection, LocalPortForward, LocalShellConfig,
         QuickConnect, RestorableAuth, RestorableConnection, SavedIdentity, SavedSnippet,
-        SavedState, SavedVault, SavedWorkspace, SplitAxis, VaultKind, identity_id_for_path,
+        SavedState, SavedVault, SavedVaultMember, SavedWorkspace, SplitAxis, VaultKind,
+        VaultMemberRole, identity_id_for_path,
     };
 
     #[test]
@@ -1590,6 +1719,7 @@ mod tests {
             label: "Team".to_string(),
             description: String::new(),
             kind: VaultKind::Shared,
+            members: Vec::new(),
         });
         state.snippets.push(SavedSnippet {
             id: "snippet-2".to_string(),
@@ -1611,5 +1741,45 @@ mod tests {
             state.snippets[0].vault_id.as_deref(),
             Some(DEFAULT_VAULT_ID)
         );
+        assert!(
+            state
+                .vaults
+                .iter()
+                .find(|vault| vault.id == "vault-team")
+                .is_some_and(|vault| !vault.members.is_empty())
+        );
+    }
+
+    #[test]
+    fn shared_vault_members_are_upserted_and_sorted() {
+        let mut vault = SavedVault {
+            id: "vault-team".to_string(),
+            label: "Team".to_string(),
+            description: String::new(),
+            kind: VaultKind::Shared,
+            members: Vec::new(),
+        };
+
+        vault.upsert_member(SavedVaultMember {
+            id: "member-2".to_string(),
+            name: "Viewer User".to_string(),
+            email: "viewer@example.com".to_string(),
+            role: VaultMemberRole::Viewer,
+        });
+        vault.upsert_member(SavedVaultMember {
+            id: "member-1".to_string(),
+            name: "Editor User".to_string(),
+            email: "editor@example.com".to_string(),
+            role: VaultMemberRole::Editor,
+        });
+
+        assert!(
+            vault
+                .members
+                .iter()
+                .any(|member| member.role == VaultMemberRole::Owner)
+        );
+        assert_eq!(vault.members[1].role, VaultMemberRole::Editor);
+        assert_eq!(vault.members[2].role, VaultMemberRole::Viewer);
     }
 }

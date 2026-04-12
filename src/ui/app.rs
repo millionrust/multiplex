@@ -23,8 +23,8 @@ use crate::local::spawn_local_session;
 use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
     HostProfile, JumpHostConnection, ProfileSource, QuickConnect, SavedIdentity, SavedSnippet,
-    SavedState, SavedVault, SavedWorkspace, SessionLogEntry, SessionLogStatus, SplitAxis,
-    VaultKind,
+    SavedState, SavedVault, SavedVaultMember, SavedWorkspace, SessionLogEntry, SessionLogStatus,
+    SplitAxis, VaultKind, VaultMemberRole,
 };
 use crate::sftp::{
     RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
@@ -223,6 +223,11 @@ struct VaultInputs {
     description: Entity<InputState>,
 }
 
+struct VaultMemberInputs {
+    name: Entity<InputState>,
+    email: Entity<InputState>,
+}
+
 impl SnippetInputs {
     fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
         Self {
@@ -240,6 +245,15 @@ impl VaultInputs {
             label: cx.new(|cx| InputState::new(window, cx).placeholder("Ops Team")),
             description: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Shared infrastructure access")),
+        }
+    }
+}
+
+impl VaultMemberInputs {
+    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+        Self {
+            name: cx.new(|cx| InputState::new(window, cx).placeholder("Alex Rivera")),
+            email: cx.new(|cx| InputState::new(window, cx).placeholder("alex@company.com")),
         }
     }
 }
@@ -380,6 +394,7 @@ pub struct TermiRustApp {
     shell_inputs: ShellInputs,
     snippet_inputs: SnippetInputs,
     vault_inputs: VaultInputs,
+    vault_member_inputs: VaultMemberInputs,
     draft_auth_mode: AuthMode,
     nav_section: NavSection,
     show_editor_panel: bool,
@@ -393,6 +408,7 @@ pub struct TermiRustApp {
     selected_profile_id: Option<String>,
     selected_snippet_id: Option<String>,
     selected_vault_id: Option<String>,
+    selected_vault_member_id: Option<String>,
     next_session_id: u64,
     next_sftp_operation_id: u64,
     next_workspace_id: u64,
@@ -401,6 +417,7 @@ pub struct TermiRustApp {
     draft_identity_id: Option<String>,
     draft_vault_id: Option<String>,
     snippet_vault_id: Option<String>,
+    draft_vault_member_role: VaultMemberRole,
     known_hosts: Arc<KnownHostStore>,
     keychain_tab: KeychainTab,
     _window_bounds_subscription: Option<Subscription>,
@@ -412,6 +429,7 @@ impl TermiRustApp {
         let shell_inputs = ShellInputs::new(window, cx);
         let snippet_inputs = SnippetInputs::new(window, cx);
         let vault_inputs = VaultInputs::new(window, cx);
+        let vault_member_inputs = VaultMemberInputs::new(window, cx);
         let (event_tx, event_rx) = mpsc::channel();
         let (sftp_event_tx, sftp_event_rx) = mpsc::channel();
         let known_hosts =
@@ -454,6 +472,7 @@ impl TermiRustApp {
             shell_inputs,
             snippet_inputs,
             vault_inputs,
+            vault_member_inputs,
             draft_auth_mode,
             nav_section: NavSection::Hosts,
             show_editor_panel: false,
@@ -466,6 +485,7 @@ impl TermiRustApp {
             active_workspace_id: None,
             selected_snippet_id: None,
             selected_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            selected_vault_member_id: None,
             next_session_id: 1,
             next_sftp_operation_id: 1,
             next_workspace_id: 1,
@@ -474,6 +494,7 @@ impl TermiRustApp {
             draft_identity_id: None,
             draft_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             snippet_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            draft_vault_member_role: VaultMemberRole::Editor,
             known_hosts,
             keychain_tab: KeychainTab::Keys,
             _window_bounds_subscription: None,
@@ -1050,7 +1071,43 @@ impl TermiRustApp {
             label: self.vault_inputs.label.read(_cx).value().to_string(),
             description: self.vault_inputs.description.read(_cx).value().to_string(),
             kind: current_kind,
+            members: self
+                .selected_vault_id
+                .as_deref()
+                .and_then(|vault_id| self.vault_by_id(vault_id))
+                .map(|vault| vault.members.clone())
+                .unwrap_or_default(),
         }
+    }
+
+    fn current_vault_member_draft(&self, cx: &App) -> Option<SavedVaultMember> {
+        let name = self
+            .vault_member_inputs
+            .name
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        let email = self
+            .vault_member_inputs
+            .email
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        if name.is_empty() && email.is_empty() {
+            return None;
+        }
+
+        Some(SavedVaultMember {
+            id: self
+                .selected_vault_member_id
+                .clone()
+                .unwrap_or_else(SavedVaultMember::member_id),
+            name,
+            email,
+            role: self.draft_vault_member_role,
+        })
     }
 
     fn load_vault_into_inputs(
@@ -1071,8 +1128,12 @@ impl TermiRustApp {
             cx,
         );
         self.selected_vault_id = Some(vault.id.clone());
+        self.selected_vault_member_id = None;
         self.draft_vault_id = Some(vault.id.clone());
         self.snippet_vault_id = Some(vault.id.clone());
+        Self::set_input_value(&self.vault_member_inputs.name, "", window, cx);
+        Self::set_input_value(&self.vault_member_inputs.email, "", window, cx);
+        self.draft_vault_member_role = VaultMemberRole::Editor;
         self.nav_section = NavSection::Vaults;
         self.status_message = format!("Loaded vault '{}'.", vault.display_name());
         self.error_message.clear();
@@ -1082,9 +1143,13 @@ impl TermiRustApp {
     fn clear_vault_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         Self::set_input_value(&self.vault_inputs.label, "", window, cx);
         Self::set_input_value(&self.vault_inputs.description, "", window, cx);
+        Self::set_input_value(&self.vault_member_inputs.name, "", window, cx);
+        Self::set_input_value(&self.vault_member_inputs.email, "", window, cx);
         self.selected_vault_id = Some(DEFAULT_VAULT_ID.to_string());
+        self.selected_vault_member_id = None;
         self.draft_vault_id = Some(DEFAULT_VAULT_ID.to_string());
         self.snippet_vault_id = Some(DEFAULT_VAULT_ID.to_string());
+        self.draft_vault_member_role = VaultMemberRole::Editor;
         self.nav_section = NavSection::Vaults;
         self.status_message = "Vault draft cleared.".to_string();
         self.error_message.clear();
@@ -1146,6 +1211,124 @@ impl TermiRustApp {
 
         self.clear_vault_form(window, cx);
         self.status_message = "Vault removed. Its items were moved to Personal.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn load_vault_member_into_inputs(
+        &mut self,
+        member_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(vault_id) = self.selected_vault_id.clone() else {
+            return;
+        };
+        let Some(member) = self
+            .saved
+            .vaults
+            .iter()
+            .find(|vault| vault.id == vault_id)
+            .and_then(|vault| vault.members.iter().find(|member| member.id == member_id))
+            .cloned()
+        else {
+            return;
+        };
+
+        Self::set_input_value(&self.vault_member_inputs.name, member.name, window, cx);
+        Self::set_input_value(&self.vault_member_inputs.email, member.email, window, cx);
+        self.selected_vault_member_id = Some(member.id);
+        self.draft_vault_member_role = member.role;
+        self.status_message = "Loaded vault member.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn clear_vault_member_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        Self::set_input_value(&self.vault_member_inputs.name, "", window, cx);
+        Self::set_input_value(&self.vault_member_inputs.email, "", window, cx);
+        self.selected_vault_member_id = None;
+        self.draft_vault_member_role = VaultMemberRole::Editor;
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn save_vault_member(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(vault_id) = self.selected_vault_id.clone() else {
+            return;
+        };
+        let Some(member) = self.current_vault_member_draft(cx) else {
+            self.error_message = "Member name or email is required.".to_string();
+            cx.notify();
+            return;
+        };
+        if member.email.trim().is_empty() {
+            self.error_message = "Member email is required.".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(vault) = self
+            .saved
+            .vaults
+            .iter_mut()
+            .find(|vault| vault.id == vault_id)
+        else {
+            return;
+        };
+        if vault.is_personal() {
+            self.error_message = "The personal vault does not support shared members.".to_string();
+            cx.notify();
+            return;
+        }
+
+        let member_name = member.display_name();
+        vault.upsert_member(member);
+        if let Err(error) = save_saved_state(&self.saved) {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
+        }
+
+        self.clear_vault_member_form(window, cx);
+        self.status_message = format!("Saved vault member '{}'.", member_name);
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn remove_vault_member(
+        &mut self,
+        member_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(vault_id) = self.selected_vault_id.clone() else {
+            return;
+        };
+        let Some(vault) = self
+            .saved
+            .vaults
+            .iter_mut()
+            .find(|vault| vault.id == vault_id)
+        else {
+            return;
+        };
+        if vault.is_personal() {
+            self.error_message = "The personal vault member cannot be removed.".to_string();
+            cx.notify();
+            return;
+        }
+        if !vault.remove_member(member_id) {
+            return;
+        }
+        if let Err(error) = save_saved_state(&self.saved) {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
+        }
+
+        self.clear_vault_member_form(window, cx);
+        self.status_message = "Vault member removed.".to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -5137,6 +5320,12 @@ impl TermiRustApp {
 
     fn render_vaults_view(&self, cx: &Context<Self>) -> Div {
         let vaults = self.saved.vaults.clone();
+        let selected_vault = self
+            .selected_vault_id
+            .as_deref()
+            .and_then(|vault_id| self.vault_by_id(vault_id))
+            .cloned()
+            .or_else(|| self.default_vault().cloned());
 
         v_flex()
             .flex_1()
@@ -5185,6 +5374,231 @@ impl TermiRustApp {
                         "Description",
                         Input::new(&self.vault_inputs.description),
                     ))
+                    .when_some(selected_vault.as_ref(), |this, vault| {
+                        let vault = vault.clone();
+                        this.child(
+                            v_flex()
+                                .gap_3()
+                                .child(
+                                    h_flex()
+                                        .justify_between()
+                                        .items_center()
+                                        .child(
+                                            div()
+                                                .text_size(px(12.))
+                                                .font_medium()
+                                                .text_color(theme::text_main())
+                                                .child("Members"),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(10.5))
+                                                .text_color(theme::text_muted())
+                                                .child(format!(
+                                                    "{} {}",
+                                                    vault.members.len(),
+                                                    if vault.members.len() == 1 {
+                                                        "member"
+                                                    } else {
+                                                        "members"
+                                                    }
+                                                )),
+                                        ),
+                                )
+                                .when(vault.is_personal(), |this| {
+                                    this.child(
+                                        div()
+                                            .p_3()
+                                            .rounded(px(12.))
+                                            .bg(theme::with_alpha(theme::hover(), 0.72))
+                                            .border_1()
+                                            .border_color(theme::border())
+                                            .text_size(px(10.5))
+                                            .text_color(theme::text_muted())
+                                            .child("The personal vault is device-local and keeps a single owner profile."),
+                                    )
+                                })
+                                .when(!vault.is_personal(), |this| {
+                                    this.child(self.form_field(
+                                        "Member Name",
+                                        Input::new(&self.vault_member_inputs.name),
+                                    ))
+                                    .child(self.form_field(
+                                        "Member Email",
+                                        Input::new(&self.vault_member_inputs.email),
+                                    ))
+                                    .child(
+                                        v_flex()
+                                            .gap_2()
+                                            .child(
+                                                div()
+                                                    .text_size(px(11.))
+                                                    .font_medium()
+                                                    .text_color(theme::text_main())
+                                                    .child("Role"),
+                                            )
+                                            .child(
+                                                h_flex()
+                                                    .gap_2()
+                                                    .children([
+                                                        VaultMemberRole::Owner,
+                                                        VaultMemberRole::Editor,
+                                                        VaultMemberRole::Viewer,
+                                                    ]
+                                                    .into_iter()
+                                                    .enumerate()
+                                                    .map(|(index, role)| {
+                                                        let selected = self.draft_vault_member_role == role;
+                                                        div()
+                                                            .id(("vault-member-role", index))
+                                                            .px_3()
+                                                            .py(px(7.))
+                                                            .rounded(px(999.))
+                                                            .bg(if selected {
+                                                                theme::accent_soft()
+                                                            } else {
+                                                                theme::with_alpha(theme::hover(), 0.72)
+                                                            })
+                                                            .border_1()
+                                                            .border_color(if selected {
+                                                                theme::with_alpha(theme::accent(), 0.42)
+                                                            } else {
+                                                                theme::border()
+                                                            })
+                                                            .cursor_pointer()
+                                                            .hover(|style| style.bg(theme::hover()))
+                                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                                this.draft_vault_member_role = role;
+                                                                this.error_message.clear();
+                                                                cx.notify();
+                                                            }))
+                                                            .child(
+                                                                div()
+                                                                    .text_size(px(11.))
+                                                                    .font_medium()
+                                                                    .text_color(if selected {
+                                                                        theme::text_main()
+                                                                    } else {
+                                                                        theme::text_muted()
+                                                                    })
+                                                                    .child(role.label()),
+                                                            )
+                                                            .into_any_element()
+                                                    })),
+                                            )
+                                            .child(
+                                                h_flex()
+                                                    .gap_2()
+                                                    .child(
+                                                        Button::new("vault-member-clear")
+                                                            .small()
+                                                            .custom(Self::action_button_style(
+                                                                theme::ActionTone::Neutral,
+                                                                cx,
+                                                            ))
+                                                            .label("Clear Member")
+                                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                                this.clear_vault_member_form(window, cx);
+                                                            })),
+                                                    )
+                                                    .child(
+                                                        Button::new("vault-member-save")
+                                                            .small()
+                                                            .custom(Self::action_button_style(
+                                                                theme::ActionTone::Accent,
+                                                                cx,
+                                                            ))
+                                                            .label("Save Member")
+                                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                                this.save_vault_member(window, cx);
+                                                            })),
+                                                    ),
+                                            ),
+                                    )
+                                })
+                                .child(
+                                    v_flex()
+                                        .gap_2()
+                                        .children(vault.members.iter().enumerate().map(|(index, member)| {
+                                            let member_id = member.id.clone();
+                                            let remove_id = member.id.clone();
+                                            let selected = self.selected_vault_member_id.as_deref()
+                                                == Some(member.id.as_str());
+
+                                            h_flex()
+                                                .id(("vault-member-card", index))
+                                                .justify_between()
+                                                .items_center()
+                                                .gap_3()
+                                                .p_3()
+                                                .rounded(px(12.))
+                                                .bg(if selected {
+                                                    theme::with_alpha(theme::accent(), 0.1)
+                                                } else {
+                                                    theme::with_alpha(theme::hover(), 0.72)
+                                                })
+                                                .border_1()
+                                                .border_color(if selected {
+                                                    theme::with_alpha(theme::accent(), 0.42)
+                                                } else {
+                                                    theme::border()
+                                                })
+                                                .cursor_pointer()
+                                                .hover(|style| style.bg(theme::hover()))
+                                                .on_click(cx.listener(move |this, _, window, cx| {
+                                                    this.load_vault_member_into_inputs(&member_id, window, cx);
+                                                }))
+                                                .child(
+                                                    v_flex()
+                                                        .flex_1()
+                                                        .gap(px(1.))
+                                                        .child(
+                                                            h_flex()
+                                                                .gap_2()
+                                                                .items_center()
+                                                                .child(
+                                                                    div()
+                                                                        .text_size(px(11.5))
+                                                                        .font_semibold()
+                                                                        .text_color(theme::text_main())
+                                                                        .child(member.display_name()),
+                                                                )
+                                                                .child(self.status_badge(
+                                                                    member.role.label(),
+                                                                    theme::library_bg(),
+                                                                    if member.role == VaultMemberRole::Owner {
+                                                                        theme::accent()
+                                                                    } else if member.role == VaultMemberRole::Editor {
+                                                                        theme::success()
+                                                                    } else {
+                                                                        theme::slate()
+                                                                    },
+                                                                )),
+                                                        )
+                                                        .child(
+                                                            div()
+                                                                .text_size(px(10.))
+                                                                .text_color(theme::text_muted())
+                                                                .child(member.email.clone()),
+                                                        ),
+                                                )
+                                                .when(!vault.is_personal(), |this| {
+                                                    this.child(
+                                                        Button::new(("vault-member-remove", index))
+                                                            .small()
+                                                            .ghost()
+                                                            .icon(IconName::Delete)
+                                                            .label("Remove")
+                                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                                                this.remove_vault_member(&remove_id, window, cx);
+                                                            })),
+                                                    )
+                                                })
+                                                .into_any_element()
+                                        })),
+                                ),
+                        )
+                    })
                     .child(
                         h_flex()
                             .gap_2()
@@ -5241,6 +5655,7 @@ impl TermiRustApp {
                         let selected = self.selected_vault_id.as_deref() == Some(vault.id.as_str());
                         let (host_count, identity_count, snippet_count) =
                             self.vault_item_counts(&vault.id);
+                        let member_count = vault.members.len();
 
                         h_flex()
                             .id(("vault-card", index))
@@ -5314,6 +5729,11 @@ impl TermiRustApp {
                                                 format!("{snippet_count} snippets"),
                                                 theme::library_bg(),
                                                 theme::warning(),
+                                            ))
+                                            .child(self.status_badge(
+                                                format!("{member_count} members"),
+                                                theme::library_bg(),
+                                                theme::slate(),
                                             )),
                                     ),
                             )
