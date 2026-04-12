@@ -127,6 +127,8 @@ pub struct HostProfile {
     pub vault_id: Option<String>,
     #[serde(default)]
     pub group: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub host: String,
     #[serde(default = "default_ssh_port")]
     pub port: u16,
@@ -708,6 +710,7 @@ pub struct DraftProfile {
     pub label: String,
     pub vault_id: Option<String>,
     pub group: String,
+    pub tags: String,
     pub host: String,
     pub port: String,
     pub username: String,
@@ -729,6 +732,7 @@ impl DraftProfile {
             label: profile.label.clone(),
             vault_id: profile.vault_id.clone(),
             group: profile.group.clone(),
+            tags: profile.tags.join(", "),
             host: profile.host.clone(),
             port: profile.port.to_string(),
             username: profile.username.clone(),
@@ -808,6 +812,23 @@ impl DraftProfile {
         }))
     }
 
+    fn parse_tags(&self) -> Vec<String> {
+        let mut tags: Vec<String> = Vec::new();
+        for raw in self.tags.split(',') {
+            let tag = raw.trim().trim_start_matches('#');
+            if tag.is_empty() {
+                continue;
+            }
+            if !tags
+                .iter()
+                .any(|existing: &String| existing.eq_ignore_ascii_case(tag))
+            {
+                tags.push(tag.to_string());
+            }
+        }
+        tags
+    }
+
     pub fn to_profile(&self, id: String) -> Result<HostProfile> {
         let host = self.host.trim();
         let username = self.username.trim();
@@ -831,6 +852,7 @@ impl DraftProfile {
                 .clone()
                 .or_else(|| Some(DEFAULT_VAULT_ID.to_string())),
             group: self.group.trim().to_string(),
+            tags: self.parse_tags(),
             host: host.to_string(),
             port: self.parse_port()?,
             username: username.to_string(),
@@ -1712,6 +1734,7 @@ mod tests {
             label: "prod".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             group: "Production".to_string(),
+            tags: "critical, web, #blue".to_string(),
             host: "prod.example.com".to_string(),
             port: "22".to_string(),
             username: "ubuntu".to_string(),
@@ -1729,6 +1752,40 @@ mod tests {
 
         let profile = draft.to_profile("profile-1".to_string()).unwrap();
         assert_eq!(profile.identity_id.as_deref(), Some("identity-123"));
+        assert_eq!(
+            profile.tags,
+            vec![
+                "critical".to_string(),
+                "web".to_string(),
+                "blue".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn draft_profile_tags_are_deduplicated_case_insensitively() {
+        let draft = DraftProfile {
+            label: "ops".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            group: "Operations".to_string(),
+            tags: "Prod, prod, #ops, ops ".to_string(),
+            host: "ops.example.com".to_string(),
+            port: "22".to_string(),
+            username: "root".to_string(),
+            password: String::new(),
+            key_path: String::new(),
+            identity_id: None,
+            jump_host_id: None,
+            forward_local_port: String::new(),
+            forward_remote_host: String::new(),
+            forward_remote_port: String::new(),
+            key_passphrase: String::new(),
+            password_credential_id: None,
+            auth_mode: AuthMode::Password,
+        };
+
+        let profile = draft.to_profile("profile-2".to_string()).unwrap();
+        assert_eq!(profile.tags, vec!["Prod".to_string(), "ops".to_string()]);
     }
 
     #[test]
@@ -1775,6 +1832,7 @@ mod tests {
             label: "db".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             group: "Data".to_string(),
+            tags: "postgres, private".to_string(),
             host: "db.example.com".to_string(),
             port: "22".to_string(),
             username: "postgres".to_string(),

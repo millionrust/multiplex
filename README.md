@@ -26,12 +26,14 @@ Other things worth knowing about:
 - Hosts can be organized into groups in the library.
 - Reusable identities can be imported and reused across hosts.
 - Saved snippets can be reused and sent into the active terminal.
+- Hosts now support tags, and the host library search matches labels, groups, tags, vaults, jump hosts, and endpoints.
 - Hosts can optionally start a local TCP forward when they connect.
 - Hosts can optionally connect through saved jump-host chains.
 - Every workspace can switch into an SFTP remote-files view for browse, upload, download, and delete against the active host.
 - A native local terminal can be opened directly from the chrome and behaves like a normal workspace tab or split pane.
 - Vaults are now first-class local containers for hosts, snippets, and identities, with a dedicated library view plus local shared-vault member/role management.
 - The active terminal now gets keyboard-selectable, target-aware inline command autocomplete, ranked from current-host history, snippets, and built-in shell shortcuts.
+- Every terminal workspace now has a searchable command palette for snippets, recent commands, and built-in tasks, with keyboard navigation and direct execution.
 - TOFU host key pinning, with a Known Hosts view where you can review or delete pinned keys.
 - A keys view shows imported key types and lets you add key files from disk.
 - Session logs track your connection history with timestamps and duration across app restarts.

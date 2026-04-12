@@ -323,6 +323,7 @@ fn flush_ssh_config_block(
                 label: alias.trim().to_string(),
                 vault_id: Some(crate::models::DEFAULT_VAULT_ID.to_string()),
                 group: String::new(),
+                tags: Vec::new(),
                 host,
                 port: block.port.unwrap_or(22),
                 username,

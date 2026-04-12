@@ -167,6 +167,7 @@ struct PaneLayout {
 struct DraftInputs {
     label: Entity<InputState>,
     group: Entity<InputState>,
+    tags: Entity<InputState>,
     jump_host: Entity<InputState>,
     host: Entity<InputState>,
     port: Entity<InputState>,
@@ -184,6 +185,7 @@ impl DraftInputs {
         Self {
             label: cx.new(|cx| InputState::new(window, cx).placeholder("New host label")),
             group: cx.new(|cx| InputState::new(window, cx).placeholder("Production / Staging")),
+            tags: cx.new(|cx| InputState::new(window, cx).placeholder("prod, blue, kubernetes")),
             jump_host: cx.new(|cx| InputState::new(window, cx).placeholder("Optional saved host")),
             host: cx.new(|cx| InputState::new(window, cx).placeholder("user@hostname or IP")),
             port: cx.new(|cx| InputState::new(window, cx).default_value("22")),
@@ -211,6 +213,7 @@ struct ShellInputs {
     host_search: Entity<InputState>,
     quick_connect_password: Entity<InputState>,
     terminal_search: Entity<InputState>,
+    command_palette: Entity<InputState>,
 }
 
 struct SnippetInputs {
@@ -263,7 +266,8 @@ impl ShellInputs {
     fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
         Self {
             host_search: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("Find a host or ssh user@hostname...")
+                InputState::new(window, cx)
+                    .placeholder("Find a host, group, tag, or ssh user@hostname...")
             }),
             quick_connect_password: cx.new(|cx| {
                 InputState::new(window, cx)
@@ -272,6 +276,9 @@ impl ShellInputs {
             }),
             terminal_search: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Search terminal output")),
+            command_palette: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Run command, snippet, or recent task")
+            }),
         }
     }
 }
@@ -335,6 +342,14 @@ struct AutocompleteCandidate {
     command: String,
     source: AutocompleteSource,
     scope_label: Option<String>,
+}
+
+#[derive(Clone)]
+struct CommandPaletteCandidate {
+    command: String,
+    title: String,
+    detail: String,
+    source: AutocompleteSource,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -462,6 +477,8 @@ pub struct TermiRustApp {
     draft_vault_member_role: VaultMemberRole,
     known_hosts: Arc<KnownHostStore>,
     keychain_tab: KeychainTab,
+    show_command_palette: bool,
+    selected_command_palette_index: usize,
     _window_bounds_subscription: Option<Subscription>,
 }
 
@@ -539,6 +556,8 @@ impl TermiRustApp {
             draft_vault_member_role: VaultMemberRole::Editor,
             known_hosts,
             keychain_tab: KeychainTab::Keys,
+            show_command_palette: false,
+            selected_command_palette_index: 0,
             _window_bounds_subscription: None,
         };
 
@@ -597,6 +616,7 @@ impl TermiRustApp {
             label: self.inputs.label.read(cx).value().to_string(),
             vault_id: self.draft_vault_id.clone(),
             group: self.inputs.group.read(cx).value().to_string(),
+            tags: self.inputs.tags.read(cx).value().to_string(),
             host: self.inputs.host.read(cx).value().to_string(),
             port: self.inputs.port.read(cx).value().to_string(),
             username: self.inputs.username.read(cx).value().to_string(),
@@ -901,6 +921,7 @@ impl TermiRustApp {
         let draft = DraftProfile::from_profile(profile);
         Self::set_input_value(&self.inputs.label, draft.label, window, cx);
         Self::set_input_value(&self.inputs.group, draft.group, window, cx);
+        Self::set_input_value(&self.inputs.tags, draft.tags, window, cx);
         Self::set_input_value(
             &self.inputs.jump_host,
             draft
@@ -963,6 +984,7 @@ impl TermiRustApp {
     fn clear_profile_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         Self::set_input_value(&self.inputs.label, "", window, cx);
         Self::set_input_value(&self.inputs.group, "", window, cx);
+        Self::set_input_value(&self.inputs.tags, "", window, cx);
         Self::set_input_value(&self.inputs.jump_host, "", window, cx);
         Self::set_input_value(&self.inputs.host, "", window, cx);
         Self::set_input_value(&self.inputs.port, "22", window, cx);
@@ -1375,11 +1397,16 @@ impl TermiRustApp {
         cx.notify();
     }
 
-    fn run_snippet_command(&mut self, command: &str, cx: &mut Context<Self>) {
+    fn run_command_in_active_pane(
+        &mut self,
+        command: &str,
+        success_message: &str,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let Some(pane_id) = self.active_pane().map(|pane| pane.id) else {
-            self.error_message = "Open a terminal session to run a snippet.".to_string();
+            self.error_message = "Open a terminal session to run a command.".to_string();
             cx.notify();
-            return;
+            return false;
         };
 
         let mut bytes = command.as_bytes().to_vec();
@@ -1388,10 +1415,16 @@ impl TermiRustApp {
         }
 
         if self.send_input_bytes(pane_id, bytes, cx) {
-            self.status_message = "Snippet sent to the active session.".to_string();
+            self.status_message = success_message.to_string();
             self.error_message.clear();
             cx.notify();
+            return true;
         }
+        false
+    }
+
+    fn run_snippet_command(&mut self, command: &str, cx: &mut Context<Self>) {
+        let _ = self.run_command_in_active_pane(command, "Snippet sent to the active session.", cx);
     }
 
     fn pick_key_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1601,12 +1634,21 @@ impl TermiRustApp {
         profiles
             .into_iter()
             .filter(|profile| {
+                let vault_label = self.effective_vault_name(profile.vault_id.as_deref());
+                let jump_host_label = profile
+                    .jump_host_id
+                    .as_deref()
+                    .and_then(|jump_host_id| self.jump_host_display_name(jump_host_id))
+                    .unwrap_or_default();
                 let haystacks = [
                     profile.display_name(),
                     profile.group.clone(),
+                    profile.tags.join(" "),
                     profile.host.clone(),
                     profile.username.clone(),
                     profile.endpoint(),
+                    vault_label,
+                    jump_host_label,
                 ];
                 haystacks
                     .iter()
@@ -1669,6 +1711,12 @@ impl TermiRustApp {
             .update(cx, |input, cx| input.focus(window, cx));
     }
 
+    fn focus_command_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.shell_inputs
+            .command_palette
+            .update(cx, |input, cx| input.focus(window, cx));
+    }
+
     fn set_terminal_search_input(
         &mut self,
         value: impl Into<SharedString>,
@@ -1678,10 +1726,61 @@ impl TermiRustApp {
         Self::set_input_value(&self.shell_inputs.terminal_search, value, window, cx);
     }
 
+    fn set_command_palette_input(
+        &mut self,
+        value: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        Self::set_input_value(&self.shell_inputs.command_palette, value, window, cx);
+    }
+
+    fn close_command_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.show_command_palette = false;
+        self.selected_command_palette_index = 0;
+        self.set_command_palette_input("", window, cx);
+        if let Some(pane) = self.active_pane() {
+            pane.terminal_focus.focus(window);
+        }
+        cx.notify();
+    }
+
+    fn toggle_command_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(workspace) = self.active_workspace() else {
+            return;
+        };
+        if workspace.view_mode != WorkspaceViewMode::Terminal {
+            self.error_message = "Switch back to Terminal to run commands.".to_string();
+            cx.notify();
+            return;
+        }
+        let Some(current_input) = self.active_pane().map(|pane| pane.current_input.clone()) else {
+            self.error_message = "Open a terminal session to run commands.".to_string();
+            cx.notify();
+            return;
+        };
+
+        if self.show_command_palette {
+            self.close_command_palette(window, cx);
+            return;
+        }
+
+        self.show_command_palette = true;
+        self.selected_command_palette_index = 0;
+        self.set_command_palette_input(current_input.trim().to_string(), window, cx);
+        self.focus_command_palette(window, cx);
+        self.status_message = "Command palette ready.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn activate_library(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.active_workspace_id = None;
         self.nav_section = NavSection::Hosts;
         self.set_terminal_search_input("", window, cx);
+        self.set_command_palette_input("", window, cx);
+        self.show_command_palette = false;
+        self.selected_command_palette_index = 0;
         self.status_message = "Host library ready.".to_string();
         self.error_message.clear();
         self.persist_runtime_state();
@@ -3169,6 +3268,68 @@ impl TermiRustApp {
         )
     }
 
+    fn command_palette_query(&self, cx: &App) -> String {
+        self.shell_inputs
+            .command_palette
+            .read(cx)
+            .value()
+            .trim()
+            .to_string()
+    }
+
+    fn command_palette_candidates(&self, cx: &App) -> Vec<CommandPaletteCandidate> {
+        let Some(pane) = self.active_pane() else {
+            return Vec::new();
+        };
+
+        collect_command_palette_candidates(
+            &self.command_palette_query(cx),
+            &self.saved.command_history,
+            &self.saved.scoped_command_history,
+            &pane.request.history_scope_key(),
+            &self.saved.snippets,
+        )
+    }
+
+    fn selected_command_palette_index(&self, candidate_count: usize) -> usize {
+        self.selected_command_palette_index
+            .min(candidate_count.saturating_sub(1))
+    }
+
+    fn move_command_palette_selection(&mut self, delta: isize, cx: &mut Context<Self>) -> bool {
+        let candidates = self.command_palette_candidates(cx);
+        if candidates.is_empty() {
+            return false;
+        }
+
+        self.selected_command_palette_index =
+            (self.selected_command_palette_index(candidates.len()) as isize + delta)
+                .rem_euclid(candidates.len() as isize) as usize;
+        cx.notify();
+        true
+    }
+
+    fn run_selected_command_palette(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let candidates = self.command_palette_candidates(cx);
+        if candidates.is_empty() {
+            return false;
+        }
+        let candidate = &candidates[self.selected_command_palette_index(candidates.len())];
+        if self.run_command_in_active_pane(
+            &candidate.command,
+            "Command sent to the active session.",
+            cx,
+        ) {
+            self.close_command_palette(window, cx);
+            return true;
+        }
+        false
+    }
+
     fn selected_autocomplete_index(&self, candidate_count: usize) -> usize {
         self.active_pane()
             .and_then(|pane| pane.selected_autocomplete_index)
@@ -3247,6 +3408,9 @@ impl TermiRustApp {
         }
 
         if search_visible {
+            self.show_command_palette = false;
+            self.selected_command_palette_index = 0;
+            self.set_command_palette_input("", window, cx);
             self.focus_terminal_search(window, cx);
         } else {
             self.set_terminal_search_input("", window, cx);
@@ -3425,6 +3589,10 @@ impl TermiRustApp {
                 }
                 "f" => {
                     self.toggle_workspace_search(window, cx);
+                    return true;
+                }
+                "k" => {
+                    self.toggle_command_palette(window, cx);
                     return true;
                 }
                 "w" => {
@@ -4236,6 +4404,7 @@ impl TermiRustApp {
         let connect_profile_id = profile.id.clone();
         let accent = theme::host_chip_color(&profile.display_name());
         let group_label = profile.group.trim().to_string();
+        let tags = profile.tags.iter().take(3).cloned().collect::<Vec<_>>();
         let vault_label = self.effective_vault_name(profile.vault_id.as_deref());
         let identity_label = profile
             .identity_id
@@ -4378,7 +4547,22 @@ impl TermiRustApp {
                             .text_size(px(10.))
                             .text_color(theme::text_muted())
                             .child(format!("{}  •  {}", profile.endpoint(), profile.username)),
-                    ),
+                    )
+                    .when(!tags.is_empty(), |this| {
+                        this.child(
+                            h_flex()
+                                .gap_2()
+                                .flex_wrap()
+                                .children(tags.iter().map(|tag| {
+                                    self.status_badge(
+                                        format!("#{tag}"),
+                                        theme::with_alpha(theme::hover(), 0.72),
+                                        theme::text_muted(),
+                                    )
+                                    .into_any_element()
+                                })),
+                        )
+                    }),
             )
             .child(
                 Button::new(("connect-host-card", card_ix))
@@ -4730,6 +4914,7 @@ impl TermiRustApp {
                 cx,
             ))
             .child(self.form_field("Group", Input::new(&self.inputs.group)))
+            .child(self.form_field("Tags", Input::new(&self.inputs.tags)))
             .child(self.form_field("Jump Host", Input::new(&self.inputs.jump_host)))
             .child(self.form_field("Host", Input::new(&self.inputs.host)))
             .child(
@@ -6679,6 +6864,17 @@ impl TermiRustApp {
                             })),
                     )
                     .child(
+                        Button::new("workspace-commands")
+                            .ghost()
+                            .small()
+                            .icon(IconName::SquareTerminal)
+                            .label("Commands")
+                            .disabled(files_mode)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.toggle_command_palette(window, cx);
+                            })),
+                    )
+                    .child(
                         Button::new("workspace-files")
                             .ghost()
                             .small()
@@ -6897,6 +7093,9 @@ impl TermiRustApp {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<Div> {
+        if self.show_command_palette {
+            return None;
+        }
         let workspace = self.active_workspace()?;
         if workspace.view_mode != WorkspaceViewMode::Terminal || workspace.search_visible {
             return None;
@@ -7710,7 +7909,8 @@ impl Render for TermiRustApp {
                                                 .text_size(px(10.))
                                                 .text_color(theme::with_alpha(muted_color, 0.6))
                                                 .child(format!(
-                                                    "{}+F Search  {}+W Close",
+                                                    "{}+F Search  {}+K Commands  {}+W Close",
+                                                    primary_shortcut_label(),
                                                     primary_shortcut_label(),
                                                     primary_shortcut_label()
                                                 )),
@@ -7722,10 +7922,232 @@ impl Render for TermiRustApp {
             .when(self.show_editor_panel, |this| {
                 this.child(self.render_editor_dialog(window, cx))
             })
+            .when(self.show_command_palette, |this| {
+                this.child(self.render_command_palette(window, cx))
+            })
     }
 }
 
 impl TermiRustApp {
+    fn handle_command_palette_key(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if event.keystroke.modifiers.secondary() && event.keystroke.key.as_str() == "k" {
+            self.close_command_palette(window, cx);
+            return true;
+        }
+
+        match event.keystroke.key.as_str() {
+            "escape" => {
+                self.close_command_palette(window, cx);
+                true
+            }
+            "up" => self.move_command_palette_selection(-1, cx),
+            "down" => self.move_command_palette_selection(1, cx),
+            "enter" => self.run_selected_command_palette(window, cx),
+            _ => false,
+        }
+    }
+
+    fn render_command_palette(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let candidates = self.command_palette_candidates(cx);
+        let selected_index = self.selected_command_palette_index(candidates.len());
+        let query = self.command_palette_query(cx);
+
+        div()
+            .id("command-palette-overlay")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .flex()
+            .items_start()
+            .justify_center()
+            .pt(px(88.))
+            .bg(theme::modal_scrim())
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    this.close_command_palette(window, cx);
+                }),
+            )
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                if this.handle_command_palette_key(event, window, cx) {
+                    cx.stop_propagation();
+                }
+            }))
+            .child(
+                v_flex()
+                    .id("command-palette-card")
+                    .w(px(720.))
+                    .max_w(relative(0.9))
+                    .max_h(px(560.))
+                    .rounded(px(theme::CARD_RADIUS))
+                    .bg(theme::library_card())
+                    .border_1()
+                    .border_color(theme::border())
+                    .shadow_lg()
+                    .overflow_hidden()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                        cx.stop_propagation();
+                    })
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .p_4()
+                            .border_b_1()
+                            .border_color(theme::border())
+                            .bg(theme::with_alpha(theme::hover(), 0.5))
+                            .child(
+                                h_flex()
+                                    .justify_between()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(15.))
+                                            .font_semibold()
+                                            .text_color(theme::text_main())
+                                            .child("Command Palette"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .text_color(theme::text_muted())
+                                            .child(format!(
+                                                "{}+K toggle  ↑/↓ move  Enter run",
+                                                primary_shortcut_label()
+                                            )),
+                                    ),
+                            )
+                            .child(Input::new(&self.shell_inputs.command_palette).w_full()),
+                    )
+                    .child(
+                        v_flex()
+                            .max_h(px(400.))
+                            .overflow_y_scrollbar()
+                            .p_3()
+                            .gap_2()
+                            .when(!candidates.is_empty(), |this| {
+                                this.children(candidates.iter().enumerate().map(|(index, candidate)| {
+                                    let command = candidate.command.clone();
+                                    let selected = index == selected_index;
+                                    h_flex()
+                                        .id(("command-palette-item", index))
+                                        .justify_between()
+                                        .items_start()
+                                        .gap_3()
+                                        .p_3()
+                                        .rounded(px(12.))
+                                        .bg(if selected {
+                                            theme::with_alpha(theme::accent(), 0.1)
+                                        } else {
+                                            theme::with_alpha(theme::hover(), 0.72)
+                                        })
+                                        .border_1()
+                                        .border_color(if selected {
+                                            theme::with_alpha(theme::accent(), 0.42)
+                                        } else {
+                                            theme::border()
+                                        })
+                                        .cursor_pointer()
+                                        .hover(|style| style.bg(theme::hover()))
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            if this.run_command_in_active_pane(
+                                                &command,
+                                                "Command sent to the active session.",
+                                                cx,
+                                            ) {
+                                                this.close_command_palette(window, cx);
+                                            }
+                                        }))
+                                        .child(
+                                            v_flex()
+                                                .flex_1()
+                                                .gap(px(4.))
+                                                .child(
+                                                    h_flex()
+                                                        .justify_between()
+                                                        .items_center()
+                                                        .gap_3()
+                                                        .child(
+                                                            div()
+                                                                .text_size(px(12.5))
+                                                                .font_semibold()
+                                                                .text_color(theme::text_main())
+                                                                .child(candidate.title.clone()),
+                                                        )
+                                                        .child(self.status_badge(
+                                                            candidate.source.label(),
+                                                            theme::library_bg(),
+                                                            match candidate.source {
+                                                                AutocompleteSource::History => {
+                                                                    theme::accent()
+                                                                }
+                                                                AutocompleteSource::Snippet => {
+                                                                    theme::success()
+                                                                }
+                                                                AutocompleteSource::Builtin => {
+                                                                    theme::slate()
+                                                                }
+                                                            },
+                                                        )),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_size(px(11.))
+                                                        .text_color(theme::text_muted())
+                                                        .child(candidate.detail.clone()),
+                                                ),
+                                        )
+                                        .into_any_element()
+                                }))
+                            })
+                            .when(candidates.is_empty(), |this| {
+                                this.child(
+                                    v_flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .p_8()
+                                        .gap_2()
+                                        .child(
+                                            Icon::new(IconName::Search)
+                                                .size(px(24.))
+                                                .text_color(theme::with_alpha(theme::text_muted(), 0.45)),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(13.))
+                                                .font_medium()
+                                                .text_color(theme::text_muted())
+                                                .child(if query.is_empty() {
+                                                    "No commands yet"
+                                                } else {
+                                                    "No matching commands"
+                                                }),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(11.))
+                                                .text_color(theme::with_alpha(theme::text_muted(), 0.7))
+                                                .child(if query.is_empty() {
+                                                    "Run a few commands or save snippets to build the palette."
+                                                } else {
+                                                    "Try a command prefix, snippet name, or recent task."
+                                                }),
+                                        ),
+                                )
+                            }),
+                    ),
+            )
+    }
+
     fn render_editor_dialog(&self, _window: &mut Window, cx: &mut Context<Self>) -> Stateful<Div> {
         let title = if self.selected_profile_id.is_some() {
             "Host Details"
@@ -8313,6 +8735,145 @@ fn collect_autocomplete_candidates(
         .collect()
 }
 
+fn collect_command_palette_candidates(
+    query: &str,
+    command_history: &[String],
+    scoped_command_history: &[SavedCommandHistoryEntry],
+    scope_key: &str,
+    snippets: &[SavedSnippet],
+) -> Vec<CommandPaletteCandidate> {
+    let query = query.trim().to_ascii_lowercase();
+
+    #[derive(Clone)]
+    struct ScoredPaletteCandidate {
+        candidate: CommandPaletteCandidate,
+        match_kind: AutocompleteMatchKind,
+        ordinal: usize,
+        source_priority: u8,
+    }
+
+    let mut suggestions = Vec::new();
+    let mut seen = HashSet::new();
+
+    for (ordinal, entry) in scoped_command_history
+        .iter()
+        .rev()
+        .filter(|entry| entry.scope_key == scope_key)
+        .enumerate()
+    {
+        let command = entry.command.trim();
+        let Some(match_kind) = palette_match_kind(&query, &[command, &entry.scope_label]) else {
+            continue;
+        };
+        let key = command.to_ascii_lowercase();
+        if seen.insert(key) {
+            let scope = if entry.scope_label.trim().is_empty() {
+                "This target".to_string()
+            } else {
+                entry.scope_label.clone()
+            };
+            suggestions.push(ScoredPaletteCandidate {
+                candidate: CommandPaletteCandidate {
+                    command: command.to_string(),
+                    title: command.to_string(),
+                    detail: format!("History • {scope}"),
+                    source: AutocompleteSource::History,
+                },
+                match_kind,
+                ordinal,
+                source_priority: 0,
+            });
+        }
+    }
+
+    for (ordinal, command) in command_history.iter().rev().enumerate() {
+        let command = command.trim();
+        let Some(match_kind) = palette_match_kind(&query, &[command]) else {
+            continue;
+        };
+        let key = command.to_ascii_lowercase();
+        if seen.insert(key) {
+            suggestions.push(ScoredPaletteCandidate {
+                candidate: CommandPaletteCandidate {
+                    command: command.to_string(),
+                    title: command.to_string(),
+                    detail: "Recent command".to_string(),
+                    source: AutocompleteSource::History,
+                },
+                match_kind,
+                ordinal,
+                source_priority: 1,
+            });
+        }
+    }
+
+    for (ordinal, snippet) in snippets.iter().enumerate() {
+        let command = snippet.command.trim();
+        let title = snippet.display_name();
+        let Some(match_kind) = palette_match_kind(&query, &[command, &title, &snippet.group])
+        else {
+            continue;
+        };
+        let key = command.to_ascii_lowercase();
+        if seen.insert(key) {
+            let mut detail = format!("Snippet • {}", command);
+            if !snippet.group.trim().is_empty() {
+                detail = format!("Snippet • {} • {}", snippet.group.trim(), command);
+            }
+            suggestions.push(ScoredPaletteCandidate {
+                candidate: CommandPaletteCandidate {
+                    command: command.to_string(),
+                    title,
+                    detail,
+                    source: AutocompleteSource::Snippet,
+                },
+                match_kind,
+                ordinal,
+                source_priority: 2,
+            });
+        }
+    }
+
+    for (ordinal, command) in builtin_commands().iter().enumerate() {
+        let Some(match_kind) = palette_match_kind(&query, &[*command]) else {
+            continue;
+        };
+        let key = command.to_ascii_lowercase();
+        if seen.insert(key) {
+            suggestions.push(ScoredPaletteCandidate {
+                candidate: CommandPaletteCandidate {
+                    command: (*command).to_string(),
+                    title: (*command).to_string(),
+                    detail: "Built-in suggestion".to_string(),
+                    source: AutocompleteSource::Builtin,
+                },
+                match_kind,
+                ordinal,
+                source_priority: 3,
+            });
+        }
+    }
+
+    suggestions.sort_by(|left, right| {
+        left.match_kind
+            .cmp(&right.match_kind)
+            .then_with(|| left.source_priority.cmp(&right.source_priority))
+            .then_with(|| left.ordinal.cmp(&right.ordinal))
+            .then_with(|| {
+                left.candidate
+                    .title
+                    .to_ascii_lowercase()
+                    .cmp(&right.candidate.title.to_ascii_lowercase())
+            })
+    });
+
+    suggestions
+        .into_iter()
+        .take(10)
+        .map(|candidate| candidate.candidate)
+        .collect()
+}
+
 fn autocomplete_match_kind(query: &str, command: &str) -> Option<AutocompleteMatchKind> {
     if command.starts_with(query) {
         return Some(AutocompleteMatchKind::Prefix);
@@ -8337,6 +8898,17 @@ fn autocomplete_match_kind(query: &str, command: &str) -> Option<AutocompleteMat
     }
 
     None
+}
+
+fn palette_match_kind(query: &str, fields: &[&str]) -> Option<AutocompleteMatchKind> {
+    if query.is_empty() {
+        return Some(AutocompleteMatchKind::Prefix);
+    }
+
+    fields
+        .iter()
+        .filter_map(|field| autocomplete_match_kind(query, &field.to_ascii_lowercase()))
+        .min()
 }
 
 fn builtin_commands() -> &'static [&'static str] {
