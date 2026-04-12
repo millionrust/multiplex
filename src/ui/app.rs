@@ -19,10 +19,11 @@ use rfd::FileDialog;
 use vt100::{MouseProtocolEncoding, MouseProtocolMode};
 
 use crate::credentials;
+use crate::local::spawn_local_session;
 use crate::models::{
-    AuthConfig, AuthMode, ConnectRequest, DraftProfile, HostProfile, JumpHostConnection,
-    ProfileSource, QuickConnect, SavedIdentity, SavedSnippet, SavedState, SavedWorkspace,
-    SessionLogEntry, SessionLogStatus, SplitAxis,
+    AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, HostProfile,
+    JumpHostConnection, ProfileSource, QuickConnect, SavedIdentity, SavedSnippet, SavedState,
+    SavedWorkspace, SessionLogEntry, SessionLogStatus, SplitAxis,
 };
 use crate::sftp::{
     RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
@@ -1553,6 +1554,11 @@ impl TermiRustApp {
         let Some(pane) = self.active_pane() else {
             return;
         };
+        if pane.request.is_local_shell() {
+            self.error_message = "Remote files are only available for SSH sessions.".to_string();
+            cx.notify();
+            return;
+        }
 
         let pane_id = pane.id;
         let endpoint = pane.endpoint.clone();
@@ -1843,15 +1849,19 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) -> u64 {
         let pane_id = request.session_id;
-        let endpoint = request.address();
+        let endpoint = request.endpoint_label();
         let title = request.title.clone();
         eprintln!("[app] spawn_pane: pane_id={pane_id} title='{title}' endpoint={endpoint}");
         let terminal_focus = cx.focus_handle().tab_stop(true);
-        let runtime = spawn_session(
-            request.clone(),
-            self.known_hosts.clone(),
-            self.event_tx.clone(),
-        );
+        let runtime = if request.kind == ConnectionKind::LocalShell {
+            spawn_local_session(request.clone(), self.event_tx.clone())
+        } else {
+            spawn_session(
+                request.clone(),
+                self.known_hosts.clone(),
+                self.event_tx.clone(),
+            )
+        };
         eprintln!("[app] spawn_pane: session spawned, creating pane state...");
 
         let log_entry = SessionLogEntry::new(&request);
@@ -1880,6 +1890,39 @@ impl TermiRustApp {
         pane_id
     }
 
+    fn open_local_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let request = ConnectRequest::local_shell(self.next_session_id());
+        let pane_id = self.spawn_pane(request.clone(), window, cx);
+        let workspace_id = self.next_workspace_id();
+
+        self.workspaces.push(WorkspaceTab {
+            id: workspace_id,
+            title: request.title.clone(),
+            pane_ids: vec![pane_id],
+            active_pane_id: pane_id,
+            unread_events: 0,
+            split_axis: SplitAxis::Horizontal,
+            view_mode: WorkspaceViewMode::Terminal,
+            sftp: None,
+            search_visible: false,
+            search_query: String::new(),
+            search_results: Vec::new(),
+            active_search_index: None,
+        });
+
+        self.active_workspace_id = Some(workspace_id);
+        self.show_editor_panel = false;
+        self.status_message = "Opening local terminal...".to_string();
+        self.error_message.clear();
+        self.set_terminal_search_input("", window, cx);
+        self.sync_terminal_layout(window, cx);
+        if let Some(pane) = self.pane(pane_id) {
+            pane.terminal_focus.focus(window);
+        }
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
     fn connect_current(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         eprintln!("[app] connect_current: building request from draft...");
         let _ = self.ensure_default_identity_selected(window, cx);
@@ -1889,10 +1932,11 @@ impl TermiRustApp {
                     "[app] connect_current: request ok — title='{}' address='{}' auth={:?}",
                     request.title,
                     request.address(),
-                    match &request.auth {
-                        AuthConfig::Password { .. } => "password",
-                        AuthConfig::PasswordRef { .. } => "stored-password",
-                        AuthConfig::PrivateKey { key_path, .. } => key_path.as_str(),
+                    match request.auth.as_ref() {
+                        Some(AuthConfig::Password { .. }) => "password",
+                        Some(AuthConfig::PasswordRef { .. }) => "stored-password",
+                        Some(AuthConfig::PrivateKey { key_path, .. }) => key_path.as_str(),
+                        None => "none",
                     }
                 );
                 let pane_id = self.spawn_pane(request.clone(), window, cx);
@@ -1916,7 +1960,11 @@ impl TermiRustApp {
 
                 self.active_workspace_id = Some(workspace_id);
                 self.show_editor_panel = false;
-                self.status_message = format!("Connecting to {}...", request.address());
+                self.status_message = if request.kind == ConnectionKind::LocalShell {
+                    "Opening local terminal...".to_string()
+                } else {
+                    format!("Connecting to {}...", request.address())
+                };
                 self.error_message.clear();
                 Self::set_input_value(&self.inputs.password, "", window, cx);
                 self.set_terminal_search_input("", window, cx);
@@ -1972,7 +2020,11 @@ impl TermiRustApp {
         }
         self.panes.retain(|p| p.id != pane_id);
 
-        self.status_message = format!("Reconnecting to {}...", request.address());
+        self.status_message = if request.kind == ConnectionKind::LocalShell {
+            "Reopening local terminal...".to_string()
+        } else {
+            format!("Reconnecting to {}...", request.address())
+        };
         self.error_message.clear();
         self.sync_terminal_layout(window, cx);
         if let Some(pane) = self.pane(new_pane_id) {
@@ -2091,7 +2143,11 @@ impl TermiRustApp {
             workspace.title = request.title.clone();
         }
 
-        self.status_message = format!("Launching split pane for {}...", request.address());
+        self.status_message = if request.kind == ConnectionKind::LocalShell {
+            "Launching split local terminal...".to_string()
+        } else {
+            format!("Launching split pane for {}...", request.address())
+        };
         self.error_message.clear();
         self.sync_terminal_layout(window, cx);
         if let Some(pane) = self.pane(pane_id) {
@@ -2223,7 +2279,12 @@ impl TermiRustApp {
                         );
                     }
 
-                    self.status_message = if trusted_new_host {
+                    let local_shell = self
+                        .pane(session_id)
+                        .is_some_and(|pane| pane.request.is_local_shell());
+                    self.status_message = if local_shell {
+                        "Local terminal ready.".to_string()
+                    } else if trusted_new_host {
                         "SSH session connected. New host key trusted and pinned.".to_string()
                     } else {
                         "SSH session connected.".to_string()
@@ -2283,7 +2344,14 @@ impl TermiRustApp {
                         let _ = save_saved_state(&self.saved);
                     }
 
-                    self.status_message = "SSH session closed.".to_string();
+                    self.status_message = if self
+                        .pane(session_id)
+                        .is_some_and(|pane| pane.request.is_local_shell())
+                    {
+                        "Local terminal closed.".to_string()
+                    } else {
+                        "SSH session closed.".to_string()
+                    };
                     if self.error_message.is_empty() {
                         self.error_message = message;
                     }
@@ -3409,6 +3477,31 @@ impl TermiRustApp {
                         this.error_message.clear();
                         cx.notify();
                     })),
+            )
+            .child(
+                div()
+                    .id("chrome-local-btn")
+                    .size(px(30.))
+                    .rounded(px(7.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .border_1()
+                    .border_color(theme::with_alpha(theme::text_muted_dark(), 0.15))
+                    .hover(|style| {
+                        style
+                            .bg(theme::chrome_tab())
+                            .border_color(theme::with_alpha(theme::text_muted_dark(), 0.3))
+                    })
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_local_terminal(window, cx);
+                    }))
+                    .child(
+                        Icon::new(IconName::SquareTerminal)
+                            .size(px(14.))
+                            .text_color(theme::text_muted_dark()),
+                    ),
             )
             .child(
                 div()
@@ -5342,6 +5435,7 @@ impl TermiRustApp {
             return v_flex();
         };
         let files_mode = workspace.view_mode == WorkspaceViewMode::Files;
+        let can_browse_files = !pane.request.is_local_shell();
         let selected_remote_entry = self.selected_workspace_sftp_entry(workspace.id);
         let _focused = pane.terminal_focus.is_focused(window);
 
@@ -5451,6 +5545,7 @@ impl TermiRustApp {
                                 IconName::FolderOpen
                             })
                             .label(if files_mode { "Terminal" } else { "Files" })
+                            .disabled(!files_mode && !can_browse_files)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 if this.active_workspace().is_some_and(|workspace| {
                                     workspace.view_mode == WorkspaceViewMode::Files

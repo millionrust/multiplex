@@ -304,6 +304,10 @@ async fn establish_handles(
     request: ConnectRequest,
     known_hosts: Arc<KnownHostStore>,
 ) -> Result<EstablishedHandles> {
+    let auth = request
+        .auth
+        .clone()
+        .context("SFTP session is missing authentication settings")?;
     let (target_handle, jump_handles) = if let Some(jump_host) = request.jump_host.clone() {
         connect_via_jump_chain(
             config,
@@ -311,7 +315,7 @@ async fn establish_handles(
             request.port,
             request.known_host_key(),
             request.username.clone(),
-            request.auth.clone(),
+            auth,
             jump_host,
             known_hosts,
         )
@@ -322,7 +326,7 @@ async fn establish_handles(
             request.address(),
             request.known_host_key(),
             request.username.clone(),
-            request.auth.clone(),
+            auth,
             known_hosts,
         )
         .await?;

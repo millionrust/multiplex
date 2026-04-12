@@ -51,6 +51,36 @@ pub enum SplitAxis {
     Vertical,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionKind {
+    #[default]
+    Ssh,
+    LocalShell,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalShellConfig {
+    pub program: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub cwd: Option<String>,
+}
+
+impl LocalShellConfig {
+    pub fn display_name(&self) -> String {
+        if let Some(name) = std::path::Path::new(&self.program)
+            .file_name()
+            .and_then(|name| name.to_str())
+        {
+            name.to_string()
+        } else {
+            self.program.clone()
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct HostProfile {
     pub id: String,
@@ -442,12 +472,14 @@ impl DraftProfile {
         Ok(ConnectRequest {
             session_id,
             title: self.display_name(),
+            kind: ConnectionKind::Ssh,
             host: profile.host,
             port: profile.port,
             username: profile.username,
-            auth,
+            auth: Some(auth),
             jump_host: None,
             local_forward: profile.local_forward,
+            local_shell: None,
         })
     }
 }
@@ -457,6 +489,36 @@ fn non_empty(value: &str) -> Option<String> {
         None
     } else {
         Some(value.to_string())
+    }
+}
+
+fn current_username() -> String {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "local".to_string())
+}
+
+fn default_local_shell_config() -> LocalShellConfig {
+    #[cfg(target_os = "windows")]
+    {
+        LocalShellConfig {
+            program: std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string()),
+            args: Vec::new(),
+            cwd: std::env::current_dir()
+                .ok()
+                .map(|path| path.display().to_string()),
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        LocalShellConfig {
+            program: std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string()),
+            args: Vec::new(),
+            cwd: std::env::current_dir()
+                .ok()
+                .map(|path| path.display().to_string()),
+        }
     }
 }
 
@@ -492,17 +554,38 @@ impl AuthConfig {
 pub struct ConnectRequest {
     pub session_id: u64,
     pub title: String,
+    #[allow(dead_code)]
+    pub kind: ConnectionKind,
     pub host: String,
     pub port: u16,
     pub username: String,
-    pub auth: AuthConfig,
+    pub auth: Option<AuthConfig>,
     pub jump_host: Option<JumpHostConnection>,
     pub local_forward: Option<LocalPortForward>,
+    pub local_shell: Option<LocalShellConfig>,
 }
 
 impl ConnectRequest {
     pub fn address(&self) -> String {
-        format!("{}:{}", self.host, self.port)
+        match self.kind {
+            ConnectionKind::Ssh => format!("{}:{}", self.host, self.port),
+            ConnectionKind::LocalShell => "local shell".to_string(),
+        }
+    }
+
+    pub fn endpoint_label(&self) -> String {
+        match self.kind {
+            ConnectionKind::Ssh => self.address(),
+            ConnectionKind::LocalShell => self
+                .local_shell
+                .as_ref()
+                .map(LocalShellConfig::display_name)
+                .unwrap_or_else(|| "Local Shell".to_string()),
+        }
+    }
+
+    pub fn is_local_shell(&self) -> bool {
+        self.kind == ConnectionKind::LocalShell
     }
 
     pub fn known_host_key(&self) -> String {
@@ -510,18 +593,49 @@ impl ConnectRequest {
     }
 
     pub fn to_restorable(&self) -> Option<RestorableConnection> {
-        Some(RestorableConnection {
-            title: self.title.clone(),
-            host: self.host.clone(),
-            port: self.port,
-            username: self.username.clone(),
-            auth: self.auth.to_restorable()?,
-            jump_host: self
-                .jump_host
-                .as_ref()
-                .and_then(JumpHostConnection::to_restorable),
-            local_forward: self.local_forward.clone(),
-        })
+        match self.kind {
+            ConnectionKind::Ssh => Some(RestorableConnection {
+                title: self.title.clone(),
+                kind: self.kind,
+                host: self.host.clone(),
+                port: self.port,
+                username: self.username.clone(),
+                auth: Some(self.auth.as_ref()?.to_restorable()?),
+                jump_host: self
+                    .jump_host
+                    .as_ref()
+                    .and_then(JumpHostConnection::to_restorable),
+                local_forward: self.local_forward.clone(),
+                local_shell: None,
+            }),
+            ConnectionKind::LocalShell => Some(RestorableConnection {
+                title: self.title.clone(),
+                kind: self.kind,
+                host: self.host.clone(),
+                port: self.port,
+                username: self.username.clone(),
+                auth: None,
+                jump_host: None,
+                local_forward: None,
+                local_shell: self.local_shell.clone(),
+            }),
+        }
+    }
+
+    pub fn local_shell(session_id: u64) -> Self {
+        let shell = default_local_shell_config();
+        Self {
+            session_id,
+            title: "Local Terminal".to_string(),
+            kind: ConnectionKind::LocalShell,
+            host: "local".to_string(),
+            port: 0,
+            username: current_username(),
+            auth: None,
+            jump_host: None,
+            local_forward: None,
+            local_shell: Some(shell),
+        }
     }
 }
 
@@ -570,42 +684,71 @@ pub enum RestorableAuth {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RestorableConnection {
     pub title: String,
+    #[serde(default)]
+    pub kind: ConnectionKind,
+    #[serde(default)]
     pub host: String,
     #[serde(default = "default_ssh_port")]
     pub port: u16,
+    #[serde(default)]
     pub username: String,
-    pub auth: RestorableAuth,
+    #[serde(default)]
+    pub auth: Option<RestorableAuth>,
     #[serde(default)]
     pub jump_host: Option<RestorableJumpHostConnection>,
     #[serde(default)]
     pub local_forward: Option<LocalPortForward>,
+    #[serde(default)]
+    pub local_shell: Option<LocalShellConfig>,
 }
 
 impl RestorableConnection {
     pub fn to_connect_request(&self, session_id: u64) -> ConnectRequest {
-        let auth = match &self.auth {
-            RestorableAuth::PasswordKeychain { credential_id } => AuthConfig::PasswordRef {
-                credential_id: credential_id.clone(),
-            },
-            RestorableAuth::PrivateKey { key_path } => AuthConfig::PrivateKey {
-                key_path: key_path.clone(),
-                passphrase: None,
-            },
-        };
+        match self.kind {
+            ConnectionKind::Ssh => {
+                let auth = match self.auth.as_ref().expect("ssh connections require auth") {
+                    RestorableAuth::PasswordKeychain { credential_id } => AuthConfig::PasswordRef {
+                        credential_id: credential_id.clone(),
+                    },
+                    RestorableAuth::PrivateKey { key_path } => AuthConfig::PrivateKey {
+                        key_path: key_path.clone(),
+                        passphrase: None,
+                    },
+                };
 
-        ConnectRequest {
-            session_id,
-            title: self.title.clone(),
-            host: self.host.clone(),
-            port: self.port,
-            username: self.username.clone(),
-            auth,
-            jump_host: self
-                .jump_host
-                .as_ref()
-                .map(RestorableJumpHostConnection::to_jump_host_connection),
-            local_forward: self.local_forward.clone(),
+                Some(ConnectRequest {
+                    session_id,
+                    title: self.title.clone(),
+                    kind: self.kind,
+                    host: self.host.clone(),
+                    port: self.port,
+                    username: self.username.clone(),
+                    auth: Some(auth),
+                    jump_host: self
+                        .jump_host
+                        .as_ref()
+                        .map(RestorableJumpHostConnection::to_jump_host_connection),
+                    local_forward: self.local_forward.clone(),
+                    local_shell: None,
+                })
+            }
+            ConnectionKind::LocalShell => Some(ConnectRequest {
+                session_id,
+                title: self.title.clone(),
+                kind: self.kind,
+                host: self.host.clone(),
+                port: self.port,
+                username: self.username.clone(),
+                auth: None,
+                jump_host: None,
+                local_forward: None,
+                local_shell: self
+                    .local_shell
+                    .clone()
+                    .or_else(|| Some(default_local_shell_config())),
+            }),
         }
+        .expect("restorable connection should be valid")
     }
 }
 
@@ -823,12 +966,14 @@ impl QuickConnect {
         ConnectRequest {
             session_id,
             title: self.display_name(),
+            kind: ConnectionKind::Ssh,
             host: self.host.clone(),
             port: self.port,
             username: self.username.clone(),
-            auth,
+            auth: Some(auth),
             jump_host: None,
             local_forward: None,
+            local_shell: None,
         }
     }
 }
@@ -854,9 +999,10 @@ impl SavedState {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuthConfig, AuthMode, ConnectRequest, DraftProfile, IdentitySource, ImportedIdentity,
-        JumpHostConnection, LocalPortForward, QuickConnect, RestorableAuth, RestorableConnection,
-        SavedIdentity, SavedSnippet, SavedState, SavedWorkspace, SplitAxis, identity_id_for_path,
+        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, IdentitySource,
+        ImportedIdentity, JumpHostConnection, LocalPortForward, LocalShellConfig, QuickConnect,
+        RestorableAuth, RestorableConnection, SavedIdentity, SavedSnippet, SavedState,
+        SavedWorkspace, SplitAxis, identity_id_for_path,
     };
 
     #[test]
@@ -898,14 +1044,16 @@ mod tests {
         let request = ConnectRequest {
             session_id: 1,
             title: "app".to_string(),
+            kind: ConnectionKind::Ssh,
             host: "example.com".to_string(),
             port: 22,
             username: "deploy".to_string(),
-            auth: AuthConfig::Password {
+            auth: Some(AuthConfig::Password {
                 password: "secret".to_string(),
-            },
+            }),
             jump_host: None,
             local_forward: None,
+            local_shell: None,
         };
 
         assert!(request.to_restorable().is_none());
@@ -916,19 +1064,21 @@ mod tests {
         let request = ConnectRequest {
             session_id: 1,
             title: "app".to_string(),
+            kind: ConnectionKind::Ssh,
             host: "example.com".to_string(),
             port: 22,
             username: "deploy".to_string(),
-            auth: AuthConfig::PasswordRef {
+            auth: Some(AuthConfig::PasswordRef {
                 credential_id: "profile:app".to_string(),
-            },
+            }),
             jump_host: None,
             local_forward: None,
+            local_shell: None,
         };
 
         let restored = request.to_restorable().unwrap();
         let request = restored.to_connect_request(2);
-        match request.auth {
+        match request.auth.unwrap() {
             AuthConfig::PasswordRef { credential_id } => {
                 assert_eq!(credential_id, "profile:app");
             }
@@ -941,13 +1091,14 @@ mod tests {
         let request = ConnectRequest {
             session_id: 7,
             title: "prod".to_string(),
+            kind: ConnectionKind::Ssh,
             host: "prod.example.com".to_string(),
             port: 2222,
             username: "ubuntu".to_string(),
-            auth: AuthConfig::PrivateKey {
+            auth: Some(AuthConfig::PrivateKey {
                 key_path: "/tmp/id_ed25519".to_string(),
                 passphrase: Some("ignored".to_string()),
-            },
+            }),
             jump_host: Some(JumpHostConnection {
                 title: "bastion".to_string(),
                 host: "bastion.example.com".to_string(),
@@ -975,6 +1126,7 @@ mod tests {
                 remote_host: "127.0.0.1".to_string(),
                 remote_port: 5432,
             }),
+            local_shell: None,
         };
 
         let restored = request.to_restorable().unwrap();
@@ -1002,7 +1154,7 @@ mod tests {
                 .map(|jump| jump.title.clone()),
             Some("edge".to_string())
         );
-        match request.auth {
+        match request.auth.unwrap() {
             AuthConfig::PrivateKey {
                 key_path,
                 passphrase,
@@ -1024,19 +1176,56 @@ mod tests {
             active_pane_index: 5,
             panes: vec![RestorableConnection {
                 title: "prod".to_string(),
+                kind: ConnectionKind::Ssh,
                 host: "prod.example.com".to_string(),
                 port: 22,
                 username: "ubuntu".to_string(),
-                auth: RestorableAuth::PasswordKeychain {
+                auth: Some(RestorableAuth::PasswordKeychain {
                     credential_id: "profile:prod".to_string(),
-                },
+                }),
                 jump_host: None,
                 local_forward: None,
+                local_shell: None,
             }],
         };
 
         workspace.normalize();
         assert_eq!(workspace.active_pane_index, 0);
+    }
+
+    #[test]
+    fn local_shell_sessions_round_trip_as_restorable() {
+        let request = ConnectRequest {
+            session_id: 11,
+            title: "Local Terminal".to_string(),
+            kind: ConnectionKind::LocalShell,
+            host: "local".to_string(),
+            port: 0,
+            username: "jacob".to_string(),
+            auth: None,
+            jump_host: None,
+            local_forward: None,
+            local_shell: Some(LocalShellConfig {
+                program: "/bin/zsh".to_string(),
+                args: vec!["-l".to_string()],
+                cwd: Some("/tmp".to_string()),
+            }),
+        };
+
+        let restored = request.to_restorable().unwrap();
+        assert_eq!(restored.kind, ConnectionKind::LocalShell);
+        assert!(restored.auth.is_none());
+
+        let round_trip = restored.to_connect_request(12);
+        assert!(round_trip.is_local_shell());
+        assert_eq!(round_trip.session_id, 12);
+        assert_eq!(
+            round_trip
+                .local_shell
+                .as_ref()
+                .map(|shell| shell.program.as_str()),
+            Some("/bin/zsh")
+        );
     }
 
     #[test]

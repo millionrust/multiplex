@@ -29,6 +29,7 @@ Other things worth knowing about:
 - Hosts can optionally start a local TCP forward when they connect.
 - Hosts can optionally connect through saved jump-host chains.
 - Every workspace can switch into an SFTP remote-files view for browse, upload, download, and delete against the active host.
+- A native local terminal can be opened directly from the chrome and behaves like a normal workspace tab or split pane.
 - TOFU host key pinning, with a Known Hosts view where you can review or delete pinned keys.
 - A keys view shows imported key types and lets you add key files from disk.
 - Session logs track your connection history with timestamps and duration across app restarts.
@@ -49,8 +50,8 @@ The tracked parity target is documented in [docs/termius-parity.md](docs/termius
 This is early alpha. The following are on the radar but don't exist yet:
 
 - Drag-reordering split panes
-- Local terminal
 - Vault / sync / team features
+- Command autocomplete / shell intelligence
 - Platform-specific packaging polish
 
 ## License
