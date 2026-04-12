@@ -10,6 +10,8 @@ fn default_local_forward_host() -> String {
     "127.0.0.1".to_string()
 }
 
+pub const DEFAULT_VAULT_ID: &str = "vault-personal";
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthMode {
@@ -41,6 +43,23 @@ pub enum IdentitySource {
     #[default]
     User,
     Imported,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VaultKind {
+    #[default]
+    Personal,
+    Shared,
+}
+
+impl VaultKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Personal => "Personal",
+            Self::Shared => "Shared",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,6 +105,8 @@ pub struct HostProfile {
     pub id: String,
     pub label: String,
     #[serde(default)]
+    pub vault_id: Option<String>,
+    #[serde(default)]
     pub group: String,
     pub host: String,
     #[serde(default = "default_ssh_port")]
@@ -119,12 +140,18 @@ impl HostProfile {
     pub fn endpoint(&self) -> String {
         format!("{}:{}", self.host.trim(), self.port)
     }
+
+    pub fn effective_vault_id(&self) -> &str {
+        self.vault_id.as_deref().unwrap_or(DEFAULT_VAULT_ID)
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SavedIdentity {
     pub id: String,
     pub label: String,
+    #[serde(default)]
+    pub vault_id: Option<String>,
     pub key_path: String,
     pub kind: String,
     #[serde(default)]
@@ -154,8 +181,47 @@ pub struct SavedSnippet {
     pub id: String,
     pub label: String,
     #[serde(default)]
+    pub vault_id: Option<String>,
+    #[serde(default)]
     pub group: String,
     pub command: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SavedVault {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub kind: VaultKind,
+}
+
+impl SavedVault {
+    pub fn personal() -> Self {
+        Self {
+            id: DEFAULT_VAULT_ID.to_string(),
+            label: "Personal".to_string(),
+            description: "Local vault for private hosts, snippets, and identities.".to_string(),
+            kind: VaultKind::Personal,
+        }
+    }
+
+    pub fn display_name(&self) -> String {
+        if self.label.trim().is_empty() {
+            self.kind.label().to_string()
+        } else {
+            self.label.trim().to_string()
+        }
+    }
+
+    pub fn vault_id() -> String {
+        format!("vault-{}", now_millis())
+    }
+
+    pub fn is_personal(&self) -> bool {
+        self.id == DEFAULT_VAULT_ID || self.kind == VaultKind::Personal
+    }
 }
 
 impl SavedSnippet {
@@ -170,10 +236,22 @@ impl SavedSnippet {
     pub fn snippet_id() -> String {
         format!("snippet-{}", now_millis())
     }
+
+    pub fn effective_vault_id(&self) -> &str {
+        self.vault_id.as_deref().unwrap_or(DEFAULT_VAULT_ID)
+    }
+}
+
+impl SavedIdentity {
+    pub fn effective_vault_id(&self) -> &str {
+        self.vault_id.as_deref().unwrap_or(DEFAULT_VAULT_ID)
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SavedState {
+    #[serde(default)]
+    pub vaults: Vec<SavedVault>,
     #[serde(default)]
     pub profiles: Vec<HostProfile>,
     #[serde(default)]
@@ -191,13 +269,128 @@ pub struct SavedState {
 }
 
 impl SavedState {
+    pub fn ensure_vaults(&mut self) {
+        if !self.vaults.iter().any(|vault| vault.id == DEFAULT_VAULT_ID) {
+            self.vaults.push(SavedVault::personal());
+        }
+
+        if let Some(personal) = self
+            .vaults
+            .iter_mut()
+            .find(|vault| vault.id == DEFAULT_VAULT_ID)
+        {
+            personal.kind = VaultKind::Personal;
+            if personal.label.trim().is_empty() {
+                personal.label = "Personal".to_string();
+            }
+        }
+
+        self.vaults.sort_by(|left, right| {
+            left.is_personal()
+                .cmp(&right.is_personal())
+                .reverse()
+                .then_with(|| {
+                    left.display_name()
+                        .to_ascii_lowercase()
+                        .cmp(&right.display_name().to_ascii_lowercase())
+                })
+        });
+
+        let valid_vaults = self
+            .vaults
+            .iter()
+            .map(|vault| vault.id.as_str())
+            .collect::<Vec<_>>();
+        for profile in &mut self.profiles {
+            if !profile
+                .vault_id
+                .as_deref()
+                .is_some_and(|vault_id| valid_vaults.contains(&vault_id))
+            {
+                profile.vault_id = Some(DEFAULT_VAULT_ID.to_string());
+            }
+        }
+        for identity in &mut self.identities {
+            if !identity
+                .vault_id
+                .as_deref()
+                .is_some_and(|vault_id| valid_vaults.contains(&vault_id))
+            {
+                identity.vault_id = Some(DEFAULT_VAULT_ID.to_string());
+            }
+        }
+        for snippet in &mut self.snippets {
+            if !snippet
+                .vault_id
+                .as_deref()
+                .is_some_and(|vault_id| valid_vaults.contains(&vault_id))
+            {
+                snippet.vault_id = Some(DEFAULT_VAULT_ID.to_string());
+            }
+        }
+    }
+
+    pub fn upsert_vault(&mut self, mut vault: SavedVault) {
+        if vault.id.trim().is_empty() {
+            vault.id = SavedVault::vault_id();
+        }
+        if vault.is_personal() {
+            vault.id = DEFAULT_VAULT_ID.to_string();
+            vault.kind = VaultKind::Personal;
+        }
+
+        if let Some(existing) = self.vaults.iter_mut().find(|item| item.id == vault.id) {
+            *existing = vault;
+        } else {
+            self.vaults.push(vault);
+        }
+
+        self.ensure_vaults();
+    }
+
+    pub fn remove_vault(&mut self, vault_id: &str) -> bool {
+        if vault_id == DEFAULT_VAULT_ID {
+            return false;
+        }
+
+        let removed = self.vaults.iter().any(|vault| vault.id == vault_id);
+        if !removed {
+            return false;
+        }
+
+        self.vaults.retain(|vault| vault.id != vault_id);
+        for profile in &mut self.profiles {
+            if profile.vault_id.as_deref() == Some(vault_id) {
+                profile.vault_id = Some(DEFAULT_VAULT_ID.to_string());
+            }
+        }
+        for identity in &mut self.identities {
+            if identity.vault_id.as_deref() == Some(vault_id) {
+                identity.vault_id = Some(DEFAULT_VAULT_ID.to_string());
+            }
+        }
+        for snippet in &mut self.snippets {
+            if snippet.vault_id.as_deref() == Some(vault_id) {
+                snippet.vault_id = Some(DEFAULT_VAULT_ID.to_string());
+            }
+        }
+        self.ensure_vaults();
+        true
+    }
+
     pub fn upsert_profile(&mut self, profile: HostProfile) {
+        let mut profile = profile;
+        if profile.vault_id.is_none() {
+            profile.vault_id = Some(DEFAULT_VAULT_ID.to_string());
+        }
+
         if let Some(existing) = self.profiles.iter_mut().find(|item| item.id == profile.id) {
             *existing = profile.clone();
         } else {
             self.profiles.push(profile.clone());
         }
 
+        self.ensure_vaults();
         self.profiles
             .sort_by_key(|profile| profile.display_name().to_ascii_lowercase());
         self.selected_profile_id = Some(profile.id);
@@ -211,7 +404,10 @@ impl SavedState {
     }
 
     pub fn merge_imported_profiles(&mut self, imported_profiles: Vec<HostProfile>) {
-        for imported in imported_profiles {
+        for mut imported in imported_profiles {
+            if imported.vault_id.is_none() {
+                imported.vault_id = Some(DEFAULT_VAULT_ID.to_string());
+            }
             if let Some(existing) = self.profiles.iter_mut().find(|item| item.id == imported.id) {
                 if existing.source == ProfileSource::User {
                     continue;
@@ -223,11 +419,17 @@ impl SavedState {
             }
         }
 
+        self.ensure_vaults();
         self.profiles
             .sort_by_key(|profile| profile.display_name().to_ascii_lowercase());
     }
 
     pub fn upsert_identity(&mut self, identity: SavedIdentity) {
+        let mut identity = identity;
+        if identity.vault_id.is_none() {
+            identity.vault_id = Some(DEFAULT_VAULT_ID.to_string());
+        }
+
         if let Some(existing) = self
             .identities
             .iter_mut()
@@ -238,13 +440,17 @@ impl SavedState {
             self.identities.push(identity);
         }
 
+        self.ensure_vaults();
         self.identities
             .sort_by_key(|identity| identity.label.to_ascii_lowercase());
     }
 
     pub fn merge_imported_identities(&mut self, imported_identities: Vec<ImportedIdentity>) {
         for imported in imported_identities {
-            let identity = imported.into_saved();
+            let mut identity = imported.into_saved();
+            if identity.vault_id.is_none() {
+                identity.vault_id = Some(DEFAULT_VAULT_ID.to_string());
+            }
             if let Some(existing) = self
                 .identities
                 .iter_mut()
@@ -259,17 +465,24 @@ impl SavedState {
             }
         }
 
+        self.ensure_vaults();
         self.identities
             .sort_by_key(|identity| identity.label.to_ascii_lowercase());
     }
 
     pub fn upsert_snippet(&mut self, snippet: SavedSnippet) {
+        let mut snippet = snippet;
+        if snippet.vault_id.is_none() {
+            snippet.vault_id = Some(DEFAULT_VAULT_ID.to_string());
+        }
+
         if let Some(existing) = self.snippets.iter_mut().find(|item| item.id == snippet.id) {
             *existing = snippet;
         } else {
             self.snippets.push(snippet);
         }
 
+        self.ensure_vaults();
         self.snippets
             .sort_by_key(|snippet| snippet.display_name().to_ascii_lowercase());
     }
@@ -291,6 +504,7 @@ impl ImportedIdentity {
         SavedIdentity {
             id: identity_id_for_path(&self.path),
             label: self.label,
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             key_path: self.path,
             kind: self.kind,
             source: IdentitySource::Imported,
@@ -309,6 +523,7 @@ pub fn identity_id_for_path(path: &str) -> String {
 #[derive(Clone, Debug, Default)]
 pub struct DraftProfile {
     pub label: String,
+    pub vault_id: Option<String>,
     pub group: String,
     pub host: String,
     pub port: String,
@@ -329,6 +544,7 @@ impl DraftProfile {
     pub fn from_profile(profile: &HostProfile) -> Self {
         Self {
             label: profile.label.clone(),
+            vault_id: profile.vault_id.clone(),
             group: profile.group.clone(),
             host: profile.host.clone(),
             port: profile.port.to_string(),
@@ -427,6 +643,10 @@ impl DraftProfile {
         Ok(HostProfile {
             id,
             label: self.label.trim().to_string(),
+            vault_id: self
+                .vault_id
+                .clone()
+                .or_else(|| Some(DEFAULT_VAULT_ID.to_string())),
             group: self.group.trim().to_string(),
             host: host.to_string(),
             port: self.parse_port()?,
@@ -999,10 +1219,10 @@ impl SavedState {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, IdentitySource,
-        ImportedIdentity, JumpHostConnection, LocalPortForward, LocalShellConfig, QuickConnect,
-        RestorableAuth, RestorableConnection, SavedIdentity, SavedSnippet, SavedState,
-        SavedWorkspace, SplitAxis, identity_id_for_path,
+        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
+        IdentitySource, ImportedIdentity, JumpHostConnection, LocalPortForward, LocalShellConfig,
+        QuickConnect, RestorableAuth, RestorableConnection, SavedIdentity, SavedSnippet,
+        SavedState, SavedVault, SavedWorkspace, SplitAxis, VaultKind, identity_id_for_path,
     };
 
     #[test]
@@ -1251,6 +1471,7 @@ mod tests {
         state.identities.push(SavedIdentity {
             id: identity_id_for_path("/tmp/id_ed25519"),
             label: "prod-key".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             key_path: "/tmp/id_ed25519".to_string(),
             kind: "OpenSSH".to_string(),
             source: IdentitySource::User,
@@ -1271,6 +1492,7 @@ mod tests {
     fn draft_profile_keeps_identity_reference_for_private_key_hosts() {
         let draft = DraftProfile {
             label: "prod".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             group: "Production".to_string(),
             host: "prod.example.com".to_string(),
             port: "22".to_string(),
@@ -1297,12 +1519,14 @@ mod tests {
         state.upsert_snippet(SavedSnippet {
             id: "b".to_string(),
             label: "Restart".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             group: "Ops".to_string(),
             command: "sudo systemctl restart app".to_string(),
         });
         state.upsert_snippet(SavedSnippet {
             id: "a".to_string(),
             label: "Deploy".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             group: "Ops".to_string(),
             command: "./deploy.sh".to_string(),
         });
@@ -1318,6 +1542,7 @@ mod tests {
         state.upsert_snippet(SavedSnippet {
             id: "snippet-1".to_string(),
             label: "Tail logs".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             group: String::new(),
             command: "tail -f /var/log/app.log".to_string(),
         });
@@ -1330,6 +1555,7 @@ mod tests {
     fn draft_profile_parses_local_forward() {
         let draft = DraftProfile {
             label: "db".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             group: "Data".to_string(),
             host: "db.example.com".to_string(),
             port: "22".to_string(),
@@ -1353,6 +1579,37 @@ mod tests {
                 .as_ref()
                 .map(LocalPortForward::display_name),
             Some("127.0.0.1:15432 -> 127.0.0.1:5432".to_string())
+        );
+    }
+
+    #[test]
+    fn state_ensures_personal_vault_and_normalizes_item_references() {
+        let mut state = SavedState::default();
+        state.vaults.push(SavedVault {
+            id: "vault-team".to_string(),
+            label: "Team".to_string(),
+            description: String::new(),
+            kind: VaultKind::Shared,
+        });
+        state.snippets.push(SavedSnippet {
+            id: "snippet-2".to_string(),
+            label: "Deploy".to_string(),
+            vault_id: Some("vault-missing".to_string()),
+            group: String::new(),
+            command: "./deploy.sh".to_string(),
+        });
+
+        state.ensure_vaults();
+
+        assert!(
+            state
+                .vaults
+                .iter()
+                .any(|vault| vault.id == DEFAULT_VAULT_ID)
+        );
+        assert_eq!(
+            state.snippets[0].vault_id.as_deref(),
+            Some(DEFAULT_VAULT_ID)
         );
     }
 }

@@ -30,18 +30,23 @@ fn known_hosts_file() -> Result<PathBuf> {
 pub fn load_saved_state() -> Result<SavedState> {
     let path = state_file()?;
     if !path.exists() {
-        return Ok(SavedState::default());
+        let mut state = SavedState::default();
+        state.ensure_vaults();
+        return Ok(state);
     }
 
     let content =
         fs::read_to_string(&path).with_context(|| format!("Unable to read {}", path.display()))?;
-    Ok(serde_json::from_str(&content)
-        .with_context(|| format!("Unable to parse {}", path.display()))?)
+    let mut state: SavedState = serde_json::from_str(&content)
+        .with_context(|| format!("Unable to parse {}", path.display()))?;
+    state.ensure_vaults();
+    Ok(state)
 }
 
 pub fn save_saved_state(state: &SavedState) -> Result<()> {
     let path = state_file()?;
     let mut persisted = state.clone();
+    persisted.ensure_vaults();
     persisted
         .profiles
         .retain(|profile| profile.source == ProfileSource::User);
@@ -316,6 +321,7 @@ fn flush_ssh_config_block(
             HostProfile {
                 id: imported_host_id(alias),
                 label: alias.trim().to_string(),
+                vault_id: Some(crate::models::DEFAULT_VAULT_ID.to_string()),
                 group: String::new(),
                 host,
                 port: block.port.unwrap_or(22),

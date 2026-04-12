@@ -21,9 +21,10 @@ use vt100::{MouseProtocolEncoding, MouseProtocolMode};
 use crate::credentials;
 use crate::local::spawn_local_session;
 use crate::models::{
-    AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, HostProfile,
-    JumpHostConnection, ProfileSource, QuickConnect, SavedIdentity, SavedSnippet, SavedState,
-    SavedWorkspace, SessionLogEntry, SessionLogStatus, SplitAxis,
+    AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
+    HostProfile, JumpHostConnection, ProfileSource, QuickConnect, SavedIdentity, SavedSnippet,
+    SavedState, SavedVault, SavedWorkspace, SessionLogEntry, SessionLogStatus, SplitAxis,
+    VaultKind,
 };
 use crate::sftp::{
     RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
@@ -92,6 +93,7 @@ fn ssh_config_path_label() -> &'static str {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum NavSection {
     Hosts,
+    Vaults,
     Keychain,
     Snippets,
     KnownHosts,
@@ -109,6 +111,7 @@ impl NavSection {
     fn label(self) -> &'static str {
         match self {
             Self::Hosts => "Hosts",
+            Self::Vaults => "Vaults",
             Self::Keychain => "Keys",
             Self::Snippets => "Snippets",
             Self::KnownHosts => "Known Hosts",
@@ -119,6 +122,7 @@ impl NavSection {
     fn icon(self) -> Icon {
         match self {
             Self::Hosts => IconName::SquareTerminal.into(),
+            Self::Vaults => IconName::Building2.into(),
             Self::Keychain => app_icon(ICON_KEY),
             Self::Snippets => IconName::BookOpen.into(),
             Self::KnownHosts => app_icon(ICON_SHIELD_CHECK),
@@ -214,6 +218,11 @@ struct SnippetInputs {
     command: Entity<InputState>,
 }
 
+struct VaultInputs {
+    label: Entity<InputState>,
+    description: Entity<InputState>,
+}
+
 impl SnippetInputs {
     fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
         Self {
@@ -221,6 +230,16 @@ impl SnippetInputs {
             group: cx.new(|cx| InputState::new(window, cx).placeholder("Ops / Deploy")),
             command: cx
                 .new(|cx| InputState::new(window, cx).placeholder("sudo systemctl restart app")),
+        }
+    }
+}
+
+impl VaultInputs {
+    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+        Self {
+            label: cx.new(|cx| InputState::new(window, cx).placeholder("Ops Team")),
+            description: cx
+                .new(|cx| InputState::new(window, cx).placeholder("Shared infrastructure access")),
         }
     }
 }
@@ -360,6 +379,7 @@ pub struct TermiRustApp {
     inputs: DraftInputs,
     shell_inputs: ShellInputs,
     snippet_inputs: SnippetInputs,
+    vault_inputs: VaultInputs,
     draft_auth_mode: AuthMode,
     nav_section: NavSection,
     show_editor_panel: bool,
@@ -372,12 +392,15 @@ pub struct TermiRustApp {
     active_workspace_id: Option<u64>,
     selected_profile_id: Option<String>,
     selected_snippet_id: Option<String>,
+    selected_vault_id: Option<String>,
     next_session_id: u64,
     next_sftp_operation_id: u64,
     next_workspace_id: u64,
     status_message: String,
     error_message: String,
     draft_identity_id: Option<String>,
+    draft_vault_id: Option<String>,
+    snippet_vault_id: Option<String>,
     known_hosts: Arc<KnownHostStore>,
     keychain_tab: KeychainTab,
     _window_bounds_subscription: Option<Subscription>,
@@ -388,11 +411,13 @@ impl TermiRustApp {
         let inputs = DraftInputs::new(window, cx);
         let shell_inputs = ShellInputs::new(window, cx);
         let snippet_inputs = SnippetInputs::new(window, cx);
+        let vault_inputs = VaultInputs::new(window, cx);
         let (event_tx, event_rx) = mpsc::channel();
         let (sftp_event_tx, sftp_event_rx) = mpsc::channel();
         let known_hosts =
             Arc::new(KnownHostStore::load().expect("unable to initialize known host storage"));
         saved.merge_imported_identities(load_local_ssh_identities().unwrap_or_default());
+        saved.ensure_vaults();
 
         let draft_auth_mode = saved
             .selected_profile_id
@@ -428,6 +453,7 @@ impl TermiRustApp {
             inputs,
             shell_inputs,
             snippet_inputs,
+            vault_inputs,
             draft_auth_mode,
             nav_section: NavSection::Hosts,
             show_editor_panel: false,
@@ -439,12 +465,15 @@ impl TermiRustApp {
             workspaces: Vec::new(),
             active_workspace_id: None,
             selected_snippet_id: None,
+            selected_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             next_session_id: 1,
             next_sftp_operation_id: 1,
             next_workspace_id: 1,
             status_message: initial_status,
             error_message: String::new(),
             draft_identity_id: None,
+            draft_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            snippet_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             known_hosts,
             keychain_tab: KeychainTab::Keys,
             _window_bounds_subscription: None,
@@ -503,6 +532,7 @@ impl TermiRustApp {
 
         Ok(DraftProfile {
             label: self.inputs.label.read(cx).value().to_string(),
+            vault_id: self.draft_vault_id.clone(),
             group: self.inputs.group.read(cx).value().to_string(),
             host: self.inputs.host.read(cx).value().to_string(),
             port: self.inputs.port.read(cx).value().to_string(),
@@ -545,6 +575,51 @@ impl TermiRustApp {
 
     fn preferred_identity(&self) -> Option<&SavedIdentity> {
         self.saved.identities.first()
+    }
+
+    fn vault_by_id(&self, vault_id: &str) -> Option<&SavedVault> {
+        self.saved.vaults.iter().find(|vault| vault.id == vault_id)
+    }
+
+    fn default_vault(&self) -> Option<&SavedVault> {
+        self.vault_by_id(DEFAULT_VAULT_ID)
+            .or_else(|| self.saved.vaults.first())
+    }
+
+    fn effective_vault_id(&self, vault_id: Option<&str>) -> String {
+        vault_id
+            .and_then(|id| self.vault_by_id(id))
+            .map(|vault| vault.id.clone())
+            .or_else(|| self.default_vault().map(|vault| vault.id.clone()))
+            .unwrap_or_else(|| DEFAULT_VAULT_ID.to_string())
+    }
+
+    fn effective_vault_name(&self, vault_id: Option<&str>) -> String {
+        self.vault_by_id(&self.effective_vault_id(vault_id))
+            .map(SavedVault::display_name)
+            .unwrap_or_else(|| "Personal".to_string())
+    }
+
+    fn vault_item_counts(&self, vault_id: &str) -> (usize, usize, usize) {
+        let hosts = self
+            .saved
+            .profiles
+            .iter()
+            .filter(|profile| profile.effective_vault_id() == vault_id)
+            .count();
+        let identities = self
+            .saved
+            .identities
+            .iter()
+            .filter(|identity| identity.effective_vault_id() == vault_id)
+            .count();
+        let snippets = self
+            .saved
+            .snippets
+            .iter()
+            .filter(|snippet| snippet.effective_vault_id() == vault_id)
+            .count();
+        (hosts, identities, snippets)
     }
 
     fn current_key_path(&self, cx: &App) -> String {
@@ -797,6 +872,7 @@ impl TermiRustApp {
             cx,
         );
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
+        self.draft_vault_id = Some(self.effective_vault_id(draft.vault_id.as_deref()));
         self.draft_identity_id = draft.identity_id.or_else(|| {
             self.identity_for_key_path(profile.key_path.as_str())
                 .map(|identity| identity.id.clone())
@@ -834,6 +910,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.forward_remote_host, "", window, cx);
         Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
+        self.draft_vault_id = Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
         self.draft_identity_id = None;
         self.selected_profile_id = None;
         self.saved.selected_profile_id = None;
@@ -851,6 +928,7 @@ impl TermiRustApp {
                 .clone()
                 .unwrap_or_else(SavedSnippet::snippet_id),
             label: self.snippet_inputs.label.read(cx).value().to_string(),
+            vault_id: Some(self.effective_vault_id(self.snippet_vault_id.as_deref())),
             group: self.snippet_inputs.group.read(cx).value().to_string(),
             command: self.snippet_inputs.command.read(cx).value().to_string(),
         }
@@ -889,6 +967,7 @@ impl TermiRustApp {
             window,
             cx,
         );
+        self.snippet_vault_id = Some(self.effective_vault_id(snippet.vault_id.as_deref()));
         self.selected_snippet_id = Some(snippet.id.clone());
         self.nav_section = NavSection::Snippets;
         self.status_message = format!("Loaded snippet '{}'.", snippet.display_name());
@@ -900,6 +979,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.snippet_inputs.label, "", window, cx);
         Self::set_input_value(&self.snippet_inputs.group, "", window, cx);
         Self::set_input_value(&self.snippet_inputs.command, "", window, cx);
+        self.snippet_vault_id = Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
         self.selected_snippet_id = None;
         self.nav_section = NavSection::Snippets;
         self.status_message = "Snippet draft cleared.".to_string();
@@ -954,6 +1034,122 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn current_vault_draft(&self, _cx: &App) -> SavedVault {
+        let selected_id = self
+            .selected_vault_id
+            .clone()
+            .filter(|vault_id| vault_id != DEFAULT_VAULT_ID);
+        let current_kind = selected_id
+            .as_deref()
+            .and_then(|vault_id| self.vault_by_id(vault_id))
+            .map(|vault| vault.kind)
+            .unwrap_or(VaultKind::Shared);
+
+        SavedVault {
+            id: selected_id.unwrap_or_else(SavedVault::vault_id),
+            label: self.vault_inputs.label.read(_cx).value().to_string(),
+            description: self.vault_inputs.description.read(_cx).value().to_string(),
+            kind: current_kind,
+        }
+    }
+
+    fn load_vault_into_inputs(
+        &mut self,
+        vault_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(vault) = self.saved.vaults.iter().find(|item| item.id == vault_id) else {
+            return;
+        };
+
+        Self::set_input_value(&self.vault_inputs.label, vault.label.clone(), window, cx);
+        Self::set_input_value(
+            &self.vault_inputs.description,
+            vault.description.clone(),
+            window,
+            cx,
+        );
+        self.selected_vault_id = Some(vault.id.clone());
+        self.draft_vault_id = Some(vault.id.clone());
+        self.snippet_vault_id = Some(vault.id.clone());
+        self.nav_section = NavSection::Vaults;
+        self.status_message = format!("Loaded vault '{}'.", vault.display_name());
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn clear_vault_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        Self::set_input_value(&self.vault_inputs.label, "", window, cx);
+        Self::set_input_value(&self.vault_inputs.description, "", window, cx);
+        self.selected_vault_id = Some(DEFAULT_VAULT_ID.to_string());
+        self.draft_vault_id = Some(DEFAULT_VAULT_ID.to_string());
+        self.snippet_vault_id = Some(DEFAULT_VAULT_ID.to_string());
+        self.nav_section = NavSection::Vaults;
+        self.status_message = "Vault draft cleared.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn save_vault(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mut vault = self.current_vault_draft(cx);
+        if vault.label.trim().is_empty() {
+            self.error_message = "Vault name is required.".to_string();
+            cx.notify();
+            return;
+        }
+        if self.saved.vaults.iter().any(|existing| {
+            existing.id != vault.id && existing.label.eq_ignore_ascii_case(&vault.label)
+        }) {
+            self.error_message = format!("Vault '{}' already exists.", vault.label.trim());
+            cx.notify();
+            return;
+        }
+        vault.label = vault.label.trim().to_string();
+        vault.description = vault.description.trim().to_string();
+        self.saved.upsert_vault(vault.clone());
+        if let Err(error) = save_saved_state(&self.saved) {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
+        }
+
+        self.selected_vault_id = Some(vault.id.clone());
+        self.draft_vault_id = Some(vault.id.clone());
+        self.snippet_vault_id = Some(vault.id.clone());
+        self.status_message = format!("Saved vault '{}'.", vault.display_name());
+        self.error_message.clear();
+        self.nav_section = NavSection::Vaults;
+        if vault.kind == VaultKind::Personal {
+            Self::set_input_value(&self.vault_inputs.label, vault.label, window, cx);
+        }
+        cx.notify();
+    }
+
+    fn remove_selected_vault(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(vault_id) = self.selected_vault_id.clone() else {
+            return;
+        };
+        if vault_id == DEFAULT_VAULT_ID {
+            self.error_message = "The personal vault cannot be deleted.".to_string();
+            cx.notify();
+            return;
+        }
+        if !self.saved.remove_vault(&vault_id) {
+            return;
+        }
+        if let Err(error) = save_saved_state(&self.saved) {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
+        }
+
+        self.clear_vault_form(window, cx);
+        self.status_message = "Vault removed. Its items were moved to Personal.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn run_snippet_command(&mut self, command: &str, cx: &mut Context<Self>) {
         let Some(pane_id) = self.active_pane().map(|pane| pane.id) else {
             self.error_message = "Open a terminal session to run a snippet.".to_string();
@@ -977,7 +1173,9 @@ impl TermiRustApp {
         if let Some(path) = FileDialog::new().pick_file() {
             match inspect_identity_file(&path) {
                 Ok(Some(imported)) => {
-                    let identity = imported.into_saved();
+                    let mut identity = imported.into_saved();
+                    identity.vault_id =
+                        Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
                     let label = identity.label.clone();
                     self.saved.upsert_identity(identity.clone());
                     if let Err(error) = save_saved_state(&self.saved) {
@@ -3591,6 +3789,7 @@ impl TermiRustApp {
                 v_flex().gap(px(2.)).children(
                     [
                         NavSection::Hosts,
+                        NavSection::Vaults,
                         NavSection::Keychain,
                         NavSection::Snippets,
                     ]
@@ -3648,6 +3847,7 @@ impl TermiRustApp {
         let connect_profile_id = profile.id.clone();
         let accent = theme::host_chip_color(&profile.display_name());
         let group_label = profile.group.trim().to_string();
+        let vault_label = self.effective_vault_name(profile.vault_id.as_deref());
         let identity_label = profile
             .identity_id
             .as_deref()
@@ -3745,6 +3945,11 @@ impl TermiRustApp {
                                     theme::slate(),
                                 ))
                             })
+                            .child(self.status_badge(
+                                vault_label,
+                                theme::library_bg(),
+                                theme::accent(),
+                            ))
                             .when_some(identity_label.clone(), |this, identity_label| {
                                 this.child(self.status_badge(
                                     identity_label,
@@ -4010,6 +4215,84 @@ impl TermiRustApp {
             })
     }
 
+    fn render_vault_picker(
+        &self,
+        selected_vault_id: Option<&str>,
+        on_select: impl Fn(String, &mut Self, &mut Window, &mut Context<Self>) + 'static + Clone,
+        cx: &Context<Self>,
+    ) -> Div {
+        let selected_vault_id = self.effective_vault_id(selected_vault_id);
+        let vaults = self.saved.vaults.clone();
+
+        v_flex()
+            .gap_2()
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .font_medium()
+                    .text_color(theme::text_main())
+                    .child("Vault"),
+            )
+            .child(
+                h_flex()
+                    .gap_2()
+                    .flex_wrap()
+                    .children(vaults.iter().enumerate().map(|(index, vault)| {
+                        let is_selected = vault.id == selected_vault_id;
+                        let click_id = vault.id.clone();
+                        let click = on_select.clone();
+
+                        div()
+                            .id(("vault-pill", index))
+                            .px_3()
+                            .py(px(7.))
+                            .rounded(px(999.))
+                            .bg(if is_selected {
+                                theme::accent_soft()
+                            } else {
+                                theme::with_alpha(theme::hover(), 0.72)
+                            })
+                            .border_1()
+                            .border_color(if is_selected {
+                                theme::with_alpha(theme::accent(), 0.42)
+                            } else {
+                                theme::border()
+                            })
+                            .cursor_pointer()
+                            .hover(|style| style.bg(theme::hover()))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                click(click_id.clone(), this, window, cx);
+                            }))
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(11.))
+                                            .font_medium()
+                                            .text_color(if is_selected {
+                                                theme::text_main()
+                                            } else {
+                                                theme::text_muted()
+                                            })
+                                            .child(vault.display_name()),
+                                    )
+                                    .child(self.status_badge(
+                                        vault.kind.label(),
+                                        theme::library_bg(),
+                                        if vault.kind == VaultKind::Personal {
+                                            theme::accent()
+                                        } else {
+                                            theme::slate()
+                                        },
+                                    )),
+                            )
+                            .into_any_element()
+                    })),
+            )
+    }
+
     fn render_editor_panel(&self, cx: &Context<Self>) -> Div {
         let auth_mode = self.draft_auth_mode;
         let selected_identity = self
@@ -4045,6 +4328,18 @@ impl TermiRustApp {
                     ),
             )
             .child(self.form_field("Label", Input::new(&self.inputs.label)))
+            .child(self.render_vault_picker(
+                self.draft_vault_id.as_deref(),
+                |vault_id, this, _, cx| {
+                    this.draft_vault_id = Some(vault_id.clone());
+                    this.selected_vault_id = Some(vault_id.clone());
+                    this.status_message =
+                        format!("Assigning this host to {}.", this.effective_vault_name(Some(&vault_id)));
+                    this.error_message.clear();
+                    cx.notify();
+                },
+                cx,
+            ))
             .child(self.form_field("Group", Input::new(&self.inputs.group)))
             .child(self.form_field("Jump Host", Input::new(&self.inputs.jump_host)))
             .child(self.form_field("Host", Input::new(&self.inputs.host)))
@@ -4517,6 +4812,8 @@ impl TermiRustApp {
                         |(index, identity)| {
                             let card_identity = identity.clone();
                             let button_identity = identity.clone();
+                            let vault_label =
+                                self.effective_vault_name(identity.vault_id.as_deref());
                             let has_pub = std::path::Path::new(&format!("{}.pub", identity.key_path))
                                 .exists();
 
@@ -4602,7 +4899,12 @@ impl TermiRustApp {
                                                                 theme::library_bg(),
                                                                 theme::success(),
                                                             ))
-                                                        }),
+                                                        })
+                                                        .child(self.status_badge(
+                                                            vault_label,
+                                                            theme::library_bg(),
+                                                            theme::accent(),
+                                                        )),
                                                 )
                                                 .child(
                                                     div()
@@ -4708,6 +5010,8 @@ impl TermiRustApp {
                             .enumerate()
                             .map(|(index, profile)| {
                                 let profile_id = profile.id.clone();
+                                let vault_label =
+                                    self.effective_vault_name(profile.vault_id.as_deref());
                                 h_flex()
                                     .id(("identity-card", index))
                                     .justify_between()
@@ -4767,6 +5071,11 @@ impl TermiRustApp {
                                         theme::library_bg(),
                                         theme::text_muted(),
                                     ))
+                                    .child(self.status_badge(
+                                        vault_label,
+                                        theme::library_bg(),
+                                        theme::accent(),
+                                    ))
                                     .into_any_element()
                             }),
                     )
@@ -4824,6 +5133,193 @@ impl TermiRustApp {
                 KeychainTab::Keys => self.render_keychain_keys(cx),
                 KeychainTab::Identities => self.render_keychain_identities(cx),
             })
+    }
+
+    fn render_vaults_view(&self, cx: &Context<Self>) -> Div {
+        let vaults = self.saved.vaults.clone();
+
+        v_flex()
+            .flex_1()
+            .gap_4()
+            .p_5()
+            .bg(theme::library_bg())
+            .child(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_size(px(18.))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child("Vaults"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .child(format!(
+                                "{} {}",
+                                vaults.len(),
+                                if vaults.len() == 1 { "vault" } else { "vaults" }
+                            )),
+                    ),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .line_height(relative(1.5))
+                    .text_color(theme::text_muted())
+                    .child("Vaults are the top-level containers for hosts, identities, and snippets. Shared vaults are local-only metadata for now; sync comes later."),
+            )
+            .child(
+                v_flex()
+                    .gap_3()
+                    .p_4()
+                    .rounded(px(theme::CARD_RADIUS))
+                    .bg(theme::library_card())
+                    .border_1()
+                    .border_color(theme::border())
+                    .child(self.form_field("Name", Input::new(&self.vault_inputs.label)))
+                    .child(self.form_field(
+                        "Description",
+                        Input::new(&self.vault_inputs.description),
+                    ))
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("vault-new")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    ))
+                                    .label("New")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.clear_vault_form(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("vault-save")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .label("Save")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.save_vault(window, cx);
+                                    })),
+                            )
+                            .when(
+                                self.selected_vault_id
+                                    .as_deref()
+                                    .is_some_and(|vault_id| vault_id != DEFAULT_VAULT_ID),
+                                |this| {
+                                    this.child(
+                                        Button::new("vault-delete")
+                                            .small()
+                                            .ghost()
+                                            .icon(IconName::Delete)
+                                            .label("Delete")
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.remove_selected_vault(window, cx);
+                                            })),
+                                    )
+                                },
+                            ),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .gap_2()
+                    .overflow_y_scrollbar()
+                    .children(vaults.iter().enumerate().map(|(index, vault)| {
+                        let vault_id = vault.id.clone();
+                        let selected = self.selected_vault_id.as_deref() == Some(vault.id.as_str());
+                        let (host_count, identity_count, snippet_count) =
+                            self.vault_item_counts(&vault.id);
+
+                        h_flex()
+                            .id(("vault-card", index))
+                            .justify_between()
+                            .items_center()
+                            .gap_4()
+                            .p_4()
+                            .rounded(px(theme::CARD_RADIUS))
+                            .bg(theme::library_card())
+                            .border_1()
+                            .border_color(if selected {
+                                theme::accent()
+                            } else {
+                                theme::border()
+                            })
+                            .cursor_pointer()
+                            .hover(|style| style.bg(theme::card_hover_subtle()))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.load_vault_into_inputs(&vault_id, window, cx);
+                            }))
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .gap(px(2.))
+                                    .child(
+                                        h_flex()
+                                            .gap_2()
+                                            .items_center()
+                                            .child(
+                                                div()
+                                                    .text_size(px(12.5))
+                                                    .font_semibold()
+                                                    .text_color(theme::text_main())
+                                                    .child(vault.display_name()),
+                                            )
+                                            .child(self.status_badge(
+                                                vault.kind.label(),
+                                                theme::library_bg(),
+                                                if vault.kind == VaultKind::Personal {
+                                                    theme::accent()
+                                                } else {
+                                                    theme::slate()
+                                                },
+                                            )),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .text_color(theme::text_muted())
+                                            .child(if vault.description.trim().is_empty() {
+                                                "No description yet".to_string()
+                                            } else {
+                                                vault.description.clone()
+                                            }),
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .gap_2()
+                                            .items_center()
+                                            .child(self.status_badge(
+                                                format!("{host_count} hosts"),
+                                                theme::library_bg(),
+                                                theme::success(),
+                                            ))
+                                            .child(self.status_badge(
+                                                format!("{identity_count} keys"),
+                                                theme::library_bg(),
+                                                theme::accent(),
+                                            ))
+                                            .child(self.status_badge(
+                                                format!("{snippet_count} snippets"),
+                                                theme::library_bg(),
+                                                theme::warning(),
+                                            )),
+                                    ),
+                            )
+                            .into_any_element()
+                    })),
+            )
     }
 
     fn render_known_hosts_view(&self, cx: &Context<Self>) -> Div {
@@ -5223,6 +5719,20 @@ impl TermiRustApp {
                     .border_1()
                     .border_color(theme::border())
                     .child(self.form_field("Label", Input::new(&self.snippet_inputs.label)))
+                    .child(self.render_vault_picker(
+                        self.snippet_vault_id.as_deref(),
+                        |vault_id, this, _, cx| {
+                            this.snippet_vault_id = Some(vault_id.clone());
+                            this.selected_vault_id = Some(vault_id.clone());
+                            this.status_message = format!(
+                                "Assigning this snippet to {}.",
+                                this.effective_vault_name(Some(&vault_id))
+                            );
+                            this.error_message.clear();
+                            cx.notify();
+                        },
+                        _cx,
+                    ))
                     .child(self.form_field("Group", Input::new(&self.snippet_inputs.group)))
                     .child(self.form_field("Command", Input::new(&self.snippet_inputs.command)))
                     .child(
@@ -5275,6 +5785,7 @@ impl TermiRustApp {
                         let snippet_id = snippet.id.clone();
                         let run_command = snippet.command.clone();
                         let group_label = snippet.group.trim().to_string();
+                        let vault_label = self.effective_vault_name(snippet.vault_id.as_deref());
 
                         h_flex()
                             .id(("snippet-card", index))
@@ -5318,7 +5829,12 @@ impl TermiRustApp {
                                                     theme::library_bg(),
                                                     theme::slate(),
                                                 ))
-                                            }),
+                                            })
+                                            .child(self.status_badge(
+                                                vault_label,
+                                                theme::library_bg(),
+                                                theme::accent(),
+                                            )),
                                     )
                                     .child(
                                         div()
@@ -5382,6 +5898,7 @@ impl TermiRustApp {
     fn render_library_content(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         match self.nav_section {
             NavSection::Hosts => self.render_hosts_view(window, cx).into_any_element(),
+            NavSection::Vaults => self.render_vaults_view(cx).into_any_element(),
             NavSection::Keychain => self.render_keychain_view(cx).into_any_element(),
             NavSection::Snippets => self.render_snippets_view(cx).into_any_element(),
             NavSection::KnownHosts => self.render_known_hosts_view(cx).into_any_element(),
@@ -6607,10 +7124,11 @@ fn short_host_key(key: &str) -> String {
 fn nav_section_key(section: NavSection) -> u64 {
     match section {
         NavSection::Hosts => 0,
-        NavSection::Keychain => 1,
-        NavSection::Snippets => 2,
-        NavSection::KnownHosts => 3,
-        NavSection::Logs => 4,
+        NavSection::Vaults => 1,
+        NavSection::Keychain => 2,
+        NavSection::Snippets => 3,
+        NavSection::KnownHosts => 4,
+        NavSection::Logs => 5,
     }
 }
 
