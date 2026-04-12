@@ -153,7 +153,7 @@ async fn run_session(
         .await
         .context("Unable to start an interactive shell")?;
 
-    if let Some(forward) = request.local_forward.clone() {
+    for forward in request.local_forwards.clone() {
         start_local_forwarder(established.target_handle.clone(), session_id, forward).await?;
     }
 

@@ -22,9 +22,10 @@ use crate::credentials;
 use crate::local::spawn_local_session;
 use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
-    HostProfile, JumpHostConnection, ProfileSource, QuickConnect, SavedCommandHistoryEntry,
-    SavedIdentity, SavedSnippet, SavedState, SavedVault, SavedVaultMember, SavedWorkspace,
-    SessionLogEntry, SessionLogStatus, SplitAxis, ThemePreset, VaultKind, VaultMemberRole,
+    HostProfile, JumpHostConnection, LocalPortForward, ProfileSource, QuickConnect,
+    SavedCommandHistoryEntry, SavedIdentity, SavedSnippet, SavedState, SavedVault,
+    SavedVaultMember, SavedWorkspace, SessionLogEntry, SessionLogStatus, SplitAxis, ThemePreset,
+    VaultKind, VaultMemberRole,
 };
 use crate::sftp::{
     RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
@@ -510,6 +511,7 @@ pub struct TermiRustApp {
     error_message: String,
     draft_identity_id: Option<String>,
     draft_vault_id: Option<String>,
+    draft_local_forwards: Vec<LocalPortForward>,
     snippet_vault_id: Option<String>,
     draft_vault_member_role: VaultMemberRole,
     known_hosts: Arc<KnownHostStore>,
@@ -592,6 +594,7 @@ impl TermiRustApp {
             error_message: String::new(),
             draft_identity_id: None,
             draft_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            draft_local_forwards: Vec::new(),
             snippet_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             draft_vault_member_role: VaultMemberRole::Editor,
             known_hosts,
@@ -691,6 +694,7 @@ impl TermiRustApp {
             key_path,
             identity_id,
             jump_host_id,
+            saved_local_forwards: self.draft_local_forwards.clone(),
             forward_local_port: self.inputs.forward_local_port.read(cx).value().to_string(),
             forward_remote_host: self.inputs.forward_remote_host.read(cx).value().to_string(),
             forward_remote_port: self.inputs.forward_remote_port.read(cx).value().to_string(),
@@ -1020,26 +1024,12 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.username, draft.username, window, cx);
         Self::set_input_value(&self.inputs.password, "", window, cx);
         Self::set_input_value(&self.inputs.key_path, draft.key_path, window, cx);
-        Self::set_input_value(
-            &self.inputs.forward_local_port,
-            draft.forward_local_port,
-            window,
-            cx,
-        );
-        Self::set_input_value(
-            &self.inputs.forward_remote_host,
-            draft.forward_remote_host,
-            window,
-            cx,
-        );
-        Self::set_input_value(
-            &self.inputs.forward_remote_port,
-            draft.forward_remote_port,
-            window,
-            cx,
-        );
+        Self::set_input_value(&self.inputs.forward_local_port, "", window, cx);
+        Self::set_input_value(&self.inputs.forward_remote_host, "", window, cx);
+        Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
         self.draft_vault_id = Some(self.effective_vault_id(draft.vault_id.as_deref()));
+        self.draft_local_forwards = draft.saved_local_forwards;
         self.draft_identity_id = draft.identity_id.or_else(|| {
             self.identity_for_key_path(profile.key_path.as_str())
                 .map(|identity| identity.id.clone())
@@ -1079,6 +1069,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
         self.draft_vault_id = Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
+        self.draft_local_forwards.clear();
         self.draft_identity_id = None;
         self.selected_profile_id = None;
         self.saved.selected_profile_id = None;
@@ -1086,6 +1077,71 @@ impl TermiRustApp {
         self.show_editor_panel = true;
         self.status_message = "Draft cleared. Define a host to save or connect.".into();
         self.error_message.clear();
+        cx.notify();
+    }
+
+    fn add_draft_local_forward(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let draft = match self.current_profile_draft(cx) {
+            Ok(draft) => draft,
+            Err(error) => {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
+        };
+
+        match draft.parse_pending_local_forward() {
+            Ok(Some(forward)) => {
+                if self
+                    .draft_local_forwards
+                    .iter()
+                    .any(|existing| existing.display_name() == forward.display_name())
+                {
+                    self.error_message =
+                        format!("Forward rule '{}' already exists.", forward.display_name());
+                    cx.notify();
+                    return;
+                }
+
+                let label = forward.display_name();
+                self.draft_local_forwards.push(forward);
+                Self::set_input_value(&self.inputs.forward_local_port, "", window, cx);
+                Self::set_input_value(&self.inputs.forward_remote_host, "", window, cx);
+                Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
+                self.status_message = format!("Added forward rule {label}.");
+                self.error_message.clear();
+                cx.notify();
+            }
+            Ok(None) => {
+                self.error_message =
+                    "Enter local port, remote host, and remote port to add a rule.".to_string();
+                cx.notify();
+            }
+            Err(error) => {
+                self.error_message = error.to_string();
+                cx.notify();
+            }
+        }
+    }
+
+    fn remove_draft_local_forward(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if index >= self.draft_local_forwards.len() {
+            return;
+        }
+
+        let removed = self.draft_local_forwards.remove(index);
+        self.status_message = format!("Removed forward rule {}.", removed.display_name());
+        self.error_message.clear();
+        if self.draft_local_forwards.is_empty() {
+            Self::set_input_value(&self.inputs.forward_local_port, "", window, cx);
+            Self::set_input_value(&self.inputs.forward_remote_host, "", window, cx);
+            Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
+        }
         cx.notify();
     }
 
@@ -1730,6 +1786,12 @@ impl TermiRustApp {
                     profile.host.clone(),
                     profile.username.clone(),
                     profile.endpoint(),
+                    profile
+                        .effective_local_forwards()
+                        .iter()
+                        .map(LocalPortForward::display_name)
+                        .collect::<Vec<_>>()
+                        .join(" "),
                     vault_label,
                     jump_host_label,
                 ];
@@ -4724,10 +4786,14 @@ impl TermiRustApp {
             .as_deref()
             .and_then(|jump_host_id| self.jump_host_display_name(jump_host_id))
             .map(|label| format!("Via {label}"));
-        let forward_label = profile
-            .local_forward
-            .as_ref()
-            .map(|forward| format!("Forward {}", forward.local_port));
+        let forward_count = profile.effective_local_forwards().len();
+        let forward_label = (forward_count > 0).then(|| {
+            if forward_count == 1 {
+                "1 Forward".to_string()
+            } else {
+                format!("{forward_count} Forwards")
+            }
+        });
         let protocols = if profile.auth_mode == AuthMode::PrivateKey {
             "key auth"
         } else {
@@ -5245,14 +5311,66 @@ impl TermiRustApp {
                             .text_size(px(12.))
                             .font_medium()
                             .text_color(theme::text_main())
-                            .child("Local Forward"),
+                            .child("Port Forwarding Rules"),
                     )
                     .child(
                         div()
                             .text_size(px(10.))
                             .text_color(theme::text_muted())
-                            .child("Optional local tunnel bound on 127.0.0.1."),
+                            .child("Save one or more local tunnels bound on 127.0.0.1 and launch them automatically with the host."),
                     )
+                    .when(!self.draft_local_forwards.is_empty(), |this| {
+                        this.child(
+                            v_flex()
+                                .gap_2()
+                                .children(
+                                    self.draft_local_forwards
+                                        .iter()
+                                        .cloned()
+                                        .enumerate()
+                                        .map(|(index, forward)| {
+                                            let remove_index = index;
+                                            h_flex()
+                                                .id(("draft-forward-rule", index))
+                                                .items_center()
+                                                .justify_between()
+                                                .gap_2()
+                                                .px_3()
+                                                .py(px(8.))
+                                                .rounded(px(10.))
+                                                .bg(theme::with_alpha(theme::hover(), 0.78))
+                                                .border_1()
+                                                .border_color(theme::border())
+                                                .child(
+                                                    div()
+                                                        .text_size(px(10.5))
+                                                        .font_medium()
+                                                        .text_color(theme::text_main())
+                                                        .child(forward.display_name()),
+                                                )
+                                                .child(
+                                                    Button::new(("remove-forward-rule", index))
+                                                        .small()
+                                                        .custom(Self::action_button_style(
+                                                            theme::ActionTone::Danger,
+                                                            cx,
+                                                        ))
+                                                        .label("Remove")
+                                                        .on_click(cx.listener(
+                                                            move |this, _, window, cx| {
+                                                                this.remove_draft_local_forward(
+                                                                    remove_index,
+                                                                    window,
+                                                                    cx,
+                                                                );
+                                                            },
+                                                        )),
+                                                )
+                                                .into_any_element()
+                                        }),
+                                ),
+                        )
+                    })
                     .child(
                         h_flex()
                             .gap_3()
@@ -5273,8 +5391,31 @@ impl TermiRustApp {
                                     Input::new(&self.inputs.forward_remote_port),
                                 )
                                 .flex_1(),
+                            )
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                Button::new("add-forward-rule")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .label("Add Rule")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.add_draft_local_forward(window, cx);
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.))
+                                    .text_color(theme::text_muted())
+                                    .child("Leave the row empty if you do not need another tunnel. Saving the host also includes any valid unsaved row."),
                             ),
-                    ),
+                    )
             )
             .child(
                 v_flex()
@@ -7502,9 +7643,15 @@ impl TermiRustApp {
                             theme::accent(),
                         ))
                     })
-                    .when_some(pane.request.local_forward.as_ref(), |this, forward| {
+                    .when(!pane.request.local_forwards.is_empty(), |this| {
+                        let forward_label = if pane.request.local_forwards.len() == 1 {
+                            let forward = &pane.request.local_forwards[0];
+                            format!("Local {}", forward.local_port)
+                        } else {
+                            format!("{} Forwards", pane.request.local_forwards.len())
+                        };
                         this.child(self.status_badge(
-                            format!("Local {}", forward.local_port),
+                            forward_label,
                             theme::terminal_panel(),
                             theme::warning(),
                         ))

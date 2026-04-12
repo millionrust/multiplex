@@ -163,6 +163,8 @@ pub struct HostProfile {
     #[serde(default)]
     pub jump_host_id: Option<String>,
     #[serde(default)]
+    pub local_forwards: Vec<LocalPortForward>,
+    #[serde(default)]
     pub local_forward: Option<LocalPortForward>,
     #[serde(default)]
     pub password_credential_id: Option<String>,
@@ -185,6 +187,18 @@ impl HostProfile {
 
     pub fn effective_vault_id(&self) -> &str {
         self.vault_id.as_deref().unwrap_or(DEFAULT_VAULT_ID)
+    }
+
+    pub fn normalize(&mut self) {
+        self.local_forwards =
+            normalize_local_forwards(self.local_forwards.clone(), self.local_forward.clone());
+        if !self.local_forwards.is_empty() {
+            self.local_forward = None;
+        }
+    }
+
+    pub fn effective_local_forwards(&self) -> Vec<LocalPortForward> {
+        normalize_local_forwards(self.local_forwards.clone(), self.local_forward.clone())
     }
 }
 
@@ -215,6 +229,31 @@ impl LocalPortForward {
             "{}:{} -> {}:{}",
             self.local_host, self.local_port, self.remote_host, self.remote_port
         )
+    }
+
+    pub fn parse(local_port: &str, remote_host: &str, remote_port: &str) -> Result<Option<Self>> {
+        let local_port = local_port.trim();
+        let remote_host = remote_host.trim();
+        let remote_port = remote_port.trim();
+
+        if local_port.is_empty() && remote_host.is_empty() && remote_port.is_empty() {
+            return Ok(None);
+        }
+
+        if local_port.is_empty() || remote_host.is_empty() || remote_port.is_empty() {
+            bail!("Local forwarding requires local port, remote host, and remote port");
+        }
+
+        Ok(Some(Self {
+            local_host: default_local_forward_host(),
+            local_port: local_port
+                .parse::<u16>()
+                .with_context(|| format!("Invalid local forward port '{local_port}'"))?,
+            remote_host: remote_host.to_string(),
+            remote_port: remote_port
+                .parse::<u16>()
+                .with_context(|| format!("Invalid remote forward port '{remote_port}'"))?,
+        }))
     }
 }
 
@@ -548,6 +587,7 @@ impl SavedState {
             .map(|vault| vault.id.as_str())
             .collect::<Vec<_>>();
         for profile in &mut self.profiles {
+            profile.normalize();
             if !profile
                 .vault_id
                 .as_deref()
@@ -630,6 +670,7 @@ impl SavedState {
         if profile.vault_id.is_none() {
             profile.vault_id = Some(DEFAULT_VAULT_ID.to_string());
         }
+        profile.normalize();
 
         if let Some(existing) = self.profiles.iter_mut().find(|item| item.id == profile.id) {
             *existing = profile.clone();
@@ -655,6 +696,7 @@ impl SavedState {
             if imported.vault_id.is_none() {
                 imported.vault_id = Some(DEFAULT_VAULT_ID.to_string());
             }
+            imported.normalize();
             if let Some(existing) = self.profiles.iter_mut().find(|item| item.id == imported.id) {
                 if existing.source == ProfileSource::User {
                     continue;
@@ -780,6 +822,7 @@ pub struct DraftProfile {
     pub key_path: String,
     pub identity_id: Option<String>,
     pub jump_host_id: Option<String>,
+    pub saved_local_forwards: Vec<LocalPortForward>,
     pub forward_local_port: String,
     pub forward_remote_host: String,
     pub forward_remote_port: String,
@@ -802,21 +845,10 @@ impl DraftProfile {
             key_path: profile.key_path.clone(),
             identity_id: profile.identity_id.clone(),
             jump_host_id: profile.jump_host_id.clone(),
-            forward_local_port: profile
-                .local_forward
-                .as_ref()
-                .map(|forward| forward.local_port.to_string())
-                .unwrap_or_default(),
-            forward_remote_host: profile
-                .local_forward
-                .as_ref()
-                .map(|forward| forward.remote_host.clone())
-                .unwrap_or_default(),
-            forward_remote_port: profile
-                .local_forward
-                .as_ref()
-                .map(|forward| forward.remote_port.to_string())
-                .unwrap_or_default(),
+            saved_local_forwards: profile.effective_local_forwards(),
+            forward_local_port: String::new(),
+            forward_remote_host: String::new(),
+            forward_remote_port: String::new(),
             key_passphrase: String::new(),
             password_credential_id: profile.password_credential_id.clone(),
             auth_mode: profile.auth_mode,
@@ -849,29 +881,20 @@ impl DraftProfile {
             .with_context(|| format!("Invalid SSH port '{port}'"))
     }
 
-    fn parse_local_forward(&self) -> Result<Option<LocalPortForward>> {
-        let local_port = self.forward_local_port.trim();
-        let remote_host = self.forward_remote_host.trim();
-        let remote_port = self.forward_remote_port.trim();
+    pub fn parse_pending_local_forward(&self) -> Result<Option<LocalPortForward>> {
+        LocalPortForward::parse(
+            &self.forward_local_port,
+            &self.forward_remote_host,
+            &self.forward_remote_port,
+        )
+    }
 
-        if local_port.is_empty() && remote_host.is_empty() && remote_port.is_empty() {
-            return Ok(None);
-        }
-
-        if local_port.is_empty() || remote_host.is_empty() || remote_port.is_empty() {
-            bail!("Local forwarding requires local port, remote host, and remote port");
-        }
-
-        Ok(Some(LocalPortForward {
-            local_host: default_local_forward_host(),
-            local_port: local_port
-                .parse::<u16>()
-                .with_context(|| format!("Invalid local forward port '{local_port}'"))?,
-            remote_host: remote_host.to_string(),
-            remote_port: remote_port
-                .parse::<u16>()
-                .with_context(|| format!("Invalid remote forward port '{remote_port}'"))?,
-        }))
+    fn parse_local_forwards(&self) -> Result<Vec<LocalPortForward>> {
+        let pending = self.parse_pending_local_forward()?;
+        Ok(normalize_local_forwards(
+            self.saved_local_forwards.clone(),
+            pending,
+        ))
     }
 
     fn parse_tags(&self) -> Vec<String> {
@@ -926,7 +949,8 @@ impl DraftProfile {
                 None
             },
             jump_host_id: self.jump_host_id.clone(),
-            local_forward: self.parse_local_forward()?,
+            local_forwards: self.parse_local_forwards()?,
+            local_forward: None,
             password_credential_id: if self.auth_mode == AuthMode::Password {
                 self.password_credential_id.clone()
             } else {
@@ -938,6 +962,7 @@ impl DraftProfile {
 
     pub fn to_connect_request(&self, session_id: u64) -> Result<ConnectRequest> {
         let profile = self.to_profile(Self::profile_id())?;
+        let local_forwards = profile.effective_local_forwards();
 
         let auth = match self.auth_mode {
             AuthMode::Password => {
@@ -965,7 +990,7 @@ impl DraftProfile {
             username: profile.username,
             auth: Some(auth),
             jump_host: None,
-            local_forward: profile.local_forward,
+            local_forwards,
             local_shell: None,
         })
     }
@@ -991,6 +1016,32 @@ fn role_sort_key(role: VaultMemberRole) -> u8 {
         VaultMemberRole::Editor => 1,
         VaultMemberRole::Viewer => 2,
     }
+}
+
+fn normalize_local_forwards(
+    mut local_forwards: Vec<LocalPortForward>,
+    local_forward: Option<LocalPortForward>,
+) -> Vec<LocalPortForward> {
+    if local_forwards.is_empty() {
+        if let Some(local_forward) = local_forward {
+            local_forwards.push(local_forward);
+        }
+    }
+
+    let mut normalized = Vec::new();
+    for forward in local_forwards {
+        if normalized.iter().any(|existing: &LocalPortForward| {
+            existing.local_host == forward.local_host
+                && existing.local_port == forward.local_port
+                && existing.remote_host == forward.remote_host
+                && existing.remote_port == forward.remote_port
+        }) {
+            continue;
+        }
+        normalized.push(forward);
+    }
+
+    normalized
 }
 
 fn default_local_shell_config() -> LocalShellConfig {
@@ -1056,7 +1107,7 @@ pub struct ConnectRequest {
     pub username: String,
     pub auth: Option<AuthConfig>,
     pub jump_host: Option<JumpHostConnection>,
-    pub local_forward: Option<LocalPortForward>,
+    pub local_forwards: Vec<LocalPortForward>,
     pub local_shell: Option<LocalShellConfig>,
 }
 
@@ -1126,7 +1177,8 @@ impl ConnectRequest {
                     .jump_host
                     .as_ref()
                     .and_then(JumpHostConnection::to_restorable),
-                local_forward: self.local_forward.clone(),
+                local_forwards: self.local_forwards.clone(),
+                local_forward: None,
                 local_shell: None,
             }),
             ConnectionKind::LocalShell => Some(RestorableConnection {
@@ -1137,6 +1189,7 @@ impl ConnectRequest {
                 username: self.username.clone(),
                 auth: None,
                 jump_host: None,
+                local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: self.local_shell.clone(),
             }),
@@ -1159,7 +1212,7 @@ impl ConnectRequest {
             username: current_username(),
             auth: None,
             jump_host: None,
-            local_forward: None,
+            local_forwards: Vec::new(),
             local_shell: Some(shell),
         }
     }
@@ -1223,6 +1276,8 @@ pub struct RestorableConnection {
     #[serde(default)]
     pub jump_host: Option<RestorableJumpHostConnection>,
     #[serde(default)]
+    pub local_forwards: Vec<LocalPortForward>,
+    #[serde(default)]
     pub local_forward: Option<LocalPortForward>,
     #[serde(default)]
     pub local_shell: Option<LocalShellConfig>,
@@ -1254,7 +1309,10 @@ impl RestorableConnection {
                         .jump_host
                         .as_ref()
                         .map(RestorableJumpHostConnection::to_jump_host_connection),
-                    local_forward: self.local_forward.clone(),
+                    local_forwards: normalize_local_forwards(
+                        self.local_forwards.clone(),
+                        self.local_forward.clone(),
+                    ),
                     local_shell: None,
                 })
             }
@@ -1267,7 +1325,7 @@ impl RestorableConnection {
                 username: self.username.clone(),
                 auth: None,
                 jump_host: None,
-                local_forward: None,
+                local_forwards: Vec::new(),
                 local_shell: self
                     .local_shell
                     .clone()
@@ -1498,7 +1556,7 @@ impl QuickConnect {
             username: self.username.clone(),
             auth: Some(auth),
             jump_host: None,
-            local_forward: None,
+            local_forwards: Vec::new(),
             local_shell: None,
         }
     }
@@ -1526,11 +1584,11 @@ impl SavedState {
 mod tests {
     use super::{
         AppSettings, AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID,
-        DraftProfile, IdentitySource, ImportedIdentity, JumpHostConnection, LocalPortForward,
-        LocalShellConfig, QuickConnect, RestorableAuth, RestorableConnection,
-        SavedCommandHistoryEntry, SavedIdentity, SavedSnippet, SavedState, SavedVault,
-        SavedVaultMember, SavedWorkspace, SplitAxis, ThemePreset, VaultKind, VaultMemberRole,
-        identity_id_for_path,
+        DraftProfile, HostProfile, IdentitySource, ImportedIdentity, JumpHostConnection,
+        LocalPortForward, LocalShellConfig, ProfileSource, QuickConnect, RestorableAuth,
+        RestorableConnection, SavedCommandHistoryEntry, SavedIdentity, SavedSnippet, SavedState,
+        SavedVault, SavedVaultMember, SavedWorkspace, SplitAxis, ThemePreset, VaultKind,
+        VaultMemberRole, identity_id_for_path,
     };
 
     #[test]
@@ -1580,7 +1638,7 @@ mod tests {
                 password: "secret".to_string(),
             }),
             jump_host: None,
-            local_forward: None,
+            local_forwards: Vec::new(),
             local_shell: None,
         };
 
@@ -1600,7 +1658,7 @@ mod tests {
                 credential_id: "profile:app".to_string(),
             }),
             jump_host: None,
-            local_forward: None,
+            local_forwards: Vec::new(),
             local_shell: None,
         };
 
@@ -1648,12 +1706,20 @@ mod tests {
                     jump_host: None,
                 })),
             }),
-            local_forward: Some(LocalPortForward {
-                local_host: "127.0.0.1".to_string(),
-                local_port: 15432,
-                remote_host: "127.0.0.1".to_string(),
-                remote_port: 5432,
-            }),
+            local_forwards: vec![
+                LocalPortForward {
+                    local_host: "127.0.0.1".to_string(),
+                    local_port: 15432,
+                    remote_host: "127.0.0.1".to_string(),
+                    remote_port: 5432,
+                },
+                LocalPortForward {
+                    local_host: "127.0.0.1".to_string(),
+                    local_port: 18080,
+                    remote_host: "10.0.0.20".to_string(),
+                    remote_port: 8080,
+                },
+            ],
             local_shell: None,
         };
 
@@ -1663,12 +1729,14 @@ mod tests {
 
         let request = restored.to_connect_request(9);
         assert_eq!(request.session_id, 9);
+        assert_eq!(request.local_forwards.len(), 2);
         assert_eq!(
-            request
-                .local_forward
-                .as_ref()
-                .map(LocalPortForward::display_name),
-            Some("127.0.0.1:15432 -> 127.0.0.1:5432".to_string())
+            request.local_forwards[0].display_name(),
+            "127.0.0.1:15432 -> 127.0.0.1:5432"
+        );
+        assert_eq!(
+            request.local_forwards[1].display_name(),
+            "127.0.0.1:18080 -> 10.0.0.20:8080"
         );
         assert_eq!(
             request.jump_host.as_ref().map(|jump| jump.title.clone()),
@@ -1712,6 +1780,7 @@ mod tests {
                     credential_id: "profile:prod".to_string(),
                 }),
                 jump_host: None,
+                local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: None,
             }],
@@ -1732,7 +1801,7 @@ mod tests {
             username: "jacob".to_string(),
             auth: None,
             jump_host: None,
-            local_forward: None,
+            local_forwards: Vec::new(),
             local_shell: Some(LocalShellConfig {
                 program: "/bin/zsh".to_string(),
                 args: vec!["-l".to_string()],
@@ -1810,6 +1879,7 @@ mod tests {
             key_path: "/tmp/id_ed25519".to_string(),
             identity_id: Some("identity-123".to_string()),
             jump_host_id: None,
+            saved_local_forwards: Vec::new(),
             forward_local_port: String::new(),
             forward_remote_host: String::new(),
             forward_remote_port: String::new(),
@@ -1844,6 +1914,7 @@ mod tests {
             key_path: String::new(),
             identity_id: None,
             jump_host_id: None,
+            saved_local_forwards: Vec::new(),
             forward_local_port: String::new(),
             forward_remote_host: String::new(),
             forward_remote_port: String::new(),
@@ -1908,6 +1979,7 @@ mod tests {
             key_path: "/tmp/id_ed25519".to_string(),
             identity_id: Some("identity-123".to_string()),
             jump_host_id: None,
+            saved_local_forwards: Vec::new(),
             forward_local_port: "15432".to_string(),
             forward_remote_host: "127.0.0.1".to_string(),
             forward_remote_port: "5432".to_string(),
@@ -1919,10 +1991,45 @@ mod tests {
         let profile = draft.to_profile("profile-2".to_string()).unwrap();
         assert_eq!(
             profile
-                .local_forward
-                .as_ref()
+                .local_forwards
+                .first()
                 .map(LocalPortForward::display_name),
             Some("127.0.0.1:15432 -> 127.0.0.1:5432".to_string())
+        );
+    }
+
+    #[test]
+    fn host_profile_normalizes_legacy_local_forward_into_rule_list() {
+        let mut profile = HostProfile {
+            id: "legacy-forward".to_string(),
+            label: "Legacy".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            group: String::new(),
+            tags: Vec::new(),
+            host: "legacy.example.com".to_string(),
+            port: 22,
+            username: "ubuntu".to_string(),
+            auth_mode: AuthMode::Password,
+            key_path: String::new(),
+            identity_id: None,
+            jump_host_id: None,
+            local_forwards: Vec::new(),
+            local_forward: Some(LocalPortForward {
+                local_host: "127.0.0.1".to_string(),
+                local_port: 15432,
+                remote_host: "127.0.0.1".to_string(),
+                remote_port: 5432,
+            }),
+            password_credential_id: None,
+            source: ProfileSource::User,
+        };
+
+        profile.normalize();
+        assert!(profile.local_forward.is_none());
+        assert_eq!(profile.local_forwards.len(), 1);
+        assert_eq!(
+            profile.local_forwards[0].display_name(),
+            "127.0.0.1:15432 -> 127.0.0.1:5432"
         );
     }
 
@@ -2050,7 +2157,7 @@ mod tests {
             username: "deploy".to_string(),
             auth: None,
             jump_host: None,
-            local_forward: None,
+            local_forwards: Vec::new(),
             local_shell: None,
         };
         assert_eq!(

@@ -27,7 +27,7 @@ Other things worth knowing about:
 - Reusable identities can be imported and reused across hosts.
 - Saved snippets can be reused and sent into the active terminal.
 - Hosts now support tags, and the host library search matches labels, groups, tags, vaults, jump hosts, and endpoints.
-- Hosts can optionally start a local TCP forward when they connect.
+- Hosts can now save multiple local TCP forwarding rules and start them automatically when they connect.
 - Hosts can optionally connect through saved jump-host chains.
 - Every workspace can switch into an SFTP remote-files view for browse, upload, download, and delete against the active host.
 - A native local terminal can be opened directly from the chrome and behaves like a normal workspace tab or split pane.
@@ -52,6 +52,7 @@ The app is being built as a native Rust desktop client for Windows, macOS, and L
 Cross-platform parity work is still in progress in the UI and packaging layers, so expect rough edges outside the primary development environment.
 
 The tracked parity target is documented in [docs/termius-parity.md](docs/termius-parity.md).
+The working backlog for the remaining parity push is tracked in [docs/parity-todo.md](docs/parity-todo.md).
 
 ## Not built yet
 
