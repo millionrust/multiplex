@@ -10,6 +10,10 @@ fn default_local_forward_host() -> String {
     "127.0.0.1".to_string()
 }
 
+fn default_terminal_font_size() -> u16 {
+    14
+}
+
 pub const DEFAULT_VAULT_ID: &str = "vault-personal";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +47,23 @@ pub enum IdentitySource {
     #[default]
     User,
     Imported,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemePreset {
+    #[default]
+    Ocean,
+    Daylight,
+}
+
+impl ThemePreset {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Ocean => "Ocean",
+            Self::Daylight => "Daylight",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -206,6 +227,40 @@ pub struct SavedSnippet {
     #[serde(default)]
     pub group: String,
     pub command: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AppSettings {
+    #[serde(default)]
+    pub theme_preset: ThemePreset,
+    #[serde(default = "default_terminal_font_size")]
+    pub terminal_font_size: u16,
+    #[serde(default = "default_local_shell_config")]
+    pub default_local_shell: LocalShellConfig,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            theme_preset: ThemePreset::Ocean,
+            terminal_font_size: default_terminal_font_size(),
+            default_local_shell: default_local_shell_config(),
+        }
+    }
+}
+
+impl AppSettings {
+    pub fn normalize(&mut self) {
+        self.terminal_font_size = self.terminal_font_size.clamp(11, 18);
+        if self.default_local_shell.program.trim().is_empty() {
+            self.default_local_shell.program = default_local_shell_config().program;
+        }
+        self.default_local_shell.cwd = self
+            .default_local_shell
+            .cwd
+            .take()
+            .filter(|cwd| !cwd.trim().is_empty());
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -377,6 +432,8 @@ impl SavedIdentity {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SavedState {
     #[serde(default)]
+    pub settings: AppSettings,
+    #[serde(default)]
     pub vaults: Vec<SavedVault>,
     #[serde(default)]
     pub profiles: Vec<HostProfile>,
@@ -399,6 +456,10 @@ pub struct SavedState {
 }
 
 impl SavedState {
+    pub fn ensure_settings(&mut self) {
+        self.settings.normalize();
+    }
+
     pub fn record_command_history(&mut self, command: &str) {
         let command = command.trim();
         if command.is_empty() {
@@ -450,6 +511,7 @@ impl SavedState {
     }
 
     pub fn ensure_vaults(&mut self) {
+        self.ensure_settings();
         if !self.vaults.iter().any(|vault| vault.id == DEFAULT_VAULT_ID) {
             self.vaults.push(SavedVault::personal());
         }
@@ -1081,8 +1143,13 @@ impl ConnectRequest {
         }
     }
 
+    #[allow(dead_code)]
     pub fn local_shell(session_id: u64) -> Self {
         let shell = default_local_shell_config();
+        Self::local_shell_with_config(session_id, shell)
+    }
+
+    pub fn local_shell_with_config(session_id: u64, shell: LocalShellConfig) -> Self {
         Self {
             session_id,
             title: "Local Terminal".to_string(),
@@ -1458,11 +1525,12 @@ impl SavedState {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
-        IdentitySource, ImportedIdentity, JumpHostConnection, LocalPortForward, LocalShellConfig,
-        QuickConnect, RestorableAuth, RestorableConnection, SavedCommandHistoryEntry,
-        SavedIdentity, SavedSnippet, SavedState, SavedVault, SavedVaultMember, SavedWorkspace,
-        SplitAxis, VaultKind, VaultMemberRole, identity_id_for_path,
+        AppSettings, AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID,
+        DraftProfile, IdentitySource, ImportedIdentity, JumpHostConnection, LocalPortForward,
+        LocalShellConfig, QuickConnect, RestorableAuth, RestorableConnection,
+        SavedCommandHistoryEntry, SavedIdentity, SavedSnippet, SavedState, SavedVault,
+        SavedVaultMember, SavedWorkspace, SplitAxis, ThemePreset, VaultKind, VaultMemberRole,
+        identity_id_for_path,
     };
 
     #[test]
@@ -1994,5 +2062,27 @@ mod tests {
         let local = ConnectRequest::local_shell(2);
         assert!(local.history_scope_key().starts_with("local:"));
         assert_eq!(local.history_scope_label(), local.endpoint_label());
+    }
+
+    #[test]
+    fn settings_are_normalized_on_saved_state() {
+        let mut state = SavedState {
+            settings: AppSettings {
+                theme_preset: ThemePreset::Daylight,
+                terminal_font_size: 99,
+                default_local_shell: LocalShellConfig {
+                    program: String::new(),
+                    args: Vec::new(),
+                    cwd: Some(String::new()),
+                },
+            },
+            ..SavedState::default()
+        };
+        state.ensure_settings();
+
+        assert_eq!(state.settings.theme_preset, ThemePreset::Daylight);
+        assert_eq!(state.settings.terminal_font_size, 18);
+        assert!(!state.settings.default_local_shell.program.trim().is_empty());
+        assert_eq!(state.settings.default_local_shell.cwd, None);
     }
 }

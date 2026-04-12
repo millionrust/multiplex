@@ -1,29 +1,90 @@
+use std::sync::{OnceLock, RwLock};
+
 use gpui::Hsla;
 
-const APP_BG: u32 = 0xe9edf2;
-const CHROME_BG: u32 = 0x1d2234;
-const CHROME_TAB: u32 = 0x2a3043;
-const CHROME_TAB_ACTIVE: u32 = 0x3a4358;
-const LIBRARY_BG: u32 = 0xeef2f5;
-const LIBRARY_SIDEBAR: u32 = 0xf7f8fa;
-const LIBRARY_CARD: u32 = 0xffffff;
-const TERMINAL_BG: u32 = 0x091521;
-const TERMINAL_PANEL: u32 = 0x111c2b;
-const BORDER: u32 = 0xd2d9e2;
-const BORDER_DARK: u32 = 0x2b3547;
-const TEXT_MAIN: u32 = 0x293345;
-const TEXT_ON_DARK: u32 = 0xe5edf7;
-const TEXT_MUTED: u32 = 0x838e9e;
-const TEXT_MUTED_DARK: u32 = 0x95a4b8;
-const ACCENT: u32 = 0x4f87ff;
-const ACCENT_SOFT: u32 = 0xdbe7ff;
-const FOCUS_RING: u32 = 0x6ea0ff;
-const SUCCESS: u32 = 0x67c778;
-const WARNING: u32 = 0xf2b24d;
-const DANGER: u32 = 0xed7b63;
-const SLATE: u32 = 0x2c538d;
-const HOVER: u32 = 0xe2e8ef;
-const MODAL_SCRIM: u32 = 0x07111d;
+use crate::models::ThemePreset;
+
+#[derive(Clone, Copy)]
+struct ThemePalette {
+    app_bg: u32,
+    chrome_bg: u32,
+    chrome_tab: u32,
+    chrome_tab_active: u32,
+    library_bg: u32,
+    library_sidebar: u32,
+    library_card: u32,
+    terminal_bg: u32,
+    terminal_panel: u32,
+    border: u32,
+    border_dark: u32,
+    text_main: u32,
+    text_on_dark: u32,
+    text_muted: u32,
+    text_muted_dark: u32,
+    accent: u32,
+    accent_soft: u32,
+    focus_ring: u32,
+    success: u32,
+    warning: u32,
+    danger: u32,
+    slate: u32,
+    hover: u32,
+    modal_scrim: u32,
+}
+
+const OCEAN: ThemePalette = ThemePalette {
+    app_bg: 0xe9edf2,
+    chrome_bg: 0x1d2234,
+    chrome_tab: 0x2a3043,
+    chrome_tab_active: 0x3a4358,
+    library_bg: 0xeef2f5,
+    library_sidebar: 0xf7f8fa,
+    library_card: 0xffffff,
+    terminal_bg: 0x091521,
+    terminal_panel: 0x111c2b,
+    border: 0xd2d9e2,
+    border_dark: 0x2b3547,
+    text_main: 0x293345,
+    text_on_dark: 0xe5edf7,
+    text_muted: 0x838e9e,
+    text_muted_dark: 0x95a4b8,
+    accent: 0x4f87ff,
+    accent_soft: 0xdbe7ff,
+    focus_ring: 0x6ea0ff,
+    success: 0x67c778,
+    warning: 0xf2b24d,
+    danger: 0xed7b63,
+    slate: 0x2c538d,
+    hover: 0xe2e8ef,
+    modal_scrim: 0x07111d,
+};
+
+const DAYLIGHT: ThemePalette = ThemePalette {
+    app_bg: 0xf3efe7,
+    chrome_bg: 0x334155,
+    chrome_tab: 0x475569,
+    chrome_tab_active: 0x5f7289,
+    library_bg: 0xf7f2ea,
+    library_sidebar: 0xfcfaf5,
+    library_card: 0xfffdf8,
+    terminal_bg: 0x101a24,
+    terminal_panel: 0x172332,
+    border: 0xd8cfbf,
+    border_dark: 0x314050,
+    text_main: 0x312f2c,
+    text_on_dark: 0xf4f7fb,
+    text_muted: 0x81776a,
+    text_muted_dark: 0xa3b3c4,
+    accent: 0x2f9d7e,
+    accent_soft: 0xd9f4ea,
+    focus_ring: 0x56b89a,
+    success: 0x54b56e,
+    warning: 0xe39c42,
+    danger: 0xde6f57,
+    slate: 0x496b8f,
+    hover: 0xeae2d4,
+    modal_scrim: 0x10161e,
+};
 
 const HOST_CHIP_COLORS: &[u32] = &[
     0xdd6b2d, // orange
@@ -35,6 +96,27 @@ const HOST_CHIP_COLORS: &[u32] = &[
     0x059669, // emerald
     0x6366f1, // violet
 ];
+
+fn theme_preset_state() -> &'static RwLock<ThemePreset> {
+    static THEME_PRESET: OnceLock<RwLock<ThemePreset>> = OnceLock::new();
+    THEME_PRESET.get_or_init(|| RwLock::new(ThemePreset::Ocean))
+}
+
+fn palette() -> &'static ThemePalette {
+    let preset = *theme_preset_state()
+        .read()
+        .expect("theme preset lock poisoned");
+    match preset {
+        ThemePreset::Ocean => &OCEAN,
+        ThemePreset::Daylight => &DAYLIGHT,
+    }
+}
+
+pub fn set_theme_preset(preset: ThemePreset) {
+    *theme_preset_state()
+        .write()
+        .expect("theme preset lock poisoned") = preset;
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ActionTone {
@@ -50,99 +132,99 @@ fn color(hex: u32) -> Hsla {
 }
 
 pub fn app_bg() -> Hsla {
-    color(APP_BG)
+    color(palette().app_bg)
 }
 
 pub fn chrome_bg() -> Hsla {
-    color(CHROME_BG)
+    color(palette().chrome_bg)
 }
 
 pub fn chrome_tab() -> Hsla {
-    color(CHROME_TAB)
+    color(palette().chrome_tab)
 }
 
 pub fn chrome_tab_active() -> Hsla {
-    color(CHROME_TAB_ACTIVE)
+    color(palette().chrome_tab_active)
 }
 
 pub fn library_bg() -> Hsla {
-    color(LIBRARY_BG)
+    color(palette().library_bg)
 }
 
 pub fn library_sidebar() -> Hsla {
-    color(LIBRARY_SIDEBAR)
+    color(palette().library_sidebar)
 }
 
 pub fn library_card() -> Hsla {
-    color(LIBRARY_CARD)
+    color(palette().library_card)
 }
 
 pub fn terminal_bg() -> Hsla {
-    color(TERMINAL_BG)
+    color(palette().terminal_bg)
 }
 
 pub fn terminal_panel() -> Hsla {
-    color(TERMINAL_PANEL)
+    color(palette().terminal_panel)
 }
 
 pub fn border() -> Hsla {
-    color(BORDER)
+    color(palette().border)
 }
 
 pub fn border_dark() -> Hsla {
-    color(BORDER_DARK)
+    color(palette().border_dark)
 }
 
 pub fn text_main() -> Hsla {
-    color(TEXT_MAIN)
+    color(palette().text_main)
 }
 
 pub fn text_on_dark() -> Hsla {
-    color(TEXT_ON_DARK)
+    color(palette().text_on_dark)
 }
 
 pub fn text_muted() -> Hsla {
-    color(TEXT_MUTED)
+    color(palette().text_muted)
 }
 
 pub fn text_muted_dark() -> Hsla {
-    color(TEXT_MUTED_DARK)
+    color(palette().text_muted_dark)
 }
 
 pub fn accent() -> Hsla {
-    color(ACCENT)
+    color(palette().accent)
 }
 
 pub fn accent_soft() -> Hsla {
-    color(ACCENT_SOFT)
+    color(palette().accent_soft)
 }
 
 pub fn focus_ring() -> Hsla {
-    color(FOCUS_RING)
+    color(palette().focus_ring)
 }
 
 pub fn success() -> Hsla {
-    color(SUCCESS)
+    color(palette().success)
 }
 
 pub fn warning() -> Hsla {
-    color(WARNING)
+    color(palette().warning)
 }
 
 pub fn danger() -> Hsla {
-    color(DANGER)
+    color(palette().danger)
 }
 
 pub fn slate() -> Hsla {
-    color(SLATE)
+    color(palette().slate)
 }
 
 pub fn hover() -> Hsla {
-    color(HOVER)
+    color(palette().hover)
 }
 
 pub fn modal_scrim() -> Hsla {
-    with_alpha(color(MODAL_SCRIM), 0.56)
+    with_alpha(color(palette().modal_scrim), 0.56)
 }
 
 pub fn card_hover() -> Hsla {

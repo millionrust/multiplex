@@ -24,7 +24,7 @@ use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
     HostProfile, JumpHostConnection, ProfileSource, QuickConnect, SavedCommandHistoryEntry,
     SavedIdentity, SavedSnippet, SavedState, SavedVault, SavedVaultMember, SavedWorkspace,
-    SessionLogEntry, SessionLogStatus, SplitAxis, VaultKind, VaultMemberRole,
+    SessionLogEntry, SessionLogStatus, SplitAxis, ThemePreset, VaultKind, VaultMemberRole,
 };
 use crate::sftp::{
     RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
@@ -34,12 +34,9 @@ use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent, spawn_session};
 use crate::storage::{
     KnownHostStore, inspect_identity_file, load_local_ssh_identities, save_saved_state,
 };
-use crate::terminal::{
-    DEFAULT_SCROLLBACK, TerminalCell, TerminalRow, TerminalSize, TerminalState, TerminalStyle,
-};
+use crate::terminal::{TerminalCell, TerminalRow, TerminalSize, TerminalState, TerminalStyle};
 use crate::ui::theme;
 
-const TERMINAL_FONT_SIZE: f32 = 13.5;
 const TERMINAL_LINE_HEIGHT: f32 = 1.3;
 const LIBRARY_TOOLBAR_HEIGHT: f32 = 56.0;
 const WORKSPACE_SEARCH_ROW_HEIGHT: f32 = 52.0;
@@ -97,6 +94,7 @@ enum NavSection {
     Vaults,
     Keychain,
     Snippets,
+    Settings,
     KnownHosts,
     Logs,
 }
@@ -115,6 +113,7 @@ impl NavSection {
             Self::Vaults => "Vaults",
             Self::Keychain => "Keys",
             Self::Snippets => "Snippets",
+            Self::Settings => "Settings",
             Self::KnownHosts => "Known Hosts",
             Self::Logs => "Logs",
         }
@@ -126,6 +125,7 @@ impl NavSection {
             Self::Vaults => IconName::Building2.into(),
             Self::Keychain => app_icon(ICON_KEY),
             Self::Snippets => IconName::BookOpen.into(),
+            Self::Settings => IconName::Settings.into(),
             Self::KnownHosts => app_icon(ICON_SHIELD_CHECK),
             Self::Logs => IconName::BookOpen.into(),
         }
@@ -222,6 +222,11 @@ struct SnippetInputs {
     command: Entity<InputState>,
 }
 
+struct SettingsInputs {
+    local_shell_program: Entity<InputState>,
+    local_shell_cwd: Entity<InputState>,
+}
+
 struct VaultInputs {
     label: Entity<InputState>,
     description: Entity<InputState>,
@@ -239,6 +244,17 @@ impl SnippetInputs {
             group: cx.new(|cx| InputState::new(window, cx).placeholder("Ops / Deploy")),
             command: cx
                 .new(|cx| InputState::new(window, cx).placeholder("sudo systemctl restart app")),
+        }
+    }
+}
+
+impl SettingsInputs {
+    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+        Self {
+            local_shell_program: cx
+                .new(|cx| InputState::new(window, cx).placeholder("Shell executable")),
+            local_shell_cwd: cx
+                .new(|cx| InputState::new(window, cx).placeholder("Optional working directory")),
         }
     }
 }
@@ -450,6 +466,7 @@ pub struct TermiRustApp {
     inputs: DraftInputs,
     shell_inputs: ShellInputs,
     snippet_inputs: SnippetInputs,
+    settings_inputs: SettingsInputs,
     vault_inputs: VaultInputs,
     vault_member_inputs: VaultMemberInputs,
     draft_auth_mode: AuthMode,
@@ -487,6 +504,7 @@ impl TermiRustApp {
         let inputs = DraftInputs::new(window, cx);
         let shell_inputs = ShellInputs::new(window, cx);
         let snippet_inputs = SnippetInputs::new(window, cx);
+        let settings_inputs = SettingsInputs::new(window, cx);
         let vault_inputs = VaultInputs::new(window, cx);
         let vault_member_inputs = VaultMemberInputs::new(window, cx);
         let (event_tx, event_rx) = mpsc::channel();
@@ -495,6 +513,7 @@ impl TermiRustApp {
             Arc::new(KnownHostStore::load().expect("unable to initialize known host storage"));
         saved.merge_imported_identities(load_local_ssh_identities().unwrap_or_default());
         saved.ensure_vaults();
+        theme::set_theme_preset(saved.settings.theme_preset);
 
         let draft_auth_mode = saved
             .selected_profile_id
@@ -530,6 +549,7 @@ impl TermiRustApp {
             inputs,
             shell_inputs,
             snippet_inputs,
+            settings_inputs,
             vault_inputs,
             vault_member_inputs,
             draft_auth_mode,
@@ -560,6 +580,8 @@ impl TermiRustApp {
             selected_command_palette_index: 0,
             _window_bounds_subscription: None,
         };
+
+        app.load_settings_inputs(window, cx);
 
         app.restore_saved_workspaces(window, cx);
 
@@ -594,6 +616,30 @@ impl TermiRustApp {
         .detach();
 
         app
+    }
+
+    fn terminal_font_size(&self) -> f32 {
+        self.saved.settings.terminal_font_size as f32
+    }
+
+    fn load_settings_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        Self::set_input_value(
+            &self.settings_inputs.local_shell_program,
+            self.saved.settings.default_local_shell.program.clone(),
+            window,
+            cx,
+        );
+        Self::set_input_value(
+            &self.settings_inputs.local_shell_cwd,
+            self.saved
+                .settings
+                .default_local_shell
+                .cwd
+                .clone()
+                .unwrap_or_default(),
+            window,
+            cx,
+        );
     }
 
     fn current_profile_draft(&self, cx: &App) -> anyhow::Result<DraftProfile> {
@@ -1787,6 +1833,64 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn save_settings(&mut self) {
+        self.saved.ensure_settings();
+        let _ = save_saved_state(&self.saved);
+    }
+
+    fn update_theme_preset(&mut self, preset: ThemePreset, cx: &mut Context<Self>) {
+        self.saved.settings.theme_preset = preset;
+        theme::set_theme_preset(preset);
+        self.save_settings();
+        self.status_message = format!("Theme set to {}.", preset.label());
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn update_terminal_font_size(
+        &mut self,
+        font_size: u16,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.saved.settings.terminal_font_size = font_size;
+        self.save_settings();
+        self.sync_terminal_layout(window, cx);
+        self.status_message = format!("Terminal font size set to {} px.", font_size);
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn save_local_shell_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let program = self
+            .settings_inputs
+            .local_shell_program
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        if program.is_empty() {
+            self.error_message = "Local shell program cannot be empty.".to_string();
+            cx.notify();
+            return;
+        }
+
+        let cwd = self
+            .settings_inputs
+            .local_shell_cwd
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        self.saved.settings.default_local_shell.program = program.clone();
+        self.saved.settings.default_local_shell.cwd = (!cwd.is_empty()).then_some(cwd.clone());
+        self.save_settings();
+        self.load_settings_inputs(window, cx);
+        self.status_message = format!("Default local shell set to {}.", program);
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn persist_runtime_state(&mut self) {
         let mut restored_workspaces = Vec::new();
         let mut active_workspace_index = None;
@@ -2396,7 +2500,7 @@ impl TermiRustApp {
             request,
             title,
             endpoint,
-            terminal: TerminalState::new(TerminalSize::default(), DEFAULT_SCROLLBACK),
+            terminal: TerminalState::new(TerminalSize::default(), 10_000),
             terminal_focus,
             last_size: None,
             runtime,
@@ -2415,7 +2519,10 @@ impl TermiRustApp {
     }
 
     fn open_local_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let request = ConnectRequest::local_shell(self.next_session_id());
+        let request = ConnectRequest::local_shell_with_config(
+            self.next_session_id(),
+            self.saved.settings.default_local_shell.clone(),
+        );
         let pane_id = self.spawn_pane(request.clone(), window, cx);
         let workspace_id = self.next_workspace_id();
 
@@ -3021,7 +3128,7 @@ impl TermiRustApp {
     }
 
     fn terminal_metrics(&self, window: &Window, cx: &Context<Self>) -> (f32, f32) {
-        let font_size = px(TERMINAL_FONT_SIZE);
+        let font_size = px(self.terminal_font_size());
         let font_id = window
             .text_system()
             .resolve_font(&font(cx.theme().mono_font_family.clone()));
@@ -3033,7 +3140,7 @@ impl TermiRustApp {
                 width.max(1.0)
             })
             .unwrap_or(8.0);
-        let line_height = (TERMINAL_FONT_SIZE * TERMINAL_LINE_HEIGHT).max(1.0);
+        let line_height = (self.terminal_font_size() * TERMINAL_LINE_HEIGHT).max(1.0);
         (char_width, line_height)
     }
 
@@ -3852,7 +3959,7 @@ impl TermiRustApp {
             return;
         }
 
-        let line_height = px(TERMINAL_FONT_SIZE * TERMINAL_LINE_HEIGHT);
+        let line_height = px(self.terminal_font_size() * TERMINAL_LINE_HEIGHT);
         let delta = event.delta.pixel_delta(line_height);
         let delta_y: f32 = delta.y.into();
         let line_height_px: f32 = line_height.into();
@@ -4349,6 +4456,7 @@ impl TermiRustApp {
                         NavSection::Vaults,
                         NavSection::Keychain,
                         NavSection::Snippets,
+                        NavSection::Settings,
                     ]
                     .into_iter()
                     .map(|section| {
@@ -6706,12 +6814,257 @@ impl TermiRustApp {
             )
     }
 
+    fn render_settings_view(&self, cx: &Context<Self>) -> Div {
+        let theme_preset = self.saved.settings.theme_preset;
+        let terminal_font_size = self.saved.settings.terminal_font_size;
+
+        v_flex()
+            .flex_1()
+            .gap_4()
+            .p_5()
+            .bg(theme::library_bg())
+            .child(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_size(px(18.))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child("Settings"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .child("Local desktop preferences"),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .gap_4()
+                    .p_4()
+                    .rounded(px(theme::CARD_RADIUS))
+                    .bg(theme::library_card())
+                    .border_1()
+                    .border_color(theme::border())
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .font_medium()
+                                    .text_color(theme::text_main())
+                                    .child("Appearance Theme"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.5))
+                                    .text_color(theme::text_muted())
+                                    .child("Switch the global UI palette across the whole desktop app."),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .children([ThemePreset::Ocean, ThemePreset::Daylight].into_iter().enumerate().map(
+                                        |(index, preset)| {
+                                            let selected = preset == theme_preset;
+                                            div()
+                                                .id(("settings-theme", index))
+                                                .px_3()
+                                                .py(px(8.))
+                                                .rounded(px(999.))
+                                                .bg(if selected {
+                                                    theme::accent_soft()
+                                                } else {
+                                                    theme::with_alpha(theme::hover(), 0.72)
+                                                })
+                                                .border_1()
+                                                .border_color(if selected {
+                                                    theme::with_alpha(theme::accent(), 0.42)
+                                                } else {
+                                                    theme::border()
+                                                })
+                                                .cursor_pointer()
+                                                .hover(|style| style.bg(theme::hover()))
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.update_theme_preset(preset, cx);
+                                                }))
+                                                .child(
+                                                    div()
+                                                        .text_size(px(11.))
+                                                        .font_medium()
+                                                        .text_color(if selected {
+                                                            theme::text_main()
+                                                        } else {
+                                                            theme::text_muted()
+                                                        })
+                                                        .child(preset.label()),
+                                                )
+                                                .into_any_element()
+                                        },
+                                    )),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .font_medium()
+                                    .text_color(theme::text_main())
+                                    .child("Terminal Font Size"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.5))
+                                    .text_color(theme::text_muted())
+                                    .child("Apply a larger or tighter monospace size across every terminal pane."),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .children([12u16, 13, 14, 15, 16, 18].into_iter().enumerate().map(
+                                        |(index, font_size)| {
+                                            let selected = font_size == terminal_font_size;
+                                            div()
+                                                .id(("settings-font-size", index))
+                                                .px_3()
+                                                .py(px(8.))
+                                                .rounded(px(999.))
+                                                .bg(if selected {
+                                                    theme::accent_soft()
+                                                } else {
+                                                    theme::with_alpha(theme::hover(), 0.72)
+                                                })
+                                                .border_1()
+                                                .border_color(if selected {
+                                                    theme::with_alpha(theme::accent(), 0.42)
+                                                } else {
+                                                    theme::border()
+                                                })
+                                                .cursor_pointer()
+                                                .hover(|style| style.bg(theme::hover()))
+                                                .on_click(cx.listener(move |this, _, window, cx| {
+                                                    this.update_terminal_font_size(font_size, window, cx);
+                                                }))
+                                                .child(
+                                                    div()
+                                                        .text_size(px(11.))
+                                                        .font_medium()
+                                                        .text_color(if selected {
+                                                            theme::text_main()
+                                                        } else {
+                                                            theme::text_muted()
+                                                        })
+                                                        .child(format!("{font_size} px")),
+                                                )
+                                                .into_any_element()
+                                        },
+                                    )),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .font_medium()
+                                    .text_color(theme::text_main())
+                                    .child("Default Local Terminal"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.5))
+                                    .text_color(theme::text_muted())
+                                    .child("Choose which shell binary and working directory new local terminals use."),
+                            )
+                            .child(self.form_field(
+                                "Shell Program",
+                                Input::new(&self.settings_inputs.local_shell_program),
+                            ))
+                            .child(self.form_field(
+                                "Working Directory",
+                                Input::new(&self.settings_inputs.local_shell_cwd),
+                            ))
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        Button::new("settings-local-shell-save")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Accent,
+                                                cx,
+                                            ))
+                                            .label("Save Shell Defaults")
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.save_local_shell_settings(window, cx);
+                                            })),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.))
+                                            .text_color(theme::text_muted())
+                                            .child("Args stay empty for now; this sets the default executable and startup directory."),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_4()
+                            .children([
+                                ("Library", theme::library_card(), theme::text_main()),
+                                ("Chrome", theme::chrome_bg(), theme::text_on_dark()),
+                                ("Terminal", theme::terminal_bg(), theme::text_on_dark()),
+                            ]
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, (label, bg, fg))| {
+                                v_flex()
+                                    .id(("settings-preview", index))
+                                    .flex_1()
+                                    .gap_2()
+                                    .p_3()
+                                    .rounded(px(theme::CARD_RADIUS))
+                                    .bg(bg)
+                                    .border_1()
+                                    .border_color(theme::with_alpha(fg, 0.18))
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .font_semibold()
+                                            .text_color(fg)
+                                            .child(label),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.))
+                                            .text_color(theme::with_alpha(fg, 0.78))
+                                            .child(match label {
+                                                "Library" => "Forms, host cards, and management views",
+                                                "Chrome" => "Tabs, status bar, and workspace header",
+                                                _ => "Terminal panels and focused work sessions",
+                                            }),
+                                    )
+                                    .into_any_element()
+                            })),
+                    ),
+            )
+    }
+
     fn render_library_content(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         match self.nav_section {
             NavSection::Hosts => self.render_hosts_view(window, cx).into_any_element(),
             NavSection::Vaults => self.render_vaults_view(cx).into_any_element(),
             NavSection::Keychain => self.render_keychain_view(cx).into_any_element(),
             NavSection::Snippets => self.render_snippets_view(cx).into_any_element(),
+            NavSection::Settings => self.render_settings_view(cx).into_any_element(),
             NavSection::KnownHosts => self.render_known_hosts_view(cx).into_any_element(),
             NavSection::Logs => self.render_logs_view(cx).into_any_element(),
         }
@@ -7465,7 +7818,7 @@ impl TermiRustApp {
         let mut node = div()
             .whitespace_nowrap()
             .font_family(cx.theme().mono_font_family.clone())
-            .text_size(px(TERMINAL_FONT_SIZE))
+            .text_size(px(self.terminal_font_size()))
             .line_height(relative(TERMINAL_LINE_HEIGHT))
             .text_color(style.fg)
             .text_bg(style.bg)
@@ -8274,8 +8627,9 @@ fn nav_section_key(section: NavSection) -> u64 {
         NavSection::Vaults => 1,
         NavSection::Keychain => 2,
         NavSection::Snippets => 3,
-        NavSection::KnownHosts => 4,
-        NavSection::Logs => 5,
+        NavSection::Settings => 4,
+        NavSection::KnownHosts => 5,
+        NavSection::Logs => 6,
     }
 }
 

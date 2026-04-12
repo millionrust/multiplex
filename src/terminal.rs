@@ -5,7 +5,6 @@ use vt100::{Color, MouseProtocolEncoding, MouseProtocolMode, Parser};
 
 const DEFAULT_FG_HEX: u32 = 0xe2e8f0;
 const DEFAULT_BG_HEX: u32 = 0x091521;
-pub const DEFAULT_SCROLLBACK: usize = 10_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TerminalSize {
