@@ -14,7 +14,7 @@ use gpui_component::IconName;
 use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::input::{Input, InputState};
 use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{ActiveTheme, Icon, Sizable, StyledExt as _, h_flex, v_flex};
+use gpui_component::{ActiveTheme, Disableable, Icon, Sizable, StyledExt as _, h_flex, v_flex};
 use rfd::FileDialog;
 use vt100::{MouseProtocolEncoding, MouseProtocolMode};
 
@@ -23,6 +23,10 @@ use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, DraftProfile, HostProfile, JumpHostConnection,
     ProfileSource, QuickConnect, SavedIdentity, SavedSnippet, SavedState, SavedWorkspace,
     SessionLogEntry, SessionLogStatus, SplitAxis,
+};
+use crate::sftp::{
+    RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
+    spawn_upload_file,
 };
 use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent, spawn_session};
 use crate::storage::{
@@ -261,6 +265,8 @@ struct WorkspaceTab {
     active_pane_id: u64,
     unread_events: u32,
     split_axis: SplitAxis,
+    view_mode: WorkspaceViewMode,
+    sftp: Option<WorkspaceSftpState>,
     search_visible: bool,
     search_query: String,
     search_results: Vec<SearchMatch>,
@@ -285,6 +291,38 @@ struct WorkspaceIndicators {
     closed_panes: usize,
     split_count: usize,
     unread_events: u32,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum WorkspaceViewMode {
+    #[default]
+    Terminal,
+    Files,
+}
+
+#[derive(Clone, Debug)]
+struct WorkspaceSftpState {
+    pane_id: u64,
+    request: ConnectRequest,
+    current_path: String,
+    entries: Vec<RemoteFileEntry>,
+    selected_path: Option<String>,
+    loading: bool,
+    pending_operation_id: Option<u64>,
+}
+
+impl WorkspaceSftpState {
+    fn new(pane_id: u64, request: ConnectRequest, current_path: String) -> Self {
+        Self {
+            pane_id,
+            request,
+            current_path,
+            entries: Vec::new(),
+            selected_path: None,
+            loading: true,
+            pending_operation_id: None,
+        }
+    }
 }
 
 impl Render for WorkspaceTabDragPreview {
@@ -326,12 +364,15 @@ pub struct TermiRustApp {
     show_editor_panel: bool,
     event_tx: Sender<SshEvent>,
     event_rx: Receiver<SshEvent>,
+    sftp_event_tx: Sender<SftpEvent>,
+    sftp_event_rx: Receiver<SftpEvent>,
     panes: Vec<SessionPane>,
     workspaces: Vec<WorkspaceTab>,
     active_workspace_id: Option<u64>,
     selected_profile_id: Option<String>,
     selected_snippet_id: Option<String>,
     next_session_id: u64,
+    next_sftp_operation_id: u64,
     next_workspace_id: u64,
     status_message: String,
     error_message: String,
@@ -347,6 +388,7 @@ impl TermiRustApp {
         let shell_inputs = ShellInputs::new(window, cx);
         let snippet_inputs = SnippetInputs::new(window, cx);
         let (event_tx, event_rx) = mpsc::channel();
+        let (sftp_event_tx, sftp_event_rx) = mpsc::channel();
         let known_hosts =
             Arc::new(KnownHostStore::load().expect("unable to initialize known host storage"));
         saved.merge_imported_identities(load_local_ssh_identities().unwrap_or_default());
@@ -390,11 +432,14 @@ impl TermiRustApp {
             show_editor_panel: false,
             event_tx,
             event_rx,
+            sftp_event_tx,
+            sftp_event_rx,
             panes: Vec::new(),
             workspaces: Vec::new(),
             active_workspace_id: None,
             selected_snippet_id: None,
             next_session_id: 1,
+            next_sftp_operation_id: 1,
             next_workspace_id: 1,
             status_message: initial_status,
             error_message: String::new(),
@@ -1320,6 +1365,8 @@ impl TermiRustApp {
                 active_pane_id,
                 unread_events: 0,
                 split_axis: saved_workspace.split_axis,
+                view_mode: WorkspaceViewMode::Terminal,
+                sftp: None,
                 search_visible: false,
                 search_query: String::new(),
                 search_results: Vec::new(),
@@ -1482,6 +1529,287 @@ impl TermiRustApp {
         workspace_id
     }
 
+    fn next_sftp_operation_id(&mut self) -> u64 {
+        let operation_id = self.next_sftp_operation_id;
+        self.next_sftp_operation_id += 1;
+        operation_id
+    }
+
+    fn selected_workspace_sftp_entry(&self, workspace_id: u64) -> Option<RemoteFileEntry> {
+        let workspace = self.workspace(workspace_id)?;
+        let browser = workspace.sftp.as_ref()?;
+        let selected_path = browser.selected_path.as_deref()?;
+        browser
+            .entries
+            .iter()
+            .find(|entry| entry.path == selected_path)
+            .cloned()
+    }
+
+    fn open_active_workspace_files(&mut self, cx: &mut Context<Self>) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return;
+        };
+        let Some(pane) = self.active_pane() else {
+            return;
+        };
+
+        let pane_id = pane.id;
+        let endpoint = pane.endpoint.clone();
+        let request = pane.request.clone();
+        let path = self
+            .workspace(workspace_id)
+            .and_then(|workspace| workspace.sftp.as_ref())
+            .filter(|browser| browser.pane_id == pane_id)
+            .map(|browser| browser.current_path.clone())
+            .unwrap_or_else(|| ".".to_string());
+
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
+            workspace.view_mode = WorkspaceViewMode::Files;
+            if workspace
+                .sftp
+                .as_ref()
+                .is_none_or(|browser| browser.pane_id != pane_id)
+            {
+                workspace.sftp = Some(WorkspaceSftpState::new(pane_id, request, path.clone()));
+            }
+        }
+
+        self.status_message = format!("Loading remote files from {endpoint}...");
+        self.error_message.clear();
+        self.load_workspace_directory(workspace_id, path);
+        cx.notify();
+    }
+
+    fn show_active_workspace_terminal(&mut self, cx: &mut Context<Self>) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return;
+        };
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
+            workspace.view_mode = WorkspaceViewMode::Terminal;
+        }
+        self.status_message = "Back to terminal view.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn load_workspace_directory(&mut self, workspace_id: u64, path: String) {
+        let operation_id = self.next_sftp_operation_id();
+        let Some((request, load_path)) = self.workspace_mut(workspace_id).and_then(|workspace| {
+            let browser = workspace.sftp.as_mut()?;
+            browser.current_path = path.clone();
+            browser.loading = true;
+            browser.pending_operation_id = Some(operation_id);
+            browser.selected_path = None;
+            Some((browser.request.clone(), browser.current_path.clone()))
+        }) else {
+            return;
+        };
+
+        spawn_list_directory(
+            workspace_id,
+            operation_id,
+            request,
+            self.known_hosts.clone(),
+            load_path,
+            self.sftp_event_tx.clone(),
+        );
+    }
+
+    fn refresh_workspace_files(&mut self, workspace_id: u64) {
+        let Some(path) = self
+            .workspace(workspace_id)
+            .and_then(|workspace| workspace.sftp.as_ref())
+            .map(|browser| browser.current_path.clone())
+        else {
+            return;
+        };
+        self.load_workspace_directory(workspace_id, path);
+    }
+
+    fn select_workspace_file_entry(
+        &mut self,
+        workspace_id: u64,
+        path: String,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(browser) = self
+            .workspace_mut(workspace_id)
+            .and_then(|workspace| workspace.sftp.as_mut())
+        {
+            browser.selected_path = Some(path);
+        }
+        cx.notify();
+    }
+
+    fn open_selected_workspace_file_entry(&mut self, cx: &mut Context<Self>) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return;
+        };
+        let Some(entry) = self.selected_workspace_sftp_entry(workspace_id) else {
+            self.error_message = "Select a folder first.".to_string();
+            cx.notify();
+            return;
+        };
+        if !entry.is_dir {
+            self.error_message = "Only folders can be opened in the remote browser.".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.status_message = format!("Opening {}...", entry.path);
+        self.error_message.clear();
+        self.load_workspace_directory(workspace_id, entry.path);
+        cx.notify();
+    }
+
+    fn navigate_workspace_files_up(&mut self, cx: &mut Context<Self>) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return;
+        };
+        let Some(parent_path) = self
+            .workspace(workspace_id)
+            .and_then(|workspace| workspace.sftp.as_ref())
+            .and_then(|browser| remote_parent_path(&browser.current_path))
+        else {
+            return;
+        };
+
+        self.status_message = format!("Opening {parent_path}...");
+        self.error_message.clear();
+        self.load_workspace_directory(workspace_id, parent_path);
+        cx.notify();
+    }
+
+    fn upload_workspace_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return;
+        };
+        let Some((request, current_path)) = self.workspace(workspace_id).and_then(|workspace| {
+            workspace
+                .sftp
+                .as_ref()
+                .map(|browser| (browser.request.clone(), browser.current_path.clone()))
+        }) else {
+            return;
+        };
+        let Some(local_path) = FileDialog::new().pick_file() else {
+            return;
+        };
+
+        let operation_id = self.next_sftp_operation_id();
+        if let Some(browser) = self
+            .workspace_mut(workspace_id)
+            .and_then(|workspace| workspace.sftp.as_mut())
+        {
+            browser.loading = true;
+            browser.pending_operation_id = Some(operation_id);
+        }
+
+        self.status_message = format!("Uploading {}...", local_path.display());
+        self.error_message.clear();
+        spawn_upload_file(
+            workspace_id,
+            operation_id,
+            request,
+            self.known_hosts.clone(),
+            current_path,
+            local_path,
+            self.sftp_event_tx.clone(),
+        );
+        let _ = window;
+        cx.notify();
+    }
+
+    fn download_workspace_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return;
+        };
+        let Some(entry) = self.selected_workspace_sftp_entry(workspace_id) else {
+            self.error_message = "Select a remote file first.".to_string();
+            cx.notify();
+            return;
+        };
+        if entry.is_dir {
+            self.error_message =
+                "Folders are not downloadable yet. Open the folder instead.".to_string();
+            cx.notify();
+            return;
+        }
+        let Some(request) = self
+            .workspace(workspace_id)
+            .and_then(|workspace| workspace.sftp.as_ref())
+            .map(|browser| browser.request.clone())
+        else {
+            return;
+        };
+        let Some(local_path) = FileDialog::new().set_file_name(&entry.name).save_file() else {
+            return;
+        };
+
+        let operation_id = self.next_sftp_operation_id();
+        if let Some(browser) = self
+            .workspace_mut(workspace_id)
+            .and_then(|workspace| workspace.sftp.as_mut())
+        {
+            browser.loading = true;
+            browser.pending_operation_id = Some(operation_id);
+        }
+
+        self.status_message = format!("Downloading {}...", entry.path);
+        self.error_message.clear();
+        spawn_download_file(
+            workspace_id,
+            operation_id,
+            request,
+            self.known_hosts.clone(),
+            entry.path,
+            local_path,
+            self.sftp_event_tx.clone(),
+        );
+        cx.notify();
+    }
+
+    fn delete_workspace_file(&mut self, cx: &mut Context<Self>) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return;
+        };
+        let Some(entry) = self.selected_workspace_sftp_entry(workspace_id) else {
+            self.error_message = "Select a remote file or folder first.".to_string();
+            cx.notify();
+            return;
+        };
+        let Some(request) = self
+            .workspace(workspace_id)
+            .and_then(|workspace| workspace.sftp.as_ref())
+            .map(|browser| browser.request.clone())
+        else {
+            return;
+        };
+
+        let operation_id = self.next_sftp_operation_id();
+        if let Some(browser) = self
+            .workspace_mut(workspace_id)
+            .and_then(|workspace| workspace.sftp.as_mut())
+        {
+            browser.loading = true;
+            browser.pending_operation_id = Some(operation_id);
+        }
+
+        self.status_message = format!("Deleting {}...", entry.path);
+        self.error_message.clear();
+        spawn_delete_path(
+            workspace_id,
+            operation_id,
+            request,
+            self.known_hosts.clone(),
+            entry.path,
+            entry.is_dir,
+            self.sftp_event_tx.clone(),
+        );
+        cx.notify();
+    }
+
     fn build_request_for_current_draft(&mut self, cx: &App) -> anyhow::Result<ConnectRequest> {
         let mut draft = self.current_profile_draft(cx)?;
 
@@ -1578,6 +1906,8 @@ impl TermiRustApp {
                     active_pane_id: pane_id,
                     unread_events: 0,
                     split_axis: SplitAxis::Horizontal,
+                    view_mode: WorkspaceViewMode::Terminal,
+                    sftp: None,
                     search_visible: false,
                     search_query: String::new(),
                     search_results: Vec::new(),
@@ -1626,6 +1956,12 @@ impl TermiRustApp {
                     workspace.pane_ids[pos] = new_pane_id;
                     if workspace.active_pane_id == pane_id {
                         workspace.active_pane_id = new_pane_id;
+                    }
+                }
+                if let Some(browser) = workspace.sftp.as_mut() {
+                    if browser.pane_id == pane_id {
+                        browser.pane_id = new_pane_id;
+                        browser.request = request.clone();
                     }
                 }
             }
@@ -1691,6 +2027,8 @@ impl TermiRustApp {
             active_pane_id: pane_id,
             unread_events: 0,
             split_axis: SplitAxis::Horizontal,
+            view_mode: WorkspaceViewMode::Terminal,
+            sftp: None,
             search_visible: false,
             search_query: String::new(),
             search_results: Vec::new(),
@@ -1749,6 +2087,7 @@ impl TermiRustApp {
             workspace.pane_ids.push(pane_id);
             workspace.active_pane_id = pane_id;
             workspace.split_axis = axis;
+            workspace.view_mode = WorkspaceViewMode::Terminal;
             workspace.title = request.title.clone();
         }
 
@@ -1799,6 +2138,14 @@ impl TermiRustApp {
                     workspace.active_pane_id = next_id;
                 }
             }
+            if workspace
+                .sftp
+                .as_ref()
+                .is_some_and(|browser| browser.pane_id == pane_id)
+            {
+                workspace.sftp = None;
+                workspace.view_mode = WorkspaceViewMode::Terminal;
+            }
             remove_workspace = workspace.pane_ids.is_empty();
         }
 
@@ -1846,6 +2193,7 @@ impl TermiRustApp {
     fn process_events(&mut self, cx: &mut Context<Self>) {
         let mut changed = false;
         let mut panes_to_refresh = Vec::new();
+        let mut sftp_directories_to_refresh = HashSet::new();
 
         while let Ok(event) = self.event_rx.try_recv() {
             changed = true;
@@ -1941,6 +2289,116 @@ impl TermiRustApp {
                     }
                 }
             }
+        }
+
+        while let Ok(event) = self.sftp_event_rx.try_recv() {
+            changed = true;
+
+            match event {
+                SftpEvent::DirectoryLoaded {
+                    workspace_id,
+                    operation_id,
+                    path,
+                    entries,
+                } => {
+                    if let Some(browser) = self
+                        .workspace_mut(workspace_id)
+                        .and_then(|workspace| workspace.sftp.as_mut())
+                    {
+                        if browser.pending_operation_id != Some(operation_id) {
+                            continue;
+                        }
+
+                        browser.current_path = path.clone();
+                        browser.entries = entries;
+                        browser.loading = false;
+                        browser.pending_operation_id = None;
+                        browser.selected_path =
+                            browser.entries.first().map(|entry| entry.path.clone());
+                    }
+
+                    self.status_message = format!("Loaded remote files for {path}.");
+                    self.error_message.clear();
+                }
+                SftpEvent::UploadComplete {
+                    workspace_id,
+                    operation_id,
+                    remote_path,
+                } => {
+                    if let Some(browser) = self
+                        .workspace_mut(workspace_id)
+                        .and_then(|workspace| workspace.sftp.as_mut())
+                    {
+                        if browser.pending_operation_id == Some(operation_id) {
+                            browser.loading = false;
+                            browser.pending_operation_id = None;
+                        }
+                    }
+
+                    self.status_message = format!("Uploaded {remote_path}.");
+                    self.error_message.clear();
+                    sftp_directories_to_refresh.insert(workspace_id);
+                }
+                SftpEvent::DownloadComplete {
+                    workspace_id,
+                    operation_id,
+                    remote_path,
+                    local_path,
+                } => {
+                    if let Some(browser) = self
+                        .workspace_mut(workspace_id)
+                        .and_then(|workspace| workspace.sftp.as_mut())
+                    {
+                        if browser.pending_operation_id == Some(operation_id) {
+                            browser.loading = false;
+                            browser.pending_operation_id = None;
+                        }
+                    }
+
+                    self.status_message = format!("Downloaded {remote_path} to {local_path}.");
+                    self.error_message.clear();
+                }
+                SftpEvent::DeleteComplete {
+                    workspace_id,
+                    operation_id,
+                    remote_path,
+                } => {
+                    if let Some(browser) = self
+                        .workspace_mut(workspace_id)
+                        .and_then(|workspace| workspace.sftp.as_mut())
+                    {
+                        if browser.pending_operation_id == Some(operation_id) {
+                            browser.loading = false;
+                            browser.pending_operation_id = None;
+                        }
+                    }
+
+                    self.status_message = format!("Deleted {remote_path}.");
+                    self.error_message.clear();
+                    sftp_directories_to_refresh.insert(workspace_id);
+                }
+                SftpEvent::Error {
+                    workspace_id,
+                    operation_id,
+                    message,
+                } => {
+                    if let Some(browser) = self
+                        .workspace_mut(workspace_id)
+                        .and_then(|workspace| workspace.sftp.as_mut())
+                    {
+                        if browser.pending_operation_id == Some(operation_id) {
+                            browser.loading = false;
+                            browser.pending_operation_id = None;
+                        }
+                    }
+
+                    self.error_message = message;
+                }
+            }
+        }
+
+        for workspace_id in sftp_directories_to_refresh {
+            self.refresh_workspace_files(workspace_id);
         }
 
         if let Some(active_workspace_id) = self.active_workspace_id {
@@ -4883,6 +5341,8 @@ impl TermiRustApp {
         let Some(pane) = self.active_pane() else {
             return v_flex();
         };
+        let files_mode = workspace.view_mode == WorkspaceViewMode::Files;
+        let selected_remote_entry = self.selected_workspace_sftp_entry(workspace.id);
         let _focused = pane.terminal_focus.is_focused(window);
 
         h_flex()
@@ -4976,8 +5436,29 @@ impl TermiRustApp {
                             .ghost()
                             .small()
                             .icon(IconName::Search)
+                            .disabled(files_mode)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.toggle_workspace_search(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("workspace-files")
+                            .ghost()
+                            .small()
+                            .icon(if files_mode {
+                                IconName::SquareTerminal
+                            } else {
+                                IconName::FolderOpen
+                            })
+                            .label(if files_mode { "Terminal" } else { "Files" })
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if this.active_workspace().is_some_and(|workspace| {
+                                    workspace.view_mode == WorkspaceViewMode::Files
+                                }) {
+                                    this.show_active_workspace_terminal(cx);
+                                } else {
+                                    this.open_active_workspace_files(cx);
+                                }
                             })),
                     )
                     .child(
@@ -4985,6 +5466,7 @@ impl TermiRustApp {
                             .ghost()
                             .small()
                             .icon(IconName::PanelRight)
+                            .disabled(files_mode)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.split_active_workspace(SplitAxis::Horizontal, window, cx);
                             })),
@@ -4994,10 +5476,87 @@ impl TermiRustApp {
                             .ghost()
                             .small()
                             .icon(IconName::PanelBottom)
+                            .disabled(files_mode)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.split_active_workspace(SplitAxis::Vertical, window, cx);
                             })),
                     )
+                    .when(files_mode, |this| {
+                        this.child(
+                            Button::new("workspace-files-up")
+                                .ghost()
+                                .small()
+                                .icon(IconName::ArrowLeft)
+                                .label("Up")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.navigate_workspace_files_up(cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("workspace-files-refresh")
+                                .ghost()
+                                .small()
+                                .icon(IconName::Redo)
+                                .label("Refresh")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    if let Some(workspace_id) = this.active_workspace_id {
+                                        this.refresh_workspace_files(workspace_id);
+                                        cx.notify();
+                                    }
+                                })),
+                        )
+                        .child(
+                            Button::new("workspace-files-upload")
+                                .ghost()
+                                .small()
+                                .icon(IconName::ArrowUp)
+                                .label("Upload")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.upload_workspace_file(window, cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("workspace-files-open")
+                                .ghost()
+                                .small()
+                                .icon(IconName::FolderOpen)
+                                .label("Open")
+                                .disabled(
+                                    !selected_remote_entry
+                                        .as_ref()
+                                        .is_some_and(|entry| entry.is_dir),
+                                )
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.open_selected_workspace_file_entry(cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("workspace-files-download")
+                                .ghost()
+                                .small()
+                                .icon(IconName::ArrowDown)
+                                .label("Download")
+                                .disabled(
+                                    !selected_remote_entry
+                                        .as_ref()
+                                        .is_some_and(|entry| !entry.is_dir),
+                                )
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.download_workspace_file(window, cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("workspace-files-delete")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Danger, cx))
+                                .icon(IconName::Delete)
+                                .label("Delete")
+                                .disabled(selected_remote_entry.is_none())
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.delete_workspace_file(cx);
+                                })),
+                        )
+                    })
                     .child(
                         div()
                             .w(px(1.))
@@ -5036,6 +5595,9 @@ impl TermiRustApp {
 
     fn render_workspace_search(&self, _window: &mut Window, cx: &mut Context<Self>) -> Option<Div> {
         let workspace = self.active_workspace()?;
+        if workspace.view_mode != WorkspaceViewMode::Terminal {
+            return None;
+        }
         if !workspace.search_visible {
             return None;
         }
@@ -5090,6 +5652,276 @@ impl TermiRustApp {
                         })),
                 ),
         )
+    }
+
+    fn render_workspace_files_view(&self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let Some(workspace) = self.active_workspace() else {
+            return v_flex();
+        };
+        let workspace_id = workspace.id;
+        let Some(browser) = workspace.sftp.as_ref() else {
+            return v_flex().flex_1().items_center().justify_center().child(
+                v_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        Icon::new(IconName::FolderOpen)
+                            .size(px(28.))
+                            .text_color(theme::with_alpha(theme::text_muted_dark(), 0.45)),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_medium()
+                            .text_color(theme::text_on_dark())
+                            .child("Open Files to browse this host over SFTP"),
+                    ),
+            );
+        };
+        let selected_entry = self.selected_workspace_sftp_entry(workspace.id);
+
+        v_flex()
+            .flex_1()
+            .p(px(WORKSPACE_PADDING))
+            .gap_3()
+            .bg(theme::terminal_bg())
+            .child(
+                v_flex()
+                    .gap_2()
+                    .p_3()
+                    .rounded(px(theme::CARD_RADIUS))
+                    .bg(theme::terminal_panel())
+                    .border_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        h_flex()
+                            .items_center()
+                            .justify_between()
+                            .gap_3()
+                            .child(
+                                v_flex()
+                                    .gap(px(2.))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.))
+                                            .font_medium()
+                                            .text_color(theme::text_muted_dark())
+                                            .child("Remote Path"),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(14.))
+                                            .font_semibold()
+                                            .text_color(theme::text_on_dark())
+                                            .child(browser.current_path.clone()),
+                                    ),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(self.status_badge(
+                                        browser.request.address(),
+                                        theme::terminal_bg(),
+                                        theme::accent(),
+                                    ))
+                                    .when(browser.loading, |this| {
+                                        this.child(self.status_badge(
+                                            "Syncing",
+                                            theme::terminal_bg(),
+                                            theme::warning(),
+                                        ))
+                                    })
+                                    .when_some(selected_entry.as_ref(), |this, entry| {
+                                        this.child(self.status_badge(
+                                            if entry.is_dir { "Folder" } else { "File" },
+                                            theme::terminal_bg(),
+                                            theme::success(),
+                                        ))
+                                    }),
+                            ),
+                    )
+                    .when_some(selected_entry.as_ref(), |this, entry| {
+                        this.child(
+                            div()
+                                .text_size(px(10.5))
+                                .text_color(theme::text_muted_dark())
+                                .child(if entry.is_dir {
+                                    format!("Selected folder: {}", entry.path)
+                                } else {
+                                    format!(
+                                        "Selected file: {}  •  {}",
+                                        entry.path,
+                                        format_file_size(entry.size.unwrap_or(0))
+                                    )
+                                }),
+                        )
+                    }),
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .overflow_y_scrollbar()
+                    .gap_2()
+                    .when(browser.entries.is_empty() && browser.loading, |this| {
+                        this.child(
+                            v_flex()
+                                .w_full()
+                                .items_center()
+                                .justify_center()
+                                .p_8()
+                                .rounded(px(theme::CARD_RADIUS))
+                                .bg(theme::terminal_panel())
+                                .border_1()
+                                .border_color(theme::border_dark())
+                                .gap_2()
+                                .child(
+                                    Icon::new(IconName::LoaderCircle)
+                                        .size(px(24.))
+                                        .text_color(theme::accent()),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(12.))
+                                        .text_color(theme::text_muted_dark())
+                                        .child("Loading remote directory..."),
+                                ),
+                        )
+                    })
+                    .when(browser.entries.is_empty() && !browser.loading, |this| {
+                        this.child(
+                            v_flex()
+                                .w_full()
+                                .items_center()
+                                .justify_center()
+                                .p_8()
+                                .rounded(px(theme::CARD_RADIUS))
+                                .bg(theme::terminal_panel())
+                                .border_1()
+                                .border_color(theme::border_dark())
+                                .gap_2()
+                                .child(
+                                    Icon::new(IconName::Folder).size(px(28.)).text_color(
+                                        theme::with_alpha(theme::text_muted_dark(), 0.4),
+                                    ),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .font_medium()
+                                        .text_color(theme::text_on_dark())
+                                        .child("This directory is empty"),
+                                ),
+                        )
+                    })
+                    .children(browser.entries.iter().enumerate().map(|(index, entry)| {
+                        let click_path = entry.path.clone();
+                        let open_path = entry.path.clone();
+                        let is_selected =
+                            browser.selected_path.as_deref() == Some(entry.path.as_str());
+                        let kind = if entry.is_dir {
+                            "Folder".to_string()
+                        } else if entry.is_symlink {
+                            "Symlink".to_string()
+                        } else {
+                            format_file_size(entry.size.unwrap_or(0))
+                        };
+
+                        h_flex()
+                            .id(("workspace-file-entry", index))
+                            .w_full()
+                            .items_center()
+                            .justify_between()
+                            .gap_3()
+                            .p_3()
+                            .rounded(px(14.))
+                            .bg(if is_selected {
+                                theme::with_alpha(theme::accent(), 0.18)
+                            } else {
+                                theme::terminal_panel()
+                            })
+                            .border_1()
+                            .border_color(if is_selected {
+                                theme::with_alpha(theme::accent(), 0.45)
+                            } else {
+                                theme::border_dark()
+                            })
+                            .cursor_pointer()
+                            .hover(|style| style.bg(theme::with_alpha(theme::accent(), 0.12)))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.select_workspace_file_entry(
+                                    workspace_id,
+                                    click_path.clone(),
+                                    cx,
+                                );
+                            }))
+                            .child(
+                                h_flex()
+                                    .gap_3()
+                                    .items_center()
+                                    .child(
+                                        Icon::new(if entry.is_dir {
+                                            IconName::FolderClosed
+                                        } else {
+                                            IconName::File
+                                        })
+                                        .size(px(16.))
+                                        .text_color(
+                                            if entry.is_dir {
+                                                theme::warning()
+                                            } else {
+                                                theme::text_muted_dark()
+                                            },
+                                        ),
+                                    )
+                                    .child(
+                                        v_flex()
+                                            .gap(px(1.))
+                                            .child(
+                                                div()
+                                                    .text_size(px(12.5))
+                                                    .font_medium()
+                                                    .text_color(theme::text_on_dark())
+                                                    .child(entry.name.clone()),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(10.))
+                                                    .text_color(theme::text_muted_dark())
+                                                    .child(entry.path.clone()),
+                                            ),
+                                    ),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(10.5))
+                                            .text_color(theme::text_muted_dark())
+                                            .child(kind),
+                                    )
+                                    .when(entry.is_dir, |this| {
+                                        this.child(
+                                            Button::new(("workspace-file-open", index))
+                                                .ghost()
+                                                .small()
+                                                .icon(IconName::ChevronRight)
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.select_workspace_file_entry(
+                                                        workspace_id,
+                                                        open_path.clone(),
+                                                        cx,
+                                                    );
+                                                    this.open_selected_workspace_file_entry(cx);
+                                                })),
+                                        )
+                                    }),
+                            )
+                            .into_any_element()
+                    })),
+            )
     }
 
     fn render_terminal_cell_group(
@@ -5414,6 +6246,15 @@ impl TermiRustApp {
     }
 
     fn render_workspace_shell(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let content = if self
+            .active_workspace()
+            .is_some_and(|workspace| workspace.view_mode == WorkspaceViewMode::Files)
+        {
+            self.render_workspace_files_view(window, cx)
+        } else {
+            self.render_workspace_body(window, cx)
+        };
+
         v_flex()
             .flex_1()
             .bg(theme::terminal_bg())
@@ -5421,7 +6262,7 @@ impl TermiRustApp {
             .when_some(self.render_workspace_search(window, cx), |this, search| {
                 this.child(search)
             })
-            .child(self.render_workspace_body(window, cx))
+            .child(content)
     }
 }
 
@@ -5964,4 +6805,38 @@ fn modifier_bits(modifiers: Modifiers) -> u32 {
         bits += 16;
     }
     bits
+}
+
+fn remote_parent_path(path: &str) -> Option<String> {
+    let path = path.trim().trim_end_matches('/');
+    if path.is_empty() || path == "." || path == "/" {
+        return None;
+    }
+
+    if let Some((parent, _)) = path.rsplit_once('/') {
+        if parent.is_empty() {
+            Some("/".to_string())
+        } else {
+            Some(parent.to_string())
+        }
+    } else {
+        Some(".".to_string())
+    }
+}
+
+fn format_file_size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+
+    let mut value = bytes as f64;
+    let mut unit = 0usize;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+
+    if unit == 0 {
+        format!("{bytes} {}", UNITS[unit])
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
 }

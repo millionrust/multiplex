@@ -618,6 +618,9 @@ name = "bitflags"
 version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "bitstream-io"
@@ -2124,6 +2127,18 @@ dependencies = [
  "futures-sink",
  "nanorand",
  "spin",
+]
+
+[[package]]
+name = "flurry"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf5efcf77a4da27927d3ab0509dec5b0954bb3bc59da5a1de9e52642ebd4cdf9"
+dependencies = [
+ "ahash",
+ "num_cpus",
+ "parking_lot",
+ "seize",
 ]
 
 [[package]]
@@ -5609,6 +5624,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "russh-sftp"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3bb94393cafad0530145b8f626d8687f1ee1dedb93d7ba7740d6ae81868b13b5"
+dependencies = [
+ "bitflags 2.11.0",
+ "bytes",
+ "chrono",
+ "flurry",
+ "log",
+ "serde",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "russh-util"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6032,6 +6064,12 @@ dependencies = [
  "core-foundation-sys",
  "libc",
 ]
+
+[[package]]
+name = "seize"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "689224d06523904ebcc9b482c6a3f4f7fb396096645c4cd10c0d2ff7371a34d3"
 
 [[package]]
 name = "self_cell"
@@ -6839,6 +6877,7 @@ dependencies = [
  "keyring",
  "rfd",
  "russh",
+ "russh-sftp",
  "serde",
  "serde_json",
  "tokio",

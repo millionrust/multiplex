@@ -16,16 +16,16 @@ This project is being pushed toward a native Rust replacement for Termius on Win
 
 ## Current State In This Repo
 
-- Implemented: SSH hosts, quick connect, imported SSH config hosts, reusable local identities, snippets, local TCP port forwarding, multi-hop jump-host chains, known-host pinning, tabs, split panes, reconnect, logs, and restorable workspaces.
+- Implemented: SSH hosts, quick connect, imported SSH config hosts, reusable local identities, snippets, local TCP port forwarding, multi-hop jump-host chains, known-host pinning, tabs, split panes, reconnect, logs, restorable workspaces, and a workspace-level SFTP remote-files browser with upload/download/delete.
 - Implemented: cross-platform secure credential storage through the system credential store via `keyring`.
 - Partially aligned: reusable identities now exist, but deeper identity metadata and sharing flows are still missing.
-- Missing for serious parity: vaults, SFTP, local terminal, command autocomplete, shared/team workflows, and packaging polish.
+- Missing for serious parity: vaults, local terminal, command autocomplete, shared/team workflows, and packaging polish.
 
 ## Recommended Build Order
 
 1. Identity model and host/group organization.
 2. Port forwarding and jump-host chains.
-3. SFTP and local terminal.
+3. Local terminal.
 4. Snippets and reusable command workflows.
 5. Vault/sync/team collaboration architecture.
 6. Command autocomplete and deeper UX polish.
