@@ -32,7 +32,9 @@ use crate::sftp::{
 };
 use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent, spawn_session};
 use crate::storage::{
-    KnownHostStore, inspect_identity_file, load_local_ssh_identities, save_saved_state,
+    KnownHostStore, export_encrypted_portable_data_bundle, export_portable_data_bundle,
+    import_encrypted_portable_data_bundle, import_portable_data_bundle, inspect_identity_file,
+    load_local_ssh_identities, save_saved_state,
 };
 use crate::terminal::{TerminalCell, TerminalRow, TerminalSize, TerminalState, TerminalStyle};
 use crate::ui::theme;
@@ -225,6 +227,9 @@ struct SnippetInputs {
 struct SettingsInputs {
     local_shell_program: Entity<InputState>,
     local_shell_cwd: Entity<InputState>,
+    export_backup_passphrase: Entity<InputState>,
+    export_backup_confirm: Entity<InputState>,
+    import_backup_passphrase: Entity<InputState>,
 }
 
 struct VaultInputs {
@@ -255,6 +260,21 @@ impl SettingsInputs {
                 .new(|cx| InputState::new(window, cx).placeholder("Shell executable")),
             local_shell_cwd: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Optional working directory")),
+            export_backup_passphrase: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .masked(true)
+                    .placeholder("Backup passphrase")
+            }),
+            export_backup_confirm: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .masked(true)
+                    .placeholder("Confirm passphrase")
+            }),
+            import_backup_passphrase: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .masked(true)
+                    .placeholder("Backup passphrase")
+            }),
         }
     }
 }
@@ -640,6 +660,7 @@ impl TermiRustApp {
             window,
             cx,
         );
+        self.clear_backup_inputs(window, cx);
     }
 
     fn current_profile_draft(&self, cx: &App) -> anyhow::Result<DraftProfile> {
@@ -700,6 +721,22 @@ impl TermiRustApp {
     ) {
         let value = value.into();
         input.update(cx, |state, cx| state.set_value(value.clone(), window, cx));
+    }
+
+    fn clear_backup_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        Self::set_input_value(
+            &self.settings_inputs.export_backup_passphrase,
+            "",
+            window,
+            cx,
+        );
+        Self::set_input_value(&self.settings_inputs.export_backup_confirm, "", window, cx);
+        Self::set_input_value(
+            &self.settings_inputs.import_backup_passphrase,
+            "",
+            window,
+            cx,
+        );
     }
 
     fn preferred_identity(&self) -> Option<&SavedIdentity> {
@@ -1889,6 +1926,169 @@ impl TermiRustApp {
         self.status_message = format!("Default local shell set to {}.", program);
         self.error_message.clear();
         cx.notify();
+    }
+
+    fn export_portable_data(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = FileDialog::new()
+            .add_filter("JSON", &["json"])
+            .set_file_name("termirust-export.json")
+            .save_file()
+        else {
+            return;
+        };
+
+        match export_portable_data_bundle(&path, &self.saved, &self.known_hosts) {
+            Ok(report) => {
+                self.status_message = format!(
+                    "Exported {} hosts, {} identities, {} snippets, {} vaults, and {} known hosts.",
+                    report.profiles,
+                    report.identities,
+                    report.snippets,
+                    report.vaults,
+                    report.known_hosts
+                );
+                self.error_message.clear();
+            }
+            Err(error) => {
+                self.error_message = format!("Failed to export data bundle: {error:#}");
+            }
+        }
+        cx.notify();
+    }
+
+    fn export_encrypted_portable_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let passphrase = self
+            .settings_inputs
+            .export_backup_passphrase
+            .read(cx)
+            .value()
+            .to_string();
+        let confirm = self
+            .settings_inputs
+            .export_backup_confirm
+            .read(cx)
+            .value()
+            .to_string();
+
+        if passphrase.trim().is_empty() {
+            self.error_message = "Backup passphrase cannot be empty.".to_string();
+            cx.notify();
+            return;
+        }
+        if passphrase != confirm {
+            self.error_message = "Backup passphrase confirmation does not match.".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(path) = FileDialog::new()
+            .add_filter("Encrypted Backup", &["json"])
+            .set_file_name("termirust-backup.encrypted.json")
+            .save_file()
+        else {
+            return;
+        };
+
+        match export_encrypted_portable_data_bundle(
+            &path,
+            &self.saved,
+            &self.known_hosts,
+            &passphrase,
+        ) {
+            Ok(report) => {
+                self.clear_backup_inputs(window, cx);
+                self.status_message = format!(
+                    "Encrypted backup exported with {} hosts, {} identities, {} snippets, {} vaults, and {} known hosts.",
+                    report.profiles,
+                    report.identities,
+                    report.snippets,
+                    report.vaults,
+                    report.known_hosts
+                );
+                self.error_message.clear();
+            }
+            Err(error) => {
+                self.error_message = format!("Failed to export encrypted backup: {error:#}");
+            }
+        }
+        cx.notify();
+    }
+
+    fn import_portable_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(path) = FileDialog::new().add_filter("JSON", &["json"]).pick_file() else {
+            return;
+        };
+
+        match import_portable_data_bundle(&path, &mut self.saved, &self.known_hosts) {
+            Ok(report) => {
+                let _ = save_saved_state(&self.saved);
+                self.load_settings_inputs(window, cx);
+                theme::set_theme_preset(self.saved.settings.theme_preset);
+                self.status_message = format!(
+                    "Imported {} hosts, {} identities, {} snippets, {} vaults, and {} known hosts.",
+                    report.profiles,
+                    report.identities,
+                    report.snippets,
+                    report.vaults,
+                    report.known_hosts
+                );
+                self.error_message.clear();
+                cx.notify();
+            }
+            Err(error) => {
+                self.error_message = format!("Failed to import data bundle: {error:#}");
+                cx.notify();
+            }
+        }
+    }
+
+    fn import_encrypted_portable_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let passphrase = self
+            .settings_inputs
+            .import_backup_passphrase
+            .read(cx)
+            .value()
+            .to_string();
+
+        if passphrase.trim().is_empty() {
+            self.error_message = "Backup passphrase cannot be empty.".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(path) = FileDialog::new()
+            .add_filter("Encrypted Backup", &["json"])
+            .pick_file()
+        else {
+            return;
+        };
+
+        match import_encrypted_portable_data_bundle(
+            &path,
+            &mut self.saved,
+            &self.known_hosts,
+            &passphrase,
+        ) {
+            Ok(report) => {
+                let _ = save_saved_state(&self.saved);
+                self.load_settings_inputs(window, cx);
+                theme::set_theme_preset(self.saved.settings.theme_preset);
+                self.status_message = format!(
+                    "Encrypted backup imported with {} hosts, {} identities, {} snippets, {} vaults, and {} known hosts.",
+                    report.profiles,
+                    report.identities,
+                    report.snippets,
+                    report.vaults,
+                    report.known_hosts
+                );
+                self.error_message.clear();
+                cx.notify();
+            }
+            Err(error) => {
+                self.error_message = format!("Failed to import encrypted backup: {error:#}");
+                cx.notify();
+            }
+        }
     }
 
     fn persist_runtime_state(&mut self) {
@@ -7054,6 +7254,149 @@ impl TermiRustApp {
                                     )
                                     .into_any_element()
                             })),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .gap_3()
+                    .p_4()
+                    .rounded(px(theme::CARD_RADIUS))
+                    .bg(theme::library_card())
+                    .border_1()
+                    .border_color(theme::border())
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child("Portable Data Bundle"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.5))
+                            .line_height(relative(1.5))
+                            .text_color(theme::text_muted())
+                            .child("Export or import hosts, vaults, identities, snippets, and known-host trust records as a local JSON bundle. Passwords and system credential-store secrets are intentionally excluded, so this is safe for portability but not a full account sync."),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("settings-export-data")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    ))
+                                    .label("Export Data")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.export_portable_data(cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("settings-import-data")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .label("Import Data")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.import_portable_data(window, cx);
+                                    })),
+                            ),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .gap_3()
+                    .p_4()
+                    .rounded(px(theme::CARD_RADIUS))
+                    .bg(theme::library_card())
+                    .border_1()
+                    .border_color(theme::border())
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child("Encrypted Backup"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.5))
+                            .line_height(relative(1.5))
+                            .text_color(theme::text_muted())
+                            .child("Wrap the same portable bundle in passphrase-based encryption for device backups, handoff, or manual sync. The file stays locally managed; no cloud account is involved yet."),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(self.form_field(
+                                "Export Passphrase",
+                                Input::new(&self.settings_inputs.export_backup_passphrase),
+                            ))
+                            .child(self.form_field(
+                                "Confirm Passphrase",
+                                Input::new(&self.settings_inputs.export_backup_confirm),
+                            ))
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        Button::new("settings-export-encrypted-data")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Accent,
+                                                cx,
+                                            ))
+                                            .label("Export Encrypted Backup")
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.export_encrypted_portable_data(window, cx);
+                                            })),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.))
+                                            .text_color(theme::text_muted())
+                                            .child("Use a strong passphrase you can recover later. The file cannot be opened without it."),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .pt_2()
+                            .border_t_1()
+                            .border_color(theme::border())
+                            .child(self.form_field(
+                                "Import Passphrase",
+                                Input::new(&self.settings_inputs.import_backup_passphrase),
+                            ))
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        Button::new("settings-import-encrypted-data")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Neutral,
+                                                cx,
+                                            ))
+                                            .label("Import Encrypted Backup")
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.import_encrypted_portable_data(window, cx);
+                                            })),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.))
+                                            .text_color(theme::text_muted())
+                                            .child("Import merges vaults, hosts, snippets, and trust records without exposing the plaintext bundle on disk."),
+                                    ),
+                            ),
                     ),
             )
     }

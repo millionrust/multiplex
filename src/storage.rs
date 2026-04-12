@@ -1,15 +1,71 @@
+use aes_gcm_siv::aead::{Aead, Payload};
+use aes_gcm_siv::{Aes256GcmSiv, KeyInit, Nonce};
 use anyhow::{Context, Result};
+use argon2::{Algorithm, Argon2, Params, Version};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD_NO_PAD;
+use rand::RngCore;
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::models::{AuthMode, HostProfile, ImportedIdentity, ProfileSource, SavedState};
+use crate::models::{
+    AuthMode, DEFAULT_VAULT_ID, HostProfile, ImportedIdentity, ProfileSource, SavedIdentity,
+    SavedSnippet, SavedState, SavedVault,
+};
 
 const APP_DIR_NAME: &str = "termirust";
 const STATE_FILE_NAME: &str = "state.json";
 const KNOWN_HOSTS_FILE_NAME: &str = "known_hosts.json";
+const PORTABLE_BUNDLE_VERSION: u16 = 1;
+const ENCRYPTED_PORTABLE_BUNDLE_VERSION: u16 = 1;
+const PORTABLE_BUNDLE_AAD: &[u8] = b"termirust.portable-bundle.v1";
+const PORTABLE_BUNDLE_KEY_LEN: usize = 32;
+const PORTABLE_BUNDLE_SALT_LEN: usize = 16;
+const PORTABLE_BUNDLE_NONCE_LEN: usize = 12;
+const PORTABLE_BUNDLE_ARGON2_MEMORY_KIB: u32 = 19_456;
+const PORTABLE_BUNDLE_ARGON2_ITERATIONS: u32 = 3;
+const PORTABLE_BUNDLE_ARGON2_PARALLELISM: u32 = 1;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct PortableDataBundle {
+    version: u16,
+    exported_at_millis: u128,
+    #[serde(default)]
+    vaults: Vec<SavedVault>,
+    #[serde(default)]
+    profiles: Vec<HostProfile>,
+    #[serde(default)]
+    identities: Vec<SavedIdentity>,
+    #[serde(default)]
+    snippets: Vec<SavedSnippet>,
+    #[serde(default)]
+    known_hosts: HashMap<String, String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct EncryptedPortableDataBundle {
+    version: u16,
+    cipher: String,
+    kdf: String,
+    salt: String,
+    nonce: String,
+    ciphertext: String,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PortableDataReport {
+    pub vaults: usize,
+    pub profiles: usize,
+    pub identities: usize,
+    pub snippets: usize,
+    pub known_hosts: usize,
+}
 
 fn app_dir() -> Result<PathBuf> {
     let base_dir = dirs::config_dir().unwrap_or(std::env::current_dir()?);
@@ -25,6 +81,264 @@ fn state_file() -> Result<PathBuf> {
 
 fn known_hosts_file() -> Result<PathBuf> {
     Ok(app_dir()?.join(KNOWN_HOSTS_FILE_NAME))
+}
+
+pub fn export_portable_data_bundle(
+    path: impl AsRef<Path>,
+    state: &SavedState,
+    known_hosts: &KnownHostStore,
+) -> Result<PortableDataReport> {
+    let bundle = build_portable_data_bundle(state, known_hosts)?;
+    let report = report_for_portable_data_bundle(&bundle);
+    let content = serde_json::to_string_pretty(&bundle)?;
+    write_bundle_file(path.as_ref(), content)?;
+    Ok(report)
+}
+
+pub fn export_encrypted_portable_data_bundle(
+    path: impl AsRef<Path>,
+    state: &SavedState,
+    known_hosts: &KnownHostStore,
+    passphrase: &str,
+) -> Result<PortableDataReport> {
+    ensure_backup_passphrase(passphrase)?;
+    let bundle = build_portable_data_bundle(state, known_hosts)?;
+    let report = report_for_portable_data_bundle(&bundle);
+    let plaintext = serde_json::to_vec_pretty(&bundle)?;
+    let encrypted = encrypt_portable_data_bundle(&plaintext, passphrase)?;
+    let content = serde_json::to_string_pretty(&encrypted)?;
+    write_bundle_file(path.as_ref(), content)?;
+    Ok(report)
+}
+
+pub fn import_portable_data_bundle(
+    path: impl AsRef<Path>,
+    state: &mut SavedState,
+    known_hosts: &KnownHostStore,
+) -> Result<PortableDataReport> {
+    let bundle = read_plain_portable_data_bundle(path.as_ref())?;
+    apply_portable_data_bundle(bundle, state, known_hosts)
+}
+
+pub fn import_encrypted_portable_data_bundle(
+    path: impl AsRef<Path>,
+    state: &mut SavedState,
+    known_hosts: &KnownHostStore,
+    passphrase: &str,
+) -> Result<PortableDataReport> {
+    ensure_backup_passphrase(passphrase)?;
+    let bundle = read_encrypted_portable_data_bundle(path.as_ref(), passphrase)?;
+    apply_portable_data_bundle(bundle, state, known_hosts)
+}
+
+fn build_portable_data_bundle(
+    state: &SavedState,
+    known_hosts: &KnownHostStore,
+) -> Result<PortableDataBundle> {
+    let mut exported = state.clone();
+    exported.ensure_vaults();
+    exported
+        .profiles
+        .retain(|profile| profile.source == ProfileSource::User);
+
+    Ok(PortableDataBundle {
+        version: PORTABLE_BUNDLE_VERSION,
+        exported_at_millis: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis(),
+        vaults: exported.vaults.clone(),
+        profiles: exported
+            .profiles
+            .into_iter()
+            .map(|mut profile| {
+                profile.password_credential_id = None;
+                profile
+            })
+            .collect(),
+        identities: exported.identities.clone(),
+        snippets: exported.snippets.clone(),
+        known_hosts: known_hosts.entries()?.into_iter().collect(),
+    })
+}
+
+fn report_for_portable_data_bundle(bundle: &PortableDataBundle) -> PortableDataReport {
+    PortableDataReport {
+        vaults: bundle.vaults.len(),
+        profiles: bundle.profiles.len(),
+        identities: bundle.identities.len(),
+        snippets: bundle.snippets.len(),
+        known_hosts: bundle.known_hosts.len(),
+    }
+}
+
+fn apply_portable_data_bundle(
+    bundle: PortableDataBundle,
+    state: &mut SavedState,
+    known_hosts: &KnownHostStore,
+) -> Result<PortableDataReport> {
+    let mut report = PortableDataReport::default();
+
+    for vault in bundle.vaults {
+        if vault.id == DEFAULT_VAULT_ID {
+            continue;
+        }
+        state.upsert_vault(vault);
+        report.vaults += 1;
+    }
+
+    for mut profile in bundle.profiles {
+        profile.source = ProfileSource::User;
+        profile.password_credential_id = None;
+        state.upsert_profile(profile);
+        report.profiles += 1;
+    }
+
+    for mut identity in bundle.identities {
+        identity.source = crate::models::IdentitySource::User;
+        state.upsert_identity(identity);
+        report.identities += 1;
+    }
+
+    for snippet in bundle.snippets {
+        state.upsert_snippet(snippet);
+        report.snippets += 1;
+    }
+
+    report.known_hosts = known_hosts.merge_entries(bundle.known_hosts)?;
+
+    state.ensure_vaults();
+    Ok(report)
+}
+
+fn write_bundle_file(path: &Path, content: String) -> Result<()> {
+    fs::write(path, content).with_context(|| format!("Unable to write {}", path.display()))?;
+    Ok(())
+}
+
+fn read_plain_portable_data_bundle(path: &Path) -> Result<PortableDataBundle> {
+    let content =
+        fs::read_to_string(path).with_context(|| format!("Unable to read {}", path.display()))?;
+    serde_json::from_str(&content).with_context(|| format!("Unable to parse {}", path.display()))
+}
+
+fn read_encrypted_portable_data_bundle(
+    path: &Path,
+    passphrase: &str,
+) -> Result<PortableDataBundle> {
+    let content =
+        fs::read_to_string(path).with_context(|| format!("Unable to read {}", path.display()))?;
+    let encrypted: EncryptedPortableDataBundle = serde_json::from_str(&content)
+        .with_context(|| format!("Unable to parse {}", path.display()))?;
+    let plaintext = decrypt_portable_data_bundle(&encrypted, passphrase)?;
+    serde_json::from_slice(&plaintext)
+        .with_context(|| format!("Unable to decode encrypted bundle {}", path.display()))
+}
+
+fn ensure_backup_passphrase(passphrase: &str) -> Result<()> {
+    anyhow::ensure!(
+        !passphrase.trim().is_empty(),
+        "Backup passphrase cannot be empty."
+    );
+    Ok(())
+}
+
+fn encrypt_portable_data_bundle(
+    plaintext: &[u8],
+    passphrase: &str,
+) -> Result<EncryptedPortableDataBundle> {
+    let mut salt = [0u8; PORTABLE_BUNDLE_SALT_LEN];
+    let mut nonce = [0u8; PORTABLE_BUNDLE_NONCE_LEN];
+    OsRng.fill_bytes(&mut salt);
+    OsRng.fill_bytes(&mut nonce);
+
+    let key = derive_portable_bundle_key(passphrase, &salt)?;
+    let cipher =
+        Aes256GcmSiv::new_from_slice(&key).context("Unable to initialize backup cipher")?;
+    let ciphertext = cipher
+        .encrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: plaintext,
+                aad: PORTABLE_BUNDLE_AAD,
+            },
+        )
+        .map_err(|_| anyhow::anyhow!("Unable to encrypt portable bundle"))?;
+
+    Ok(EncryptedPortableDataBundle {
+        version: ENCRYPTED_PORTABLE_BUNDLE_VERSION,
+        cipher: "AES-256-GCM-SIV".to_string(),
+        kdf: "Argon2id(m=19456,t=3,p=1)".to_string(),
+        salt: STANDARD_NO_PAD.encode(salt),
+        nonce: STANDARD_NO_PAD.encode(nonce),
+        ciphertext: STANDARD_NO_PAD.encode(ciphertext),
+    })
+}
+
+fn decrypt_portable_data_bundle(
+    encrypted: &EncryptedPortableDataBundle,
+    passphrase: &str,
+) -> Result<Vec<u8>> {
+    anyhow::ensure!(
+        encrypted.version == ENCRYPTED_PORTABLE_BUNDLE_VERSION,
+        "Unsupported encrypted bundle version {}.",
+        encrypted.version
+    );
+
+    let salt = STANDARD_NO_PAD
+        .decode(&encrypted.salt)
+        .context("Encrypted bundle salt is invalid.")?;
+    let nonce = STANDARD_NO_PAD
+        .decode(&encrypted.nonce)
+        .context("Encrypted bundle nonce is invalid.")?;
+    let ciphertext = STANDARD_NO_PAD
+        .decode(&encrypted.ciphertext)
+        .context("Encrypted bundle ciphertext is invalid.")?;
+
+    anyhow::ensure!(
+        salt.len() == PORTABLE_BUNDLE_SALT_LEN,
+        "Encrypted bundle salt is invalid."
+    );
+    anyhow::ensure!(
+        nonce.len() == PORTABLE_BUNDLE_NONCE_LEN,
+        "Encrypted bundle nonce is invalid."
+    );
+
+    let key = derive_portable_bundle_key(passphrase, &salt)?;
+    let cipher =
+        Aes256GcmSiv::new_from_slice(&key).context("Unable to initialize backup cipher")?;
+    cipher
+        .decrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: &ciphertext,
+                aad: PORTABLE_BUNDLE_AAD,
+            },
+        )
+        .map_err(|_| {
+            anyhow::anyhow!(
+                "Unable to decrypt encrypted bundle. Check the passphrase and file integrity."
+            )
+        })
+}
+
+fn derive_portable_bundle_key(
+    passphrase: &str,
+    salt: &[u8],
+) -> Result<[u8; PORTABLE_BUNDLE_KEY_LEN]> {
+    let params = Params::new(
+        PORTABLE_BUNDLE_ARGON2_MEMORY_KIB,
+        PORTABLE_BUNDLE_ARGON2_ITERATIONS,
+        PORTABLE_BUNDLE_ARGON2_PARALLELISM,
+        Some(PORTABLE_BUNDLE_KEY_LEN),
+    )
+    .map_err(|_| anyhow::anyhow!("Unable to configure backup key derivation"))?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let mut key = [0u8; PORTABLE_BUNDLE_KEY_LEN];
+    argon2
+        .hash_password_into(passphrase.as_bytes(), salt, &mut key)
+        .map_err(|_| anyhow::anyhow!("Unable to derive backup key"))?;
+    Ok(key)
 }
 
 pub fn load_saved_state() -> Result<SavedState> {
@@ -423,6 +737,16 @@ pub struct KnownHostStore {
 }
 
 impl KnownHostStore {
+    fn persist_entries(&self, entries: &HashMap<String, String>) -> Result<()> {
+        let file = KnownHostsFile {
+            entries: entries.clone(),
+        };
+        let content = serde_json::to_string_pretty(&file)?;
+        fs::write(&self.path, content)
+            .with_context(|| format!("Unable to write {}", self.path.display()))?;
+        Ok(())
+    }
+
     pub fn load() -> Result<Self> {
         let path = known_hosts_file()?;
         if !path.exists() {
@@ -457,12 +781,7 @@ impl KnownHostStore {
             )),
             None => {
                 entries.insert(endpoint.to_string(), key.to_string());
-                let file = KnownHostsFile {
-                    entries: entries.clone(),
-                };
-                let content = serde_json::to_string_pretty(&file)?;
-                fs::write(&self.path, content)
-                    .with_context(|| format!("Unable to write {}", self.path.display()))?;
+                self.persist_entries(&entries)?;
                 Ok(HostKeyDecision::Added)
             }
         }
@@ -488,23 +807,46 @@ impl KnownHostStore {
             .map_err(|_| anyhow::anyhow!("Unable to lock known host store"))?;
         let removed = entries.remove(endpoint).is_some();
         if removed {
-            let file = KnownHostsFile {
-                entries: entries.clone(),
-            };
-            let content = serde_json::to_string_pretty(&file)?;
-            fs::write(&self.path, content)
-                .with_context(|| format!("Unable to write {}", self.path.display()))?;
+            self.persist_entries(&entries)?;
         }
         Ok(removed)
+    }
+
+    pub fn merge_entries(&self, imported: HashMap<String, String>) -> Result<usize> {
+        let mut entries = self
+            .entries
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Unable to lock known host store"))?;
+        let mut added = 0usize;
+        for (endpoint, key) in imported {
+            if entries.contains_key(&endpoint) {
+                continue;
+            }
+            entries.insert(endpoint, key);
+            added += 1;
+        }
+        if added > 0 {
+            self.persist_entries(&entries)?;
+        }
+        Ok(added)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_identity_kind, identity_priority, parse_ssh_config_hosts, should_skip_ssh_entry,
+        KnownHostStore, KnownHostsFile, detect_identity_kind,
+        export_encrypted_portable_data_bundle, export_portable_data_bundle, identity_priority,
+        import_encrypted_portable_data_bundle, import_portable_data_bundle, parse_ssh_config_hosts,
+        should_skip_ssh_entry,
     };
-    use crate::models::{AuthMode, ProfileSource};
+    use crate::models::{
+        AppSettings, AuthMode, DEFAULT_VAULT_ID, HostProfile, ProfileSource, SavedIdentity,
+        SavedSnippet, SavedState, SavedVault, ThemePreset, VaultKind, VaultMemberRole,
+    };
+    use std::collections::HashMap;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn detects_supported_identity_formats() {
@@ -618,5 +960,290 @@ Host app-prod
         assert_eq!(hosts.len(), 2);
         let app = hosts.iter().find(|host| host.label == "app-prod").unwrap();
         assert_eq!(app.jump_host_id.as_deref(), Some("ssh-config-bastion"));
+    }
+
+    #[test]
+    fn portable_data_bundle_round_trips_user_data() {
+        let mut state = SavedState::default();
+        state.settings = AppSettings {
+            theme_preset: ThemePreset::Daylight,
+            terminal_font_size: 16,
+            ..AppSettings::default()
+        };
+        state.vaults.push(SavedVault {
+            id: "vault-shared-ops".to_string(),
+            label: "Ops".to_string(),
+            description: "Ops vault".to_string(),
+            kind: VaultKind::Shared,
+            members: vec![crate::models::SavedVaultMember {
+                id: "member-1".to_string(),
+                name: "Alex".to_string(),
+                email: "alex@example.com".to_string(),
+                role: VaultMemberRole::Editor,
+            }],
+        });
+        state.upsert_profile(HostProfile {
+            id: "profile-prod".to_string(),
+            label: "Prod".to_string(),
+            vault_id: Some("vault-shared-ops".to_string()),
+            group: "Production".to_string(),
+            tags: vec!["critical".to_string()],
+            host: "prod.example.com".to_string(),
+            port: 22,
+            username: "ubuntu".to_string(),
+            auth_mode: AuthMode::Password,
+            key_path: String::new(),
+            identity_id: None,
+            jump_host_id: None,
+            local_forward: None,
+            password_credential_id: Some("secret-ref".to_string()),
+            source: ProfileSource::User,
+        });
+        state.upsert_identity(SavedIdentity {
+            id: "identity-1".to_string(),
+            label: "ops-key".to_string(),
+            vault_id: Some("vault-shared-ops".to_string()),
+            key_path: "/tmp/id_ed25519".to_string(),
+            kind: "OpenSSH".to_string(),
+            source: crate::models::IdentitySource::Imported,
+        });
+        state.upsert_snippet(SavedSnippet {
+            id: "snippet-1".to_string(),
+            label: "Restart".to_string(),
+            vault_id: Some("vault-shared-ops".to_string()),
+            group: "Ops".to_string(),
+            command: "sudo systemctl restart app".to_string(),
+        });
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let export_path = std::env::temp_dir().join(format!("termirust-portable-{}.json", suffix));
+        let known_hosts_path =
+            std::env::temp_dir().join(format!("termirust-known-hosts-{suffix}.json"));
+        let known_hosts = KnownHostStore {
+            path: known_hosts_path.clone(),
+            entries: std::sync::Mutex::new(HashMap::from([(
+                "prod.example.com:22".to_string(),
+                "ssh-ed25519 AAAAC3Nza".to_string(),
+            )])),
+        };
+
+        let report = export_portable_data_bundle(&export_path, &state, &known_hosts).unwrap();
+        assert_eq!(report.vaults, 2);
+        assert_eq!(report.profiles, 1);
+        assert_eq!(report.identities, 1);
+        assert_eq!(report.snippets, 1);
+        assert_eq!(report.known_hosts, 1);
+
+        let mut imported = SavedState::default();
+        imported.settings.theme_preset = ThemePreset::Ocean;
+        let imported_known_hosts_path =
+            std::env::temp_dir().join(format!("termirust-known-hosts-import-{suffix}.json"));
+        let imported_known_hosts = KnownHostStore {
+            path: imported_known_hosts_path.clone(),
+            entries: std::sync::Mutex::new(HashMap::new()),
+        };
+        let import_report =
+            import_portable_data_bundle(&export_path, &mut imported, &imported_known_hosts)
+                .unwrap();
+        assert_eq!(import_report.profiles, 1);
+        assert_eq!(import_report.known_hosts, 1);
+        assert_eq!(imported.settings.theme_preset, ThemePreset::Ocean);
+        assert!(
+            imported
+                .vaults
+                .iter()
+                .any(|vault| vault.id == "vault-shared-ops" && vault.kind == VaultKind::Shared)
+        );
+        assert_eq!(imported.profiles[0].password_credential_id, None);
+        assert_eq!(imported.profiles[0].source, ProfileSource::User);
+        assert_eq!(imported.profiles[0].tags, vec!["critical".to_string()]);
+        assert_eq!(
+            imported.identities[0].source,
+            crate::models::IdentitySource::User
+        );
+        assert_eq!(imported.snippets[0].command, "sudo systemctl restart app");
+        let persisted_known_hosts = imported_known_hosts.entries().unwrap();
+        assert_eq!(persisted_known_hosts.len(), 1);
+        assert_eq!(persisted_known_hosts[0].0, "prod.example.com:22");
+
+        let _ = fs::remove_file(export_path);
+        let _ = fs::remove_file(known_hosts_path);
+        let _ = fs::remove_file(imported_known_hosts_path);
+    }
+
+    #[test]
+    fn encrypted_portable_data_bundle_round_trips_user_data() {
+        let mut state = SavedState::default();
+        state.upsert_profile(HostProfile {
+            id: "profile-prod".to_string(),
+            label: "Prod".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            group: "Production".to_string(),
+            tags: vec!["critical".to_string()],
+            host: "prod.example.com".to_string(),
+            port: 22,
+            username: "ubuntu".to_string(),
+            auth_mode: AuthMode::Password,
+            key_path: String::new(),
+            identity_id: None,
+            jump_host_id: None,
+            local_forward: None,
+            password_credential_id: Some("secret-ref".to_string()),
+            source: ProfileSource::User,
+        });
+        state.upsert_snippet(SavedSnippet {
+            id: "snippet-1".to_string(),
+            label: "Restart".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            group: "Ops".to_string(),
+            command: "sudo systemctl restart app".to_string(),
+        });
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let export_path =
+            std::env::temp_dir().join(format!("termirust-portable-encrypted-{suffix}.json"));
+        let known_hosts_path =
+            std::env::temp_dir().join(format!("termirust-known-hosts-encrypted-{suffix}.json"));
+        let known_hosts = KnownHostStore {
+            path: known_hosts_path.clone(),
+            entries: std::sync::Mutex::new(HashMap::from([(
+                "prod.example.com:22".to_string(),
+                "ssh-ed25519 AAAAC3Nza".to_string(),
+            )])),
+        };
+
+        let report =
+            export_encrypted_portable_data_bundle(&export_path, &state, &known_hosts, "hunter2")
+                .unwrap();
+        assert_eq!(report.profiles, 1);
+        assert_eq!(report.known_hosts, 1);
+
+        let encrypted_file = fs::read_to_string(&export_path).unwrap();
+        assert!(!encrypted_file.contains("prod.example.com"));
+        assert!(!encrypted_file.contains("sudo systemctl restart app"));
+
+        let imported_known_hosts_path = std::env::temp_dir().join(format!(
+            "termirust-known-hosts-encrypted-import-{suffix}.json"
+        ));
+        let imported_known_hosts = KnownHostStore {
+            path: imported_known_hosts_path.clone(),
+            entries: std::sync::Mutex::new(HashMap::new()),
+        };
+        let mut imported = SavedState::default();
+        let import_report = import_encrypted_portable_data_bundle(
+            &export_path,
+            &mut imported,
+            &imported_known_hosts,
+            "hunter2",
+        )
+        .unwrap();
+        assert_eq!(import_report.profiles, 1);
+        assert_eq!(import_report.snippets, 1);
+        assert_eq!(imported.profiles[0].password_credential_id, None);
+        assert_eq!(imported.snippets[0].command, "sudo systemctl restart app");
+        assert_eq!(imported_known_hosts.entries().unwrap().len(), 1);
+
+        let _ = fs::remove_file(export_path);
+        let _ = fs::remove_file(known_hosts_path);
+        let _ = fs::remove_file(imported_known_hosts_path);
+    }
+
+    #[test]
+    fn encrypted_portable_data_bundle_rejects_wrong_passphrase() {
+        let state = SavedState::default();
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let export_path =
+            std::env::temp_dir().join(format!("termirust-portable-encrypted-reject-{suffix}.json"));
+        let known_hosts_path = std::env::temp_dir().join(format!(
+            "termirust-known-hosts-encrypted-reject-{suffix}.json"
+        ));
+        let known_hosts = KnownHostStore {
+            path: known_hosts_path.clone(),
+            entries: std::sync::Mutex::new(HashMap::new()),
+        };
+
+        export_encrypted_portable_data_bundle(&export_path, &state, &known_hosts, "correct")
+            .unwrap();
+
+        let imported_known_hosts_path = std::env::temp_dir().join(format!(
+            "termirust-known-hosts-encrypted-reject-import-{suffix}.json"
+        ));
+        let imported_known_hosts = KnownHostStore {
+            path: imported_known_hosts_path.clone(),
+            entries: std::sync::Mutex::new(HashMap::new()),
+        };
+        let mut imported = SavedState::default();
+        let error = import_encrypted_portable_data_bundle(
+            &export_path,
+            &mut imported,
+            &imported_known_hosts,
+            "wrong",
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Unable to decrypt encrypted bundle")
+        );
+
+        let _ = fs::remove_file(export_path);
+        let _ = fs::remove_file(known_hosts_path);
+        let _ = fs::remove_file(imported_known_hosts_path);
+    }
+
+    #[test]
+    fn merge_known_host_entries_preserves_existing_items() {
+        let path = std::env::temp_dir().join(format!(
+            "termirust-known-host-merge-{}.json",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let store = KnownHostStore {
+            path: path.clone(),
+            entries: std::sync::Mutex::new(HashMap::from([(
+                "existing.example.com:22".to_string(),
+                "ssh-ed25519 existing".to_string(),
+            )])),
+        };
+
+        let merged = store
+            .merge_entries(HashMap::from([
+                (
+                    "existing.example.com:22".to_string(),
+                    "ssh-ed25519 replacement".to_string(),
+                ),
+                (
+                    "new.example.com:22".to_string(),
+                    "ssh-ed25519 new".to_string(),
+                ),
+            ]))
+            .unwrap();
+        assert_eq!(merged, 1);
+
+        let entries = store.entries().unwrap();
+        assert_eq!(entries.len(), 2);
+        assert!(
+            entries
+                .iter()
+                .any(|(endpoint, key)| endpoint == "existing.example.com:22"
+                    && key == "ssh-ed25519 existing")
+        );
+
+        let content = fs::read_to_string(&path).unwrap();
+        let persisted: KnownHostsFile = serde_json::from_str(&content).unwrap();
+        assert_eq!(persisted.entries.len(), 2);
+
+        let _ = fs::remove_file(path);
     }
 }

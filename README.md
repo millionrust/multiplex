@@ -36,6 +36,8 @@ Other things worth knowing about:
 - Every terminal workspace now has a searchable command palette for snippets, recent commands, and built-in tasks, with keyboard navigation and direct execution.
 - A dedicated Settings view now persists global appearance theme and terminal font-size preferences, and applies them live.
 - Settings also define the default local terminal shell executable and startup directory for new local sessions.
+- Settings now include portable JSON export/import for hosts, vaults, identities, snippets, and known-host trust records, with credentials intentionally excluded.
+- Settings also include passphrase-encrypted local backup export/import for the same bundle format, as groundwork for future sync without relying on plaintext files.
 - TOFU host key pinning, with a Known Hosts view where you can review or delete pinned keys.
 - A keys view shows imported key types and lets you add key files from disk.
 - Session logs track your connection history with timestamps and duration across app restarts.
