@@ -374,6 +374,8 @@ pub struct SavedState {
     #[serde(default)]
     pub snippets: Vec<SavedSnippet>,
     #[serde(default)]
+    pub command_history: Vec<String>,
+    #[serde(default)]
     pub selected_profile_id: Option<String>,
     #[serde(default)]
     pub session_logs: Vec<SessionLogEntry>,
@@ -384,6 +386,22 @@ pub struct SavedState {
 }
 
 impl SavedState {
+    pub fn record_command_history(&mut self, command: &str) {
+        let command = command.trim();
+        if command.is_empty() {
+            return;
+        }
+
+        self.command_history.retain(|existing| existing != command);
+        self.command_history.push(command.to_string());
+
+        const MAX_COMMAND_HISTORY: usize = 200;
+        if self.command_history.len() > MAX_COMMAND_HISTORY {
+            let drain_count = self.command_history.len() - MAX_COMMAND_HISTORY;
+            self.command_history.drain(..drain_count);
+        }
+    }
+
     pub fn ensure_vaults(&mut self) {
         if !self.vaults.iter().any(|vault| vault.id == DEFAULT_VAULT_ID) {
             self.vaults.push(SavedVault::personal());
@@ -1781,5 +1799,18 @@ mod tests {
         );
         assert_eq!(vault.members[1].role, VaultMemberRole::Editor);
         assert_eq!(vault.members[2].role, VaultMemberRole::Viewer);
+    }
+
+    #[test]
+    fn command_history_is_deduplicated_and_recency_sorted() {
+        let mut state = SavedState::default();
+        state.record_command_history("ls -la");
+        state.record_command_history("git status");
+        state.record_command_history("ls -la");
+
+        assert_eq!(
+            state.command_history,
+            vec!["git status".to_string(), "ls -la".to_string()]
+        );
     }
 }

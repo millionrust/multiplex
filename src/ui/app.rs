@@ -46,6 +46,7 @@ const WORKSPACE_SEARCH_ROW_HEIGHT: f32 = 52.0;
 const WORKSPACE_PADDING: f32 = 18.0;
 const PANE_GAP: f32 = 12.0;
 const PANE_HEADER_HEIGHT: f32 = 38.0;
+const WORKSPACE_AUTOCOMPLETE_HEIGHT: f32 = 56.0;
 const TERMINAL_INNER_PADDING_X: f32 = 20.0;
 const TERMINAL_INNER_PADDING_Y: f32 = 14.0;
 const MAX_SPLIT_PANES: usize = 4;
@@ -290,6 +291,7 @@ struct SessionPane {
     selection: Option<SelectionRange>,
     dragging_selection: bool,
     log_id: String,
+    current_input: String,
 }
 
 struct WorkspaceTab {
@@ -325,6 +327,19 @@ struct WorkspaceIndicators {
     closed_panes: usize,
     split_count: usize,
     unread_events: u32,
+}
+
+#[derive(Clone)]
+struct AutocompleteCandidate {
+    command: String,
+    source: AutocompleteSource,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AutocompleteSource {
+    History,
+    Snippet,
+    Builtin,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -2265,6 +2280,7 @@ impl TermiRustApp {
             selection: None,
             dragging_selection: false,
             log_id,
+            current_input: String::new(),
         });
 
         let _ = window;
@@ -2917,6 +2933,11 @@ impl TermiRustApp {
             - theme::CHROME_HEIGHT
             - theme::WORKSPACE_HEADER_HEIGHT
             - search_height
+            - if self.workspace_autocomplete_candidates().is_empty() {
+                0.0
+            } else {
+                WORKSPACE_AUTOCOMPLETE_HEIGHT
+            }
             - theme::STATUS_HEIGHT
             - WORKSPACE_PADDING * 2.0)
             .max(180.0);
@@ -3031,7 +3052,7 @@ impl TermiRustApp {
         if pane
             .runtime
             .command_tx
-            .send(SessionCommand::Input(data))
+            .send(SessionCommand::Input(data.clone()))
             .is_err()
         {
             self.error_message = "Unable to send input to the SSH runtime.".to_string();
@@ -3039,11 +3060,123 @@ impl TermiRustApp {
             return false;
         }
 
+        self.record_command_input(pane_id, &data);
         self.error_message.clear();
         if notify {
             cx.notify();
         }
         true
+    }
+
+    fn record_command_input(&mut self, pane_id: u64, data: &[u8]) {
+        let mut completed_commands = Vec::new();
+        let Some(pane) = self.pane_mut(pane_id) else {
+            return;
+        };
+
+        if data.starts_with(b"\x1b") {
+            return;
+        }
+
+        for &byte in data {
+            match byte {
+                b'\r' | b'\n' => {
+                    let command = pane.current_input.trim().to_string();
+                    if !command.is_empty() {
+                        completed_commands.push(command);
+                    }
+                    pane.current_input.clear();
+                }
+                0x08 | 0x7f => {
+                    pane.current_input.pop();
+                }
+                0x03 | 0x04 | 0x15 | 0x1b => {
+                    pane.current_input.clear();
+                }
+                b'\t' => {}
+                byte if byte.is_ascii_control() => {}
+                _ => {
+                    pane.current_input.push(byte as char);
+                }
+            }
+        }
+
+        for command in completed_commands {
+            self.saved.record_command_history(&command);
+        }
+        let _ = save_saved_state(&self.saved);
+    }
+
+    fn workspace_autocomplete_candidates(&self) -> Vec<AutocompleteCandidate> {
+        let Some(pane) = self.active_pane() else {
+            return Vec::new();
+        };
+        if !pane.connected || pane.closed || pane.current_input.trim().is_empty() {
+            return Vec::new();
+        }
+
+        let query = pane.current_input.trim().to_ascii_lowercase();
+        let mut suggestions = Vec::new();
+        let mut seen = HashSet::new();
+
+        for command in self.saved.command_history.iter().rev() {
+            if suggestions.len() >= 6 {
+                break;
+            }
+            if command.to_ascii_lowercase().starts_with(&query) && seen.insert(command.clone()) {
+                suggestions.push(AutocompleteCandidate {
+                    command: command.clone(),
+                    source: AutocompleteSource::History,
+                });
+            }
+        }
+
+        for snippet in &self.saved.snippets {
+            if suggestions.len() >= 6 {
+                break;
+            }
+            let command = snippet.command.trim();
+            if command.to_ascii_lowercase().starts_with(&query) && seen.insert(command.to_string())
+            {
+                suggestions.push(AutocompleteCandidate {
+                    command: command.to_string(),
+                    source: AutocompleteSource::Snippet,
+                });
+            }
+        }
+
+        for command in builtin_commands() {
+            if suggestions.len() >= 6 {
+                break;
+            }
+            if command.starts_with(&query) && seen.insert(command.to_string()) {
+                suggestions.push(AutocompleteCandidate {
+                    command: command.to_string(),
+                    source: AutocompleteSource::Builtin,
+                });
+            }
+        }
+
+        suggestions
+    }
+
+    fn apply_autocomplete_candidate(&mut self, command: &str, cx: &mut Context<Self>) {
+        let Some(pane_id) = self.active_pane().map(|pane| pane.id) else {
+            return;
+        };
+        let Some(current_input) = self.active_pane().map(|pane| pane.current_input.clone()) else {
+            return;
+        };
+        if !command.starts_with(current_input.trim()) {
+            return;
+        }
+
+        let suffix = &command[current_input.trim().len()..];
+        if !suffix.is_empty() && self.send_input_bytes(pane_id, suffix.as_bytes().to_vec(), cx) {
+            self.status_message = "Autocomplete applied.".to_string();
+            self.error_message.clear();
+            cx.notify();
+        }
     }
 
     fn toggle_workspace_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -6686,6 +6819,67 @@ impl TermiRustApp {
         )
     }
 
+    fn render_workspace_autocomplete(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Div> {
+        let workspace = self.active_workspace()?;
+        if workspace.view_mode != WorkspaceViewMode::Terminal || workspace.search_visible {
+            return None;
+        }
+        let pane = self.active_pane()?;
+
+        let current_input = pane.current_input.trim().to_string();
+        let candidates = self.workspace_autocomplete_candidates();
+        if current_input.is_empty() || candidates.is_empty() {
+            return None;
+        }
+
+        Some(
+            h_flex()
+                .h(px(WORKSPACE_AUTOCOMPLETE_HEIGHT))
+                .w_full()
+                .px_4()
+                .gap_3()
+                .items_center()
+                .bg(theme::terminal_bg())
+                .border_b_1()
+                .border_color(theme::border_dark())
+                .child(
+                    div()
+                        .text_size(px(10.5))
+                        .text_color(theme::text_muted_dark())
+                        .child(format!("Autocomplete for '{}'", current_input)),
+                )
+                .child(h_flex().flex_1().gap_2().overflow_x_scrollbar().children(
+                    candidates.iter().enumerate().map(|(index, candidate)| {
+                        let command = candidate.command.clone();
+                        let source = candidate.source;
+                        Button::new(("workspace-autocomplete", index))
+                            .small()
+                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                            .label(command.clone())
+                            .icon(match source {
+                                AutocompleteSource::History => IconName::Redo2,
+                                AutocompleteSource::Snippet => IconName::BookOpen,
+                                AutocompleteSource::Builtin => IconName::SquareTerminal,
+                            })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.apply_autocomplete_candidate(&command, cx);
+                            }))
+                            .into_any_element()
+                    }),
+                ))
+                .child(
+                    div()
+                        .text_size(px(10.))
+                        .text_color(theme::with_alpha(theme::text_muted_dark(), 0.75))
+                        .child("Click to complete"),
+                ),
+        )
+    }
+
     fn render_workspace_files_view(&self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let Some(workspace) = self.active_workspace() else {
             return v_flex();
@@ -7294,6 +7488,10 @@ impl TermiRustApp {
             .when_some(self.render_workspace_search(window, cx), |this, search| {
                 this.child(search)
             })
+            .when_some(
+                self.render_workspace_autocomplete(window, cx),
+                |this, autocomplete| this.child(autocomplete),
+            )
             .child(content)
     }
 }
@@ -7872,4 +8070,19 @@ fn format_file_size(bytes: u64) -> String {
     } else {
         format!("{value:.1} {}", UNITS[unit])
     }
+}
+
+fn builtin_commands() -> &'static [&'static str] {
+    &[
+        "ls -la",
+        "pwd",
+        "cd /var/www",
+        "git status",
+        "git pull",
+        "docker ps",
+        "docker logs -f",
+        "systemctl status",
+        "journalctl -u",
+        "tail -f /var/log/syslog",
+    ]
 }
