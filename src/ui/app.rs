@@ -23,7 +23,7 @@ use crate::local::spawn_local_session;
 use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
     HostProfile, JumpHostConnection, PortForwardKind, PortForwardRule, ProfileSource, QuickConnect,
-    SavedCommandHistoryEntry, SavedIdentity, SavedSnippet, SavedState, SavedVault,
+    SavedCommandHistoryEntry, SavedHostGroup, SavedIdentity, SavedSnippet, SavedState, SavedVault,
     SavedVaultMember, SavedWorkspace, SessionLogEntry, SessionLogStatus, SplitAxis, ThemePreset,
     VaultKind, VaultMemberRole,
 };
@@ -172,6 +172,8 @@ struct DraftInputs {
     group: Entity<InputState>,
     tags: Entity<InputState>,
     jump_host: Entity<InputState>,
+    startup_directory: Entity<InputState>,
+    startup_command: Entity<InputState>,
     host: Entity<InputState>,
     port: Entity<InputState>,
     username: Entity<InputState>,
@@ -190,6 +192,9 @@ impl DraftInputs {
             group: cx.new(|cx| InputState::new(window, cx).placeholder("Production / Staging")),
             tags: cx.new(|cx| InputState::new(window, cx).placeholder("prod, blue, kubernetes")),
             jump_host: cx.new(|cx| InputState::new(window, cx).placeholder("Optional saved host")),
+            startup_directory: cx.new(|cx| InputState::new(window, cx).placeholder("/var/www/app")),
+            startup_command: cx
+                .new(|cx| InputState::new(window, cx).placeholder("docker compose logs -f")),
             host: cx.new(|cx| InputState::new(window, cx).placeholder("user@hostname or IP")),
             port: cx.new(|cx| InputState::new(window, cx).default_value("22")),
             username: cx.new(|cx| InputState::new(window, cx).placeholder("root")),
@@ -376,6 +381,14 @@ struct WorkspaceIndicators {
     unread_events: u32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WorkspaceRuntimeTone {
+    Live,
+    Connecting,
+    Error,
+    Closed,
+}
+
 #[derive(Clone)]
 struct AutocompleteCandidate {
     command: String,
@@ -394,6 +407,9 @@ struct CommandPaletteCandidate {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AutocompleteSource {
+    Path,
+    Context,
+    Argument,
     History,
     Snippet,
     Builtin,
@@ -402,19 +418,45 @@ enum AutocompleteSource {
 impl AutocompleteSource {
     fn priority(self) -> u8 {
         match self {
-            Self::History => 0,
-            Self::Snippet => 1,
-            Self::Builtin => 2,
+            Self::Path => 0,
+            Self::Context => 1,
+            Self::Argument => 2,
+            Self::History => 3,
+            Self::Snippet => 4,
+            Self::Builtin => 5,
         }
     }
 
     fn label(self) -> &'static str {
         match self {
+            Self::Path => "path",
+            Self::Context => "context",
+            Self::Argument => "argument",
             Self::History => "history",
             Self::Snippet => "snippet",
             Self::Builtin => "builtin",
         }
     }
+}
+
+#[derive(Clone, Default)]
+struct PathSuggestionContext {
+    current_path: Option<String>,
+    startup_directory: Option<String>,
+    entries: Vec<RemoteFileEntry>,
+}
+
+#[derive(Clone, Default)]
+struct OutputSuggestionContext {
+    current_path: Option<String>,
+    recent_lines: Vec<String>,
+}
+
+#[derive(Clone, Copy)]
+struct BuiltinCommandTemplate {
+    command: &'static str,
+    detail: &'static str,
+    source: AutocompleteSource,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -693,7 +735,7 @@ impl TermiRustApp {
         let jump_host_value = self.inputs.jump_host.read(cx).value().trim().to_string();
         let jump_host_id = self.resolve_jump_host_reference(&jump_host_value)?;
 
-        Ok(DraftProfile {
+        let draft = DraftProfile {
             label: self.inputs.label.read(cx).value().to_string(),
             vault_id: self.draft_vault_id.clone(),
             favorite: self.draft_profile_favorite,
@@ -706,6 +748,8 @@ impl TermiRustApp {
             key_path,
             identity_id,
             jump_host_id,
+            startup_directory: self.inputs.startup_directory.read(cx).value().to_string(),
+            startup_command: self.inputs.startup_command.read(cx).value().to_string(),
             saved_port_forward_rules: self.draft_port_forward_rules.clone(),
             forward_kind: self.draft_port_forward_kind,
             forward_local_port: self.inputs.forward_local_port.read(cx).value().to_string(),
@@ -720,7 +764,13 @@ impl TermiRustApp {
                     .and_then(|profile| profile.password_credential_id.clone())
             }),
             auth_mode: self.draft_auth_mode,
-        })
+        };
+
+        Ok(apply_group_defaults_to_draft(
+            draft,
+            self.host_group_by_label(&self.inputs.group.read(cx).value()),
+            &self.saved.identities,
+        ))
     }
 
     fn set_auth_mode(&mut self, auth_mode: AuthMode, cx: &mut Context<Self>) {
@@ -737,6 +787,100 @@ impl TermiRustApp {
         } else {
             "This host will appear in the regular library groups.".to_string()
         };
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn save_group_defaults_from_draft(&mut self, cx: &mut Context<Self>) {
+        let Ok(draft) = self.current_profile_draft(cx) else {
+            self.error_message = "Group defaults require a valid draft context.".to_string();
+            cx.notify();
+            return;
+        };
+        let label = draft.group.trim().to_string();
+        if label.is_empty() {
+            self.error_message = "Enter a group name first.".to_string();
+            cx.notify();
+            return;
+        }
+
+        self.saved.upsert_host_group(SavedHostGroup {
+            label: label.clone(),
+            vault_id: self.draft_vault_id.clone(),
+            identity_id: draft.identity_id,
+            jump_host_id: draft.jump_host_id,
+            startup_directory: non_empty_string(&draft.startup_directory),
+            startup_command: non_empty_string(&draft.startup_command),
+        });
+        if let Err(error) = save_saved_state(&self.saved) {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
+        }
+
+        self.status_message = format!("Saved defaults for group '{}'.", label);
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn apply_group_defaults_to_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let label = self.inputs.group.read(cx).value().trim().to_string();
+        let Some(group) = self.host_group_by_label(&label).cloned() else {
+            self.error_message = "No saved defaults exist for this group yet.".to_string();
+            cx.notify();
+            return;
+        };
+
+        if let Some(identity_id) = group.identity_id.as_deref() {
+            if let Some(identity) = self.identity_by_id(identity_id).cloned() {
+                self.use_identity(&identity, window, cx);
+            }
+        }
+        if let Some(jump_host_id) = group.jump_host_id.as_deref() {
+            let jump_host = self
+                .jump_host_display_name(jump_host_id)
+                .unwrap_or_else(|| jump_host_id.to_string());
+            Self::set_input_value(&self.inputs.jump_host, jump_host, window, cx);
+        }
+        if let Some(startup_directory) = group.startup_directory.clone() {
+            Self::set_input_value(
+                &self.inputs.startup_directory,
+                startup_directory,
+                window,
+                cx,
+            );
+        }
+        if let Some(startup_command) = group.startup_command.clone() {
+            Self::set_input_value(&self.inputs.startup_command, startup_command, window, cx);
+        }
+        if let Some(vault_id) = group.vault_id.as_deref() {
+            self.draft_vault_id = Some(vault_id.to_string());
+        }
+
+        self.status_message = format!("Loaded defaults for group '{}'.", group.display_name());
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn remove_group_defaults(&mut self, cx: &mut Context<Self>) {
+        let label = self.inputs.group.read(cx).value().trim().to_string();
+        if label.is_empty() {
+            self.error_message = "Enter a group name first.".to_string();
+            cx.notify();
+            return;
+        }
+        if !self.saved.remove_host_group(&label) {
+            self.error_message = format!("No saved defaults exist for group '{}'.", label);
+            cx.notify();
+            return;
+        }
+        if let Err(error) = save_saved_state(&self.saved) {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
+        }
+
+        self.status_message = format!("Removed defaults for group '{}'.", label);
         self.error_message.clear();
         cx.notify();
     }
@@ -769,6 +913,18 @@ impl TermiRustApp {
 
     fn preferred_identity(&self) -> Option<&SavedIdentity> {
         self.saved.identities.first()
+    }
+
+    fn host_group_by_label(&self, label: &str) -> Option<&SavedHostGroup> {
+        let label = label.trim();
+        if label.is_empty() {
+            return None;
+        }
+
+        self.saved
+            .host_groups
+            .iter()
+            .find(|group| group.label.eq_ignore_ascii_case(label))
     }
 
     fn vault_by_id(&self, vault_id: &str) -> Option<&SavedVault> {
@@ -1056,6 +1212,18 @@ impl TermiRustApp {
             window,
             cx,
         );
+        Self::set_input_value(
+            &self.inputs.startup_directory,
+            draft.startup_directory,
+            window,
+            cx,
+        );
+        Self::set_input_value(
+            &self.inputs.startup_command,
+            draft.startup_command,
+            window,
+            cx,
+        );
         Self::set_input_value(&self.inputs.host, draft.host, window, cx);
         Self::set_input_value(&self.inputs.port, draft.port, window, cx);
         Self::set_input_value(&self.inputs.username, draft.username, window, cx);
@@ -1098,6 +1266,8 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.group, "", window, cx);
         Self::set_input_value(&self.inputs.tags, "", window, cx);
         Self::set_input_value(&self.inputs.jump_host, "", window, cx);
+        Self::set_input_value(&self.inputs.startup_directory, "", window, cx);
+        Self::set_input_value(&self.inputs.startup_command, "", window, cx);
         Self::set_input_value(&self.inputs.host, "", window, cx);
         Self::set_input_value(&self.inputs.port, "22", window, cx);
         Self::set_input_value(&self.inputs.username, "", window, cx);
@@ -1671,6 +1841,28 @@ impl TermiRustApp {
         let _ = self.run_command_in_active_pane(command, "Snippet sent to the active session.", cx);
     }
 
+    fn send_startup_actions(&mut self, session_id: u64) -> bool {
+        let Some((command_tx, startup_bytes)) = self.pane(session_id).and_then(|pane| {
+            startup_bytes_for_request(&pane.request)
+                .map(|bytes| (pane.runtime.command_tx.clone(), bytes))
+        }) else {
+            return false;
+        };
+
+        if command_tx
+            .send(SessionCommand::Input(startup_bytes))
+            .is_ok()
+        {
+            if let Some(pane) = self.pane_mut(session_id) {
+                pane.current_input.clear();
+                pane.selected_autocomplete_index = None;
+            }
+            return true;
+        }
+
+        false
+    }
+
     fn toggle_host_batch_selection(&mut self, profile_id: &str, cx: &mut Context<Self>) {
         if !self.selected_host_ids.insert(profile_id.to_string()) {
             self.selected_host_ids.remove(profile_id);
@@ -2133,6 +2325,8 @@ impl TermiRustApp {
                     profile.host.clone(),
                     profile.username.clone(),
                     profile.endpoint(),
+                    profile.startup_directory.clone().unwrap_or_default(),
+                    profile.startup_command.clone().unwrap_or_default(),
                     profile
                         .effective_port_forward_rules()
                         .iter()
@@ -2813,6 +3007,7 @@ impl TermiRustApp {
             .and_then(|workspace| workspace.sftp.as_ref())
             .filter(|browser| browser.pane_id == pane_id)
             .map(|browser| browser.current_path.clone())
+            .or_else(|| request.startup_directory.clone())
             .unwrap_or_else(|| ".".to_string());
 
         if let Some(workspace) = self.workspace_mut(workspace_id) {
@@ -3532,8 +3727,13 @@ impl TermiRustApp {
                     let local_shell = self
                         .pane(session_id)
                         .is_some_and(|pane| pane.request.is_local_shell());
+                    let ran_startup = !local_shell && self.send_startup_actions(session_id);
                     self.status_message = if local_shell {
                         "Local terminal ready.".to_string()
+                    } else if ran_startup && trusted_new_host {
+                        "SSH session connected. New host key trusted and pinned. Startup actions queued.".to_string()
+                    } else if ran_startup {
+                        "SSH session connected. Startup actions queued.".to_string()
                     } else if trusted_new_host {
                         "SSH session connected. New host key trusted and pinned.".to_string()
                     } else {
@@ -4007,12 +4207,40 @@ impl TermiRustApp {
             return Vec::new();
         }
 
+        let path_context = self
+            .active_workspace()
+            .map(|workspace| PathSuggestionContext {
+                current_path: workspace
+                    .sftp
+                    .as_ref()
+                    .map(|browser| browser.current_path.clone())
+                    .or_else(|| pane.request.startup_directory.clone()),
+                startup_directory: pane.request.startup_directory.clone(),
+                entries: workspace
+                    .sftp
+                    .as_ref()
+                    .map(|browser| browser.entries.clone())
+                    .unwrap_or_default(),
+            });
+        let output_context = self
+            .active_workspace()
+            .map(|workspace| OutputSuggestionContext {
+                current_path: workspace
+                    .sftp
+                    .as_ref()
+                    .map(|browser| browser.current_path.clone())
+                    .or_else(|| pane.request.startup_directory.clone()),
+                recent_lines: pane_recent_output_lines(pane, 80),
+            });
+
         collect_autocomplete_candidates(
-            pane.current_input.trim(),
+            &pane.current_input,
             &self.saved.command_history,
             &self.saved.scoped_command_history,
             &pane.request.history_scope_key(),
             &self.saved.snippets,
+            path_context.as_ref(),
+            output_context.as_ref(),
         )
     }
 
@@ -4036,6 +4264,14 @@ impl TermiRustApp {
             &self.saved.scoped_command_history,
             &pane.request.history_scope_key(),
             &self.saved.snippets,
+            Some(&OutputSuggestionContext {
+                current_path: self
+                    .active_workspace()
+                    .and_then(|workspace| workspace.sftp.as_ref())
+                    .map(|browser| browser.current_path.clone())
+                    .or_else(|| pane.request.startup_directory.clone()),
+                recent_lines: pane_recent_output_lines(pane, 80),
+            }),
         )
     }
 
@@ -5169,6 +5405,9 @@ impl TermiRustApp {
             .as_deref()
             .and_then(|jump_host_id| self.jump_host_display_name(jump_host_id))
             .map(|label| format!("Via {label}"));
+        let startup_label = (profile.startup_directory.is_some()
+            || profile.startup_command.is_some())
+        .then(|| "Startup".to_string());
         let forward_count = profile.effective_port_forward_rules().len();
         let forward_label = (forward_count > 0).then(|| {
             if forward_count == 1 {
@@ -5291,6 +5530,13 @@ impl TermiRustApp {
                                     jump_host_label,
                                     theme::library_bg(),
                                     theme::accent(),
+                                ))
+                            })
+                            .when_some(startup_label.clone(), |this, startup_label| {
+                                this.child(self.status_badge(
+                                    startup_label,
+                                    theme::library_bg(),
+                                    theme::success(),
                                 ))
                             })
                             .when_some(forward_label.clone(), |this, forward_label| {
@@ -5675,6 +5921,8 @@ impl TermiRustApp {
 
     fn render_editor_panel(&self, cx: &Context<Self>) -> Div {
         let auth_mode = self.draft_auth_mode;
+        let group_name = self.inputs.group.read(cx).value().trim().to_string();
+        let saved_group = self.host_group_by_label(&group_name).cloned();
         let selected_identity = self
             .draft_identity_id
             .as_deref()
@@ -5755,8 +6003,177 @@ impl TermiRustApp {
                 cx,
             ))
             .child(self.form_field("Group", Input::new(&self.inputs.group)))
+            .when(!group_name.is_empty(), |this| {
+                this.child(
+                    v_flex()
+                        .gap_2()
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .text_size(px(10.5))
+                                        .text_color(theme::text_muted())
+                                        .child(format!("Group defaults for '{}'", group_name)),
+                                )
+                                .when(saved_group.is_some(), |this| {
+                                    this.child(self.status_badge(
+                                        "Saved",
+                                        theme::library_bg(),
+                                        theme::success(),
+                                    ))
+                                })
+                                .when(saved_group.is_none(), |this| {
+                                    this.child(self.status_badge(
+                                        "Ad hoc",
+                                        theme::library_bg(),
+                                        theme::text_muted(),
+                                    ))
+                                }),
+                        )
+                        .when_some(saved_group.clone(), |this, group| {
+                            let mut chips = Vec::new();
+                            if let Some(identity_id) = group.identity_id.as_deref() {
+                                if let Some(identity) = self.identity_by_id(identity_id) {
+                                    chips.push(
+                                        self.status_badge(
+                                            format!("Identity: {}", identity.label),
+                                            theme::library_bg(),
+                                            theme::success(),
+                                        )
+                                        .into_any_element(),
+                                    );
+                                }
+                            }
+                            if let Some(jump_host_id) = group.jump_host_id.as_deref() {
+                                if let Some(jump_host) = self.jump_host_display_name(jump_host_id) {
+                                    chips.push(
+                                        self.status_badge(
+                                            format!("Jump: {}", jump_host),
+                                            theme::library_bg(),
+                                            theme::accent(),
+                                        )
+                                        .into_any_element(),
+                                    );
+                                }
+                            }
+                            if let Some(directory) = group.startup_directory.as_deref() {
+                                chips.push(
+                                    self.status_badge(
+                                        format!("Dir: {}", directory),
+                                        theme::library_bg(),
+                                        theme::warning(),
+                                    )
+                                    .into_any_element(),
+                                );
+                            }
+                            if let Some(command) = group.startup_command.as_deref() {
+                                chips.push(
+                                    self.status_badge(
+                                        format!("Cmd: {}", command),
+                                        theme::library_bg(),
+                                        theme::warning(),
+                                    )
+                                    .into_any_element(),
+                                );
+                            }
+
+                            this.when(!chips.is_empty(), |this| {
+                                this.child(h_flex().gap_2().flex_wrap().children(chips))
+                            })
+                        })
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("group-defaults-save")
+                                        .small()
+                                        .custom(Self::action_button_style(
+                                            theme::ActionTone::AccentSoft,
+                                            cx,
+                                        ))
+                                        .label("Save Group Defaults")
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.save_group_defaults_from_draft(cx);
+                                        })),
+                                )
+                                .when(saved_group.is_some(), |this| {
+                                    this.child(
+                                        Button::new("group-defaults-apply")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Neutral,
+                                                cx,
+                                            ))
+                                            .label("Load Defaults")
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.apply_group_defaults_to_editor(window, cx);
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("group-defaults-remove")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Danger,
+                                                cx,
+                                            ))
+                                            .label("Delete Defaults")
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.remove_group_defaults(cx);
+                                            })),
+                                    )
+                                }),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(theme::text_muted())
+                                .child(
+                                    "Blank host fields can inherit identity, jump host, and startup settings from the saved group defaults.",
+                                ),
+                        ),
+                )
+            })
             .child(self.form_field("Tags", Input::new(&self.inputs.tags)))
             .child(self.form_field("Jump Host", Input::new(&self.inputs.jump_host)))
+            .child(
+                v_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child("Startup"),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_3()
+                            .child(
+                                self.form_field(
+                                    "Remote Directory",
+                                    Input::new(&self.inputs.startup_directory),
+                                )
+                                .flex_1(),
+                            )
+                            .child(
+                                self.form_field(
+                                    "Startup Command",
+                                    Input::new(&self.inputs.startup_command),
+                                )
+                                .flex_1(),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.))
+                            .text_color(theme::text_muted())
+                            .child(
+                                "When the SSH shell opens, the app can change into a saved directory and optionally run one startup command.",
+                            ),
+                    ),
+            )
             .child(self.form_field("Host", Input::new(&self.inputs.host)))
             .child(
                 h_flex()
@@ -8264,6 +8681,7 @@ impl TermiRustApp {
         let Some(pane) = self.active_pane() else {
             return v_flex();
         };
+        let indicators = self.workspace_indicators(workspace);
         let files_mode = workspace.view_mode == WorkspaceViewMode::Files;
         let can_browse_files = !pane.request.is_local_shell();
         let selected_remote_entry = self.selected_workspace_sftp_entry(workspace.id);
@@ -8301,6 +8719,42 @@ impl TermiRustApp {
                             .text_color(theme::text_muted_dark())
                             .child(pane.endpoint.clone()),
                     )
+                    .when_some(
+                        workspace_runtime_summary(indicators),
+                        |this, (label, tone)| {
+                            this.child(self.status_badge(
+                                label,
+                                theme::terminal_panel(),
+                                match tone {
+                                    WorkspaceRuntimeTone::Live => theme::success(),
+                                    WorkspaceRuntimeTone::Connecting => theme::warning(),
+                                    WorkspaceRuntimeTone::Error => theme::danger(),
+                                    WorkspaceRuntimeTone::Closed => theme::text_muted_dark(),
+                                },
+                            ))
+                        },
+                    )
+                    .when(indicators.split_count > 1, |this| {
+                        this.child(self.status_badge(
+                            format!("{} Panes", indicators.split_count),
+                            theme::terminal_panel(),
+                            theme::slate(),
+                        ))
+                    })
+                    .when(files_mode, |this| {
+                        this.child(self.status_badge(
+                            "Files",
+                            theme::terminal_panel(),
+                            theme::accent(),
+                        ))
+                    })
+                    .when(pane.request.is_local_shell(), |this| {
+                        this.child(self.status_badge(
+                            "Local",
+                            theme::terminal_panel(),
+                            theme::success(),
+                        ))
+                    })
                     .when_some(pane.request.jump_host.as_ref(), |this, jump_host| {
                         this.child(self.status_badge(
                             format!("Via {}", jump_host.title),
@@ -8718,6 +9172,9 @@ impl TermiRustApp {
                             ))
                             .label(command.clone())
                             .icon(match source {
+                                AutocompleteSource::Path => IconName::Folder,
+                                AutocompleteSource::Context => IconName::SquareTerminal,
+                                AutocompleteSource::Argument => IconName::ChevronRight,
                                 AutocompleteSource::History => IconName::Redo2,
                                 AutocompleteSource::Snippet => IconName::BookOpen,
                                 AutocompleteSource::Builtin => IconName::SquareTerminal,
@@ -9653,6 +10110,15 @@ impl TermiRustApp {
                                                                     candidate.source.label(),
                                                                     theme::library_bg(),
                                                                     match candidate.source {
+                                                                        AutocompleteSource::Path => {
+                                                                            theme::warning()
+                                                                        }
+                                                                        AutocompleteSource::Context => {
+                                                                            theme::accent()
+                                                                        }
+                                                                        AutocompleteSource::Argument => {
+                                                                            theme::warning()
+                                                                        }
                                                                         AutocompleteSource::History => {
                                                                             theme::accent()
                                                                         }
@@ -10170,13 +10636,15 @@ fn format_file_size(bytes: u64) -> String {
 }
 
 fn collect_autocomplete_candidates(
-    query: &str,
+    input: &str,
     command_history: &[String],
     scoped_command_history: &[SavedCommandHistoryEntry],
     scope_key: &str,
     snippets: &[SavedSnippet],
+    path_context: Option<&PathSuggestionContext>,
+    output_context: Option<&OutputSuggestionContext>,
 ) -> Vec<AutocompleteCandidate> {
-    let query = query.trim().to_ascii_lowercase();
+    let query = input.trim().to_ascii_lowercase();
     if query.is_empty() {
         return Vec::new();
     }
@@ -10191,6 +10659,49 @@ fn collect_autocomplete_candidates(
 
     let mut suggestions = Vec::new();
     let mut seen = HashSet::new();
+
+    if let Some(path_suggestions) =
+        collect_path_autocomplete_candidates(input, path_context, command_history, snippets)
+    {
+        for (ordinal, candidate) in path_suggestions.into_iter().enumerate() {
+            if seen.insert(candidate.command.to_ascii_lowercase()) {
+                suggestions.push(ScoredAutocompleteCandidate {
+                    candidate,
+                    match_kind: AutocompleteMatchKind::Prefix,
+                    snippet_priority: 0,
+                    ordinal,
+                });
+            }
+        }
+    }
+
+    if let Some(context_suggestions) =
+        collect_context_autocomplete_candidates(input, output_context)
+    {
+        for (ordinal, candidate) in context_suggestions.into_iter().enumerate() {
+            if seen.insert(candidate.command.to_ascii_lowercase()) {
+                suggestions.push(ScoredAutocompleteCandidate {
+                    candidate,
+                    match_kind: AutocompleteMatchKind::Prefix,
+                    snippet_priority: 0,
+                    ordinal: ordinal + 100,
+                });
+            }
+        }
+    }
+
+    if let Some(argument_suggestions) = collect_argument_autocomplete_candidates(input) {
+        for (ordinal, candidate) in argument_suggestions.into_iter().enumerate() {
+            if seen.insert(candidate.command.to_ascii_lowercase()) {
+                suggestions.push(ScoredAutocompleteCandidate {
+                    candidate,
+                    match_kind: AutocompleteMatchKind::Prefix,
+                    snippet_priority: 0,
+                    ordinal: ordinal + 200,
+                });
+            }
+        }
+    }
 
     for (ordinal, entry) in scoped_command_history
         .iter()
@@ -10261,17 +10772,17 @@ fn collect_autocomplete_candidates(
         }
     }
 
-    for (ordinal, command) in builtin_commands().iter().enumerate() {
-        let key = command.to_ascii_lowercase();
+    for (ordinal, template) in builtin_command_templates().iter().enumerate() {
+        let key = template.command.to_ascii_lowercase();
         let Some(match_kind) = autocomplete_match_kind(&query, &key) else {
             continue;
         };
         if seen.insert(key) {
             suggestions.push(ScoredAutocompleteCandidate {
                 candidate: AutocompleteCandidate {
-                    command: (*command).to_string(),
-                    source: AutocompleteSource::Builtin,
-                    scope_label: None,
+                    command: template.command.to_string(),
+                    source: template.source,
+                    scope_label: Some(template.detail.to_string()),
                 },
                 match_kind,
                 snippet_priority: 1,
@@ -10315,6 +10826,7 @@ fn collect_command_palette_candidates(
     scoped_command_history: &[SavedCommandHistoryEntry],
     scope_key: &str,
     snippets: &[SavedSnippet],
+    output_context: Option<&OutputSuggestionContext>,
 ) -> Vec<CommandPaletteCandidate> {
     let query = query.trim().to_ascii_lowercase();
 
@@ -10419,23 +10931,52 @@ fn collect_command_palette_candidates(
         }
     }
 
-    for (ordinal, command) in builtin_commands().iter().enumerate() {
-        let Some(match_kind) = palette_match_kind(&query, &[*command]) else {
+    if let Some(context_suggestions) =
+        collect_context_command_templates(query.as_str(), output_context)
+    {
+        for (ordinal, (command, detail)) in context_suggestions.into_iter().enumerate() {
+            let Some(match_kind) = palette_match_kind(&query, &[&command, &detail]) else {
+                continue;
+            };
+            let key = command.to_ascii_lowercase();
+            if seen.insert(key) {
+                suggestions.push(ScoredPaletteCandidate {
+                    candidate: CommandPaletteCandidate {
+                        command: command.clone(),
+                        title: command,
+                        detail,
+                        source: AutocompleteSource::Context,
+                        pinned: false,
+                    },
+                    match_kind,
+                    ordinal,
+                    source_priority: 2,
+                });
+            }
+        }
+    }
+
+    for (ordinal, template) in builtin_command_templates().iter().enumerate() {
+        let Some(match_kind) = palette_match_kind(&query, &[template.command, template.detail])
+        else {
             continue;
         };
-        let key = command.to_ascii_lowercase();
+        let key = template.command.to_ascii_lowercase();
         if seen.insert(key) {
             suggestions.push(ScoredPaletteCandidate {
                 candidate: CommandPaletteCandidate {
-                    command: (*command).to_string(),
-                    title: (*command).to_string(),
-                    detail: "Built-in suggestion".to_string(),
-                    source: AutocompleteSource::Builtin,
+                    command: template.command.to_string(),
+                    title: template.command.to_string(),
+                    detail: template.detail.to_string(),
+                    source: template.source,
                     pinned: false,
                 },
                 match_kind,
                 ordinal,
-                source_priority: 3,
+                source_priority: match template.source {
+                    AutocompleteSource::Argument => 3,
+                    _ => 4,
+                },
             });
         }
     }
@@ -10458,6 +10999,488 @@ fn collect_command_palette_candidates(
         .take(10)
         .map(|candidate| candidate.candidate)
         .collect()
+}
+
+fn collect_path_autocomplete_candidates(
+    input: &str,
+    path_context: Option<&PathSuggestionContext>,
+    command_history: &[String],
+    snippets: &[SavedSnippet],
+) -> Option<Vec<AutocompleteCandidate>> {
+    let query = path_query_context(input)?;
+    let mut suggestions = Vec::new();
+    let mut seen = HashSet::new();
+
+    let mut push_candidate =
+        |path_value: String, scope_label: Option<String>, is_dir: bool, ordinal: usize| {
+            let mut candidate_path = path_value;
+            if is_dir && !candidate_path.ends_with('/') {
+                candidate_path.push('/');
+            }
+            let Some(match_kind) = path_match_kind(&query.fragment, &candidate_path) else {
+                return None;
+            };
+            let full_command = format!("{}{}", query.prefix, candidate_path);
+            if seen.insert(full_command.to_ascii_lowercase()) {
+                suggestions.push((
+                    AutocompleteCandidate {
+                        command: full_command,
+                        source: AutocompleteSource::Path,
+                        scope_label,
+                    },
+                    match_kind,
+                    ordinal,
+                ));
+            }
+            Some(())
+        };
+
+    let mut ordinal = 0usize;
+    if let Some(context) = path_context {
+        let current_path = context
+            .current_path
+            .clone()
+            .unwrap_or_else(|| ".".to_string());
+        let scope = Some(format!("Files • {}", current_path));
+
+        for entry in &context.entries {
+            let candidate_path = if query.fragment.starts_with('/') {
+                entry.path.clone()
+            } else if query.fragment.starts_with("./") {
+                format!("./{}", entry.name)
+            } else {
+                entry.name.clone()
+            };
+            let _ = push_candidate(candidate_path, scope.clone(), entry.is_dir, ordinal);
+            ordinal += 1;
+        }
+
+        if let Some(startup_directory) = context.startup_directory.clone() {
+            let _ = push_candidate(
+                startup_directory,
+                Some("Startup path".to_string()),
+                true,
+                ordinal,
+            );
+            ordinal += 1;
+        }
+        if let Some(current_path) = context.current_path.clone() {
+            let _ = push_candidate(
+                current_path.clone(),
+                Some("Current directory".to_string()),
+                true,
+                ordinal,
+            );
+            ordinal += 1;
+            if let Some(parent) = remote_parent_path(&current_path) {
+                let _ = push_candidate(parent, Some("Parent directory".to_string()), true, ordinal);
+                ordinal += 1;
+            }
+        }
+    }
+
+    for path in command_history
+        .iter()
+        .flat_map(|command| extract_path_tokens(command))
+        .chain(
+            snippets
+                .iter()
+                .flat_map(|snippet| extract_path_tokens(&snippet.command)),
+        )
+    {
+        let is_dir = path.ends_with('/');
+        let _ = push_candidate(path, Some("Recent path".to_string()), is_dir, ordinal);
+        ordinal += 1;
+    }
+
+    suggestions.sort_by(|left, right| {
+        left.1
+            .cmp(&right.1)
+            .then_with(|| left.2.cmp(&right.2))
+            .then_with(|| {
+                left.0
+                    .command
+                    .to_ascii_lowercase()
+                    .cmp(&right.0.command.to_ascii_lowercase())
+            })
+    });
+
+    if suggestions.is_empty() {
+        None
+    } else {
+        Some(
+            suggestions
+                .into_iter()
+                .take(6)
+                .map(|(candidate, _, _)| candidate)
+                .collect(),
+        )
+    }
+}
+
+fn collect_argument_autocomplete_candidates(input: &str) -> Option<Vec<AutocompleteCandidate>> {
+    let query = input.trim();
+    if query.is_empty() || query.contains('\n') {
+        return None;
+    }
+
+    let first = query.split_whitespace().next()?;
+    let has_family_templates = builtin_command_templates().iter().any(|template| {
+        template.source == AutocompleteSource::Argument
+            && template.command.starts_with(first)
+            && (template.command == first || template.command.starts_with(&format!("{first} ")))
+    });
+    if !has_family_templates {
+        return None;
+    }
+
+    let query_lower = query.to_ascii_lowercase();
+    let mut seen = HashSet::new();
+    let mut suggestions = builtin_command_templates()
+        .iter()
+        .filter(|template| template.source == AutocompleteSource::Argument)
+        .filter_map(|template| {
+            let command_lower = template.command.to_ascii_lowercase();
+            let match_kind = autocomplete_match_kind(&query_lower, &command_lower)?;
+            if !command_lower.starts_with(&first.to_ascii_lowercase())
+                || command_lower == query_lower
+            {
+                return None;
+            }
+            if !seen.insert(command_lower.clone()) {
+                return None;
+            }
+            Some((
+                AutocompleteCandidate {
+                    command: template.command.to_string(),
+                    source: AutocompleteSource::Argument,
+                    scope_label: Some(template.detail.to_string()),
+                },
+                match_kind,
+            ))
+        })
+        .collect::<Vec<_>>();
+
+    suggestions.sort_by(|left, right| {
+        left.1.cmp(&right.1).then_with(|| {
+            left.0
+                .command
+                .to_ascii_lowercase()
+                .cmp(&right.0.command.to_ascii_lowercase())
+        })
+    });
+
+    if suggestions.is_empty() {
+        None
+    } else {
+        Some(
+            suggestions
+                .into_iter()
+                .take(6)
+                .map(|(candidate, _)| candidate)
+                .collect(),
+        )
+    }
+}
+
+fn collect_context_autocomplete_candidates(
+    input: &str,
+    output_context: Option<&OutputSuggestionContext>,
+) -> Option<Vec<AutocompleteCandidate>> {
+    let suggestions = collect_context_command_templates(input, output_context)?;
+    let mut candidates = suggestions
+        .into_iter()
+        .filter_map(|(command, detail)| {
+            let command_lower = command.to_ascii_lowercase();
+            let match_kind =
+                autocomplete_match_kind(&input.trim().to_ascii_lowercase(), &command_lower)?;
+            Some((
+                AutocompleteCandidate {
+                    command,
+                    source: AutocompleteSource::Context,
+                    scope_label: Some(detail),
+                },
+                match_kind,
+            ))
+        })
+        .collect::<Vec<_>>();
+
+    candidates.sort_by(|left, right| {
+        left.1.cmp(&right.1).then_with(|| {
+            left.0
+                .command
+                .to_ascii_lowercase()
+                .cmp(&right.0.command.to_ascii_lowercase())
+        })
+    });
+
+    if candidates.is_empty() {
+        None
+    } else {
+        Some(
+            candidates
+                .into_iter()
+                .take(6)
+                .map(|(candidate, _)| candidate)
+                .collect(),
+        )
+    }
+}
+
+fn collect_context_command_templates(
+    input: &str,
+    output_context: Option<&OutputSuggestionContext>,
+) -> Option<Vec<(String, String)>> {
+    let output_context = output_context?;
+    let query = input.trim();
+    if query.is_empty() || query.contains('\n') || output_context.recent_lines.is_empty() {
+        return None;
+    }
+
+    let query_lower = query.to_ascii_lowercase();
+    let mut templates = Vec::new();
+    let mut push_templates = |prefix: &str, targets: Vec<String>, kind: &str| {
+        for target in targets {
+            templates.push((
+                format!("{prefix}{target}"),
+                context_detail(kind, output_context.current_path.as_deref()),
+            ));
+        }
+    };
+
+    if query_lower.starts_with("git checkout ") || query_lower.starts_with("git switch ") {
+        let prefix = if query_lower.starts_with("git switch ") {
+            "git switch "
+        } else {
+            "git checkout "
+        };
+        push_templates(
+            prefix,
+            extract_git_branch_targets(&output_context.recent_lines),
+            "Git branch",
+        );
+    } else if query_lower.starts_with("git diff ") || query_lower.starts_with("git log ") {
+        let prefix = if query_lower.starts_with("git log ") {
+            "git log "
+        } else {
+            "git diff "
+        };
+        push_templates(
+            prefix,
+            extract_git_branch_targets(&output_context.recent_lines),
+            "Git branch",
+        );
+    } else if query_lower.starts_with("docker logs ")
+        || query_lower.starts_with("docker inspect ")
+        || query_lower.starts_with("docker stop ")
+        || query_lower.starts_with("docker restart ")
+        || query_lower.starts_with("docker rm ")
+        || query_lower.starts_with("docker exec -it ")
+    {
+        let prefix = if query_lower.starts_with("docker exec -it ") {
+            "docker exec -it "
+        } else if query_lower.starts_with("docker inspect ") {
+            "docker inspect "
+        } else if query_lower.starts_with("docker stop ") {
+            "docker stop "
+        } else if query_lower.starts_with("docker restart ") {
+            "docker restart "
+        } else if query_lower.starts_with("docker rm ") {
+            "docker rm "
+        } else {
+            "docker logs "
+        };
+        push_templates(
+            prefix,
+            extract_docker_targets(&output_context.recent_lines),
+            "Docker target",
+        );
+    } else if query_lower.starts_with("kubectl logs ")
+        || query_lower.starts_with("kubectl describe pod ")
+        || query_lower.starts_with("kubectl exec -it ")
+    {
+        let prefix = if query_lower.starts_with("kubectl describe pod ") {
+            "kubectl describe pod "
+        } else if query_lower.starts_with("kubectl exec -it ") {
+            "kubectl exec -it "
+        } else {
+            "kubectl logs "
+        };
+        push_templates(
+            prefix,
+            extract_kubernetes_pod_targets(&output_context.recent_lines),
+            "Kubernetes pod",
+        );
+    } else if query_lower.starts_with("systemctl status ")
+        || query_lower.starts_with("systemctl restart ")
+        || query_lower.starts_with("systemctl reload ")
+        || query_lower.starts_with("journalctl -u ")
+        || query_lower.starts_with("journalctl -f -u ")
+    {
+        let prefix = if query_lower.starts_with("systemctl restart ") {
+            "systemctl restart "
+        } else if query_lower.starts_with("systemctl reload ") {
+            "systemctl reload "
+        } else if query_lower.starts_with("journalctl -f -u ") {
+            "journalctl -f -u "
+        } else if query_lower.starts_with("journalctl -u ") {
+            "journalctl -u "
+        } else {
+            "systemctl status "
+        };
+        push_templates(
+            prefix,
+            extract_systemd_unit_targets(&output_context.recent_lines),
+            "Systemd unit",
+        );
+    }
+
+    if templates.is_empty() {
+        None
+    } else {
+        let mut seen = HashSet::new();
+        Some(
+            templates
+                .into_iter()
+                .filter(|(command, _)| seen.insert(command.to_ascii_lowercase()))
+                .collect(),
+        )
+    }
+}
+
+fn context_detail(kind: &str, current_path: Option<&str>) -> String {
+    let Some(current_path) = current_path.map(str::trim).filter(|path| !path.is_empty()) else {
+        return format!("Recent output • {kind}");
+    };
+    format!("Recent output • {kind} • {current_path}")
+}
+
+fn extract_git_branch_targets(lines: &[String]) -> Vec<String> {
+    let mut branches = Vec::new();
+    let mut seen = HashSet::new();
+
+    for line in lines.iter().rev() {
+        let trimmed = line.trim();
+        if let Some(branch) = trimmed.strip_prefix("On branch ") {
+            if let Some(branch) =
+                clean_context_token(branch.split_whitespace().next().unwrap_or_default())
+            {
+                if seen.insert(branch.clone()) {
+                    branches.push(branch);
+                }
+            }
+            continue;
+        }
+
+        if let Some(rest) = trimmed
+            .strip_prefix("* ")
+            .or_else(|| trimmed.strip_prefix("+ "))
+            .or_else(|| trimmed.strip_prefix("  "))
+        {
+            if let Some(branch) =
+                clean_context_token(rest.split_whitespace().next().unwrap_or_default())
+            {
+                if branch != "HEAD" && seen.insert(branch.clone()) {
+                    branches.push(branch);
+                }
+            }
+        }
+    }
+
+    branches
+}
+
+fn extract_docker_targets(lines: &[String]) -> Vec<String> {
+    let mut targets = Vec::new();
+    let mut seen = HashSet::new();
+
+    for line in lines.iter().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("CONTAINER ID") {
+            continue;
+        }
+
+        let tokens = trimmed.split_whitespace().collect::<Vec<_>>();
+        if tokens.len() < 2 || !looks_like_hex_id(tokens[0]) {
+            continue;
+        }
+        if let Some(target) = clean_context_token(tokens.last().copied().unwrap_or_default()) {
+            if seen.insert(target.clone()) {
+                targets.push(target);
+            }
+        }
+    }
+
+    targets
+}
+
+fn extract_kubernetes_pod_targets(lines: &[String]) -> Vec<String> {
+    let mut pods = Vec::new();
+    let mut seen = HashSet::new();
+
+    for line in lines.iter().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty()
+            || trimmed.starts_with("NAME ")
+            || trimmed.starts_with("No resources found")
+        {
+            continue;
+        }
+
+        let first = trimmed.split_whitespace().next().unwrap_or_default();
+        let Some(pod) = clean_context_token(first) else {
+            continue;
+        };
+        if !(pod.contains('-')
+            || trimmed.contains("Running")
+            || trimmed.contains("Pending")
+            || trimmed.contains("Completed")
+            || trimmed.contains("CrashLoopBackOff"))
+        {
+            continue;
+        }
+        if seen.insert(pod.clone()) {
+            pods.push(pod);
+        }
+    }
+
+    pods
+}
+
+fn extract_systemd_unit_targets(lines: &[String]) -> Vec<String> {
+    let mut units = Vec::new();
+    let mut seen = HashSet::new();
+
+    for line in lines.iter().rev() {
+        for token in line.split_whitespace() {
+            let Some(unit) = clean_context_token(token) else {
+                continue;
+            };
+            if !unit.ends_with(".service") {
+                continue;
+            }
+            if seen.insert(unit.clone()) {
+                units.push(unit);
+            }
+        }
+    }
+
+    units
+}
+
+fn clean_context_token(token: &str) -> Option<String> {
+    let token = token.trim_matches(|ch: char| {
+        !ch.is_ascii_alphanumeric() && !matches!(ch, '-' | '_' | '.' | '/' | ':' | '@')
+    });
+    if token.is_empty() || token.eq_ignore_ascii_case("name") {
+        None
+    } else {
+        Some(token.to_string())
+    }
+}
+
+fn looks_like_hex_id(token: &str) -> bool {
+    token.len() >= 6 && token.chars().all(|ch| ch.is_ascii_hexdigit())
 }
 
 fn autocomplete_match_kind(query: &str, command: &str) -> Option<AutocompleteMatchKind> {
@@ -10495,6 +11518,129 @@ fn palette_match_kind(query: &str, fields: &[&str]) -> Option<AutocompleteMatchK
         .iter()
         .filter_map(|field| autocomplete_match_kind(query, &field.to_ascii_lowercase()))
         .min()
+}
+
+struct PathAutocompleteQuery {
+    prefix: String,
+    fragment: String,
+}
+
+fn path_query_context(input: &str) -> Option<PathAutocompleteQuery> {
+    let input = input.trim_end_matches(['\r', '\n']);
+    if input.trim().is_empty() {
+        return None;
+    }
+
+    let tokens = input.split_whitespace().collect::<Vec<_>>();
+    if tokens.is_empty() {
+        return None;
+    }
+
+    if input.ends_with(' ') {
+        let last = tokens.last().copied().unwrap_or_default();
+        if is_path_command(last) {
+            return Some(PathAutocompleteQuery {
+                prefix: input.to_string(),
+                fragment: String::new(),
+            });
+        }
+        return None;
+    }
+
+    let last = tokens.last().copied().unwrap_or_default();
+    let previous = tokens
+        .get(tokens.len().saturating_sub(2))
+        .copied()
+        .unwrap_or_default();
+    if !is_path_like_token(last) && !is_path_command(previous) {
+        return None;
+    }
+
+    let start = input.rfind(last)?;
+    Some(PathAutocompleteQuery {
+        prefix: input[..start].to_string(),
+        fragment: last.to_string(),
+    })
+}
+
+fn is_path_command(command: &str) -> bool {
+    matches!(
+        command,
+        "cd" | "ls"
+            | "cat"
+            | "tail"
+            | "less"
+            | "more"
+            | "vim"
+            | "nvim"
+            | "nano"
+            | "rm"
+            | "cp"
+            | "mv"
+            | "mkdir"
+            | "touch"
+            | "chmod"
+            | "chown"
+            | "source"
+    )
+}
+
+fn is_path_like_token(token: &str) -> bool {
+    token.starts_with('/')
+        || token.starts_with("./")
+        || token.starts_with("../")
+        || token.starts_with("~/")
+        || token.contains('/')
+        || token == "."
+        || token == ".."
+}
+
+fn path_match_kind(fragment: &str, candidate: &str) -> Option<AutocompleteMatchKind> {
+    let fragment = fragment.trim().to_ascii_lowercase();
+    if fragment.is_empty() {
+        return Some(AutocompleteMatchKind::Prefix);
+    }
+
+    let candidate_lower = candidate.to_ascii_lowercase();
+    if candidate_lower.starts_with(&fragment) {
+        return Some(AutocompleteMatchKind::Prefix);
+    }
+
+    let basename = candidate
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(candidate)
+        .to_ascii_lowercase();
+    let stripped_fragment = fragment
+        .trim_start_matches("./")
+        .trim_start_matches("../")
+        .trim_start_matches("~/");
+    if !stripped_fragment.is_empty() && basename.starts_with(stripped_fragment) {
+        return Some(AutocompleteMatchKind::TokenPrefix);
+    }
+
+    if fragment.len() >= 2 && candidate_lower.contains(&fragment) {
+        return Some(AutocompleteMatchKind::Substring);
+    }
+
+    None
+}
+
+fn extract_path_tokens(command: &str) -> Vec<String> {
+    command
+        .split_whitespace()
+        .filter_map(|token| {
+            let token = token.trim_matches(|ch: char| {
+                ch.is_ascii_punctuation() && ch != '/' && ch != '.' && ch != '_' && ch != '-'
+            });
+            if is_path_like_token(token) {
+                Some(token.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 fn shell_command_requires_continuation(command: &str) -> bool {
@@ -10577,9 +11723,161 @@ fn shell_command_requires_continuation(command: &str) -> bool {
         || bracket_depth > 0
 }
 
+fn startup_bytes_for_request(request: &ConnectRequest) -> Option<Vec<u8>> {
+    if request.is_local_shell() {
+        return None;
+    }
+
+    let mut lines = Vec::new();
+    if let Some(directory) = request.startup_directory.as_deref() {
+        let directory = directory.trim();
+        if !directory.is_empty() {
+            lines.push(format!("cd -- {}", shell_single_quote(directory)));
+        }
+    }
+    if let Some(command) = request.startup_command.as_deref() {
+        let command = command.trim();
+        if !command.is_empty() {
+            lines.push(command.to_string());
+        }
+    }
+
+    if lines.is_empty() {
+        None
+    } else {
+        Some(format!("{}\n", lines.join("\n")).into_bytes())
+    }
+}
+
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn pane_recent_output_lines(pane: &SessionPane, limit: usize) -> Vec<String> {
+    let mut lines = pane
+        .terminal
+        .all_rows_text()
+        .into_iter()
+        .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    let keep_from = lines.len().saturating_sub(limit);
+    lines.drain(0..keep_from);
+    lines
+}
+
+fn workspace_runtime_summary(
+    indicators: WorkspaceIndicators,
+) -> Option<(String, WorkspaceRuntimeTone)> {
+    let mut parts = Vec::new();
+    if indicators.error_panes > 0 {
+        parts.push(format_count_label(
+            indicators.error_panes,
+            "Error",
+            "Errors",
+        ));
+    }
+    if indicators.connecting_panes > 0 {
+        parts.push(format_count_label(
+            indicators.connecting_panes,
+            "Connecting",
+            "Connecting",
+        ));
+    }
+    if indicators.live_panes > 0 {
+        parts.push(format_count_label(indicators.live_panes, "Live", "Live"));
+    }
+    if indicators.closed_panes > 0 {
+        parts.push(format_count_label(
+            indicators.closed_panes,
+            "Closed",
+            "Closed",
+        ));
+    }
+
+    let tone = if indicators.error_panes > 0 {
+        WorkspaceRuntimeTone::Error
+    } else if indicators.connecting_panes > 0 {
+        WorkspaceRuntimeTone::Connecting
+    } else if indicators.live_panes > 0 {
+        WorkspaceRuntimeTone::Live
+    } else if indicators.closed_panes > 0 {
+        WorkspaceRuntimeTone::Closed
+    } else {
+        return None;
+    };
+
+    Some((
+        parts.into_iter().take(2).collect::<Vec<_>>().join(" • "),
+        tone,
+    ))
+}
+
+fn format_count_label(count: usize, singular: &str, plural: &str) -> String {
+    if count == 1 {
+        format!("1 {singular}")
+    } else {
+        format!("{count} {plural}")
+    }
+}
+
+fn non_empty_string(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+fn apply_group_defaults_to_draft(
+    mut draft: DraftProfile,
+    group: Option<&SavedHostGroup>,
+    identities: &[SavedIdentity],
+) -> DraftProfile {
+    let Some(group) = group else {
+        return draft;
+    };
+
+    if draft.identity_id.is_none() {
+        draft.identity_id = group.identity_id.clone();
+    }
+    if draft.key_path.trim().is_empty() {
+        if let Some(identity_id) = draft.identity_id.as_deref() {
+            if let Some(identity) = identities
+                .iter()
+                .find(|identity| identity.id == identity_id)
+            {
+                draft.key_path = identity.key_path.clone();
+            }
+        }
+    }
+    if draft.jump_host_id.is_none() {
+        draft.jump_host_id = group.jump_host_id.clone();
+    }
+    if draft.startup_directory.trim().is_empty() {
+        draft.startup_directory = group.startup_directory.clone().unwrap_or_default();
+    }
+    if draft.startup_command.trim().is_empty() {
+        draft.startup_command = group.startup_command.clone().unwrap_or_default();
+    }
+
+    draft
+}
+
 #[cfg(test)]
 mod tests {
-    use super::shell_command_requires_continuation;
+    use super::{
+        AutocompleteSource, OutputSuggestionContext, PathSuggestionContext, WorkspaceIndicators,
+        WorkspaceRuntimeTone, apply_group_defaults_to_draft, collect_autocomplete_candidates,
+        collect_command_palette_candidates, shell_command_requires_continuation,
+        shell_single_quote, startup_bytes_for_request, workspace_runtime_summary,
+    };
+    use crate::models::{
+        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, PortForwardKind,
+        SavedHostGroup, SavedIdentity,
+    };
+    use crate::sftp::RemoteFileEntry;
 
     #[test]
     fn shell_continuation_detects_unclosed_quotes_and_trailing_operators() {
@@ -10597,19 +11895,440 @@ mod tests {
             "kubectl get pods | cat"
         ));
     }
+
+    #[test]
+    fn startup_actions_build_cd_and_command_script() {
+        let request = ConnectRequest {
+            session_id: 1,
+            title: "Prod".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: "prod.example.com".to_string(),
+            port: 22,
+            username: "ubuntu".to_string(),
+            auth: Some(AuthConfig::Password {
+                password: "secret".to_string(),
+            }),
+            jump_host: None,
+            startup_directory: Some("/var/www/app's".to_string()),
+            startup_command: Some("docker compose logs -f".to_string()),
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+        };
+
+        let bytes = startup_bytes_for_request(&request).unwrap();
+        assert_eq!(
+            String::from_utf8(bytes).unwrap(),
+            "cd -- '/var/www/app'\"'\"'s'\ndocker compose logs -f\n"
+        );
+    }
+
+    #[test]
+    fn startup_actions_skip_empty_values() {
+        let request = ConnectRequest {
+            session_id: 1,
+            title: "Prod".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: "prod.example.com".to_string(),
+            port: 22,
+            username: "ubuntu".to_string(),
+            auth: None,
+            jump_host: None,
+            startup_directory: Some(" ".to_string()),
+            startup_command: None,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+        };
+
+        assert!(startup_bytes_for_request(&request).is_none());
+        assert_eq!(shell_single_quote("a'b"), "'a'\"'\"'b'");
+    }
+
+    #[test]
+    fn group_defaults_fill_blank_draft_values_without_overriding_explicit_fields() {
+        let draft = DraftProfile {
+            label: "Prod".to_string(),
+            vault_id: None,
+            favorite: false,
+            group: "Operations".to_string(),
+            tags: String::new(),
+            host: "prod.example.com".to_string(),
+            port: "22".to_string(),
+            username: "ubuntu".to_string(),
+            password: String::new(),
+            key_path: String::new(),
+            identity_id: None,
+            jump_host_id: None,
+            startup_directory: String::new(),
+            startup_command: "htop".to_string(),
+            saved_port_forward_rules: Vec::new(),
+            forward_kind: PortForwardKind::Local,
+            forward_local_port: String::new(),
+            forward_remote_host: String::new(),
+            forward_remote_port: String::new(),
+            key_passphrase: String::new(),
+            password_credential_id: None,
+            auth_mode: AuthMode::PrivateKey,
+        };
+        let group = SavedHostGroup {
+            label: "Operations".to_string(),
+            vault_id: None,
+            identity_id: Some("identity-ops".to_string()),
+            jump_host_id: Some("bastion".to_string()),
+            startup_directory: Some("/srv/app".to_string()),
+            startup_command: Some("docker compose logs -f".to_string()),
+        };
+        let identities = vec![SavedIdentity {
+            id: "identity-ops".to_string(),
+            label: "ops-key".to_string(),
+            vault_id: None,
+            key_path: "/tmp/id_ops".to_string(),
+            kind: "OpenSSH".to_string(),
+            source: crate::models::IdentitySource::User,
+        }];
+
+        let resolved = apply_group_defaults_to_draft(draft, Some(&group), &identities);
+        assert_eq!(resolved.identity_id.as_deref(), Some("identity-ops"));
+        assert_eq!(resolved.key_path, "/tmp/id_ops");
+        assert_eq!(resolved.jump_host_id.as_deref(), Some("bastion"));
+        assert_eq!(resolved.startup_directory, "/srv/app");
+        assert_eq!(resolved.startup_command, "htop");
+    }
+
+    #[test]
+    fn path_autocomplete_suggests_remote_entries_for_path_commands() {
+        let suggestions = collect_autocomplete_candidates(
+            "cd lo",
+            &[],
+            &[],
+            "ssh:prod@example:22",
+            &[],
+            Some(&PathSuggestionContext {
+                current_path: Some("/var/www".to_string()),
+                startup_directory: Some("/srv/app".to_string()),
+                entries: vec![
+                    RemoteFileEntry {
+                        name: "logs".to_string(),
+                        path: "/var/www/logs".to_string(),
+                        is_dir: true,
+                        is_symlink: false,
+                        size: None,
+                    },
+                    RemoteFileEntry {
+                        name: "local.env".to_string(),
+                        path: "/var/www/local.env".to_string(),
+                        is_dir: false,
+                        is_symlink: false,
+                        size: Some(12),
+                    },
+                ],
+            }),
+            None,
+        );
+
+        assert_eq!(
+            suggestions.first().map(|item| item.command.clone()),
+            Some("cd logs/".to_string())
+        );
+        assert!(
+            suggestions
+                .iter()
+                .all(|item| item.source == AutocompleteSource::Path)
+        );
+    }
+
+    #[test]
+    fn path_autocomplete_uses_startup_and_recent_paths_without_sftp_context() {
+        let suggestions = collect_autocomplete_candidates(
+            "cd /sr",
+            &["tail -f /srv/app/log/app.log".to_string()],
+            &[],
+            "ssh:prod@example:22",
+            &[],
+            Some(&PathSuggestionContext {
+                current_path: Some("/srv/app".to_string()),
+                startup_directory: Some("/srv/app/current".to_string()),
+                entries: Vec::new(),
+            }),
+            None,
+        );
+
+        assert!(
+            suggestions
+                .iter()
+                .any(|item| item.command == "cd /srv/app/current/")
+        );
+        assert!(
+            suggestions
+                .iter()
+                .any(|item| item.command == "cd /srv/app/")
+        );
+    }
+
+    #[test]
+    fn argument_autocomplete_suggests_command_templates_for_known_families() {
+        let suggestions = collect_autocomplete_candidates(
+            "git ch",
+            &[],
+            &[],
+            "ssh:prod@example:22",
+            &[],
+            None,
+            None,
+        );
+
+        assert!(
+            suggestions
+                .iter()
+                .any(|item| item.command == "git checkout main"
+                    && item.source == AutocompleteSource::Argument)
+        );
+        assert!(
+            suggestions
+                .iter()
+                .all(|item| item.source == AutocompleteSource::Argument)
+        );
+    }
+
+    #[test]
+    fn command_palette_uses_builtin_metadata_for_argument_templates() {
+        let suggestions = collect_command_palette_candidates(
+            "docker comp",
+            &[],
+            &[],
+            "ssh:prod@example:22",
+            &[],
+            None,
+        );
+
+        assert!(suggestions.iter().any(|item| {
+            item.command == "docker compose logs -f"
+                && item.source == AutocompleteSource::Argument
+                && item.detail == "Stream logs for a compose project"
+        }));
+        assert!(suggestions.iter().any(|item| {
+            item.command == "docker compose up -d"
+                && item.detail == "Start compose services in the background"
+        }));
+    }
+
+    #[test]
+    fn workspace_runtime_summary_prioritizes_errors_and_connecting_states() {
+        let summary = workspace_runtime_summary(WorkspaceIndicators {
+            live_panes: 2,
+            connecting_panes: 1,
+            error_panes: 1,
+            closed_panes: 0,
+            split_count: 4,
+            unread_events: 0,
+        });
+
+        assert_eq!(
+            summary,
+            Some((
+                "1 Error • 1 Connecting".to_string(),
+                WorkspaceRuntimeTone::Error
+            ))
+        );
+    }
+
+    #[test]
+    fn workspace_runtime_summary_reports_live_and_closed_counts() {
+        let summary = workspace_runtime_summary(WorkspaceIndicators {
+            live_panes: 2,
+            connecting_panes: 0,
+            error_panes: 0,
+            closed_panes: 1,
+            split_count: 3,
+            unread_events: 0,
+        });
+
+        assert_eq!(
+            summary,
+            Some(("2 Live • 1 Closed".to_string(), WorkspaceRuntimeTone::Live))
+        );
+    }
+
+    #[test]
+    fn context_autocomplete_uses_recent_git_output() {
+        let suggestions = collect_autocomplete_candidates(
+            "git checkout ma",
+            &[],
+            &[],
+            "ssh:prod@example:22",
+            &[],
+            None,
+            Some(&OutputSuggestionContext {
+                current_path: Some("/srv/app".to_string()),
+                recent_lines: vec![
+                    "On branch main".to_string(),
+                    "  release/2026".to_string(),
+                    "  feature/auth".to_string(),
+                ],
+            }),
+        );
+
+        assert!(suggestions.iter().any(|item| {
+            item.command == "git checkout main"
+                && item.source == AutocompleteSource::Context
+                && item
+                    .scope_label
+                    .as_deref()
+                    .is_some_and(|detail| detail.contains("Git branch"))
+        }));
+    }
+
+    #[test]
+    fn command_palette_uses_recent_output_context_for_kubernetes_targets() {
+        let suggestions = collect_command_palette_candidates(
+            "kubectl logs ap",
+            &[],
+            &[],
+            "ssh:prod@example:22",
+            &[],
+            Some(&OutputSuggestionContext {
+                current_path: Some("/srv/app".to_string()),
+                recent_lines: vec![
+                    "NAME READY STATUS RESTARTS AGE".to_string(),
+                    "api-7bcdf9d4d8-ptx2m 1/1 Running 0 4m".to_string(),
+                    "worker-5cb88df4f7-cvt9k 1/1 Running 0 4m".to_string(),
+                ],
+            }),
+        );
+
+        assert!(suggestions.iter().any(|item| {
+            item.command == "kubectl logs api-7bcdf9d4d8-ptx2m"
+                && item.source == AutocompleteSource::Context
+                && item.detail.contains("Kubernetes pod")
+        }));
+    }
 }
 
-fn builtin_commands() -> &'static [&'static str] {
+fn builtin_command_templates() -> &'static [BuiltinCommandTemplate] {
     &[
-        "ls -la",
-        "pwd",
-        "cd /var/www",
-        "git status",
-        "git pull",
-        "docker ps",
-        "docker logs -f",
-        "systemctl status",
-        "journalctl -u",
-        "tail -f /var/log/syslog",
+        BuiltinCommandTemplate {
+            command: "pwd",
+            detail: "Print the current working directory",
+            source: AutocompleteSource::Builtin,
+        },
+        BuiltinCommandTemplate {
+            command: "ls -la",
+            detail: "List files with hidden entries and details",
+            source: AutocompleteSource::Builtin,
+        },
+        BuiltinCommandTemplate {
+            command: "cd /var/www",
+            detail: "Jump to a common web root path",
+            source: AutocompleteSource::Builtin,
+        },
+        BuiltinCommandTemplate {
+            command: "git status",
+            detail: "Show working tree status",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "git pull",
+            detail: "Fetch and merge from the tracked remote branch",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "git fetch --all",
+            detail: "Fetch all remotes without changing the working tree",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "git checkout main",
+            detail: "Switch to a branch or restore a path",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "git diff",
+            detail: "Inspect uncommitted changes",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "git log --oneline --decorate -20",
+            detail: "Show recent commit history in a compact view",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "docker ps",
+            detail: "List running containers",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "docker logs -f",
+            detail: "Stream container logs",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "docker exec -it",
+            detail: "Open an interactive shell inside a running container",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "docker compose ps",
+            detail: "List compose services and state",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "docker compose logs -f",
+            detail: "Stream logs for a compose project",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "docker compose up -d",
+            detail: "Start compose services in the background",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "kubectl get pods",
+            detail: "List pods in the current namespace",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "kubectl logs -f",
+            detail: "Stream logs from a Kubernetes pod",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "kubectl describe pod",
+            detail: "Inspect the full state of a pod",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "kubectl exec -it",
+            detail: "Open an interactive shell inside a pod",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "systemctl status",
+            detail: "Inspect a systemd unit",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "systemctl restart",
+            detail: "Restart a systemd unit",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "systemctl reload",
+            detail: "Reload a unit without a full restart when supported",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "journalctl -u",
+            detail: "View logs for a specific systemd unit",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "journalctl -f -u",
+            detail: "Follow logs for a systemd unit in real time",
+            source: AutocompleteSource::Argument,
+        },
+        BuiltinCommandTemplate {
+            command: "tail -f /var/log/syslog",
+            detail: "Follow a log file",
+            source: AutocompleteSource::Builtin,
+        },
     ]
 }

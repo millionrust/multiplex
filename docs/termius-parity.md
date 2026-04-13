@@ -16,18 +16,18 @@ This project is being pushed toward a native Rust replacement for Termius on Win
 
 ## Current State In This Repo
 
-- Implemented: SSH hosts, quick connect, imported SSH config hosts, reusable local identities, snippets with pinned workspace quick actions, starred hosts, host groups/tags with broader library search, batch host selection with bulk star/group actions, multiple saved port-forwarding rules per host including local TCP tunnels, remote reverse tunnels, and dynamic SOCKS5 proxies, multi-hop jump-host chains, known-host pinning, tabs, split panes, reconnect, logs, restorable workspaces, a workspace-level SFTP remote-files browser with upload/download/delete, a native local terminal with configurable default shell settings, first-class local vault containers for hosts/snippets/identities with local shared-vault member/role metadata, prompt-aware command capture, keyboard-selectable inline command autocomplete sourced from target-aware ranked snippets/history/built-ins, a searchable command palette for direct command execution, and a persisted settings surface for theme/font preferences plus portable data export/import including known-host trust records and passphrase-encrypted local backups.
+- Implemented: SSH hosts, quick connect, imported SSH config hosts, reusable local identities, snippets with pinned workspace quick actions, starred hosts, host groups/tags with broader library search, batch host selection with bulk star/group actions, host-group defaults with inheritance for identity/jump/startup settings, per-host startup directory/command preferences, multiple saved port-forwarding rules per host including local TCP tunnels, remote reverse tunnels, and dynamic SOCKS5 proxies, multi-hop jump-host chains, known-host pinning, tabs, split panes, reconnect, logs, restorable workspaces, a workspace-level SFTP remote-files browser with upload/download/delete, a native local terminal with configurable default shell settings, first-class local vault containers for hosts/snippets/identities with local shared-vault member/role metadata, prompt-aware command capture, keyboard-selectable inline command autocomplete sourced from target-aware ranked snippets/history/built-ins plus path-aware suggestions from remote-file/startup context, argument-aware command templates for common Git/Docker/Kubernetes/systemd flows, and live shell-context suggestions derived from recent terminal output, a searchable command palette for direct command execution with built-in and live-context command metadata, clearer workspace chrome with aggregate split-pane runtime health, and a persisted settings surface for theme/font preferences plus portable data export/import including known-host trust records and passphrase-encrypted local backups.
 - Implemented: cross-platform secure credential storage through the system credential store via `keyring`.
 - Partially aligned: vaults now exist locally in the data model and library UI, and shared vaults have local member/role metadata. Passphrase-encrypted local backups now exist as sync groundwork, but encrypted account sync/sharing transport, invitations, and remote collaboration flows are still missing.
 - Partially aligned: reusable identities now exist, but deeper identity metadata and sharing flows are still missing.
-- Missing for serious parity: vault sync, deeper shell intelligence/autocomplete, remote shared/team workflows, richer host inheritance/admin workflows, and packaging polish.
+- Missing for serious parity: vault sync, smarter shell-intelligence ranking from recent output/current directory, remote shared/team workflows, fuller host inheritance/admin workflows, and packaging polish.
 
 ## Recommended Build Order
 
 1. Identity model and host/group organization.
 2. Port forwarding and jump-host chains.
 3. Vault sync/team collaboration architecture.
-4. Deeper shell intelligence/autocomplete and UX polish.
+4. Smarter shell-intelligence ranking from recent output/current directory and UX polish.
 5. Packaging and platform-native distribution.
 
 ## UI Direction

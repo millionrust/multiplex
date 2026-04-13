@@ -165,6 +165,10 @@ pub struct HostProfile {
     #[serde(default)]
     pub jump_host_id: Option<String>,
     #[serde(default)]
+    pub startup_directory: Option<String>,
+    #[serde(default)]
+    pub startup_command: Option<String>,
+    #[serde(default)]
     pub port_forward_rules: Vec<PortForwardRule>,
     #[serde(default)]
     pub local_forwards: Vec<LocalPortForward>,
@@ -194,6 +198,16 @@ impl HostProfile {
     }
 
     pub fn normalize(&mut self) {
+        self.startup_directory = self
+            .startup_directory
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        self.startup_command = self
+            .startup_command
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
         self.port_forward_rules = normalize_port_forward_rules(
             self.port_forward_rules.clone(),
             self.local_forwards.clone(),
@@ -426,6 +440,21 @@ pub struct SavedCommandHistoryEntry {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SavedHostGroup {
+    pub label: String,
+    #[serde(default)]
+    pub vault_id: Option<String>,
+    #[serde(default)]
+    pub identity_id: Option<String>,
+    #[serde(default)]
+    pub jump_host_id: Option<String>,
+    #[serde(default)]
+    pub startup_directory: Option<String>,
+    #[serde(default)]
+    pub startup_command: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SavedVault {
     pub id: String,
     pub label: String,
@@ -528,6 +557,38 @@ impl SavedVault {
     }
 }
 
+impl SavedHostGroup {
+    pub fn normalize(&mut self) {
+        self.label = self.label.trim().to_string();
+        self.vault_id = self
+            .vault_id
+            .take()
+            .filter(|value| !value.trim().is_empty());
+        self.identity_id = self
+            .identity_id
+            .take()
+            .filter(|value| !value.trim().is_empty());
+        self.jump_host_id = self
+            .jump_host_id
+            .take()
+            .filter(|value| !value.trim().is_empty());
+        self.startup_directory = self
+            .startup_directory
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        self.startup_command = self
+            .startup_command
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+    }
+
+    pub fn display_name(&self) -> String {
+        self.label.trim().to_string()
+    }
+}
+
 impl SavedVaultMember {
     pub fn member_id() -> String {
         format!("member-{}", now_millis())
@@ -589,6 +650,8 @@ pub struct SavedState {
     #[serde(default)]
     pub vaults: Vec<SavedVault>,
     #[serde(default)]
+    pub host_groups: Vec<SavedHostGroup>,
+    #[serde(default)]
     pub profiles: Vec<HostProfile>,
     #[serde(default)]
     pub identities: Vec<SavedIdentity>,
@@ -609,6 +672,19 @@ pub struct SavedState {
 }
 
 impl SavedState {
+    pub fn ensure_host_groups(&mut self) {
+        for group in &mut self.host_groups {
+            group.normalize();
+        }
+        self.host_groups
+            .retain(|group| !group.label.trim().is_empty());
+        self.host_groups.sort_by(|left, right| {
+            left.display_name()
+                .to_ascii_lowercase()
+                .cmp(&right.display_name().to_ascii_lowercase())
+        });
+    }
+
     pub fn ensure_settings(&mut self) {
         self.settings.normalize();
     }
@@ -665,6 +741,7 @@ impl SavedState {
 
     pub fn ensure_vaults(&mut self) {
         self.ensure_settings();
+        self.ensure_host_groups();
         if !self.vaults.iter().any(|vault| vault.id == DEFAULT_VAULT_ID) {
             self.vaults.push(SavedVault::personal());
         }
@@ -747,6 +824,33 @@ impl SavedState {
         }
 
         self.ensure_vaults();
+    }
+
+    pub fn upsert_host_group(&mut self, mut group: SavedHostGroup) {
+        group.normalize();
+        if group.label.is_empty() {
+            return;
+        }
+
+        if let Some(existing) = self
+            .host_groups
+            .iter_mut()
+            .find(|item| item.label.eq_ignore_ascii_case(&group.label))
+        {
+            *existing = group;
+        } else {
+            self.host_groups.push(group);
+        }
+
+        self.ensure_host_groups();
+    }
+
+    pub fn remove_host_group(&mut self, label: &str) -> bool {
+        let before = self.host_groups.len();
+        self.host_groups
+            .retain(|group| !group.label.eq_ignore_ascii_case(label));
+        self.ensure_host_groups();
+        before != self.host_groups.len()
     }
 
     pub fn remove_vault(&mut self, vault_id: &str) -> bool {
@@ -940,6 +1044,8 @@ pub struct DraftProfile {
     pub key_path: String,
     pub identity_id: Option<String>,
     pub jump_host_id: Option<String>,
+    pub startup_directory: String,
+    pub startup_command: String,
     pub saved_port_forward_rules: Vec<PortForwardRule>,
     pub forward_kind: PortForwardKind,
     pub forward_local_port: String,
@@ -965,6 +1071,8 @@ impl DraftProfile {
             key_path: profile.key_path.clone(),
             identity_id: profile.identity_id.clone(),
             jump_host_id: profile.jump_host_id.clone(),
+            startup_directory: profile.startup_directory.clone().unwrap_or_default(),
+            startup_command: profile.startup_command.clone().unwrap_or_default(),
             saved_port_forward_rules: profile.effective_port_forward_rules(),
             forward_kind: PortForwardKind::Local,
             forward_local_port: String::new(),
@@ -1122,6 +1230,8 @@ impl DraftProfile {
                 None
             },
             jump_host_id: self.jump_host_id.clone(),
+            startup_directory: non_empty(self.startup_directory.trim()),
+            startup_command: non_empty(self.startup_command.trim()),
             port_forward_rules: self.parse_port_forward_rules()?,
             local_forwards: Vec::new(),
             local_forward: None,
@@ -1164,6 +1274,8 @@ impl DraftProfile {
             username: profile.username,
             auth: Some(auth),
             jump_host: None,
+            startup_directory: profile.startup_directory,
+            startup_command: profile.startup_command,
             port_forward_rules,
             local_shell: None,
         })
@@ -1308,6 +1420,8 @@ pub struct ConnectRequest {
     pub username: String,
     pub auth: Option<AuthConfig>,
     pub jump_host: Option<JumpHostConnection>,
+    pub startup_directory: Option<String>,
+    pub startup_command: Option<String>,
     pub port_forward_rules: Vec<PortForwardRule>,
     pub local_shell: Option<LocalShellConfig>,
 }
@@ -1378,6 +1492,8 @@ impl ConnectRequest {
                     .jump_host
                     .as_ref()
                     .and_then(JumpHostConnection::to_restorable),
+                startup_directory: self.startup_directory.clone(),
+                startup_command: self.startup_command.clone(),
                 port_forward_rules: self.port_forward_rules.clone(),
                 local_forwards: Vec::new(),
                 local_forward: None,
@@ -1391,6 +1507,8 @@ impl ConnectRequest {
                 username: self.username.clone(),
                 auth: None,
                 jump_host: None,
+                startup_directory: None,
+                startup_command: None,
                 port_forward_rules: Vec::new(),
                 local_forwards: Vec::new(),
                 local_forward: None,
@@ -1415,6 +1533,8 @@ impl ConnectRequest {
             username: current_username(),
             auth: None,
             jump_host: None,
+            startup_directory: None,
+            startup_command: None,
             port_forward_rules: Vec::new(),
             local_shell: Some(shell),
         }
@@ -1479,6 +1599,10 @@ pub struct RestorableConnection {
     #[serde(default)]
     pub jump_host: Option<RestorableJumpHostConnection>,
     #[serde(default)]
+    pub startup_directory: Option<String>,
+    #[serde(default)]
+    pub startup_command: Option<String>,
+    #[serde(default)]
     pub port_forward_rules: Vec<PortForwardRule>,
     #[serde(default)]
     pub local_forwards: Vec<LocalPortForward>,
@@ -1514,6 +1638,8 @@ impl RestorableConnection {
                         .jump_host
                         .as_ref()
                         .map(RestorableJumpHostConnection::to_jump_host_connection),
+                    startup_directory: self.startup_directory.clone(),
+                    startup_command: self.startup_command.clone(),
                     port_forward_rules: normalize_port_forward_rules(
                         self.port_forward_rules.clone(),
                         self.local_forwards.clone(),
@@ -1531,6 +1657,8 @@ impl RestorableConnection {
                 username: self.username.clone(),
                 auth: None,
                 jump_host: None,
+                startup_directory: None,
+                startup_command: None,
                 port_forward_rules: Vec::new(),
                 local_shell: self
                     .local_shell
@@ -1762,6 +1890,8 @@ impl QuickConnect {
             username: self.username.clone(),
             auth: Some(auth),
             jump_host: None,
+            startup_directory: None,
+            startup_command: None,
             port_forward_rules: Vec::new(),
             local_shell: None,
         }
@@ -1844,6 +1974,8 @@ mod tests {
                 password: "secret".to_string(),
             }),
             jump_host: None,
+            startup_directory: None,
+            startup_command: None,
             port_forward_rules: Vec::new(),
             local_shell: None,
         };
@@ -1864,6 +1996,8 @@ mod tests {
                 credential_id: "profile:app".to_string(),
             }),
             jump_host: None,
+            startup_directory: Some("/srv/app".to_string()),
+            startup_command: Some("git status".to_string()),
             port_forward_rules: Vec::new(),
             local_shell: None,
         };
@@ -1912,6 +2046,8 @@ mod tests {
                     jump_host: None,
                 })),
             }),
+            startup_directory: Some("/var/www/prod".to_string()),
+            startup_command: Some("docker compose ps".to_string()),
             port_forward_rules: vec![
                 PortForwardRule::Local {
                     forward: LocalPortForward {
@@ -1936,6 +2072,11 @@ mod tests {
         let restored = request.to_restorable().unwrap();
         assert_eq!(restored.title, "prod");
         assert_eq!(restored.port, 2222);
+        assert_eq!(restored.startup_directory.as_deref(), Some("/var/www/prod"));
+        assert_eq!(
+            restored.startup_command.as_deref(),
+            Some("docker compose ps")
+        );
 
         let request = restored.to_connect_request(9);
         assert_eq!(request.session_id, 9);
@@ -1990,6 +2131,8 @@ mod tests {
                     credential_id: "profile:prod".to_string(),
                 }),
                 jump_host: None,
+                startup_directory: None,
+                startup_command: None,
                 port_forward_rules: Vec::new(),
                 local_forwards: Vec::new(),
                 local_forward: None,
@@ -2012,6 +2155,8 @@ mod tests {
             username: "jacob".to_string(),
             auth: None,
             jump_host: None,
+            startup_directory: None,
+            startup_command: None,
             port_forward_rules: Vec::new(),
             local_shell: Some(LocalShellConfig {
                 program: "/bin/zsh".to_string(),
@@ -2091,6 +2236,8 @@ mod tests {
             key_path: "/tmp/id_ed25519".to_string(),
             identity_id: Some("identity-123".to_string()),
             jump_host_id: None,
+            startup_directory: "/var/www/app".to_string(),
+            startup_command: "docker compose ps".to_string(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Local,
             forward_local_port: String::new(),
@@ -2104,6 +2251,11 @@ mod tests {
         let profile = draft.to_profile("profile-1".to_string()).unwrap();
         assert!(profile.favorite);
         assert_eq!(profile.identity_id.as_deref(), Some("identity-123"));
+        assert_eq!(profile.startup_directory.as_deref(), Some("/var/www/app"));
+        assert_eq!(
+            profile.startup_command.as_deref(),
+            Some("docker compose ps")
+        );
         assert_eq!(
             profile.tags,
             vec![
@@ -2129,6 +2281,8 @@ mod tests {
             key_path: String::new(),
             identity_id: None,
             jump_host_id: None,
+            startup_directory: String::new(),
+            startup_command: String::new(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Local,
             forward_local_port: String::new(),
@@ -2160,6 +2314,8 @@ mod tests {
                 key_path: String::new(),
                 identity_id: None,
                 jump_host_id: None,
+                startup_directory: String::new(),
+                startup_command: String::new(),
                 saved_port_forward_rules: Vec::new(),
                 forward_kind: PortForwardKind::Local,
                 forward_local_port: String::new(),
@@ -2186,6 +2342,8 @@ mod tests {
                 key_path: String::new(),
                 identity_id: None,
                 jump_host_id: None,
+                startup_directory: String::new(),
+                startup_command: String::new(),
                 saved_port_forward_rules: Vec::new(),
                 forward_kind: PortForwardKind::Local,
                 forward_local_port: String::new(),
@@ -2262,6 +2420,8 @@ mod tests {
             key_path: "/tmp/id_ed25519".to_string(),
             identity_id: Some("identity-123".to_string()),
             jump_host_id: None,
+            startup_directory: String::new(),
+            startup_command: String::new(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Local,
             forward_local_port: "15432".to_string(),
@@ -2297,6 +2457,8 @@ mod tests {
             key_path: "/tmp/id_ed25519".to_string(),
             identity_id: Some("identity-123".to_string()),
             jump_host_id: None,
+            startup_directory: String::new(),
+            startup_command: String::new(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Dynamic,
             forward_local_port: "1080".to_string(),
@@ -2332,6 +2494,8 @@ mod tests {
             key_path: "/tmp/id_ed25519".to_string(),
             identity_id: Some("identity-123".to_string()),
             jump_host_id: None,
+            startup_directory: String::new(),
+            startup_command: String::new(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Remote,
             forward_local_port: "3000".to_string(),
@@ -2368,6 +2532,8 @@ mod tests {
             key_path: String::new(),
             identity_id: None,
             jump_host_id: None,
+            startup_directory: None,
+            startup_command: None,
             port_forward_rules: Vec::new(),
             local_forwards: Vec::new(),
             local_forward: Some(LocalPortForward {
@@ -2514,6 +2680,8 @@ mod tests {
             username: "deploy".to_string(),
             auth: None,
             jump_host: None,
+            startup_directory: Some("/srv/app".to_string()),
+            startup_command: Some("npm run status".to_string()),
             port_forward_rules: Vec::new(),
             local_shell: None,
         };

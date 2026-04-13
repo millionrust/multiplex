@@ -25,17 +25,24 @@ Other things worth knowing about:
 - Workspace tabs are draggable. You can reorder them.
 - Hosts can be starred, organized into groups, and surfaced in the library by priority.
 - The host library now supports batch selection, bulk star/unstar, and bulk group assignment for fleet cleanup.
+- Hosts can also save a startup directory and startup command, so SSH sessions open directly into the right project context.
+- Host groups can now save inheritable defaults for identity, jump host, and startup behavior, and hosts can load or inherit those defaults when their own fields are blank.
 - Reusable identities can be imported and reused across hosts.
 - Saved snippets can be reused, pinned, and sent into the active terminal.
 - Hosts now support tags, and the host library search matches labels, groups, tags, vaults, jump hosts, and endpoints.
 - Hosts can now save multiple port-forwarding rules, including local TCP tunnels, remote reverse tunnels, and dynamic SOCKS5 proxies, and start them automatically when they connect.
 - Hosts can optionally connect through saved jump-host chains.
 - Every workspace can switch into an SFTP remote-files view for browse, upload, download, and delete against the active host.
+- When a host has a saved startup directory, the remote Files view also opens there by default.
 - A native local terminal can be opened directly from the chrome and behaves like a normal workspace tab or split pane.
 - Vaults are now first-class local containers for hosts, snippets, and identities, with a dedicated library view plus local shared-vault member/role management.
 - The active terminal now gets keyboard-selectable, target-aware inline command autocomplete, ranked from current-host history, snippets, and built-in shell shortcuts.
 - Command history capture is now prompt-aware enough to ignore alternate-screen apps and avoid learning obviously incomplete shell continuations.
+- Inline autocomplete is now path-aware for path commands, using loaded remote-files context plus saved startup/current directories and recent path history.
+- Autocomplete also includes argument-aware command templates for common Git, Docker, Kubernetes, and systemd workflows, and the command palette carries the same task metadata through search and execution.
+- Autocomplete and the command palette now also lift live shell context out of recent terminal output, so branch names, container targets, Kubernetes pods, and systemd units can be suggested from what the session just printed.
 - Every terminal workspace now has a searchable command palette for snippets, recent commands, and built-in tasks, with keyboard navigation and direct execution.
+- Workspace chrome now shows aggregate runtime health for split tabs, so mixed live/connecting/error states are visible without hunting through individual panes.
 - A dedicated Settings view now persists global appearance theme and terminal font-size preferences, and applies them live.
 - Settings also define the default local terminal shell executable and startup directory for new local sessions.
 - Settings now include portable JSON export/import for hosts, vaults, identities, snippets, and known-host trust records, with credentials intentionally excluded.
@@ -62,7 +69,7 @@ This is early alpha. The following are on the radar but don't exist yet:
 
 - Drag-reordering split panes
 - Vault sync / remote team features
-- Deeper command autocomplete / shell intelligence
+- Deeper shell intelligence from live shell context and recent output
 - Platform-specific packaging polish
 
 ## License

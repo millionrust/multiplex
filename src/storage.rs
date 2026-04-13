@@ -649,6 +649,8 @@ fn flush_ssh_config_block(
                     .proxy_jump
                     .as_ref()
                     .map(|alias| imported_host_id(alias)),
+                startup_directory: None,
+                startup_command: None,
                 port_forward_rules: Vec::new(),
                 local_forwards: Vec::new(),
                 local_forward: None,
@@ -999,6 +1001,8 @@ Host app-prod
             key_path: String::new(),
             identity_id: None,
             jump_host_id: None,
+            startup_directory: Some("/srv/prod".to_string()),
+            startup_command: Some("sudo systemctl status app".to_string()),
             port_forward_rules: Vec::new(),
             local_forwards: Vec::new(),
             local_forward: None,
@@ -1098,6 +1102,8 @@ Host app-prod
             key_path: String::new(),
             identity_id: None,
             jump_host_id: None,
+            startup_directory: None,
+            startup_command: None,
             port_forward_rules: Vec::new(),
             local_forwards: Vec::new(),
             local_forward: None,

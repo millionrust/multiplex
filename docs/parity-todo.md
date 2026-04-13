@@ -1,39 +1,43 @@
 # Termius Parity TODO
 
-This is the working desktop parity backlog for the Rust client. It tracks the remaining product surface after the current host/workspace/SFTP/local-terminal/vault/autocomplete foundation.
+This is the working parity checklist for the native Rust desktop client. Completed items are omitted from the active backlog; this file tracks what still needs to be closed for serious Termius replacement parity.
 
-## Now
+## Active Priority
 
-- Keep the host editor and workspace chrome clear when multiple routing features are active.
-- Deepen forwarding further with richer per-rule metadata and runtime inspection/management.
-- Preserve backward compatibility for existing saved state and restored workspaces.
-
-## Next
-
-- Add richer shell intelligence:
-  - prompt-aware command capture
-  - argument and path suggestions
-  - command metadata and categories
-  - command metadata from shell context
-- Deepen host organization:
-  - stronger group views and inheritance
-  - richer per-host session preferences
-- Improve terminal/workspace polish:
+- Shell intelligence:
+  - smarter ranking from recent output/current directory
+- Host administration:
+  - richer host-group inheritance beyond identity/jump/startup
+  - group-level bulk actions and better group management views
+  - richer per-host session preferences beyond startup actions
+- Workspace polish:
   - better empty states
-  - more informative workspace status
-  - stronger cross-platform shortcut and focus behavior
+  - stronger cross-platform focus and shortcut behavior
 
-## Major Remaining Gaps
+## Platform And Packaging
 
-- Real encrypted vault sync across devices
-- Account/device reconciliation and conflict handling
-- Shared-vault invitations and remote collaboration workflows
-- Credential sharing / synced identities parity
-- Packaging and platform-native distribution polish
-- UI polish pass for desktop parity and consistency
+- Windows packaging/distribution flow
+- Linux packaging/distribution flow
+- installer/updater strategy
+- platform-native file dialogs, shortcuts, and clipboard edge cases
 
-## Acceptance Bar
+## Vault / Team / Sync
 
-- Feature parity should not regress existing saved-state compatibility.
-- New behavior needs tests when it changes persistence, restore, or protocol behavior.
-- UI changes should use global semantic theme tokens instead of ad hoc colors.
+- real encrypted vault sync across devices
+- account/device reconciliation and conflict handling
+- shared-vault invitations
+- remote collaboration workflows
+- credential sharing / synced identities parity
+
+## UI Parity Pass
+
+- final library/layout polish for hosts, snippets, vaults, and settings
+- deeper settings surface
+- stronger desktop onboarding and first-run states
+- visual consistency pass across all library and workspace surfaces
+
+## Working Rules
+
+- Preserve backward compatibility for saved state and restored workspaces.
+- Add tests when persistence, restore, or protocol behavior changes.
+- Use global semantic theme tokens instead of ad hoc UI colors.
