@@ -215,6 +215,7 @@ impl DraftInputs {
 struct ShellInputs {
     host_search: Entity<InputState>,
     quick_connect_password: Entity<InputState>,
+    bulk_group: Entity<InputState>,
     terminal_search: Entity<InputState>,
     command_palette: Entity<InputState>,
 }
@@ -311,6 +312,7 @@ impl ShellInputs {
                     .masked(true)
                     .placeholder("Password")
             }),
+            bulk_group: cx.new(|cx| InputState::new(window, cx).placeholder("Bulk group name")),
             terminal_search: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Search terminal output")),
             command_palette: cx.new(|cx| {
@@ -387,6 +389,7 @@ struct CommandPaletteCandidate {
     title: String,
     detail: String,
     source: AutocompleteSource,
+    pinned: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -501,6 +504,7 @@ pub struct TermiRustApp {
     workspaces: Vec<WorkspaceTab>,
     active_workspace_id: Option<u64>,
     selected_profile_id: Option<String>,
+    selected_host_ids: HashSet<String>,
     selected_snippet_id: Option<String>,
     selected_vault_id: Option<String>,
     selected_vault_member_id: Option<String>,
@@ -511,9 +515,11 @@ pub struct TermiRustApp {
     error_message: String,
     draft_identity_id: Option<String>,
     draft_vault_id: Option<String>,
+    draft_profile_favorite: bool,
     draft_port_forward_rules: Vec<PortForwardRule>,
     draft_port_forward_kind: PortForwardKind,
     snippet_vault_id: Option<String>,
+    snippet_pinned: bool,
     draft_vault_member_role: VaultMemberRole,
     known_hosts: Arc<KnownHostStore>,
     keychain_tab: KeychainTab,
@@ -586,6 +592,7 @@ impl TermiRustApp {
             workspaces: Vec::new(),
             active_workspace_id: None,
             selected_snippet_id: None,
+            selected_host_ids: HashSet::new(),
             selected_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             selected_vault_member_id: None,
             next_session_id: 1,
@@ -595,9 +602,11 @@ impl TermiRustApp {
             error_message: String::new(),
             draft_identity_id: None,
             draft_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            draft_profile_favorite: false,
             draft_port_forward_rules: Vec::new(),
             draft_port_forward_kind: PortForwardKind::Local,
             snippet_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            snippet_pinned: false,
             draft_vault_member_role: VaultMemberRole::Editor,
             known_hosts,
             keychain_tab: KeychainTab::Keys,
@@ -687,6 +696,7 @@ impl TermiRustApp {
         Ok(DraftProfile {
             label: self.inputs.label.read(cx).value().to_string(),
             vault_id: self.draft_vault_id.clone(),
+            favorite: self.draft_profile_favorite,
             group: self.inputs.group.read(cx).value().to_string(),
             tags: self.inputs.tags.read(cx).value().to_string(),
             host: self.inputs.host.read(cx).value().to_string(),
@@ -716,6 +726,17 @@ impl TermiRustApp {
     fn set_auth_mode(&mut self, auth_mode: AuthMode, cx: &mut Context<Self>) {
         self.draft_auth_mode = auth_mode;
         self.status_message = format!("Using {} authentication.", auth_mode.label());
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn toggle_draft_profile_favorite(&mut self, favorite: bool, cx: &mut Context<Self>) {
+        self.draft_profile_favorite = favorite;
+        self.status_message = if favorite {
+            "This host will be starred in the library.".to_string()
+        } else {
+            "This host will appear in the regular library groups.".to_string()
+        };
         self.error_message.clear();
         cx.notify();
     }
@@ -914,6 +935,10 @@ impl TermiRustApp {
             .to_string()
     }
 
+    fn current_bulk_group_input(&self, cx: &App) -> String {
+        self.shell_inputs.bulk_group.read(cx).value().to_string()
+    }
+
     fn set_quick_connect_password_input(
         &mut self,
         value: impl Into<SharedString>,
@@ -921,6 +946,15 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) {
         Self::set_input_value(&self.shell_inputs.quick_connect_password, value, window, cx);
+    }
+
+    fn set_bulk_group_input(
+        &mut self,
+        value: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        Self::set_input_value(&self.shell_inputs.bulk_group, value, window, cx);
     }
 
     fn selected_profile_mut(&mut self) -> Option<&mut HostProfile> {
@@ -1032,6 +1066,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
         self.draft_vault_id = Some(self.effective_vault_id(draft.vault_id.as_deref()));
+        self.draft_profile_favorite = draft.favorite;
         self.draft_port_forward_rules = draft.saved_port_forward_rules;
         self.draft_port_forward_kind = PortForwardKind::Local;
         self.draft_identity_id = draft.identity_id.or_else(|| {
@@ -1073,6 +1108,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
         self.draft_vault_id = Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
+        self.draft_profile_favorite = false;
         self.draft_port_forward_rules.clear();
         self.draft_port_forward_kind = PortForwardKind::Local;
         self.draft_identity_id = None;
@@ -1166,6 +1202,7 @@ impl TermiRustApp {
             label: self.snippet_inputs.label.read(cx).value().to_string(),
             vault_id: Some(self.effective_vault_id(self.snippet_vault_id.as_deref())),
             group: self.snippet_inputs.group.read(cx).value().to_string(),
+            pinned: self.snippet_pinned,
             command: self.snippet_inputs.command.read(cx).value().to_string(),
         }
     }
@@ -1204,6 +1241,7 @@ impl TermiRustApp {
             cx,
         );
         self.snippet_vault_id = Some(self.effective_vault_id(snippet.vault_id.as_deref()));
+        self.snippet_pinned = snippet.pinned;
         self.selected_snippet_id = Some(snippet.id.clone());
         self.nav_section = NavSection::Snippets;
         self.status_message = format!("Loaded snippet '{}'.", snippet.display_name());
@@ -1216,9 +1254,64 @@ impl TermiRustApp {
         Self::set_input_value(&self.snippet_inputs.group, "", window, cx);
         Self::set_input_value(&self.snippet_inputs.command, "", window, cx);
         self.snippet_vault_id = Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
+        self.snippet_pinned = false;
         self.selected_snippet_id = None;
         self.nav_section = NavSection::Snippets;
         self.status_message = "Snippet draft cleared.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn toggle_snippet_pinned(&mut self, pinned: bool, cx: &mut Context<Self>) {
+        self.snippet_pinned = pinned;
+        self.status_message = if pinned {
+            "Snippet will appear in pinned command quick actions.".to_string()
+        } else {
+            "Snippet removed from pinned command quick actions.".to_string()
+        };
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn set_saved_snippet_pinned(
+        &mut self,
+        snippet_id: &str,
+        pinned: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(snippet) = self
+            .saved
+            .snippets
+            .iter_mut()
+            .find(|item| item.id == snippet_id)
+        else {
+            return;
+        };
+
+        snippet.pinned = pinned;
+        self.saved.snippets.sort_by(|left, right| {
+            right.pinned.cmp(&left.pinned).then_with(|| {
+                left.display_name()
+                    .to_ascii_lowercase()
+                    .cmp(&right.display_name().to_ascii_lowercase())
+            })
+        });
+        if let Err(error) = save_saved_state(&self.saved) {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
+        }
+        if self.selected_snippet_id.as_deref() == Some(snippet_id) {
+            self.snippet_pinned = pinned;
+            self.load_snippet_into_inputs(snippet_id, window, cx);
+            return;
+        }
+        self.status_message = if pinned {
+            "Snippet pinned to workspace quick actions.".to_string()
+        } else {
+            "Snippet removed from workspace quick actions.".to_string()
+        };
         self.error_message.clear();
         cx.notify();
     }
@@ -1578,6 +1671,236 @@ impl TermiRustApp {
         let _ = self.run_command_in_active_pane(command, "Snippet sent to the active session.", cx);
     }
 
+    fn toggle_host_batch_selection(&mut self, profile_id: &str, cx: &mut Context<Self>) {
+        if !self.selected_host_ids.insert(profile_id.to_string()) {
+            self.selected_host_ids.remove(profile_id);
+        }
+        self.status_message = if self.selected_host_ids.is_empty() {
+            "Cleared host batch selection.".to_string()
+        } else {
+            format!(
+                "Selected {} host(s) for batch actions.",
+                self.selected_host_ids.len()
+            )
+        };
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn clear_host_batch_selection(&mut self, cx: &mut Context<Self>) {
+        self.selected_host_ids.clear();
+        self.status_message = "Cleared host batch selection.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn select_all_filtered_hosts(&mut self, cx: &mut Context<Self>) {
+        let ids = self.filtered_profile_ids(cx);
+        if ids.is_empty() {
+            self.error_message = "No hosts match the current filter.".to_string();
+            cx.notify();
+            return;
+        }
+        self.selected_host_ids = ids.into_iter().collect();
+        self.status_message = format!(
+            "Selected {} host(s) from the current filter.",
+            self.selected_host_ids.len()
+        );
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn set_profile_favorite(
+        &mut self,
+        profile_id: &str,
+        favorite: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let profile_label = {
+            let Some(profile) = self
+                .saved
+                .profiles
+                .iter_mut()
+                .find(|profile| profile.id == profile_id)
+            else {
+                return;
+            };
+
+            profile.favorite = favorite;
+            if profile.source == ProfileSource::SshConfig {
+                profile.source = ProfileSource::User;
+            }
+            profile.display_name()
+        };
+        self.saved.profiles.sort_by(|left, right| {
+            right.favorite.cmp(&left.favorite).then_with(|| {
+                left.display_name()
+                    .to_ascii_lowercase()
+                    .cmp(&right.display_name().to_ascii_lowercase())
+            })
+        });
+
+        if let Err(error) = save_saved_state(&self.saved) {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
+        }
+
+        if self.selected_profile_id.as_deref() == Some(profile_id) {
+            self.load_profile_into_inputs(profile_id, window, cx);
+            self.status_message = if favorite {
+                "Host starred.".to_string()
+            } else {
+                "Host removed from favorites.".to_string()
+            };
+            self.error_message.clear();
+            cx.notify();
+            return;
+        }
+
+        self.status_message = if favorite {
+            format!("Starred '{}'.", profile_label)
+        } else {
+            format!("Removed '{}' from starred hosts.", profile_label)
+        };
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn bulk_set_selected_hosts_favorite(
+        &mut self,
+        favorite: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.selected_host_ids.is_empty() {
+            self.error_message = "Select at least one host first.".to_string();
+            cx.notify();
+            return;
+        }
+
+        let selected = self.selected_host_ids.clone();
+        let mut updated = 0usize;
+        let mut promoted = 0usize;
+        for profile in &mut self.saved.profiles {
+            if selected.contains(&profile.id) {
+                profile.favorite = favorite;
+                if profile.source == ProfileSource::SshConfig {
+                    profile.source = ProfileSource::User;
+                    promoted += 1;
+                }
+                updated += 1;
+            }
+        }
+        self.saved.profiles.sort_by(|left, right| {
+            right.favorite.cmp(&left.favorite).then_with(|| {
+                left.display_name()
+                    .to_ascii_lowercase()
+                    .cmp(&right.display_name().to_ascii_lowercase())
+            })
+        });
+
+        if let Err(error) = save_saved_state(&self.saved) {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
+        }
+
+        if self
+            .selected_profile_id
+            .as_ref()
+            .is_some_and(|profile_id| selected.contains(profile_id))
+        {
+            if let Some(profile_id) = self.selected_profile_id.clone() {
+                self.load_profile_into_inputs(&profile_id, window, cx);
+            }
+        }
+
+        self.status_message = if promoted > 0 {
+            format!(
+                "{} host(s) updated. {} imported host(s) were saved as local copies.",
+                updated, promoted
+            )
+        } else if favorite {
+            format!("Starred {} selected host(s).", updated)
+        } else {
+            format!("Removed {} selected host(s) from favorites.", updated)
+        };
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn bulk_assign_selected_hosts_group(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.selected_host_ids.is_empty() {
+            self.error_message = "Select at least one host first.".to_string();
+            cx.notify();
+            return;
+        }
+
+        let group = self.current_bulk_group_input(cx).trim().to_string();
+        let selected = self.selected_host_ids.clone();
+        let mut updated = 0usize;
+        let mut promoted = 0usize;
+        for profile in &mut self.saved.profiles {
+            if selected.contains(&profile.id) {
+                profile.group = group.clone();
+                if profile.source == ProfileSource::SshConfig {
+                    profile.source = ProfileSource::User;
+                    promoted += 1;
+                }
+                updated += 1;
+            }
+        }
+
+        self.saved.profiles.sort_by(|left, right| {
+            right.favorite.cmp(&left.favorite).then_with(|| {
+                left.display_name()
+                    .to_ascii_lowercase()
+                    .cmp(&right.display_name().to_ascii_lowercase())
+            })
+        });
+
+        if let Err(error) = save_saved_state(&self.saved) {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
+        }
+
+        if self
+            .selected_profile_id
+            .as_ref()
+            .is_some_and(|profile_id| selected.contains(profile_id))
+        {
+            if let Some(profile_id) = self.selected_profile_id.clone() {
+                self.load_profile_into_inputs(&profile_id, window, cx);
+            }
+        }
+
+        self.status_message = if promoted > 0 {
+            format!(
+                "{} host(s) regrouped. {} imported host(s) were saved as local copies.",
+                updated, promoted
+            )
+        } else if group.is_empty() {
+            format!("Cleared the group for {} selected host(s).", updated)
+        } else {
+            format!("Assigned '{}' to {} selected host(s).", group, updated)
+        };
+        self.error_message.clear();
+        self.set_bulk_group_input("", window, cx);
+    }
+
+    fn pinned_snippet_quick_actions(&self) -> Vec<SavedSnippet> {
+        self.saved
+            .snippets
+            .iter()
+            .filter(|snippet| snippet.pinned)
+            .take(6)
+            .cloned()
+            .collect()
+    }
+
     fn pick_key_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(path) = FileDialog::new().pick_file() {
             match inspect_identity_file(&path) {
@@ -1719,6 +2042,7 @@ impl TermiRustApp {
         let Some(profile_id) = self.selected_profile_id.clone() else {
             return;
         };
+        self.selected_host_ids.remove(&profile_id);
         let credential_id = self
             .saved
             .profiles
@@ -1776,7 +2100,13 @@ impl TermiRustApp {
     fn filtered_profiles(&self, cx: &App) -> Vec<HostProfile> {
         let query = self.host_search_query(cx).to_ascii_lowercase();
         let mut profiles = self.saved.profiles.clone();
-        profiles.sort_by_key(|profile| profile.display_name().to_ascii_lowercase());
+        profiles.sort_by(|left, right| {
+            right.favorite.cmp(&left.favorite).then_with(|| {
+                left.display_name()
+                    .to_ascii_lowercase()
+                    .cmp(&right.display_name().to_ascii_lowercase())
+            })
+        });
 
         if query.is_empty() {
             return profiles;
@@ -1793,6 +2123,11 @@ impl TermiRustApp {
                     .unwrap_or_default();
                 let haystacks = [
                     profile.display_name(),
+                    if profile.favorite {
+                        "starred favorite".to_string()
+                    } else {
+                        String::new()
+                    },
                     profile.group.clone(),
                     profile.tags.join(" "),
                     profile.host.clone(),
@@ -1814,9 +2149,18 @@ impl TermiRustApp {
             .collect()
     }
 
+    fn filtered_profile_ids(&self, cx: &App) -> Vec<String> {
+        self.filtered_profiles(cx)
+            .into_iter()
+            .map(|profile| profile.id)
+            .collect()
+    }
+
     fn profile_group_name(profile: &HostProfile) -> String {
-        let group = profile.group.trim();
-        if !group.is_empty() {
+        if profile.favorite {
+            "Favorites".to_string()
+        } else if !profile.group.trim().is_empty() {
+            let group = profile.group.trim();
             group.to_string()
         } else if profile.source == ProfileSource::SshConfig {
             "Imported".to_string()
@@ -1827,9 +2171,10 @@ impl TermiRustApp {
 
     fn group_sort_key(group: &str) -> (u8, String) {
         match group {
-            "Imported" => (1, group.to_ascii_lowercase()),
-            "Ungrouped" => (2, group.to_ascii_lowercase()),
-            _ => (0, group.to_ascii_lowercase()),
+            "Favorites" => (0, group.to_ascii_lowercase()),
+            "Imported" => (2, group.to_ascii_lowercase()),
+            "Ungrouped" => (3, group.to_ascii_lowercase()),
+            _ => (1, group.to_ascii_lowercase()),
         }
     }
 
@@ -3579,10 +3924,11 @@ impl TermiRustApp {
     fn record_command_input(&mut self, pane_id: u64, data: &[u8]) {
         let mut completed_commands = Vec::new();
         let mut input_changed = false;
-        let Some((scope_key, scope_label)) = self.pane(pane_id).map(|pane| {
+        let Some((scope_key, scope_label, alternate_screen)) = self.pane(pane_id).map(|pane| {
             (
                 pane.request.history_scope_key(),
                 pane.request.history_scope_label(),
+                pane.terminal.alternate_screen(),
             )
         }) else {
             return;
@@ -3590,6 +3936,12 @@ impl TermiRustApp {
         let Some(pane) = self.pane_mut(pane_id) else {
             return;
         };
+
+        if alternate_screen {
+            pane.current_input.clear();
+            pane.selected_autocomplete_index = None;
+            return;
+        }
 
         if data.starts_with(b"\x1b") {
             return;
@@ -3600,9 +3952,19 @@ impl TermiRustApp {
                 b'\r' | b'\n' => {
                     let command = pane.current_input.trim().to_string();
                     if !command.is_empty() {
-                        completed_commands.push(command);
+                        if shell_command_requires_continuation(&command) {
+                            if !pane.current_input.ends_with('\n') {
+                                pane.current_input.push('\n');
+                            }
+                        } else if !pane.current_input.contains('\n') {
+                            completed_commands.push(command);
+                            pane.current_input.clear();
+                        } else {
+                            pane.current_input.clear();
+                        }
+                    } else {
+                        pane.current_input.clear();
                     }
-                    pane.current_input.clear();
                     input_changed = true;
                 }
                 0x08 | 0x7f => {
@@ -3636,7 +3998,12 @@ impl TermiRustApp {
         let Some(pane) = self.active_pane() else {
             return Vec::new();
         };
-        if !pane.connected || pane.closed || pane.current_input.trim().is_empty() {
+        if !pane.connected
+            || pane.closed
+            || pane.terminal.alternate_screen()
+            || pane.current_input.contains('\n')
+            || pane.current_input.trim().is_empty()
+        {
             return Vec::new();
         }
 
@@ -4780,10 +5147,14 @@ impl TermiRustApp {
         card_ix: usize,
         profile: &HostProfile,
         selected: bool,
+        batch_selected: bool,
         cx: &Context<Self>,
     ) -> Stateful<Div> {
         let profile_id = profile.id.clone();
         let connect_profile_id = profile.id.clone();
+        let favorite_profile_id = profile.id.clone();
+        let batch_profile_id = profile.id.clone();
+        let favorite_selected = profile.favorite;
         let accent = theme::host_chip_color(&profile.display_name());
         let group_label = profile.group.trim().to_string();
         let tags = profile.tags.iter().take(3).cloned().collect::<Vec<_>>();
@@ -4826,7 +5197,7 @@ impl TermiRustApp {
             .rounded(px(theme::CARD_RADIUS))
             .bg(theme::library_card())
             .border_1()
-            .border_color(if selected {
+            .border_color(if selected || batch_selected {
                 theme::accent()
             } else {
                 theme::border()
@@ -4875,6 +5246,20 @@ impl TermiRustApp {
                                     .text_color(theme::text_main())
                                     .child(profile.display_name()),
                             )
+                            .when(profile.favorite, |this| {
+                                this.child(self.status_badge(
+                                    "Starred",
+                                    theme::library_bg(),
+                                    theme::warning(),
+                                ))
+                            })
+                            .when(batch_selected, |this| {
+                                this.child(self.status_badge(
+                                    "Selected",
+                                    theme::library_bg(),
+                                    theme::success(),
+                                ))
+                            })
                             .when(profile.source == ProfileSource::SshConfig, |this| {
                                 this.child(self.status_badge(
                                     "SSH Config",
@@ -4951,15 +5336,50 @@ impl TermiRustApp {
                     }),
             )
             .child(
-                Button::new(("connect-host-card", card_ix))
-                    .small()
-                    .custom(Self::action_button_style(theme::ActionTone::AccentSoft, cx))
-                    .label("Connect")
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.show_editor_panel = false;
-                        this.load_profile_into_inputs(&connect_profile_id, window, cx);
-                        this.connect_current(window, cx);
-                    })),
+                v_flex()
+                    .gap_2()
+                    .items_end()
+                    .child(
+                        Button::new(("select-host-card", card_ix))
+                            .small()
+                            .custom(Self::action_button_style(
+                                if batch_selected {
+                                    theme::ActionTone::Success
+                                } else {
+                                    theme::ActionTone::Neutral
+                                },
+                                cx,
+                            ))
+                            .label(if batch_selected { "Selected" } else { "Select" })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.toggle_host_batch_selection(&batch_profile_id, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new(("favorite-host-card", card_ix))
+                            .small()
+                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                            .label(if profile.favorite { "Unstar" } else { "Star" })
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.set_profile_favorite(
+                                    &favorite_profile_id,
+                                    !favorite_selected,
+                                    window,
+                                    cx,
+                                );
+                            })),
+                    )
+                    .child(
+                        Button::new(("connect-host-card", card_ix))
+                            .small()
+                            .custom(Self::action_button_style(theme::ActionTone::AccentSoft, cx))
+                            .label("Connect")
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.show_editor_panel = false;
+                                this.load_profile_into_inputs(&connect_profile_id, window, cx);
+                                this.connect_current(window, cx);
+                            })),
+                    ),
             )
     }
 
@@ -4996,6 +5416,7 @@ impl TermiRustApp {
                         card_ix + group_ix,
                         profile,
                         self.selected_profile_id.as_deref() == Some(profile.id.as_str()),
+                        self.selected_host_ids.contains(profile.id.as_str()),
                         cx,
                     )
                     .min_w(px(HOST_CARD_WIDTH))
@@ -5287,6 +5708,40 @@ impl TermiRustApp {
                     ),
             )
             .child(self.form_field("Label", Input::new(&self.inputs.label)))
+            .child(
+                v_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child("Library priority"),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .children([false, true].into_iter().map(|favorite| {
+                                let active = self.draft_profile_favorite == favorite;
+                                Button::new(("draft-profile-favorite", favorite as usize))
+                                    .small()
+                                    .custom(Self::segmented_button_style(active, cx))
+                                    .label(if favorite { "Starred" } else { "Standard" })
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.toggle_draft_profile_favorite(favorite, cx);
+                                    }))
+                                    .into_any_element()
+                            })),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.))
+                            .text_color(theme::text_muted())
+                            .child(
+                                "Starred hosts stay pinned to the top of the library for your most-used machines.",
+                            ),
+                    ),
+            )
             .child(self.render_vault_picker(
                 self.draft_vault_id.as_deref(),
                 |vault_id, this, _, cx| {
@@ -5677,6 +6132,8 @@ impl TermiRustApp {
         let quick_connect = self.try_quick_connect_from_search(cx);
         let has_quick_connect = quick_connect.is_some();
         let quick_connect_password = self.current_quick_connect_password(cx);
+        let filtered_host_count = self.filtered_profile_ids(cx).len();
+        let selected_host_count = self.selected_host_ids.len();
 
         v_flex()
             .flex_1()
@@ -5745,6 +6202,76 @@ impl TermiRustApp {
                                 this.connect_current(window, cx);
                             })),
                     ),
+            )
+            .child(
+                h_flex()
+                    .px_4()
+                    .gap_2()
+                    .items_center()
+                    .flex_wrap()
+                    .child(self.status_badge(
+                        format!("{filtered_host_count} visible"),
+                        theme::library_card(),
+                        theme::text_muted(),
+                    ))
+                    .when(selected_host_count > 0, |this| {
+                        this.child(self.status_badge(
+                            format!("{selected_host_count} selected"),
+                            theme::library_card(),
+                            theme::success(),
+                        ))
+                    })
+                    .child(
+                        Button::new("hosts-select-all")
+                            .small()
+                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                            .label("Select All")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.select_all_filtered_hosts(cx);
+                            })),
+                    )
+                    .when(selected_host_count > 0, |this| {
+                        this.child(
+                            Button::new("hosts-clear-selection")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label("Clear")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.clear_host_batch_selection(cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("hosts-bulk-star")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Success, cx))
+                                .label("Star")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.bulk_set_selected_hosts_favorite(true, window, cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("hosts-bulk-unstar")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label("Unstar")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.bulk_set_selected_hosts_favorite(false, window, cx);
+                                })),
+                        )
+                        .child(Input::new(&self.shell_inputs.bulk_group).w(px(180.)))
+                        .child(
+                            Button::new("hosts-bulk-apply-group")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::AccentSoft,
+                                    cx,
+                                ))
+                                .label("Apply Group")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.bulk_assign_selected_hosts_group(window, cx);
+                                })),
+                        )
+                    }),
             )
             .when(
                 !quick_connect_password.trim().is_empty() && !has_quick_connect,
@@ -7046,7 +7573,7 @@ impl TermiRustApp {
                     .text_size(px(12.))
                     .line_height(relative(1.5))
                     .text_color(theme::text_muted())
-                    .child("Save repeatable commands and send them to the active terminal in one click."),
+                    .child("Save repeatable commands, pin the important ones, and send them to the active terminal in one click."),
             )
             .child(
                 v_flex()
@@ -7073,6 +7600,25 @@ impl TermiRustApp {
                     ))
                     .child(self.form_field("Group", Input::new(&self.snippet_inputs.group)))
                     .child(self.form_field("Command", Input::new(&self.snippet_inputs.command)))
+                    .child(
+                        h_flex()
+                            .p(px(3.))
+                            .rounded(px(8.))
+                            .bg(theme::hover())
+                            .children([true, false].into_iter().enumerate().map(
+                                |(index, pinned)| {
+                                    let active = self.snippet_pinned == pinned;
+                                    Button::new(("snippet-pin-toggle", index))
+                                        .small()
+                                        .custom(Self::segmented_button_style(active, _cx))
+                                        .label(if pinned { "Pinned" } else { "Library" })
+                                        .on_click(_cx.listener(move |this, _, _, cx| {
+                                            this.toggle_snippet_pinned(pinned, cx);
+                                        }))
+                                        .into_any_element()
+                                },
+                            )),
+                    )
                     .child(
                         h_flex()
                             .gap_2()
@@ -7124,6 +7670,8 @@ impl TermiRustApp {
                         let run_command = snippet.command.clone();
                         let group_label = snippet.group.trim().to_string();
                         let vault_label = self.effective_vault_name(snippet.vault_id.as_deref());
+                        let toggle_snippet_id = snippet.id.clone();
+                        let toggle_pinned = !snippet.pinned;
 
                         h_flex()
                             .id(("snippet-card", index))
@@ -7168,6 +7716,13 @@ impl TermiRustApp {
                                                     theme::slate(),
                                                 ))
                                             })
+                                            .when(snippet.pinned, |this| {
+                                                this.child(self.status_badge(
+                                                    "Pinned",
+                                                    theme::library_bg(),
+                                                    theme::warning(),
+                                                ))
+                                            })
                                             .child(self.status_badge(
                                                 vault_label,
                                                 theme::library_bg(),
@@ -7184,6 +7739,27 @@ impl TermiRustApp {
                             .child(
                                 h_flex()
                                     .gap_2()
+                                    .child(
+                                        Button::new(("snippet-pin", index))
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                if snippet.pinned {
+                                                    theme::ActionTone::AccentSoft
+                                                } else {
+                                                    theme::ActionTone::Neutral
+                                                },
+                                                _cx,
+                                            ))
+                                            .label(if snippet.pinned { "Unpin" } else { "Pin" })
+                                            .on_click(_cx.listener(move |this, _, window, cx| {
+                                                this.set_saved_snippet_pinned(
+                                                    &toggle_snippet_id,
+                                                    toggle_pinned,
+                                                    window,
+                                                    cx,
+                                                );
+                                            })),
+                                    )
                                     .child(
                                         Button::new(("snippet-run", index))
                                             .small()
@@ -8034,8 +8610,56 @@ impl TermiRustApp {
         let pane = self.active_pane()?;
 
         let current_input = pane.current_input.trim().to_string();
+        if current_input.is_empty() {
+            let snippets = self.pinned_snippet_quick_actions();
+            if snippets.is_empty() {
+                return None;
+            }
+
+            return Some(
+                h_flex()
+                    .h(px(WORKSPACE_AUTOCOMPLETE_HEIGHT))
+                    .w_full()
+                    .px_4()
+                    .gap_3()
+                    .items_center()
+                    .bg(theme::terminal_bg())
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        div()
+                            .text_size(px(10.5))
+                            .text_color(theme::text_muted_dark())
+                            .child("Pinned commands"),
+                    )
+                    .child(h_flex().flex_1().gap_2().overflow_x_scrollbar().children(
+                        snippets.into_iter().enumerate().map(|(index, snippet)| {
+                            let command = snippet.command.clone();
+                            Button::new(("workspace-pinned-snippet", index))
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::AccentSoft,
+                                    cx,
+                                ))
+                                .label(snippet.display_name())
+                                .icon(IconName::BookOpen)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.run_snippet_command(&command, cx);
+                                }))
+                                .into_any_element()
+                        }),
+                    ))
+                    .child(
+                        div()
+                            .text_size(px(10.))
+                            .text_color(theme::with_alpha(theme::text_muted_dark(), 0.75))
+                            .child("Pin snippets to keep your common commands one click away."),
+                    ),
+            );
+        }
+
         let candidates = self.workspace_autocomplete_candidates();
-        if current_input.is_empty() || candidates.is_empty() {
+        if candidates.is_empty() {
             return None;
         }
         let selected_index = self.selected_autocomplete_index(candidates.len());
@@ -9014,21 +9638,33 @@ impl TermiRustApp {
                                                                 .text_color(theme::text_main())
                                                                 .child(candidate.title.clone()),
                                                         )
-                                                        .child(self.status_badge(
-                                                            candidate.source.label(),
-                                                            theme::library_bg(),
-                                                            match candidate.source {
-                                                                AutocompleteSource::History => {
-                                                                    theme::accent()
-                                                                }
-                                                                AutocompleteSource::Snippet => {
-                                                                    theme::success()
-                                                                }
-                                                                AutocompleteSource::Builtin => {
-                                                                    theme::slate()
-                                                                }
-                                                            },
-                                                        )),
+                                                        .child(
+                                                            h_flex()
+                                                                .gap_2()
+                                                                .items_center()
+                                                                .when(candidate.pinned, |this| {
+                                                                    this.child(self.status_badge(
+                                                                        "Pinned",
+                                                                        theme::library_bg(),
+                                                                        theme::warning(),
+                                                                    ))
+                                                                })
+                                                                .child(self.status_badge(
+                                                                    candidate.source.label(),
+                                                                    theme::library_bg(),
+                                                                    match candidate.source {
+                                                                        AutocompleteSource::History => {
+                                                                            theme::accent()
+                                                                        }
+                                                                        AutocompleteSource::Snippet => {
+                                                                            theme::success()
+                                                                        }
+                                                                        AutocompleteSource::Builtin => {
+                                                                            theme::slate()
+                                                                        }
+                                                                    },
+                                                                )),
+                                                        ),
                                                 )
                                                 .child(
                                                     div()
@@ -9549,6 +10185,7 @@ fn collect_autocomplete_candidates(
     struct ScoredAutocompleteCandidate {
         candidate: AutocompleteCandidate,
         match_kind: AutocompleteMatchKind,
+        snippet_priority: u8,
         ordinal: usize,
     }
 
@@ -9578,6 +10215,7 @@ fn collect_autocomplete_candidates(
                     }),
                 },
                 match_kind,
+                snippet_priority: 1,
                 ordinal,
             });
         }
@@ -9597,6 +10235,7 @@ fn collect_autocomplete_candidates(
                     scope_label: None,
                 },
                 match_kind,
+                snippet_priority: 1,
                 ordinal: ordinal + scoped_command_history.len(),
             });
         }
@@ -9616,6 +10255,7 @@ fn collect_autocomplete_candidates(
                     scope_label: None,
                 },
                 match_kind,
+                snippet_priority: if snippet.pinned { 0 } else { 1 },
                 ordinal: ordinal + scoped_command_history.len() + command_history.len(),
             });
         }
@@ -9634,6 +10274,7 @@ fn collect_autocomplete_candidates(
                     scope_label: None,
                 },
                 match_kind,
+                snippet_priority: 1,
                 ordinal: ordinal
                     + scoped_command_history.len()
                     + command_history.len()
@@ -9651,6 +10292,7 @@ fn collect_autocomplete_candidates(
                     .priority()
                     .cmp(&right.candidate.source.priority())
             })
+            .then_with(|| left.snippet_priority.cmp(&right.snippet_priority))
             .then_with(|| left.ordinal.cmp(&right.ordinal))
             .then_with(|| {
                 left.candidate
@@ -9710,6 +10352,7 @@ fn collect_command_palette_candidates(
                     title: command.to_string(),
                     detail: format!("History • {scope}"),
                     source: AutocompleteSource::History,
+                    pinned: false,
                 },
                 match_kind,
                 ordinal,
@@ -9731,6 +10374,7 @@ fn collect_command_palette_candidates(
                     title: command.to_string(),
                     detail: "Recent command".to_string(),
                     source: AutocompleteSource::History,
+                    pinned: false,
                 },
                 match_kind,
                 ordinal,
@@ -9748,9 +10392,17 @@ fn collect_command_palette_candidates(
         };
         let key = command.to_ascii_lowercase();
         if seen.insert(key) {
-            let mut detail = format!("Snippet • {}", command);
+            let mut detail = if snippet.pinned {
+                format!("Pinned snippet • {}", command)
+            } else {
+                format!("Snippet • {}", command)
+            };
             if !snippet.group.trim().is_empty() {
-                detail = format!("Snippet • {} • {}", snippet.group.trim(), command);
+                detail = if snippet.pinned {
+                    format!("Pinned snippet • {} • {}", snippet.group.trim(), command)
+                } else {
+                    format!("Snippet • {} • {}", snippet.group.trim(), command)
+                };
             }
             suggestions.push(ScoredPaletteCandidate {
                 candidate: CommandPaletteCandidate {
@@ -9758,10 +10410,11 @@ fn collect_command_palette_candidates(
                     title,
                     detail,
                     source: AutocompleteSource::Snippet,
+                    pinned: snippet.pinned,
                 },
                 match_kind,
                 ordinal,
-                source_priority: 2,
+                source_priority: if snippet.pinned { 1 } else { 2 },
             });
         }
     }
@@ -9778,6 +10431,7 @@ fn collect_command_palette_candidates(
                     title: (*command).to_string(),
                     detail: "Built-in suggestion".to_string(),
                     source: AutocompleteSource::Builtin,
+                    pinned: false,
                 },
                 match_kind,
                 ordinal,
@@ -9841,6 +10495,108 @@ fn palette_match_kind(query: &str, fields: &[&str]) -> Option<AutocompleteMatchK
         .iter()
         .filter_map(|field| autocomplete_match_kind(query, &field.to_ascii_lowercase()))
         .min()
+}
+
+fn shell_command_requires_continuation(command: &str) -> bool {
+    let trimmed = command.trim_end();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    let trailing_backslashes = trimmed.chars().rev().take_while(|ch| *ch == '\\').count();
+    if trailing_backslashes % 2 == 1 {
+        return true;
+    }
+
+    if trimmed.ends_with("&&") || trimmed.ends_with("||") {
+        return true;
+    }
+
+    if trimmed.ends_with('|')
+        || trimmed.ends_with('(')
+        || trimmed.ends_with('{')
+        || trimmed.ends_with('[')
+    {
+        return true;
+    }
+
+    let mut single_quote = false;
+    let mut double_quote = false;
+    let mut backtick = false;
+    let mut escaped = false;
+    let mut paren_depth = 0i32;
+    let mut brace_depth = 0i32;
+    let mut bracket_depth = 0i32;
+
+    for ch in trimmed.chars() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+
+        match ch {
+            '\\' if !single_quote => {
+                escaped = true;
+            }
+            '\'' if !double_quote && !backtick => {
+                single_quote = !single_quote;
+            }
+            '"' if !single_quote && !backtick => {
+                double_quote = !double_quote;
+            }
+            '`' if !single_quote && !double_quote => {
+                backtick = !backtick;
+            }
+            '(' if !single_quote && !double_quote && !backtick => {
+                paren_depth += 1;
+            }
+            ')' if !single_quote && !double_quote && !backtick => {
+                paren_depth = (paren_depth - 1).max(0);
+            }
+            '{' if !single_quote && !double_quote && !backtick => {
+                brace_depth += 1;
+            }
+            '}' if !single_quote && !double_quote && !backtick => {
+                brace_depth = (brace_depth - 1).max(0);
+            }
+            '[' if !single_quote && !double_quote && !backtick => {
+                bracket_depth += 1;
+            }
+            ']' if !single_quote && !double_quote && !backtick => {
+                bracket_depth = (bracket_depth - 1).max(0);
+            }
+            _ => {}
+        }
+    }
+
+    single_quote
+        || double_quote
+        || backtick
+        || paren_depth > 0
+        || brace_depth > 0
+        || bracket_depth > 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shell_command_requires_continuation;
+
+    #[test]
+    fn shell_continuation_detects_unclosed_quotes_and_trailing_operators() {
+        assert!(shell_command_requires_continuation("echo \"unterminated"));
+        assert!(shell_command_requires_continuation("grep foo |"));
+        assert!(shell_command_requires_continuation("echo hello \\"));
+        assert!(shell_command_requires_continuation("if [ \"$x\" = \"y\""));
+    }
+
+    #[test]
+    fn shell_continuation_accepts_complete_single_line_commands() {
+        assert!(!shell_command_requires_continuation("git status"));
+        assert!(!shell_command_requires_continuation("echo \"done\""));
+        assert!(!shell_command_requires_continuation(
+            "kubectl get pods | cat"
+        ));
+    }
 }
 
 fn builtin_commands() -> &'static [&'static str] {

@@ -23,9 +23,10 @@ Other things worth knowing about:
 
 - Your user SSH config and key directory are imported automatically at launch, so your servers should already be there when you first open it.
 - Workspace tabs are draggable. You can reorder them.
-- Hosts can be organized into groups in the library.
+- Hosts can be starred, organized into groups, and surfaced in the library by priority.
+- The host library now supports batch selection, bulk star/unstar, and bulk group assignment for fleet cleanup.
 - Reusable identities can be imported and reused across hosts.
-- Saved snippets can be reused and sent into the active terminal.
+- Saved snippets can be reused, pinned, and sent into the active terminal.
 - Hosts now support tags, and the host library search matches labels, groups, tags, vaults, jump hosts, and endpoints.
 - Hosts can now save multiple port-forwarding rules, including local TCP tunnels, remote reverse tunnels, and dynamic SOCKS5 proxies, and start them automatically when they connect.
 - Hosts can optionally connect through saved jump-host chains.
@@ -33,6 +34,7 @@ Other things worth knowing about:
 - A native local terminal can be opened directly from the chrome and behaves like a normal workspace tab or split pane.
 - Vaults are now first-class local containers for hosts, snippets, and identities, with a dedicated library view plus local shared-vault member/role management.
 - The active terminal now gets keyboard-selectable, target-aware inline command autocomplete, ranked from current-host history, snippets, and built-in shell shortcuts.
+- Command history capture is now prompt-aware enough to ignore alternate-screen apps and avoid learning obviously incomplete shell continuations.
 - Every terminal workspace now has a searchable command palette for snippets, recent commands, and built-in tasks, with keyboard navigation and direct execution.
 - A dedicated Settings view now persists global appearance theme and terminal font-size preferences, and applies them live.
 - Settings also define the default local terminal shell executable and startup directory for new local sessions.

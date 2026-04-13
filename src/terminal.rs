@@ -96,6 +96,10 @@ impl TerminalState {
         self.parser.screen().application_cursor()
     }
 
+    pub fn alternate_screen(&self) -> bool {
+        self.parser.screen().alternate_screen()
+    }
+
     pub fn bracketed_paste(&self) -> bool {
         self.parser.screen().bracketed_paste()
     }

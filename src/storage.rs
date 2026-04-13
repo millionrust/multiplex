@@ -636,6 +636,7 @@ fn flush_ssh_config_block(
                 id: imported_host_id(alias),
                 label: alias.trim().to_string(),
                 vault_id: Some(crate::models::DEFAULT_VAULT_ID.to_string()),
+                favorite: false,
                 group: String::new(),
                 tags: Vec::new(),
                 host,
@@ -988,6 +989,7 @@ Host app-prod
             id: "profile-prod".to_string(),
             label: "Prod".to_string(),
             vault_id: Some("vault-shared-ops".to_string()),
+            favorite: true,
             group: "Production".to_string(),
             tags: vec!["critical".to_string()],
             host: "prod.example.com".to_string(),
@@ -1016,6 +1018,7 @@ Host app-prod
             label: "Restart".to_string(),
             vault_id: Some("vault-shared-ops".to_string()),
             group: "Ops".to_string(),
+            pinned: true,
             command: "sudo systemctl restart app".to_string(),
         });
 
@@ -1085,6 +1088,7 @@ Host app-prod
             id: "profile-prod".to_string(),
             label: "Prod".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            favorite: false,
             group: "Production".to_string(),
             tags: vec!["critical".to_string()],
             host: "prod.example.com".to_string(),
@@ -1105,6 +1109,7 @@ Host app-prod
             label: "Restart".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             group: "Ops".to_string(),
+            pinned: false,
             command: "sudo systemctl restart app".to_string(),
         });
 

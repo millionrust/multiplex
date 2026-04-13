@@ -14,10 +14,9 @@ This is the working desktop parity backlog for the Rust client. It tracks the re
   - prompt-aware command capture
   - argument and path suggestions
   - command metadata and categories
-  - command favorites / pinned quick actions
+  - command metadata from shell context
 - Deepen host organization:
-  - favorites / starred hosts
-  - stronger group views and bulk actions
+  - stronger group views and inheritance
   - richer per-host session preferences
 - Improve terminal/workspace polish:
   - better empty states

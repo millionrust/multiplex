@@ -147,6 +147,8 @@ pub struct HostProfile {
     #[serde(default)]
     pub vault_id: Option<String>,
     #[serde(default)]
+    pub favorite: bool,
+    #[serde(default)]
     pub group: String,
     #[serde(default)]
     pub tags: Vec<String>,
@@ -214,6 +216,16 @@ impl HostProfile {
             self.local_forward.clone(),
         )
     }
+}
+
+fn sort_profiles(profiles: &mut [HostProfile]) {
+    profiles.sort_by(|left, right| {
+        right.favorite.cmp(&left.favorite).then_with(|| {
+            left.display_name()
+                .to_ascii_lowercase()
+                .cmp(&right.display_name().to_ascii_lowercase())
+        })
+    });
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -365,6 +377,8 @@ pub struct SavedSnippet {
     pub vault_id: Option<String>,
     #[serde(default)]
     pub group: String,
+    #[serde(default)]
+    pub pinned: bool,
     pub command: String,
 }
 
@@ -779,8 +793,7 @@ impl SavedState {
         }
 
         self.ensure_vaults();
-        self.profiles
-            .sort_by_key(|profile| profile.display_name().to_ascii_lowercase());
+        sort_profiles(&mut self.profiles);
         self.selected_profile_id = Some(profile.id);
     }
 
@@ -809,8 +822,7 @@ impl SavedState {
         }
 
         self.ensure_vaults();
-        self.profiles
-            .sort_by_key(|profile| profile.display_name().to_ascii_lowercase());
+        sort_profiles(&mut self.profiles);
     }
 
     pub fn upsert_identity(&mut self, identity: SavedIdentity) {
@@ -872,8 +884,13 @@ impl SavedState {
         }
 
         self.ensure_vaults();
-        self.snippets
-            .sort_by_key(|snippet| snippet.display_name().to_ascii_lowercase());
+        self.snippets.sort_by(|left, right| {
+            right.pinned.cmp(&left.pinned).then_with(|| {
+                left.display_name()
+                    .to_ascii_lowercase()
+                    .cmp(&right.display_name().to_ascii_lowercase())
+            })
+        });
     }
 
     pub fn remove_snippet(&mut self, snippet_id: &str) {
@@ -913,6 +930,7 @@ pub fn identity_id_for_path(path: &str) -> String {
 pub struct DraftProfile {
     pub label: String,
     pub vault_id: Option<String>,
+    pub favorite: bool,
     pub group: String,
     pub tags: String,
     pub host: String,
@@ -937,6 +955,7 @@ impl DraftProfile {
         Self {
             label: profile.label.clone(),
             vault_id: profile.vault_id.clone(),
+            favorite: profile.favorite,
             group: profile.group.clone(),
             tags: profile.tags.join(", "),
             host: profile.host.clone(),
@@ -1089,6 +1108,7 @@ impl DraftProfile {
                 .vault_id
                 .clone()
                 .or_else(|| Some(DEFAULT_VAULT_ID.to_string())),
+            favorite: self.favorite,
             group: self.group.trim().to_string(),
             tags: self.parse_tags(),
             host: host.to_string(),
@@ -2061,6 +2081,7 @@ mod tests {
         let draft = DraftProfile {
             label: "prod".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            favorite: true,
             group: "Production".to_string(),
             tags: "critical, web, #blue".to_string(),
             host: "prod.example.com".to_string(),
@@ -2081,6 +2102,7 @@ mod tests {
         };
 
         let profile = draft.to_profile("profile-1".to_string()).unwrap();
+        assert!(profile.favorite);
         assert_eq!(profile.identity_id.as_deref(), Some("identity-123"));
         assert_eq!(
             profile.tags,
@@ -2097,6 +2119,7 @@ mod tests {
         let draft = DraftProfile {
             label: "ops".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            favorite: false,
             group: "Operations".to_string(),
             tags: "Prod, prod, #ops, ops ".to_string(),
             host: "ops.example.com".to_string(),
@@ -2121,6 +2144,68 @@ mod tests {
     }
 
     #[test]
+    fn favorite_profiles_are_sorted_before_other_hosts() {
+        let mut state = SavedState::default();
+        state.upsert_profile(
+            DraftProfile {
+                label: "zeta".to_string(),
+                vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+                favorite: false,
+                group: String::new(),
+                tags: String::new(),
+                host: "zeta.example.com".to_string(),
+                port: "22".to_string(),
+                username: "ubuntu".to_string(),
+                password: "secret".to_string(),
+                key_path: String::new(),
+                identity_id: None,
+                jump_host_id: None,
+                saved_port_forward_rules: Vec::new(),
+                forward_kind: PortForwardKind::Local,
+                forward_local_port: String::new(),
+                forward_remote_host: String::new(),
+                forward_remote_port: String::new(),
+                key_passphrase: String::new(),
+                password_credential_id: None,
+                auth_mode: AuthMode::Password,
+            }
+            .to_profile("profile-zeta".to_string())
+            .unwrap(),
+        );
+        state.upsert_profile(
+            DraftProfile {
+                label: "alpha".to_string(),
+                vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+                favorite: true,
+                group: String::new(),
+                tags: String::new(),
+                host: "alpha.example.com".to_string(),
+                port: "22".to_string(),
+                username: "ubuntu".to_string(),
+                password: "secret".to_string(),
+                key_path: String::new(),
+                identity_id: None,
+                jump_host_id: None,
+                saved_port_forward_rules: Vec::new(),
+                forward_kind: PortForwardKind::Local,
+                forward_local_port: String::new(),
+                forward_remote_host: String::new(),
+                forward_remote_port: String::new(),
+                key_passphrase: String::new(),
+                password_credential_id: None,
+                auth_mode: AuthMode::Password,
+            }
+            .to_profile("profile-alpha".to_string())
+            .unwrap(),
+        );
+
+        assert_eq!(state.profiles.len(), 2);
+        assert_eq!(state.profiles[0].label, "alpha");
+        assert!(state.profiles[0].favorite);
+        assert_eq!(state.profiles[1].label, "zeta");
+    }
+
+    #[test]
     fn snippets_are_sorted_by_display_name() {
         let mut state = SavedState::default();
         state.upsert_snippet(SavedSnippet {
@@ -2128,6 +2213,7 @@ mod tests {
             label: "Restart".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             group: "Ops".to_string(),
+            pinned: false,
             command: "sudo systemctl restart app".to_string(),
         });
         state.upsert_snippet(SavedSnippet {
@@ -2135,12 +2221,14 @@ mod tests {
             label: "Deploy".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             group: "Ops".to_string(),
+            pinned: true,
             command: "./deploy.sh".to_string(),
         });
 
         assert_eq!(state.snippets.len(), 2);
         assert_eq!(state.snippets[0].label, "Deploy");
         assert_eq!(state.snippets[1].label, "Restart");
+        assert!(state.snippets[0].pinned);
     }
 
     #[test]
@@ -2151,6 +2239,7 @@ mod tests {
             label: "Tail logs".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             group: String::new(),
+            pinned: false,
             command: "tail -f /var/log/app.log".to_string(),
         });
 
@@ -2163,6 +2252,7 @@ mod tests {
         let draft = DraftProfile {
             label: "db".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            favorite: false,
             group: "Data".to_string(),
             tags: "postgres, private".to_string(),
             host: "db.example.com".to_string(),
@@ -2197,6 +2287,7 @@ mod tests {
         let draft = DraftProfile {
             label: "proxy".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            favorite: false,
             group: "Networking".to_string(),
             tags: "socks".to_string(),
             host: "bastion.example.com".to_string(),
@@ -2231,6 +2322,7 @@ mod tests {
         let draft = DraftProfile {
             label: "reverse-proxy".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            favorite: false,
             group: "Networking".to_string(),
             tags: "reverse".to_string(),
             host: "bastion.example.com".to_string(),
@@ -2266,6 +2358,7 @@ mod tests {
             id: "legacy-forward".to_string(),
             label: "Legacy".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            favorite: false,
             group: String::new(),
             tags: Vec::new(),
             host: "legacy.example.com".to_string(),
@@ -2311,6 +2404,7 @@ mod tests {
             label: "Deploy".to_string(),
             vault_id: Some("vault-missing".to_string()),
             group: String::new(),
+            pinned: false,
             command: "./deploy.sh".to_string(),
         });
 
