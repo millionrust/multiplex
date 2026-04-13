@@ -4,8 +4,8 @@ This is the working desktop parity backlog for the Rust client. It tracks the re
 
 ## Now
 
-- Expand SSH port forwarding from a single optional local tunnel to a richer saved rule model.
 - Keep the host editor and workspace chrome clear when multiple routing features are active.
+- Deepen forwarding further with remote port-forwarding rules and richer per-rule metadata.
 - Preserve backward compatibility for existing saved state and restored workspaces.
 
 ## Next

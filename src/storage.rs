@@ -648,6 +648,7 @@ fn flush_ssh_config_block(
                     .proxy_jump
                     .as_ref()
                     .map(|alias| imported_host_id(alias)),
+                port_forward_rules: Vec::new(),
                 local_forwards: Vec::new(),
                 local_forward: None,
                 password_credential_id: None,
@@ -996,6 +997,7 @@ Host app-prod
             key_path: String::new(),
             identity_id: None,
             jump_host_id: None,
+            port_forward_rules: Vec::new(),
             local_forwards: Vec::new(),
             local_forward: None,
             password_credential_id: Some("secret-ref".to_string()),
@@ -1092,6 +1094,7 @@ Host app-prod
             key_path: String::new(),
             identity_id: None,
             jump_host_id: None,
+            port_forward_rules: Vec::new(),
             local_forwards: Vec::new(),
             local_forward: None,
             password_credential_id: Some("secret-ref".to_string()),

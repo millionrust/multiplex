@@ -14,7 +14,10 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::credentials;
-use crate::models::{AuthConfig, ConnectRequest, JumpHostConnection, LocalPortForward};
+use crate::models::{
+    AuthConfig, ConnectRequest, DynamicPortForward, JumpHostConnection, LocalPortForward,
+    PortForwardRule,
+};
 use crate::storage::{HostKeyDecision, KnownHostStore};
 use crate::terminal::TerminalSize;
 
@@ -153,8 +156,17 @@ async fn run_session(
         .await
         .context("Unable to start an interactive shell")?;
 
-    for forward in request.local_forwards.clone() {
-        start_local_forwarder(established.target_handle.clone(), session_id, forward).await?;
+    for rule in request.port_forward_rules.clone() {
+        match rule {
+            PortForwardRule::Local { forward } => {
+                start_local_forwarder(established.target_handle.clone(), session_id, forward)
+                    .await?;
+            }
+            PortForwardRule::Dynamic { forward } => {
+                start_dynamic_forwarder(established.target_handle.clone(), session_id, forward)
+                    .await?;
+            }
+        }
     }
 
     eprintln!("[ssh][{session_id}] shell started, sending Connected event");
@@ -500,11 +512,13 @@ async fn start_local_forwarder(
                     let handle = handle.clone();
                     let forward = forward.clone();
                     tokio::spawn(async move {
-                        if let Err(error) = proxy_local_forward_connection(
+                        if let Err(error) = proxy_direct_tcpip_connection(
                             handle,
                             stream,
                             originator_addr,
-                            &forward,
+                            forward.remote_host.clone(),
+                            forward.remote_port,
+                            forward.display_name(),
                         )
                         .await
                         {
@@ -526,23 +540,92 @@ async fn start_local_forwarder(
     Ok(())
 }
 
-async fn proxy_local_forward_connection(
+async fn start_dynamic_forwarder(
+    handle: Arc<Mutex<client::Handle<SessionHandler>>>,
+    session_id: u64,
+    forward: DynamicPortForward,
+) -> Result<()> {
+    let bind_addr = format!("{}:{}", forward.local_host, forward.local_port);
+    let listener = TcpListener::bind(&bind_addr)
+        .await
+        .with_context(|| format!("Unable to bind dynamic forward on {bind_addr}"))?;
+
+    eprintln!(
+        "[ssh][{session_id}] dynamic forward listening on {} (SOCKS5)",
+        bind_addr
+    );
+
+    tokio::spawn(async move {
+        loop {
+            match listener.accept().await {
+                Ok((stream, originator_addr)) => {
+                    let handle = handle.clone();
+                    let forward = forward.clone();
+                    tokio::spawn(async move {
+                        if let Err(error) = proxy_dynamic_forward_connection(
+                            handle,
+                            stream,
+                            originator_addr,
+                            &forward,
+                        )
+                        .await
+                        {
+                            eprintln!(
+                                "[ssh][{session_id}] dynamic forward {} failed: {error:#}",
+                                forward.display_name()
+                            );
+                        }
+                    });
+                }
+                Err(error) => {
+                    eprintln!("[ssh][{session_id}] dynamic forward accept loop stopped: {error:#}");
+                    break;
+                }
+            }
+        }
+    });
+
+    Ok(())
+}
+
+async fn proxy_dynamic_forward_connection(
     handle: Arc<Mutex<client::Handle<SessionHandler>>>,
     mut stream: TcpStream,
     originator_addr: std::net::SocketAddr,
-    forward: &LocalPortForward,
+    forward: &DynamicPortForward,
+) -> Result<()> {
+    let (target_host, target_port) = negotiate_socks5_target(&mut stream).await?;
+    let display_name = format!("{} -> {target_host}:{target_port}", forward.display_name());
+    proxy_direct_tcpip_connection(
+        handle,
+        stream,
+        originator_addr,
+        target_host,
+        target_port,
+        display_name,
+    )
+    .await
+}
+
+async fn proxy_direct_tcpip_connection(
+    handle: Arc<Mutex<client::Handle<SessionHandler>>>,
+    mut stream: TcpStream,
+    originator_addr: std::net::SocketAddr,
+    target_host: String,
+    target_port: u16,
+    display_name: String,
 ) -> Result<()> {
     let mut channel = {
         let handle = handle.lock().await;
         handle
             .channel_open_direct_tcpip(
-                forward.remote_host.clone(),
-                forward.remote_port.into(),
+                target_host,
+                target_port.into(),
                 originator_addr.ip().to_string(),
                 originator_addr.port().into(),
             )
             .await
-            .with_context(|| format!("Unable to open remote forward {}", forward.display_name()))?
+            .with_context(|| format!("Unable to open remote forward {display_name}"))?
     };
 
     let mut socket_closed = false;
@@ -586,6 +669,105 @@ async fn proxy_local_forward_connection(
     }
 
     Ok(())
+}
+
+async fn negotiate_socks5_target(stream: &mut TcpStream) -> Result<(String, u16)> {
+    let mut header = [0u8; 2];
+    stream
+        .read_exact(&mut header)
+        .await
+        .context("Unable to read SOCKS5 greeting")?;
+    if header[0] != 0x05 {
+        bail!("Unsupported SOCKS version {}", header[0]);
+    }
+
+    let method_count = header[1] as usize;
+    let mut methods = vec![0u8; method_count];
+    stream
+        .read_exact(&mut methods)
+        .await
+        .context("Unable to read SOCKS5 methods")?;
+    if !methods.contains(&0x00) {
+        stream
+            .write_all(&[0x05, 0xff])
+            .await
+            .context("Unable to reject SOCKS5 authentication methods")?;
+        bail!("SOCKS5 client did not offer no-auth mode");
+    }
+
+    stream
+        .write_all(&[0x05, 0x00])
+        .await
+        .context("Unable to acknowledge SOCKS5 method")?;
+
+    let mut request_header = [0u8; 4];
+    stream
+        .read_exact(&mut request_header)
+        .await
+        .context("Unable to read SOCKS5 request header")?;
+    if request_header[0] != 0x05 {
+        bail!("Unsupported SOCKS request version {}", request_header[0]);
+    }
+    if request_header[1] != 0x01 {
+        stream
+            .write_all(&[0x05, 0x07, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+            .await
+            .context("Unable to reject SOCKS5 command")?;
+        bail!("Only SOCKS5 CONNECT is supported");
+    }
+
+    let host = match request_header[3] {
+        0x01 => {
+            let mut addr = [0u8; 4];
+            stream
+                .read_exact(&mut addr)
+                .await
+                .context("Unable to read SOCKS5 IPv4 target")?;
+            std::net::Ipv4Addr::from(addr).to_string()
+        }
+        0x03 => {
+            let mut length = [0u8; 1];
+            stream
+                .read_exact(&mut length)
+                .await
+                .context("Unable to read SOCKS5 domain length")?;
+            let mut domain = vec![0u8; length[0] as usize];
+            stream
+                .read_exact(&mut domain)
+                .await
+                .context("Unable to read SOCKS5 domain target")?;
+            String::from_utf8(domain).context("SOCKS5 domain target is not valid UTF-8")?
+        }
+        0x04 => {
+            let mut addr = [0u8; 16];
+            stream
+                .read_exact(&mut addr)
+                .await
+                .context("Unable to read SOCKS5 IPv6 target")?;
+            std::net::Ipv6Addr::from(addr).to_string()
+        }
+        atyp => {
+            stream
+                .write_all(&[0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+                .await
+                .context("Unable to reject SOCKS5 address type")?;
+            bail!("Unsupported SOCKS5 address type {atyp}");
+        }
+    };
+
+    let mut port_bytes = [0u8; 2];
+    stream
+        .read_exact(&mut port_bytes)
+        .await
+        .context("Unable to read SOCKS5 target port")?;
+    let port = u16::from_be_bytes(port_bytes);
+
+    stream
+        .write_all(&[0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0])
+        .await
+        .context("Unable to acknowledge SOCKS5 connect request")?;
+
+    Ok((host, port))
 }
 
 #[derive(Clone)]
