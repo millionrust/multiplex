@@ -27,7 +27,7 @@ Other things worth knowing about:
 - Reusable identities can be imported and reused across hosts.
 - Saved snippets can be reused and sent into the active terminal.
 - Hosts now support tags, and the host library search matches labels, groups, tags, vaults, jump hosts, and endpoints.
-- Hosts can now save multiple port-forwarding rules, including local TCP tunnels and dynamic SOCKS5 proxies, and start them automatically when they connect.
+- Hosts can now save multiple port-forwarding rules, including local TCP tunnels, remote reverse tunnels, and dynamic SOCKS5 proxies, and start them automatically when they connect.
 - Hosts can optionally connect through saved jump-host chains.
 - Every workspace can switch into an SFTP remote-files view for browse, upload, download, and delete against the active host.
 - A native local terminal can be opened directly from the chrome and behaves like a normal workspace tab or split pane.

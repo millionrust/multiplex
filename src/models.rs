@@ -284,12 +284,32 @@ impl DynamicPortForward {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemotePortForward {
+    #[serde(default = "default_local_forward_host")]
+    pub local_host: String,
+    pub local_port: u16,
+    #[serde(default = "default_local_forward_host")]
+    pub remote_host: String,
+    pub remote_port: u16,
+}
+
+impl RemotePortForward {
+    pub fn display_name(&self) -> String {
+        format!(
+            "Remote {}:{} <- {}:{}",
+            self.remote_host, self.remote_port, self.local_host, self.local_port
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PortForwardKind {
     #[default]
     Local,
     Dynamic,
+    Remote,
 }
 
 impl PortForwardKind {
@@ -297,6 +317,7 @@ impl PortForwardKind {
         match self {
             Self::Local => "Local",
             Self::Dynamic => "Dynamic",
+            Self::Remote => "Remote",
         }
     }
 }
@@ -312,6 +333,10 @@ pub enum PortForwardRule {
         #[serde(flatten)]
         forward: DynamicPortForward,
     },
+    Remote {
+        #[serde(flatten)]
+        forward: RemotePortForward,
+    },
 }
 
 impl PortForwardRule {
@@ -319,6 +344,7 @@ impl PortForwardRule {
         match self {
             Self::Local { .. } => PortForwardKind::Local,
             Self::Dynamic { .. } => PortForwardKind::Dynamic,
+            Self::Remote { .. } => PortForwardKind::Remote,
         }
     }
 
@@ -326,6 +352,7 @@ impl PortForwardRule {
         match self {
             Self::Local { forward } => forward.display_name(),
             Self::Dynamic { forward } => forward.display_name(),
+            Self::Remote { forward } => forward.display_name(),
         }
     }
 }
@@ -982,6 +1009,32 @@ impl DraftProfile {
                         local_host: default_local_forward_host(),
                         local_port: local_port.parse::<u16>().with_context(|| {
                             format!("Invalid local forward port '{local_port}'")
+                        })?,
+                    },
+                }))
+            }
+            PortForwardKind::Remote => {
+                let local_port = self.forward_local_port.trim();
+                let remote_host = self.forward_remote_host.trim();
+                let remote_port = self.forward_remote_port.trim();
+
+                if local_port.is_empty() && remote_host.is_empty() && remote_port.is_empty() {
+                    return Ok(None);
+                }
+
+                if local_port.is_empty() || remote_host.is_empty() || remote_port.is_empty() {
+                    bail!("Remote forwarding requires local port, remote host, and remote port");
+                }
+
+                Ok(Some(PortForwardRule::Remote {
+                    forward: RemotePortForward {
+                        local_host: default_local_forward_host(),
+                        local_port: local_port.parse::<u16>().with_context(|| {
+                            format!("Invalid local forward port '{local_port}'")
+                        })?,
+                        remote_host: remote_host.to_string(),
+                        remote_port: remote_port.parse::<u16>().with_context(|| {
+                            format!("Invalid remote forward port '{remote_port}'")
                         })?,
                     },
                 }))
@@ -2170,6 +2223,40 @@ mod tests {
                 .first()
                 .map(PortForwardRule::display_name),
             Some("SOCKS5 127.0.0.1:1080".to_string())
+        );
+    }
+
+    #[test]
+    fn draft_profile_parses_remote_forward() {
+        let draft = DraftProfile {
+            label: "reverse-proxy".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            group: "Networking".to_string(),
+            tags: "reverse".to_string(),
+            host: "bastion.example.com".to_string(),
+            port: "22".to_string(),
+            username: "ubuntu".to_string(),
+            password: String::new(),
+            key_path: "/tmp/id_ed25519".to_string(),
+            identity_id: Some("identity-123".to_string()),
+            jump_host_id: None,
+            saved_port_forward_rules: Vec::new(),
+            forward_kind: PortForwardKind::Remote,
+            forward_local_port: "3000".to_string(),
+            forward_remote_host: "0.0.0.0".to_string(),
+            forward_remote_port: "8443".to_string(),
+            key_passphrase: String::new(),
+            password_credential_id: None,
+            auth_mode: AuthMode::PrivateKey,
+        };
+
+        let profile = draft.to_profile("profile-remote".to_string()).unwrap();
+        assert_eq!(
+            profile
+                .port_forward_rules
+                .first()
+                .map(PortForwardRule::display_name),
+            Some("Remote 0.0.0.0:8443 <- 127.0.0.1:3000".to_string())
         );
     }
 

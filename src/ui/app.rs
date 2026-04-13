@@ -5329,7 +5329,7 @@ impl TermiRustApp {
                         div()
                             .text_size(px(10.))
                             .text_color(theme::text_muted())
-                            .child("Save local tunnels or a dynamic SOCKS5 proxy and launch them automatically with the host."),
+                            .child("Save local tunnels, remote reverse tunnels, or a dynamic SOCKS5 proxy and launch them automatically with the host."),
                     )
                     .child(
                         h_flex()
@@ -5337,7 +5337,11 @@ impl TermiRustApp {
                             .rounded(px(8.))
                             .bg(theme::hover())
                             .children(
-                                [PortForwardKind::Local, PortForwardKind::Dynamic]
+                                [
+                                    PortForwardKind::Local,
+                                    PortForwardKind::Remote,
+                                    PortForwardKind::Dynamic,
+                                ]
                                     .into_iter()
                                     .enumerate()
                                     .map(|(index, kind)| {
@@ -5419,22 +5423,37 @@ impl TermiRustApp {
                         h_flex()
                             .gap_3()
                             .child(
-                                self.form_field("Local Port", Input::new(&self.inputs.forward_local_port))
+                                self.form_field(
+                                    if self.draft_port_forward_kind == PortForwardKind::Remote {
+                                        "Local Target Port"
+                                    } else {
+                                        "Local Port"
+                                    },
+                                    Input::new(&self.inputs.forward_local_port),
+                                )
                                     .flex_1(),
                             )
                             .when(
-                                self.draft_port_forward_kind == PortForwardKind::Local,
+                                self.draft_port_forward_kind != PortForwardKind::Dynamic,
                                 |this| {
                                     this.child(
                                         self.form_field(
-                                            "Remote Host",
+                                            if self.draft_port_forward_kind == PortForwardKind::Remote {
+                                                "Remote Bind Host"
+                                            } else {
+                                                "Remote Host"
+                                            },
                                             Input::new(&self.inputs.forward_remote_host),
                                         )
                                         .flex_1(),
                                     )
                                     .child(
                                         self.form_field(
-                                            "Remote Port",
+                                            if self.draft_port_forward_kind == PortForwardKind::Remote {
+                                                "Remote Bind Port"
+                                            } else {
+                                                "Remote Port"
+                                            },
                                             Input::new(&self.inputs.forward_remote_port),
                                         )
                                         .flex_1(),
@@ -5462,10 +5481,16 @@ impl TermiRustApp {
                                 div()
                                     .text_size(px(10.))
                                     .text_color(theme::text_muted())
-                                    .child(if self.draft_port_forward_kind == PortForwardKind::Local {
-                                        "Local rules bind 127.0.0.1 and forward to a specific remote host and port."
-                                    } else {
-                                        "Dynamic rules expose a local SOCKS5 proxy port for ad hoc tunneling through the SSH session."
+                                    .child(match self.draft_port_forward_kind {
+                                        PortForwardKind::Local => {
+                                            "Local rules bind 127.0.0.1 and forward to a specific remote host and port."
+                                        }
+                                        PortForwardKind::Remote => {
+                                            "Remote rules open a server-side listening port and send connections back to local 127.0.0.1 on the target port."
+                                        }
+                                        PortForwardKind::Dynamic => {
+                                            "Dynamic rules expose a local SOCKS5 proxy port for ad hoc tunneling through the SSH session."
+                                        }
                                     }),
                             ),
                     )

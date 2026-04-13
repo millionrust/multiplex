@@ -5,7 +5,7 @@ This is the working desktop parity backlog for the Rust client. It tracks the re
 ## Now
 
 - Keep the host editor and workspace chrome clear when multiple routing features are active.
-- Deepen forwarding further with remote port-forwarding rules and richer per-rule metadata.
+- Deepen forwarding further with richer per-rule metadata and runtime inspection/management.
 - Preserve backward compatibility for existing saved state and restored workspaces.
 
 ## Next

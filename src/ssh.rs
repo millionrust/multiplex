@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::thread;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, copy_bidirectional};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::Builder;
 use tokio::sync::Mutex;
@@ -16,7 +16,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use crate::credentials;
 use crate::models::{
     AuthConfig, ConnectRequest, DynamicPortForward, JumpHostConnection, LocalPortForward,
-    PortForwardRule,
+    PortForwardRule, RemotePortForward,
 };
 use crate::storage::{HostKeyDecision, KnownHostStore};
 use crate::terminal::TerminalSize;
@@ -166,6 +166,10 @@ async fn run_session(
                 start_dynamic_forwarder(established.target_handle.clone(), session_id, forward)
                     .await?;
             }
+            PortForwardRule::Remote { forward } => {
+                start_remote_forwarder(established.target_handle.clone(), session_id, forward)
+                    .await?;
+            }
         }
     }
 
@@ -311,6 +315,14 @@ async fn establish_session(
         .auth
         .clone()
         .context("SSH session is missing authentication settings")?;
+    let remote_forwards = request
+        .port_forward_rules
+        .iter()
+        .filter_map(|rule| match rule {
+            PortForwardRule::Remote { forward } => Some(forward.clone()),
+            PortForwardRule::Local { .. } | PortForwardRule::Dynamic { .. } => None,
+        })
+        .collect::<Vec<_>>();
     let (target_handle, jump_handles, trusted_new_host) =
         if let Some(jump_host) = request.jump_host.clone() {
             connect_via_jump_chain(
@@ -321,6 +333,7 @@ async fn establish_session(
                 request.username.clone(),
                 auth,
                 jump_host,
+                remote_forwards,
                 known_hosts,
             )
             .await?
@@ -331,6 +344,7 @@ async fn establish_session(
                 request.known_host_key(),
                 request.username.clone(),
                 auth,
+                remote_forwards,
                 known_hosts,
             )
             .await?;
@@ -356,6 +370,7 @@ async fn connect_via_jump_chain(
     target_username: String,
     target_auth: AuthConfig,
     jump_host: JumpHostConnection,
+    remote_forwards: Vec<RemotePortForward>,
     known_hosts: Arc<KnownHostStore>,
 ) -> Result<(
     client::Handle<SessionHandler>,
@@ -373,6 +388,7 @@ async fn connect_via_jump_chain(
         first_hop.known_host_key(),
         first_hop.username.clone(),
         first_hop.auth.clone(),
+        Vec::new(),
         known_hosts.clone(),
     )
     .await?;
@@ -395,6 +411,7 @@ async fn connect_via_jump_chain(
             hop.known_host_key(),
             hop.username.clone(),
             hop.auth.clone(),
+            Vec::new(),
             known_hosts.clone(),
         )
         .await?;
@@ -418,6 +435,7 @@ async fn connect_via_jump_chain(
         target_endpoint,
         target_username,
         target_auth,
+        remote_forwards,
         known_hosts,
     )
     .await?;
@@ -449,6 +467,7 @@ async fn connect_and_authenticate(
     endpoint: String,
     username: String,
     auth: AuthConfig,
+    remote_forwards: Vec<RemotePortForward>,
     known_hosts: Arc<KnownHostStore>,
 ) -> Result<(client::Handle<SessionHandler>, Arc<AtomicBool>)> {
     let trusted_new_host = Arc::new(AtomicBool::new(false));
@@ -456,6 +475,7 @@ async fn connect_and_authenticate(
         endpoint,
         known_hosts,
         trusted_new_host: trusted_new_host.clone(),
+        remote_forwards,
     };
 
     let mut handle = client::connect(config, address, handler)
@@ -471,6 +491,7 @@ async fn connect_and_authenticate_stream<R>(
     endpoint: String,
     username: String,
     auth: AuthConfig,
+    remote_forwards: Vec<RemotePortForward>,
     known_hosts: Arc<KnownHostStore>,
 ) -> Result<(client::Handle<SessionHandler>, Arc<AtomicBool>)>
 where
@@ -481,6 +502,7 @@ where
         endpoint,
         known_hosts,
         trusted_new_host: trusted_new_host.clone(),
+        remote_forwards,
     };
 
     let mut handle = client::connect_stream(config, stream, handler)
@@ -588,6 +610,33 @@ async fn start_dynamic_forwarder(
     Ok(())
 }
 
+async fn start_remote_forwarder(
+    handle: Arc<Mutex<client::Handle<SessionHandler>>>,
+    session_id: u64,
+    forward: RemotePortForward,
+) -> Result<()> {
+    let requested_port = forward.remote_port;
+    let assigned_port = {
+        let mut handle = handle.lock().await;
+        handle
+            .tcpip_forward(forward.remote_host.clone(), requested_port.into())
+            .await
+            .with_context(|| {
+                format!(
+                    "Unable to request remote forward {}",
+                    forward.display_name()
+                )
+            })?
+    };
+
+    eprintln!(
+        "[ssh][{session_id}] remote forward listening on {}:{} -> {}:{}",
+        forward.remote_host, assigned_port, forward.local_host, forward.local_port
+    );
+
+    Ok(())
+}
+
 async fn proxy_dynamic_forward_connection(
     handle: Arc<Mutex<client::Handle<SessionHandler>>>,
     mut stream: TcpStream,
@@ -668,6 +717,21 @@ async fn proxy_direct_tcpip_connection(
         }
     }
 
+    Ok(())
+}
+
+async fn proxy_remote_forward_connection(
+    channel: russh::Channel<russh::client::Msg>,
+    forward: RemotePortForward,
+) -> Result<()> {
+    let local_addr = format!("{}:{}", forward.local_host, forward.local_port);
+    let mut local_stream = TcpStream::connect(&local_addr)
+        .await
+        .with_context(|| format!("Unable to connect local target {local_addr}"))?;
+    let mut channel_stream = channel.into_stream();
+    copy_bidirectional(&mut local_stream, &mut channel_stream)
+        .await
+        .with_context(|| format!("Unable to proxy remote forward to {local_addr}"))?;
     Ok(())
 }
 
@@ -775,6 +839,7 @@ struct SessionHandler {
     endpoint: String,
     known_hosts: Arc<KnownHostStore>,
     trusted_new_host: Arc<AtomicBool>,
+    remote_forwards: Vec<RemotePortForward>,
 }
 
 impl client::Handler for SessionHandler {
@@ -797,5 +862,50 @@ impl client::Handler for SessionHandler {
                 Ok(true)
             }
         }
+    }
+
+    async fn server_channel_open_forwarded_tcpip(
+        &mut self,
+        channel: russh::Channel<russh::client::Msg>,
+        connected_address: &str,
+        connected_port: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        _session: &mut client::Session,
+    ) -> Result<()> {
+        let target = self
+            .remote_forwards
+            .iter()
+            .find(|forward| {
+                u32::from(forward.remote_port) == connected_port
+                    && (forward.remote_host == connected_address
+                        || forward.remote_host == "0.0.0.0"
+                        || forward.remote_host == "::"
+                        || self
+                            .remote_forwards
+                            .iter()
+                            .filter(|candidate| u32::from(candidate.remote_port) == connected_port)
+                            .count()
+                            == 1)
+            })
+            .cloned()
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No remote forward target registered for {}:{}",
+                    connected_address,
+                    connected_port
+                )
+            })?;
+
+        tokio::spawn(async move {
+            if let Err(error) = proxy_remote_forward_connection(channel, target.clone()).await {
+                eprintln!(
+                    "[ssh] remote forward {} proxy failed: {error:#}",
+                    target.display_name()
+                );
+            }
+        });
+
+        Ok(())
     }
 }
