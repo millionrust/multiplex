@@ -47,6 +47,7 @@ const WORKSPACE_PADDING: f32 = 18.0;
 const PANE_GAP: f32 = 12.0;
 const PANE_HEADER_HEIGHT: f32 = 38.0;
 const WORKSPACE_AUTOCOMPLETE_HEIGHT: f32 = 56.0;
+const WORKSPACE_QUICK_ACTIONS_HEIGHT: f32 = 38.0;
 const TERMINAL_INNER_PADDING_X: f32 = 20.0;
 const TERMINAL_INNER_PADDING_Y: f32 = 14.0;
 const MAX_SPLIT_PANES: usize = 4;
@@ -239,6 +240,7 @@ struct SettingsInputs {
     export_backup_passphrase: Entity<InputState>,
     export_backup_confirm: Entity<InputState>,
     import_backup_passphrase: Entity<InputState>,
+    default_ssh_startup_directory: Entity<InputState>,
 }
 
 struct VaultInputs {
@@ -283,6 +285,9 @@ impl SettingsInputs {
                 InputState::new(window, cx)
                     .masked(true)
                     .placeholder("Backup passphrase")
+            }),
+            default_ssh_startup_directory: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("e.g. /home/user/projects")
             }),
         }
     }
@@ -725,6 +730,16 @@ impl TermiRustApp {
                 .settings
                 .default_local_shell
                 .cwd
+                .clone()
+                .unwrap_or_default(),
+            window,
+            cx,
+        );
+        Self::set_input_value(
+            &self.settings_inputs.default_ssh_startup_directory,
+            self.saved
+                .settings
+                .default_ssh_startup_directory
                 .clone()
                 .unwrap_or_default(),
             window,
@@ -1975,7 +1990,7 @@ impl TermiRustApp {
 
     fn send_startup_actions(&mut self, session_id: u64) -> bool {
         let Some((command_tx, startup_bytes)) = self.pane(session_id).and_then(|pane| {
-            startup_bytes_for_request(&pane.request)
+            startup_bytes_for_request(&pane.request, self.saved.settings.default_ssh_startup_directory.as_deref())
                 .map(|bytes| (pane.runtime.command_tx.clone(), bytes))
         }) else {
             return false;
@@ -2758,6 +2773,39 @@ impl TermiRustApp {
         self.save_settings();
         self.load_settings_inputs(window, cx);
         self.status_message = format!("Default local shell set to {}.", program);
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn save_default_ssh_startup_directory(&mut self, cx: &mut Context<Self>) {
+        let dir = self
+            .settings_inputs
+            .default_ssh_startup_directory
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        self.saved.settings.default_ssh_startup_directory = (!dir.is_empty()).then_some(dir.clone());
+        self.save_settings();
+        self.status_message = if let Some(ref d) = self.saved.settings.default_ssh_startup_directory {
+            format!("Default SSH startup directory set to {}.", d)
+        } else {
+            "Default SSH startup directory cleared.".to_string()
+        };
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn clear_default_ssh_startup_directory(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.saved.settings.default_ssh_startup_directory = None;
+        self.save_settings();
+        Self::set_input_value(
+            &self.settings_inputs.default_ssh_startup_directory,
+            String::new(),
+            window,
+            cx,
+        );
+        self.status_message = "Default SSH startup directory cleared.".to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -3714,6 +3762,36 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn reconnect_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return;
+        };
+        let pane_ids: Vec<u64> = {
+            let Some(workspace) = self.workspace(workspace_id) else {
+                return;
+            };
+            workspace.pane_ids.clone()
+        };
+
+        let mut reconnect_count = 0;
+        for pane_id in pane_ids {
+            if let Some(pane) = self.pane(pane_id) {
+                if !pane.connected {
+                    self.reconnect_pane(pane_id, window, cx);
+                    reconnect_count += 1;
+                }
+            }
+        }
+
+        if reconnect_count == 0 {
+            self.status_message = "No disconnected panes to reconnect.".to_string();
+            cx.notify();
+        } else {
+            self.status_message = format!("Reconnecting {} pane{}...", reconnect_count, if reconnect_count == 1 { "" } else { "s" });
+            cx.notify();
+        }
+    }
+
     fn quick_connect(
         &mut self,
         qc: QuickConnect,
@@ -4233,21 +4311,24 @@ impl TermiRustApp {
         } else {
             0.0
         };
+        let autocomplete_height = if self.workspace_autocomplete_candidates().is_empty() {
+            0.0
+        } else {
+            WORKSPACE_AUTOCOMPLETE_HEIGHT
+        };
         let available_x = WORKSPACE_PADDING;
         let available_y = theme::CHROME_HEIGHT
             + theme::WORKSPACE_HEADER_HEIGHT
+            + WORKSPACE_QUICK_ACTIONS_HEIGHT
             + search_height
             + WORKSPACE_PADDING;
         let available_width = (viewport_width - WORKSPACE_PADDING * 2.0).max(320.0);
         let available_height = (viewport_height
             - theme::CHROME_HEIGHT
             - theme::WORKSPACE_HEADER_HEIGHT
+            - WORKSPACE_QUICK_ACTIONS_HEIGHT
             - search_height
-            - if self.workspace_autocomplete_candidates().is_empty() {
-                0.0
-            } else {
-                WORKSPACE_AUTOCOMPLETE_HEIGHT
-            }
+            - autocomplete_height
             - theme::STATUS_HEIGHT
             - WORKSPACE_PADDING * 2.0)
             .max(180.0);
@@ -9516,8 +9597,57 @@ impl TermiRustApp {
                                     .text_size(px(12.))
                                     .font_medium()
                                     .text_color(theme::text_main())
-                                    .child("Default Local Terminal"),
+                                    .child("Default SSH Startup Directory"),
                             )
+                            .child(
+                                div()
+                                    .text_size(px(10.5))
+                                    .text_color(theme::text_muted())
+                                    .child("When a host has no startup directory set, SSH sessions open into this directory instead."),
+                            )
+                            .child(self.form_field(
+                                "Startup Directory",
+                                Input::new(&self.settings_inputs.default_ssh_startup_directory),
+                            ))
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        Button::new("settings-default-ssh-dir-save")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Accent,
+                                                cx,
+                                            ))
+                                            .label("Save Default Directory")
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.save_default_ssh_startup_directory(cx);
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("settings-default-ssh-dir-clear")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Neutral,
+                                                cx,
+                                            ))
+                                            .label("Clear")
+                                            .disabled(self.saved.settings.default_ssh_startup_directory.is_none())
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.clear_default_ssh_startup_directory(window, cx);
+                                            })),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.))
+                                            .text_color(theme::text_muted())
+                                            .child("Per-host startup directories always take priority over this default."),
+                                    ),
+                            )
+                    )
+                    .child(
+                        h_flex()
                             .child(
                                 div()
                                     .text_size(px(10.5))
@@ -10101,6 +10231,18 @@ impl TermiRustApp {
                                 })),
                         )
                     })
+                    .when(indicators.closed_panes > 1, |this| {
+                        this.child(
+                            Button::new("workspace-reconnect-all")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Success, cx))
+                                .icon(IconName::Redo)
+                                .label(format!("Reconnect All ({})", indicators.closed_panes))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.reconnect_all(window, cx);
+                                })),
+                        )
+                    })
                     .when(pane.connected, |this| {
                         this.child(
                             Button::new("workspace-disconnect")
@@ -10115,6 +10257,130 @@ impl TermiRustApp {
                         )
                     }),
             )
+    }
+
+    fn render_quick_actions_bar(&self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let snippets = self.pinned_snippet_quick_actions();
+        let snippet_count = snippets.len();
+        let pane_count = self
+            .active_workspace()
+            .map(|w| w.pane_ids.len())
+            .unwrap_or(0);
+
+        h_flex()
+            .h(px(WORKSPACE_QUICK_ACTIONS_HEIGHT))
+            .w_full()
+            .px_4()
+            .gap_2()
+            .items_center()
+            .bg(theme::terminal_panel())
+            .border_b_1()
+            .border_color(theme::with_alpha(theme::border_dark(), 0.4))
+            .child(
+                div()
+                    .text_size(px(10.))
+                    .font_medium()
+                    .text_color(theme::text_muted_dark())
+                    .child("Actions"),
+            )
+            .child(
+                Button::new("qa-new-tab")
+                    .xsmall()
+                    .ghost()
+                    .icon(IconName::Plus)
+                    .label("New Tab")
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.activate_library(window, cx);
+                        this.open_editor_for_new_host(window, cx);
+                    })),
+            )
+            .child(
+                Button::new("qa-split-h")
+                    .xsmall()
+                    .ghost()
+                    .icon(IconName::PanelRight)
+                    .label("Split H")
+                    .disabled(pane_count >= 4)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.split_active_workspace(SplitAxis::Horizontal, window, cx);
+                    })),
+            )
+            .child(
+                Button::new("qa-split-v")
+                    .xsmall()
+                    .ghost()
+                    .icon(IconName::PanelBottom)
+                    .label("Split V")
+                    .disabled(pane_count >= 4)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.split_active_workspace(SplitAxis::Vertical, window, cx);
+                    })),
+            )
+            .child(
+                Button::new("qa-toggle-files")
+                    .xsmall()
+                    .ghost()
+                    .icon(IconName::FolderOpen)
+                    .label("Files")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if this.active_workspace().is_some_and(|workspace| {
+                            workspace.view_mode == WorkspaceViewMode::Files
+                        }) {
+                            this.show_active_workspace_terminal(cx);
+                        } else {
+                            this.open_active_workspace_files(cx);
+                        }
+                    })),
+            )
+            .child(
+                Button::new("qa-clear")
+                    .xsmall()
+                    .ghost()
+                    .icon(IconName::Delete)
+                    .label("Clear")
+                    .on_click(cx.listener(|this, _, _, _cx| {
+                        if let Some(pane) = this.active_pane() {
+                            let _ = pane.runtime.command_tx.send(SessionCommand::Input(b"clear\n".to_vec()));
+                        }
+                    })),
+            )
+            .when(snippet_count > 0, |this| {
+                this.child(
+                    div()
+                        .w(px(1.))
+                        .h(px(14.))
+                        .mx_1()
+                        .bg(theme::with_alpha(theme::text_muted_dark(), 0.2)),
+                )
+                .child(
+                    div()
+                        .text_size(px(10.))
+                        .font_medium()
+                        .text_color(theme::text_muted_dark())
+                        .child("Pinned"),
+                )
+                .child(h_flex().flex_1().gap_1().children(
+                    snippets.into_iter().take(6).enumerate().map(|(index, snippet)| {
+                        let command = snippet.command.clone();
+                        Button::new(("qa-snippet", index))
+                            .xsmall()
+                            .custom(Self::action_button_style(theme::ActionTone::AccentSoft, cx))
+                            .label(snippet.label.clone())
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.run_snippet_command(&command, cx);
+                            }))
+                    }),
+                ))
+                .when(snippet_count > 6, |this| {
+                    let overflow = snippet_count - 6;
+                    this.child(
+                        div()
+                            .text_size(px(9.5))
+                            .text_color(theme::text_muted_dark())
+                            .child(format!("+{overflow}")),
+                    )
+                })
+            })
     }
 
     fn render_workspace_search(&self, _window: &mut Window, cx: &mut Context<Self>) -> Option<Div> {
@@ -10995,6 +11261,7 @@ impl TermiRustApp {
             .flex_1()
             .bg(theme::terminal_bg())
             .child(self.render_workspace_toolbar(window, cx))
+            .child(self.render_quick_actions_bar(window, cx))
             .when_some(self.render_workspace_search(window, cx), |this, search| {
                 this.child(search)
             })
@@ -11198,10 +11465,17 @@ impl TermiRustApp {
                     }
                 }
                 "t" => {
+                    // Cmd+Shift+T: toggle Files/Terminal view
                     if self.active_workspace_id.is_some() {
-                        self.show_active_workspace_terminal(cx);
-                        return true;
+                        if self.active_workspace().is_some_and(|workspace| {
+                            workspace.view_mode == WorkspaceViewMode::Files
+                        }) {
+                            self.show_active_workspace_terminal(cx);
+                        } else {
+                            self.open_active_workspace_files(cx);
+                        }
                     }
+                    return true;
                 }
                 _ => {}
             }
@@ -11241,16 +11515,22 @@ impl TermiRustApp {
                 true
             }
             "l" => {
-                if self.active_workspace_id.is_none() {
+                // Cmd+L: from library → focus host search; from workspace → go to logs
+                if self.active_workspace_id.is_some() {
+                    self.activate_library_section(NavSection::Logs, window, cx);
+                    self.status_message = "Switched to Logs view.".to_string();
+                } else if self.nav_section == NavSection::Logs {
                     self.activate_library_section(NavSection::Hosts, window, cx);
                     self.focus_host_search(window, cx);
                     self.status_message = "Host search focused.".to_string();
-                    self.error_message.clear();
-                    cx.notify();
-                    true
                 } else {
-                    false
+                    self.activate_library_section(NavSection::Hosts, window, cx);
+                    self.focus_host_search(window, cx);
+                    self.status_message = "Host search focused.".to_string();
                 }
+                self.error_message.clear();
+                cx.notify();
+                true
             }
             "n" => {
                 if self.active_workspace_id.is_none() {
@@ -13099,13 +13379,14 @@ fn shell_command_requires_continuation(command: &str) -> bool {
         || bracket_depth > 0
 }
 
-fn startup_bytes_for_request(request: &ConnectRequest) -> Option<Vec<u8>> {
+fn startup_bytes_for_request(request: &ConnectRequest, default_startup_dir: Option<&str>) -> Option<Vec<u8>> {
     if request.is_local_shell() {
         return None;
     }
 
     let mut lines = Vec::new();
-    if let Some(directory) = request.startup_directory.as_deref() {
+    let effective_dir = request.startup_directory.as_deref().or(default_startup_dir);
+    if let Some(directory) = effective_dir {
         let directory = directory.trim();
         if !directory.is_empty() {
             lines.push(format!("cd -- {}", shell_single_quote(directory)));

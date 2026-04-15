@@ -430,6 +430,8 @@ pub struct AppSettings {
     pub session_log_limit: u16,
     #[serde(default = "default_local_shell_config")]
     pub default_local_shell: LocalShellConfig,
+    #[serde(default)]
+    pub default_ssh_startup_directory: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -441,6 +443,7 @@ impl Default for AppSettings {
             restore_workspaces_on_launch: default_restore_workspaces_on_launch(),
             session_log_limit: default_session_log_limit(),
             default_local_shell: default_local_shell_config(),
+            default_ssh_startup_directory: None,
         }
     }
 }
