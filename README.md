@@ -25,8 +25,10 @@ Other things worth knowing about:
 - Workspace tabs are draggable. You can reorder them.
 - Hosts can be starred, organized into groups, and surfaced in the library by priority.
 - The host library now supports batch selection, bulk star/unstar, and bulk group assignment for fleet cleanup.
+- The Hosts library now also includes saved-group management cards and group-level actions, so you can select an entire visible group, target it for bulk reassignment, and load its saved defaults into the editor without hopping host by host.
 - Hosts can also save a startup directory and startup command, so SSH sessions open directly into the right project context.
-- Host groups can now save inheritable defaults for identity, jump host, and startup behavior, and hosts can load or inherit those defaults when their own fields are blank.
+- Host groups can now save inheritable defaults for username, tags, identity, jump host, startup behavior, and saved forwarding rules, and hosts can load or inherit those defaults when their own fields are blank.
+- Hosts now also persist session preferences like `Connect View` and `Scrollback Rows`, so a server can open straight into Files view after connect and keep a host-specific amount of terminal history locally.
 - Reusable identities can be imported and reused across hosts.
 - Saved snippets can be reused, pinned, and sent into the active terminal.
 - Hosts now support tags, and the host library search matches labels, groups, tags, vaults, jump hosts, and endpoints.
@@ -35,13 +37,16 @@ Other things worth knowing about:
 - Every workspace can switch into an SFTP remote-files view for browse, upload, download, and delete against the active host.
 - When a host has a saved startup directory, the remote Files view also opens there by default.
 - A native local terminal can be opened directly from the chrome and behaves like a normal workspace tab or split pane.
+- Library and workspace empty states now include direct actions, so dead ends turn into obvious next steps like creating a host, adding a key, opening local terminal, or returning to terminal view.
 - Vaults are now first-class local containers for hosts, snippets, and identities, with a dedicated library view plus local shared-vault member/role management.
 - The active terminal now gets keyboard-selectable, target-aware inline command autocomplete, ranked from current-host history, snippets, and built-in shell shortcuts.
 - Command history capture is now prompt-aware enough to ignore alternate-screen apps and avoid learning obviously incomplete shell continuations.
 - Inline autocomplete is now path-aware for path commands, using loaded remote-files context plus saved startup/current directories and recent path history.
 - Autocomplete also includes argument-aware command templates for common Git, Docker, Kubernetes, and systemd workflows, and the command palette carries the same task metadata through search and execution.
 - Autocomplete and the command palette now also lift live shell context out of recent terminal output, so branch names, container targets, Kubernetes pods, and systemd units can be suggested from what the session just printed.
+- Live shell-context suggestions are now ranked against the active working directory too, so targets that match the current service or project surface ahead of generic recent-output matches.
 - Every terminal workspace now has a searchable command palette for snippets, recent commands, and built-in tasks, with keyboard navigation and direct execution.
+- Cross-platform shortcuts now cover library section switching, settings, host-search focus, new-host flow, and Files/Terminal workspace toggles without colliding with common shell keys.
 - Workspace chrome now shows aggregate runtime health for split tabs, so mixed live/connecting/error states are visible without hunting through individual panes.
 - A dedicated Settings view now persists global appearance theme and terminal font-size preferences, and applies them live.
 - Settings also define the default local terminal shell executable and startup directory for new local sessions.
@@ -69,7 +74,7 @@ This is early alpha. The following are on the radar but don't exist yet:
 
 - Drag-reordering split panes
 - Vault sync / remote team features
-- Deeper shell intelligence from live shell context and recent output
+- Stronger desktop onboarding and first-run states
 - Platform-specific packaging polish
 
 ## License

@@ -4,15 +4,8 @@ This is the working parity checklist for the native Rust desktop client. Complet
 
 ## Active Priority
 
-- Shell intelligence:
-  - smarter ranking from recent output/current directory
-- Host administration:
-  - richer host-group inheritance beyond identity/jump/startup
-  - group-level bulk actions and better group management views
-  - richer per-host session preferences beyond startup actions
 - Workspace polish:
-  - better empty states
-  - stronger cross-platform focus and shortcut behavior
+  - stronger onboarding and first-run flows
 
 ## Platform And Packaging
 

@@ -14,6 +14,10 @@ fn default_terminal_font_size() -> u16 {
     14
 }
 
+fn default_terminal_scrollback_rows() -> u32 {
+    10_000
+}
+
 pub const DEFAULT_VAULT_ID: &str = "vault-personal";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,6 +173,10 @@ pub struct HostProfile {
     #[serde(default)]
     pub startup_command: Option<String>,
     #[serde(default)]
+    pub start_in_files: bool,
+    #[serde(default)]
+    pub terminal_scrollback_rows: Option<u32>,
+    #[serde(default)]
     pub port_forward_rules: Vec<PortForwardRule>,
     #[serde(default)]
     pub local_forwards: Vec<LocalPortForward>,
@@ -208,6 +216,10 @@ impl HostProfile {
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        self.terminal_scrollback_rows = self
+            .terminal_scrollback_rows
+            .take()
+            .map(|rows| rows.clamp(500, 200_000));
         self.port_forward_rules = normalize_port_forward_rules(
             self.port_forward_rules.clone(),
             self.local_forwards.clone(),
@@ -445,6 +457,10 @@ pub struct SavedHostGroup {
     #[serde(default)]
     pub vault_id: Option<String>,
     #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
     pub identity_id: Option<String>,
     #[serde(default)]
     pub jump_host_id: Option<String>,
@@ -452,6 +468,8 @@ pub struct SavedHostGroup {
     pub startup_directory: Option<String>,
     #[serde(default)]
     pub startup_command: Option<String>,
+    #[serde(default)]
+    pub port_forward_rules: Vec<PortForwardRule>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -564,6 +582,12 @@ impl SavedHostGroup {
             .vault_id
             .take()
             .filter(|value| !value.trim().is_empty());
+        self.username = self
+            .username
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        self.tags = normalize_tags(self.tags.clone());
         self.identity_id = self
             .identity_id
             .take()
@@ -582,11 +606,30 @@ impl SavedHostGroup {
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
+        self.port_forward_rules =
+            normalize_port_forward_rules(self.port_forward_rules.clone(), Vec::new(), None);
     }
 
     pub fn display_name(&self) -> String {
         self.label.trim().to_string()
     }
+}
+
+fn normalize_tags(tags: Vec<String>) -> Vec<String> {
+    let mut normalized = Vec::new();
+    for tag in tags {
+        let tag = tag.trim().trim_start_matches('#');
+        if tag.is_empty() {
+            continue;
+        }
+        if !normalized
+            .iter()
+            .any(|existing: &String| existing.eq_ignore_ascii_case(tag))
+        {
+            normalized.push(tag.to_string());
+        }
+    }
+    normalized
 }
 
 impl SavedVaultMember {
@@ -1046,6 +1089,8 @@ pub struct DraftProfile {
     pub jump_host_id: Option<String>,
     pub startup_directory: String,
     pub startup_command: String,
+    pub start_in_files: bool,
+    pub terminal_scrollback_rows: String,
     pub saved_port_forward_rules: Vec<PortForwardRule>,
     pub forward_kind: PortForwardKind,
     pub forward_local_port: String,
@@ -1073,6 +1118,11 @@ impl DraftProfile {
             jump_host_id: profile.jump_host_id.clone(),
             startup_directory: profile.startup_directory.clone().unwrap_or_default(),
             startup_command: profile.startup_command.clone().unwrap_or_default(),
+            start_in_files: profile.start_in_files,
+            terminal_scrollback_rows: profile
+                .terminal_scrollback_rows
+                .unwrap_or(default_terminal_scrollback_rows())
+                .to_string(),
             saved_port_forward_rules: profile.effective_port_forward_rules(),
             forward_kind: PortForwardKind::Local,
             forward_local_port: String::new(),
@@ -1169,12 +1219,27 @@ impl DraftProfile {
         }
     }
 
-    fn parse_port_forward_rules(&self) -> Result<Vec<PortForwardRule>> {
+    pub(crate) fn parse_port_forward_rules(&self) -> Result<Vec<PortForwardRule>> {
         let mut rules = self.saved_port_forward_rules.clone();
         if let Some(pending) = self.parse_pending_port_forward_rule()? {
             rules.push(pending);
         }
         Ok(normalize_port_forward_rules(rules, Vec::new(), None))
+    }
+
+    fn parse_terminal_scrollback_rows(&self) -> Result<Option<u32>> {
+        let value = self.terminal_scrollback_rows.trim();
+        if value.is_empty() {
+            return Ok(None);
+        }
+
+        let rows = value
+            .parse::<u32>()
+            .with_context(|| format!("Invalid scrollback rows '{value}'"))?;
+        if !(500..=200_000).contains(&rows) {
+            bail!("Scrollback rows must be between 500 and 200000");
+        }
+        Ok(Some(rows))
     }
 
     fn parse_tags(&self) -> Vec<String> {
@@ -1232,6 +1297,8 @@ impl DraftProfile {
             jump_host_id: self.jump_host_id.clone(),
             startup_directory: non_empty(self.startup_directory.trim()),
             startup_command: non_empty(self.startup_command.trim()),
+            start_in_files: self.start_in_files,
+            terminal_scrollback_rows: self.parse_terminal_scrollback_rows()?,
             port_forward_rules: self.parse_port_forward_rules()?,
             local_forwards: Vec::new(),
             local_forward: None,
@@ -1276,6 +1343,11 @@ impl DraftProfile {
             jump_host: None,
             startup_directory: profile.startup_directory,
             startup_command: profile.startup_command,
+            start_in_files: profile.start_in_files,
+            terminal_scrollback_rows: profile
+                .terminal_scrollback_rows
+                .unwrap_or(default_terminal_scrollback_rows())
+                as usize,
             port_forward_rules,
             local_shell: None,
         })
@@ -1422,6 +1494,8 @@ pub struct ConnectRequest {
     pub jump_host: Option<JumpHostConnection>,
     pub startup_directory: Option<String>,
     pub startup_command: Option<String>,
+    pub start_in_files: bool,
+    pub terminal_scrollback_rows: usize,
     pub port_forward_rules: Vec<PortForwardRule>,
     pub local_shell: Option<LocalShellConfig>,
 }
@@ -1494,6 +1568,8 @@ impl ConnectRequest {
                     .and_then(JumpHostConnection::to_restorable),
                 startup_directory: self.startup_directory.clone(),
                 startup_command: self.startup_command.clone(),
+                start_in_files: self.start_in_files,
+                terminal_scrollback_rows: Some(self.terminal_scrollback_rows as u32),
                 port_forward_rules: self.port_forward_rules.clone(),
                 local_forwards: Vec::new(),
                 local_forward: None,
@@ -1509,6 +1585,8 @@ impl ConnectRequest {
                 jump_host: None,
                 startup_directory: None,
                 startup_command: None,
+                start_in_files: false,
+                terminal_scrollback_rows: None,
                 port_forward_rules: Vec::new(),
                 local_forwards: Vec::new(),
                 local_forward: None,
@@ -1535,6 +1613,8 @@ impl ConnectRequest {
             jump_host: None,
             startup_directory: None,
             startup_command: None,
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: Some(shell),
         }
@@ -1603,6 +1683,10 @@ pub struct RestorableConnection {
     #[serde(default)]
     pub startup_command: Option<String>,
     #[serde(default)]
+    pub start_in_files: bool,
+    #[serde(default)]
+    pub terminal_scrollback_rows: Option<u32>,
+    #[serde(default)]
     pub port_forward_rules: Vec<PortForwardRule>,
     #[serde(default)]
     pub local_forwards: Vec<LocalPortForward>,
@@ -1640,6 +1724,11 @@ impl RestorableConnection {
                         .map(RestorableJumpHostConnection::to_jump_host_connection),
                     startup_directory: self.startup_directory.clone(),
                     startup_command: self.startup_command.clone(),
+                    start_in_files: self.start_in_files,
+                    terminal_scrollback_rows: self
+                        .terminal_scrollback_rows
+                        .unwrap_or(default_terminal_scrollback_rows())
+                        as usize,
                     port_forward_rules: normalize_port_forward_rules(
                         self.port_forward_rules.clone(),
                         self.local_forwards.clone(),
@@ -1659,6 +1748,8 @@ impl RestorableConnection {
                 jump_host: None,
                 startup_directory: None,
                 startup_command: None,
+                start_in_files: false,
+                terminal_scrollback_rows: default_terminal_scrollback_rows() as usize,
                 port_forward_rules: Vec::new(),
                 local_shell: self
                     .local_shell
@@ -1892,6 +1983,8 @@ impl QuickConnect {
             jump_host: None,
             startup_directory: None,
             startup_command: None,
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
         }
@@ -1976,6 +2069,8 @@ mod tests {
             jump_host: None,
             startup_directory: None,
             startup_command: None,
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
         };
@@ -1998,12 +2093,18 @@ mod tests {
             jump_host: None,
             startup_directory: Some("/srv/app".to_string()),
             startup_command: Some("git status".to_string()),
+            start_in_files: true,
+            terminal_scrollback_rows: 4096,
             port_forward_rules: Vec::new(),
             local_shell: None,
         };
 
         let restored = request.to_restorable().unwrap();
+        assert!(restored.start_in_files);
+        assert_eq!(restored.terminal_scrollback_rows, Some(4096));
         let request = restored.to_connect_request(2);
+        assert!(request.start_in_files);
+        assert_eq!(request.terminal_scrollback_rows, 4096);
         match request.auth.unwrap() {
             AuthConfig::PasswordRef { credential_id } => {
                 assert_eq!(credential_id, "profile:app");
@@ -2048,6 +2149,8 @@ mod tests {
             }),
             startup_directory: Some("/var/www/prod".to_string()),
             startup_command: Some("docker compose ps".to_string()),
+            start_in_files: false,
+            terminal_scrollback_rows: 12000,
             port_forward_rules: vec![
                 PortForwardRule::Local {
                     forward: LocalPortForward {
@@ -2077,9 +2180,12 @@ mod tests {
             restored.startup_command.as_deref(),
             Some("docker compose ps")
         );
+        assert!(!restored.start_in_files);
+        assert_eq!(restored.terminal_scrollback_rows, Some(12_000));
 
         let request = restored.to_connect_request(9);
         assert_eq!(request.session_id, 9);
+        assert_eq!(request.terminal_scrollback_rows, 12_000);
         assert_eq!(request.port_forward_rules.len(), 2);
         assert_eq!(
             request.port_forward_rules[0].display_name(),
@@ -2133,6 +2239,8 @@ mod tests {
                 jump_host: None,
                 startup_directory: None,
                 startup_command: None,
+                start_in_files: false,
+                terminal_scrollback_rows: None,
                 port_forward_rules: Vec::new(),
                 local_forwards: Vec::new(),
                 local_forward: None,
@@ -2157,6 +2265,8 @@ mod tests {
             jump_host: None,
             startup_directory: None,
             startup_command: None,
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: Some(LocalShellConfig {
                 program: "/bin/zsh".to_string(),
@@ -2238,6 +2348,8 @@ mod tests {
             jump_host_id: None,
             startup_directory: "/var/www/app".to_string(),
             startup_command: "docker compose ps".to_string(),
+            start_in_files: true,
+            terminal_scrollback_rows: "4096".to_string(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Local,
             forward_local_port: String::new(),
@@ -2256,6 +2368,8 @@ mod tests {
             profile.startup_command.as_deref(),
             Some("docker compose ps")
         );
+        assert!(profile.start_in_files);
+        assert_eq!(profile.terminal_scrollback_rows, Some(4096));
         assert_eq!(
             profile.tags,
             vec![
@@ -2283,6 +2397,8 @@ mod tests {
             jump_host_id: None,
             startup_directory: String::new(),
             startup_command: String::new(),
+            start_in_files: false,
+            terminal_scrollback_rows: "10000".to_string(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Local,
             forward_local_port: String::new(),
@@ -2316,6 +2432,8 @@ mod tests {
                 jump_host_id: None,
                 startup_directory: String::new(),
                 startup_command: String::new(),
+                start_in_files: false,
+                terminal_scrollback_rows: "10000".to_string(),
                 saved_port_forward_rules: Vec::new(),
                 forward_kind: PortForwardKind::Local,
                 forward_local_port: String::new(),
@@ -2344,6 +2462,8 @@ mod tests {
                 jump_host_id: None,
                 startup_directory: String::new(),
                 startup_command: String::new(),
+                start_in_files: false,
+                terminal_scrollback_rows: "10000".to_string(),
                 saved_port_forward_rules: Vec::new(),
                 forward_kind: PortForwardKind::Local,
                 forward_local_port: String::new(),
@@ -2422,6 +2542,8 @@ mod tests {
             jump_host_id: None,
             startup_directory: String::new(),
             startup_command: String::new(),
+            start_in_files: false,
+            terminal_scrollback_rows: "10000".to_string(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Local,
             forward_local_port: "15432".to_string(),
@@ -2459,6 +2581,8 @@ mod tests {
             jump_host_id: None,
             startup_directory: String::new(),
             startup_command: String::new(),
+            start_in_files: false,
+            terminal_scrollback_rows: "10000".to_string(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Dynamic,
             forward_local_port: "1080".to_string(),
@@ -2496,6 +2620,8 @@ mod tests {
             jump_host_id: None,
             startup_directory: String::new(),
             startup_command: String::new(),
+            start_in_files: false,
+            terminal_scrollback_rows: "10000".to_string(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Remote,
             forward_local_port: "3000".to_string(),
@@ -2534,6 +2660,8 @@ mod tests {
             jump_host_id: None,
             startup_directory: None,
             startup_command: None,
+            start_in_files: false,
+            terminal_scrollback_rows: None,
             port_forward_rules: Vec::new(),
             local_forwards: Vec::new(),
             local_forward: Some(LocalPortForward {
@@ -2682,6 +2810,8 @@ mod tests {
             jump_host: None,
             startup_directory: Some("/srv/app".to_string()),
             startup_command: Some("npm run status".to_string()),
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
         };

@@ -174,6 +174,7 @@ struct DraftInputs {
     jump_host: Entity<InputState>,
     startup_directory: Entity<InputState>,
     startup_command: Entity<InputState>,
+    terminal_scrollback_rows: Entity<InputState>,
     host: Entity<InputState>,
     port: Entity<InputState>,
     username: Entity<InputState>,
@@ -195,6 +196,7 @@ impl DraftInputs {
             startup_directory: cx.new(|cx| InputState::new(window, cx).placeholder("/var/www/app")),
             startup_command: cx
                 .new(|cx| InputState::new(window, cx).placeholder("docker compose logs -f")),
+            terminal_scrollback_rows: cx.new(|cx| InputState::new(window, cx).placeholder("10000")),
             host: cx.new(|cx| InputState::new(window, cx).placeholder("user@hostname or IP")),
             port: cx.new(|cx| InputState::new(window, cx).default_value("22")),
             username: cx.new(|cx| InputState::new(window, cx).placeholder("root")),
@@ -452,6 +454,14 @@ struct OutputSuggestionContext {
     recent_lines: Vec<String>,
 }
 
+#[derive(Clone)]
+struct ContextCommandTemplate {
+    command: String,
+    detail: String,
+    rank: u8,
+    ordinal: usize,
+}
+
 #[derive(Clone, Copy)]
 struct BuiltinCommandTemplate {
     command: &'static str,
@@ -558,6 +568,7 @@ pub struct TermiRustApp {
     draft_identity_id: Option<String>,
     draft_vault_id: Option<String>,
     draft_profile_favorite: bool,
+    draft_start_in_files: bool,
     draft_port_forward_rules: Vec<PortForwardRule>,
     draft_port_forward_kind: PortForwardKind,
     snippet_vault_id: Option<String>,
@@ -645,6 +656,7 @@ impl TermiRustApp {
             draft_identity_id: None,
             draft_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             draft_profile_favorite: false,
+            draft_start_in_files: false,
             draft_port_forward_rules: Vec::new(),
             draft_port_forward_kind: PortForwardKind::Local,
             snippet_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
@@ -719,7 +731,7 @@ impl TermiRustApp {
         self.clear_backup_inputs(window, cx);
     }
 
-    fn current_profile_draft(&self, cx: &App) -> anyhow::Result<DraftProfile> {
+    fn current_profile_draft_raw(&self, cx: &App) -> anyhow::Result<DraftProfile> {
         let key_path = self.inputs.key_path.read(cx).value().to_string();
         let identity_id = self
             .draft_identity_id
@@ -750,6 +762,13 @@ impl TermiRustApp {
             jump_host_id,
             startup_directory: self.inputs.startup_directory.read(cx).value().to_string(),
             startup_command: self.inputs.startup_command.read(cx).value().to_string(),
+            start_in_files: self.draft_start_in_files,
+            terminal_scrollback_rows: self
+                .inputs
+                .terminal_scrollback_rows
+                .read(cx)
+                .value()
+                .to_string(),
             saved_port_forward_rules: self.draft_port_forward_rules.clone(),
             forward_kind: self.draft_port_forward_kind,
             forward_local_port: self.inputs.forward_local_port.read(cx).value().to_string(),
@@ -766,6 +785,12 @@ impl TermiRustApp {
             auth_mode: self.draft_auth_mode,
         };
 
+        Ok(draft)
+    }
+
+    fn current_profile_draft(&self, cx: &App) -> anyhow::Result<DraftProfile> {
+        let draft = self.current_profile_draft_raw(cx)?;
+
         Ok(apply_group_defaults_to_draft(
             draft,
             self.host_group_by_label(&self.inputs.group.read(cx).value()),
@@ -776,6 +801,17 @@ impl TermiRustApp {
     fn set_auth_mode(&mut self, auth_mode: AuthMode, cx: &mut Context<Self>) {
         self.draft_auth_mode = auth_mode;
         self.status_message = format!("Using {} authentication.", auth_mode.label());
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn set_draft_connect_view(&mut self, start_in_files: bool, cx: &mut Context<Self>) {
+        self.draft_start_in_files = start_in_files;
+        self.status_message = if start_in_files {
+            "This host will open in the remote Files view after connect.".to_string()
+        } else {
+            "This host will open in the terminal view after connect.".to_string()
+        };
         self.error_message.clear();
         cx.notify();
     }
@@ -792,7 +828,7 @@ impl TermiRustApp {
     }
 
     fn save_group_defaults_from_draft(&mut self, cx: &mut Context<Self>) {
-        let Ok(draft) = self.current_profile_draft(cx) else {
+        let Ok(draft) = self.current_profile_draft_raw(cx) else {
             self.error_message = "Group defaults require a valid draft context.".to_string();
             cx.notify();
             return;
@@ -803,14 +839,25 @@ impl TermiRustApp {
             cx.notify();
             return;
         }
+        let port_forward_rules = match draft.parse_port_forward_rules() {
+            Ok(rules) => rules,
+            Err(error) => {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
+        };
 
         self.saved.upsert_host_group(SavedHostGroup {
             label: label.clone(),
             vault_id: self.draft_vault_id.clone(),
+            username: non_empty_string(&draft.username),
+            tags: parse_tag_values(&draft.tags),
             identity_id: draft.identity_id,
             jump_host_id: draft.jump_host_id,
             startup_directory: non_empty_string(&draft.startup_directory),
             startup_command: non_empty_string(&draft.startup_command),
+            port_forward_rules,
         });
         if let Err(error) = save_saved_state(&self.saved) {
             self.error_message = error.to_string();
@@ -836,11 +883,26 @@ impl TermiRustApp {
                 self.use_identity(&identity, window, cx);
             }
         }
+        if let Some(username) = group.username.clone() {
+            Self::set_input_value(&self.inputs.username, username, window, cx);
+        }
         if let Some(jump_host_id) = group.jump_host_id.as_deref() {
             let jump_host = self
                 .jump_host_display_name(jump_host_id)
                 .unwrap_or_else(|| jump_host_id.to_string());
             Self::set_input_value(&self.inputs.jump_host, jump_host, window, cx);
+        }
+        if !group.tags.is_empty() {
+            let merged_tags = merge_tag_values(
+                &parse_tag_values(&self.inputs.tags.read(cx).value()),
+                &group.tags,
+            );
+            Self::set_input_value(
+                &self.inputs.tags,
+                format_tag_values(&merged_tags),
+                window,
+                cx,
+            );
         }
         if let Some(startup_directory) = group.startup_directory.clone() {
             Self::set_input_value(
@@ -855,6 +917,10 @@ impl TermiRustApp {
         }
         if let Some(vault_id) = group.vault_id.as_deref() {
             self.draft_vault_id = Some(vault_id.to_string());
+        }
+        if !group.port_forward_rules.is_empty() {
+            self.draft_port_forward_rules =
+                merge_port_forward_rules(&self.draft_port_forward_rules, &group.port_forward_rules);
         }
 
         self.status_message = format!("Loaded defaults for group '{}'.", group.display_name());
@@ -925,6 +991,61 @@ impl TermiRustApp {
             .host_groups
             .iter()
             .find(|group| group.label.eq_ignore_ascii_case(label))
+    }
+
+    fn group_host_counts(&self, group_name: &str, cx: &App) -> (usize, usize) {
+        let visible = self
+            .filtered_profiles(cx)
+            .into_iter()
+            .filter(|profile| Self::profile_group_name(profile) == group_name)
+            .count();
+        let total = self
+            .saved
+            .profiles
+            .iter()
+            .filter(|profile| Self::profile_group_name(profile) == group_name)
+            .count();
+        (visible, total)
+    }
+
+    fn filtered_profile_ids_for_group(&self, group_name: &str, cx: &App) -> Vec<String> {
+        self.filtered_profiles(cx)
+            .into_iter()
+            .filter(|profile| Self::profile_group_name(profile) == group_name)
+            .map(|profile| profile.id)
+            .collect()
+    }
+
+    fn select_filtered_group_hosts(&mut self, group_name: &str, cx: &mut Context<Self>) {
+        let ids = self.filtered_profile_ids_for_group(group_name, cx);
+        if ids.is_empty() {
+            self.error_message = format!("No visible hosts are in '{}'.", group_name);
+            cx.notify();
+            return;
+        }
+        self.selected_host_ids = ids.into_iter().collect();
+        self.status_message = format!(
+            "Selected {} host(s) from '{}'.",
+            self.selected_host_ids.len(),
+            group_name
+        );
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn prepare_bulk_group_assignment(
+        &mut self,
+        group_name: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_bulk_group_input(group_name.to_string(), window, cx);
+        self.status_message = format!(
+            "Bulk group target set to '{}'. Select hosts and apply when ready.",
+            group_name
+        );
+        self.error_message.clear();
+        cx.notify();
     }
 
     fn vault_by_id(&self, vault_id: &str) -> Option<&SavedVault> {
@@ -1224,6 +1345,12 @@ impl TermiRustApp {
             window,
             cx,
         );
+        Self::set_input_value(
+            &self.inputs.terminal_scrollback_rows,
+            draft.terminal_scrollback_rows,
+            window,
+            cx,
+        );
         Self::set_input_value(&self.inputs.host, draft.host, window, cx);
         Self::set_input_value(&self.inputs.port, draft.port, window, cx);
         Self::set_input_value(&self.inputs.username, draft.username, window, cx);
@@ -1235,6 +1362,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
         self.draft_vault_id = Some(self.effective_vault_id(draft.vault_id.as_deref()));
         self.draft_profile_favorite = draft.favorite;
+        self.draft_start_in_files = draft.start_in_files;
         self.draft_port_forward_rules = draft.saved_port_forward_rules;
         self.draft_port_forward_kind = PortForwardKind::Local;
         self.draft_identity_id = draft.identity_id.or_else(|| {
@@ -1268,6 +1396,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.jump_host, "", window, cx);
         Self::set_input_value(&self.inputs.startup_directory, "", window, cx);
         Self::set_input_value(&self.inputs.startup_command, "", window, cx);
+        Self::set_input_value(&self.inputs.terminal_scrollback_rows, "10000", window, cx);
         Self::set_input_value(&self.inputs.host, "", window, cx);
         Self::set_input_value(&self.inputs.port, "22", window, cx);
         Self::set_input_value(&self.inputs.username, "", window, cx);
@@ -1279,6 +1408,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
         self.draft_vault_id = Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
         self.draft_profile_favorite = false;
+        self.draft_start_in_files = false;
         self.draft_port_forward_rules.clear();
         self.draft_port_forward_kind = PortForwardKind::Local;
         self.draft_identity_id = None;
@@ -2401,6 +2531,12 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn focus_host_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.shell_inputs
+            .host_search
+            .update(cx, |input, cx| input.focus(window, cx));
+    }
+
     fn focus_terminal_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.shell_inputs
             .terminal_search
@@ -2479,6 +2615,23 @@ impl TermiRustApp {
         self.selected_command_palette_index = 0;
         self.status_message = "Host library ready.".to_string();
         self.error_message.clear();
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
+    fn activate_library_section(
+        &mut self,
+        section: NavSection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.active_workspace_id = None;
+        self.nav_section = section;
+        self.set_command_palette_input("", window, cx);
+        self.show_command_palette = false;
+        self.selected_command_palette_index = 0;
+        self.error_message.clear();
+        self.status_message = format!("{} ready.", section.label());
         self.persist_runtime_state();
         cx.notify();
     }
@@ -2986,11 +3139,13 @@ impl TermiRustApp {
             .cloned()
     }
 
-    fn open_active_workspace_files(&mut self, cx: &mut Context<Self>) {
-        let Some(workspace_id) = self.active_workspace_id else {
-            return;
-        };
-        let Some(pane) = self.active_pane() else {
+    fn open_workspace_files_for_pane(
+        &mut self,
+        workspace_id: u64,
+        pane_id: u64,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(pane) = self.pane(pane_id) else {
             return;
         };
         if pane.request.is_local_shell() {
@@ -2999,7 +3154,6 @@ impl TermiRustApp {
             return;
         }
 
-        let pane_id = pane.id;
         let endpoint = pane.endpoint.clone();
         let request = pane.request.clone();
         let path = self
@@ -3025,6 +3179,16 @@ impl TermiRustApp {
         self.error_message.clear();
         self.load_workspace_directory(workspace_id, path);
         cx.notify();
+    }
+
+    fn open_active_workspace_files(&mut self, cx: &mut Context<Self>) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return;
+        };
+        let Some(pane_id) = self.active_pane().map(|pane| pane.id) else {
+            return;
+        };
+        self.open_workspace_files_for_pane(workspace_id, pane_id, cx);
     }
 
     fn show_active_workspace_terminal(&mut self, cx: &mut Context<Self>) {
@@ -3291,6 +3455,7 @@ impl TermiRustApp {
         let pane_id = request.session_id;
         let endpoint = request.endpoint_label();
         let title = request.title.clone();
+        let terminal_scrollback_rows = request.terminal_scrollback_rows;
         eprintln!("[app] spawn_pane: pane_id={pane_id} title='{title}' endpoint={endpoint}");
         let terminal_focus = cx.focus_handle().tab_stop(true);
         let runtime = if request.kind == ConnectionKind::LocalShell {
@@ -3314,7 +3479,7 @@ impl TermiRustApp {
             request,
             title,
             endpoint,
-            terminal: TerminalState::new(TerminalSize::default(), 10_000),
+            terminal: TerminalState::new(TerminalSize::default(), terminal_scrollback_rows),
             terminal_focus,
             last_size: None,
             runtime,
@@ -3727,9 +3892,30 @@ impl TermiRustApp {
                     let local_shell = self
                         .pane(session_id)
                         .is_some_and(|pane| pane.request.is_local_shell());
+                    let open_files_on_connect = self.pane(session_id).is_some_and(|pane| {
+                        pane.request.start_in_files && !pane.request.is_local_shell()
+                    });
+                    let workspace_to_open_files = if open_files_on_connect {
+                        self.pane_workspace_id(session_id)
+                    } else {
+                        None
+                    };
                     let ran_startup = !local_shell && self.send_startup_actions(session_id);
+                    if let Some(workspace_id) = workspace_to_open_files {
+                        self.open_workspace_files_for_pane(workspace_id, session_id, cx);
+                    }
                     self.status_message = if local_shell {
                         "Local terminal ready.".to_string()
+                    } else if open_files_on_connect && ran_startup && trusted_new_host {
+                        "SSH session connected. Files view opened, new host key trusted and pinned, startup actions queued.".to_string()
+                    } else if open_files_on_connect && ran_startup {
+                        "SSH session connected. Files view opened and startup actions queued."
+                            .to_string()
+                    } else if open_files_on_connect && trusted_new_host {
+                        "SSH session connected. Files view opened and new host key trusted."
+                            .to_string()
+                    } else if open_files_on_connect {
+                        "SSH session connected. Files view opened.".to_string()
                     } else if ran_startup && trusted_new_host {
                         "SSH session connected. New host key trusted and pinned. Startup actions queued.".to_string()
                     } else if ran_startup {
@@ -5408,6 +5594,11 @@ impl TermiRustApp {
         let startup_label = (profile.startup_directory.is_some()
             || profile.startup_command.is_some())
         .then(|| "Startup".to_string());
+        let connect_view_label = profile.start_in_files.then(|| "Files First".to_string());
+        let scrollback_label = profile
+            .terminal_scrollback_rows
+            .map(|rows| format!("{}k Scrollback", rows / 1000))
+            .filter(|label| label != "10k Scrollback");
         let forward_count = profile.effective_port_forward_rules().len();
         let forward_label = (forward_count > 0).then(|| {
             if forward_count == 1 {
@@ -5539,6 +5730,20 @@ impl TermiRustApp {
                                     theme::success(),
                                 ))
                             })
+                            .when_some(connect_view_label.clone(), |this, connect_view_label| {
+                                this.child(self.status_badge(
+                                    connect_view_label,
+                                    theme::library_bg(),
+                                    theme::accent(),
+                                ))
+                            })
+                            .when_some(scrollback_label.clone(), |this, scrollback_label| {
+                                this.child(self.status_badge(
+                                    scrollback_label,
+                                    theme::library_bg(),
+                                    theme::slate(),
+                                ))
+                            })
                             .when_some(forward_label.clone(), |this, forward_label| {
                                 this.child(self.status_badge(
                                     forward_label,
@@ -5629,12 +5834,21 @@ impl TermiRustApp {
             )
     }
 
-    fn render_host_grid(&self, cx: &Context<Self>) -> Div {
+    fn render_host_grid(&self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let groups = self.grouped_profiles(cx);
 
         let mut sections = Vec::new();
         let mut card_ix = 0usize;
         for (group_name, profiles) in &groups {
+            let visible_count = profiles.len();
+            let total_count = self
+                .saved
+                .profiles
+                .iter()
+                .filter(|profile| Self::profile_group_name(profile) == *group_name)
+                .count();
+            let group_name_for_select = group_name.clone();
+            let group_name_for_bulk = group_name.clone();
             let header = h_flex()
                 .justify_between()
                 .items_center()
@@ -5646,14 +5860,50 @@ impl TermiRustApp {
                         .child(group_name.clone()),
                 )
                 .child(
-                    div()
-                        .text_size(px(10.))
-                        .text_color(theme::text_muted())
-                        .child(format!(
-                            "{} {}",
-                            profiles.len(),
-                            if profiles.len() == 1 { "host" } else { "hosts" }
-                        )),
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(theme::text_muted())
+                                .child(if visible_count == total_count {
+                                    format!(
+                                        "{} {}",
+                                        visible_count,
+                                        if visible_count == 1 { "host" } else { "hosts" }
+                                    )
+                                } else {
+                                    format!("{} visible • {} total", visible_count, total_count)
+                                }),
+                        )
+                        .child(
+                            Button::new(("group-select", card_ix))
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label("Select Group")
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.select_filtered_group_hosts(&group_name_for_select, cx);
+                                })),
+                        )
+                        .when(group_name != "Favorites", |this| {
+                            this.child(
+                                Button::new(("group-bulk-target", card_ix))
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::AccentSoft,
+                                        cx,
+                                    ))
+                                    .label("Use as Bulk")
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.prepare_bulk_group_assignment(
+                                            &group_name_for_bulk,
+                                            window,
+                                            cx,
+                                        );
+                                    })),
+                            )
+                        }),
                 );
 
             let cards = div().w_full().flex().flex_wrap().gap_3().children(
@@ -5687,36 +5937,301 @@ impl TermiRustApp {
             .gap_5()
             .children(sections)
             .when(groups.is_empty(), |this| {
+                let query = self.host_search_query(cx);
+                let empty_state = if query.trim().is_empty() {
+                    self.render_library_empty_state(
+                        Icon::new(IconName::SquareTerminal)
+                            .size(px(24.))
+                            .text_color(theme::accent()),
+                        "No saved hosts yet",
+                        format!(
+                            "Saved hosts will appear here. Imported SSH config entries from {} still load automatically when present.",
+                            ssh_config_path_label()
+                        ),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .justify_center()
+                            .child(
+                                Button::new("hosts-empty-new")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .label("New Host")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_editor_for_new_host(window, cx);
+                                    })),
+                            ),
+                    )
+                } else {
+                    self.render_library_empty_state(
+                        Icon::new(IconName::Search)
+                            .size(px(24.))
+                            .text_color(theme::accent()),
+                        "No hosts match this filter",
+                        "Try a different search, or save a new host to add it to the library.",
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .justify_center()
+                            .child(
+                                Button::new("hosts-empty-clear-search")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    ))
+                                    .label("Clear Search")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        Self::set_input_value(
+                                            &this.shell_inputs.host_search,
+                                            "",
+                                            window,
+                                            cx,
+                                        );
+                                    })),
+                            )
+                            .child(
+                                Button::new("hosts-empty-new-filtered")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .label("New Host")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_editor_for_new_host(window, cx);
+                                    })),
+                            ),
+                    )
+                };
                 this.child(
-                    v_flex()
+                    empty_state,
+                )
+            })
+    }
+
+    fn render_saved_group_cards(&self, cx: &Context<Self>) -> Option<Div> {
+        if self.saved.host_groups.is_empty() {
+            return None;
+        }
+
+        Some(
+            v_flex()
+                .w_full()
+                .gap_3()
+                .child(
+                    h_flex()
+                        .justify_between()
                         .items_center()
-                        .justify_center()
-                        .p_8()
-                        .rounded(px(theme::CARD_RADIUS))
-                        .bg(theme::with_alpha(theme::library_card(), 0.6))
-                        .border_1()
-                        .border_color(theme::with_alpha(theme::border(), 0.5))
-                        .gap_2()
-                        .child(
-                            Icon::new(IconName::Search)
-                                .size(px(28.))
-                                .text_color(theme::with_alpha(theme::text_muted(), 0.4)),
-                        )
                         .child(
                             div()
                                 .text_size(px(13.))
-                                .font_medium()
-                                .text_color(theme::text_muted())
-                                .child("No hosts match the current filter"),
+                                .font_semibold()
+                                .text_color(theme::text_main())
+                                .child("Saved Groups"),
                         )
                         .child(
                             div()
-                                .text_size(px(11.))
-                                .text_color(theme::with_alpha(theme::text_muted(), 0.7))
-                                .child("Try a different search or add a new host"),
+                                .text_size(px(10.5))
+                                .text_color(theme::text_muted())
+                                .child(
+                                    "Select a group, target it for bulk assignment, or load its defaults into the editor.",
+                                ),
                         ),
                 )
-            })
+                .child(
+                    div()
+                        .w_full()
+                        .flex()
+                        .flex_wrap()
+                        .gap_3()
+                        .children(self.saved.host_groups.iter().enumerate().map(|(index, group)| {
+                            let group_name = group.label.clone();
+                            let select_group_name = group.label.clone();
+                            let bulk_group_name = group.label.clone();
+                            let load_group_name = group.label.clone();
+                            let (visible_count, total_count) = self.group_host_counts(&group.label, cx);
+                            let mut chips = Vec::new();
+                            if let Some(username) = group.username.as_deref() {
+                                chips.push(
+                                    self.status_badge(
+                                        format!("User: {}", username),
+                                        theme::library_bg(),
+                                        theme::slate(),
+                                    )
+                                    .into_any_element(),
+                                );
+                            }
+                            if !group.tags.is_empty() {
+                                chips.push(
+                                    self.status_badge(
+                                        format!("Tags: {}", group.tags.join(", ")),
+                                        theme::library_bg(),
+                                        theme::slate(),
+                                    )
+                                    .into_any_element(),
+                                );
+                            }
+                            if let Some(identity_id) = group.identity_id.as_deref() {
+                                if let Some(identity) = self.identity_by_id(identity_id) {
+                                    chips.push(
+                                        self.status_badge(
+                                            format!("Identity: {}", identity.label),
+                                            theme::library_bg(),
+                                            theme::success(),
+                                        )
+                                        .into_any_element(),
+                                    );
+                                }
+                            }
+                            if let Some(jump_host_id) = group.jump_host_id.as_deref() {
+                                if let Some(jump_host) = self.jump_host_display_name(jump_host_id) {
+                                    chips.push(
+                                        self.status_badge(
+                                            format!("Jump: {}", jump_host),
+                                            theme::library_bg(),
+                                            theme::accent(),
+                                        )
+                                        .into_any_element(),
+                                    );
+                                }
+                            }
+                            if let Some(directory) = group.startup_directory.as_deref() {
+                                chips.push(
+                                    self.status_badge(
+                                        format!("Dir: {}", directory),
+                                        theme::library_bg(),
+                                        theme::warning(),
+                                    )
+                                    .into_any_element(),
+                                );
+                            }
+                            if let Some(command) = group.startup_command.as_deref() {
+                                chips.push(
+                                    self.status_badge(
+                                        format!("Cmd: {}", command),
+                                        theme::library_bg(),
+                                        theme::warning(),
+                                    )
+                                    .into_any_element(),
+                                );
+                            }
+                            if !group.port_forward_rules.is_empty() {
+                                chips.push(
+                                    self.status_badge(
+                                        if group.port_forward_rules.len() == 1 {
+                                            format!(
+                                                "Forward: {}",
+                                                group.port_forward_rules[0].display_name()
+                                            )
+                                        } else {
+                                            format!("{} Forwards", group.port_forward_rules.len())
+                                        },
+                                        theme::library_bg(),
+                                        theme::warning(),
+                                    )
+                                    .into_any_element(),
+                                );
+                            }
+
+                            v_flex()
+                                .id(("saved-group-card", index))
+                                .min_w(px(HOST_CARD_WIDTH))
+                                .max_w(px(HOST_CARD_WIDTH * 1.3))
+                                .flex_1()
+                                .gap_3()
+                                .p_4()
+                                .rounded(px(theme::CARD_RADIUS))
+                                .bg(theme::library_card())
+                                .border_1()
+                                .border_color(theme::border())
+                                .child(
+                                    h_flex()
+                                        .justify_between()
+                                        .items_center()
+                                        .child(
+                                            div()
+                                                .text_size(px(13.))
+                                                .font_semibold()
+                                                .text_color(theme::text_main())
+                                                .child(group_name),
+                                        )
+                                        .child(self.status_badge(
+                                            if visible_count == total_count {
+                                                format!("{} hosts", total_count)
+                                            } else {
+                                                format!("{} visible • {} total", visible_count, total_count)
+                                            },
+                                            theme::library_bg(),
+                                            theme::text_muted(),
+                                        )),
+                                )
+                                .when(!chips.is_empty(), |this| {
+                                    this.child(h_flex().gap_2().flex_wrap().children(chips))
+                                })
+                                .child(
+                                    h_flex()
+                                        .gap_2()
+                                        .flex_wrap()
+                                        .child(
+                                            Button::new(("saved-group-select", index))
+                                                .small()
+                                                .custom(Self::action_button_style(
+                                                    theme::ActionTone::Neutral,
+                                                    cx,
+                                                ))
+                                                .label("Select Hosts")
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.select_filtered_group_hosts(
+                                                        &select_group_name,
+                                                        cx,
+                                                    );
+                                                })),
+                                        )
+                                        .child(
+                                            Button::new(("saved-group-bulk", index))
+                                                .small()
+                                                .custom(Self::action_button_style(
+                                                    theme::ActionTone::AccentSoft,
+                                                    cx,
+                                                ))
+                                                .label("Use as Bulk")
+                                                .on_click(cx.listener(move |this, _, window, cx| {
+                                                    this.prepare_bulk_group_assignment(
+                                                        &bulk_group_name,
+                                                        window,
+                                                        cx,
+                                                    );
+                                                })),
+                                        )
+                                        .child(
+                                            Button::new(("saved-group-load", index))
+                                                .small()
+                                                .custom(Self::action_button_style(
+                                                    theme::ActionTone::Neutral,
+                                                    cx,
+                                                ))
+                                                .label("Load Defaults")
+                                                .on_click(cx.listener(move |this, _, window, cx| {
+                                                    Self::set_input_value(
+                                                        &this.inputs.group,
+                                                        load_group_name.clone(),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                    this.apply_group_defaults_to_editor(window, cx);
+                                                })),
+                                        ),
+                                )
+                                .into_any_element()
+                        })),
+                ),
+        )
     }
 
     fn render_identity_picker(&self, cx: &Context<Self>) -> Div {
@@ -6034,6 +6549,26 @@ impl TermiRustApp {
                         )
                         .when_some(saved_group.clone(), |this, group| {
                             let mut chips = Vec::new();
+                            if let Some(username) = group.username.as_deref() {
+                                chips.push(
+                                    self.status_badge(
+                                        format!("User: {}", username),
+                                        theme::library_bg(),
+                                        theme::slate(),
+                                    )
+                                    .into_any_element(),
+                                );
+                            }
+                            if !group.tags.is_empty() {
+                                chips.push(
+                                    self.status_badge(
+                                        format!("Tags: {}", group.tags.join(", ")),
+                                        theme::library_bg(),
+                                        theme::slate(),
+                                    )
+                                    .into_any_element(),
+                                );
+                            }
                             if let Some(identity_id) = group.identity_id.as_deref() {
                                 if let Some(identity) = self.identity_by_id(identity_id) {
                                     chips.push(
@@ -6072,6 +6607,21 @@ impl TermiRustApp {
                                 chips.push(
                                     self.status_badge(
                                         format!("Cmd: {}", command),
+                                        theme::library_bg(),
+                                        theme::warning(),
+                                    )
+                                    .into_any_element(),
+                                );
+                            }
+                            if !group.port_forward_rules.is_empty() {
+                                let label = if group.port_forward_rules.len() == 1 {
+                                    format!("Forward: {}", group.port_forward_rules[0].display_name())
+                                } else {
+                                    format!("{} Forwards", group.port_forward_rules.len())
+                                };
+                                chips.push(
+                                    self.status_badge(
+                                        label,
                                         theme::library_bg(),
                                         theme::warning(),
                                     )
@@ -6126,11 +6676,11 @@ impl TermiRustApp {
                                 }),
                         )
                         .child(
-                            div()
-                                .text_size(px(10.))
-                                .text_color(theme::text_muted())
-                                .child(
-                                    "Blank host fields can inherit identity, jump host, and startup settings from the saved group defaults.",
+                        div()
+                            .text_size(px(10.))
+                            .text_color(theme::text_muted())
+                            .child(
+                                    "Blank host fields can inherit username, tags, identity, jump host, startup settings, and saved forwarding rules from the group defaults.",
                                 ),
                         ),
                 )
@@ -6171,6 +6721,87 @@ impl TermiRustApp {
                             .text_color(theme::text_muted())
                             .child(
                                 "When the SSH shell opens, the app can change into a saved directory and optionally run one startup command.",
+                            ),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child("Session"),
+                    )
+                    .child(
+                        h_flex()
+                            .p(px(3.))
+                            .rounded(px(8.))
+                            .bg(theme::hover())
+                            .child(
+                                div()
+                                    .id("connect-view-terminal")
+                                    .flex_1()
+                                    .h(px(28.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(6.))
+                                    .text_size(px(12.))
+                                    .font_medium()
+                                    .cursor_pointer()
+                                    .when(!self.draft_start_in_files, |this| {
+                                        this.bg(theme::library_card())
+                                            .shadow_sm()
+                                            .text_color(theme::text_main())
+                                    })
+                                    .when(self.draft_start_in_files, |this| {
+                                        this.text_color(theme::text_muted())
+                                    })
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.set_draft_connect_view(false, cx);
+                                    }))
+                                    .child("Open Terminal"),
+                            )
+                            .child(
+                                div()
+                                    .id("connect-view-files")
+                                    .flex_1()
+                                    .h(px(28.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(6.))
+                                    .text_size(px(12.))
+                                    .font_medium()
+                                    .cursor_pointer()
+                                    .when(self.draft_start_in_files, |this| {
+                                        this.bg(theme::library_card())
+                                            .shadow_sm()
+                                            .text_color(theme::text_main())
+                                    })
+                                    .when(!self.draft_start_in_files, |this| {
+                                        this.text_color(theme::text_muted())
+                                    })
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.set_draft_connect_view(true, cx);
+                                    }))
+                                    .child("Open Files"),
+                            ),
+                    )
+                    .child(
+                        self.form_field(
+                            "Scrollback Rows",
+                            Input::new(&self.inputs.terminal_scrollback_rows),
+                        ),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.))
+                            .text_color(theme::text_muted())
+                            .child(
+                                "Choose whether this host lands in Terminal or Files after connect, and set how many terminal rows to keep in local scrollback.",
                             ),
                     ),
             )
@@ -6545,7 +7176,105 @@ impl TermiRustApp {
             .child(input)
     }
 
-    fn render_hosts_view(&self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
+    fn render_library_empty_state<E: IntoElement>(
+        &self,
+        icon: E,
+        title: impl Into<SharedString>,
+        description: impl Into<SharedString>,
+    ) -> Div {
+        let title = title.into();
+        let description = description.into();
+        v_flex()
+            .items_center()
+            .justify_center()
+            .max_w(px(520.))
+            .mx_auto()
+            .p_8()
+            .rounded(px(theme::CARD_RADIUS))
+            .bg(theme::library_card())
+            .border_1()
+            .border_color(theme::border())
+            .gap_3()
+            .child(
+                div()
+                    .size(px(56.))
+                    .rounded(px(18.))
+                    .bg(theme::with_alpha(theme::accent(), 0.08))
+                    .border_1()
+                    .border_color(theme::with_alpha(theme::accent(), 0.2))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(icon),
+            )
+            .child(
+                div()
+                    .text_size(px(14.))
+                    .font_semibold()
+                    .text_color(theme::text_main())
+                    .child(title),
+            )
+            .child(
+                div()
+                    .max_w(px(420.))
+                    .text_size(px(11.5))
+                    .line_height(relative(1.5))
+                    .text_color(theme::text_muted())
+                    .text_center()
+                    .child(description),
+            )
+    }
+
+    fn render_workspace_empty_state<E: IntoElement>(
+        &self,
+        icon: E,
+        title: impl Into<SharedString>,
+        description: impl Into<SharedString>,
+    ) -> Div {
+        let title = title.into();
+        let description = description.into();
+        v_flex()
+            .items_center()
+            .justify_center()
+            .max_w(px(520.))
+            .mx_auto()
+            .p_8()
+            .rounded(px(theme::CARD_RADIUS))
+            .bg(theme::terminal_panel())
+            .border_1()
+            .border_color(theme::border_dark())
+            .gap_3()
+            .child(
+                div()
+                    .size(px(56.))
+                    .rounded(px(18.))
+                    .bg(theme::with_alpha(theme::accent(), 0.12))
+                    .border_1()
+                    .border_color(theme::with_alpha(theme::accent(), 0.28))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(icon),
+            )
+            .child(
+                div()
+                    .text_size(px(14.))
+                    .font_semibold()
+                    .text_color(theme::text_on_dark())
+                    .child(title),
+            )
+            .child(
+                div()
+                    .max_w(px(420.))
+                    .text_size(px(11.5))
+                    .line_height(relative(1.5))
+                    .text_color(theme::text_muted_dark())
+                    .text_center()
+                    .child(description),
+            )
+    }
+
+    fn render_hosts_view(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let quick_connect = self.try_quick_connect_from_search(cx);
         let has_quick_connect = quick_connect.is_some();
         let quick_connect_password = self.current_quick_connect_password(cx);
@@ -6709,6 +7438,9 @@ impl TermiRustApp {
                     .px_4()
                     .pb_4()
                     .overflow_y_scrollbar()
+                    .when_some(self.render_saved_group_cards(cx), |this, cards| {
+                        this.child(cards)
+                    })
                     .child(
                         div()
                             .text_size(px(13.))
@@ -6716,7 +7448,7 @@ impl TermiRustApp {
                             .text_color(theme::text_main())
                             .child("Hosts"),
                     )
-                    .child(self.render_host_grid(cx)),
+                    .child(self.render_host_grid(window, cx)),
             )
     }
 
@@ -6976,33 +7708,35 @@ impl TermiRustApp {
                     ))
                     .when(identities.is_empty(), |this| {
                         this.child(
-                            v_flex()
-                                .items_center()
-                                .justify_center()
-                                .p_8()
-                                .rounded(px(theme::CARD_RADIUS))
-                                .bg(theme::library_card())
-                                .border_1()
-                                .border_color(theme::border())
-                                .gap_2()
-                                .child(
-                                    app_icon(ICON_KEY)
-                                        .size(px(28.))
-                                        .text_color(theme::with_alpha(theme::text_muted(), 0.4)),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(13.))
-                                        .font_medium()
-                                        .text_color(theme::text_muted())
-                                        .child("No identities available"),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(11.))
-                                        .text_color(theme::with_alpha(theme::text_muted(), 0.7))
-                                        .child("Use \"Add Key File\" above to add a reusable identity"),
-                                ),
+                            self.render_library_empty_state(
+                                app_icon(ICON_KEY)
+                                    .size(px(24.))
+                                    .text_color(theme::accent()),
+                                "No identities available",
+                                "Add a key file to build a reusable identity library for your hosts.",
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .justify_center()
+                                    .child(
+                                        Button::new("keys-empty-add")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Accent,
+                                                cx,
+                                            ))
+                                            .icon(IconName::FolderOpen)
+                                            .label("Add Key File")
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.pick_key_file(window, cx);
+                                                this.nav_section = NavSection::Hosts;
+                                                this.show_editor_panel = true;
+                                                this.draft_auth_mode = AuthMode::PrivateKey;
+                                                cx.notify();
+                                            })),
+                                    ),
+                            ),
                         )
                     }),
             )
@@ -7126,33 +7860,30 @@ impl TermiRustApp {
                     )
                     .when(profiles_with_password.is_empty(), |this| {
                         this.child(
-                            v_flex()
-                                .items_center()
-                                .justify_center()
-                                .p_8()
-                                .rounded(px(theme::CARD_RADIUS))
-                                .bg(theme::library_card())
-                                .border_1()
-                                .border_color(theme::border())
-                                .gap_2()
-                                .child(
-                                    Icon::new(IconName::User)
-                                        .size(px(28.))
-                                        .text_color(theme::with_alpha(theme::text_muted(), 0.4)),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(13.))
-                                        .font_medium()
-                                        .text_color(theme::text_muted())
-                                        .child("No password identities saved"),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(11.))
-                                        .text_color(theme::with_alpha(theme::text_muted(), 0.7))
-                                        .child("Save a host with password auth to see it here"),
-                                ),
+                            self.render_library_empty_state(
+                                Icon::new(IconName::User)
+                                    .size(px(24.))
+                                    .text_color(theme::accent()),
+                                "No password identities saved",
+                                "Save a host with password authentication to keep its secure credential reference here.",
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .justify_center()
+                                    .child(
+                                        Button::new("password-identities-open-hosts")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Accent,
+                                                cx,
+                                            ))
+                                            .label("New Host")
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.open_editor_for_new_host(window, cx);
+                                            })),
+                                    ),
+                            ),
                         )
                     }),
             )
@@ -7717,33 +8448,31 @@ impl TermiRustApp {
                     }))
                     .when(entries.is_empty(), |this| {
                         this.child(
-                            v_flex()
-                                .items_center()
-                                .justify_center()
-                                .p_8()
-                                .rounded(px(theme::CARD_RADIUS))
-                                .bg(theme::library_card())
-                                .border_1()
-                                .border_color(theme::border())
-                                .gap_2()
-                                .child(
-                                    app_icon(ICON_SHIELD_CHECK)
-                                        .size(px(28.))
-                                        .text_color(theme::with_alpha(theme::text_muted(), 0.4)),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(13.))
-                                        .font_medium()
-                                        .text_color(theme::text_muted())
-                                        .child("No hosts pinned yet"),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(11.))
-                                        .text_color(theme::with_alpha(theme::text_muted(), 0.7))
-                                        .child("Connect to a server to trust its key"),
-                                ),
+                            self.render_library_empty_state(
+                                app_icon(ICON_SHIELD_CHECK)
+                                    .size(px(24.))
+                                    .text_color(theme::accent()),
+                                "No hosts pinned yet",
+                                "Trust records appear here after the first successful SSH connection to a host.",
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .justify_center()
+                                    .child(
+                                        Button::new("known-hosts-open-hosts")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Accent,
+                                                cx,
+                                            ))
+                                            .label("Open Hosts")
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.nav_section = NavSection::Hosts;
+                                                cx.notify();
+                                            })),
+                                    ),
+                            ),
                         )
                     }),
             )
@@ -7917,33 +8646,31 @@ impl TermiRustApp {
                     }))
                     .when(logs.is_empty() && self.panes.is_empty(), |this| {
                         this.child(
-                            v_flex()
-                                .items_center()
-                                .justify_center()
-                                .p_8()
-                                .rounded(px(theme::CARD_RADIUS))
-                                .bg(theme::library_card())
-                                .border_1()
-                                .border_color(theme::border())
-                                .gap_2()
-                                .child(
-                                    Icon::new(IconName::BookOpen)
-                                        .size(px(28.))
-                                        .text_color(theme::with_alpha(theme::text_muted(), 0.4)),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(13.))
-                                        .font_medium()
-                                        .text_color(theme::text_muted())
-                                        .child("No session history yet"),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(11.))
-                                        .text_color(theme::with_alpha(theme::text_muted(), 0.7))
-                                        .child("Connect to a host to see logs here"),
-                                ),
+                            self.render_library_empty_state(
+                                Icon::new(IconName::BookOpen)
+                                    .size(px(24.))
+                                    .text_color(theme::accent()),
+                                "No session history yet",
+                                "Connection history appears here after you open your first SSH workspace.",
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .justify_center()
+                                    .child(
+                                        Button::new("logs-open-hosts")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Accent,
+                                                _cx,
+                                            ))
+                                            .label("Open Hosts")
+                                            .on_click(_cx.listener(|this, _, _, cx| {
+                                                this.nav_section = NavSection::Hosts;
+                                                cx.notify();
+                                            })),
+                                    ),
+                            ),
                         )
                     }),
             )
@@ -8194,33 +8921,30 @@ impl TermiRustApp {
                     }))
                     .when(snippets.is_empty(), |this| {
                         this.child(
-                            v_flex()
-                                .items_center()
-                                .justify_center()
-                                .p_8()
-                                .rounded(px(theme::CARD_RADIUS))
-                                .bg(theme::library_card())
-                                .border_1()
-                                .border_color(theme::border())
-                                .gap_2()
-                                .child(
-                                    Icon::new(IconName::BookOpen)
-                                        .size(px(28.))
-                                        .text_color(theme::with_alpha(theme::text_muted(), 0.4)),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(13.))
-                                        .font_medium()
-                                        .text_color(theme::text_muted())
-                                        .child("No snippets yet"),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(11.))
-                                        .text_color(theme::with_alpha(theme::text_muted(), 0.7))
-                                        .child("Save a reusable command above to build a snippets library"),
-                                ),
+                            self.render_library_empty_state(
+                                Icon::new(IconName::BookOpen)
+                                    .size(px(24.))
+                                    .text_color(theme::accent()),
+                                "No snippets yet",
+                                "Save repeatable commands here so they can be searched, pinned, and sent into active terminals.",
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .justify_center()
+                                    .child(
+                                        Button::new("snippets-empty-new")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Accent,
+                                                _cx,
+                                            ))
+                                            .label("New Snippet")
+                                            .on_click(_cx.listener(|this, _, window, cx| {
+                                                this.clear_snippet_form(window, cx);
+                                            })),
+                                    ),
+                            ),
                         )
                     }),
             )
@@ -9204,23 +9928,80 @@ impl TermiRustApp {
         };
         let workspace_id = workspace.id;
         let Some(browser) = workspace.sftp.as_ref() else {
-            return v_flex().flex_1().items_center().justify_center().child(
-                v_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        Icon::new(IconName::FolderOpen)
-                            .size(px(28.))
-                            .text_color(theme::with_alpha(theme::text_muted_dark(), 0.45)),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .font_medium()
-                            .text_color(theme::text_on_dark())
-                            .child("Open Files to browse this host over SFTP"),
-                    ),
-            );
+            let active_pane_is_local = self
+                .active_pane()
+                .is_some_and(|pane| pane.request.kind == ConnectionKind::LocalShell);
+            let empty_state = if active_pane_is_local {
+                self.render_workspace_empty_state(
+                    Icon::new(IconName::FolderOpen)
+                        .size(px(24.))
+                        .text_color(theme::accent()),
+                    "Files view is unavailable for local shells",
+                    "SFTP file browsing only applies to SSH hosts. Switch back to the terminal to keep working locally.",
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .justify_center()
+                        .child(
+                            Button::new("workspace-files-local-back")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                ))
+                                .label("Back to Terminal")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.show_active_workspace_terminal(cx);
+                                })),
+                        ),
+                )
+            } else {
+                self.render_workspace_empty_state(
+                    Icon::new(IconName::FolderOpen)
+                        .size(px(24.))
+                        .text_color(theme::accent()),
+                    "Open Files for this host",
+                    "Browse the active SSH host over SFTP, upload and download files, or switch back to the terminal.",
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .justify_center()
+                        .child(
+                            Button::new("workspace-files-open")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                ))
+                                .label("Open Files")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.open_active_workspace_files(cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("workspace-files-back")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                ))
+                                .label("Back to Terminal")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.show_active_workspace_terminal(cx);
+                                })),
+                        ),
+                )
+            };
+
+            return v_flex()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .bg(theme::terminal_bg())
+                .p(px(WORKSPACE_PADDING))
+                .child(empty_state);
         };
         let selected_entry = self.selected_workspace_sftp_entry(workspace.id);
 
@@ -9334,28 +10115,14 @@ impl TermiRustApp {
                     })
                     .when(browser.entries.is_empty() && !browser.loading, |this| {
                         this.child(
-                            v_flex()
-                                .w_full()
-                                .items_center()
-                                .justify_center()
-                                .p_8()
-                                .rounded(px(theme::CARD_RADIUS))
-                                .bg(theme::terminal_panel())
-                                .border_1()
-                                .border_color(theme::border_dark())
-                                .gap_2()
-                                .child(
-                                    Icon::new(IconName::Folder).size(px(28.)).text_color(
-                                        theme::with_alpha(theme::text_muted_dark(), 0.4),
-                                    ),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(13.))
-                                        .font_medium()
-                                        .text_color(theme::text_on_dark())
-                                        .child("This directory is empty"),
-                                ),
+                            self.render_workspace_empty_state(
+                                Icon::new(IconName::Folder)
+                                    .size(px(24.))
+                                    .text_color(theme::accent()),
+                                "This directory is empty",
+                                "Try a different path, upload a file, or switch back to the terminal for shell work.",
+                            )
+                            .w_full(),
                         )
                     })
                     .children(browser.entries.iter().enumerate().map(|(index, entry)| {
@@ -9737,24 +10504,44 @@ impl TermiRustApp {
                 .bg(theme::terminal_bg())
                 .items_center()
                 .justify_center()
-                .gap_3()
+                .p(px(WORKSPACE_PADDING))
                 .child(
-                    Icon::new(IconName::SquareTerminal)
-                        .size(px(36.))
-                        .text_color(theme::with_alpha(theme::text_muted_dark(), 0.3)),
-                )
-                .child(
-                    div()
-                        .text_size(px(15.))
-                        .font_medium()
-                        .text_color(theme::text_on_dark())
-                        .child("Open a host to start a workspace"),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(theme::text_muted_dark())
-                        .child("Select a host from the library or use quick connect"),
+                    self.render_workspace_empty_state(
+                        Icon::new(IconName::SquareTerminal)
+                            .size(px(24.))
+                            .text_color(theme::accent()),
+                        "Open a host to start a workspace",
+                        "Select a saved host from the library, use quick connect, or open a local terminal to start working.",
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .justify_center()
+                            .child(
+                                Button::new("workspace-empty-local")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .label("Local Terminal")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_local_terminal(window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("workspace-empty-hosts")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    ))
+                                    .label("New Host")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_editor_for_new_host(window, cx);
+                                    })),
+                            ),
+                    ),
                 );
         };
 
@@ -9827,6 +10614,11 @@ impl Render for TermiRustApp {
             .bg(theme::app_bg())
             .font_family(cx.theme().font_family.clone())
             .text_color(theme::text_main())
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                if this.handle_global_key(event, window, cx) {
+                    cx.stop_propagation();
+                }
+            }))
             .child(
                 v_flex()
                     .size_full()
@@ -9960,6 +10752,110 @@ impl TermiRustApp {
             "up" => self.move_command_palette_selection(-1, cx),
             "down" => self.move_command_palette_selection(1, cx),
             "enter" => self.run_selected_command_palette(window, cx),
+            _ => false,
+        }
+    }
+
+    fn handle_global_key(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.show_command_palette {
+            return false;
+        }
+
+        if event.keystroke.key.as_str() == "escape" {
+            if self.show_editor_panel {
+                self.close_editor_dialog(window, cx);
+                return true;
+            }
+            if self
+                .active_workspace()
+                .is_some_and(|workspace| workspace.view_mode == WorkspaceViewMode::Files)
+            {
+                self.show_active_workspace_terminal(cx);
+                return true;
+            }
+        }
+
+        if !event.keystroke.modifiers.secondary() {
+            return false;
+        }
+
+        if event.keystroke.modifiers.shift {
+            match event.keystroke.key.as_str() {
+                "f" => {
+                    if self.active_workspace_id.is_some() {
+                        self.open_active_workspace_files(cx);
+                        return true;
+                    }
+                }
+                "t" => {
+                    if self.active_workspace_id.is_some() {
+                        self.show_active_workspace_terminal(cx);
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        match event.keystroke.key.as_str() {
+            "1" => {
+                self.activate_library_section(NavSection::Hosts, window, cx);
+                true
+            }
+            "2" => {
+                self.activate_library_section(NavSection::Vaults, window, cx);
+                true
+            }
+            "3" => {
+                self.activate_library_section(NavSection::Keychain, window, cx);
+                true
+            }
+            "4" => {
+                self.activate_library_section(NavSection::Snippets, window, cx);
+                true
+            }
+            "5" => {
+                self.activate_library_section(NavSection::Settings, window, cx);
+                true
+            }
+            "6" => {
+                self.activate_library_section(NavSection::KnownHosts, window, cx);
+                true
+            }
+            "7" => {
+                self.activate_library_section(NavSection::Logs, window, cx);
+                true
+            }
+            "," => {
+                self.activate_library_section(NavSection::Settings, window, cx);
+                true
+            }
+            "l" => {
+                if self.active_workspace_id.is_none() {
+                    self.activate_library_section(NavSection::Hosts, window, cx);
+                    self.focus_host_search(window, cx);
+                    self.status_message = "Host search focused.".to_string();
+                    self.error_message.clear();
+                    cx.notify();
+                    true
+                } else {
+                    false
+                }
+            }
+            "n" => {
+                if self.active_workspace_id.is_none() {
+                    self.activate_library(window, cx);
+                    self.open_editor_for_new_host(window, cx);
+                    true
+                } else {
+                    false
+                }
+            }
             _ => false,
         }
     }
@@ -10934,23 +11830,25 @@ fn collect_command_palette_candidates(
     if let Some(context_suggestions) =
         collect_context_command_templates(query.as_str(), output_context)
     {
-        for (ordinal, (command, detail)) in context_suggestions.into_iter().enumerate() {
-            let Some(match_kind) = palette_match_kind(&query, &[&command, &detail]) else {
+        for template in context_suggestions {
+            let Some(match_kind) =
+                palette_match_kind(&query, &[&template.command, &template.detail])
+            else {
                 continue;
             };
-            let key = command.to_ascii_lowercase();
+            let key = template.command.to_ascii_lowercase();
             if seen.insert(key) {
                 suggestions.push(ScoredPaletteCandidate {
                     candidate: CommandPaletteCandidate {
-                        command: command.clone(),
-                        title: command,
-                        detail,
+                        command: template.command.clone(),
+                        title: template.command,
+                        detail: template.detail,
                         source: AutocompleteSource::Context,
                         pinned: false,
                     },
                     match_kind,
-                    ordinal,
-                    source_priority: 2,
+                    ordinal: template.ordinal,
+                    source_priority: 2u8.saturating_add(template.rank),
                 });
             }
         }
@@ -11190,7 +12088,8 @@ fn collect_context_autocomplete_candidates(
     let suggestions = collect_context_command_templates(input, output_context)?;
     let mut candidates = suggestions
         .into_iter()
-        .filter_map(|(command, detail)| {
+        .filter_map(|template| {
+            let command = template.command;
             let command_lower = command.to_ascii_lowercase();
             let match_kind =
                 autocomplete_match_kind(&input.trim().to_ascii_lowercase(), &command_lower)?;
@@ -11198,19 +12097,26 @@ fn collect_context_autocomplete_candidates(
                 AutocompleteCandidate {
                     command,
                     source: AutocompleteSource::Context,
-                    scope_label: Some(detail),
+                    scope_label: Some(template.detail),
                 },
                 match_kind,
+                template.rank,
+                template.ordinal,
             ))
         })
         .collect::<Vec<_>>();
 
     candidates.sort_by(|left, right| {
         left.1.cmp(&right.1).then_with(|| {
-            left.0
-                .command
-                .to_ascii_lowercase()
-                .cmp(&right.0.command.to_ascii_lowercase())
+            left.2
+                .cmp(&right.2)
+                .then_with(|| left.3.cmp(&right.3))
+                .then_with(|| {
+                    left.0
+                        .command
+                        .to_ascii_lowercase()
+                        .cmp(&right.0.command.to_ascii_lowercase())
+                })
         })
     });
 
@@ -11221,7 +12127,7 @@ fn collect_context_autocomplete_candidates(
             candidates
                 .into_iter()
                 .take(6)
-                .map(|(candidate, _)| candidate)
+                .map(|(candidate, _, _, _)| candidate)
                 .collect(),
         )
     }
@@ -11230,26 +12136,32 @@ fn collect_context_autocomplete_candidates(
 fn collect_context_command_templates(
     input: &str,
     output_context: Option<&OutputSuggestionContext>,
-) -> Option<Vec<(String, String)>> {
+) -> Option<Vec<ContextCommandTemplate>> {
     let output_context = output_context?;
-    let query = input.trim();
-    if query.is_empty() || query.contains('\n') || output_context.recent_lines.is_empty() {
+    let raw_query = input.trim_end_matches(['\r', '\n']);
+    let query = raw_query.trim();
+    if query.is_empty() || raw_query.contains('\n') || output_context.recent_lines.is_empty() {
         return None;
     }
 
     let query_lower = query.to_ascii_lowercase();
+    let path_hint = current_path_hint(output_context.current_path.as_deref());
     let mut templates = Vec::new();
     let mut push_templates = |prefix: &str, targets: Vec<String>, kind: &str| {
-        for target in targets {
-            templates.push((
-                format!("{prefix}{target}"),
-                context_detail(kind, output_context.current_path.as_deref()),
-            ));
+        for (ordinal, target) in targets.into_iter().enumerate() {
+            templates.push(ContextCommandTemplate {
+                command: format!("{prefix}{target}"),
+                detail: context_detail(kind, output_context.current_path.as_deref()),
+                rank: context_target_rank(&target, path_hint.as_deref()),
+                ordinal,
+            });
         }
     };
 
-    if query_lower.starts_with("git checkout ") || query_lower.starts_with("git switch ") {
-        let prefix = if query_lower.starts_with("git switch ") {
+    if matches_command_prefix(&query_lower, "git checkout")
+        || matches_command_prefix(&query_lower, "git switch")
+    {
+        let prefix = if matches_command_prefix(&query_lower, "git switch") {
             "git switch "
         } else {
             "git checkout "
@@ -11259,8 +12171,10 @@ fn collect_context_command_templates(
             extract_git_branch_targets(&output_context.recent_lines),
             "Git branch",
         );
-    } else if query_lower.starts_with("git diff ") || query_lower.starts_with("git log ") {
-        let prefix = if query_lower.starts_with("git log ") {
+    } else if matches_command_prefix(&query_lower, "git diff")
+        || matches_command_prefix(&query_lower, "git log")
+    {
+        let prefix = if matches_command_prefix(&query_lower, "git log") {
             "git log "
         } else {
             "git diff "
@@ -11270,22 +12184,22 @@ fn collect_context_command_templates(
             extract_git_branch_targets(&output_context.recent_lines),
             "Git branch",
         );
-    } else if query_lower.starts_with("docker logs ")
-        || query_lower.starts_with("docker inspect ")
-        || query_lower.starts_with("docker stop ")
-        || query_lower.starts_with("docker restart ")
-        || query_lower.starts_with("docker rm ")
-        || query_lower.starts_with("docker exec -it ")
+    } else if matches_command_prefix(&query_lower, "docker logs")
+        || matches_command_prefix(&query_lower, "docker inspect")
+        || matches_command_prefix(&query_lower, "docker stop")
+        || matches_command_prefix(&query_lower, "docker restart")
+        || matches_command_prefix(&query_lower, "docker rm")
+        || matches_command_prefix(&query_lower, "docker exec -it")
     {
-        let prefix = if query_lower.starts_with("docker exec -it ") {
+        let prefix = if matches_command_prefix(&query_lower, "docker exec -it") {
             "docker exec -it "
-        } else if query_lower.starts_with("docker inspect ") {
+        } else if matches_command_prefix(&query_lower, "docker inspect") {
             "docker inspect "
-        } else if query_lower.starts_with("docker stop ") {
+        } else if matches_command_prefix(&query_lower, "docker stop") {
             "docker stop "
-        } else if query_lower.starts_with("docker restart ") {
+        } else if matches_command_prefix(&query_lower, "docker restart") {
             "docker restart "
-        } else if query_lower.starts_with("docker rm ") {
+        } else if matches_command_prefix(&query_lower, "docker rm") {
             "docker rm "
         } else {
             "docker logs "
@@ -11295,13 +12209,13 @@ fn collect_context_command_templates(
             extract_docker_targets(&output_context.recent_lines),
             "Docker target",
         );
-    } else if query_lower.starts_with("kubectl logs ")
-        || query_lower.starts_with("kubectl describe pod ")
-        || query_lower.starts_with("kubectl exec -it ")
+    } else if matches_command_prefix(&query_lower, "kubectl logs")
+        || matches_command_prefix(&query_lower, "kubectl describe pod")
+        || matches_command_prefix(&query_lower, "kubectl exec -it")
     {
-        let prefix = if query_lower.starts_with("kubectl describe pod ") {
+        let prefix = if matches_command_prefix(&query_lower, "kubectl describe pod") {
             "kubectl describe pod "
-        } else if query_lower.starts_with("kubectl exec -it ") {
+        } else if matches_command_prefix(&query_lower, "kubectl exec -it") {
             "kubectl exec -it "
         } else {
             "kubectl logs "
@@ -11311,19 +12225,19 @@ fn collect_context_command_templates(
             extract_kubernetes_pod_targets(&output_context.recent_lines),
             "Kubernetes pod",
         );
-    } else if query_lower.starts_with("systemctl status ")
-        || query_lower.starts_with("systemctl restart ")
-        || query_lower.starts_with("systemctl reload ")
-        || query_lower.starts_with("journalctl -u ")
-        || query_lower.starts_with("journalctl -f -u ")
+    } else if matches_command_prefix(&query_lower, "systemctl status")
+        || matches_command_prefix(&query_lower, "systemctl restart")
+        || matches_command_prefix(&query_lower, "systemctl reload")
+        || matches_command_prefix(&query_lower, "journalctl -u")
+        || matches_command_prefix(&query_lower, "journalctl -f -u")
     {
-        let prefix = if query_lower.starts_with("systemctl restart ") {
+        let prefix = if matches_command_prefix(&query_lower, "systemctl restart") {
             "systemctl restart "
-        } else if query_lower.starts_with("systemctl reload ") {
+        } else if matches_command_prefix(&query_lower, "systemctl reload") {
             "systemctl reload "
-        } else if query_lower.starts_with("journalctl -f -u ") {
+        } else if matches_command_prefix(&query_lower, "journalctl -f -u") {
             "journalctl -f -u "
-        } else if query_lower.starts_with("journalctl -u ") {
+        } else if matches_command_prefix(&query_lower, "journalctl -u") {
             "journalctl -u "
         } else {
             "systemctl status "
@@ -11339,12 +12253,21 @@ fn collect_context_command_templates(
         None
     } else {
         let mut seen = HashSet::new();
-        Some(
-            templates
-                .into_iter()
-                .filter(|(command, _)| seen.insert(command.to_ascii_lowercase()))
-                .collect(),
-        )
+        let mut deduped = templates
+            .into_iter()
+            .filter(|template| seen.insert(template.command.to_ascii_lowercase()))
+            .collect::<Vec<_>>();
+        deduped.sort_by(|left, right| {
+            left.rank
+                .cmp(&right.rank)
+                .then_with(|| left.ordinal.cmp(&right.ordinal))
+                .then_with(|| {
+                    left.command
+                        .to_ascii_lowercase()
+                        .cmp(&right.command.to_ascii_lowercase())
+                })
+        });
+        Some(deduped)
     }
 }
 
@@ -11353,6 +12276,54 @@ fn context_detail(kind: &str, current_path: Option<&str>) -> String {
         return format!("Recent output • {kind}");
     };
     format!("Recent output • {kind} • {current_path}")
+}
+
+fn matches_command_prefix(query: &str, prefix: &str) -> bool {
+    query == prefix || query.starts_with(&format!("{prefix} "))
+}
+
+fn current_path_hint(current_path: Option<&str>) -> Option<String> {
+    let generic_segments = [
+        "current", "releases", "release", "shared", "srv", "var", "www", "opt", "home", "users",
+        "user", "app", "apps", "service", "services", "project", "projects",
+    ];
+
+    let mut segments = current_path_segments(current_path);
+    segments.reverse();
+    for segment in segments {
+        if !generic_segments.contains(&segment.as_str()) {
+            return Some(segment);
+        }
+    }
+
+    current_path_segments(current_path).into_iter().last()
+}
+
+fn current_path_segments(current_path: Option<&str>) -> Vec<String> {
+    current_path
+        .unwrap_or_default()
+        .split(['/', '\\'])
+        .map(|segment| segment.trim().to_ascii_lowercase())
+        .filter(|segment| !segment.is_empty())
+        .collect()
+}
+
+fn context_target_rank(target: &str, path_hint: Option<&str>) -> u8 {
+    let Some(path_hint) = path_hint.filter(|hint| !hint.is_empty()) else {
+        return 1;
+    };
+    let target = target.to_ascii_lowercase();
+    if target == path_hint
+        || target.starts_with(path_hint)
+        || target.contains(&format!("-{path_hint}"))
+        || target.contains(&format!("{path_hint}-"))
+        || target.contains(&format!("/{path_hint}"))
+        || target.contains(&format!("{path_hint}."))
+    {
+        0
+    } else {
+        1
+    }
 }
 
 fn extract_git_branch_targets(lines: &[String]) -> Vec<String> {
@@ -11830,6 +12801,59 @@ fn non_empty_string(value: &str) -> Option<String> {
     }
 }
 
+fn parse_tag_values(raw: &str) -> Vec<String> {
+    let mut tags = Vec::new();
+    for raw in raw.split(',') {
+        let tag = raw.trim().trim_start_matches('#');
+        if tag.is_empty() {
+            continue;
+        }
+        if !tags
+            .iter()
+            .any(|existing: &String| existing.eq_ignore_ascii_case(tag))
+        {
+            tags.push(tag.to_string());
+        }
+    }
+    tags
+}
+
+fn format_tag_values(tags: &[String]) -> String {
+    tags.join(", ")
+}
+
+fn merge_tag_values(current: &[String], inherited: &[String]) -> Vec<String> {
+    let mut merged = current.to_vec();
+    for tag in inherited {
+        if !merged
+            .iter()
+            .any(|existing: &String| existing.eq_ignore_ascii_case(tag))
+        {
+            merged.push(tag.clone());
+        }
+    }
+    merged
+}
+
+fn merge_port_forward_rules(
+    current: &[PortForwardRule],
+    inherited: &[PortForwardRule],
+) -> Vec<PortForwardRule> {
+    let mut merged = current.to_vec();
+    for rule in inherited {
+        if !merged.contains(rule) {
+            merged.push(rule.clone());
+        }
+    }
+    merged
+}
+
+fn draft_has_pending_forward_input(draft: &DraftProfile) -> bool {
+    !draft.forward_local_port.trim().is_empty()
+        || !draft.forward_remote_host.trim().is_empty()
+        || !draft.forward_remote_port.trim().is_empty()
+}
+
 fn apply_group_defaults_to_draft(
     mut draft: DraftProfile,
     group: Option<&SavedHostGroup>,
@@ -11839,6 +12863,12 @@ fn apply_group_defaults_to_draft(
         return draft;
     };
 
+    if draft.username.trim().is_empty() {
+        draft.username = group.username.clone().unwrap_or_default();
+    }
+    if draft.tags.trim().is_empty() && !group.tags.is_empty() {
+        draft.tags = format_tag_values(&group.tags);
+    }
     if draft.identity_id.is_none() {
         draft.identity_id = group.identity_id.clone();
     }
@@ -11861,6 +12891,12 @@ fn apply_group_defaults_to_draft(
     if draft.startup_command.trim().is_empty() {
         draft.startup_command = group.startup_command.clone().unwrap_or_default();
     }
+    if draft.saved_port_forward_rules.is_empty()
+        && !draft_has_pending_forward_input(&draft)
+        && !group.port_forward_rules.is_empty()
+    {
+        draft.saved_port_forward_rules = group.port_forward_rules.clone();
+    }
 
     draft
 }
@@ -11874,8 +12910,8 @@ mod tests {
         shell_single_quote, startup_bytes_for_request, workspace_runtime_summary,
     };
     use crate::models::{
-        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, PortForwardKind,
-        SavedHostGroup, SavedIdentity,
+        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, LocalPortForward,
+        PortForwardKind, PortForwardRule, SavedHostGroup, SavedIdentity,
     };
     use crate::sftp::RemoteFileEntry;
 
@@ -11911,6 +12947,8 @@ mod tests {
             jump_host: None,
             startup_directory: Some("/var/www/app's".to_string()),
             startup_command: Some("docker compose logs -f".to_string()),
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
         };
@@ -11935,6 +12973,8 @@ mod tests {
             jump_host: None,
             startup_directory: Some(" ".to_string()),
             startup_command: None,
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
         };
@@ -11953,13 +12993,15 @@ mod tests {
             tags: String::new(),
             host: "prod.example.com".to_string(),
             port: "22".to_string(),
-            username: "ubuntu".to_string(),
+            username: String::new(),
             password: String::new(),
             key_path: String::new(),
             identity_id: None,
             jump_host_id: None,
             startup_directory: String::new(),
             startup_command: "htop".to_string(),
+            start_in_files: false,
+            terminal_scrollback_rows: "10000".to_string(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Local,
             forward_local_port: String::new(),
@@ -11972,10 +13014,20 @@ mod tests {
         let group = SavedHostGroup {
             label: "Operations".to_string(),
             vault_id: None,
+            username: Some("ubuntu".to_string()),
+            tags: vec!["prod".to_string(), "blue".to_string()],
             identity_id: Some("identity-ops".to_string()),
             jump_host_id: Some("bastion".to_string()),
             startup_directory: Some("/srv/app".to_string()),
             startup_command: Some("docker compose logs -f".to_string()),
+            port_forward_rules: vec![PortForwardRule::Local {
+                forward: LocalPortForward {
+                    local_host: "127.0.0.1".to_string(),
+                    local_port: 15432,
+                    remote_host: "127.0.0.1".to_string(),
+                    remote_port: 5432,
+                },
+            }],
         };
         let identities = vec![SavedIdentity {
             id: "identity-ops".to_string(),
@@ -11987,11 +13039,76 @@ mod tests {
         }];
 
         let resolved = apply_group_defaults_to_draft(draft, Some(&group), &identities);
+        assert_eq!(resolved.username, "ubuntu");
+        assert_eq!(resolved.tags, "prod, blue");
         assert_eq!(resolved.identity_id.as_deref(), Some("identity-ops"));
         assert_eq!(resolved.key_path, "/tmp/id_ops");
         assert_eq!(resolved.jump_host_id.as_deref(), Some("bastion"));
         assert_eq!(resolved.startup_directory, "/srv/app");
         assert_eq!(resolved.startup_command, "htop");
+        assert_eq!(resolved.saved_port_forward_rules, group.port_forward_rules);
+    }
+
+    #[test]
+    fn group_defaults_do_not_override_existing_tags_or_forward_rules() {
+        let existing_rule = PortForwardRule::Local {
+            forward: LocalPortForward {
+                local_host: "127.0.0.1".to_string(),
+                local_port: 18080,
+                remote_host: "127.0.0.1".to_string(),
+                remote_port: 8080,
+            },
+        };
+        let inherited_rule = PortForwardRule::Local {
+            forward: LocalPortForward {
+                local_host: "127.0.0.1".to_string(),
+                local_port: 15432,
+                remote_host: "127.0.0.1".to_string(),
+                remote_port: 5432,
+            },
+        };
+        let draft = DraftProfile {
+            label: "Prod".to_string(),
+            vault_id: None,
+            favorite: false,
+            group: "Operations".to_string(),
+            tags: "canary".to_string(),
+            host: "prod.example.com".to_string(),
+            port: "22".to_string(),
+            username: "ubuntu".to_string(),
+            password: String::new(),
+            key_path: String::new(),
+            identity_id: None,
+            jump_host_id: None,
+            startup_directory: String::new(),
+            startup_command: String::new(),
+            start_in_files: false,
+            terminal_scrollback_rows: "10000".to_string(),
+            saved_port_forward_rules: vec![existing_rule.clone()],
+            forward_kind: PortForwardKind::Local,
+            forward_local_port: String::new(),
+            forward_remote_host: String::new(),
+            forward_remote_port: String::new(),
+            key_passphrase: String::new(),
+            password_credential_id: None,
+            auth_mode: AuthMode::Password,
+        };
+        let group = SavedHostGroup {
+            label: "Operations".to_string(),
+            vault_id: None,
+            username: Some("deploy".to_string()),
+            tags: vec!["prod".to_string()],
+            identity_id: None,
+            jump_host_id: None,
+            startup_directory: None,
+            startup_command: None,
+            port_forward_rules: vec![inherited_rule],
+        };
+
+        let resolved = apply_group_defaults_to_draft(draft, Some(&group), &[]);
+        assert_eq!(resolved.username, "ubuntu");
+        assert_eq!(resolved.tags, "canary");
+        assert_eq!(resolved.saved_port_forward_rules, vec![existing_rule]);
     }
 
     #[test]
@@ -12200,6 +13317,57 @@ mod tests {
                 && item.source == AutocompleteSource::Context
                 && item.detail.contains("Kubernetes pod")
         }));
+    }
+
+    #[test]
+    fn context_autocomplete_prefers_targets_matching_current_directory() {
+        let suggestions = collect_autocomplete_candidates(
+            "kubectl logs ",
+            &[],
+            &[],
+            "ssh:prod@example:22",
+            &[],
+            None,
+            Some(&OutputSuggestionContext {
+                current_path: Some("/srv/services/api".to_string()),
+                recent_lines: vec![
+                    "NAME READY STATUS RESTARTS AGE".to_string(),
+                    "worker-5cb88df4f7-cvt9k 1/1 Running 0 4m".to_string(),
+                    "api-7bcdf9d4d8-ptx2m 1/1 Running 0 4m".to_string(),
+                ],
+            }),
+        );
+
+        assert_eq!(
+            suggestions.first().map(|item| item.command.as_str()),
+            Some("kubectl logs api-7bcdf9d4d8-ptx2m")
+        );
+    }
+
+    #[test]
+    fn command_palette_prefers_context_targets_matching_current_directory() {
+        let suggestions = collect_command_palette_candidates(
+            "docker logs ",
+            &[],
+            &[],
+            "ssh:prod@example:22",
+            &[],
+            Some(&OutputSuggestionContext {
+                current_path: Some("/srv/services/worker".to_string()),
+                recent_lines: vec![
+                    "CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES".to_string(),
+                    "9c4bb3f2ad91 api:latest \"/entrypoint\" 2 minutes ago Up 2 minutes api"
+                        .to_string(),
+                    "8a4cb3e9dd12 worker:latest \"/entrypoint\" 2 minutes ago Up 2 minutes worker"
+                        .to_string(),
+                ],
+            }),
+        );
+
+        assert_eq!(
+            suggestions.first().map(|item| item.command.as_str()),
+            Some("docker logs worker")
+        );
     }
 }
 
