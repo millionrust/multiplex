@@ -38,6 +38,7 @@ Other things worth knowing about:
 - When a host has a saved startup directory, the remote Files view also opens there by default.
 - A native local terminal can be opened directly from the chrome and behaves like a normal workspace tab or split pane.
 - Library and workspace empty states now include direct actions, so dead ends turn into obvious next steps like creating a host, adding a key, opening local terminal, or returning to terminal view.
+- The Hosts library now has a dismissible first-run welcome panel with import counts, quick-start actions, and shortcut guidance, and it automatically gets out of the way once you save a host or open a session.
 - Vaults are now first-class local containers for hosts, snippets, and identities, with a dedicated library view plus local shared-vault member/role management.
 - The active terminal now gets keyboard-selectable, target-aware inline command autocomplete, ranked from current-host history, snippets, and built-in shell shortcuts.
 - Command history capture is now prompt-aware enough to ignore alternate-screen apps and avoid learning obviously incomplete shell continuations.
@@ -50,6 +51,7 @@ Other things worth knowing about:
 - Workspace chrome now shows aggregate runtime health for split tabs, so mixed live/connecting/error states are visible without hunting through individual panes.
 - A dedicated Settings view now persists global appearance theme and terminal font-size preferences, and applies them live.
 - Settings also define the default local terminal shell executable and startup directory for new local sessions.
+- Settings now also control whether saved workspaces reopen on launch, how many session-history entries are retained locally, and whether to surface the first-run welcome panel again.
 - Settings now include portable JSON export/import for hosts, vaults, identities, snippets, and known-host trust records, with credentials intentionally excluded.
 - Settings also include passphrase-encrypted local backup export/import for the same bundle format, as groundwork for future sync without relying on plaintext files.
 - TOFU host key pinning, with a Known Hosts view where you can review or delete pinned keys.
@@ -74,7 +76,7 @@ This is early alpha. The following are on the radar but don't exist yet:
 
 - Drag-reordering split panes
 - Vault sync / remote team features
-- Stronger desktop onboarding and first-run states
+- Deeper library/layout polish across all major screens
 - Platform-specific packaging polish
 
 ## License

@@ -4,8 +4,9 @@ This is the working parity checklist for the native Rust desktop client. Complet
 
 ## Active Priority
 
-- Workspace polish:
-  - stronger onboarding and first-run flows
+- UI parity pass:
+  - final library/layout polish for hosts, snippets, vaults, and settings
+  - visual consistency pass across all library and workspace surfaces
 
 ## Platform And Packaging
 
@@ -24,10 +25,7 @@ This is the working parity checklist for the native Rust desktop client. Complet
 
 ## UI Parity Pass
 
-- final library/layout polish for hosts, snippets, vaults, and settings
 - deeper settings surface
-- stronger desktop onboarding and first-run states
-- visual consistency pass across all library and workspace surfaces
 
 ## Working Rules
 

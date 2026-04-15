@@ -14,6 +14,14 @@ fn default_terminal_font_size() -> u16 {
     14
 }
 
+fn default_session_log_limit() -> u16 {
+    200
+}
+
+fn default_restore_workspaces_on_launch() -> bool {
+    true
+}
+
 fn default_terminal_scrollback_rows() -> u32 {
     10_000
 }
@@ -414,6 +422,12 @@ pub struct AppSettings {
     pub theme_preset: ThemePreset,
     #[serde(default = "default_terminal_font_size")]
     pub terminal_font_size: u16,
+    #[serde(default)]
+    pub onboarding_dismissed: bool,
+    #[serde(default = "default_restore_workspaces_on_launch")]
+    pub restore_workspaces_on_launch: bool,
+    #[serde(default = "default_session_log_limit")]
+    pub session_log_limit: u16,
     #[serde(default = "default_local_shell_config")]
     pub default_local_shell: LocalShellConfig,
 }
@@ -423,6 +437,9 @@ impl Default for AppSettings {
         Self {
             theme_preset: ThemePreset::Ocean,
             terminal_font_size: default_terminal_font_size(),
+            onboarding_dismissed: false,
+            restore_workspaces_on_launch: default_restore_workspaces_on_launch(),
+            session_log_limit: default_session_log_limit(),
             default_local_shell: default_local_shell_config(),
         }
     }
@@ -431,6 +448,7 @@ impl Default for AppSettings {
 impl AppSettings {
     pub fn normalize(&mut self) {
         self.terminal_font_size = self.terminal_font_size.clamp(11, 18);
+        self.session_log_limit = self.session_log_limit.clamp(50, 1000);
         if self.default_local_shell.program.trim().is_empty() {
             self.default_local_shell.program = default_local_shell_config().program;
         }
@@ -715,6 +733,14 @@ pub struct SavedState {
 }
 
 impl SavedState {
+    fn trim_session_logs_to_limit(&mut self) {
+        let max_session_logs = usize::from(self.settings.session_log_limit);
+        if self.session_logs.len() > max_session_logs {
+            let drain_count = self.session_logs.len() - max_session_logs;
+            self.session_logs.drain(..drain_count);
+        }
+    }
+
     pub fn ensure_host_groups(&mut self) {
         for group in &mut self.host_groups {
             group.normalize();
@@ -730,6 +756,7 @@ impl SavedState {
 
     pub fn ensure_settings(&mut self) {
         self.settings.normalize();
+        self.trim_session_logs_to_limit();
     }
 
     pub fn record_command_history(&mut self, command: &str) {
@@ -1991,15 +2018,10 @@ impl QuickConnect {
     }
 }
 
-const MAX_SESSION_LOGS: usize = 200;
-
 impl SavedState {
     pub fn record_session_log(&mut self, entry: SessionLogEntry) {
         self.session_logs.push(entry);
-        if self.session_logs.len() > MAX_SESSION_LOGS {
-            let drain_count = self.session_logs.len() - MAX_SESSION_LOGS;
-            self.session_logs.drain(..drain_count);
-        }
+        self.trim_session_logs_to_limit();
     }
 
     pub fn update_session_log(&mut self, log_id: &str, updater: impl FnOnce(&mut SessionLogEntry)) {
@@ -2017,7 +2039,8 @@ mod tests {
         LocalPortForward, LocalShellConfig, PortForwardKind, PortForwardRule, ProfileSource,
         QuickConnect, RestorableAuth, RestorableConnection, SavedCommandHistoryEntry,
         SavedIdentity, SavedSnippet, SavedState, SavedVault, SavedVaultMember, SavedWorkspace,
-        SplitAxis, ThemePreset, VaultKind, VaultMemberRole, identity_id_for_path,
+        SessionLogEntry, SessionLogStatus, SplitAxis, ThemePreset, VaultKind, VaultMemberRole,
+        identity_id_for_path,
     };
 
     #[test]
@@ -2832,6 +2855,9 @@ mod tests {
             settings: AppSettings {
                 theme_preset: ThemePreset::Daylight,
                 terminal_font_size: 99,
+                onboarding_dismissed: false,
+                restore_workspaces_on_launch: true,
+                session_log_limit: 9999,
                 default_local_shell: LocalShellConfig {
                     program: String::new(),
                     args: Vec::new(),
@@ -2844,7 +2870,39 @@ mod tests {
 
         assert_eq!(state.settings.theme_preset, ThemePreset::Daylight);
         assert_eq!(state.settings.terminal_font_size, 18);
+        assert!(!state.settings.onboarding_dismissed);
+        assert!(state.settings.restore_workspaces_on_launch);
+        assert_eq!(state.settings.session_log_limit, 1000);
         assert!(!state.settings.default_local_shell.program.trim().is_empty());
         assert_eq!(state.settings.default_local_shell.cwd, None);
+    }
+
+    #[test]
+    fn session_logs_are_trimmed_to_configured_limit() {
+        let mut state = SavedState {
+            settings: AppSettings {
+                session_log_limit: 50,
+                ..AppSettings::default()
+            },
+            ..SavedState::default()
+        };
+
+        for index in 0..75 {
+            state.record_session_log(SessionLogEntry {
+                id: format!("log-{index}"),
+                host: "example.com".to_string(),
+                port: 22,
+                username: "deploy".to_string(),
+                title: format!("session-{index}"),
+                status: SessionLogStatus::Connecting,
+                started_at: index,
+                ended_at: None,
+                error_message: None,
+            });
+        }
+
+        assert_eq!(state.session_logs.len(), 50);
+        assert_eq!(state.session_logs.first().unwrap().id, "log-25");
+        assert_eq!(state.session_logs.last().unwrap().id, "log-74");
     }
 }

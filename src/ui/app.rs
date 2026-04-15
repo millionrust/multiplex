@@ -671,7 +671,9 @@ impl TermiRustApp {
 
         app.load_settings_inputs(window, cx);
 
-        app.restore_saved_workspaces(window, cx);
+        if app.saved.settings.restore_workspaces_on_launch {
+            app.restore_saved_workspaces(window, cx);
+        }
 
         if app.workspaces.is_empty() {
             if let Some(profile_id) = app.selected_profile_id.clone() {
@@ -2323,6 +2325,7 @@ impl TermiRustApp {
                     return;
                 }
 
+                self.mark_onboarding_complete();
                 self.selected_profile_id = Some(profile_id);
                 self.saved.selected_profile_id = self.selected_profile_id.clone();
                 Self::set_input_value(&self.inputs.password, "", window, cx);
@@ -2641,11 +2644,76 @@ impl TermiRustApp {
         let _ = save_saved_state(&self.saved);
     }
 
+    fn imported_host_count(&self) -> usize {
+        self.saved
+            .profiles
+            .iter()
+            .filter(|profile| profile.source == ProfileSource::SshConfig)
+            .count()
+    }
+
+    fn user_host_count(&self) -> usize {
+        self.saved
+            .profiles
+            .iter()
+            .filter(|profile| profile.source == ProfileSource::User)
+            .count()
+    }
+
+    fn should_show_onboarding(&self) -> bool {
+        self.active_workspace_id.is_none()
+            && self.nav_section == NavSection::Hosts
+            && !self.saved.settings.onboarding_dismissed
+    }
+
+    fn mark_onboarding_complete(&mut self) {
+        if !self.saved.settings.onboarding_dismissed {
+            self.saved.settings.onboarding_dismissed = true;
+            self.save_settings();
+        }
+    }
+
+    fn dismiss_onboarding(&mut self, cx: &mut Context<Self>) {
+        self.mark_onboarding_complete();
+        self.status_message = "Welcome panel dismissed.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn update_theme_preset(&mut self, preset: ThemePreset, cx: &mut Context<Self>) {
         self.saved.settings.theme_preset = preset;
         theme::set_theme_preset(preset);
         self.save_settings();
         self.status_message = format!("Theme set to {}.", preset.label());
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn update_restore_workspaces_on_launch(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.saved.settings.restore_workspaces_on_launch = enabled;
+        self.save_settings();
+        self.status_message = if enabled {
+            "Saved workspaces will reopen on launch.".to_string()
+        } else {
+            "Launch now opens directly into the library.".to_string()
+        };
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn update_session_log_limit(&mut self, limit: u16, cx: &mut Context<Self>) {
+        self.saved.settings.session_log_limit = limit;
+        self.saved.ensure_settings();
+        self.save_settings();
+        self.status_message = format!("Session history retention set to {limit} entries.");
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn reset_onboarding_panel(&mut self, cx: &mut Context<Self>) {
+        self.saved.settings.onboarding_dismissed = false;
+        self.save_settings();
+        self.status_message = "Welcome panel reset. Open Hosts to see it again.".to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -3522,6 +3590,7 @@ impl TermiRustApp {
 
         self.active_workspace_id = Some(workspace_id);
         self.show_editor_panel = false;
+        self.mark_onboarding_complete();
         self.status_message = "Opening local terminal...".to_string();
         self.error_message.clear();
         self.set_terminal_search_input("", window, cx);
@@ -3570,6 +3639,7 @@ impl TermiRustApp {
 
                 self.active_workspace_id = Some(workspace_id);
                 self.show_editor_panel = false;
+                self.mark_onboarding_complete();
                 self.status_message = if request.kind == ConnectionKind::LocalShell {
                     "Opening local terminal...".to_string()
                 } else {
@@ -3699,6 +3769,7 @@ impl TermiRustApp {
 
         self.active_workspace_id = Some(workspace_id);
         self.show_editor_panel = false;
+        self.mark_onboarding_complete();
         self.status_message = format!("Connecting to {}...", request.address());
         self.error_message.clear();
         self.set_terminal_search_input("", window, cx);
@@ -7274,6 +7345,203 @@ impl TermiRustApp {
             )
     }
 
+    fn render_hosts_onboarding(&self, _window: &mut Window, cx: &mut Context<Self>) -> Option<Div> {
+        if !self.should_show_onboarding() {
+            return None;
+        }
+
+        let imported_hosts = self.imported_host_count();
+        let saved_hosts = self.user_host_count();
+        let identities = self.saved.identities.len();
+        let snippets = self.saved.snippets.len();
+        let title = if imported_hosts > 0 || identities > 0 {
+            "Welcome to your host library"
+        } else {
+            "Start your SSH workspace"
+        };
+        let description = if imported_hosts > 0 || identities > 0 {
+            format!(
+                "We found {} imported hosts and {} reusable identities from {}. Search, quick connect, or save local hosts to start building your workspace.",
+                imported_hosts,
+                identities,
+                ssh_directory_label()
+            )
+        } else {
+            format!(
+                "Save your first host, add a key from {}, or open a local terminal while you build the library.",
+                ssh_directory_label()
+            )
+        };
+
+        Some(
+            v_flex()
+                .w_full()
+                .gap_3()
+                .p_5()
+                .rounded(px(theme::CARD_RADIUS))
+                .bg(theme::library_card())
+                .border_1()
+                .border_color(theme::with_alpha(theme::accent(), 0.25))
+                .child(
+                    h_flex()
+                        .justify_between()
+                        .items_start()
+                        .gap_4()
+                        .child(
+                            v_flex()
+                                .gap_2()
+                                .child(
+                                    h_flex()
+                                        .gap_2()
+                                        .items_center()
+                                        .child(
+                                            Icon::new(IconName::SquareTerminal)
+                                                .size(px(16.))
+                                                .text_color(theme::accent()),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(16.))
+                                                .font_semibold()
+                                                .text_color(theme::text_main())
+                                                .child(title),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .max_w(px(760.))
+                                        .text_size(px(11.5))
+                                        .line_height(relative(1.55))
+                                        .text_color(theme::text_muted())
+                                        .child(description),
+                                ),
+                        )
+                        .child(
+                            Button::new("hosts-onboarding-dismiss")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                ))
+                                .label("Dismiss")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.dismiss_onboarding(cx);
+                                })),
+                        ),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .flex_wrap()
+                        .child(self.status_badge(
+                            format!("{saved_hosts} saved"),
+                            theme::library_bg(),
+                            theme::text_muted(),
+                        ))
+                        .child(self.status_badge(
+                            format!("{imported_hosts} imported"),
+                            theme::library_bg(),
+                            theme::accent(),
+                        ))
+                        .child(self.status_badge(
+                            format!("{identities} identities"),
+                            theme::library_bg(),
+                            theme::success(),
+                        ))
+                        .child(self.status_badge(
+                            format!("{snippets} snippets"),
+                            theme::library_bg(),
+                            theme::warning(),
+                        )),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .flex_wrap()
+                        .child(
+                            Button::new("hosts-onboarding-new")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                ))
+                                .label("New Host")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.open_editor_for_new_host(window, cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("hosts-onboarding-key")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                ))
+                                .icon(IconName::FolderOpen)
+                                .label("Add Key File")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.pick_key_file(window, cx);
+                                    this.nav_section = NavSection::Hosts;
+                                    this.show_editor_panel = true;
+                                    this.draft_auth_mode = AuthMode::PrivateKey;
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            Button::new("hosts-onboarding-local")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::AccentSoft,
+                                    cx,
+                                ))
+                                .label("Local Terminal")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.open_local_terminal(window, cx);
+                                })),
+                        )
+                        .when(imported_hosts > 0 || saved_hosts > 0, |this| {
+                            this.child(
+                                Button::new("hosts-onboarding-search")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    ))
+                                    .label("Focus Search")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.focus_host_search(window, cx);
+                                        this.status_message = "Host search focused.".to_string();
+                                        this.error_message.clear();
+                                        cx.notify();
+                                    })),
+                            )
+                        }),
+                )
+                .child(
+                    h_flex()
+                        .gap_4()
+                        .flex_wrap()
+                        .child(
+                            div()
+                                .text_size(px(10.5))
+                                .text_color(theme::text_muted())
+                                .child("Quick connect from search: `user@host` or `ssh user@host:port`"),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.5))
+                                .text_color(theme::text_muted())
+                                .child(format!(
+                                    "Shortcuts: {}+1..7 for sections, {}+L for host search, {}+K for command palette",
+                                    primary_shortcut_label(),
+                                    primary_shortcut_label(),
+                                    primary_shortcut_label()
+                                )),
+                        ),
+                ),
+        )
+    }
+
     fn render_hosts_view(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let quick_connect = self.try_quick_connect_from_search(cx);
         let has_quick_connect = quick_connect.is_some();
@@ -7438,6 +7706,10 @@ impl TermiRustApp {
                     .px_4()
                     .pb_4()
                     .overflow_y_scrollbar()
+                    .when_some(
+                        self.render_hosts_onboarding(window, cx),
+                        |this, onboarding| this.child(onboarding),
+                    )
                     .when_some(self.render_saved_group_cards(cx), |this, cards| {
                         this.child(cards)
                     })
@@ -8953,6 +9225,9 @@ impl TermiRustApp {
     fn render_settings_view(&self, cx: &Context<Self>) -> Div {
         let theme_preset = self.saved.settings.theme_preset;
         let terminal_font_size = self.saved.settings.terminal_font_size;
+        let restore_workspaces_on_launch = self.saved.settings.restore_workspaces_on_launch;
+        let session_log_limit = self.saved.settings.session_log_limit;
+        let onboarding_dismissed = self.saved.settings.onboarding_dismissed;
 
         v_flex()
             .flex_1()
@@ -9106,6 +9381,136 @@ impl TermiRustApp {
                     .child(
                         v_flex()
                             .gap_2()
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .font_medium()
+                                    .text_color(theme::text_main())
+                                    .child("Startup Behavior"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.5))
+                                    .text_color(theme::text_muted())
+                                    .child("Choose whether the app restores saved workspaces on launch, and whether to surface the welcome panel again."),
+                            )
+                            .child(
+                                h_flex()
+                                    .p(px(3.))
+                                    .rounded(px(8.))
+                                    .bg(theme::hover())
+                                    .children([true, false].into_iter().enumerate().map(
+                                        |(index, restore)| {
+                                            let active =
+                                                restore == restore_workspaces_on_launch;
+                                            Button::new(("settings-restore-workspaces", index))
+                                                .small()
+                                                .custom(Self::segmented_button_style(active, cx))
+                                                .label(if restore {
+                                                    "Restore Workspaces"
+                                                } else {
+                                                    "Open Library"
+                                                })
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.update_restore_workspaces_on_launch(
+                                                        restore, cx,
+                                                    );
+                                                }))
+                                                .into_any_element()
+                                        },
+                                    )),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        Button::new("settings-reset-onboarding")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Neutral,
+                                                cx,
+                                            ))
+                                            .label(if onboarding_dismissed {
+                                                "Show Welcome Panel Again"
+                                            } else {
+                                                "Welcome Panel Visible"
+                                            })
+                                            .disabled(!onboarding_dismissed)
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.reset_onboarding_panel(cx);
+                                            })),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.))
+                                            .text_color(theme::text_muted())
+                                            .child(if onboarding_dismissed {
+                                                "Bring the first-run Hosts guide back after you have dismissed it."
+                                            } else {
+                                                "The first-run Hosts guide is already available in the library."
+                                            }),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .h(px(1.))
+                                    .w_full()
+                                    .bg(theme::with_alpha(theme::border(), 0.6)),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .font_medium()
+                                    .text_color(theme::text_main())
+                                    .child("Session History Retention"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.5))
+                                    .text_color(theme::text_muted())
+                                    .child("Keep this many connection history entries locally before older items roll off."),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .flex_wrap()
+                                    .children([100u16, 200, 500, 1000].into_iter().enumerate().map(
+                                        |(index, limit)| {
+                                            let selected = limit == session_log_limit;
+                                            Button::new(("settings-session-log-limit", index))
+                                                .small()
+                                                .custom(Self::action_button_style(
+                                                    if selected {
+                                                        theme::ActionTone::Accent
+                                                    } else {
+                                                        theme::ActionTone::Neutral
+                                                    },
+                                                    cx,
+                                                ))
+                                                .label(format!("{limit} entries"))
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.update_session_log_limit(limit, cx);
+                                                }))
+                                                .into_any_element()
+                                        },
+                                    )),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.))
+                                    .text_color(theme::text_muted())
+                                    .child(format!(
+                                        "{} history entries currently stored.",
+                                        self.saved.session_logs.len()
+                                    )),
+                            )
+                            .child(
+                                div()
+                                    .h(px(1.))
+                                    .w_full()
+                                    .bg(theme::with_alpha(theme::border(), 0.6)),
+                            )
                             .child(
                                 div()
                                     .text_size(px(12.))
