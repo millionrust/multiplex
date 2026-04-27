@@ -11390,33 +11390,34 @@ impl TermiRustApp {
         );
 
         v_flex()
-            .size_full()
+            .flex_1()
+            .gap_4()
+            .p_5()
             .bg(theme::library_bg())
-            .overflow_hidden()
+            .child(
+                v_flex()
+                    .gap(px(2.))
+                    .child(
+                        div()
+                            .text_size(px(22.))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child("Settings"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .text_color(theme::text_muted())
+                            .child("Local desktop preferences"),
+                    ),
+            )
             .child(
                 v_flex()
                     .id("settings-scroll")
-                    .size_full()
+                    .flex_1()
+                    .min_h_0()
                     .gap_4()
-                    .p_5()
                     .overflow_y_scrollbar()
-                    .child(
-                        v_flex()
-                            .gap(px(2.))
-                            .child(
-                                div()
-                                    .text_size(px(22.))
-                                    .font_semibold()
-                                    .text_color(theme::text_main())
-                                    .child("Settings"),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(13.))
-                                    .text_color(theme::text_muted())
-                                    .child("Local desktop preferences"),
-                            ),
-                    )
                     .child(appearance_card)
                     .child(terminal_card)
                     .child(startup_card)
