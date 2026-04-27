@@ -3931,16 +3931,36 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) -> bool {
         let now = current_unix_millis();
-        let due_pane_ids: Vec<u64> = self
-            .panes
-            .iter()
-            .filter(|pane| {
-                !pane.user_closed && pane.auto_reconnect_at.is_some_and(|target| now >= target)
-            })
-            .map(|pane| pane.id)
-            .collect();
+        let max_attempts = self.saved.settings.auto_reconnect_attempts;
+
+        let mut status_changed = false;
+        let mut due_pane_ids: Vec<u64> = Vec::new();
+        for pane in self.panes.iter_mut() {
+            let Some(target) = pane.auto_reconnect_at else {
+                continue;
+            };
+            if pane.user_closed {
+                continue;
+            }
+            if now >= target {
+                due_pane_ids.push(pane.id);
+                continue;
+            }
+            let remaining_secs = ((target - now) + 999) / 1000;
+            let next_status = format!(
+                "Reconnecting in {remaining_secs}s ({}/{max_attempts})",
+                pane.auto_reconnect_attempts
+            );
+            if pane.status != next_status {
+                pane.status = next_status;
+                status_changed = true;
+            }
+        }
         if due_pane_ids.is_empty() {
-            return false;
+            if status_changed {
+                cx.notify();
+            }
+            return status_changed;
         }
         for pane_id in due_pane_ids {
             if let Some(pane) = self.pane_mut(pane_id) {
