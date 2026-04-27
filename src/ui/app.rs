@@ -10440,6 +10440,7 @@ impl TermiRustApp {
         let title: SharedString = title.into();
         let description: SharedString = description.into();
         v_flex()
+            .w_full()
             .gap(px(14.))
             .px(px(20.))
             .py(px(18.))
@@ -11388,10 +11389,10 @@ impl TermiRustApp {
                     .id("settings-scroll")
                     .flex_1()
                     .min_h_0()
+                    .w_full()
                     .gap_4()
                     .px_5()
                     .pb_5()
-                    .max_w(px(960.))
                     .overflow_y_scrollbar()
                     .child(appearance_card)
                     .child(terminal_card)
