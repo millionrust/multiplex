@@ -8667,12 +8667,14 @@ impl TermiRustApp {
         let selected_host_count = self.selected_host_ids.len();
 
         v_flex()
+            .size_full()
             .flex_1()
             .gap_3()
             .bg(theme::library_bg())
             .child(
                 h_flex()
                     .h(px(LIBRARY_TOOLBAR_HEIGHT))
+                    .flex_none()
                     .gap_3()
                     .px_4()
                     .items_center()
@@ -11356,10 +11358,12 @@ impl TermiRustApp {
         );
 
         v_flex()
+            .size_full()
             .flex_1()
             .bg(theme::library_bg())
             .child(
                 h_flex()
+                    .flex_none()
                     .justify_between()
                     .items_center()
                     .px_5()
@@ -11383,9 +11387,11 @@ impl TermiRustApp {
                 v_flex()
                     .id("settings-scroll")
                     .flex_1()
+                    .min_h_0()
                     .gap_4()
                     .px_5()
                     .pb_5()
+                    .max_w(px(960.))
                     .overflow_y_scrollbar()
                     .child(appearance_card)
                     .child(terminal_card)
