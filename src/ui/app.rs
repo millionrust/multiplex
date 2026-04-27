@@ -2029,8 +2029,20 @@ impl TermiRustApp {
             bytes.push(b'\n');
         }
 
-        if self.send_input_bytes(pane_id, bytes, cx) {
-            self.status_message = success_message.to_string();
+        let broadcasting = self
+            .workspace_id_for_pane(pane_id)
+            .and_then(|workspace_id| self.workspace(workspace_id))
+            .is_some_and(|workspace| workspace.broadcast_input && workspace.pane_ids.len() > 1);
+
+        if self.send_input_bytes_broadcast(pane_id, bytes, cx) {
+            self.status_message = if broadcasting {
+                format!(
+                    "{} (broadcast across panes)",
+                    success_message.trim_end_matches('.')
+                )
+            } else {
+                success_message.to_string()
+            };
             self.error_message.clear();
             cx.notify();
             return true;
@@ -10575,6 +10587,7 @@ impl TermiRustApp {
                     [
                         ("Cmd+K", "Open the command palette"),
                         ("Cmd+F", "Search the active terminal"),
+                        ("Cmd+T", "Open a new local terminal in a fresh tab"),
                         ("Cmd+W", "Close the active workspace tab"),
                         ("Cmd+D", "Duplicate the active pane"),
                         ("Cmd+Alt+Right", "Cycle to the next workspace tab"),
@@ -12377,6 +12390,11 @@ impl TermiRustApp {
                 self.duplicate_pane(pane_id, window, cx);
                 return true;
             }
+        }
+
+        if !event.keystroke.modifiers.shift && event.keystroke.key.as_str() == "t" {
+            self.open_local_terminal(window, cx);
+            return true;
         }
 
         match event.keystroke.key.as_str() {
