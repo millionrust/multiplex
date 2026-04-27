@@ -21,6 +21,13 @@ This is the working parity checklist for the native Rust desktop client. Complet
   - {{HOST}}, {{USER}}, {{PORT}}, {{TITLE}}, {{ADDRESS}} placeholders expand against the active pane's connection request before each snippet is sent
 - Hosts (visual signaling):
   - per-host color tag with eight presets, surfaced on the host card avatar and the connected pane status dot
+  - per-host environment variables exported into the remote shell before the startup directory and command
+- Pane and workspace ergonomics:
+  - inline rename for both workspace tabs and individual panes (click title to edit, Enter to commit, Esc to cancel)
+  - Detach button moves a split pane into its own new workspace tab while keeping the session alive
+  - Cmd+T opens a fresh local terminal in a new workspace tab
+- Terminal safety:
+  - configurable confirmation banner before sending a multi-line clipboard into a remote shell
 
 ## Platform And Packaging
 

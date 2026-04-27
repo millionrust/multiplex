@@ -14,6 +14,9 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
 - Configurable SSH keep-alive ping interval to keep idle sessions alive across NAT/load-balancer timeouts.
 - Snippet commands accept {{HOST}}, {{USER}}, {{PORT}}, {{TITLE}}, {{ADDRESS}} placeholders that expand against the active pane on send.
 - Per-host color tag flows into the host card avatar and the connected pane status dot.
+- Per-host environment variables are exported into the remote shell before the startup directory and startup command.
+- Inline rename for workspace tabs and individual panes; Detach moves a pane into its own new workspace tab.
+- Multi-line clipboard pastes are held behind a confirmation banner by default to prevent accidental script execution.
 - Per-workspace Broadcast Input toggle that fans typed/pasted bytes out to every connected pane.
 - Per-pane Clear and Duplicate actions, plus Cmd+D / Cmd+Shift+B / Cmd+Shift+L / Cmd+Alt+arrow keyboard shortcuts.
 - Terminal surface supports:
