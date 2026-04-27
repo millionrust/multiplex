@@ -126,7 +126,7 @@ impl NavSection {
     fn icon(self) -> Icon {
         match self {
             Self::Hosts => IconName::SquareTerminal.into(),
-            Self::Vaults => IconName::Building2.into(),
+            Self::Vaults => IconName::Inbox.into(),
             Self::Keychain => app_icon(ICON_KEY),
             Self::Snippets => IconName::BookOpen.into(),
             Self::Settings => IconName::Settings.into(),
@@ -7499,15 +7499,13 @@ impl TermiRustApp {
                                             })
                                             .child(vault.display_name()),
                                     )
-                                    .child(self.status_badge(
-                                        vault.kind.label(),
-                                        theme::library_bg(),
-                                        if vault.kind == VaultKind::Personal {
-                                            theme::accent()
-                                        } else {
-                                            theme::slate()
-                                        },
-                                    )),
+                                    .when(vault.kind == VaultKind::Shared, |this| {
+                                        this.child(self.status_badge(
+                                            vault.kind.label(),
+                                            theme::library_bg(),
+                                            theme::slate(),
+                                        ))
+                                    }),
                             )
                             .into_any_element()
                     })),
@@ -8734,76 +8732,87 @@ impl TermiRustApp {
                             })),
                     ),
             )
-            .child(
-                h_flex()
-                    .px_4()
-                    .gap_2()
-                    .items_center()
-                    .flex_wrap()
-                    .child(self.status_badge(
-                        format!("{filtered_host_count} visible"),
-                        theme::library_card(),
-                        theme::text_muted(),
-                    ))
-                    .when(selected_host_count > 0, |this| {
-                        this.child(self.status_badge(
-                            format!("{selected_host_count} selected"),
+            .when(!self.saved.profiles.is_empty(), |this| {
+                this.child(
+                    h_flex()
+                        .px_4()
+                        .gap_2()
+                        .items_center()
+                        .flex_wrap()
+                        .child(self.status_badge(
+                            format!("{filtered_host_count} visible"),
                             theme::library_card(),
-                            theme::success(),
+                            theme::text_muted(),
                         ))
-                    })
-                    .child(
-                        Button::new("hosts-select-all")
-                            .small()
-                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                            .label("Select All")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.select_all_filtered_hosts(cx);
-                            })),
-                    )
-                    .when(selected_host_count > 0, |this| {
-                        this.child(
-                            Button::new("hosts-clear-selection")
+                        .when(selected_host_count > 0, |this| {
+                            this.child(self.status_badge(
+                                format!("{selected_host_count} selected"),
+                                theme::library_card(),
+                                theme::success(),
+                            ))
+                        })
+                        .child(
+                            Button::new("hosts-select-all")
                                 .small()
                                 .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label("Clear")
+                                .label("Select All")
                                 .on_click(cx.listener(|this, _, _, cx| {
-                                    this.clear_host_batch_selection(cx);
+                                    this.select_all_filtered_hosts(cx);
                                 })),
                         )
-                        .child(
-                            Button::new("hosts-bulk-star")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Success, cx))
-                                .label("Star")
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.bulk_set_selected_hosts_favorite(true, window, cx);
-                                })),
-                        )
-                        .child(
-                            Button::new("hosts-bulk-unstar")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label("Unstar")
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.bulk_set_selected_hosts_favorite(false, window, cx);
-                                })),
-                        )
-                        .child(Input::new(&self.shell_inputs.bulk_group).w(px(180.)))
-                        .child(
-                            Button::new("hosts-bulk-apply-group")
-                                .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::AccentSoft,
-                                    cx,
-                                ))
-                                .label("Apply Group")
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.bulk_assign_selected_hosts_group(window, cx);
-                                })),
-                        )
-                    }),
-            )
+                        .when(selected_host_count > 0, |this| {
+                            this.child(
+                                Button::new("hosts-clear-selection")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    ))
+                                    .label("Clear")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.clear_host_batch_selection(cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("hosts-bulk-star")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Success,
+                                        cx,
+                                    ))
+                                    .label("Star")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.bulk_set_selected_hosts_favorite(true, window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("hosts-bulk-unstar")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    ))
+                                    .label("Unstar")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.bulk_set_selected_hosts_favorite(false, window, cx);
+                                    })),
+                            )
+                            .child(Input::new(&self.shell_inputs.bulk_group).w(px(180.)))
+                            .child(
+                                Button::new("hosts-bulk-apply-group")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::AccentSoft,
+                                        cx,
+                                    ))
+                                    .label("Apply Group")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.bulk_assign_selected_hosts_group(window, cx);
+                                    })),
+                            )
+                        }),
+                )
+            })
             .when(
                 !quick_connect_password.trim().is_empty() && !has_quick_connect,
                 |this| {
@@ -10181,7 +10190,8 @@ impl TermiRustApp {
             )
             .child(
                 div()
-                    .text_size(px(14.))
+                    .max_w(px(820.))
+                    .text_size(px(13.))
                     .line_height(relative(1.5))
                     .text_color(theme::text_muted())
                     .child("Save repeatable commands, pin the important ones, and send them to the active terminal in one click. Use {{HOST}}, {{USER}}, {{PORT}}, {{TITLE}}, or {{ADDRESS}} for auto-substitution; use {{?Name}} to ask for a value at run time — a small prompt panel opens in the workspace before the command is sent."),
@@ -11400,7 +11410,9 @@ impl TermiRustApp {
     }
 
     fn render_library_shell(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
-        h_flex()
+        div()
+            .flex()
+            .flex_row()
             .flex_1()
             .bg(theme::library_bg())
             .child(self.render_library_sidebar(cx))

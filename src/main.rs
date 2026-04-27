@@ -40,6 +40,7 @@ fn main() {
 
     app.run(move |cx| {
         gpui_component::init(cx);
+        gpui_component::Theme::change(gpui_component::ThemeMode::Light, None, cx);
 
         let initial_state = saved_state.clone();
         let bounds = Bounds::centered(None, size(px(1480.), px(960.)), cx);
