@@ -54,6 +54,8 @@ const MAX_SPLIT_PANES: usize = 4;
 const HOST_CARD_WIDTH: f32 = 300.0;
 const ICON_KEY: &str = "icons/key.svg";
 const ICON_SHIELD_CHECK: &str = "icons/shield-check.svg";
+const ICON_VAULT: &str = "icons/vault.svg";
+const ICON_X: &str = "icons/x.svg";
 
 fn app_icon(path: &'static str) -> Icon {
     Icon::new(Icon::empty().path(path))
@@ -126,7 +128,7 @@ impl NavSection {
     fn icon(self) -> Icon {
         match self {
             Self::Hosts => IconName::SquareTerminal.into(),
-            Self::Vaults => IconName::Inbox.into(),
+            Self::Vaults => app_icon(ICON_VAULT),
             Self::Keychain => app_icon(ICON_KEY),
             Self::Snippets => IconName::BookOpen.into(),
             Self::Settings => IconName::Settings.into(),
@@ -13775,21 +13777,23 @@ impl TermiRustApp {
                             .top(px(12.))
                             .right(px(12.))
                             .id("editor-dialog-close")
-                            .size(px(30.))
+                            .size(px(28.))
                             .rounded(px(8.))
                             .flex()
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
-                            .bg(theme::with_alpha(theme::hover(), 0.6))
-                            .hover(|style| style.bg(theme::hover()))
+                            .bg(theme::hover())
+                            .border_1()
+                            .border_color(theme::border())
+                            .hover(|style| style.bg(theme::card_hover()))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.close_editor_dialog(window, cx);
                             }))
                             .child(
-                                Icon::new(IconName::Close)
+                                app_icon(ICON_X)
                                     .size(px(14.))
-                                    .text_color(theme::text_muted()),
+                                    .text_color(theme::text_main()),
                             ),
                     )
                     .child(

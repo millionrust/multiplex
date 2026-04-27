@@ -49,6 +49,7 @@ const ICONS: &[(&str, &[u8])] = &[
     icon!("trash"),
     icon!("triangle-alert"),
     icon!("user"),
+    icon!("vault"),
     icon!("x"),
 ];
 
