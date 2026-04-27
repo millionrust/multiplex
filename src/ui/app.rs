@@ -368,6 +368,12 @@ struct SessionPane {
     user_closed: bool,
 }
 
+#[derive(Clone)]
+struct PendingPaste {
+    pane_id: u64,
+    text: String,
+}
+
 struct WorkspaceTab {
     id: u64,
     title: String,
@@ -604,6 +610,7 @@ pub struct TermiRustApp {
     tab_rename_input: Entity<InputState>,
     pane_rename_id: Option<u64>,
     pane_rename_input: Entity<InputState>,
+    pending_paste: Option<PendingPaste>,
     _window_bounds_subscription: Option<Subscription>,
 }
 
@@ -698,6 +705,7 @@ impl TermiRustApp {
                 .new(|cx| InputState::new(window, cx).placeholder("Workspace name")),
             pane_rename_id: None,
             pane_rename_input: cx.new(|cx| InputState::new(window, cx).placeholder("Pane name")),
+            pending_paste: None,
             _window_bounds_subscription: None,
         };
 
@@ -2840,6 +2848,18 @@ impl TermiRustApp {
         self.saved.ensure_settings();
         self.save_settings();
         self.status_message = format!("Auto-reconnect delay set to {delay_secs}s.");
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn update_confirm_multiline_paste(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.saved.settings.confirm_multiline_paste = enabled;
+        self.save_settings();
+        self.status_message = if enabled {
+            "Multi-line clipboards now require confirmation before pasting.".to_string()
+        } else {
+            "Multi-line paste confirmation disabled.".to_string()
+        };
         self.error_message.clear();
         cx.notify();
     }
@@ -5430,6 +5450,23 @@ impl TermiRustApp {
         }
         text = text.replace("\r\n", "\n");
 
+        if self.saved.settings.confirm_multiline_paste && text.contains('\n') {
+            self.pending_paste = Some(PendingPaste {
+                pane_id,
+                text: text.clone(),
+            });
+            let line_count = text.matches('\n').count() + 1;
+            self.status_message =
+                format!("{line_count} lines on the clipboard. Confirm to send to the active pane.");
+            self.error_message.clear();
+            cx.notify();
+            return true;
+        }
+
+        self.send_paste_bytes(pane_id, text, cx)
+    }
+
+    fn send_paste_bytes(&mut self, pane_id: u64, text: String, cx: &mut Context<Self>) -> bool {
         let mut bytes = Vec::new();
         if self
             .pane(pane_id)
@@ -5444,6 +5481,26 @@ impl TermiRustApp {
         }
 
         self.send_input_bytes_broadcast(pane_id, bytes, cx)
+    }
+
+    fn confirm_pending_paste(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(pending) = self.pending_paste.take() else {
+            return false;
+        };
+        let result = self.send_paste_bytes(pending.pane_id, pending.text, cx);
+        if result {
+            self.status_message = "Multi-line paste delivered.".to_string();
+        }
+        cx.notify();
+        result
+    }
+
+    fn cancel_pending_paste(&mut self, cx: &mut Context<Self>) {
+        if self.pending_paste.take().is_some() {
+            self.status_message = "Paste cancelled.".to_string();
+            self.error_message.clear();
+            cx.notify();
+        }
     }
 
     fn handle_terminal_key(
@@ -10134,6 +10191,7 @@ impl TermiRustApp {
         let auto_reconnect_delay_secs = self.saved.settings.auto_reconnect_delay_secs;
         let ssh_keepalive_secs = self.saved.settings.ssh_keepalive_secs;
         let copy_on_select = self.saved.settings.copy_on_select;
+        let confirm_multiline_paste = self.saved.settings.confirm_multiline_paste;
         let session_log_count = self.saved.session_logs.len();
         let has_default_ssh_dir = self.saved.settings.default_ssh_startup_directory.is_some();
 
@@ -10299,6 +10357,30 @@ impl TermiRustApp {
                                     .label(if enabled { "Auto Copy" } else { "Manual Only" })
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.update_copy_on_select(enabled, cx);
+                                    }))
+                                    .into_any_element()
+                            },
+                        )),
+                )
+                .child(self.settings_divider())
+                .child(self.settings_subhead(
+                    "Multi-line paste safety",
+                    "Hold the paste in a confirmation banner when the clipboard contains newlines, so you don't accidentally execute a script you didn't mean to.",
+                ))
+                .child(
+                    h_flex()
+                        .p(px(3.))
+                        .rounded(px(8.))
+                        .bg(theme::hover())
+                        .children([true, false].into_iter().enumerate().map(
+                            |(index, enabled)| {
+                                let active = enabled == confirm_multiline_paste;
+                                Button::new(("settings-confirm-paste", index))
+                                    .small()
+                                    .custom(Self::segmented_button_style(active, cx))
+                                    .label(if enabled { "Confirm" } else { "Direct" })
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.update_confirm_multiline_paste(enabled, cx);
                                     }))
                                     .into_any_element()
                             },
@@ -12430,6 +12512,9 @@ impl TermiRustApp {
             .flex_1()
             .bg(theme::terminal_bg())
             .child(self.render_workspace_toolbar(window, cx))
+            .when_some(self.render_paste_confirmation(cx), |this, banner| {
+                this.child(banner)
+            })
             .child(self.render_quick_actions_bar(window, cx))
             .when_some(self.render_workspace_search(window, cx), |this, search| {
                 this.child(search)
@@ -12439,6 +12524,71 @@ impl TermiRustApp {
                 |this, autocomplete| this.child(autocomplete),
             )
             .child(content)
+    }
+
+    fn render_paste_confirmation(&self, cx: &Context<Self>) -> Option<Div> {
+        let pending = self.pending_paste.as_ref()?;
+        let line_count = pending.text.matches('\n').count() + 1;
+        let preview = pending
+            .text
+            .lines()
+            .next()
+            .unwrap_or("")
+            .chars()
+            .take(80)
+            .collect::<String>();
+        Some(
+            h_flex()
+                .w_full()
+                .px(px(18.))
+                .py(px(8.))
+                .gap_2()
+                .items_center()
+                .justify_between()
+                .bg(theme::with_alpha(theme::warning(), 0.16))
+                .border_b_1()
+                .border_color(theme::with_alpha(theme::warning(), 0.45))
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .gap_0p5()
+                        .child(
+                            div()
+                                .text_size(px(11.5))
+                                .font_medium()
+                                .text_color(theme::text_on_dark())
+                                .child(format!("Paste {line_count} lines into the active pane?")),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(theme::text_muted_dark())
+                                .child(format!("First line: {preview}…")),
+                        ),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .child(
+                            Button::new("paste-confirm")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                                .label("Paste")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.confirm_pending_paste(cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("paste-cancel")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label("Cancel")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.cancel_pending_paste(cx);
+                                })),
+                        ),
+                ),
+        )
     }
 }
 

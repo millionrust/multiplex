@@ -496,12 +496,18 @@ pub struct AppSettings {
     pub copy_on_select: bool,
     #[serde(default)]
     pub terminal_font_family: Option<String>,
+    #[serde(default = "default_confirm_multiline_paste")]
+    pub confirm_multiline_paste: bool,
     #[serde(default = "default_auto_reconnect_attempts")]
     pub auto_reconnect_attempts: u8,
     #[serde(default = "default_auto_reconnect_delay_secs")]
     pub auto_reconnect_delay_secs: u8,
     #[serde(default = "default_ssh_keepalive_secs")]
     pub ssh_keepalive_secs: u16,
+}
+
+fn default_confirm_multiline_paste() -> bool {
+    true
 }
 
 fn default_auto_reconnect_attempts() -> u8 {
@@ -528,6 +534,7 @@ impl Default for AppSettings {
             default_ssh_startup_directory: None,
             copy_on_select: false,
             terminal_font_family: None,
+            confirm_multiline_paste: default_confirm_multiline_paste(),
             auto_reconnect_attempts: default_auto_reconnect_attempts(),
             auto_reconnect_delay_secs: default_auto_reconnect_delay_secs(),
             ssh_keepalive_secs: default_ssh_keepalive_secs(),
@@ -3139,6 +3146,7 @@ mod tests {
         assert!(!from_legacy.copy_on_select);
         assert_eq!(from_legacy.auto_reconnect_attempts, 3);
         assert_eq!(from_legacy.auto_reconnect_delay_secs, 5);
+        assert!(from_legacy.confirm_multiline_paste);
     }
 
     #[test]
