@@ -438,6 +438,18 @@ pub struct AppSettings {
     pub copy_on_select: bool,
     #[serde(default)]
     pub terminal_font_family: Option<String>,
+    #[serde(default = "default_auto_reconnect_attempts")]
+    pub auto_reconnect_attempts: u8,
+    #[serde(default = "default_auto_reconnect_delay_secs")]
+    pub auto_reconnect_delay_secs: u8,
+}
+
+fn default_auto_reconnect_attempts() -> u8 {
+    3
+}
+
+fn default_auto_reconnect_delay_secs() -> u8 {
+    5
 }
 
 impl Default for AppSettings {
@@ -452,6 +464,8 @@ impl Default for AppSettings {
             default_ssh_startup_directory: None,
             copy_on_select: false,
             terminal_font_family: None,
+            auto_reconnect_attempts: default_auto_reconnect_attempts(),
+            auto_reconnect_delay_secs: default_auto_reconnect_delay_secs(),
         }
     }
 }
@@ -478,6 +492,8 @@ impl AppSettings {
             .take()
             .map(|dir| dir.trim().to_string())
             .filter(|dir| !dir.is_empty());
+        self.auto_reconnect_attempts = self.auto_reconnect_attempts.min(10);
+        self.auto_reconnect_delay_secs = self.auto_reconnect_delay_secs.clamp(1, 60);
     }
 }
 
@@ -2920,6 +2936,8 @@ mod tests {
         original.copy_on_select = true;
         original.terminal_font_size = 16;
         original.theme_preset = ThemePreset::Daylight;
+        original.auto_reconnect_attempts = 5;
+        original.auto_reconnect_delay_secs = 30;
 
         let json = serde_json::to_string(&original).expect("serialize settings");
         let parsed: AppSettings = serde_json::from_str(&json).expect("deserialize settings");
@@ -2927,11 +2945,29 @@ mod tests {
         assert!(parsed.copy_on_select);
         assert_eq!(parsed.terminal_font_size, 16);
         assert_eq!(parsed.theme_preset, ThemePreset::Daylight);
+        assert_eq!(parsed.auto_reconnect_attempts, 5);
+        assert_eq!(parsed.auto_reconnect_delay_secs, 30);
 
         let legacy = "{}";
         let from_legacy: AppSettings =
             serde_json::from_str(legacy).expect("deserialize legacy settings");
         assert!(!from_legacy.copy_on_select);
+        assert_eq!(from_legacy.auto_reconnect_attempts, 3);
+        assert_eq!(from_legacy.auto_reconnect_delay_secs, 5);
+    }
+
+    #[test]
+    fn settings_normalize_clamps_auto_reconnect_bounds() {
+        let mut settings = AppSettings::default();
+        settings.auto_reconnect_attempts = 99;
+        settings.auto_reconnect_delay_secs = 0;
+        settings.normalize();
+        assert_eq!(settings.auto_reconnect_attempts, 10);
+        assert_eq!(settings.auto_reconnect_delay_secs, 1);
+
+        settings.auto_reconnect_delay_secs = 200;
+        settings.normalize();
+        assert_eq!(settings.auto_reconnect_delay_secs, 60);
     }
 
     #[test]

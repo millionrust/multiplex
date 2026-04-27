@@ -358,6 +358,9 @@ struct SessionPane {
     log_id: String,
     current_input: String,
     selected_autocomplete_index: Option<usize>,
+    auto_reconnect_attempts: u8,
+    auto_reconnect_at: Option<u64>,
+    user_closed: bool,
 }
 
 struct WorkspaceTab {
@@ -707,8 +710,11 @@ impl TermiRustApp {
                     .await;
 
                 if cx
-                    .update(|_, cx| {
-                        let _ = this.update(cx, |app, cx| app.process_events(cx));
+                    .update(|window, cx| {
+                        let _ = this.update(cx, |app, cx| {
+                            app.process_events(cx);
+                            app.process_pending_auto_reconnects(window, cx);
+                        });
                     })
                     .is_err()
                 {
@@ -2764,6 +2770,28 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn update_auto_reconnect_attempts(&mut self, attempts: u8, cx: &mut Context<Self>) {
+        self.saved.settings.auto_reconnect_attempts = attempts;
+        self.saved.ensure_settings();
+        self.save_settings();
+        self.status_message = if attempts == 0 {
+            "Auto-reconnect disabled.".to_string()
+        } else {
+            format!("Auto-reconnect set to {attempts} attempts.")
+        };
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn update_auto_reconnect_delay(&mut self, delay_secs: u8, cx: &mut Context<Self>) {
+        self.saved.settings.auto_reconnect_delay_secs = delay_secs;
+        self.saved.ensure_settings();
+        self.save_settings();
+        self.status_message = format!("Auto-reconnect delay set to {delay_secs}s.");
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn update_copy_on_select(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.saved.settings.copy_on_select = enabled;
         self.save_settings();
@@ -3729,6 +3757,9 @@ impl TermiRustApp {
             log_id,
             current_input: String::new(),
             selected_autocomplete_index: None,
+            auto_reconnect_attempts: 0,
+            auto_reconnect_at: None,
+            user_closed: false,
         });
 
         let _ = window;
@@ -3835,6 +3866,58 @@ impl TermiRustApp {
                 cx.notify();
             }
         }
+    }
+
+    fn maybe_schedule_auto_reconnect(&mut self, pane_id: u64) -> bool {
+        let max_attempts = self.saved.settings.auto_reconnect_attempts;
+        let delay_secs = self.saved.settings.auto_reconnect_delay_secs;
+        if max_attempts == 0 {
+            return false;
+        }
+        let Some(pane) = self.pane_mut(pane_id) else {
+            return false;
+        };
+        if pane.user_closed || pane.request.is_local_shell() {
+            return false;
+        }
+        if pane.auto_reconnect_attempts >= max_attempts {
+            return false;
+        }
+        pane.auto_reconnect_attempts += 1;
+        pane.auto_reconnect_at =
+            Some(current_unix_millis() + u64::from(delay_secs).saturating_mul(1000));
+        pane.status = format!(
+            "Reconnecting in {delay_secs}s ({}/{max_attempts})",
+            pane.auto_reconnect_attempts
+        );
+        true
+    }
+
+    fn process_pending_auto_reconnects(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let now = current_unix_millis();
+        let due_pane_ids: Vec<u64> = self
+            .panes
+            .iter()
+            .filter(|pane| {
+                !pane.user_closed && pane.auto_reconnect_at.is_some_and(|target| now >= target)
+            })
+            .map(|pane| pane.id)
+            .collect();
+        if due_pane_ids.is_empty() {
+            return false;
+        }
+        for pane_id in due_pane_ids {
+            if let Some(pane) = self.pane_mut(pane_id) {
+                pane.auto_reconnect_at = None;
+                pane.status = "Reconnecting...".to_string();
+            }
+            self.reconnect_pane(pane_id, window, cx);
+        }
+        true
     }
 
     fn reconnect_pane(&mut self, pane_id: u64, window: &mut Window, cx: &mut Context<Self>) {
@@ -4066,7 +4149,9 @@ impl TermiRustApp {
     }
 
     fn close_pane(&mut self, pane_id: u64, cx: &mut Context<Self>) {
-        if let Some(pane) = self.pane(pane_id) {
+        if let Some(pane) = self.pane_mut(pane_id) {
+            pane.user_closed = true;
+            pane.auto_reconnect_at = None;
             let _ = pane.runtime.command_tx.send(SessionCommand::Disconnect);
         }
 
@@ -4235,8 +4320,15 @@ impl TermiRustApp {
                             .update_session_log(&log_id, |e| e.mark_error(&message));
                         let _ = save_saved_state(&self.saved);
                     }
+                    let scheduled_reconnect = self.maybe_schedule_auto_reconnect(session_id);
 
                     self.error_message = message;
+                    if scheduled_reconnect {
+                        self.status_message = self
+                            .pane(session_id)
+                            .map(|pane| pane.status.clone())
+                            .unwrap_or_default();
+                    }
                 }
                 SshEvent::Disconnected {
                     session_id,
@@ -4248,6 +4340,10 @@ impl TermiRustApp {
                     if let Some(workspace_id) = self.pane_workspace_id(session_id) {
                         self.record_workspace_activity(workspace_id);
                     }
+                    let was_user_closed = self
+                        .pane(session_id)
+                        .map(|pane| pane.user_closed)
+                        .unwrap_or(true);
                     if let Some(pane) = self.pane_mut(session_id) {
                         pane.connected = false;
                         pane.closed = true;
@@ -4257,8 +4353,16 @@ impl TermiRustApp {
                             .update_session_log(&log_id, |e| e.mark_disconnected());
                         let _ = save_saved_state(&self.saved);
                     }
+                    let mut scheduled = false;
+                    if !was_user_closed {
+                        scheduled = self.maybe_schedule_auto_reconnect(session_id);
+                    }
 
-                    self.status_message = if self
+                    self.status_message = if scheduled {
+                        self.pane(session_id)
+                            .map(|pane| pane.status.clone())
+                            .unwrap_or_default()
+                    } else if self
                         .pane(session_id)
                         .is_some_and(|pane| pane.request.is_local_shell())
                     {
@@ -4266,7 +4370,7 @@ impl TermiRustApp {
                     } else {
                         "SSH session closed.".to_string()
                     };
-                    if self.error_message.is_empty() {
+                    if !scheduled && self.error_message.is_empty() {
                         self.error_message = message;
                     }
                 }
@@ -9681,6 +9785,8 @@ impl TermiRustApp {
         let restore_workspaces_on_launch = self.saved.settings.restore_workspaces_on_launch;
         let session_log_limit = self.saved.settings.session_log_limit;
         let onboarding_dismissed = self.saved.settings.onboarding_dismissed;
+        let auto_reconnect_attempts = self.saved.settings.auto_reconnect_attempts;
+        let auto_reconnect_delay_secs = self.saved.settings.auto_reconnect_delay_secs;
         let copy_on_select = self.saved.settings.copy_on_select;
         let session_log_count = self.saved.session_logs.len();
         let has_default_ssh_dir = self.saved.settings.default_ssh_startup_directory.is_some();
@@ -10047,6 +10153,69 @@ impl TermiRustApp {
                                 .text_color(theme::text_muted())
                                 .child("Per-host startup directories always take priority over this default."),
                         ),
+                )
+                .child(self.settings_divider())
+                .child(self.settings_subhead(
+                    "Auto-reconnect",
+                    "When an SSH session drops with an error or unexpected disconnect, retry this many times before giving up.",
+                ))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .flex_wrap()
+                        .children([0u8, 1, 3, 5, 10].into_iter().enumerate().map(
+                            |(index, attempts)| {
+                                let selected = attempts == auto_reconnect_attempts;
+                                Button::new(("settings-auto-reconnect-attempts", index))
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        if selected {
+                                            theme::ActionTone::Accent
+                                        } else {
+                                            theme::ActionTone::Neutral
+                                        },
+                                        cx,
+                                    ))
+                                    .label(if attempts == 0 {
+                                        "Off".to_string()
+                                    } else {
+                                        format!("{attempts} attempts")
+                                    })
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.update_auto_reconnect_attempts(attempts, cx);
+                                    }))
+                                    .into_any_element()
+                            },
+                        )),
+                )
+                .child(self.settings_subhead(
+                    "Reconnect delay",
+                    "Wait this many seconds between automatic retry attempts.",
+                ))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .flex_wrap()
+                        .children([2u8, 5, 10, 30].into_iter().enumerate().map(
+                            |(index, delay)| {
+                                let selected = delay == auto_reconnect_delay_secs;
+                                Button::new(("settings-auto-reconnect-delay", index))
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        if selected {
+                                            theme::ActionTone::Accent
+                                        } else {
+                                            theme::ActionTone::Neutral
+                                        },
+                                        cx,
+                                    ))
+                                    .label(format!("{delay}s"))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.update_auto_reconnect_delay(delay, cx);
+                                    }))
+                                    .into_any_element()
+                            },
+                        )),
                 ),
         );
 
