@@ -8558,6 +8558,9 @@ impl TermiRustApp {
                     .when_some(self.render_saved_group_cards(cx), |this, cards| {
                         this.child(cards)
                     })
+                    .when_some(self.render_recent_hosts_row(cx), |this, row| {
+                        this.child(row)
+                    })
                     .child(
                         div()
                             .text_size(px(13.))
@@ -8567,6 +8570,106 @@ impl TermiRustApp {
                     )
                     .child(self.render_host_grid(window, cx)),
             )
+    }
+
+    fn render_recent_hosts_row(&self, cx: &Context<Self>) -> Option<Div> {
+        let mut seen = HashSet::new();
+        let mut recent: Vec<(HostProfile, u64)> = Vec::new();
+        for log in self.saved.session_logs.iter().rev() {
+            if log.started_at == 0 {
+                continue;
+            }
+            if let Some(profile) = self.saved.profiles.iter().find(|profile| {
+                profile.host == log.host
+                    && profile.port == log.port
+                    && profile.username == log.username
+            }) {
+                if seen.insert(profile.id.clone()) {
+                    recent.push((profile.clone(), log.started_at));
+                    if recent.len() >= 6 {
+                        break;
+                    }
+                }
+            }
+        }
+        if recent.is_empty() {
+            return None;
+        }
+        Some(
+            v_flex()
+                .gap_2()
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .font_semibold()
+                                .text_color(theme::text_main())
+                                .child("Recent"),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.5))
+                                .text_color(theme::text_muted())
+                                .child("Most-recent successful sessions"),
+                        ),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .flex_wrap()
+                        .children(recent.into_iter().enumerate().map(
+                            |(index, (profile, started_at))| {
+                                let profile_id = profile.id.clone();
+                                let display = profile.display_name();
+                                let chip_color = match profile.color_tag {
+                                    Some(tag) => gpui::rgb(tag.rgb_hex()).into(),
+                                    None => theme::host_chip_color(&display),
+                                };
+                                let endpoint = profile.endpoint();
+                                let relative = format_relative_time(started_at);
+                                h_flex()
+                                    .id(("recent-host", index))
+                                    .gap_2()
+                                    .items_center()
+                                    .px_3()
+                                    .py(px(6.))
+                                    .rounded(px(999.))
+                                    .bg(theme::with_alpha(theme::hover(), 0.7))
+                                    .border_1()
+                                    .border_color(theme::with_alpha(chip_color, 0.4))
+                                    .cursor_pointer()
+                                    .hover(|style| style.bg(theme::hover()))
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.show_editor_panel = false;
+                                        this.load_profile_into_inputs(&profile_id, window, cx);
+                                        this.connect_current(window, cx);
+                                    }))
+                                    .child(div().size(px(8.)).rounded(px(999.)).bg(chip_color))
+                                    .child(
+                                        v_flex()
+                                            .gap_0p5()
+                                            .child(
+                                                div()
+                                                    .text_size(px(11.))
+                                                    .font_medium()
+                                                    .text_color(theme::text_main())
+                                                    .child(display.clone()),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(9.5))
+                                                    .text_color(theme::text_muted())
+                                                    .child(format!("{endpoint} • {relative}")),
+                                            ),
+                                    )
+                                    .into_any_element()
+                            },
+                        )),
+                ),
+        )
     }
 
     fn keychain_tab_control(&self, cx: &Context<Self>) -> Div {
