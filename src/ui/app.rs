@@ -600,6 +600,8 @@ pub struct TermiRustApp {
     keychain_tab: KeychainTab,
     show_command_palette: bool,
     selected_command_palette_index: usize,
+    tab_rename_workspace_id: Option<u64>,
+    tab_rename_input: Entity<InputState>,
     _window_bounds_subscription: Option<Subscription>,
 }
 
@@ -689,6 +691,9 @@ impl TermiRustApp {
             keychain_tab: KeychainTab::Keys,
             show_command_palette: false,
             selected_command_palette_index: 0,
+            tab_rename_workspace_id: None,
+            tab_rename_input: cx
+                .new(|cx| InputState::new(window, cx).placeholder("Workspace name")),
             _window_bounds_subscription: None,
         };
 
@@ -3359,6 +3364,57 @@ impl TermiRustApp {
             .iter()
             .find(|workspace| workspace.pane_ids.contains(&pane_id))
             .map(|workspace| workspace.id)
+    }
+
+    fn start_workspace_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return;
+        };
+        let title = self
+            .workspace(workspace_id)
+            .map(|workspace| workspace.title.clone())
+            .unwrap_or_default();
+        self.tab_rename_workspace_id = Some(workspace_id);
+        Self::set_input_value(&self.tab_rename_input, title, window, cx);
+        self.tab_rename_input
+            .read(cx)
+            .focus_handle(cx)
+            .focus(window);
+        cx.notify();
+    }
+
+    fn commit_workspace_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(workspace_id) = self.tab_rename_workspace_id else {
+            return;
+        };
+        let new_title = self.tab_rename_input.read(cx).value().trim().to_string();
+        if new_title.is_empty() {
+            self.cancel_workspace_rename(window, cx);
+            return;
+        }
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
+            workspace.title = new_title.clone();
+        }
+        self.tab_rename_workspace_id = None;
+        self.persist_runtime_state();
+        self.status_message = format!("Workspace renamed to {new_title}.");
+        self.error_message.clear();
+        if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
+            if let Some(pane) = self.pane(pane_id) {
+                pane.terminal_focus.focus(window);
+            }
+        }
+        cx.notify();
+    }
+
+    fn cancel_workspace_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.tab_rename_workspace_id = None;
+        if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
+            if let Some(pane) = self.pane(pane_id) {
+                pane.terminal_focus.focus(window);
+            }
+        }
+        cx.notify();
     }
 
     fn cycle_active_workspace(
@@ -10732,6 +10788,7 @@ impl TermiRustApp {
         let workspace_id = workspace.id;
         let broadcast_active = workspace.broadcast_input;
         let broadcast_available = workspace.pane_ids.len() > 1;
+        let renaming = self.tab_rename_workspace_id == Some(workspace_id);
 
         h_flex()
             .h(px(theme::WORKSPACE_HEADER_HEIGHT))
@@ -10752,19 +10809,65 @@ impl TermiRustApp {
                             .size(px(16.))
                             .text_color(theme::accent()),
                     )
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .font_semibold()
-                            .text_color(theme::text_on_dark())
-                            .child(workspace.title.clone()),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(theme::text_muted_dark())
-                            .child(pane.endpoint.clone()),
-                    )
+                    .when(renaming, |this| {
+                        this.child(
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .w(px(220.))
+                                        .child(Input::new(&self.tab_rename_input).small()),
+                                )
+                                .child(
+                                    Button::new("workspace-rename-save")
+                                        .xsmall()
+                                        .custom(Self::action_button_style(
+                                            theme::ActionTone::Accent,
+                                            cx,
+                                        ))
+                                        .label("Save")
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.commit_workspace_rename(window, cx);
+                                        })),
+                                )
+                                .child(
+                                    Button::new("workspace-rename-cancel")
+                                        .xsmall()
+                                        .custom(Self::action_button_style(
+                                            theme::ActionTone::Neutral,
+                                            cx,
+                                        ))
+                                        .label("Cancel")
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.cancel_workspace_rename(window, cx);
+                                        })),
+                                ),
+                        )
+                    })
+                    .when(!renaming, |this| {
+                        this.child(
+                            div()
+                                .id(("workspace-title", workspace_id))
+                                .text_size(px(13.))
+                                .font_semibold()
+                                .text_color(theme::text_on_dark())
+                                .cursor_pointer()
+                                .hover(|style| {
+                                    style.text_color(theme::with_alpha(theme::accent(), 0.95))
+                                })
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.start_workspace_rename(window, cx);
+                                }))
+                                .child(workspace.title.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.))
+                                .text_color(theme::text_muted_dark())
+                                .child(pane.endpoint.clone()),
+                        )
+                    })
                     .when_some(
                         workspace_runtime_summary(indicators),
                         |this, (label, tone)| {
@@ -12315,6 +12418,10 @@ impl TermiRustApp {
         }
 
         if event.keystroke.key.as_str() == "escape" {
+            if self.tab_rename_workspace_id.is_some() {
+                self.cancel_workspace_rename(window, cx);
+                return true;
+            }
             if self.show_editor_panel {
                 self.close_editor_dialog(window, cx);
                 return true;
@@ -12326,6 +12433,13 @@ impl TermiRustApp {
                 self.show_active_workspace_terminal(cx);
                 return true;
             }
+        }
+        if self.tab_rename_workspace_id.is_some()
+            && event.keystroke.key.as_str() == "enter"
+            && !event.keystroke.modifiers.secondary()
+        {
+            self.commit_workspace_rename(window, cx);
+            return true;
         }
 
         if !event.keystroke.modifiers.secondary() {
