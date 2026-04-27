@@ -11389,41 +11389,44 @@ impl TermiRustApp {
                 )),
         );
 
-        v_flex().size_full().bg(theme::library_bg()).child(
-            v_flex()
-                .id("settings-scroll")
-                .size_full()
-                .gap_4()
-                .p_5()
-                .overflow_x_hidden()
-                .overflow_y_scrollbar()
-                .child(
-                    v_flex()
-                        .gap(px(2.))
-                        .child(
-                            div()
-                                .text_size(px(22.))
-                                .font_semibold()
-                                .text_color(theme::text_main())
-                                .child("Settings"),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(13.))
-                                .text_color(theme::text_muted())
-                                .child("Local desktop preferences"),
-                        ),
-                )
-                .child(appearance_card)
-                .child(terminal_card)
-                .child(startup_card)
-                .child(sessions_card)
-                .child(local_shell_card)
-                .child(shortcuts_card)
-                .child(portable_card)
-                .child(encrypted_card)
-                .child(sync_card),
-        )
+        v_flex()
+            .size_full()
+            .bg(theme::library_bg())
+            .overflow_hidden()
+            .child(
+                v_flex()
+                    .id("settings-scroll")
+                    .size_full()
+                    .gap_4()
+                    .p_5()
+                    .overflow_y_scrollbar()
+                    .child(
+                        v_flex()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(22.))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child("Settings"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .text_color(theme::text_muted())
+                                    .child("Local desktop preferences"),
+                            ),
+                    )
+                    .child(appearance_card)
+                    .child(terminal_card)
+                    .child(startup_card)
+                    .child(sessions_card)
+                    .child(local_shell_card)
+                    .child(shortcuts_card)
+                    .child(portable_card)
+                    .child(encrypted_card)
+                    .child(sync_card),
+            )
     }
 
     fn render_library_content(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
