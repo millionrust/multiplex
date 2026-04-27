@@ -602,6 +602,8 @@ pub struct TermiRustApp {
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
     tab_rename_input: Entity<InputState>,
+    pane_rename_id: Option<u64>,
+    pane_rename_input: Entity<InputState>,
     _window_bounds_subscription: Option<Subscription>,
 }
 
@@ -694,6 +696,8 @@ impl TermiRustApp {
             tab_rename_workspace_id: None,
             tab_rename_input: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Workspace name")),
+            pane_rename_id: None,
+            pane_rename_input: cx.new(|cx| InputState::new(window, cx).placeholder("Pane name")),
             _window_bounds_subscription: None,
         };
 
@@ -3410,6 +3414,53 @@ impl TermiRustApp {
     fn cancel_workspace_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.tab_rename_workspace_id = None;
         if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
+            if let Some(pane) = self.pane(pane_id) {
+                pane.terminal_focus.focus(window);
+            }
+        }
+        cx.notify();
+    }
+
+    fn start_pane_rename(&mut self, pane_id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let title = self
+            .pane(pane_id)
+            .map(|pane| pane.title.clone())
+            .unwrap_or_default();
+        self.pane_rename_id = Some(pane_id);
+        Self::set_input_value(&self.pane_rename_input, title, window, cx);
+        self.pane_rename_input
+            .read(cx)
+            .focus_handle(cx)
+            .focus(window);
+        cx.notify();
+    }
+
+    fn commit_pane_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(pane_id) = self.pane_rename_id else {
+            return;
+        };
+        let new_title = self.pane_rename_input.read(cx).value().trim().to_string();
+        if new_title.is_empty() {
+            self.cancel_pane_rename(window, cx);
+            return;
+        }
+        if let Some(pane) = self.pane_mut(pane_id) {
+            pane.title = new_title.clone();
+            pane.request.title = new_title.clone();
+        }
+        self.pane_rename_id = None;
+        self.persist_runtime_state();
+        self.status_message = format!("Pane renamed to {new_title}.");
+        self.error_message.clear();
+        if let Some(pane) = self.pane(pane_id) {
+            pane.terminal_focus.focus(window);
+        }
+        cx.notify();
+    }
+
+    fn cancel_pane_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let pane_id = self.pane_rename_id.take();
+        if let Some(pane_id) = pane_id {
             if let Some(pane) = self.pane(pane_id) {
                 pane.terminal_focus.focus(window);
             }
@@ -12001,25 +12052,77 @@ impl TermiRustApp {
                             .gap(px(8.))
                             .items_center()
                             .child(div().size(px(9.)).rounded(px(999.)).bg(status_color))
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .font_medium()
-                                    .text_color(theme::text_on_dark())
-                                    .child(pane.title.clone()),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(10.5))
-                                    .text_color(theme::text_muted_dark())
-                                    .child(pane.endpoint.clone()),
-                            )
-                            .when(workspace_broadcasting, |this| {
-                                this.child(self.status_badge(
-                                    "Broadcasting",
-                                    theme::with_alpha(theme::warning(), 0.18),
-                                    theme::warning(),
-                                ))
+                            .when(self.pane_rename_id == Some(pane.id), |this| {
+                                this.child(
+                                    h_flex()
+                                        .gap_2()
+                                        .items_center()
+                                        .child(
+                                            div()
+                                                .w(px(180.))
+                                                .child(Input::new(&self.pane_rename_input).small()),
+                                        )
+                                        .child(
+                                            Button::new(("pane-rename-save", pane.id))
+                                                .xsmall()
+                                                .custom(Self::action_button_style(
+                                                    theme::ActionTone::Accent,
+                                                    cx,
+                                                ))
+                                                .label("Save")
+                                                .on_click(cx.listener(|this, _, window, cx| {
+                                                    this.commit_pane_rename(window, cx);
+                                                })),
+                                        )
+                                        .child(
+                                            Button::new(("pane-rename-cancel", pane.id))
+                                                .xsmall()
+                                                .custom(Self::action_button_style(
+                                                    theme::ActionTone::Neutral,
+                                                    cx,
+                                                ))
+                                                .label("Cancel")
+                                                .on_click(cx.listener(|this, _, window, cx| {
+                                                    this.cancel_pane_rename(window, cx);
+                                                })),
+                                        ),
+                                )
+                            })
+                            .when(self.pane_rename_id != Some(pane.id), |this| {
+                                this.child(
+                                    div()
+                                        .id(("pane-title", pane.id))
+                                        .text_size(px(12.))
+                                        .font_medium()
+                                        .text_color(theme::text_on_dark())
+                                        .cursor_pointer()
+                                        .hover(|style| {
+                                            style.text_color(theme::with_alpha(
+                                                theme::accent(),
+                                                0.95,
+                                            ))
+                                        })
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            this.start_pane_rename(pane_id, window, cx);
+                                        }))
+                                        .child(pane.title.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(10.5))
+                                        .text_color(theme::text_muted_dark())
+                                        .child(pane.endpoint.clone()),
+                                )
+                                .when(
+                                    workspace_broadcasting,
+                                    |this| {
+                                        this.child(self.status_badge(
+                                            "Broadcasting",
+                                            theme::with_alpha(theme::warning(), 0.18),
+                                            theme::warning(),
+                                        ))
+                                    },
+                                )
                             }),
                     )
                     .child(
@@ -12422,6 +12525,10 @@ impl TermiRustApp {
                 self.cancel_workspace_rename(window, cx);
                 return true;
             }
+            if self.pane_rename_id.is_some() {
+                self.cancel_pane_rename(window, cx);
+                return true;
+            }
             if self.show_editor_panel {
                 self.close_editor_dialog(window, cx);
                 return true;
@@ -12434,12 +12541,15 @@ impl TermiRustApp {
                 return true;
             }
         }
-        if self.tab_rename_workspace_id.is_some()
-            && event.keystroke.key.as_str() == "enter"
-            && !event.keystroke.modifiers.secondary()
-        {
-            self.commit_workspace_rename(window, cx);
-            return true;
+        if event.keystroke.key.as_str() == "enter" && !event.keystroke.modifiers.secondary() {
+            if self.tab_rename_workspace_id.is_some() {
+                self.commit_workspace_rename(window, cx);
+                return true;
+            }
+            if self.pane_rename_id.is_some() {
+                self.commit_pane_rename(window, cx);
+                return true;
+            }
         }
 
         if !event.keystroke.modifiers.secondary() {
