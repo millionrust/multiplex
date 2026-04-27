@@ -35,7 +35,7 @@ This is the working parity checklist for the native Rust desktop client. Complet
 - Windows: cargo-wix path documented. Signed MSI requires a CA-issued code-signing certificate; flow documented in docs/building.md.
 - Linux: `cargo bundle --release --format deb` / `--format rpm` produces packages. AppImage path documented. Snap/Flatpak manifests still TODO.
 - Auto-update: not yet wired. Path documented (self_update crate + signed manifests on HTTPS origin) but not implemented.
-- Icons: `assets/icons/app.png` (1024x1024) still needs to be added before bundling will succeed.
+- Icons: `assets/icons/app.png` (1024x1024) is in place as a navy "T" placeholder; a hand-designed icon can replace it without changing build paths.
 
 ## Vault / Team / Sync
 
