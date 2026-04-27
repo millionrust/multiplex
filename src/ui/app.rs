@@ -186,6 +186,7 @@ struct DraftInputs {
     forward_remote_port: Entity<InputState>,
     key_passphrase: Entity<InputState>,
     description: Entity<InputState>,
+    environment: Entity<InputState>,
 }
 
 impl DraftInputs {
@@ -219,6 +220,10 @@ impl DraftInputs {
             }),
             description: cx.new(|cx| {
                 InputState::new(window, cx).placeholder("Optional notes about this host")
+            }),
+            environment: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder("AWS_PROFILE=prod\\nLOG_LEVEL=info (one KEY=value per line)")
             }),
         }
     }
@@ -828,6 +833,7 @@ impl TermiRustApp {
             auth_mode: self.draft_auth_mode,
             description: self.inputs.description.read(cx).value().to_string(),
             color_tag: self.draft_color_tag,
+            environment: self.inputs.environment.read(cx).value().to_string(),
         };
 
         Ok(draft)
@@ -1420,6 +1426,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
         Self::set_input_value(&self.inputs.description, draft.description, window, cx);
+        Self::set_input_value(&self.inputs.environment, draft.environment, window, cx);
         self.draft_color_tag = draft.color_tag;
         self.draft_vault_id = Some(self.effective_vault_id(draft.vault_id.as_deref()));
         self.draft_profile_favorite = draft.favorite;
@@ -1468,6 +1475,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
         Self::set_input_value(&self.inputs.description, "", window, cx);
+        Self::set_input_value(&self.inputs.environment, "", window, cx);
         self.draft_color_tag = None;
         self.draft_vault_id = Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
         self.draft_profile_favorite = false;
@@ -7350,6 +7358,22 @@ impl TermiRustApp {
                             .text_color(theme::text_muted())
                             .child(
                                 "When the SSH shell opens, the app can change into a saved directory and optionally run one startup command.",
+                            ),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .gap_2()
+                    .child(self.form_field(
+                        "Environment",
+                        Input::new(&self.inputs.environment),
+                    ))
+                    .child(
+                        div()
+                            .text_size(px(10.))
+                            .text_color(theme::text_muted())
+                            .child(
+                                "One KEY=value per line. Variables are exported into the remote shell before the startup directory and command run, with proper single-quote escaping.",
                             ),
                     ),
             )
@@ -14242,6 +14266,13 @@ fn startup_bytes_for_request(
     }
 
     let mut lines = Vec::new();
+    for (key, value) in &request.environment {
+        let key = key.trim();
+        if key.is_empty() {
+            continue;
+        }
+        lines.push(format!("export {key}={}", shell_single_quote(value)));
+    }
     let effective_dir = request.startup_directory.as_deref().or(default_startup_dir);
     if let Some(directory) = effective_dir {
         let directory = directory.trim();
@@ -14573,6 +14604,7 @@ mod tests {
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
+            environment: Vec::new(),
         };
 
         assert_eq!(
@@ -14651,6 +14683,36 @@ mod tests {
     }
 
     #[test]
+    fn startup_actions_export_environment_before_cd_and_command() {
+        let request = ConnectRequest {
+            session_id: 1,
+            title: "Prod".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: "prod.example.com".to_string(),
+            port: 22,
+            username: "ubuntu".to_string(),
+            auth: None,
+            jump_host: None,
+            startup_directory: Some("/srv".to_string()),
+            startup_command: Some("uptime".to_string()),
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: vec![
+                ("AWS_PROFILE".to_string(), "prod".to_string()),
+                ("MESSAGE".to_string(), "hello it's me".to_string()),
+            ],
+        };
+        let bytes = startup_bytes_for_request(&request, None).unwrap();
+        let script = String::from_utf8(bytes).unwrap();
+        assert_eq!(
+            script,
+            "export AWS_PROFILE='prod'\nexport MESSAGE='hello it'\"'\"'s me'\ncd -- '/srv'\nuptime\n"
+        );
+    }
+
+    #[test]
     fn startup_actions_build_cd_and_command_script() {
         let request = ConnectRequest {
             session_id: 1,
@@ -14669,6 +14731,7 @@ mod tests {
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
+            environment: Vec::new(),
         };
 
         let bytes = startup_bytes_for_request(&request, None).unwrap();
@@ -14695,6 +14758,7 @@ mod tests {
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
+            environment: Vec::new(),
         };
 
         assert!(startup_bytes_for_request(&request, None).is_none());
@@ -14730,6 +14794,7 @@ mod tests {
             auth_mode: AuthMode::PrivateKey,
             description: String::new(),
             color_tag: None,
+            environment: String::new(),
         };
         let group = SavedHostGroup {
             label: "Operations".to_string(),
@@ -14814,6 +14879,7 @@ mod tests {
             auth_mode: AuthMode::Password,
             description: String::new(),
             color_tag: None,
+            environment: String::new(),
         };
         let group = SavedHostGroup {
             label: "Operations".to_string(),

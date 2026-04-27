@@ -660,6 +660,7 @@ fn flush_ssh_config_block(
                 source: ProfileSource::SshConfig,
                 description: String::new(),
                 color_tag: None,
+                environment: Vec::new(),
             },
         );
     }
@@ -1016,6 +1017,7 @@ Host app-prod
             source: ProfileSource::User,
             description: "Production app server".to_string(),
             color_tag: None,
+            environment: Vec::new(),
         });
         state.upsert_identity(SavedIdentity {
             id: "identity-1".to_string(),
@@ -1121,6 +1123,7 @@ Host app-prod
             source: ProfileSource::User,
             description: String::new(),
             color_tag: None,
+            environment: Vec::new(),
         });
         state.upsert_snippet(SavedSnippet {
             id: "snippet-1".to_string(),

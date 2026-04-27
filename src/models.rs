@@ -198,6 +198,8 @@ pub struct HostProfile {
     pub description: String,
     #[serde(default)]
     pub color_tag: Option<HostColorTag>,
+    #[serde(default)]
+    pub environment: Vec<(String, String)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1193,6 +1195,44 @@ impl ImportedIdentity {
     }
 }
 
+pub fn parse_environment_pairs(raw: &str) -> Vec<(String, String)> {
+    let mut pairs = Vec::new();
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        if key.is_empty() {
+            continue;
+        }
+        if !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            || key.chars().next().is_some_and(|c| c.is_ascii_digit())
+        {
+            continue;
+        }
+        let mut value = value.trim().to_string();
+        if (value.starts_with('"') && value.ends_with('"') && value.len() >= 2)
+            || (value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2)
+        {
+            value = value[1..value.len() - 1].to_string();
+        }
+        pairs.push((key.to_string(), value));
+    }
+    pairs
+}
+
+pub fn format_environment_pairs(pairs: &[(String, String)]) -> String {
+    pairs
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 pub fn identity_id_for_path(path: &str) -> String {
     let hash = path.bytes().fold(1469598103934665603u64, |acc, byte| {
         acc.wrapping_mul(1099511628211)
@@ -1229,6 +1269,7 @@ pub struct DraftProfile {
     pub auth_mode: AuthMode,
     pub description: String,
     pub color_tag: Option<HostColorTag>,
+    pub environment: String,
 }
 
 impl DraftProfile {
@@ -1263,6 +1304,7 @@ impl DraftProfile {
             auth_mode: profile.auth_mode,
             description: profile.description.clone(),
             color_tag: profile.color_tag,
+            environment: format_environment_pairs(&profile.environment),
         }
     }
 
@@ -1442,6 +1484,7 @@ impl DraftProfile {
             source: ProfileSource::User,
             description: self.description.trim().to_string(),
             color_tag: self.color_tag,
+            environment: parse_environment_pairs(&self.environment),
         })
     }
 
@@ -1484,6 +1527,7 @@ impl DraftProfile {
                 as usize,
             port_forward_rules,
             local_shell: None,
+            environment: profile.environment,
         })
     }
 }
@@ -1632,6 +1676,7 @@ pub struct ConnectRequest {
     pub terminal_scrollback_rows: usize,
     pub port_forward_rules: Vec<PortForwardRule>,
     pub local_shell: Option<LocalShellConfig>,
+    pub environment: Vec<(String, String)>,
 }
 
 impl ConnectRequest {
@@ -1751,6 +1796,7 @@ impl ConnectRequest {
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: Some(shell),
+            environment: Vec::new(),
         }
     }
 }
@@ -1869,6 +1915,7 @@ impl RestorableConnection {
                         self.local_forward.clone(),
                     ),
                     local_shell: None,
+                    environment: Vec::new(),
                 })
             }
             ConnectionKind::LocalShell => Some(ConnectRequest {
@@ -1889,6 +1936,7 @@ impl RestorableConnection {
                     .local_shell
                     .clone()
                     .or_else(|| Some(default_local_shell_config())),
+                environment: Vec::new(),
             }),
         }
         .expect("restorable connection should be valid")
@@ -2121,6 +2169,7 @@ impl QuickConnect {
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
+            environment: Vec::new(),
         }
     }
 }
@@ -2203,6 +2252,7 @@ mod tests {
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
+            environment: Vec::new(),
         };
 
         assert!(request.to_restorable().is_none());
@@ -2227,6 +2277,7 @@ mod tests {
             terminal_scrollback_rows: 4096,
             port_forward_rules: Vec::new(),
             local_shell: None,
+            environment: Vec::new(),
         };
 
         let restored = request.to_restorable().unwrap();
@@ -2300,6 +2351,7 @@ mod tests {
                 },
             ],
             local_shell: None,
+            environment: Vec::new(),
         };
 
         let restored = request.to_restorable().unwrap();
@@ -2403,6 +2455,7 @@ mod tests {
                 args: vec!["-l".to_string()],
                 cwd: Some("/tmp".to_string()),
             }),
+            environment: Vec::new(),
         };
 
         let restored = request.to_restorable().unwrap();
@@ -2490,6 +2543,7 @@ mod tests {
             auth_mode: AuthMode::PrivateKey,
             description: "  Primary blue-green node  ".to_string(),
             color_tag: None,
+            environment: String::new(),
         };
 
         let profile = draft.to_profile("profile-1".to_string()).unwrap();
@@ -2544,6 +2598,7 @@ mod tests {
             auth_mode: AuthMode::Password,
             description: String::new(),
             color_tag: None,
+            environment: String::new(),
         };
 
         let profile = draft.to_profile("profile-2".to_string()).unwrap();
@@ -2581,6 +2636,7 @@ mod tests {
                 auth_mode: AuthMode::Password,
                 description: String::new(),
                 color_tag: None,
+                environment: String::new(),
             }
             .to_profile("profile-zeta".to_string())
             .unwrap(),
@@ -2613,6 +2669,7 @@ mod tests {
                 auth_mode: AuthMode::Password,
                 description: String::new(),
                 color_tag: None,
+                environment: String::new(),
             }
             .to_profile("profile-alpha".to_string())
             .unwrap(),
@@ -2695,6 +2752,7 @@ mod tests {
             auth_mode: AuthMode::PrivateKey,
             description: String::new(),
             color_tag: None,
+            environment: String::new(),
         };
 
         let profile = draft.to_profile("profile-2".to_string()).unwrap();
@@ -2736,6 +2794,7 @@ mod tests {
             auth_mode: AuthMode::PrivateKey,
             description: String::new(),
             color_tag: None,
+            environment: String::new(),
         };
 
         let profile = draft.to_profile("profile-dynamic".to_string()).unwrap();
@@ -2777,6 +2836,7 @@ mod tests {
             auth_mode: AuthMode::PrivateKey,
             description: String::new(),
             color_tag: None,
+            environment: String::new(),
         };
 
         let profile = draft.to_profile("profile-remote".to_string()).unwrap();
@@ -2821,6 +2881,7 @@ mod tests {
             source: ProfileSource::User,
             description: String::new(),
             color_tag: None,
+            environment: Vec::new(),
         };
 
         profile.normalize();
@@ -2963,6 +3024,7 @@ mod tests {
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
+            environment: Vec::new(),
         };
         assert_eq!(
             ssh.history_scope_key(),
@@ -3003,6 +3065,44 @@ mod tests {
         assert!(!state.settings.default_local_shell.program.trim().is_empty());
         assert_eq!(state.settings.default_local_shell.cwd, None);
         assert!(!state.settings.copy_on_select);
+    }
+
+    #[test]
+    fn parse_environment_pairs_drops_blank_comment_and_invalid_keys() {
+        let input = "
+            AWS_PROFILE=prod
+            # leading comment
+            LOG_LEVEL = info
+            BAD KEY=oops
+            1NUMERIC=oops
+            VALID_KEY=
+
+            QUOTED=\"hello world\"
+            SINGLE='one two'
+            EMPTY=
+        ";
+        let pairs = super::parse_environment_pairs(input);
+        let map: std::collections::HashMap<_, _> = pairs.iter().cloned().collect();
+        assert_eq!(map.get("AWS_PROFILE").map(String::as_str), Some("prod"));
+        assert_eq!(map.get("LOG_LEVEL").map(String::as_str), Some("info"));
+        assert_eq!(map.get("VALID_KEY").map(String::as_str), Some(""));
+        assert_eq!(map.get("EMPTY").map(String::as_str), Some(""));
+        assert_eq!(map.get("QUOTED").map(String::as_str), Some("hello world"));
+        assert_eq!(map.get("SINGLE").map(String::as_str), Some("one two"));
+        assert!(!map.contains_key("BAD KEY"));
+        assert!(!map.contains_key("1NUMERIC"));
+    }
+
+    #[test]
+    fn format_environment_pairs_serializes_for_text_input() {
+        let pairs = vec![
+            ("FOO".to_string(), "bar".to_string()),
+            ("BAZ".to_string(), "with space".to_string()),
+        ];
+        assert_eq!(
+            super::format_environment_pairs(&pairs),
+            "FOO=bar\nBAZ=with space"
+        );
     }
 
     #[test]
