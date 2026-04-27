@@ -10659,8 +10659,7 @@ impl TermiRustApp {
                         .map(|(index, (label, bg, fg))| {
                             v_flex()
                                 .id(("settings-preview", index))
-                                .flex_1()
-                                .min_w(px(140.))
+                                .w(px(180.))
                                 .gap_1()
                                 .p_3()
                                 .rounded(px(theme::CARD_RADIUS))
@@ -11396,15 +11395,15 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .id("settings-scroll")
-                    .flex_1()
-                    .min_h_0()
+                    .h_full()
+                    .w_full()
                     .gap_4()
                     .p_5()
+                    .overflow_x_hidden()
                     .overflow_y_scrollbar()
                     .child(
-                        h_flex()
-                            .justify_between()
-                            .items_center()
+                        v_flex()
+                            .gap(px(2.))
                             .child(
                                 div()
                                     .text_size(px(22.))
