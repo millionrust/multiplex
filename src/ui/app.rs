@@ -369,6 +369,7 @@ struct WorkspaceTab {
     search_query: String,
     search_results: Vec<SearchMatch>,
     active_search_index: Option<usize>,
+    broadcast_input: bool,
 }
 
 #[derive(Clone)]
@@ -3145,6 +3146,7 @@ impl TermiRustApp {
                 search_query: String::new(),
                 search_results: Vec::new(),
                 active_search_index: None,
+                broadcast_input: false,
             });
             restored_workspace_ids.push(workspace_id);
         }
@@ -3699,6 +3701,7 @@ impl TermiRustApp {
             search_query: String::new(),
             search_results: Vec::new(),
             active_search_index: None,
+            broadcast_input: false,
         });
 
         self.active_workspace_id = Some(workspace_id);
@@ -3748,6 +3751,7 @@ impl TermiRustApp {
                     search_query: String::new(),
                     search_results: Vec::new(),
                     active_search_index: None,
+                    broadcast_input: false,
                 });
 
                 self.active_workspace_id = Some(workspace_id);
@@ -3912,6 +3916,7 @@ impl TermiRustApp {
             search_query: String::new(),
             search_results: Vec::new(),
             active_search_index: None,
+            broadcast_input: false,
         });
 
         self.active_workspace_id = Some(workspace_id);
@@ -4495,6 +4500,91 @@ impl TermiRustApp {
         }
     }
 
+    fn workspace_id_for_pane(&self, pane_id: u64) -> Option<u64> {
+        self.workspaces
+            .iter()
+            .find(|workspace| workspace.pane_ids.contains(&pane_id))
+            .map(|workspace| workspace.id)
+    }
+
+    fn send_input_bytes_broadcast(
+        &mut self,
+        pane_id: u64,
+        data: Vec<u8>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let broadcast_targets: Vec<u64> = self
+            .workspace_id_for_pane(pane_id)
+            .and_then(|workspace_id| self.workspace(workspace_id))
+            .filter(|workspace| workspace.broadcast_input && workspace.pane_ids.len() > 1)
+            .map(|workspace| {
+                workspace
+                    .pane_ids
+                    .iter()
+                    .copied()
+                    .filter(|id| *id != pane_id)
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let primary = self.send_input_bytes(pane_id, data.clone(), cx);
+        for target in broadcast_targets {
+            self.send_input_bytes(target, data.clone(), cx);
+        }
+        primary
+    }
+
+    fn clear_pane_screen(&mut self, pane_id: u64, cx: &mut Context<Self>) {
+        if let Some(pane) = self.pane_mut(pane_id) {
+            pane.terminal.reset_scrollback();
+        }
+        if !self
+            .pane(pane_id)
+            .map(|pane| pane.connected)
+            .unwrap_or(false)
+        {
+            cx.notify();
+            return;
+        }
+        let bytes = b"\x1b[H\x1b[2J\x1b[3J".to_vec();
+        let _ = self.send_input_bytes(pane_id, bytes, cx);
+        self.status_message = "Terminal cleared.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn duplicate_pane(&mut self, pane_id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(workspace_id) = self.workspace_id_for_pane(pane_id) else {
+            return;
+        };
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
+            workspace.active_pane_id = pane_id;
+        }
+        if self.active_workspace_id != Some(workspace_id) {
+            self.active_workspace_id = Some(workspace_id);
+        }
+        let axis = self
+            .workspace(workspace_id)
+            .map(|workspace| workspace.split_axis)
+            .unwrap_or(SplitAxis::Horizontal);
+        self.split_active_workspace(axis, window, cx);
+    }
+
+    fn toggle_workspace_broadcast(&mut self, workspace_id: u64, cx: &mut Context<Self>) {
+        let mut now_on = false;
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
+            workspace.broadcast_input = !workspace.broadcast_input;
+            now_on = workspace.broadcast_input;
+        }
+        self.status_message = if now_on {
+            "Broadcasting input to every pane in this workspace.".to_string()
+        } else {
+            "Broadcast input disabled.".to_string()
+        };
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn send_input_bytes(&mut self, pane_id: u64, data: Vec<u8>, cx: &mut Context<Self>) -> bool {
         let Some(pane) = self.pane_mut(pane_id) else {
             return false;
@@ -4956,7 +5046,7 @@ impl TermiRustApp {
             bytes.extend_from_slice(text.as_bytes());
         }
 
-        self.send_input_bytes(pane_id, bytes, cx)
+        self.send_input_bytes_broadcast(pane_id, bytes, cx)
     }
 
     fn handle_terminal_key(
@@ -5057,7 +5147,7 @@ impl TermiRustApp {
             return false;
         };
 
-        self.send_input_bytes(pane_id, bytes, cx)
+        self.send_input_bytes_broadcast(pane_id, bytes, cx)
     }
 
     fn activate_pane(&mut self, pane_id: u64, window: &mut Window, cx: &mut Context<Self>) {
@@ -10176,6 +10266,9 @@ impl TermiRustApp {
         let can_browse_files = !pane.request.is_local_shell();
         let selected_remote_entry = self.selected_workspace_sftp_entry(workspace.id);
         let _focused = pane.terminal_focus.is_focused(window);
+        let workspace_id = workspace.id;
+        let broadcast_active = workspace.broadcast_input;
+        let broadcast_available = workspace.pane_ids.len() > 1;
 
         h_flex()
             .h(px(theme::WORKSPACE_HEADER_HEIGHT))
@@ -10364,6 +10457,20 @@ impl TermiRustApp {
                             .disabled(files_mode)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.split_active_workspace(SplitAxis::Vertical, window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("workspace-broadcast")
+                            .small()
+                            .custom(Self::segmented_button_style(broadcast_active, cx))
+                            .label(if broadcast_active {
+                                "Broadcast On"
+                            } else {
+                                "Broadcast"
+                            })
+                            .disabled(files_mode || !broadcast_available)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.toggle_workspace_broadcast(workspace_id, cx);
                             })),
                     )
                     .when(files_mode, |this| {
@@ -11267,6 +11374,10 @@ impl TermiRustApp {
             .unwrap_or_default();
 
         let is_active_pane = self.active_workspace().map(|w| w.active_pane_id) == Some(pane.id);
+        let workspace_broadcasting = self
+            .active_workspace()
+            .map(|workspace| workspace.broadcast_input && workspace.pane_ids.len() > 1)
+            .unwrap_or(false);
         let status_color = if pane.connected {
             theme::success()
         } else if pane.closed && pane.status == "Error" {
@@ -11323,12 +11434,48 @@ impl TermiRustApp {
                                     .text_size(px(10.5))
                                     .text_color(theme::text_muted_dark())
                                     .child(pane.endpoint.clone()),
-                            ),
+                            )
+                            .when(workspace_broadcasting, |this| {
+                                this.child(self.status_badge(
+                                    "Broadcasting",
+                                    theme::with_alpha(theme::warning(), 0.18),
+                                    theme::warning(),
+                                ))
+                            }),
                     )
                     .child(
                         h_flex()
                             .gap_1()
                             .items_center()
+                            .when(pane.connected, |this| {
+                                this.child(
+                                    Button::new(("clear-pane", pane.id))
+                                        .ghost()
+                                        .xsmall()
+                                        .label("Clear")
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.clear_pane_screen(pane_id, cx);
+                                        })),
+                                )
+                                .when(
+                                    self.active_workspace()
+                                        .map(|workspace| workspace.pane_ids.len() < MAX_SPLIT_PANES)
+                                        .unwrap_or(false),
+                                    |this| {
+                                        this.child(
+                                            Button::new(("duplicate-pane", pane.id))
+                                                .ghost()
+                                                .xsmall()
+                                                .label("Duplicate")
+                                                .on_click(cx.listener(
+                                                    move |this, _, window, cx| {
+                                                        this.duplicate_pane(pane_id, window, cx);
+                                                    },
+                                                )),
+                                        )
+                                    },
+                                )
+                            })
                             .when(pane.closed, |this| {
                                 this.child(
                                     Button::new(("reconnect-pane", pane.id))
