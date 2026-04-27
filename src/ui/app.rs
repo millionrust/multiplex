@@ -241,6 +241,7 @@ struct SettingsInputs {
     export_backup_confirm: Entity<InputState>,
     import_backup_passphrase: Entity<InputState>,
     default_ssh_startup_directory: Entity<InputState>,
+    terminal_font_family: Entity<InputState>,
 }
 
 struct VaultInputs {
@@ -286,8 +287,10 @@ impl SettingsInputs {
                     .masked(true)
                     .placeholder("Backup passphrase")
             }),
-            default_ssh_startup_directory: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("e.g. /home/user/projects")
+            default_ssh_startup_directory: cx
+                .new(|cx| InputState::new(window, cx).placeholder("e.g. /home/user/projects")),
+            terminal_font_family: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("e.g. JetBrains Mono, Fira Code")
             }),
         }
     }
@@ -740,6 +743,16 @@ impl TermiRustApp {
             self.saved
                 .settings
                 .default_ssh_startup_directory
+                .clone()
+                .unwrap_or_default(),
+            window,
+            cx,
+        );
+        Self::set_input_value(
+            &self.settings_inputs.terminal_font_family,
+            self.saved
+                .settings
+                .terminal_font_family
                 .clone()
                 .unwrap_or_default(),
             window,
@@ -1990,8 +2003,11 @@ impl TermiRustApp {
 
     fn send_startup_actions(&mut self, session_id: u64) -> bool {
         let Some((command_tx, startup_bytes)) = self.pane(session_id).and_then(|pane| {
-            startup_bytes_for_request(&pane.request, self.saved.settings.default_ssh_startup_directory.as_deref())
-                .map(|bytes| (pane.runtime.command_tx.clone(), bytes))
+            startup_bytes_for_request(
+                &pane.request,
+                self.saved.settings.default_ssh_startup_directory.as_deref(),
+            )
+            .map(|bytes| (pane.runtime.command_tx.clone(), bytes))
         }) else {
             return false;
         };
@@ -2725,6 +2741,18 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn update_copy_on_select(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.saved.settings.copy_on_select = enabled;
+        self.save_settings();
+        self.status_message = if enabled {
+            "Selecting text now copies it to the clipboard automatically.".to_string()
+        } else {
+            "Auto-copy on selection disabled.".to_string()
+        };
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn reset_onboarding_panel(&mut self, cx: &mut Context<Self>) {
         self.saved.settings.onboarding_dismissed = false;
         self.save_settings();
@@ -2777,6 +2805,41 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn save_terminal_font_family(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let family = self
+            .settings_inputs
+            .terminal_font_family
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        self.saved.settings.terminal_font_family = (!family.is_empty()).then(|| family.clone());
+        self.save_settings();
+        self.sync_terminal_layout(window, cx);
+        self.status_message = if family.is_empty() {
+            "Terminal font family reset to the app default.".to_string()
+        } else {
+            format!("Terminal font family set to {family}.")
+        };
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn clear_terminal_font_family(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.saved.settings.terminal_font_family = None;
+        self.save_settings();
+        Self::set_input_value(
+            &self.settings_inputs.terminal_font_family,
+            String::new(),
+            window,
+            cx,
+        );
+        self.sync_terminal_layout(window, cx);
+        self.status_message = "Terminal font family reset to the app default.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn save_default_ssh_startup_directory(&mut self, cx: &mut Context<Self>) {
         let dir = self
             .settings_inputs
@@ -2785,9 +2848,11 @@ impl TermiRustApp {
             .value()
             .trim()
             .to_string();
-        self.saved.settings.default_ssh_startup_directory = (!dir.is_empty()).then_some(dir.clone());
+        self.saved.settings.default_ssh_startup_directory =
+            (!dir.is_empty()).then_some(dir.clone());
         self.save_settings();
-        self.status_message = if let Some(ref d) = self.saved.settings.default_ssh_startup_directory {
+        self.status_message = if let Some(ref d) = self.saved.settings.default_ssh_startup_directory
+        {
             format!("Default SSH startup directory set to {}.", d)
         } else {
             "Default SSH startup directory cleared.".to_string()
@@ -3787,7 +3852,11 @@ impl TermiRustApp {
             self.status_message = "No disconnected panes to reconnect.".to_string();
             cx.notify();
         } else {
-            self.status_message = format!("Reconnecting {} pane{}...", reconnect_count, if reconnect_count == 1 { "" } else { "s" });
+            self.status_message = format!(
+                "Reconnecting {} pane{}...",
+                reconnect_count,
+                if reconnect_count == 1 { "" } else { "s" }
+            );
             cx.notify();
         }
     }
@@ -4285,7 +4354,7 @@ impl TermiRustApp {
         let font_size = px(self.terminal_font_size());
         let font_id = window
             .text_system()
-            .resolve_font(&font(cx.theme().mono_font_family.clone()));
+            .resolve_font(&font(self.terminal_font_family(cx)));
         let char_width = window
             .text_system()
             .ch_advance(font_id, font_size)
@@ -5142,6 +5211,8 @@ impl TermiRustApp {
             return;
         }
 
+        let copy_on_select = self.saved.settings.copy_on_select;
+        let mut copy_text: Option<String> = None;
         if let Some(pane) = self.pane_mut(pane_id) {
             pane.dragging_selection = false;
             if let Some(selection) = pane.selection {
@@ -5149,6 +5220,22 @@ impl TermiRustApp {
                     pane.selection = None;
                 }
             }
+            if copy_on_select {
+                if let Some(selection) = pane.selection.and_then(normalized_selection) {
+                    let text = pane.terminal.contents_between(
+                        selection.anchor.row,
+                        selection.anchor.col,
+                        selection.head.row,
+                        selection.head.col,
+                    );
+                    if !text.is_empty() {
+                        copy_text = Some(text);
+                    }
+                }
+            }
+        }
+        if let Some(text) = copy_text {
+            cx.write_to_clipboard(ClipboardItem::new_string(text));
         }
         cx.notify();
     }
@@ -9303,22 +9390,686 @@ impl TermiRustApp {
             )
     }
 
+    fn settings_section_card<E: IntoElement>(
+        &self,
+        title: impl Into<SharedString>,
+        description: impl Into<SharedString>,
+        body: E,
+    ) -> Div {
+        let title: SharedString = title.into();
+        let description: SharedString = description.into();
+        v_flex()
+            .gap_3()
+            .p_4()
+            .rounded(px(theme::CARD_RADIUS))
+            .bg(theme::library_card())
+            .border_1()
+            .border_color(theme::border())
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child(title),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .line_height(relative(1.5))
+                            .text_color(theme::text_muted())
+                            .child(description),
+                    ),
+            )
+            .child(body)
+    }
+
+    fn settings_subhead(
+        &self,
+        title: impl Into<SharedString>,
+        hint: impl Into<SharedString>,
+    ) -> Div {
+        let title: SharedString = title.into();
+        let hint: SharedString = hint.into();
+        v_flex()
+            .gap_1()
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .font_medium()
+                    .text_color(theme::text_main())
+                    .child(title),
+            )
+            .child(
+                div()
+                    .text_size(px(10.5))
+                    .text_color(theme::text_muted())
+                    .child(hint),
+            )
+    }
+
+    fn settings_divider(&self) -> Div {
+        div()
+            .h(px(1.))
+            .w_full()
+            .bg(theme::with_alpha(theme::border(), 0.6))
+    }
+
+    fn settings_shortcut_row(&self, keys: &'static str, description: &'static str) -> Div {
+        h_flex()
+            .justify_between()
+            .items_center()
+            .gap_3()
+            .py(px(4.))
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .text_color(theme::text_main())
+                    .child(description),
+            )
+            .child(
+                div()
+                    .px_2()
+                    .py(px(2.))
+                    .rounded(px(6.))
+                    .bg(theme::with_alpha(theme::hover(), 0.85))
+                    .border_1()
+                    .border_color(theme::border())
+                    .text_size(px(10.5))
+                    .font_medium()
+                    .text_color(theme::text_muted())
+                    .child(keys.replace("Cmd", primary_shortcut_label())),
+            )
+    }
+
+    fn settings_shortcut_group<const N: usize>(
+        &self,
+        title: &'static str,
+        rows: [(&'static str, &'static str); N],
+    ) -> Div {
+        v_flex()
+            .gap_1()
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .font_semibold()
+                    .text_color(theme::text_main())
+                    .child(title),
+            )
+            .children(
+                rows.into_iter()
+                    .map(|(keys, desc)| self.settings_shortcut_row(keys, desc).into_any_element()),
+            )
+    }
+
     fn render_settings_view(&self, cx: &Context<Self>) -> Div {
         let theme_preset = self.saved.settings.theme_preset;
         let terminal_font_size = self.saved.settings.terminal_font_size;
         let restore_workspaces_on_launch = self.saved.settings.restore_workspaces_on_launch;
         let session_log_limit = self.saved.settings.session_log_limit;
         let onboarding_dismissed = self.saved.settings.onboarding_dismissed;
+        let copy_on_select = self.saved.settings.copy_on_select;
+        let session_log_count = self.saved.session_logs.len();
+        let has_default_ssh_dir = self.saved.settings.default_ssh_startup_directory.is_some();
+
+        let appearance_card = self.settings_section_card(
+            "Appearance",
+            "Switch the global UI palette across the whole desktop app.",
+            v_flex()
+                .gap_3()
+                .child(
+                    h_flex().gap_2().flex_wrap().children(
+                        [ThemePreset::Ocean, ThemePreset::Daylight]
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, preset)| {
+                                let selected = preset == theme_preset;
+                                div()
+                                    .id(("settings-theme", index))
+                                    .px_3()
+                                    .py(px(8.))
+                                    .rounded(px(999.))
+                                    .bg(if selected {
+                                        theme::accent_soft()
+                                    } else {
+                                        theme::with_alpha(theme::hover(), 0.72)
+                                    })
+                                    .border_1()
+                                    .border_color(if selected {
+                                        theme::with_alpha(theme::accent(), 0.42)
+                                    } else {
+                                        theme::border()
+                                    })
+                                    .cursor_pointer()
+                                    .hover(|style| style.bg(theme::hover()))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.update_theme_preset(preset, cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.))
+                                            .font_medium()
+                                            .text_color(if selected {
+                                                theme::text_main()
+                                            } else {
+                                                theme::text_muted()
+                                            })
+                                            .child(preset.label()),
+                                    )
+                                    .into_any_element()
+                            }),
+                    ),
+                )
+                .child(
+                    h_flex().gap_3().flex_wrap().children(
+                        [
+                            ("Library", theme::library_card(), theme::text_main()),
+                            ("Chrome", theme::chrome_bg(), theme::text_on_dark()),
+                            ("Terminal", theme::terminal_bg(), theme::text_on_dark()),
+                        ]
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, (label, bg, fg))| {
+                            v_flex()
+                                .id(("settings-preview", index))
+                                .flex_1()
+                                .min_w(px(140.))
+                                .gap_1()
+                                .p_3()
+                                .rounded(px(theme::CARD_RADIUS))
+                                .bg(bg)
+                                .border_1()
+                                .border_color(theme::with_alpha(fg, 0.18))
+                                .child(
+                                    div()
+                                        .text_size(px(10.5))
+                                        .font_semibold()
+                                        .text_color(fg)
+                                        .child(label),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(10.))
+                                        .text_color(theme::with_alpha(fg, 0.78))
+                                        .child(match label {
+                                            "Library" => "Forms, host cards, and management views",
+                                            "Chrome" => "Tabs, status bar, and workspace header",
+                                            _ => "Terminal panels and focused work sessions",
+                                        }),
+                                )
+                                .into_any_element()
+                        }),
+                    ),
+                ),
+        );
+
+        let terminal_card = self.settings_section_card(
+            "Terminal",
+            "Tune what feels right inside every PTY: font size, selection behavior, and clipboard flow.",
+            v_flex()
+                .gap_4()
+                .child(self.settings_subhead(
+                    "Font size",
+                    "Apply a larger or tighter monospace size across every terminal pane.",
+                ))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .flex_wrap()
+                        .children([12u16, 13, 14, 15, 16, 18].into_iter().enumerate().map(
+                            |(index, font_size)| {
+                                let selected = font_size == terminal_font_size;
+                                div()
+                                    .id(("settings-font-size", index))
+                                    .px_3()
+                                    .py(px(8.))
+                                    .rounded(px(999.))
+                                    .bg(if selected {
+                                        theme::accent_soft()
+                                    } else {
+                                        theme::with_alpha(theme::hover(), 0.72)
+                                    })
+                                    .border_1()
+                                    .border_color(if selected {
+                                        theme::with_alpha(theme::accent(), 0.42)
+                                    } else {
+                                        theme::border()
+                                    })
+                                    .cursor_pointer()
+                                    .hover(|style| style.bg(theme::hover()))
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.update_terminal_font_size(font_size, window, cx);
+                                    }))
+                                    .child(
+                                        div()
+                                            .text_size(px(11.))
+                                            .font_medium()
+                                            .text_color(if selected {
+                                                theme::text_main()
+                                            } else {
+                                                theme::text_muted()
+                                            })
+                                            .child(format!("{font_size} px")),
+                                    )
+                                    .into_any_element()
+                            },
+                        )),
+                )
+                .child(self.settings_divider())
+                .child(self.settings_subhead(
+                    "Copy on select",
+                    "When enabled, releasing the mouse over a selection automatically copies it to the clipboard, like classic Unix terminals and Termius.",
+                ))
+                .child(
+                    h_flex()
+                        .p(px(3.))
+                        .rounded(px(8.))
+                        .bg(theme::hover())
+                        .children([true, false].into_iter().enumerate().map(
+                            |(index, enabled)| {
+                                let active = enabled == copy_on_select;
+                                Button::new(("settings-copy-on-select", index))
+                                    .small()
+                                    .custom(Self::segmented_button_style(active, cx))
+                                    .label(if enabled { "Auto Copy" } else { "Manual Only" })
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.update_copy_on_select(enabled, cx);
+                                    }))
+                                    .into_any_element()
+                            },
+                        )),
+                )
+                .child(self.settings_divider())
+                .child(self.settings_subhead(
+                    "Font family",
+                    "Override the monospace font used in every terminal pane. Leave blank to inherit the app default.",
+                ))
+                .child(self.form_field(
+                    "Font Family",
+                    Input::new(&self.settings_inputs.terminal_font_family),
+                ))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Button::new("settings-terminal-font-family-save")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                ))
+                                .label("Save Font Family")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.save_terminal_font_family(window, cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("settings-terminal-font-family-reset")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                ))
+                                .label("Reset")
+                                .disabled(self.saved.settings.terminal_font_family.is_none())
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.clear_terminal_font_family(window, cx);
+                                })),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(theme::text_muted())
+                                .child("Font names are passed to the platform font system; install the family first."),
+                        ),
+                ),
+        );
+
+        let startup_card = self.settings_section_card(
+            "Startup",
+            "Pick how the app comes back when you launch it and whether the first-run guide reappears.",
+            v_flex()
+                .gap_3()
+                .child(
+                    h_flex()
+                        .p(px(3.))
+                        .rounded(px(8.))
+                        .bg(theme::hover())
+                        .children([true, false].into_iter().enumerate().map(
+                            |(index, restore)| {
+                                let active = restore == restore_workspaces_on_launch;
+                                Button::new(("settings-restore-workspaces", index))
+                                    .small()
+                                    .custom(Self::segmented_button_style(active, cx))
+                                    .label(if restore {
+                                        "Restore Workspaces"
+                                    } else {
+                                        "Open Library"
+                                    })
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.update_restore_workspaces_on_launch(restore, cx);
+                                    }))
+                                    .into_any_element()
+                            },
+                        )),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Button::new("settings-reset-onboarding")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                ))
+                                .label(if onboarding_dismissed {
+                                    "Show Welcome Panel Again"
+                                } else {
+                                    "Welcome Panel Visible"
+                                })
+                                .disabled(!onboarding_dismissed)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.reset_onboarding_panel(cx);
+                                })),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(theme::text_muted())
+                                .child(if onboarding_dismissed {
+                                    "Bring the first-run Hosts guide back after you have dismissed it."
+                                } else {
+                                    "The first-run Hosts guide is already available in the library."
+                                }),
+                        ),
+                ),
+        );
+
+        let sessions_card = self.settings_section_card(
+            "Sessions",
+            "Control how connection history is retained and where SSH sessions begin by default.",
+            v_flex()
+                .gap_4()
+                .child(self.settings_subhead(
+                    "History retention",
+                    "Keep this many connection history entries locally before older items roll off.",
+                ))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .flex_wrap()
+                        .children([100u16, 200, 500, 1000].into_iter().enumerate().map(
+                            |(index, limit)| {
+                                let selected = limit == session_log_limit;
+                                Button::new(("settings-session-log-limit", index))
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        if selected {
+                                            theme::ActionTone::Accent
+                                        } else {
+                                            theme::ActionTone::Neutral
+                                        },
+                                        cx,
+                                    ))
+                                    .label(format!("{limit} entries"))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.update_session_log_limit(limit, cx);
+                                    }))
+                                    .into_any_element()
+                            },
+                        )),
+                )
+                .child(
+                    div()
+                        .text_size(px(10.))
+                        .text_color(theme::text_muted())
+                        .child(format!(
+                            "{session_log_count} history entries currently stored."
+                        )),
+                )
+                .child(self.settings_divider())
+                .child(self.settings_subhead(
+                    "Default SSH startup directory",
+                    "When a host has no startup directory set, SSH sessions cd into this directory after connecting.",
+                ))
+                .child(self.form_field(
+                    "Startup Directory",
+                    Input::new(&self.settings_inputs.default_ssh_startup_directory),
+                ))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Button::new("settings-default-ssh-dir-save")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                ))
+                                .label("Save Default Directory")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.save_default_ssh_startup_directory(cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("settings-default-ssh-dir-clear")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                ))
+                                .label("Clear")
+                                .disabled(!has_default_ssh_dir)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.clear_default_ssh_startup_directory(window, cx);
+                                })),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(theme::text_muted())
+                                .child("Per-host startup directories always take priority over this default."),
+                        ),
+                ),
+        );
+
+        let local_shell_card = self.settings_section_card(
+            "Local Shell",
+            "Choose which shell binary and working directory new local terminals use.",
+            v_flex()
+                .gap_3()
+                .child(self.form_field(
+                    "Shell Program",
+                    Input::new(&self.settings_inputs.local_shell_program),
+                ))
+                .child(self.form_field(
+                    "Working Directory",
+                    Input::new(&self.settings_inputs.local_shell_cwd),
+                ))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Button::new("settings-local-shell-save")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                ))
+                                .label("Save Shell Defaults")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.save_local_shell_settings(window, cx);
+                                })),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(theme::text_muted())
+                                .child("Args stay empty for now; this sets the default executable and startup directory."),
+                        ),
+                ),
+        );
+
+        let portable_card = self.settings_section_card(
+            "Portable Data Bundle",
+            "Export or import hosts, vaults, identities, snippets, and known-host trust records as a local JSON bundle. Passwords and system credential-store secrets are intentionally excluded, so this is safe for portability but not a full account sync.",
+            h_flex()
+                .gap_2()
+                .child(
+                    Button::new("settings-export-data")
+                        .small()
+                        .custom(Self::action_button_style(
+                            theme::ActionTone::Neutral,
+                            cx,
+                        ))
+                        .label("Export Data")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.export_portable_data(cx);
+                        })),
+                )
+                .child(
+                    Button::new("settings-import-data")
+                        .small()
+                        .custom(Self::action_button_style(
+                            theme::ActionTone::Accent,
+                            cx,
+                        ))
+                        .label("Import Data")
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.import_portable_data(window, cx);
+                        })),
+                ),
+        );
+
+        let encrypted_card = self.settings_section_card(
+            "Encrypted Backup",
+            "Wrap the same portable bundle in passphrase-based encryption for device backups, handoff, or manual sync. The file stays locally managed; no cloud account is involved yet.",
+            v_flex()
+                .gap_3()
+                .child(self.form_field(
+                    "Export Passphrase",
+                    Input::new(&self.settings_inputs.export_backup_passphrase),
+                ))
+                .child(self.form_field(
+                    "Confirm Passphrase",
+                    Input::new(&self.settings_inputs.export_backup_confirm),
+                ))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Button::new("settings-export-encrypted-data")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                ))
+                                .label("Export Encrypted Backup")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.export_encrypted_portable_data(window, cx);
+                                })),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(theme::text_muted())
+                                .child("Use a strong passphrase you can recover later. The file cannot be opened without it."),
+                        ),
+                )
+                .child(self.settings_divider())
+                .child(self.form_field(
+                    "Import Passphrase",
+                    Input::new(&self.settings_inputs.import_backup_passphrase),
+                ))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Button::new("settings-import-encrypted-data")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                ))
+                                .label("Import Encrypted Backup")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.import_encrypted_portable_data(window, cx);
+                                })),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(theme::text_muted())
+                                .child("Import merges vaults, hosts, snippets, and trust records without exposing the plaintext bundle on disk."),
+                        ),
+                ),
+        );
+
+        let shortcuts_card = self.settings_section_card(
+            "Keyboard Shortcuts",
+            "Every shortcut available right now. Anything that uses a modifier follows your platform convention (Cmd on macOS, Ctrl elsewhere).",
+            v_flex()
+                .gap_4()
+                .child(self.settings_shortcut_group(
+                    "Navigation",
+                    [
+                        ("Cmd+1", "Open Hosts"),
+                        ("Cmd+2", "Open Vaults"),
+                        ("Cmd+3", "Open Keychain"),
+                        ("Cmd+4", "Open Snippets"),
+                        ("Cmd+5", "Open Settings"),
+                        ("Cmd+6", "Open Known Hosts"),
+                        ("Cmd+7", "Open Logs"),
+                        ("Cmd+,", "Jump to Settings"),
+                        ("Cmd+L", "Focus host search / toggle Logs"),
+                        ("Cmd+N", "Create a new host (in library)"),
+                    ],
+                ))
+                .child(self.settings_divider())
+                .child(self.settings_shortcut_group(
+                    "Workspace",
+                    [
+                        ("Cmd+K", "Open the command palette"),
+                        ("Cmd+F", "Search the active terminal"),
+                        ("Cmd+W", "Close the active workspace tab"),
+                        ("Cmd+Shift+F", "Open the workspace files browser"),
+                        ("Cmd+Shift+T", "Toggle Files / Terminal view"),
+                        ("Esc", "Close dialogs or return from Files"),
+                    ],
+                ))
+                .child(self.settings_divider())
+                .child(self.settings_shortcut_group(
+                    "Terminal",
+                    [
+                        ("Cmd+C", "Copy current selection"),
+                        ("Cmd+V", "Paste from clipboard"),
+                        ("Shift+PageUp", "Scroll back one screen"),
+                        ("Shift+PageDown", "Scroll forward one screen"),
+                        ("Up / Down", "Move autocomplete selection"),
+                        ("Enter", "Accept the highlighted suggestion"),
+                    ],
+                )),
+        );
 
         v_flex()
             .flex_1()
-            .gap_4()
-            .p_5()
             .bg(theme::library_bg())
             .child(
                 h_flex()
                     .justify_between()
                     .items_center()
+                    .px_5()
+                    .pt_5()
+                    .pb_3()
                     .child(
                         div()
                             .text_size(px(18.))
@@ -9335,540 +10086,20 @@ impl TermiRustApp {
             )
             .child(
                 v_flex()
+                    .id("settings-scroll")
+                    .flex_1()
                     .gap_4()
-                    .p_4()
-                    .rounded(px(theme::CARD_RADIUS))
-                    .bg(theme::library_card())
-                    .border_1()
-                    .border_color(theme::border())
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .font_medium()
-                                    .text_color(theme::text_main())
-                                    .child("Appearance Theme"),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(10.5))
-                                    .text_color(theme::text_muted())
-                                    .child("Switch the global UI palette across the whole desktop app."),
-                            )
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .children([ThemePreset::Ocean, ThemePreset::Daylight].into_iter().enumerate().map(
-                                        |(index, preset)| {
-                                            let selected = preset == theme_preset;
-                                            div()
-                                                .id(("settings-theme", index))
-                                                .px_3()
-                                                .py(px(8.))
-                                                .rounded(px(999.))
-                                                .bg(if selected {
-                                                    theme::accent_soft()
-                                                } else {
-                                                    theme::with_alpha(theme::hover(), 0.72)
-                                                })
-                                                .border_1()
-                                                .border_color(if selected {
-                                                    theme::with_alpha(theme::accent(), 0.42)
-                                                } else {
-                                                    theme::border()
-                                                })
-                                                .cursor_pointer()
-                                                .hover(|style| style.bg(theme::hover()))
-                                                .on_click(cx.listener(move |this, _, _, cx| {
-                                                    this.update_theme_preset(preset, cx);
-                                                }))
-                                                .child(
-                                                    div()
-                                                        .text_size(px(11.))
-                                                        .font_medium()
-                                                        .text_color(if selected {
-                                                            theme::text_main()
-                                                        } else {
-                                                            theme::text_muted()
-                                                        })
-                                                        .child(preset.label()),
-                                                )
-                                                .into_any_element()
-                                        },
-                                    )),
-                            ),
-                    )
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .font_medium()
-                                    .text_color(theme::text_main())
-                                    .child("Terminal Font Size"),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(10.5))
-                                    .text_color(theme::text_muted())
-                                    .child("Apply a larger or tighter monospace size across every terminal pane."),
-                            )
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .children([12u16, 13, 14, 15, 16, 18].into_iter().enumerate().map(
-                                        |(index, font_size)| {
-                                            let selected = font_size == terminal_font_size;
-                                            div()
-                                                .id(("settings-font-size", index))
-                                                .px_3()
-                                                .py(px(8.))
-                                                .rounded(px(999.))
-                                                .bg(if selected {
-                                                    theme::accent_soft()
-                                                } else {
-                                                    theme::with_alpha(theme::hover(), 0.72)
-                                                })
-                                                .border_1()
-                                                .border_color(if selected {
-                                                    theme::with_alpha(theme::accent(), 0.42)
-                                                } else {
-                                                    theme::border()
-                                                })
-                                                .cursor_pointer()
-                                                .hover(|style| style.bg(theme::hover()))
-                                                .on_click(cx.listener(move |this, _, window, cx| {
-                                                    this.update_terminal_font_size(font_size, window, cx);
-                                                }))
-                                                .child(
-                                                    div()
-                                                        .text_size(px(11.))
-                                                        .font_medium()
-                                                        .text_color(if selected {
-                                                            theme::text_main()
-                                                        } else {
-                                                            theme::text_muted()
-                                                        })
-                                                        .child(format!("{font_size} px")),
-                                                )
-                                                .into_any_element()
-                                        },
-                                    )),
-                            ),
-                    )
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .font_medium()
-                                    .text_color(theme::text_main())
-                                    .child("Startup Behavior"),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(10.5))
-                                    .text_color(theme::text_muted())
-                                    .child("Choose whether the app restores saved workspaces on launch, and whether to surface the welcome panel again."),
-                            )
-                            .child(
-                                h_flex()
-                                    .p(px(3.))
-                                    .rounded(px(8.))
-                                    .bg(theme::hover())
-                                    .children([true, false].into_iter().enumerate().map(
-                                        |(index, restore)| {
-                                            let active =
-                                                restore == restore_workspaces_on_launch;
-                                            Button::new(("settings-restore-workspaces", index))
-                                                .small()
-                                                .custom(Self::segmented_button_style(active, cx))
-                                                .label(if restore {
-                                                    "Restore Workspaces"
-                                                } else {
-                                                    "Open Library"
-                                                })
-                                                .on_click(cx.listener(move |this, _, _, cx| {
-                                                    this.update_restore_workspaces_on_launch(
-                                                        restore, cx,
-                                                    );
-                                                }))
-                                                .into_any_element()
-                                        },
-                                    )),
-                            )
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .items_center()
-                                    .child(
-                                        Button::new("settings-reset-onboarding")
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Neutral,
-                                                cx,
-                                            ))
-                                            .label(if onboarding_dismissed {
-                                                "Show Welcome Panel Again"
-                                            } else {
-                                                "Welcome Panel Visible"
-                                            })
-                                            .disabled(!onboarding_dismissed)
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.reset_onboarding_panel(cx);
-                                            })),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(px(10.))
-                                            .text_color(theme::text_muted())
-                                            .child(if onboarding_dismissed {
-                                                "Bring the first-run Hosts guide back after you have dismissed it."
-                                            } else {
-                                                "The first-run Hosts guide is already available in the library."
-                                            }),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .h(px(1.))
-                                    .w_full()
-                                    .bg(theme::with_alpha(theme::border(), 0.6)),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .font_medium()
-                                    .text_color(theme::text_main())
-                                    .child("Session History Retention"),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(10.5))
-                                    .text_color(theme::text_muted())
-                                    .child("Keep this many connection history entries locally before older items roll off."),
-                            )
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .flex_wrap()
-                                    .children([100u16, 200, 500, 1000].into_iter().enumerate().map(
-                                        |(index, limit)| {
-                                            let selected = limit == session_log_limit;
-                                            Button::new(("settings-session-log-limit", index))
-                                                .small()
-                                                .custom(Self::action_button_style(
-                                                    if selected {
-                                                        theme::ActionTone::Accent
-                                                    } else {
-                                                        theme::ActionTone::Neutral
-                                                    },
-                                                    cx,
-                                                ))
-                                                .label(format!("{limit} entries"))
-                                                .on_click(cx.listener(move |this, _, _, cx| {
-                                                    this.update_session_log_limit(limit, cx);
-                                                }))
-                                                .into_any_element()
-                                        },
-                                    )),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(10.))
-                                    .text_color(theme::text_muted())
-                                    .child(format!(
-                                        "{} history entries currently stored.",
-                                        self.saved.session_logs.len()
-                                    )),
-                            )
-                            .child(
-                                div()
-                                    .h(px(1.))
-                                    .w_full()
-                                    .bg(theme::with_alpha(theme::border(), 0.6)),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .font_medium()
-                                    .text_color(theme::text_main())
-                                    .child("Default SSH Startup Directory"),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(10.5))
-                                    .text_color(theme::text_muted())
-                                    .child("When a host has no startup directory set, SSH sessions open into this directory instead."),
-                            )
-                            .child(self.form_field(
-                                "Startup Directory",
-                                Input::new(&self.settings_inputs.default_ssh_startup_directory),
-                            ))
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .items_center()
-                                    .child(
-                                        Button::new("settings-default-ssh-dir-save")
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Accent,
-                                                cx,
-                                            ))
-                                            .label("Save Default Directory")
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.save_default_ssh_startup_directory(cx);
-                                            })),
-                                    )
-                                    .child(
-                                        Button::new("settings-default-ssh-dir-clear")
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Neutral,
-                                                cx,
-                                            ))
-                                            .label("Clear")
-                                            .disabled(self.saved.settings.default_ssh_startup_directory.is_none())
-                                            .on_click(cx.listener(|this, _, window, cx| {
-                                                this.clear_default_ssh_startup_directory(window, cx);
-                                            })),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(px(10.))
-                                            .text_color(theme::text_muted())
-                                            .child("Per-host startup directories always take priority over this default."),
-                                    ),
-                            )
-                    )
-                    .child(
-                        h_flex()
-                            .child(
-                                div()
-                                    .text_size(px(10.5))
-                                    .text_color(theme::text_muted())
-                                    .child("Choose which shell binary and working directory new local terminals use."),
-                            )
-                            .child(self.form_field(
-                                "Shell Program",
-                                Input::new(&self.settings_inputs.local_shell_program),
-                            ))
-                            .child(self.form_field(
-                                "Working Directory",
-                                Input::new(&self.settings_inputs.local_shell_cwd),
-                            ))
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .items_center()
-                                    .child(
-                                        Button::new("settings-local-shell-save")
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Accent,
-                                                cx,
-                                            ))
-                                            .label("Save Shell Defaults")
-                                            .on_click(cx.listener(|this, _, window, cx| {
-                                                this.save_local_shell_settings(window, cx);
-                                            })),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(px(10.))
-                                            .text_color(theme::text_muted())
-                                            .child("Args stay empty for now; this sets the default executable and startup directory."),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_4()
-                            .children([
-                                ("Library", theme::library_card(), theme::text_main()),
-                                ("Chrome", theme::chrome_bg(), theme::text_on_dark()),
-                                ("Terminal", theme::terminal_bg(), theme::text_on_dark()),
-                            ]
-                            .into_iter()
-                            .enumerate()
-                            .map(|(index, (label, bg, fg))| {
-                                v_flex()
-                                    .id(("settings-preview", index))
-                                    .flex_1()
-                                    .gap_2()
-                                    .p_3()
-                                    .rounded(px(theme::CARD_RADIUS))
-                                    .bg(bg)
-                                    .border_1()
-                                    .border_color(theme::with_alpha(fg, 0.18))
-                                    .child(
-                                        div()
-                                            .text_size(px(10.5))
-                                            .font_semibold()
-                                            .text_color(fg)
-                                            .child(label),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(px(10.))
-                                            .text_color(theme::with_alpha(fg, 0.78))
-                                            .child(match label {
-                                                "Library" => "Forms, host cards, and management views",
-                                                "Chrome" => "Tabs, status bar, and workspace header",
-                                                _ => "Terminal panels and focused work sessions",
-                                            }),
-                                    )
-                                    .into_any_element()
-                            })),
-                    ),
-            )
-            .child(
-                v_flex()
-                    .gap_3()
-                    .p_4()
-                    .rounded(px(theme::CARD_RADIUS))
-                    .bg(theme::library_card())
-                    .border_1()
-                    .border_color(theme::border())
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .font_medium()
-                            .text_color(theme::text_main())
-                            .child("Portable Data Bundle"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(10.5))
-                            .line_height(relative(1.5))
-                            .text_color(theme::text_muted())
-                            .child("Export or import hosts, vaults, identities, snippets, and known-host trust records as a local JSON bundle. Passwords and system credential-store secrets are intentionally excluded, so this is safe for portability but not a full account sync."),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Button::new("settings-export-data")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
-                                    .label("Export Data")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.export_portable_data(cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("settings-import-data")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
-                                    .label("Import Data")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.import_portable_data(window, cx);
-                                    })),
-                            ),
-                    ),
-            )
-            .child(
-                v_flex()
-                    .gap_3()
-                    .p_4()
-                    .rounded(px(theme::CARD_RADIUS))
-                    .bg(theme::library_card())
-                    .border_1()
-                    .border_color(theme::border())
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .font_medium()
-                            .text_color(theme::text_main())
-                            .child("Encrypted Backup"),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(10.5))
-                            .line_height(relative(1.5))
-                            .text_color(theme::text_muted())
-                            .child("Wrap the same portable bundle in passphrase-based encryption for device backups, handoff, or manual sync. The file stays locally managed; no cloud account is involved yet."),
-                    )
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .child(self.form_field(
-                                "Export Passphrase",
-                                Input::new(&self.settings_inputs.export_backup_passphrase),
-                            ))
-                            .child(self.form_field(
-                                "Confirm Passphrase",
-                                Input::new(&self.settings_inputs.export_backup_confirm),
-                            ))
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .items_center()
-                                    .child(
-                                        Button::new("settings-export-encrypted-data")
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Accent,
-                                                cx,
-                                            ))
-                                            .label("Export Encrypted Backup")
-                                            .on_click(cx.listener(|this, _, window, cx| {
-                                                this.export_encrypted_portable_data(window, cx);
-                                            })),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(px(10.))
-                                            .text_color(theme::text_muted())
-                                            .child("Use a strong passphrase you can recover later. The file cannot be opened without it."),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .pt_2()
-                            .border_t_1()
-                            .border_color(theme::border())
-                            .child(self.form_field(
-                                "Import Passphrase",
-                                Input::new(&self.settings_inputs.import_backup_passphrase),
-                            ))
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .items_center()
-                                    .child(
-                                        Button::new("settings-import-encrypted-data")
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Neutral,
-                                                cx,
-                                            ))
-                                            .label("Import Encrypted Backup")
-                                            .on_click(cx.listener(|this, _, window, cx| {
-                                                this.import_encrypted_portable_data(window, cx);
-                                            })),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(px(10.))
-                                            .text_color(theme::text_muted())
-                                            .child("Import merges vaults, hosts, snippets, and trust records without exposing the plaintext bundle on disk."),
-                                    ),
-                            ),
-                    ),
+                    .px_5()
+                    .pb_5()
+                    .overflow_y_scrollbar()
+                    .child(appearance_card)
+                    .child(terminal_card)
+                    .child(startup_card)
+                    .child(sessions_card)
+                    .child(local_shell_card)
+                    .child(shortcuts_card)
+                    .child(portable_card)
+                    .child(encrypted_card),
             )
     }
 
@@ -10340,7 +10571,10 @@ impl TermiRustApp {
                     .label("Clear")
                     .on_click(cx.listener(|this, _, _, _cx| {
                         if let Some(pane) = this.active_pane() {
-                            let _ = pane.runtime.command_tx.send(SessionCommand::Input(b"clear\n".to_vec()));
+                            let _ = pane
+                                .runtime
+                                .command_tx
+                                .send(SessionCommand::Input(b"clear\n".to_vec()));
                         }
                     })),
             )
@@ -10359,18 +10593,27 @@ impl TermiRustApp {
                         .text_color(theme::text_muted_dark())
                         .child("Pinned"),
                 )
-                .child(h_flex().flex_1().gap_1().children(
-                    snippets.into_iter().take(6).enumerate().map(|(index, snippet)| {
-                        let command = snippet.command.clone();
-                        Button::new(("qa-snippet", index))
-                            .xsmall()
-                            .custom(Self::action_button_style(theme::ActionTone::AccentSoft, cx))
-                            .label(snippet.label.clone())
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.run_snippet_command(&command, cx);
-                            }))
-                    }),
-                ))
+                .child(
+                    h_flex().flex_1().gap_1().children(
+                        snippets
+                            .into_iter()
+                            .take(6)
+                            .enumerate()
+                            .map(|(index, snippet)| {
+                                let command = snippet.command.clone();
+                                Button::new(("qa-snippet", index))
+                                    .xsmall()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::AccentSoft,
+                                        cx,
+                                    ))
+                                    .label(snippet.label.clone())
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.run_snippet_command(&command, cx);
+                                    }))
+                            }),
+                    ),
+                )
                 .when(snippet_count > 6, |this| {
                     let overflow = snippet_count - 6;
                     this.child(
@@ -10906,6 +11149,16 @@ impl TermiRustApp {
             )
     }
 
+    fn terminal_font_family(&self, cx: &Context<Self>) -> SharedString {
+        self.saved
+            .settings
+            .terminal_font_family
+            .as_deref()
+            .filter(|family| !family.trim().is_empty())
+            .map(|family| SharedString::from(family.to_string()))
+            .unwrap_or_else(|| cx.theme().mono_font_family.clone())
+    }
+
     fn render_terminal_cell_group(
         &self,
         text: String,
@@ -10914,7 +11167,7 @@ impl TermiRustApp {
     ) -> AnyElement {
         let mut node = div()
             .whitespace_nowrap()
-            .font_family(cx.theme().mono_font_family.clone())
+            .font_family(self.terminal_font_family(cx))
             .text_size(px(self.terminal_font_size()))
             .line_height(relative(TERMINAL_LINE_HEIGHT))
             .text_color(style.fg)
@@ -13379,7 +13632,10 @@ fn shell_command_requires_continuation(command: &str) -> bool {
         || bracket_depth > 0
 }
 
-fn startup_bytes_for_request(request: &ConnectRequest, default_startup_dir: Option<&str>) -> Option<Vec<u8>> {
+fn startup_bytes_for_request(
+    request: &ConnectRequest,
+    default_startup_dir: Option<&str>,
+) -> Option<Vec<u8>> {
     if request.is_local_shell() {
         return None;
     }
@@ -13639,7 +13895,7 @@ mod tests {
             local_shell: None,
         };
 
-        let bytes = startup_bytes_for_request(&request).unwrap();
+        let bytes = startup_bytes_for_request(&request, None).unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
             "cd -- '/var/www/app'\"'\"'s'\ndocker compose logs -f\n"
@@ -13665,7 +13921,7 @@ mod tests {
             local_shell: None,
         };
 
-        assert!(startup_bytes_for_request(&request).is_none());
+        assert!(startup_bytes_for_request(&request, None).is_none());
         assert_eq!(shell_single_quote("a'b"), "'a'\"'\"'b'");
     }
 

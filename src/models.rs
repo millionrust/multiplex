@@ -432,6 +432,10 @@ pub struct AppSettings {
     pub default_local_shell: LocalShellConfig,
     #[serde(default)]
     pub default_ssh_startup_directory: Option<String>,
+    #[serde(default)]
+    pub copy_on_select: bool,
+    #[serde(default)]
+    pub terminal_font_family: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -444,6 +448,8 @@ impl Default for AppSettings {
             session_log_limit: default_session_log_limit(),
             default_local_shell: default_local_shell_config(),
             default_ssh_startup_directory: None,
+            copy_on_select: false,
+            terminal_font_family: None,
         }
     }
 }
@@ -460,6 +466,16 @@ impl AppSettings {
             .cwd
             .take()
             .filter(|cwd| !cwd.trim().is_empty());
+        self.terminal_font_family = self
+            .terminal_font_family
+            .take()
+            .map(|family| family.trim().to_string())
+            .filter(|family| !family.is_empty());
+        self.default_ssh_startup_directory = self
+            .default_ssh_startup_directory
+            .take()
+            .map(|dir| dir.trim().to_string())
+            .filter(|dir| !dir.is_empty());
     }
 }
 
@@ -2866,6 +2882,7 @@ mod tests {
                     args: Vec::new(),
                     cwd: Some(String::new()),
                 },
+                ..AppSettings::default()
             },
             ..SavedState::default()
         };
@@ -2878,6 +2895,27 @@ mod tests {
         assert_eq!(state.settings.session_log_limit, 1000);
         assert!(!state.settings.default_local_shell.program.trim().is_empty());
         assert_eq!(state.settings.default_local_shell.cwd, None);
+        assert!(!state.settings.copy_on_select);
+    }
+
+    #[test]
+    fn settings_round_trip_through_serde() {
+        let mut original = AppSettings::default();
+        original.copy_on_select = true;
+        original.terminal_font_size = 16;
+        original.theme_preset = ThemePreset::Daylight;
+
+        let json = serde_json::to_string(&original).expect("serialize settings");
+        let parsed: AppSettings = serde_json::from_str(&json).expect("deserialize settings");
+
+        assert!(parsed.copy_on_select);
+        assert_eq!(parsed.terminal_font_size, 16);
+        assert_eq!(parsed.theme_preset, ThemePreset::Daylight);
+
+        let legacy = "{}";
+        let from_legacy: AppSettings =
+            serde_json::from_str(legacy).expect("deserialize legacy settings");
+        assert!(!from_legacy.copy_on_select);
     }
 
     #[test]

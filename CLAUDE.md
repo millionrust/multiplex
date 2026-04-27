@@ -16,8 +16,10 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
   - local scrollback
   - terminal search
   - text selection and clipboard copy
+  - optional copy-on-select for mouse selections
   - clipboard paste with bracketed paste when requested
   - xterm mouse reporting for terminal apps that enable it
+  - configurable terminal font size and font family
 - Persistent session history with timestamps and duration in the Logs view.
 - Keychain shows imported key type, public key availability, and an "Add Key File" picker.
 - Known Hosts view supports deleting pinned host keys.

@@ -5,8 +5,9 @@ This is the working parity checklist for the native Rust desktop client. Complet
 ## Active Priority
 
 - UI parity pass:
-  - final library/layout polish for hosts, snippets, vaults, and settings
+  - final library/layout polish for hosts, snippets, and vaults
   - visual consistency pass across all library and workspace surfaces
+  - settings panel restructured into a sectioned, scrollable layout with grouped cards (Appearance, Terminal, Startup, Sessions, Local Shell, Keyboard Shortcuts, Portable Data, Encrypted Backup); Terminal section now exposes copy-on-select and a custom monospace font family override; next pass should bring the same treatment to Snippets and Vaults
 
 ## Platform And Packaging
 
