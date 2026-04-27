@@ -10,6 +10,9 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
 - Each pane is its own SSH session and PTY.
 - Quick connect: type `user@host` or `ssh user@host:port` in the search bar.
 - Reconnect button on disconnected/errored panes and workspace toolbar.
+- Optional automatic reconnect after non-user-initiated SSH drops, configurable in Settings.
+- Per-workspace Broadcast Input toggle that fans typed/pasted bytes out to every connected pane.
+- Per-pane Clear and Duplicate actions, plus Cmd+D / Cmd+Shift+B / Cmd+Shift+L / Cmd+Alt+arrow keyboard shortcuts.
 - Terminal surface supports:
   - raw VT rendering
   - PTY resize
@@ -20,7 +23,8 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
   - clipboard paste with bracketed paste when requested
   - xterm mouse reporting for terminal apps that enable it
   - configurable terminal font size and font family
-- Persistent session history with timestamps and duration in the Logs view.
+- Persistent session history with timestamps and duration in the Logs view; host cards surface a relative "Last connected" badge derived from this history.
+- Per-host description/notes field surfaced on cards and searchable from the Hosts library.
 - Keychain shows imported key type, public key availability, and an "Add Key File" picker.
 - Known Hosts view supports deleting pinned host keys.
 

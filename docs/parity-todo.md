@@ -5,9 +5,17 @@ This is the working parity checklist for the native Rust desktop client. Complet
 ## Active Priority
 
 - UI parity pass:
-  - final library/layout polish for hosts, snippets, and vaults
+  - final library/layout polish for snippets and vaults
   - visual consistency pass across all library and workspace surfaces
   - settings panel restructured into a sectioned, scrollable layout with grouped cards (Appearance, Terminal, Startup, Sessions, Local Shell, Keyboard Shortcuts, Portable Data, Encrypted Backup); Terminal section now exposes copy-on-select and a custom monospace font family override; next pass should bring the same treatment to Snippets and Vaults
+- Hosts:
+  - host cards show a Last-connected badge derived from session logs and a per-host description row
+  - host description, port-forward labels, vault, and jump host are searchable from the library filter
+- Workspaces:
+  - per-workspace Broadcast Input mirrors keystrokes/paste across panes, with a Broadcasting badge on each pane header
+  - per-pane Clear (scrollback + remote screen) and Duplicate actions, alongside keyboard shortcuts (Cmd+D duplicate, Cmd+Shift+B broadcast, Cmd+Shift+L clear, Cmd+Alt+Left/Right cycle tabs)
+- Sessions:
+  - SSH panes auto-reconnect after non-user-initiated drops, with configurable attempt count and delay (Off / 1 / 3 / 5 / 10 attempts, 2/5/10/30 second delays); local shells are deliberately excluded
 
 ## Platform And Packaging
 
