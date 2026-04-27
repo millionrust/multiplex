@@ -31,18 +31,16 @@ This is the working parity checklist for the native Rust desktop client. Complet
 
 ## Platform And Packaging
 
-- Windows packaging/distribution flow
-- Linux packaging/distribution flow
-- installer/updater strategy
-- platform-native file dialogs, shortcuts, and clipboard edge cases
+- macOS: cargo-bundle metadata is in place (`[package.metadata.bundle]` in Cargo.toml). `cargo bundle --release` produces `TermiRust.app`. Signed/notarized distribution requires an Apple Developer Program membership; flow documented in docs/building.md.
+- Windows: cargo-wix path documented. Signed MSI requires a CA-issued code-signing certificate; flow documented in docs/building.md.
+- Linux: `cargo bundle --release --format deb` / `--format rpm` produces packages. AppImage path documented. Snap/Flatpak manifests still TODO.
+- Auto-update: not yet wired. Path documented (self_update crate + signed manifests on HTTPS origin) but not implemented.
+- Icons: `assets/icons/app.png` (1024x1024) still needs to be added before bundling will succeed.
 
 ## Vault / Team / Sync
 
-- real encrypted vault sync across devices
-- account/device reconciliation and conflict handling
-- shared-vault invitations
-- remote collaboration workflows
-- credential sharing / synced identities parity
+- shared-folder sync (Dropbox / iCloud Drive / Google Drive / Syncthing) is wired: Settings -> Shared-folder sync card pushes/pulls the encrypted bundle through any cloud-synced folder, no server required. Covers the solo-user-on-multiple-machines case end-to-end.
+- still missing: account-based sync for users without a cloud drive, automatic device reconciliation, last-write conflict resolution, shared-vault invitation flow, remote collaboration workflows.
 
 ## UI Parity Pass
 

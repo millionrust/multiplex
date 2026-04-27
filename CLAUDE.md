@@ -17,6 +17,8 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
 - Per-host environment variables are exported into the remote shell before the startup directory and startup command.
 - Inline rename for workspace tabs and individual panes; Detach moves a pane into its own new workspace tab.
 - Multi-line clipboard pastes are held behind a confirmation banner by default to prevent accidental script execution.
+- Shared-folder sync ships the encrypted vault bundle through Dropbox / iCloud Drive / Google Drive / Syncthing with no server required.
+- Build/distribution metadata for cargo-bundle (macOS .app, Linux deb/rpm) lives in `Cargo.toml`; per-platform release flow is in `docs/building.md`.
 - Per-workspace Broadcast Input toggle that fans typed/pasted bytes out to every connected pane.
 - Per-pane Clear and Duplicate actions, plus Cmd+D / Cmd+Shift+B / Cmd+Shift+L / Cmd+Alt+arrow keyboard shortcuts.
 - Terminal surface supports:

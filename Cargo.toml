@@ -2,6 +2,28 @@
 name = "termirust"
 version = "0.1.0"
 edition = "2024"
+description = "Native desktop SSH client built with GPUI"
+authors = ["TermiRust contributors"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jacobsam/terminal"
+readme = "README.md"
+default-run = "termirust"
+
+[package.metadata.bundle]
+name = "TermiRust"
+identifier = "com.termirust.desktop"
+icon = ["assets/icons/app.png"]
+copyright = "Copyright (c) 2025 TermiRust contributors"
+category = "DeveloperTool"
+short_description = "Native desktop SSH client"
+long_description = """
+TermiRust is a native desktop SSH client with vault management,
+SFTP browsing, port forwarding, jump host chains, snippets,
+broadcast input, and more.
+"""
+osx_minimum_system_version = "12.0"
+osx_url_schemes = ["termirust"]
+deb_depends = ["libssl3", "libxkbcommon0"]
 
 [dependencies]
 aes-gcm-siv = "0.11"
@@ -27,3 +49,10 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+opt-level = 3
+panic = "abort"
