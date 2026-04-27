@@ -33,29 +33,29 @@ struct ThemePalette {
 }
 
 const OCEAN: ThemePalette = ThemePalette {
-    app_bg: 0xeaeef4,
-    chrome_bg: 0x141a28,
-    chrome_tab: 0x1f2638,
-    chrome_tab_active: 0x3d4d6c,
-    library_bg: 0xeaeef4,
-    library_sidebar: 0xffffff,
+    app_bg: 0xf5f6f8,
+    chrome_bg: 0x10131c,
+    chrome_tab: 0x1b1f2c,
+    chrome_tab_active: 0x2c3344,
+    library_bg: 0xf5f6f8,
+    library_sidebar: 0xfafbfc,
     library_card: 0xffffff,
     terminal_bg: 0x07101c,
     terminal_panel: 0x0f1825,
-    border: 0xd2d8e2,
-    border_dark: 0x1c2334,
-    text_main: 0x111827,
-    text_on_dark: 0xeef2fb,
-    text_muted: 0x5a6678,
-    text_muted_dark: 0x8e9ab1,
-    accent: 0x3b6fe5,
-    accent_soft: 0xdbe7ff,
-    focus_ring: 0x6ea0ff,
-    success: 0x2da765,
-    warning: 0xd7892f,
-    danger: 0xd14545,
-    slate: 0x2c538d,
-    hover: 0xdee3ec,
+    border: 0xe6e8ec,
+    border_dark: 0x1f2638,
+    text_main: 0x0f1115,
+    text_on_dark: 0xf3f4f6,
+    text_muted: 0x60697a,
+    text_muted_dark: 0x9ba6bb,
+    accent: 0x4f7cff,
+    accent_soft: 0xe1e9ff,
+    focus_ring: 0x7595ff,
+    success: 0x12a05f,
+    warning: 0xc88029,
+    danger: 0xd34545,
+    slate: 0x4863a0,
+    hover: 0xeceef2,
     modal_scrim: 0x0a1322,
 };
 
@@ -240,11 +240,15 @@ pub fn pane_focus_glow() -> Hsla {
 }
 
 pub fn card_shadow_color() -> Hsla {
-    with_alpha(color(0x0a1322), 0.06)
+    with_alpha(color(0x0a1322), 0.05)
 }
 
 pub fn card_shadow_strong_color() -> Hsla {
-    with_alpha(color(0x0a1322), 0.10)
+    with_alpha(color(0x0a1322), 0.12)
+}
+
+pub fn soft_border() -> Hsla {
+    with_alpha(color(0x0a1322), 0.06)
 }
 
 pub fn avatar_glow(accent: Hsla) -> Hsla {
@@ -313,9 +317,9 @@ pub fn host_chip_color(label: &str) -> Hsla {
     color(HOST_CHIP_COLORS[index])
 }
 
-pub const HOST_SIDEBAR_WIDTH: f32 = 200.0;
-pub const CHROME_HEIGHT: f32 = 50.0;
+pub const HOST_SIDEBAR_WIDTH: f32 = 220.0;
+pub const CHROME_HEIGHT: f32 = 46.0;
 pub const CHROME_INSET_LEFT: f32 = 76.0;
-pub const STATUS_HEIGHT: f32 = 30.0;
-pub const WORKSPACE_HEADER_HEIGHT: f32 = 50.0;
-pub const CARD_RADIUS: f32 = 12.0;
+pub const STATUS_HEIGHT: f32 = 28.0;
+pub const WORKSPACE_HEADER_HEIGHT: f32 = 48.0;
+pub const CARD_RADIUS: f32 = 14.0;

@@ -6368,11 +6368,9 @@ impl TermiRustApp {
             .w_full()
             .pl(px(theme::CHROME_INSET_LEFT))
             .pr(px(12.))
-            .gap(px(3.))
+            .gap(px(4.))
             .items_center()
             .bg(theme::chrome_bg())
-            .border_b_1()
-            .border_color(theme::border_dark())
             .child(
                 self.render_chrome_tab(
                     "chrome-hosts",
@@ -6544,21 +6542,23 @@ impl TermiRustApp {
             .id(id)
             .w_full()
             .items_center()
-            .gap(px(8.))
-            .pl(px(12.))
-            .pr(px(10.))
+            .gap(px(10.))
+            .px(px(12.))
             .h(px(36.))
             .rounded(px(8.))
             .bg(if active {
-                theme::library_card()
+                theme::accent_soft()
             } else {
                 gpui::transparent_black()
             })
-            .when(active, |this| {
-                this.border_l_3().border_color(theme::accent()).pl(px(9.))
-            })
             .cursor_pointer()
-            .hover(|style| style.bg(theme::library_card()))
+            .hover(|style| {
+                style.bg(if active {
+                    theme::accent_soft()
+                } else {
+                    theme::hover()
+                })
+            })
             .child(section.icon().size(px(16.)).text_color(if active {
                 theme::accent()
             } else {
@@ -6566,12 +6566,12 @@ impl TermiRustApp {
             }))
             .child(
                 div()
-                    .text_size(px(14.))
+                    .text_size(px(13.))
                     .font_medium()
                     .text_color(if active {
-                        theme::text_main()
+                        theme::accent()
                     } else {
-                        theme::text_muted()
+                        theme::text_main()
                     })
                     .child(section.label()),
             )
@@ -6582,12 +6582,10 @@ impl TermiRustApp {
             .w(px(theme::HOST_SIDEBAR_WIDTH))
             .flex_none()
             .h_full()
-            .px(px(10.))
-            .pt(px(12.))
-            .pb(px(12.))
+            .px(px(12.))
+            .pt(px(16.))
+            .pb(px(16.))
             .bg(theme::library_sidebar())
-            .border_r_1()
-            .border_color(theme::border())
             .child(
                 v_flex().gap(px(2.)).children(
                     [
@@ -6704,32 +6702,46 @@ impl TermiRustApp {
             .w_full()
             .gap(px(14.))
             .items_center()
-            .px(px(16.))
-            .py(px(14.))
+            .px(px(18.))
+            .py(px(16.))
             .rounded(px(theme::CARD_RADIUS))
             .bg(theme::library_card())
             .border_1()
             .border_color(if selected || batch_selected {
                 theme::accent()
             } else {
-                theme::border()
+                theme::soft_border()
             })
-            .shadow(vec![gpui::BoxShadow {
-                color: theme::card_shadow_color(),
-                offset: point(px(0.), px(1.)),
-                blur_radius: px(2.),
-                spread_radius: px(0.),
-            }])
+            .shadow(vec![
+                gpui::BoxShadow {
+                    color: theme::card_shadow_color(),
+                    offset: point(px(0.), px(1.)),
+                    blur_radius: px(2.),
+                    spread_radius: px(0.),
+                },
+                gpui::BoxShadow {
+                    color: theme::card_shadow_color(),
+                    offset: point(px(0.), px(6.)),
+                    blur_radius: px(20.),
+                    spread_radius: px(-8.),
+                },
+            ])
             .cursor_pointer()
             .hover(|style| {
-                style
-                    .bg(theme::card_hover_subtle())
-                    .shadow(vec![gpui::BoxShadow {
+                style.shadow(vec![
+                    gpui::BoxShadow {
                         color: theme::card_shadow_strong_color(),
                         offset: point(px(0.), px(2.)),
-                        blur_radius: px(8.),
+                        blur_radius: px(4.),
                         spread_radius: px(0.),
-                    }])
+                    },
+                    gpui::BoxShadow {
+                        color: theme::card_shadow_strong_color(),
+                        offset: point(px(0.), px(12.)),
+                        blur_radius: px(28.),
+                        spread_radius: px(-6.),
+                    },
+                ])
             })
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.load_profile_into_inputs(&profile_id, window, cx);
@@ -9382,7 +9394,7 @@ impl TermiRustApp {
             .child(
                 h_flex().justify_between().items_center().child(
                     div()
-                        .text_size(px(20.))
+                        .text_size(px(22.))
                         .font_semibold()
                         .text_color(theme::text_main())
                         .child("Keys"),
@@ -9416,7 +9428,7 @@ impl TermiRustApp {
                     .items_center()
                     .child(
                         div()
-                            .text_size(px(20.))
+                            .text_size(px(22.))
                             .font_semibold()
                             .text_color(theme::text_main())
                             .child("Vaults"),
@@ -9836,7 +9848,7 @@ impl TermiRustApp {
                     .items_center()
                     .child(
                         div()
-                            .text_size(px(20.))
+                            .text_size(px(22.))
                             .font_semibold()
                             .text_color(theme::text_main())
                             .child("Known Hosts"),
@@ -9981,7 +9993,7 @@ impl TermiRustApp {
                     .items_center()
                     .child(
                         div()
-                            .text_size(px(20.))
+                            .text_size(px(22.))
                             .font_semibold()
                             .text_color(theme::text_main())
                             .child("Session History"),
@@ -10181,7 +10193,7 @@ impl TermiRustApp {
                     .items_center()
                     .child(
                         div()
-                            .text_size(px(20.))
+                            .text_size(px(22.))
                             .font_semibold()
                             .text_color(theme::text_main())
                             .child("Snippets"),
@@ -10453,19 +10465,27 @@ impl TermiRustApp {
         let description: SharedString = description.into();
         v_flex()
             .w_full()
-            .gap(px(14.))
-            .px(px(20.))
-            .py(px(18.))
+            .gap(px(16.))
+            .px(px(22.))
+            .py(px(20.))
             .rounded(px(theme::CARD_RADIUS))
             .bg(theme::library_card())
             .border_1()
-            .border_color(theme::border())
-            .shadow(vec![gpui::BoxShadow {
-                color: theme::card_shadow_color(),
-                offset: point(px(0.), px(1.)),
-                blur_radius: px(2.),
-                spread_radius: px(0.),
-            }])
+            .border_color(theme::soft_border())
+            .shadow(vec![
+                gpui::BoxShadow {
+                    color: theme::card_shadow_color(),
+                    offset: point(px(0.), px(1.)),
+                    blur_radius: px(2.),
+                    spread_radius: px(0.),
+                },
+                gpui::BoxShadow {
+                    color: theme::card_shadow_color(),
+                    offset: point(px(0.), px(8.)),
+                    blur_radius: px(24.),
+                    spread_radius: px(-8.),
+                },
+            ])
             .child(
                 v_flex()
                     .gap(px(4.))
@@ -11387,7 +11407,7 @@ impl TermiRustApp {
                             .items_center()
                             .child(
                                 div()
-                                    .text_size(px(20.))
+                                    .text_size(px(22.))
                                     .font_semibold()
                                     .text_color(theme::text_main())
                                     .child("Settings"),
