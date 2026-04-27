@@ -22,10 +22,10 @@ use crate::credentials;
 use crate::local::spawn_local_session;
 use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
-    HostProfile, JumpHostConnection, PortForwardKind, PortForwardRule, ProfileSource, QuickConnect,
-    SavedCommandHistoryEntry, SavedHostGroup, SavedIdentity, SavedSnippet, SavedState, SavedVault,
-    SavedVaultMember, SavedWorkspace, SessionLogEntry, SessionLogStatus, SplitAxis, ThemePreset,
-    VaultKind, VaultMemberRole,
+    HostColorTag, HostProfile, JumpHostConnection, PortForwardKind, PortForwardRule, ProfileSource,
+    QuickConnect, SavedCommandHistoryEntry, SavedHostGroup, SavedIdentity, SavedSnippet,
+    SavedState, SavedVault, SavedVaultMember, SavedWorkspace, SessionLogEntry, SessionLogStatus,
+    SplitAxis, ThemePreset, VaultKind, VaultMemberRole,
 };
 use crate::sftp::{
     RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
@@ -585,6 +585,7 @@ pub struct TermiRustApp {
     draft_vault_id: Option<String>,
     draft_profile_favorite: bool,
     draft_start_in_files: bool,
+    draft_color_tag: Option<HostColorTag>,
     draft_port_forward_rules: Vec<PortForwardRule>,
     draft_port_forward_kind: PortForwardKind,
     snippet_vault_id: Option<String>,
@@ -673,6 +674,7 @@ impl TermiRustApp {
             draft_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             draft_profile_favorite: false,
             draft_start_in_files: false,
+            draft_color_tag: None,
             draft_port_forward_rules: Vec::new(),
             draft_port_forward_kind: PortForwardKind::Local,
             snippet_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
@@ -825,6 +827,7 @@ impl TermiRustApp {
             }),
             auth_mode: self.draft_auth_mode,
             description: self.inputs.description.read(cx).value().to_string(),
+            color_tag: self.draft_color_tag,
         };
 
         Ok(draft)
@@ -1417,6 +1420,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
         Self::set_input_value(&self.inputs.description, draft.description, window, cx);
+        self.draft_color_tag = draft.color_tag;
         self.draft_vault_id = Some(self.effective_vault_id(draft.vault_id.as_deref()));
         self.draft_profile_favorite = draft.favorite;
         self.draft_start_in_files = draft.start_in_files;
@@ -1464,6 +1468,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
         Self::set_input_value(&self.inputs.description, "", window, cx);
+        self.draft_color_tag = None;
         self.draft_vault_id = Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
         self.draft_profile_favorite = false;
         self.draft_start_in_files = false;
@@ -6084,7 +6089,10 @@ impl TermiRustApp {
         let favorite_profile_id = profile.id.clone();
         let batch_profile_id = profile.id.clone();
         let favorite_selected = profile.favorite;
-        let accent = theme::host_chip_color(&profile.display_name());
+        let accent = match profile.color_tag {
+            Some(tag) => gpui::rgb(tag.rgb_hex()).into(),
+            None => theme::host_chip_color(&profile.display_name()),
+        };
         let group_label = profile.group.trim().to_string();
         let tags = profile.tags.iter().take(3).cloned().collect::<Vec<_>>();
         let vault_label = self.effective_vault_name(profile.vault_id.as_deref());
@@ -7004,6 +7012,94 @@ impl TermiRustApp {
                 "Description",
                 Input::new(&self.inputs.description),
             ))
+            .child(
+                v_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child("Color tag"),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .flex_wrap()
+                            .child(
+                                div()
+                                    .id("draft-color-clear")
+                                    .px_3()
+                                    .py(px(6.))
+                                    .rounded(px(999.))
+                                    .border_1()
+                                    .border_color(if self.draft_color_tag.is_none() {
+                                        theme::accent()
+                                    } else {
+                                        theme::border()
+                                    })
+                                    .bg(if self.draft_color_tag.is_none() {
+                                        theme::accent_soft()
+                                    } else {
+                                        theme::with_alpha(theme::hover(), 0.6)
+                                    })
+                                    .cursor_pointer()
+                                    .hover(|style| style.bg(theme::hover()))
+                                    .text_size(px(11.))
+                                    .text_color(theme::text_main())
+                                    .child("Auto")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.draft_color_tag = None;
+                                        cx.notify();
+                                    })),
+                            )
+                            .children(HostColorTag::all().into_iter().enumerate().map(
+                                |(index, tag)| {
+                                    let active = self.draft_color_tag == Some(tag);
+                                    let color: Hsla = gpui::rgb(tag.rgb_hex()).into();
+                                    div()
+                                        .id(("draft-color-tag", index))
+                                        .h(px(28.))
+                                        .px_3()
+                                        .gap_2()
+                                        .flex()
+                                        .items_center()
+                                        .rounded(px(999.))
+                                        .border_1()
+                                        .border_color(if active { color } else { theme::border() })
+                                        .bg(if active {
+                                            theme::with_alpha(color, 0.18)
+                                        } else {
+                                            theme::with_alpha(theme::hover(), 0.6)
+                                        })
+                                        .cursor_pointer()
+                                        .hover(|style| style.bg(theme::hover()))
+                                        .child(
+                                            div().size(px(12.)).rounded(px(999.)).bg(color),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(11.))
+                                                .text_color(theme::text_main())
+                                                .child(tag.label()),
+                                        )
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.draft_color_tag = Some(tag);
+                                            cx.notify();
+                                        }))
+                                        .into_any_element()
+                                },
+                            )),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(10.))
+                            .text_color(theme::text_muted())
+                            .child(
+                                "Tags drive the avatar tint on host cards and the status dot on connected panes — handy for prod / staging / dev color-coding.",
+                            ),
+                    ),
+            )
             .child(
                 v_flex()
                     .gap_2()
@@ -11688,8 +11784,21 @@ impl TermiRustApp {
             .active_workspace()
             .map(|workspace| workspace.broadcast_input && workspace.pane_ids.len() > 1)
             .unwrap_or(false);
+        let host_color_tag = self
+            .saved
+            .profiles
+            .iter()
+            .find(|profile| {
+                profile.host == pane.request.host
+                    && profile.port == pane.request.port
+                    && profile.username == pane.request.username
+            })
+            .and_then(|profile| profile.color_tag);
         let status_color = if pane.connected {
-            theme::success()
+            match host_color_tag {
+                Some(tag) => gpui::rgb(tag.rgb_hex()).into(),
+                None => theme::success(),
+            }
         } else if pane.closed && pane.status == "Error" {
             theme::danger()
         } else if pane.closed {
@@ -14620,6 +14729,7 @@ mod tests {
             password_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
             description: String::new(),
+            color_tag: None,
         };
         let group = SavedHostGroup {
             label: "Operations".to_string(),
@@ -14703,6 +14813,7 @@ mod tests {
             password_credential_id: None,
             auth_mode: AuthMode::Password,
             description: String::new(),
+            color_tag: None,
         };
         let group = SavedHostGroup {
             label: "Operations".to_string(),

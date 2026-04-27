@@ -659,6 +659,7 @@ fn flush_ssh_config_block(
                 password_credential_id: None,
                 source: ProfileSource::SshConfig,
                 description: String::new(),
+                color_tag: None,
             },
         );
     }
@@ -1014,6 +1015,7 @@ Host app-prod
             password_credential_id: Some("secret-ref".to_string()),
             source: ProfileSource::User,
             description: "Production app server".to_string(),
+            color_tag: None,
         });
         state.upsert_identity(SavedIdentity {
             id: "identity-1".to_string(),
@@ -1118,6 +1120,7 @@ Host app-prod
             password_credential_id: Some("secret-ref".to_string()),
             source: ProfileSource::User,
             description: String::new(),
+            color_tag: None,
         });
         state.upsert_snippet(SavedSnippet {
             id: "snippet-1".to_string(),

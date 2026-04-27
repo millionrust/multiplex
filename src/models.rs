@@ -196,6 +196,62 @@ pub struct HostProfile {
     pub source: ProfileSource,
     #[serde(default)]
     pub description: String,
+    #[serde(default)]
+    pub color_tag: Option<HostColorTag>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostColorTag {
+    Red,
+    Amber,
+    Green,
+    Teal,
+    Blue,
+    Violet,
+    Pink,
+    Gray,
+}
+
+impl HostColorTag {
+    pub fn label(self) -> &'static str {
+        match self {
+            HostColorTag::Red => "Red",
+            HostColorTag::Amber => "Amber",
+            HostColorTag::Green => "Green",
+            HostColorTag::Teal => "Teal",
+            HostColorTag::Blue => "Blue",
+            HostColorTag::Violet => "Violet",
+            HostColorTag::Pink => "Pink",
+            HostColorTag::Gray => "Gray",
+        }
+    }
+
+    pub fn rgb_hex(self) -> u32 {
+        match self {
+            HostColorTag::Red => 0xed4f4f,
+            HostColorTag::Amber => 0xe39c42,
+            HostColorTag::Green => 0x49b87b,
+            HostColorTag::Teal => 0x2faea2,
+            HostColorTag::Blue => 0x3f86eb,
+            HostColorTag::Violet => 0x8c5cf2,
+            HostColorTag::Pink => 0xd363a8,
+            HostColorTag::Gray => 0x8794a8,
+        }
+    }
+
+    pub fn all() -> [HostColorTag; 8] {
+        [
+            HostColorTag::Red,
+            HostColorTag::Amber,
+            HostColorTag::Green,
+            HostColorTag::Teal,
+            HostColorTag::Blue,
+            HostColorTag::Violet,
+            HostColorTag::Pink,
+            HostColorTag::Gray,
+        ]
+    }
 }
 
 impl HostProfile {
@@ -1172,6 +1228,7 @@ pub struct DraftProfile {
     pub password_credential_id: Option<String>,
     pub auth_mode: AuthMode,
     pub description: String,
+    pub color_tag: Option<HostColorTag>,
 }
 
 impl DraftProfile {
@@ -1205,6 +1262,7 @@ impl DraftProfile {
             password_credential_id: profile.password_credential_id.clone(),
             auth_mode: profile.auth_mode,
             description: profile.description.clone(),
+            color_tag: profile.color_tag,
         }
     }
 
@@ -1383,6 +1441,7 @@ impl DraftProfile {
             },
             source: ProfileSource::User,
             description: self.description.trim().to_string(),
+            color_tag: self.color_tag,
         })
     }
 
@@ -2083,12 +2142,12 @@ impl SavedState {
 mod tests {
     use super::{
         AppSettings, AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID,
-        DraftProfile, HostProfile, IdentitySource, ImportedIdentity, JumpHostConnection,
-        LocalPortForward, LocalShellConfig, PortForwardKind, PortForwardRule, ProfileSource,
-        QuickConnect, RestorableAuth, RestorableConnection, SavedCommandHistoryEntry,
-        SavedIdentity, SavedSnippet, SavedState, SavedVault, SavedVaultMember, SavedWorkspace,
-        SessionLogEntry, SessionLogStatus, SplitAxis, ThemePreset, VaultKind, VaultMemberRole,
-        identity_id_for_path,
+        DraftProfile, HostColorTag, HostProfile, IdentitySource, ImportedIdentity,
+        JumpHostConnection, LocalPortForward, LocalShellConfig, PortForwardKind, PortForwardRule,
+        ProfileSource, QuickConnect, RestorableAuth, RestorableConnection,
+        SavedCommandHistoryEntry, SavedIdentity, SavedSnippet, SavedState, SavedVault,
+        SavedVaultMember, SavedWorkspace, SessionLogEntry, SessionLogStatus, SplitAxis,
+        ThemePreset, VaultKind, VaultMemberRole, identity_id_for_path,
     };
 
     #[test]
@@ -2430,6 +2489,7 @@ mod tests {
             password_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
             description: "  Primary blue-green node  ".to_string(),
+            color_tag: None,
         };
 
         let profile = draft.to_profile("profile-1".to_string()).unwrap();
@@ -2483,6 +2543,7 @@ mod tests {
             password_credential_id: None,
             auth_mode: AuthMode::Password,
             description: String::new(),
+            color_tag: None,
         };
 
         let profile = draft.to_profile("profile-2".to_string()).unwrap();
@@ -2519,6 +2580,7 @@ mod tests {
                 password_credential_id: None,
                 auth_mode: AuthMode::Password,
                 description: String::new(),
+                color_tag: None,
             }
             .to_profile("profile-zeta".to_string())
             .unwrap(),
@@ -2550,6 +2612,7 @@ mod tests {
                 password_credential_id: None,
                 auth_mode: AuthMode::Password,
                 description: String::new(),
+                color_tag: None,
             }
             .to_profile("profile-alpha".to_string())
             .unwrap(),
@@ -2631,6 +2694,7 @@ mod tests {
             password_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
             description: String::new(),
+            color_tag: None,
         };
 
         let profile = draft.to_profile("profile-2".to_string()).unwrap();
@@ -2671,6 +2735,7 @@ mod tests {
             password_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
             description: String::new(),
+            color_tag: None,
         };
 
         let profile = draft.to_profile("profile-dynamic".to_string()).unwrap();
@@ -2711,6 +2776,7 @@ mod tests {
             password_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
             description: String::new(),
+            color_tag: None,
         };
 
         let profile = draft.to_profile("profile-remote".to_string()).unwrap();
@@ -2754,6 +2820,7 @@ mod tests {
             password_credential_id: None,
             source: ProfileSource::User,
             description: String::new(),
+            color_tag: None,
         };
 
         profile.normalize();
@@ -2936,6 +3003,16 @@ mod tests {
         assert!(!state.settings.default_local_shell.program.trim().is_empty());
         assert_eq!(state.settings.default_local_shell.cwd, None);
         assert!(!state.settings.copy_on_select);
+    }
+
+    #[test]
+    fn host_color_tag_round_trips_and_lists_full_palette() {
+        let json = serde_json::to_string(&HostColorTag::Violet).unwrap();
+        assert_eq!(json, "\"violet\"");
+        let parsed: HostColorTag = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, HostColorTag::Violet);
+        assert_eq!(HostColorTag::all().len(), 8);
+        assert!(HostColorTag::all().contains(&HostColorTag::Red));
     }
 
     #[test]
