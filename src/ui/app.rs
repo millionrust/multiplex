@@ -631,6 +631,7 @@ pub struct TermiRustApp {
     pending_snippet_prompts: Option<PendingSnippetPrompts>,
     sync_pull_force: bool,
     sync_pull_pending_warning: bool,
+    settings_scroll: ScrollHandle,
     _window_bounds_subscription: Option<Subscription>,
 }
 
@@ -729,6 +730,7 @@ impl TermiRustApp {
             pending_snippet_prompts: None,
             sync_pull_force: false,
             sync_pull_pending_warning: false,
+            settings_scroll: ScrollHandle::new(),
             _window_bounds_subscription: None,
         };
 
@@ -11415,7 +11417,10 @@ impl TermiRustApp {
                 v_flex().flex_1().min_h_0().child(
                     v_flex()
                         .id("settings-scroll")
+                        .size_full()
                         .gap_4()
+                        .overflow_y_scroll()
+                        .track_scroll(&self.settings_scroll)
                         .child(appearance_card)
                         .child(terminal_card)
                         .child(startup_card)
@@ -11424,8 +11429,7 @@ impl TermiRustApp {
                         .child(shortcuts_card)
                         .child(portable_card)
                         .child(encrypted_card)
-                        .child(sync_card)
-                        .overflow_y_scrollbar(),
+                        .child(sync_card),
                 ),
             )
     }
