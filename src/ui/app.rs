@@ -6657,7 +6657,6 @@ impl TermiRustApp {
         };
         let group_label = profile.group.trim().to_string();
         let tags = profile.tags.iter().take(3).cloned().collect::<Vec<_>>();
-        let vault_label = self.effective_vault_name(profile.vault_id.as_deref());
         let identity_label = profile
             .identity_id
             .as_deref()
@@ -6757,109 +6756,82 @@ impl TermiRustApp {
                                     .child(profile.display_name()),
                             )
                             .when(profile.favorite, |this| {
-                                this.child(self.status_badge(
-                                    "Starred",
-                                    theme::library_bg(),
-                                    theme::warning(),
-                                ))
+                                this.child(
+                                    Icon::new(IconName::Star)
+                                        .size(px(12.))
+                                        .text_color(theme::warning()),
+                                )
                             })
                             .when(batch_selected, |this| {
                                 this.child(self.status_badge(
                                     "Selected",
-                                    theme::library_bg(),
+                                    theme::with_alpha(theme::success(), 0.16),
                                     theme::success(),
-                                ))
-                            })
-                            .when(profile.source == ProfileSource::SshConfig, |this| {
-                                this.child(self.status_badge(
-                                    "SSH Config",
-                                    theme::library_bg(),
-                                    theme::accent(),
                                 ))
                             })
                             .when(!group_label.is_empty(), |this| {
                                 this.child(self.status_badge(
                                     group_label.clone(),
-                                    theme::library_bg(),
+                                    theme::with_alpha(theme::slate(), 0.12),
                                     theme::slate(),
                                 ))
-                            })
-                            .child(self.status_badge(
-                                vault_label,
-                                theme::library_bg(),
-                                theme::accent(),
-                            ))
-                            .when_some(identity_label.clone(), |this, identity_label| {
-                                this.child(self.status_badge(
-                                    identity_label,
-                                    theme::library_bg(),
-                                    theme::success(),
-                                ))
-                            })
-                            .when_some(jump_host_label.clone(), |this, jump_host_label| {
-                                this.child(self.status_badge(
-                                    jump_host_label,
-                                    theme::library_bg(),
-                                    theme::accent(),
-                                ))
-                            })
-                            .when_some(startup_label.clone(), |this, startup_label| {
-                                this.child(self.status_badge(
-                                    startup_label,
-                                    theme::library_bg(),
-                                    theme::success(),
-                                ))
-                            })
-                            .when_some(connect_view_label.clone(), |this, connect_view_label| {
-                                this.child(self.status_badge(
-                                    connect_view_label,
-                                    theme::library_bg(),
-                                    theme::accent(),
-                                ))
-                            })
-                            .when_some(scrollback_label.clone(), |this, scrollback_label| {
-                                this.child(self.status_badge(
-                                    scrollback_label,
-                                    theme::library_bg(),
-                                    theme::slate(),
-                                ))
-                            })
-                            .when_some(forward_label.clone(), |this, forward_label| {
-                                this.child(self.status_badge(
-                                    forward_label,
-                                    theme::library_bg(),
-                                    theme::warning(),
-                                ))
-                            })
-                            .when_some(
-                                last_connected_label.clone(),
-                                |this, last_connected_label| {
-                                    this.child(self.status_badge(
-                                        last_connected_label,
-                                        theme::library_bg(),
-                                        theme::text_muted(),
-                                    ))
-                                },
-                            ),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_1()
-                            .items_center()
-                            .child(protocol_icon.size(px(11.)).text_color(theme::text_muted()))
-                            .child(
-                                div()
-                                    .text_size(px(11.))
-                                    .text_color(theme::text_muted())
-                                    .child(protocols),
-                            ),
+                            }),
                     )
                     .child(
                         div()
-                            .text_size(px(10.))
+                            .text_size(px(11.))
                             .text_color(theme::text_muted())
                             .child(format!("{}  •  {}", profile.endpoint(), profile.username)),
                     )
+                    .child({
+                        let mut chips: Vec<String> = Vec::new();
+                        chips.push(protocols.to_string());
+                        if let Some(label) = identity_label.clone() {
+                            chips.push(label);
+                        }
+                        if let Some(label) = jump_host_label.clone() {
+                            chips.push(label);
+                        }
+                        if startup_label.is_some() {
+                            chips.push("startup script".to_string());
+                        }
+                        if let Some(label) = scrollback_label.clone() {
+                            chips.push(label.to_lowercase());
+                        }
+                        if let Some(label) = forward_label.clone() {
+                            chips.push(label.to_lowercase());
+                        }
+                        if connect_view_label.is_some() {
+                            chips.push("files first".to_string());
+                        }
+                        if profile.source == ProfileSource::SshConfig {
+                            chips.push("ssh_config".to_string());
+                        }
+                        let line = chips.join("  •  ");
+                        let last = last_connected_label
+                            .clone()
+                            .map(|s| s.to_lowercase())
+                            .unwrap_or_default();
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(protocol_icon.size(px(10.)).text_color(theme::text_muted()))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_size(px(10.))
+                                    .text_color(theme::text_muted())
+                                    .child(line),
+                            )
+                            .when(!last.is_empty(), |this| {
+                                this.child(
+                                    div()
+                                        .text_size(px(10.))
+                                        .text_color(theme::text_muted())
+                                        .child(last),
+                                )
+                            })
+                    })
                     .when(!profile.description.trim().is_empty(), |this| {
                         this.child(
                             div()
@@ -8854,10 +8826,10 @@ impl TermiRustApp {
                     })
                     .child(
                         div()
-                            .text_size(px(13.))
-                            .font_semibold()
-                            .text_color(theme::text_main())
-                            .child("Hosts"),
+                            .text_size(px(11.))
+                            .font_medium()
+                            .text_color(theme::text_muted())
+                            .child("HOSTS"),
                     )
                     .child(self.render_host_grid(window, cx)),
             )
@@ -8890,75 +8862,50 @@ impl TermiRustApp {
             v_flex()
                 .gap_2()
                 .child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(
-                            div()
-                                .text_size(px(13.))
-                                .font_semibold()
-                                .text_color(theme::text_main())
-                                .child("Recent"),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(10.5))
-                                .text_color(theme::text_muted())
-                                .child("Most-recent successful sessions"),
-                        ),
+                    div()
+                        .text_size(px(11.))
+                        .font_medium()
+                        .text_color(theme::text_muted())
+                        .child("RECENT"),
                 )
                 .child(
                     h_flex()
                         .gap_2()
                         .flex_wrap()
-                        .children(recent.into_iter().enumerate().map(
-                            |(index, (profile, started_at))| {
-                                let profile_id = profile.id.clone();
-                                let display = profile.display_name();
-                                let chip_color = match profile.color_tag {
-                                    Some(tag) => gpui::rgb(tag.rgb_hex()).into(),
-                                    None => theme::host_chip_color(&display),
-                                };
-                                let endpoint = profile.endpoint();
-                                let relative = format_relative_time(started_at);
-                                h_flex()
-                                    .id(("recent-host", index))
-                                    .gap_2()
-                                    .items_center()
-                                    .px_3()
-                                    .py(px(6.))
-                                    .rounded(px(999.))
-                                    .bg(theme::with_alpha(theme::hover(), 0.7))
-                                    .border_1()
-                                    .border_color(theme::with_alpha(chip_color, 0.4))
-                                    .cursor_pointer()
-                                    .hover(|style| style.bg(theme::hover()))
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.show_editor_panel = false;
-                                        this.load_profile_into_inputs(&profile_id, window, cx);
-                                        this.connect_current(window, cx);
-                                    }))
-                                    .child(div().size(px(8.)).rounded(px(999.)).bg(chip_color))
-                                    .child(
-                                        v_flex()
-                                            .gap_0p5()
-                                            .child(
-                                                div()
-                                                    .text_size(px(11.))
-                                                    .font_medium()
-                                                    .text_color(theme::text_main())
-                                                    .child(display.clone()),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(px(9.5))
-                                                    .text_color(theme::text_muted())
-                                                    .child(format!("{endpoint} • {relative}")),
-                                            ),
-                                    )
-                                    .into_any_element()
-                            },
-                        )),
+                        .children(recent.into_iter().enumerate().map(|(index, (profile, _))| {
+                            let profile_id = profile.id.clone();
+                            let display = profile.display_name();
+                            let chip_color = match profile.color_tag {
+                                Some(tag) => gpui::rgb(tag.rgb_hex()).into(),
+                                None => theme::host_chip_color(&display),
+                            };
+                            h_flex()
+                                .id(("recent-host", index))
+                                .gap_2()
+                                .items_center()
+                                .px(px(10.))
+                                .py(px(5.))
+                                .rounded(px(8.))
+                                .bg(theme::library_card())
+                                .border_1()
+                                .border_color(theme::border())
+                                .cursor_pointer()
+                                .hover(|style| style.bg(theme::card_hover_subtle()))
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.show_editor_panel = false;
+                                    this.load_profile_into_inputs(&profile_id, window, cx);
+                                    this.connect_current(window, cx);
+                                }))
+                                .child(div().size(px(7.)).rounded(px(999.)).bg(chip_color))
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .font_medium()
+                                        .text_color(theme::text_main())
+                                        .child(display),
+                                )
+                                .into_any_element()
+                        })),
                 ),
         )
     }
@@ -12795,7 +12742,8 @@ impl TermiRustApp {
                                     Button::new(("clear-pane", pane.id))
                                         .ghost()
                                         .xsmall()
-                                        .label("Clear")
+                                        .icon(IconName::Replace)
+                                        .tooltip("Clear screen and scrollback")
                                         .on_click(cx.listener(move |this, _, _, cx| {
                                             this.clear_pane_screen(pane_id, cx);
                                         })),
@@ -12809,7 +12757,8 @@ impl TermiRustApp {
                                             Button::new(("duplicate-pane", pane.id))
                                                 .ghost()
                                                 .xsmall()
-                                                .label("Duplicate")
+                                                .icon(IconName::Copy)
+                                                .tooltip("Duplicate pane")
                                                 .on_click(cx.listener(
                                                     move |this, _, window, cx| {
                                                         this.duplicate_pane(pane_id, window, cx);
@@ -12827,7 +12776,8 @@ impl TermiRustApp {
                                             Button::new(("detach-pane", pane.id))
                                                 .ghost()
                                                 .xsmall()
-                                                .label("Detach")
+                                                .icon(IconName::ExternalLink)
+                                                .tooltip("Detach into new tab")
                                                 .on_click(cx.listener(
                                                     move |this, _, window, cx| {
                                                         this.move_pane_to_new_workspace(
@@ -12844,6 +12794,7 @@ impl TermiRustApp {
                                     Button::new(("reconnect-pane", pane.id))
                                         .ghost()
                                         .xsmall()
+                                        .icon(IconName::Redo)
                                         .label("Reconnect")
                                         .on_click(cx.listener(move |this, _, window, cx| {
                                             this.reconnect_pane(pane_id, window, cx);
@@ -12860,6 +12811,7 @@ impl TermiRustApp {
                                             .ghost()
                                             .xsmall()
                                             .icon(IconName::Close)
+                                            .tooltip("Close pane")
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 this.close_pane(pane_id, cx);
                                             })),
