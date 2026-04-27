@@ -1175,6 +1175,20 @@ impl TermiRustApp {
             .map(HostProfile::display_name)
     }
 
+    fn last_connected_at(&self, profile: &HostProfile) -> Option<u64> {
+        self.saved
+            .session_logs
+            .iter()
+            .filter(|log| {
+                log.host == profile.host
+                    && log.port == profile.port
+                    && log.username == profile.username
+                    && log.started_at > 0
+            })
+            .map(|log| log.started_at)
+            .max()
+    }
+
     fn resolve_jump_host_connection(
         &self,
         jump_host_id: &str,
@@ -5936,6 +5950,9 @@ impl TermiRustApp {
                 format!("{forward_count} Forwards")
             }
         });
+        let last_connected_label = self
+            .last_connected_at(profile)
+            .map(|ts| format!("Last {}", format_relative_time(ts)));
         let protocols = if profile.auth_mode == AuthMode::PrivateKey {
             "key auth"
         } else {
@@ -6079,7 +6096,17 @@ impl TermiRustApp {
                                     theme::library_bg(),
                                     theme::warning(),
                                 ))
-                            }),
+                            })
+                            .when_some(
+                                last_connected_label.clone(),
+                                |this, last_connected_label| {
+                                    this.child(self.status_badge(
+                                        last_connected_label,
+                                        theme::library_bg(),
+                                        theme::text_muted(),
+                                    ))
+                                },
+                            ),
                     )
                     .child(
                         h_flex()
@@ -13903,6 +13930,64 @@ fn format_count_label(count: usize, singular: &str, plural: &str) -> String {
     }
 }
 
+fn current_unix_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn format_relative_time(timestamp_ms: u64) -> String {
+    format_relative_time_for(timestamp_ms, current_unix_millis())
+}
+
+fn format_relative_time_for(timestamp_ms: u64, now_ms: u64) -> String {
+    if timestamp_ms == 0 || timestamp_ms > now_ms {
+        return "just now".to_string();
+    }
+    let delta_secs = (now_ms - timestamp_ms) / 1000;
+    if delta_secs < 60 {
+        return "just now".to_string();
+    }
+    let minutes = delta_secs / 60;
+    if minutes < 60 {
+        return format!("{minutes}m ago");
+    }
+    let hours = minutes / 60;
+    if hours < 24 {
+        return format!("{hours}h ago");
+    }
+    let days = hours / 24;
+    if days == 1 {
+        return "yesterday".to_string();
+    }
+    if days < 7 {
+        return format!("{days}d ago");
+    }
+    if days < 30 {
+        let weeks = days / 7;
+        return if weeks == 1 {
+            "1w ago".to_string()
+        } else {
+            format!("{weeks}w ago")
+        };
+    }
+    if days < 365 {
+        let months = days / 30;
+        return if months == 1 {
+            "1mo ago".to_string()
+        } else {
+            format!("{months}mo ago")
+        };
+    }
+    let years = days / 365;
+    if years == 1 {
+        "1y ago".to_string()
+    } else {
+        format!("{years}y ago")
+    }
+}
+
 fn non_empty_string(value: &str) -> Option<String> {
     let value = value.trim();
     if value.is_empty() {
@@ -14017,14 +14102,46 @@ mod tests {
     use super::{
         AutocompleteSource, OutputSuggestionContext, PathSuggestionContext, WorkspaceIndicators,
         WorkspaceRuntimeTone, apply_group_defaults_to_draft, collect_autocomplete_candidates,
-        collect_command_palette_candidates, shell_command_requires_continuation,
-        shell_single_quote, startup_bytes_for_request, workspace_runtime_summary,
+        collect_command_palette_candidates, format_relative_time_for,
+        shell_command_requires_continuation, shell_single_quote, startup_bytes_for_request,
+        workspace_runtime_summary,
     };
     use crate::models::{
         AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, LocalPortForward,
         PortForwardKind, PortForwardRule, SavedHostGroup, SavedIdentity,
     };
     use crate::sftp::RemoteFileEntry;
+
+    #[test]
+    fn relative_time_buckets_into_human_phrases() {
+        let now = 1_700_000_000_000u64;
+        let ms = |secs: u64| now - secs * 1000;
+        assert_eq!(format_relative_time_for(ms(10), now), "just now");
+        assert_eq!(format_relative_time_for(ms(59), now), "just now");
+        assert_eq!(format_relative_time_for(ms(60), now), "1m ago");
+        assert_eq!(format_relative_time_for(ms(60 * 5), now), "5m ago");
+        assert_eq!(format_relative_time_for(ms(60 * 60), now), "1h ago");
+        assert_eq!(format_relative_time_for(ms(60 * 60 * 23), now), "23h ago");
+        assert_eq!(format_relative_time_for(ms(60 * 60 * 24), now), "yesterday");
+        assert_eq!(
+            format_relative_time_for(ms(60 * 60 * 24 * 3), now),
+            "3d ago"
+        );
+        assert_eq!(
+            format_relative_time_for(ms(60 * 60 * 24 * 7), now),
+            "1w ago"
+        );
+        assert_eq!(
+            format_relative_time_for(ms(60 * 60 * 24 * 31), now),
+            "1mo ago"
+        );
+        assert_eq!(
+            format_relative_time_for(ms(60 * 60 * 24 * 400), now),
+            "1y ago"
+        );
+        assert_eq!(format_relative_time_for(0, now), "just now");
+        assert_eq!(format_relative_time_for(now + 5_000, now), "just now");
+    }
 
     #[test]
     fn shell_continuation_detects_unclosed_quotes_and_trailing_operators() {
