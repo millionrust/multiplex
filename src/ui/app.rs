@@ -2026,7 +2026,12 @@ impl TermiRustApp {
     }
 
     fn run_snippet_command(&mut self, command: &str, cx: &mut Context<Self>) {
-        let _ = self.run_command_in_active_pane(command, "Snippet sent to the active session.", cx);
+        let resolved = self
+            .active_pane()
+            .map(|pane| substitute_snippet_placeholders(command, &pane.request))
+            .unwrap_or_else(|| command.to_string());
+        let _ =
+            self.run_command_in_active_pane(&resolved, "Snippet sent to the active session.", cx);
     }
 
     fn send_startup_actions(&mut self, session_id: u64) -> bool {
@@ -2766,6 +2771,19 @@ impl TermiRustApp {
         self.saved.ensure_settings();
         self.save_settings();
         self.status_message = format!("Session history retention set to {limit} entries.");
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn update_ssh_keepalive_secs(&mut self, secs: u16, cx: &mut Context<Self>) {
+        self.saved.settings.ssh_keepalive_secs = secs;
+        self.saved.ensure_settings();
+        self.save_settings();
+        self.status_message = if secs == 0 {
+            "SSH keep-alive disabled.".to_string()
+        } else {
+            format!("SSH keep-alive set to {secs}s.")
+        };
         self.error_message.clear();
         cx.notify();
     }
@@ -3731,6 +3749,7 @@ impl TermiRustApp {
                 request.clone(),
                 self.known_hosts.clone(),
                 self.event_tx.clone(),
+                self.saved.settings.ssh_keepalive_secs,
             )
         };
         eprintln!("[app] spawn_pane: session spawned, creating pane state...");
@@ -9432,7 +9451,7 @@ impl TermiRustApp {
                     .text_size(px(12.))
                     .line_height(relative(1.5))
                     .text_color(theme::text_muted())
-                    .child("Save repeatable commands, pin the important ones, and send them to the active terminal in one click."),
+                    .child("Save repeatable commands, pin the important ones, and send them to the active terminal in one click. Use {{HOST}}, {{USER}}, {{PORT}}, {{TITLE}}, or {{ADDRESS}} placeholders — they expand against the active session before the command is sent."),
             )
             .child(
                 v_flex()
@@ -9787,6 +9806,7 @@ impl TermiRustApp {
         let onboarding_dismissed = self.saved.settings.onboarding_dismissed;
         let auto_reconnect_attempts = self.saved.settings.auto_reconnect_attempts;
         let auto_reconnect_delay_secs = self.saved.settings.auto_reconnect_delay_secs;
+        let ssh_keepalive_secs = self.saved.settings.ssh_keepalive_secs;
         let copy_on_select = self.saved.settings.copy_on_select;
         let session_log_count = self.saved.session_logs.len();
         let has_default_ssh_dir = self.saved.settings.default_ssh_startup_directory.is_some();
@@ -10188,6 +10208,41 @@ impl TermiRustApp {
                             },
                         )),
                 )
+                .child(self.settings_divider())
+                .child(self.settings_subhead(
+                    "SSH keep-alive",
+                    "Send a SSH-level keep-alive ping at this interval so idle sessions survive NAT timeouts and load balancer drops.",
+                ))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .flex_wrap()
+                        .children([0u16, 15, 30, 60, 120].into_iter().enumerate().map(
+                            |(index, secs)| {
+                                let selected = secs == ssh_keepalive_secs;
+                                Button::new(("settings-ssh-keepalive", index))
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        if selected {
+                                            theme::ActionTone::Accent
+                                        } else {
+                                            theme::ActionTone::Neutral
+                                        },
+                                        cx,
+                                    ))
+                                    .label(if secs == 0 {
+                                        "Off".to_string()
+                                    } else {
+                                        format!("{secs}s")
+                                    })
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.update_ssh_keepalive_secs(secs, cx);
+                                    }))
+                                    .into_any_element()
+                            },
+                        )),
+                )
+                .child(self.settings_divider())
                 .child(self.settings_subhead(
                     "Reconnect delay",
                     "Wait this many seconds between automatic retry attempts.",
@@ -14171,6 +14226,45 @@ fn format_count_label(count: usize, singular: &str, plural: &str) -> String {
     }
 }
 
+fn substitute_snippet_placeholders(command: &str, request: &ConnectRequest) -> String {
+    let host = request.host.trim().to_string();
+    let user = request.username.trim().to_string();
+    let port = request.port.to_string();
+    let title = request.title.trim().to_string();
+    let address = request.address();
+
+    let mut out = String::with_capacity(command.len());
+    let mut rest = command;
+    while let Some(start) = rest.find("{{") {
+        out.push_str(&rest[..start]);
+        let after_open = &rest[start + 2..];
+        let Some(end_rel) = after_open.find("}}") else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        let name = after_open[..end_rel].trim().to_ascii_uppercase();
+        let replacement = match name.as_str() {
+            "HOST" => Some(host.as_str()),
+            "USER" | "USERNAME" => Some(user.as_str()),
+            "PORT" => Some(port.as_str()),
+            "TITLE" => Some(title.as_str()),
+            "ADDRESS" => Some(address.as_str()),
+            _ => None,
+        };
+        match replacement {
+            Some(value) => out.push_str(value),
+            None => {
+                out.push_str("{{");
+                out.push_str(&after_open[..end_rel]);
+                out.push_str("}}");
+            }
+        }
+        rest = &after_open[end_rel + 2..];
+    }
+    out.push_str(rest);
+    out
+}
+
 fn current_unix_millis() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -14345,13 +14439,59 @@ mod tests {
         WorkspaceRuntimeTone, apply_group_defaults_to_draft, collect_autocomplete_candidates,
         collect_command_palette_candidates, format_relative_time_for,
         shell_command_requires_continuation, shell_single_quote, startup_bytes_for_request,
-        workspace_runtime_summary,
+        substitute_snippet_placeholders, workspace_runtime_summary,
     };
     use crate::models::{
         AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, LocalPortForward,
         PortForwardKind, PortForwardRule, SavedHostGroup, SavedIdentity,
     };
     use crate::sftp::RemoteFileEntry;
+
+    #[test]
+    fn snippet_placeholders_substitute_known_names_only() {
+        let request = ConnectRequest {
+            session_id: 1,
+            title: "Production".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: "prod.example.com".to_string(),
+            port: 2222,
+            username: "deploy".to_string(),
+            auth: None,
+            jump_host: None,
+            startup_directory: None,
+            startup_command: None,
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+        };
+
+        assert_eq!(
+            substitute_snippet_placeholders("ssh-copy-id {{USER}}@{{HOST}}", &request),
+            "ssh-copy-id deploy@prod.example.com"
+        );
+        assert_eq!(
+            substitute_snippet_placeholders("scp file {{USERNAME}}@{{ADDRESS}}:/tmp/", &request),
+            "scp file deploy@prod.example.com:2222:/tmp/"
+        );
+        assert_eq!(
+            substitute_snippet_placeholders("kubectl --context {{TITLE}} get pods", &request),
+            "kubectl --context Production get pods"
+        );
+        // Unknown placeholders are left intact and unbalanced braces are preserved.
+        assert_eq!(
+            substitute_snippet_placeholders(
+                "echo {{UNKNOWN}} value with {{HOST}} and tail {{",
+                &request
+            ),
+            "echo {{UNKNOWN}} value with prod.example.com and tail {{"
+        );
+        // No placeholder inputs round-trip identically.
+        assert_eq!(
+            substitute_snippet_placeholders("docker ps -a", &request),
+            "docker ps -a"
+        );
+    }
 
     #[test]
     fn relative_time_buckets_into_human_phrases() {

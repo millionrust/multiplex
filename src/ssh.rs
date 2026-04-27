@@ -62,6 +62,7 @@ pub fn spawn_session(
     request: ConnectRequest,
     known_hosts: Arc<KnownHostStore>,
     event_tx: Sender<SshEvent>,
+    keepalive_secs: u16,
 ) -> SessionRuntimeHandle {
     let (command_tx, command_rx) = mpsc::unbounded_channel();
     let session_id = request.session_id;
@@ -93,8 +94,14 @@ pub fn spawn_session(
 
         eprintln!("[ssh][{session_id}] tokio runtime ready, starting session");
         runtime.block_on(async move {
-            if let Err(error) =
-                run_session(request, known_hosts, command_rx, event_tx.clone()).await
+            if let Err(error) = run_session(
+                request,
+                known_hosts,
+                command_rx,
+                event_tx.clone(),
+                keepalive_secs,
+            )
+            .await
             {
                 let message = format!("{error:#}");
                 eprintln!("[ssh][{session_id}] session error: {message}");
@@ -127,12 +134,18 @@ async fn run_session(
     known_hosts: Arc<KnownHostStore>,
     mut command_rx: UnboundedReceiver<SessionCommand>,
     event_tx: Sender<SshEvent>,
+    keepalive_secs: u16,
 ) -> Result<()> {
     let session_id = request.session_id;
     let address = request.address();
 
     eprintln!("[ssh][{session_id}] connecting to {address}...");
-    let config = Arc::new(client::Config::default());
+    let mut config_inner = client::Config::default();
+    if keepalive_secs > 0 {
+        config_inner.keepalive_interval =
+            Some(std::time::Duration::from_secs(u64::from(keepalive_secs)));
+    }
+    let config = Arc::new(config_inner);
     let established = establish_session(config, request.clone(), known_hosts).await?;
 
     eprintln!("[ssh][{session_id}] authenticated, opening channel...");

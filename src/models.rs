@@ -442,6 +442,8 @@ pub struct AppSettings {
     pub auto_reconnect_attempts: u8,
     #[serde(default = "default_auto_reconnect_delay_secs")]
     pub auto_reconnect_delay_secs: u8,
+    #[serde(default = "default_ssh_keepalive_secs")]
+    pub ssh_keepalive_secs: u16,
 }
 
 fn default_auto_reconnect_attempts() -> u8 {
@@ -450,6 +452,10 @@ fn default_auto_reconnect_attempts() -> u8 {
 
 fn default_auto_reconnect_delay_secs() -> u8 {
     5
+}
+
+fn default_ssh_keepalive_secs() -> u16 {
+    30
 }
 
 impl Default for AppSettings {
@@ -466,6 +472,7 @@ impl Default for AppSettings {
             terminal_font_family: None,
             auto_reconnect_attempts: default_auto_reconnect_attempts(),
             auto_reconnect_delay_secs: default_auto_reconnect_delay_secs(),
+            ssh_keepalive_secs: default_ssh_keepalive_secs(),
         }
     }
 }
@@ -494,6 +501,7 @@ impl AppSettings {
             .filter(|dir| !dir.is_empty());
         self.auto_reconnect_attempts = self.auto_reconnect_attempts.min(10);
         self.auto_reconnect_delay_secs = self.auto_reconnect_delay_secs.clamp(1, 60);
+        self.ssh_keepalive_secs = self.ssh_keepalive_secs.min(300);
     }
 }
 
