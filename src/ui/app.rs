@@ -8832,6 +8832,7 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .flex_1()
+                    .min_h_0()
                     .gap_3()
                     .px_4()
                     .pb_4()
@@ -9063,6 +9064,7 @@ impl TermiRustApp {
             .child(
                     v_flex()
                         .flex_1()
+                        .min_h_0()
                         .gap_2()
                         .overflow_y_scrollbar()
                     .children(identities.iter().enumerate().map(
@@ -9261,6 +9263,7 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .flex_1()
+                    .min_h_0()
                     .gap_2()
                     .overflow_y_scrollbar()
                     .children(
@@ -9371,6 +9374,7 @@ impl TermiRustApp {
 
     fn render_keychain_view(&self, cx: &Context<Self>) -> Div {
         v_flex()
+            .size_full()
             .flex_1()
             .gap_4()
             .p_5()
@@ -9401,6 +9405,7 @@ impl TermiRustApp {
             .or_else(|| self.default_vault().cloned());
 
         v_flex()
+            .size_full()
             .flex_1()
             .gap_4()
             .p_5()
@@ -9721,6 +9726,7 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .flex_1()
+                    .min_h_0()
                     .gap_2()
                     .overflow_y_scrollbar()
                     .children(vaults.iter().enumerate().map(|(index, vault)| {
@@ -9819,6 +9825,7 @@ impl TermiRustApp {
         let entries = self.known_hosts.entries().unwrap_or_default();
 
         v_flex()
+            .size_full()
             .flex_1()
             .gap_4()
             .p_5()
@@ -9857,6 +9864,7 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .flex_1()
+                    .min_h_0()
                     .gap_2()
                     .overflow_y_scrollbar()
                     .children(entries.iter().enumerate().map(|(index, (endpoint, key))| {
@@ -9962,6 +9970,7 @@ impl TermiRustApp {
         let logs: Vec<&SessionLogEntry> = self.saved.session_logs.iter().rev().collect();
 
         v_flex()
+            .size_full()
             .flex_1()
             .gap_3()
             .p_5()
@@ -9991,6 +10000,7 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .flex_1()
+                    .min_h_0()
                     .gap_2()
                     .overflow_y_scrollbar()
                     .children(self.panes.iter().filter(|p| p.connected).map(|pane| {
@@ -10160,6 +10170,7 @@ impl TermiRustApp {
         let snippets = self.saved.snippets.clone();
 
         v_flex()
+            .size_full()
             .flex_1()
             .gap_4()
             .p_5()
@@ -10288,6 +10299,7 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .flex_1()
+                    .min_h_0()
                     .gap_2()
                     .overflow_y_scrollbar()
                     .children(snippets.iter().enumerate().map(|(index, snippet)| {
@@ -12362,6 +12374,7 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .flex_1()
+                    .min_h_0()
                     .overflow_y_scrollbar()
                     .gap_2()
                     .when(browser.entries.is_empty() && browser.loading, |this| {
