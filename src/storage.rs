@@ -658,6 +658,7 @@ fn flush_ssh_config_block(
                 local_forward: None,
                 password_credential_id: None,
                 source: ProfileSource::SshConfig,
+                description: String::new(),
             },
         );
     }
@@ -1012,6 +1013,7 @@ Host app-prod
             local_forward: None,
             password_credential_id: Some("secret-ref".to_string()),
             source: ProfileSource::User,
+            description: "Production app server".to_string(),
         });
         state.upsert_identity(SavedIdentity {
             id: "identity-1".to_string(),
@@ -1115,6 +1117,7 @@ Host app-prod
             local_forward: None,
             password_credential_id: Some("secret-ref".to_string()),
             source: ProfileSource::User,
+            description: String::new(),
         });
         state.upsert_snippet(SavedSnippet {
             id: "snippet-1".to_string(),

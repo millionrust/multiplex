@@ -185,6 +185,7 @@ struct DraftInputs {
     forward_remote_host: Entity<InputState>,
     forward_remote_port: Entity<InputState>,
     key_passphrase: Entity<InputState>,
+    description: Entity<InputState>,
 }
 
 impl DraftInputs {
@@ -215,6 +216,9 @@ impl DraftInputs {
                 InputState::new(window, cx)
                     .masked(true)
                     .placeholder("Optional key passphrase")
+            }),
+            description: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Optional notes about this host")
             }),
         }
     }
@@ -814,6 +818,7 @@ impl TermiRustApp {
                     .and_then(|profile| profile.password_credential_id.clone())
             }),
             auth_mode: self.draft_auth_mode,
+            description: self.inputs.description.read(cx).value().to_string(),
         };
 
         Ok(draft)
@@ -1405,6 +1410,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.forward_remote_host, "", window, cx);
         Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
+        Self::set_input_value(&self.inputs.description, draft.description, window, cx);
         self.draft_vault_id = Some(self.effective_vault_id(draft.vault_id.as_deref()));
         self.draft_profile_favorite = draft.favorite;
         self.draft_start_in_files = draft.start_in_files;
@@ -1451,6 +1457,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.forward_remote_host, "", window, cx);
         Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
         Self::set_input_value(&self.inputs.key_passphrase, "", window, cx);
+        Self::set_input_value(&self.inputs.description, "", window, cx);
         self.draft_vault_id = Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
         self.draft_profile_favorite = false;
         self.draft_start_in_files = false;
@@ -6126,6 +6133,15 @@ impl TermiRustApp {
                             .text_color(theme::text_muted())
                             .child(format!("{}  •  {}", profile.endpoint(), profile.username)),
                     )
+                    .when(!profile.description.trim().is_empty(), |this| {
+                        this.child(
+                            div()
+                                .text_size(px(10.5))
+                                .line_height(relative(1.4))
+                                .text_color(theme::text_muted())
+                                .child(profile.description.trim().to_string()),
+                        )
+                    })
                     .when(!tags.is_empty(), |this| {
                         this.child(
                             h_flex()
@@ -6827,6 +6843,10 @@ impl TermiRustApp {
                     ),
             )
             .child(self.form_field("Label", Input::new(&self.inputs.label)))
+            .child(self.form_field(
+                "Description",
+                Input::new(&self.inputs.description),
+            ))
             .child(
                 v_flex()
                     .gap_2()
@@ -14238,6 +14258,7 @@ mod tests {
             key_passphrase: String::new(),
             password_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
+            description: String::new(),
         };
         let group = SavedHostGroup {
             label: "Operations".to_string(),
@@ -14320,6 +14341,7 @@ mod tests {
             key_passphrase: String::new(),
             password_credential_id: None,
             auth_mode: AuthMode::Password,
+            description: String::new(),
         };
         let group = SavedHostGroup {
             label: "Operations".to_string(),

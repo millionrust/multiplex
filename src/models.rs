@@ -194,6 +194,8 @@ pub struct HostProfile {
     pub password_credential_id: Option<String>,
     #[serde(default)]
     pub source: ProfileSource,
+    #[serde(default)]
+    pub description: String,
 }
 
 impl HostProfile {
@@ -1145,6 +1147,7 @@ pub struct DraftProfile {
     pub key_passphrase: String,
     pub password_credential_id: Option<String>,
     pub auth_mode: AuthMode,
+    pub description: String,
 }
 
 impl DraftProfile {
@@ -1177,6 +1180,7 @@ impl DraftProfile {
             key_passphrase: String::new(),
             password_credential_id: profile.password_credential_id.clone(),
             auth_mode: profile.auth_mode,
+            description: profile.description.clone(),
         }
     }
 
@@ -1354,6 +1358,7 @@ impl DraftProfile {
                 None
             },
             source: ProfileSource::User,
+            description: self.description.trim().to_string(),
         })
     }
 
@@ -2400,9 +2405,13 @@ mod tests {
             key_passphrase: String::new(),
             password_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
+            description: "  Primary blue-green node  ".to_string(),
         };
 
         let profile = draft.to_profile("profile-1".to_string()).unwrap();
+        assert_eq!(profile.description, "Primary blue-green node");
+        let round_trip = DraftProfile::from_profile(&profile);
+        assert_eq!(round_trip.description, "Primary blue-green node");
         assert!(profile.favorite);
         assert_eq!(profile.identity_id.as_deref(), Some("identity-123"));
         assert_eq!(profile.startup_directory.as_deref(), Some("/var/www/app"));
@@ -2449,6 +2458,7 @@ mod tests {
             key_passphrase: String::new(),
             password_credential_id: None,
             auth_mode: AuthMode::Password,
+            description: String::new(),
         };
 
         let profile = draft.to_profile("profile-2".to_string()).unwrap();
@@ -2484,6 +2494,7 @@ mod tests {
                 key_passphrase: String::new(),
                 password_credential_id: None,
                 auth_mode: AuthMode::Password,
+                description: String::new(),
             }
             .to_profile("profile-zeta".to_string())
             .unwrap(),
@@ -2514,6 +2525,7 @@ mod tests {
                 key_passphrase: String::new(),
                 password_credential_id: None,
                 auth_mode: AuthMode::Password,
+                description: String::new(),
             }
             .to_profile("profile-alpha".to_string())
             .unwrap(),
@@ -2594,6 +2606,7 @@ mod tests {
             key_passphrase: String::new(),
             password_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
+            description: String::new(),
         };
 
         let profile = draft.to_profile("profile-2".to_string()).unwrap();
@@ -2633,6 +2646,7 @@ mod tests {
             key_passphrase: String::new(),
             password_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
+            description: String::new(),
         };
 
         let profile = draft.to_profile("profile-dynamic".to_string()).unwrap();
@@ -2672,6 +2686,7 @@ mod tests {
             key_passphrase: String::new(),
             password_credential_id: None,
             auth_mode: AuthMode::PrivateKey,
+            description: String::new(),
         };
 
         let profile = draft.to_profile("profile-remote".to_string()).unwrap();
@@ -2714,6 +2729,7 @@ mod tests {
             }),
             password_credential_id: None,
             source: ProfileSource::User,
+            description: String::new(),
         };
 
         profile.normalize();
