@@ -11412,21 +11412,21 @@ impl TermiRustApp {
                     ),
             )
             .child(
-                v_flex().flex_1().min_h_0().child(
-                    v_flex()
-                        .id("settings-scroll")
-                        .gap_4()
-                        .child(appearance_card)
-                        .child(terminal_card)
-                        .child(startup_card)
-                        .child(sessions_card)
-                        .child(local_shell_card)
-                        .child(shortcuts_card)
-                        .child(portable_card)
-                        .child(encrypted_card)
-                        .child(sync_card)
-                        .overflow_y_scrollbar(),
-                ),
+                v_flex()
+                    .id("settings-scroll")
+                    .flex_1()
+                    .min_h_0()
+                    .gap_4()
+                    .overflow_y_scroll()
+                    .child(appearance_card)
+                    .child(terminal_card)
+                    .child(startup_card)
+                    .child(sessions_card)
+                    .child(local_shell_card)
+                    .child(shortcuts_card)
+                    .child(portable_card)
+                    .child(encrypted_card)
+                    .child(sync_card),
             )
     }
 
