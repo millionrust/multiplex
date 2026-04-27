@@ -374,6 +374,16 @@ struct PendingPaste {
     text: String,
 }
 
+struct SnippetPromptField {
+    name: String,
+    input: Entity<InputState>,
+}
+
+struct PendingSnippetPrompts {
+    command: String,
+    fields: Vec<SnippetPromptField>,
+}
+
 struct WorkspaceTab {
     id: u64,
     title: String,
@@ -611,6 +621,7 @@ pub struct TermiRustApp {
     pane_rename_id: Option<u64>,
     pane_rename_input: Entity<InputState>,
     pending_paste: Option<PendingPaste>,
+    pending_snippet_prompts: Option<PendingSnippetPrompts>,
     _window_bounds_subscription: Option<Subscription>,
 }
 
@@ -706,6 +717,7 @@ impl TermiRustApp {
             pane_rename_id: None,
             pane_rename_input: cx.new(|cx| InputState::new(window, cx).placeholder("Pane name")),
             pending_paste: None,
+            pending_snippet_prompts: None,
             _window_bounds_subscription: None,
         };
 
@@ -2067,13 +2079,74 @@ impl TermiRustApp {
         false
     }
 
-    fn run_snippet_command(&mut self, command: &str, cx: &mut Context<Self>) {
+    fn run_snippet_command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let prompts = extract_snippet_prompt_names(command);
+        if !prompts.is_empty() {
+            if self.active_pane().is_none() {
+                self.error_message =
+                    "Open a terminal session before running a snippet with prompts.".to_string();
+                cx.notify();
+                return;
+            }
+            let fields: Vec<SnippetPromptField> = prompts
+                .iter()
+                .map(|name| {
+                    let placeholder = format!("Value for {name}");
+                    SnippetPromptField {
+                        name: name.clone(),
+                        input: cx
+                            .new(|cx| InputState::new(window, cx).placeholder(placeholder.clone())),
+                    }
+                })
+                .collect();
+            self.pending_snippet_prompts = Some(PendingSnippetPrompts {
+                command: command.to_string(),
+                fields,
+            });
+            self.status_message = format!(
+                "Snippet needs {} input(s). Fill the panel and Run.",
+                prompts.len()
+            );
+            self.error_message.clear();
+            if let Some(prompts) = self.pending_snippet_prompts.as_ref() {
+                if let Some(first) = prompts.fields.first() {
+                    first.input.read(cx).focus_handle(cx).focus(window);
+                }
+            }
+            cx.notify();
+            return;
+        }
+        self.run_resolved_snippet(command.to_string(), cx);
+    }
+
+    fn run_resolved_snippet(&mut self, command: String, cx: &mut Context<Self>) {
         let resolved = self
             .active_pane()
-            .map(|pane| substitute_snippet_placeholders(command, &pane.request))
-            .unwrap_or_else(|| command.to_string());
+            .map(|pane| substitute_snippet_placeholders(&command, &pane.request))
+            .unwrap_or_else(|| command.clone());
         let _ =
             self.run_command_in_active_pane(&resolved, "Snippet sent to the active session.", cx);
+    }
+
+    fn confirm_snippet_prompts(&mut self, cx: &mut Context<Self>) {
+        let Some(pending) = self.pending_snippet_prompts.take() else {
+            return;
+        };
+        let values: Vec<(String, String)> = pending
+            .fields
+            .iter()
+            .map(|field| (field.name.clone(), field.input.read(cx).value().to_string()))
+            .collect();
+        let resolved_prompts = substitute_snippet_prompts(&pending.command, &values);
+        self.run_resolved_snippet(resolved_prompts, cx);
+    }
+
+    fn cancel_snippet_prompts(&mut self, cx: &mut Context<Self>) {
+        if self.pending_snippet_prompts.take().is_some() {
+            self.status_message = "Snippet prompts cancelled.".to_string();
+            self.error_message.clear();
+            cx.notify();
+        }
     }
 
     fn send_startup_actions(&mut self, session_id: u64) -> bool {
@@ -9937,7 +10010,7 @@ impl TermiRustApp {
                     .text_size(px(12.))
                     .line_height(relative(1.5))
                     .text_color(theme::text_muted())
-                    .child("Save repeatable commands, pin the important ones, and send them to the active terminal in one click. Use {{HOST}}, {{USER}}, {{PORT}}, {{TITLE}}, or {{ADDRESS}} placeholders — they expand against the active session before the command is sent."),
+                    .child("Save repeatable commands, pin the important ones, and send them to the active terminal in one click. Use {{HOST}}, {{USER}}, {{PORT}}, {{TITLE}}, or {{ADDRESS}} for auto-substitution; use {{?Name}} to ask for a value at run time — a small prompt panel opens in the workspace before the command is sent."),
             )
             .child(
                 v_flex()
@@ -10132,8 +10205,8 @@ impl TermiRustApp {
                                                 _cx,
                                             ))
                                             .label("Run")
-                                            .on_click(_cx.listener(move |this, _, _, cx| {
-                                                this.run_snippet_command(&run_command, cx);
+                                            .on_click(_cx.listener(move |this, _, window, cx| {
+                                                this.run_snippet_command(&run_command, window, cx);
                                             })),
                                     ),
                             )
@@ -11584,8 +11657,8 @@ impl TermiRustApp {
                                         cx,
                                     ))
                                     .label(snippet.label.clone())
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.run_snippet_command(&command, cx);
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.run_snippet_command(&command, window, cx);
                                     }))
                             }),
                     ),
@@ -11711,8 +11784,8 @@ impl TermiRustApp {
                                 ))
                                 .label(snippet.display_name())
                                 .icon(IconName::BookOpen)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.run_snippet_command(&command, cx);
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.run_snippet_command(&command, window, cx);
                                 }))
                                 .into_any_element()
                         }),
@@ -12615,6 +12688,9 @@ impl TermiRustApp {
             .flex_1()
             .bg(theme::terminal_bg())
             .child(self.render_workspace_toolbar(window, cx))
+            .when_some(self.render_snippet_prompts_panel(cx), |this, panel| {
+                this.child(panel)
+            })
             .when_some(self.render_paste_confirmation(cx), |this, banner| {
                 this.child(banner)
             })
@@ -12627,6 +12703,96 @@ impl TermiRustApp {
                 |this, autocomplete| this.child(autocomplete),
             )
             .child(content)
+    }
+
+    fn render_snippet_prompts_panel(&self, cx: &Context<Self>) -> Option<Div> {
+        let prompts = self.pending_snippet_prompts.as_ref()?;
+        let preview: SharedString = prompts
+            .command
+            .lines()
+            .next()
+            .unwrap_or("")
+            .chars()
+            .take(120)
+            .collect::<String>()
+            .into();
+        Some(
+            v_flex()
+                .w_full()
+                .px(px(18.))
+                .py(px(10.))
+                .gap_2()
+                .bg(theme::with_alpha(theme::accent(), 0.16))
+                .border_b_1()
+                .border_color(theme::with_alpha(theme::accent(), 0.45))
+                .child(
+                    h_flex()
+                        .justify_between()
+                        .items_center()
+                        .child(
+                            v_flex()
+                                .gap_0p5()
+                                .child(
+                                    div()
+                                        .text_size(px(12.))
+                                        .font_semibold()
+                                        .text_color(theme::text_on_dark())
+                                        .child("Snippet prompts"),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(10.))
+                                        .text_color(theme::text_muted_dark())
+                                        .child(format!("Command: {preview}")),
+                                ),
+                        )
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("snippet-prompts-run")
+                                        .small()
+                                        .custom(Self::action_button_style(
+                                            theme::ActionTone::Accent,
+                                            cx,
+                                        ))
+                                        .label("Run")
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.confirm_snippet_prompts(cx);
+                                        })),
+                                )
+                                .child(
+                                    Button::new("snippet-prompts-cancel")
+                                        .small()
+                                        .custom(Self::action_button_style(
+                                            theme::ActionTone::Neutral,
+                                            cx,
+                                        ))
+                                        .label("Cancel")
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.cancel_snippet_prompts(cx);
+                                        })),
+                                ),
+                        ),
+                )
+                .child(
+                    v_flex()
+                        .gap_2()
+                        .children(prompts.fields.iter().map(|field| {
+                            v_flex()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .font_medium()
+                                        .text_color(theme::text_on_dark())
+                                        .child(field.name.clone()),
+                                )
+                                .child(Input::new(&field.input).small())
+                                .into_any_element()
+                        })),
+                ),
+        )
     }
 
     fn render_paste_confirmation(&self, cx: &Context<Self>) -> Option<Div> {
@@ -12867,6 +13033,14 @@ impl TermiRustApp {
             }
             if self.pane_rename_id.is_some() {
                 self.cancel_pane_rename(window, cx);
+                return true;
+            }
+            if self.pending_snippet_prompts.is_some() {
+                self.cancel_snippet_prompts(cx);
+                return true;
+            }
+            if self.pending_paste.is_some() {
+                self.cancel_pending_paste(cx);
                 return true;
             }
             if self.show_editor_panel {
@@ -14968,6 +15142,46 @@ fn format_count_label(count: usize, singular: &str, plural: &str) -> String {
     }
 }
 
+fn extract_snippet_prompt_names(command: &str) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    let mut rest = command;
+    while let Some(start) = rest.find("{{?") {
+        let after = &rest[start + 3..];
+        let Some(end_rel) = after.find("}}") else {
+            break;
+        };
+        let name = after[..end_rel].trim().to_string();
+        if !name.is_empty() && !names.iter().any(|n| n == &name) {
+            names.push(name);
+        }
+        rest = &after[end_rel + 2..];
+    }
+    names
+}
+
+fn substitute_snippet_prompts(command: &str, values: &[(String, String)]) -> String {
+    let mut out = String::with_capacity(command.len());
+    let mut rest = command;
+    while let Some(start) = rest.find("{{?") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 3..];
+        let Some(end_rel) = after.find("}}") else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        let name = after[..end_rel].trim();
+        let replacement = values
+            .iter()
+            .find(|(prompt, _)| prompt == name)
+            .map(|(_, value)| value.clone())
+            .unwrap_or_default();
+        out.push_str(&replacement);
+        rest = &after[end_rel + 2..];
+    }
+    out.push_str(rest);
+    out
+}
+
 fn substitute_snippet_placeholders(command: &str, request: &ConnectRequest) -> String {
     let host = request.host.trim().to_string();
     let user = request.username.trim().to_string();
@@ -15179,15 +15393,40 @@ mod tests {
     use super::{
         AutocompleteSource, OutputSuggestionContext, PathSuggestionContext, WorkspaceIndicators,
         WorkspaceRuntimeTone, apply_group_defaults_to_draft, collect_autocomplete_candidates,
-        collect_command_palette_candidates, format_relative_time_for,
+        collect_command_palette_candidates, extract_snippet_prompt_names, format_relative_time_for,
         shell_command_requires_continuation, shell_single_quote, startup_bytes_for_request,
-        substitute_snippet_placeholders, workspace_runtime_summary,
+        substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
     };
     use crate::models::{
         AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, LocalPortForward,
         PortForwardKind, PortForwardRule, SavedHostGroup, SavedIdentity,
     };
     use crate::sftp::RemoteFileEntry;
+
+    #[test]
+    fn snippet_prompts_extract_unique_named_placeholders() {
+        let cmd = "echo {{?Name}} and {{?Place}} again {{?Name}} {{?  Place }}";
+        let names = extract_snippet_prompt_names(cmd);
+        assert_eq!(names, vec!["Name".to_string(), "Place".to_string()]);
+    }
+
+    #[test]
+    fn snippet_prompt_substitution_fills_named_values() {
+        let cmd = "kubectl --context {{?Cluster}} get pods -n {{?Namespace}}";
+        let values = vec![
+            ("Cluster".to_string(), "prod-east".to_string()),
+            ("Namespace".to_string(), "payments".to_string()),
+        ];
+        assert_eq!(
+            substitute_snippet_prompts(cmd, &values),
+            "kubectl --context prod-east get pods -n payments"
+        );
+        // Missing values become empty strings, unbalanced braces preserved.
+        assert_eq!(
+            substitute_snippet_prompts("a {{?X}} b {{?Y}} c {{", &[]),
+            "a  b  c {{"
+        );
+    }
 
     #[test]
     fn snippet_placeholders_substitute_known_names_only() {
