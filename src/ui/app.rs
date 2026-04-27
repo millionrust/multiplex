@@ -11417,9 +11417,7 @@ impl TermiRustApp {
                 v_flex().flex_1().min_h_0().child(
                     v_flex()
                         .id("settings-scroll")
-                        .size_full()
                         .gap_4()
-                        .overflow_y_scroll()
                         .track_scroll(&self.settings_scroll)
                         .child(appearance_card)
                         .child(terminal_card)
@@ -11429,7 +11427,8 @@ impl TermiRustApp {
                         .child(shortcuts_card)
                         .child(portable_card)
                         .child(encrypted_card)
-                        .child(sync_card),
+                        .child(sync_card)
+                        .overflow_y_scrollbar(),
                 ),
             )
     }
