@@ -627,6 +627,8 @@ pub struct TermiRustApp {
     pane_rename_input: Entity<InputState>,
     pending_paste: Option<PendingPaste>,
     pending_snippet_prompts: Option<PendingSnippetPrompts>,
+    sync_pull_force: bool,
+    sync_pull_pending_warning: bool,
     _window_bounds_subscription: Option<Subscription>,
 }
 
@@ -723,6 +725,8 @@ impl TermiRustApp {
             pane_rename_input: cx.new(|cx| InputState::new(window, cx).placeholder("Pane name")),
             pending_paste: None,
             pending_snippet_prompts: None,
+            sync_pull_force: false,
+            sync_pull_pending_warning: false,
             _window_bounds_subscription: None,
         };
 
@@ -3223,6 +3227,16 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn sync_bundle_modified_at(&self) -> Option<u64> {
+        let target = self.sync_bundle_path()?;
+        let metadata = std::fs::metadata(&target).ok()?;
+        let modified = metadata.modified().ok()?;
+        modified
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|d| d.as_millis() as u64)
+    }
+
     fn pull_from_sync_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(target) = self.sync_bundle_path() else {
             self.error_message =
@@ -3251,6 +3265,25 @@ impl TermiRustApp {
             cx.notify();
             return;
         }
+        if !self.sync_pull_force {
+            if let (Some(remote_at), Some(pushed_at)) = (
+                self.sync_bundle_modified_at(),
+                self.saved.settings.sync_last_pushed_at,
+            ) {
+                if pushed_at > remote_at + 5_000 {
+                    self.sync_pull_pending_warning = true;
+                    self.error_message = format!(
+                        "Conflict: this machine's last push ({}) is newer than the bundle in the sync folder ({}). Confirm to overwrite local state.",
+                        format_relative_time(pushed_at),
+                        format_relative_time(remote_at),
+                    );
+                    cx.notify();
+                    return;
+                }
+            }
+        }
+        self.sync_pull_force = false;
+        self.sync_pull_pending_warning = false;
         match import_encrypted_portable_data_bundle(
             &target,
             &mut self.saved,
@@ -3277,6 +3310,11 @@ impl TermiRustApp {
             }
         }
         cx.notify();
+    }
+
+    fn force_pull_from_sync_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.sync_pull_force = true;
+        self.pull_from_sync_folder(window, cx);
     }
 
     fn export_encrypted_portable_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -11251,6 +11289,20 @@ impl TermiRustApp {
                                     this.pull_from_sync_folder(window, cx);
                                 })),
                         )
+                        .when(self.sync_pull_pending_warning, |this| {
+                            this.child(
+                                Button::new("settings-sync-pull-force")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Danger,
+                                        cx,
+                                    ))
+                                    .label("Force Overwrite")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.force_pull_from_sync_folder(window, cx);
+                                    })),
+                            )
+                        })
                         .child(
                             div()
                                 .text_size(px(10.))

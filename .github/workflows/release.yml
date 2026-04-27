@@ -1,0 +1,138 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish under (e.g. v0.1.0). Leave blank to dry-run without publishing."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.target.name }})
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: macos-aarch64
+            runner: macos-14
+            triple: aarch64-apple-darwin
+            bundle: macos
+          - name: macos-x86_64
+            runner: macos-13
+            triple: x86_64-apple-darwin
+            bundle: macos
+          - name: linux-x86_64
+            runner: ubuntu-22.04
+            triple: x86_64-unknown-linux-gnu
+            bundle: linux
+          - name: windows-x86_64
+            runner: windows-2022
+            triple: x86_64-pc-windows-msvc
+            bundle: windows
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target.triple }}
+
+      - name: Cache cargo registry & target
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release-${{ matrix.target.name }}
+
+      - name: Linux build dependencies
+        if: matrix.target.bundle == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxkbcommon-dev libssl-dev libfontconfig1-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            pkg-config
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target.triple }} --locked
+
+      - name: Install cargo-bundle (macOS / Linux)
+        if: matrix.target.bundle != 'windows'
+        run: cargo install cargo-bundle --locked || true
+
+      - name: Bundle macOS .app
+        if: matrix.target.bundle == 'macos'
+        run: |
+          cargo bundle --release --target ${{ matrix.target.triple }} || true
+          mkdir -p dist
+          if [ -d "target/${{ matrix.target.triple }}/release/bundle/osx/TermiRust.app" ]; then
+            ditto -c -k --keepParent \
+              "target/${{ matrix.target.triple }}/release/bundle/osx/TermiRust.app" \
+              "dist/TermiRust-${{ matrix.target.name }}.zip"
+          else
+            # Fallback: ship the bare binary if bundling failed (e.g. icon missing).
+            cp "target/${{ matrix.target.triple }}/release/termirust" \
+               "dist/termirust-${{ matrix.target.name }}"
+          fi
+
+      - name: Bundle Linux deb + binary
+        if: matrix.target.bundle == 'linux'
+        run: |
+          mkdir -p dist
+          cargo bundle --release --target ${{ matrix.target.triple }} --format deb || true
+          DEB=$(find target/${{ matrix.target.triple }}/release/bundle/deb -name "*.deb" | head -n1 || true)
+          if [ -n "$DEB" ]; then
+            cp "$DEB" "dist/$(basename $DEB)"
+          fi
+          cp "target/${{ matrix.target.triple }}/release/termirust" \
+             "dist/termirust-${{ matrix.target.name }}"
+
+      - name: Package Windows artifact
+        if: matrix.target.bundle == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "target/${{ matrix.target.triple }}/release/termirust.exe" `
+            "dist/termirust-${{ matrix.target.name }}.exe"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: termirust-${{ matrix.target.name }}
+          path: dist/*
+
+  release:
+    name: publish
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Flatten artifact directories
+        run: |
+          mkdir -p flat
+          find dist -mindepth 2 -type f -exec cp -t flat {} +
+          ls -la flat
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: flat/*
+          draft: false
+          prerelease: false
