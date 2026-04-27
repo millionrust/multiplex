@@ -251,6 +251,7 @@ struct SettingsInputs {
     import_backup_passphrase: Entity<InputState>,
     default_ssh_startup_directory: Entity<InputState>,
     terminal_font_family: Entity<InputState>,
+    sync_folder_input: Entity<InputState>,
 }
 
 struct VaultInputs {
@@ -300,6 +301,10 @@ impl SettingsInputs {
                 .new(|cx| InputState::new(window, cx).placeholder("e.g. /home/user/projects")),
             terminal_font_family: cx.new(|cx| {
                 InputState::new(window, cx).placeholder("e.g. JetBrains Mono, Fira Code")
+            }),
+            sync_folder_input: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder("e.g. ~/Dropbox/TermiRust or any cloud-synced folder")
             }),
         }
     }
@@ -800,6 +805,16 @@ impl TermiRustApp {
             self.saved
                 .settings
                 .terminal_font_family
+                .clone()
+                .unwrap_or_default(),
+            window,
+            cx,
+        );
+        Self::set_input_value(
+            &self.settings_inputs.sync_folder_input,
+            self.saved
+                .settings
+                .sync_folder_path
                 .clone()
                 .unwrap_or_default(),
             window,
@@ -3094,6 +3109,171 @@ impl TermiRustApp {
             }
             Err(error) => {
                 self.error_message = format!("Failed to export data bundle: {error:#}");
+            }
+        }
+        cx.notify();
+    }
+
+    fn pick_sync_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(path) = FileDialog::new().pick_folder() else {
+            return;
+        };
+        let path_str = path.display().to_string();
+        self.saved.settings.sync_folder_path = Some(path_str.clone());
+        self.save_settings();
+        Self::set_input_value(
+            &self.settings_inputs.sync_folder_input,
+            path_str.clone(),
+            window,
+            cx,
+        );
+        self.status_message = format!("Sync folder set to {path_str}.");
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn save_sync_folder_input(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let entered = self
+            .settings_inputs
+            .sync_folder_input
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        self.saved.settings.sync_folder_path = (!entered.is_empty()).then(|| entered.clone());
+        self.save_settings();
+        self.status_message = if entered.is_empty() {
+            "Sync folder cleared.".to_string()
+        } else {
+            format!("Sync folder set to {entered}.")
+        };
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn sync_bundle_path(&self) -> Option<std::path::PathBuf> {
+        self.saved
+            .settings
+            .sync_folder_path
+            .as_deref()
+            .filter(|p| !p.trim().is_empty())
+            .map(|p| std::path::Path::new(p).join("termirust-vault.encrypted.json"))
+    }
+
+    fn push_to_sync_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(target) = self.sync_bundle_path() else {
+            self.error_message =
+                "Pick a sync folder before pushing the encrypted bundle.".to_string();
+            cx.notify();
+            return;
+        };
+        let passphrase = self
+            .settings_inputs
+            .export_backup_passphrase
+            .read(cx)
+            .value()
+            .to_string();
+        let confirm = self
+            .settings_inputs
+            .export_backup_confirm
+            .read(cx)
+            .value()
+            .to_string();
+        if passphrase.trim().is_empty() {
+            self.error_message =
+                "Set a backup passphrase in the Encrypted Backup card before pushing.".to_string();
+            cx.notify();
+            return;
+        }
+        if passphrase != confirm {
+            self.error_message = "Backup passphrase confirmation does not match.".to_string();
+            cx.notify();
+            return;
+        }
+        if let Some(parent) = target.parent() {
+            if let Err(error) = std::fs::create_dir_all(parent) {
+                self.error_message = format!("Unable to create sync folder: {error}");
+                cx.notify();
+                return;
+            }
+        }
+        match export_encrypted_portable_data_bundle(
+            &target,
+            &self.saved,
+            &self.known_hosts,
+            &passphrase,
+        ) {
+            Ok(report) => {
+                self.clear_backup_inputs(window, cx);
+                self.saved.settings.sync_last_pushed_at = Some(current_unix_millis());
+                self.save_settings();
+                self.status_message = format!(
+                    "Synced to {}: {} hosts, {} identities, {} snippets.",
+                    target.display(),
+                    report.profiles,
+                    report.identities,
+                    report.snippets
+                );
+                self.error_message.clear();
+            }
+            Err(error) => {
+                self.error_message = format!("Failed to push to sync folder: {error:#}");
+            }
+        }
+        cx.notify();
+    }
+
+    fn pull_from_sync_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(target) = self.sync_bundle_path() else {
+            self.error_message =
+                "Pick a sync folder before pulling the encrypted bundle.".to_string();
+            cx.notify();
+            return;
+        };
+        if !target.exists() {
+            self.error_message = format!(
+                "No bundle to pull at {} - push from another machine first.",
+                target.display()
+            );
+            cx.notify();
+            return;
+        }
+        let passphrase = self
+            .settings_inputs
+            .import_backup_passphrase
+            .read(cx)
+            .value()
+            .to_string();
+        if passphrase.trim().is_empty() {
+            self.error_message =
+                "Enter the backup passphrase in the Encrypted Backup card before pulling."
+                    .to_string();
+            cx.notify();
+            return;
+        }
+        match import_encrypted_portable_data_bundle(
+            &target,
+            &mut self.saved,
+            &self.known_hosts,
+            &passphrase,
+        ) {
+            Ok(report) => {
+                let _ = save_saved_state(&self.saved);
+                self.load_settings_inputs(window, cx);
+                theme::set_theme_preset(self.saved.settings.theme_preset);
+                self.saved.settings.sync_last_pulled_at = Some(current_unix_millis());
+                self.save_settings();
+                self.status_message = format!(
+                    "Pulled from {}: merged {} hosts, {} identities, {} snippets.",
+                    target.display(),
+                    report.profiles,
+                    report.identities,
+                    report.snippets
+                );
+                self.error_message.clear();
+            }
+            Err(error) => {
+                self.error_message = format!("Failed to pull from sync folder: {error:#}");
             }
         }
         cx.notify();
@@ -10993,6 +11173,109 @@ impl TermiRustApp {
                 ),
         );
 
+        let last_pushed = self
+            .saved
+            .settings
+            .sync_last_pushed_at
+            .map(|ts| format!("Last push: {}", format_relative_time(ts)))
+            .unwrap_or_else(|| "Never pushed.".to_string());
+        let last_pulled = self
+            .saved
+            .settings
+            .sync_last_pulled_at
+            .map(|ts| format!("Last pull: {}", format_relative_time(ts)))
+            .unwrap_or_else(|| "Never pulled.".to_string());
+        let sync_card = self.settings_section_card(
+            "Shared-folder sync",
+            "Cross-device sync without a server. Point at a Dropbox / iCloud Drive / Google Drive / Syncthing folder. Push writes the encrypted bundle; Pull merges the latest one. Your existing cloud drive carries the bundle between machines, so the encrypted file never lives on our servers.",
+            v_flex()
+                .gap_3()
+                .child(self.form_field(
+                    "Sync Folder",
+                    Input::new(&self.settings_inputs.sync_folder_input),
+                ))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Button::new("settings-sync-pick-folder")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                ))
+                                .label("Choose Folder…")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.pick_sync_folder(window, cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("settings-sync-save-folder")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                ))
+                                .label("Save Folder Path")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.save_sync_folder_input(window, cx);
+                                })),
+                        ),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Button::new("settings-sync-push")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                ))
+                                .label("Push to Folder")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.push_to_sync_folder(window, cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("settings-sync-pull")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::AccentSoft,
+                                    cx,
+                                ))
+                                .label("Pull from Folder")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.pull_from_sync_folder(window, cx);
+                                })),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(theme::text_muted())
+                                .child("Push reuses the passphrase set in Encrypted Backup; Pull uses the import passphrase."),
+                        ),
+                )
+                .child(
+                    h_flex()
+                        .gap_4()
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(theme::text_muted())
+                                .child(last_pushed),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(theme::text_muted())
+                                .child(last_pulled),
+                        ),
+                ),
+        );
+
         let shortcuts_card = self.settings_section_card(
             "Keyboard Shortcuts",
             "Every shortcut available right now. Anything that uses a modifier follows your platform convention (Cmd on macOS, Ctrl elsewhere).",
@@ -11084,7 +11367,8 @@ impl TermiRustApp {
                     .child(local_shell_card)
                     .child(shortcuts_card)
                     .child(portable_card)
-                    .child(encrypted_card),
+                    .child(encrypted_card)
+                    .child(sync_card),
             )
     }
 

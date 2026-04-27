@@ -504,6 +504,12 @@ pub struct AppSettings {
     pub auto_reconnect_delay_secs: u8,
     #[serde(default = "default_ssh_keepalive_secs")]
     pub ssh_keepalive_secs: u16,
+    #[serde(default)]
+    pub sync_folder_path: Option<String>,
+    #[serde(default)]
+    pub sync_last_pushed_at: Option<u64>,
+    #[serde(default)]
+    pub sync_last_pulled_at: Option<u64>,
 }
 
 fn default_confirm_multiline_paste() -> bool {
@@ -538,6 +544,9 @@ impl Default for AppSettings {
             auto_reconnect_attempts: default_auto_reconnect_attempts(),
             auto_reconnect_delay_secs: default_auto_reconnect_delay_secs(),
             ssh_keepalive_secs: default_ssh_keepalive_secs(),
+            sync_folder_path: None,
+            sync_last_pushed_at: None,
+            sync_last_pulled_at: None,
         }
     }
 }
@@ -567,6 +576,11 @@ impl AppSettings {
         self.auto_reconnect_attempts = self.auto_reconnect_attempts.min(10);
         self.auto_reconnect_delay_secs = self.auto_reconnect_delay_secs.clamp(1, 60);
         self.ssh_keepalive_secs = self.ssh_keepalive_secs.min(300);
+        self.sync_folder_path = self
+            .sync_folder_path
+            .take()
+            .map(|path| path.trim().to_string())
+            .filter(|path| !path.is_empty());
     }
 }
 
