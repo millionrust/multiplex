@@ -2521,6 +2521,7 @@ impl TermiRustApp {
                         .join(" "),
                     vault_label,
                     jump_host_label,
+                    profile.description.clone(),
                 ];
                 haystacks
                     .iter()
@@ -3287,6 +3288,39 @@ impl TermiRustApp {
             .iter()
             .find(|workspace| workspace.pane_ids.contains(&pane_id))
             .map(|workspace| workspace.id)
+    }
+
+    fn cycle_active_workspace(
+        &mut self,
+        forward: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.workspaces.len() < 2 {
+            return false;
+        }
+        let Some(current) = self.active_workspace_id else {
+            if let Some(first) = self.workspaces.first().map(|w| w.id) {
+                self.activate_workspace(first, window, cx);
+                return true;
+            }
+            return false;
+        };
+        let Some(index) = self.workspaces.iter().position(|w| w.id == current) else {
+            return false;
+        };
+        let count = self.workspaces.len();
+        let next = if forward {
+            (index + 1) % count
+        } else {
+            (index + count - 1) % count
+        };
+        let next_id = self.workspaces[next].id;
+        if next_id != current {
+            self.activate_workspace(next_id, window, cx);
+            return true;
+        }
+        false
     }
 
     fn activate_workspace(
@@ -10179,6 +10213,8 @@ impl TermiRustApp {
                         ("Cmd+F", "Search the active terminal"),
                         ("Cmd+W", "Close the active workspace tab"),
                         ("Cmd+D", "Duplicate the active pane"),
+                        ("Cmd+Alt+Right", "Cycle to the next workspace tab"),
+                        ("Cmd+Alt+Left", "Cycle to the previous workspace tab"),
                         ("Cmd+Shift+B", "Toggle broadcast input across panes"),
                         ("Cmd+Shift+L", "Clear the active pane screen and scrollback"),
                         ("Cmd+Shift+F", "Open the workspace files browser"),
@@ -11904,6 +11940,22 @@ impl TermiRustApp {
 
         if !event.keystroke.modifiers.secondary() {
             return false;
+        }
+
+        if event.keystroke.modifiers.alt && self.workspaces.len() > 1 {
+            match event.keystroke.key.as_str() {
+                "right" | "tab" => {
+                    if self.cycle_active_workspace(true, window, cx) {
+                        return true;
+                    }
+                }
+                "left" => {
+                    if self.cycle_active_workspace(false, window, cx) {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
         }
 
         if event.keystroke.modifiers.shift {
