@@ -11,6 +11,9 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
 - Quick connect: type `user@host` or `ssh user@host:port` in the search bar.
 - Reconnect button on disconnected/errored panes and workspace toolbar.
 - Optional automatic reconnect after non-user-initiated SSH drops, configurable in Settings.
+- Configurable SSH keep-alive ping interval to keep idle sessions alive across NAT/load-balancer timeouts.
+- Snippet commands accept {{HOST}}, {{USER}}, {{PORT}}, {{TITLE}}, {{ADDRESS}} placeholders that expand against the active pane on send.
+- Per-host color tag flows into the host card avatar and the connected pane status dot.
 - Per-workspace Broadcast Input toggle that fans typed/pasted bytes out to every connected pane.
 - Per-pane Clear and Duplicate actions, plus Cmd+D / Cmd+Shift+B / Cmd+Shift+L / Cmd+Alt+arrow keyboard shortcuts.
 - Terminal surface supports:

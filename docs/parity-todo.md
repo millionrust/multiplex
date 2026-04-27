@@ -16,6 +16,11 @@ This is the working parity checklist for the native Rust desktop client. Complet
   - per-pane Clear (scrollback + remote screen) and Duplicate actions, alongside keyboard shortcuts (Cmd+D duplicate, Cmd+Shift+B broadcast, Cmd+Shift+L clear, Cmd+Alt+Left/Right cycle tabs)
 - Sessions:
   - SSH panes auto-reconnect after non-user-initiated drops, with configurable attempt count and delay (Off / 1 / 3 / 5 / 10 attempts, 2/5/10/30 second delays); local shells are deliberately excluded
+  - SSH keep-alive (Off / 15s / 30s / 60s / 120s) prevents NAT and load-balancer timeouts on idle sessions
+- Snippets:
+  - {{HOST}}, {{USER}}, {{PORT}}, {{TITLE}}, {{ADDRESS}} placeholders expand against the active pane's connection request before each snippet is sent
+- Hosts (visual signaling):
+  - per-host color tag with eight presets, surfaced on the host card avatar and the connected pane status dot
 
 ## Platform And Packaging
 
