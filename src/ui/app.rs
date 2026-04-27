@@ -10131,6 +10131,9 @@ impl TermiRustApp {
                         ("Cmd+K", "Open the command palette"),
                         ("Cmd+F", "Search the active terminal"),
                         ("Cmd+W", "Close the active workspace tab"),
+                        ("Cmd+D", "Duplicate the active pane"),
+                        ("Cmd+Shift+B", "Toggle broadcast input across panes"),
+                        ("Cmd+Shift+L", "Clear the active pane screen and scrollback"),
                         ("Cmd+Shift+F", "Open the workspace files browser"),
                         ("Cmd+Shift+T", "Toggle Files / Terminal view"),
                         ("Esc", "Close dialogs or return from Files"),
@@ -11877,7 +11880,26 @@ impl TermiRustApp {
                     }
                     return true;
                 }
+                "b" => {
+                    if let Some(workspace_id) = self.active_workspace_id {
+                        self.toggle_workspace_broadcast(workspace_id, cx);
+                        return true;
+                    }
+                }
+                "l" => {
+                    if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
+                        self.clear_pane_screen(pane_id, cx);
+                        return true;
+                    }
+                }
                 _ => {}
+            }
+        }
+
+        if !event.keystroke.modifiers.shift && event.keystroke.key.as_str() == "d" {
+            if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
+                self.duplicate_pane(pane_id, window, cx);
+                return true;
             }
         }
 
