@@ -4883,6 +4883,73 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn move_pane_to_new_workspace(
+        &mut self,
+        pane_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(workspace_id) = self.workspace_id_for_pane(pane_id) else {
+            return;
+        };
+        let single_pane = self
+            .workspace(workspace_id)
+            .map(|workspace| workspace.pane_ids.len() <= 1)
+            .unwrap_or(true);
+        if single_pane {
+            self.error_message = "This pane is already in its own workspace.".to_string();
+            cx.notify();
+            return;
+        }
+        let title = self
+            .pane(pane_id)
+            .map(|pane| pane.title.clone())
+            .unwrap_or_default();
+
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
+            workspace.pane_ids.retain(|id| *id != pane_id);
+            if workspace.active_pane_id == pane_id {
+                if let Some(next) = workspace.pane_ids.last().copied() {
+                    workspace.active_pane_id = next;
+                }
+            }
+            if workspace
+                .sftp
+                .as_ref()
+                .is_some_and(|browser| browser.pane_id == pane_id)
+            {
+                workspace.sftp = None;
+                workspace.view_mode = WorkspaceViewMode::Terminal;
+            }
+        }
+
+        let new_workspace_id = self.next_workspace_id();
+        self.workspaces.push(WorkspaceTab {
+            id: new_workspace_id,
+            title,
+            pane_ids: vec![pane_id],
+            active_pane_id: pane_id,
+            unread_events: 0,
+            split_axis: SplitAxis::Horizontal,
+            view_mode: WorkspaceViewMode::Terminal,
+            sftp: None,
+            search_visible: false,
+            search_query: String::new(),
+            search_results: Vec::new(),
+            active_search_index: None,
+            broadcast_input: false,
+        });
+        self.active_workspace_id = Some(new_workspace_id);
+        self.status_message = "Pane detached into a new workspace tab.".to_string();
+        self.error_message.clear();
+        self.sync_terminal_layout(window, cx);
+        if let Some(pane) = self.pane(pane_id) {
+            pane.terminal_focus.focus(window);
+        }
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
     fn duplicate_pane(&mut self, pane_id: u64, window: &mut Window, cx: &mut Context<Self>) {
         let Some(workspace_id) = self.workspace_id_for_pane(pane_id) else {
             return;
@@ -12152,6 +12219,26 @@ impl TermiRustApp {
                                                 .on_click(cx.listener(
                                                     move |this, _, window, cx| {
                                                         this.duplicate_pane(pane_id, window, cx);
+                                                    },
+                                                )),
+                                        )
+                                    },
+                                )
+                                .when(
+                                    self.active_workspace()
+                                        .map(|workspace| workspace.pane_ids.len() > 1)
+                                        .unwrap_or(false),
+                                    |this| {
+                                        this.child(
+                                            Button::new(("detach-pane", pane.id))
+                                                .ghost()
+                                                .xsmall()
+                                                .label("Detach")
+                                                .on_click(cx.listener(
+                                                    move |this, _, window, cx| {
+                                                        this.move_pane_to_new_workspace(
+                                                            pane_id, window, cx,
+                                                        );
                                                     },
                                                 )),
                                         )
