@@ -33,29 +33,29 @@ struct ThemePalette {
 }
 
 const OCEAN: ThemePalette = ThemePalette {
-    app_bg: 0xeef1f5,
-    chrome_bg: 0x161c2b,
-    chrome_tab: 0x222a3d,
+    app_bg: 0xeaeef4,
+    chrome_bg: 0x141a28,
+    chrome_tab: 0x1f2638,
     chrome_tab_active: 0x3d4d6c,
-    library_bg: 0xf2f4f8,
+    library_bg: 0xeaeef4,
     library_sidebar: 0xffffff,
     library_card: 0xffffff,
     terminal_bg: 0x07101c,
     terminal_panel: 0x0f1825,
-    border: 0xdde2ea,
-    border_dark: 0x1f2738,
-    text_main: 0x1f2937,
+    border: 0xd2d8e2,
+    border_dark: 0x1c2334,
+    text_main: 0x111827,
     text_on_dark: 0xeef2fb,
-    text_muted: 0x6b7585,
+    text_muted: 0x5a6678,
     text_muted_dark: 0x8e9ab1,
-    accent: 0x4f87ff,
+    accent: 0x3b6fe5,
     accent_soft: 0xdbe7ff,
     focus_ring: 0x6ea0ff,
-    success: 0x44c178,
-    warning: 0xe89e3b,
-    danger: 0xe25d5d,
+    success: 0x2da765,
+    warning: 0xd7892f,
+    danger: 0xd14545,
     slate: 0x2c538d,
-    hover: 0xe6eaf1,
+    hover: 0xdee3ec,
     modal_scrim: 0x0a1322,
 };
 
@@ -237,6 +237,14 @@ pub fn card_hover_subtle() -> Hsla {
 
 pub fn pane_focus_glow() -> Hsla {
     with_alpha(accent(), 0.15)
+}
+
+pub fn card_shadow_color() -> Hsla {
+    with_alpha(color(0x0a1322), 0.06)
+}
+
+pub fn card_shadow_strong_color() -> Hsla {
+    with_alpha(color(0x0a1322), 0.10)
 }
 
 pub fn avatar_glow(accent: Hsla) -> Hsla {
