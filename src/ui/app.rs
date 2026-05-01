@@ -6699,234 +6699,141 @@ impl TermiRustApp {
             Icon::new(IconName::User)
         };
 
+        let visible_tags: Vec<String> = profile.tags.iter().take(4).cloned().collect();
+        let _ = (
+            tags,
+            identity_label,
+            jump_host_label,
+            startup_label,
+            connect_view_label,
+            scrollback_label,
+            forward_label,
+            last_connected_label,
+            protocols,
+            protocol_icon,
+        );
+
         h_flex()
-            .id(("host-card", card_ix))
+            .id(("host-row", card_ix))
+            .group(format!("host-row-group-{card_ix}"))
             .w_full()
-            .gap(px(14.))
+            .h(px(48.))
+            .gap(px(12.))
             .items_center()
-            .px(px(18.))
-            .py(px(16.))
-            .rounded(px(theme::CARD_RADIUS))
-            .bg(theme::library_card())
-            .border_1()
-            .border_color(if selected || batch_selected {
+            .pl(px(14.))
+            .pr(px(12.))
+            .rounded(px(8.))
+            .border_l_2()
+            .border_color(if selected {
                 theme::accent()
             } else {
-                theme::soft_border()
+                gpui::transparent_black()
             })
-            .shadow(vec![
-                gpui::BoxShadow {
-                    color: theme::card_shadow_color(),
-                    offset: point(px(0.), px(1.)),
-                    blur_radius: px(2.),
-                    spread_radius: px(0.),
-                },
-                gpui::BoxShadow {
-                    color: theme::card_shadow_color(),
-                    offset: point(px(0.), px(6.)),
-                    blur_radius: px(20.),
-                    spread_radius: px(-8.),
-                },
-            ])
+            .bg(if selected {
+                theme::accent_soft()
+            } else if batch_selected {
+                theme::with_alpha(theme::accent(), 0.06)
+            } else {
+                gpui::transparent_black()
+            })
             .cursor_pointer()
-            .hover(|style| {
-                style.shadow(vec![
-                    gpui::BoxShadow {
-                        color: theme::card_shadow_strong_color(),
-                        offset: point(px(0.), px(2.)),
-                        blur_radius: px(4.),
-                        spread_radius: px(0.),
-                    },
-                    gpui::BoxShadow {
-                        color: theme::card_shadow_strong_color(),
-                        offset: point(px(0.), px(12.)),
-                        blur_radius: px(28.),
-                        spread_radius: px(-6.),
-                    },
-                ])
-            })
+            .hover(|style| style.bg(theme::hover()))
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.load_profile_into_inputs(&profile_id, window, cx);
             }))
+            .child(div().size(px(8.)).rounded(px(999.)).bg(accent))
             .child(
-                div().size(px(36.)).rounded(px(10.)).bg(accent).child(
-                    div()
-                        .size_full()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            Icon::new(IconName::SquareTerminal)
-                                .size(px(16.))
-                                .text_color(theme::library_card()),
-                        ),
-                ),
+                div()
+                    .text_size(px(13.))
+                    .font_medium()
+                    .text_color(theme::text_main())
+                    .child(profile.display_name()),
             )
+            .when(profile.favorite, |this| {
+                this.child(
+                    Icon::new(IconName::Star)
+                        .size(px(12.))
+                        .text_color(theme::warning()),
+                )
+            })
             .child(
-                v_flex()
+                div()
                     .flex_1()
-                    .gap(px(2.))
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
+                    .text_size(px(12.))
+                    .text_color(theme::text_muted())
+                    .child(format!("{}@{}", profile.username, profile.endpoint())),
+            )
+            .when(!visible_tags.is_empty(), |this| {
+                this.child(
+                    h_flex().gap(px(4.)).items_center().children(
+                        visible_tags
+                            .iter()
+                            .map(|tag| {
                                 div()
-                                    .text_size(px(15.))
-                                    .font_semibold()
-                                    .text_color(theme::text_main())
-                                    .child(profile.display_name()),
-                            )
-                            .when(profile.favorite, |this| {
-                                this.child(
-                                    Icon::new(IconName::Star)
-                                        .size(px(12.))
-                                        .text_color(theme::warning()),
-                                )
-                            })
-                            .when(batch_selected, |this| {
-                                this.child(self.status_badge(
-                                    "Selected",
-                                    theme::with_alpha(theme::success(), 0.16),
-                                    theme::success(),
-                                ))
-                            })
-                            .when(!group_label.is_empty(), |this| {
-                                this.child(self.status_badge(
-                                    group_label.clone(),
-                                    theme::with_alpha(theme::slate(), 0.12),
-                                    theme::slate(),
-                                ))
-                            }),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .text_color(theme::text_muted())
-                            .child(format!("{}  •  {}", profile.endpoint(), profile.username)),
-                    )
-                    .child({
-                        let mut chips: Vec<String> = Vec::new();
-                        chips.push(protocols.to_string());
-                        if let Some(label) = identity_label.clone() {
-                            chips.push(label);
-                        }
-                        if let Some(label) = jump_host_label.clone() {
-                            chips.push(label);
-                        }
-                        if startup_label.is_some() {
-                            chips.push("startup script".to_string());
-                        }
-                        if let Some(label) = scrollback_label.clone() {
-                            chips.push(label.to_lowercase());
-                        }
-                        if let Some(label) = forward_label.clone() {
-                            chips.push(label.to_lowercase());
-                        }
-                        if connect_view_label.is_some() {
-                            chips.push("files first".to_string());
-                        }
-                        if profile.source == ProfileSource::SshConfig {
-                            chips.push("ssh_config".to_string());
-                        }
-                        let line = chips.join("  •  ");
-                        let last = last_connected_label
-                            .clone()
-                            .map(|s| s.to_lowercase())
-                            .unwrap_or_default();
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(protocol_icon.size(px(10.)).text_color(theme::text_muted()))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .text_size(px(12.))
+                                    .px(px(7.))
+                                    .py(px(2.))
+                                    .rounded(px(4.))
+                                    .bg(theme::with_alpha(theme::hover(), 0.8))
+                                    .text_size(px(11.))
                                     .text_color(theme::text_muted())
-                                    .child(line),
-                            )
-                            .when(!last.is_empty(), |this| {
-                                this.child(
-                                    div()
-                                        .text_size(px(12.))
-                                        .text_color(theme::text_muted())
-                                        .child(last),
-                                )
-                            })
-                    })
-                    .when(!profile.description.trim().is_empty(), |this| {
-                        this.child(
-                            div()
-                                .text_size(px(12.))
-                                .line_height(relative(1.4))
-                                .text_color(theme::text_muted())
-                                .child(profile.description.trim().to_string()),
-                        )
-                    })
-                    .when(!tags.is_empty(), |this| {
-                        this.child(
-                            h_flex()
-                                .gap_2()
-                                .flex_wrap()
-                                .children(tags.iter().map(|tag| {
-                                    self.status_badge(
-                                        format!("#{tag}"),
-                                        theme::with_alpha(theme::hover(), 0.72),
-                                        theme::text_muted(),
-                                    )
+                                    .child(tag.clone())
                                     .into_any_element()
-                                })),
-                        )
-                    }),
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                )
+            })
+            .when(!group_label.is_empty(), |this| {
+                this.child(
+                    div()
+                        .text_size(px(11.))
+                        .text_color(theme::text_muted())
+                        .child(group_label.clone()),
+                )
+            })
+            .child(
+                Button::new(("favorite-host-row", card_ix))
+                    .ghost()
+                    .xsmall()
+                    .icon(if profile.favorite {
+                        IconName::Star
+                    } else {
+                        IconName::StarOff
+                    })
+                    .tooltip(if profile.favorite { "Unstar" } else { "Star" })
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.set_profile_favorite(
+                            &favorite_profile_id,
+                            !favorite_selected,
+                            window,
+                            cx,
+                        );
+                    })),
             )
             .child(
-                h_flex()
-                    .gap_1()
-                    .items_center()
-                    .child(
-                        Button::new(("favorite-host-card", card_ix))
-                            .ghost()
-                            .xsmall()
-                            .icon(if profile.favorite {
-                                IconName::Star
-                            } else {
-                                IconName::StarOff
-                            })
-                            .tooltip(if profile.favorite { "Unstar" } else { "Star" })
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.set_profile_favorite(
-                                    &favorite_profile_id,
-                                    !favorite_selected,
-                                    window,
-                                    cx,
-                                );
-                            })),
-                    )
-                    .child(
-                        Button::new(("select-host-card", card_ix))
-                            .ghost()
-                            .xsmall()
-                            .icon(if batch_selected {
-                                IconName::CircleCheck
-                            } else {
-                                IconName::Plus
-                            })
-                            .tooltip(if batch_selected { "Deselect" } else { "Select" })
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.toggle_host_batch_selection(&batch_profile_id, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new(("connect-host-card", card_ix))
-                            .small()
-                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                            .label("Connect")
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.show_editor_panel = false;
-                                this.load_profile_into_inputs(&connect_profile_id, window, cx);
-                                this.connect_current(window, cx);
-                            })),
-                    ),
+                Button::new(("select-host-row", card_ix))
+                    .ghost()
+                    .xsmall()
+                    .icon(if batch_selected {
+                        IconName::CircleCheck
+                    } else {
+                        IconName::Plus
+                    })
+                    .tooltip(if batch_selected { "Deselect" } else { "Select" })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.toggle_host_batch_selection(&batch_profile_id, cx);
+                    })),
+            )
+            .child(
+                Button::new(("connect-host-row", card_ix))
+                    .small()
+                    .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                    .label("Connect")
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.show_editor_panel = false;
+                        this.load_profile_into_inputs(&connect_profile_id, window, cx);
+                        this.connect_current(window, cx);
+                    })),
             )
     }
 
@@ -7002,7 +6909,7 @@ impl TermiRustApp {
                         }),
                 );
 
-            let cards = div().w_full().flex().flex_wrap().gap_3().children(
+            let cards = v_flex().w_full().gap(px(2.)).children(
                 profiles.iter().enumerate().map(|(group_ix, profile)| {
                     self.host_card(
                         card_ix + group_ix,
@@ -7011,9 +6918,6 @@ impl TermiRustApp {
                         self.selected_host_ids.contains(profile.id.as_str()),
                         cx,
                     )
-                    .min_w(px(HOST_CARD_WIDTH))
-                    .max_w(px(HOST_CARD_WIDTH * 1.3))
-                    .flex_1()
                     .into_any_element()
                 }),
             );
@@ -8844,31 +8748,110 @@ impl TermiRustApp {
                 },
             )
             .child(
-                v_flex()
+                h_flex()
                     .flex_1()
                     .min_h_0()
-                    .gap_3()
-                    .px_4()
-                    .pb_4()
-                    .overflow_y_scrollbar()
-                    .when_some(
-                        self.render_hosts_onboarding(window, cx),
-                        |this, onboarding| this.child(onboarding),
-                    )
-                    .when_some(self.render_saved_group_cards(cx), |this, cards| {
-                        this.child(cards)
-                    })
-                    .when_some(self.render_recent_hosts_row(cx), |this, row| {
-                        this.child(row)
-                    })
+                    .items_start()
+                    .gap_0()
                     .child(
-                        div()
-                            .text_size(px(13.))
-                            .font_medium()
-                            .text_color(theme::text_muted())
-                            .child("HOSTS"),
+                        v_flex()
+                            .flex_1()
+                            .min_h_0()
+                            .h_full()
+                            .gap_3()
+                            .px_4()
+                            .pb_4()
+                            .overflow_y_scrollbar()
+                            .when_some(
+                                self.render_hosts_onboarding(window, cx),
+                                |this, onboarding| this.child(onboarding),
+                            )
+                            .when_some(self.render_saved_group_cards(cx), |this, cards| {
+                                this.child(cards)
+                            })
+                            .when_some(self.render_recent_hosts_row(cx), |this, row| {
+                                this.child(row)
+                            })
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .font_medium()
+                                    .text_color(theme::text_muted())
+                                    .child("HOSTS"),
+                            )
+                            .child(self.render_host_grid(window, cx)),
                     )
-                    .child(self.render_host_grid(window, cx)),
+                    .when(self.show_editor_panel, |this| {
+                        this.child(self.render_editor_side_panel(window, cx))
+                    }),
+            )
+    }
+
+    fn render_editor_side_panel(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let title = if self.selected_profile_id.is_some() {
+            "Host Details"
+        } else {
+            "New Host"
+        };
+        let vault_label = self.effective_vault_name(self.draft_vault_id.as_deref());
+
+        v_flex()
+            .flex_none()
+            .w(px(380.))
+            .h_full()
+            .bg(theme::library_card())
+            .border_l_1()
+            .border_color(theme::border())
+            .child(
+                h_flex()
+                    .flex_none()
+                    .h(px(56.))
+                    .px(px(20.))
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::soft_border())
+                    .child(
+                        v_flex()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(15.))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child(title),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(theme::text_muted())
+                                    .child(format!("{vault_label} vault")),
+                            ),
+                    )
+                    .child(
+                        Button::new("editor-side-close")
+                            .ghost()
+                            .xsmall()
+                            .icon(IconName::Close)
+                            .tooltip("Close editor")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.close_editor_dialog(window, cx);
+                            })),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .id("editor-side-scroll")
+                    .flex_1()
+                    .min_h_0()
+                    .px(px(20.))
+                    .py(px(16.))
+                    .overflow_y_scrollbar()
+                    .child(self.render_editor_panel(cx)),
             )
     }
 
@@ -13336,9 +13319,12 @@ impl Render for TermiRustApp {
                             )
                     }),
             )
-            .when(self.show_editor_panel, |this| {
-                this.child(self.render_editor_dialog(window, cx))
-            })
+            .when(
+                self.show_editor_panel
+                    && !(self.active_workspace_id.is_none()
+                        && self.nav_section == NavSection::Hosts),
+                |this| this.child(self.render_editor_dialog(window, cx)),
+            )
             .when(self.show_command_palette, |this| {
                 this.child(self.render_command_palette(window, cx))
             })
