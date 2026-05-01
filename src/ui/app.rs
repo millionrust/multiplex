@@ -8658,15 +8658,6 @@ impl TermiRustApp {
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.open_editor_for_new_host(window, cx);
                             })),
-                    )
-                    .child(
-                        Button::new("library-connect")
-                            .small()
-                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                            .label("Connect")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.connect_current(window, cx);
-                            })),
                     ),
             )
             .when(!self.saved.profiles.is_empty(), |this| {
