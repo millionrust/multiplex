@@ -2834,6 +2834,9 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) {
         self.active_workspace_id = None;
+        if self.nav_section != section {
+            self.show_editor_panel = false;
+        }
         self.nav_section = section;
         self.set_command_palette_input("", window, cx);
         self.show_command_palette = false;
@@ -6604,6 +6607,9 @@ impl TermiRustApp {
                         let active = self.nav_section == section;
                         self.nav_card(("nav-card", nav_section_key(section)), section, active, cx)
                             .on_click(cx.listener(move |this, _, _, cx| {
+                                if this.nav_section != section {
+                                    this.show_editor_panel = false;
+                                }
                                 this.nav_section = section;
                                 this.error_message.clear();
                                 cx.notify();
@@ -6632,6 +6638,9 @@ impl TermiRustApp {
                                 cx,
                             )
                             .on_click(cx.listener(move |this, _, _, cx| {
+                                if this.nav_section != section {
+                                    this.show_editor_panel = false;
+                                }
                                 this.nav_section = section;
                                 this.error_message.clear();
                                 cx.notify();
