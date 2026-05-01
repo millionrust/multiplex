@@ -632,6 +632,7 @@ pub struct TermiRustApp {
     sync_pull_force: bool,
     sync_pull_pending_warning: bool,
     settings_scroll: ScrollHandle,
+    host_editor_scroll: ScrollHandle,
     _window_bounds_subscription: Option<Subscription>,
 }
 
@@ -731,6 +732,7 @@ impl TermiRustApp {
             sync_pull_force: false,
             sync_pull_pending_warning: false,
             settings_scroll: ScrollHandle::new(),
+            host_editor_scroll: ScrollHandle::new(),
             _window_bounds_subscription: None,
         };
 
@@ -8754,7 +8756,6 @@ impl TermiRustApp {
                 h_flex()
                     .flex_1()
                     .min_h_0()
-                    .items_start()
                     .gap_0()
                     .child(
                         v_flex()
@@ -8809,6 +8810,7 @@ impl TermiRustApp {
             .bg(theme::library_card())
             .border_l_1()
             .border_color(theme::border())
+            .overflow_hidden()
             .child(
                 h_flex()
                     .flex_none()
@@ -8847,14 +8849,15 @@ impl TermiRustApp {
                     ),
             )
             .child(
-                v_flex().flex_1().min_h_0().child(
-                    v_flex()
-                        .id("editor-side-scroll")
-                        .px(px(20.))
-                        .py(px(16.))
-                        .child(self.render_editor_panel(cx))
-                        .overflow_y_scrollbar(),
-                ),
+                v_flex()
+                    .id("editor-side-scroll")
+                    .flex_1()
+                    .min_h_0()
+                    .px(px(20.))
+                    .py(px(16.))
+                    .overflow_y_scroll()
+                    .track_scroll(&self.host_editor_scroll)
+                    .child(self.render_editor_panel(cx)),
             )
             .child(
                 div()
