@@ -8230,41 +8230,44 @@ impl TermiRustApp {
                         .child(self.render_identity_picker(cx)),
                 )
             })
+    }
+
+    fn render_editor_actions(&self, cx: &Context<Self>) -> Div {
+        h_flex()
+            .gap_2()
+            .when(self.selected_profile_id.is_some(), |this| {
+                this.child(
+                    Button::new("editor-delete")
+                        .small()
+                        .ghost()
+                        .icon(IconName::Delete)
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.remove_selected_profile(window, cx);
+                            this.close_editor_dialog(window, cx);
+                        })),
+                )
+            })
+            .child(div().flex_1())
             .child(
-                h_flex()
-                    .gap_2()
-                    .child(
-                        Button::new("editor-delete")
-                            .small()
-                            .ghost()
-                            .icon(IconName::Delete)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.remove_selected_profile(window, cx);
-                                this.close_editor_dialog(window, cx);
-                            })),
-                    )
-                    .child(div().flex_1())
-                    .child(
-                        Button::new("editor-save")
-                            .small()
-                            .custom(Self::action_button_style(theme::ActionTone::AccentSoft, cx))
-                            .icon(IconName::Check)
-                            .label("Save")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.save_profile(window, cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("editor-connect")
-                            .small()
-                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                            .icon(IconName::ArrowRight)
-                            .label("Connect")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.close_editor_dialog(window, cx);
-                                this.connect_current(window, cx);
-                            })),
-                    ),
+                Button::new("editor-save")
+                    .small()
+                    .custom(Self::action_button_style(theme::ActionTone::AccentSoft, cx))
+                    .icon(IconName::Check)
+                    .label("Save")
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.save_profile(window, cx);
+                    })),
+            )
+            .child(
+                Button::new("editor-connect")
+                    .small()
+                    .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                    .icon(IconName::ArrowRight)
+                    .label("Connect")
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.close_editor_dialog(window, cx);
+                        this.connect_current(window, cx);
+                    })),
             )
     }
 
@@ -8844,14 +8847,24 @@ impl TermiRustApp {
                     ),
             )
             .child(
-                v_flex()
-                    .id("editor-side-scroll")
-                    .flex_1()
-                    .min_h_0()
+                v_flex().flex_1().min_h_0().child(
+                    v_flex()
+                        .id("editor-side-scroll")
+                        .px(px(20.))
+                        .py(px(16.))
+                        .child(self.render_editor_panel(cx))
+                        .overflow_y_scrollbar(),
+                ),
+            )
+            .child(
+                div()
+                    .flex_none()
                     .px(px(20.))
-                    .py(px(16.))
-                    .overflow_y_scrollbar()
-                    .child(self.render_editor_panel(cx)),
+                    .py(px(14.))
+                    .border_t_1()
+                    .border_color(theme::soft_border())
+                    .bg(theme::library_card())
+                    .child(self.render_editor_actions(cx)),
             )
     }
 
@@ -13826,7 +13839,14 @@ impl TermiRustApp {
                                 .child(title),
                         ),
                     )
-                    .child(v_flex().px_5().pb_5().child(self.render_editor_panel(cx))),
+                    .child(
+                        v_flex()
+                            .px_5()
+                            .pb_5()
+                            .gap_4()
+                            .child(self.render_editor_panel(cx))
+                            .child(self.render_editor_actions(cx)),
+                    ),
             )
     }
 }
