@@ -8592,6 +8592,7 @@ impl TermiRustApp {
         v_flex()
             .size_full()
             .flex_1()
+            .min_h_0()
             .gap_3()
             .bg(theme::library_bg())
             .child(
@@ -8758,32 +8759,34 @@ impl TermiRustApp {
                     .min_h_0()
                     .gap_0()
                     .child(
-                        v_flex()
-                            .flex_1()
-                            .min_h_0()
-                            .h_full()
-                            .gap_3()
-                            .px_4()
-                            .pb_4()
-                            .overflow_y_scrollbar()
-                            .when_some(
-                                self.render_hosts_onboarding(window, cx),
-                                |this, onboarding| this.child(onboarding),
-                            )
-                            .when_some(self.render_saved_group_cards(cx), |this, cards| {
-                                this.child(cards)
-                            })
-                            .when_some(self.render_recent_hosts_row(cx), |this, row| {
-                                this.child(row)
-                            })
-                            .child(
-                                div()
-                                    .text_size(px(13.))
-                                    .font_medium()
-                                    .text_color(theme::text_muted())
-                                    .child("HOSTS"),
-                            )
-                            .child(self.render_host_grid(window, cx)),
+                        v_flex().flex_1().min_h_0().child(
+                            v_flex()
+                                .id("hosts-list-scroll")
+                                .flex_1()
+                                .min_h_0()
+                                .gap_3()
+                                .px_4()
+                                .pb_4()
+                                .when_some(
+                                    self.render_hosts_onboarding(window, cx),
+                                    |this, onboarding| this.child(onboarding),
+                                )
+                                .when_some(self.render_saved_group_cards(cx), |this, cards| {
+                                    this.child(cards)
+                                })
+                                .when_some(self.render_recent_hosts_row(cx), |this, row| {
+                                    this.child(row)
+                                })
+                                .child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .font_medium()
+                                        .text_color(theme::text_muted())
+                                        .child("HOSTS"),
+                                )
+                                .child(self.render_host_grid(window, cx))
+                                .overflow_y_scrollbar(),
+                        ),
                     )
                     .when(self.show_editor_panel, |this| {
                         this.child(self.render_editor_side_panel(window, cx))
@@ -8849,15 +8852,17 @@ impl TermiRustApp {
                     ),
             )
             .child(
-                v_flex()
-                    .id("editor-side-scroll")
-                    .flex_1()
-                    .min_h_0()
-                    .px(px(20.))
-                    .py(px(16.))
-                    .overflow_y_scroll()
-                    .track_scroll(&self.host_editor_scroll)
-                    .child(self.render_editor_panel(cx)),
+                v_flex().flex_1().min_h_0().child(
+                    v_flex()
+                        .id("editor-side-scroll")
+                        .flex_1()
+                        .min_h_0()
+                        .px(px(20.))
+                        .py(px(16.))
+                        .track_scroll(&self.host_editor_scroll)
+                        .child(self.render_editor_panel(cx))
+                        .overflow_y_scrollbar(),
+                ),
             )
             .child(
                 div()
@@ -9389,6 +9394,7 @@ impl TermiRustApp {
         v_flex()
             .size_full()
             .flex_1()
+            .min_h_0()
             .gap_4()
             .p_5()
             .bg(theme::library_bg())
@@ -9420,6 +9426,7 @@ impl TermiRustApp {
         v_flex()
             .size_full()
             .flex_1()
+            .min_h_0()
             .gap_4()
             .p_5()
             .bg(theme::library_bg())
@@ -9840,6 +9847,7 @@ impl TermiRustApp {
         v_flex()
             .size_full()
             .flex_1()
+            .min_h_0()
             .gap_4()
             .p_5()
             .bg(theme::library_bg())
@@ -9985,6 +9993,7 @@ impl TermiRustApp {
         v_flex()
             .size_full()
             .flex_1()
+            .min_h_0()
             .gap_3()
             .p_5()
             .bg(theme::library_bg())
@@ -10185,6 +10194,7 @@ impl TermiRustApp {
         v_flex()
             .size_full()
             .flex_1()
+            .min_h_0()
             .gap_4()
             .p_5()
             .bg(theme::library_bg())
@@ -11392,6 +11402,7 @@ impl TermiRustApp {
 
         v_flex()
             .flex_1()
+            .min_h_0()
             .gap_4()
             .p_5()
             .bg(theme::library_bg())
@@ -11449,6 +11460,7 @@ impl TermiRustApp {
             .flex()
             .flex_row()
             .flex_1()
+            .min_h_0()
             .bg(theme::library_bg())
             .child(self.render_library_sidebar(cx))
             .child(self.render_library_content(window, cx))
