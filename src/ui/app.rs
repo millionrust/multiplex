@@ -8603,6 +8603,75 @@ impl TermiRustApp {
         )
     }
 
+    fn toolbar_chevron_button(
+        &self,
+        id: &'static str,
+        icon: IconName,
+        _tooltip: &'static str,
+        _cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        div()
+            .id(id)
+            .h(px(28.))
+            .px(px(8.))
+            .gap(px(4.))
+            .flex()
+            .items_center()
+            .rounded(px(6.))
+            .cursor_pointer()
+            .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.7)))
+            .child(
+                Icon::new(icon)
+                    .size(px(14.))
+                    .text_color(theme::text_muted_dark()),
+            )
+            .child(
+                Icon::new(IconName::ChevronDown)
+                    .size(px(11.))
+                    .text_color(theme::text_muted_dark()),
+            )
+    }
+
+    fn toolbar_avatar_button(&self, _cx: &mut Context<Self>) -> Stateful<Div> {
+        let initials = std::env::var("USER")
+            .ok()
+            .or_else(|| std::env::var("USERNAME").ok())
+            .and_then(|name| {
+                let trimmed = name.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    let mut chars = trimmed.chars();
+                    let first = chars.next().map(|c| c.to_ascii_uppercase());
+                    let second = trimmed
+                        .split(|c: char| !c.is_alphanumeric())
+                        .nth(1)
+                        .and_then(|word| word.chars().next())
+                        .map(|c| c.to_ascii_uppercase());
+                    match (first, second) {
+                        (Some(a), Some(b)) => Some(format!("{a}{b}")),
+                        (Some(a), None) => Some(a.to_string()),
+                        _ => None,
+                    }
+                }
+            })
+            .unwrap_or_else(|| "ME".to_string());
+
+        div()
+            .id("library-avatar")
+            .size(px(28.))
+            .rounded(px(999.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(theme::warning())
+            .text_size(px(11.))
+            .font_semibold()
+            .text_color(gpui::white())
+            .cursor_pointer()
+            .child(initials)
+    }
+
     fn render_hosts_view(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let quick_connect = self.try_quick_connect_from_search(cx);
         let has_quick_connect = quick_connect.is_some();
@@ -8749,6 +8818,38 @@ impl TermiRustApp {
                                     .tooltip("Select all visible")
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.select_all_filtered_hosts(cx);
+                                    })),
+                            )
+                            .child(self.toolbar_chevron_button(
+                                "library-view-mode",
+                                IconName::LayoutDashboard,
+                                "View mode",
+                                cx,
+                            ))
+                            .child(self.toolbar_chevron_button(
+                                "library-tag-filter",
+                                IconName::ChartPie,
+                                "Filter by tag",
+                                cx,
+                            ))
+                            .child(self.toolbar_chevron_button(
+                                "library-sort",
+                                IconName::Calendar,
+                                "Sort hosts",
+                                cx,
+                            ))
+                            .child(self.toolbar_avatar_button(cx))
+                            .child(
+                                Button::new("library-toolbar-add")
+                                    .xsmall()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    ))
+                                    .icon(IconName::Plus)
+                                    .tooltip("New host")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_editor_for_new_host(window, cx);
                                     })),
                             ),
                     ),
