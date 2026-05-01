@@ -7471,14 +7471,6 @@ impl TermiRustApp {
         v_flex()
             .w_full()
             .gap_4()
-            .child(
-                div()
-                    .text_size(px(13.))
-                    .text_color(theme::text_muted())
-                    .child(
-                        "Passwords are stored in the system credential store when you save or reconnect with them. Key paths are stored only for reconnects.",
-                    ),
-            )
             .child(self.form_field("Label", Input::new(&self.inputs.label)))
             .child(self.form_field(
                 "Description",
@@ -8244,42 +8236,73 @@ impl TermiRustApp {
     }
 
     fn render_editor_actions(&self, cx: &Context<Self>) -> Div {
-        h_flex()
+        v_flex()
+            .w_full()
             .gap_2()
-            .when(self.selected_profile_id.is_some(), |this| {
-                this.child(
-                    Button::new("editor-delete")
-                        .small()
-                        .ghost()
-                        .icon(IconName::Delete)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.remove_selected_profile(window, cx);
-                            this.close_editor_dialog(window, cx);
-                        })),
-                )
-            })
-            .child(div().flex_1())
-            .child(
-                Button::new("editor-save")
-                    .small()
-                    .custom(Self::action_button_style(theme::ActionTone::AccentSoft, cx))
-                    .icon(IconName::Check)
-                    .label("Save")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.save_profile(window, cx);
-                    })),
-            )
             .child(
                 Button::new("editor-connect")
-                    .small()
+                    .w_full()
                     .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                    .icon(IconName::ArrowRight)
                     .label("Connect")
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.close_editor_dialog(window, cx);
                         this.connect_current(window, cx);
                     })),
             )
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_2()
+                    .child(
+                        Button::new("editor-save")
+                            .small()
+                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                            .icon(IconName::Check)
+                            .label("Save")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.save_profile(window, cx);
+                            })),
+                    )
+                    .child(div().flex_1())
+                    .when(self.selected_profile_id.is_some(), |this| {
+                        this.child(
+                            Button::new("editor-delete")
+                                .small()
+                                .ghost()
+                                .icon(IconName::Delete)
+                                .label("Delete")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.remove_selected_profile(window, cx);
+                                    this.close_editor_dialog(window, cx);
+                                })),
+                        )
+                    }),
+            )
+    }
+
+    fn editor_section<E: IntoElement>(
+        &self,
+        title: impl Into<SharedString>,
+        body: E,
+    ) -> Div {
+        let title: SharedString = title.into();
+        v_flex()
+            .w_full()
+            .gap(px(10.))
+            .px(px(14.))
+            .py(px(14.))
+            .rounded(px(10.))
+            .bg(theme::with_alpha(theme::hover(), 0.45))
+            .border_1()
+            .border_color(theme::soft_border())
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .font_semibold()
+                    .text_color(theme::text_main())
+                    .child(title),
+            )
+            .child(body)
     }
 
     fn form_field(&self, label: &str, input: Input) -> Div {
