@@ -6954,28 +6954,17 @@ impl TermiRustApp {
                         Icon::new(IconName::SquareTerminal)
                             .size(px(24.))
                             .text_color(theme::accent()),
-                        "No saved hosts yet",
-                        format!(
-                            "Saved hosts will appear here. Imported SSH config entries from {} still load automatically when present.",
-                            ssh_config_path_label()
-                        ),
+                        "Create host",
+                        "Save your connection details as hosts to connect in one click.",
                     )
                     .child(
-                        h_flex()
-                            .gap_2()
-                            .justify_center()
-                            .child(
-                                Button::new("hosts-empty-new")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Accent,
-                                        cx,
-                                    ))
-                                    .label("New Host")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.open_editor_for_new_host(window, cx);
-                                    })),
-                            ),
+                        Button::new("hosts-empty-new")
+                            .w_full()
+                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                            .label("New Host")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_editor_for_new_host(window, cx);
+                            })),
                     )
                 } else {
                     self.render_library_empty_state(
@@ -8617,164 +8606,152 @@ impl TermiRustApp {
     fn render_hosts_view(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let quick_connect = self.try_quick_connect_from_search(cx);
         let has_quick_connect = quick_connect.is_some();
-        let quick_connect_password = self.current_quick_connect_password(cx);
-        let filtered_host_count = self.filtered_profile_ids(cx).len();
+        let _ = self.current_quick_connect_password(cx);
+        let _ = self.filtered_profile_ids(cx).len();
         let selected_host_count = self.selected_host_ids.len();
 
         v_flex()
             .size_full()
             .flex_1()
             .min_h_0()
-            .gap_3()
             .bg(theme::library_bg())
             .child(
                 h_flex()
-                    .h(px(LIBRARY_TOOLBAR_HEIGHT))
+                    .h(px(44.))
                     .flex_none()
-                    .gap_3()
-                    .px_4()
-                    .items_center()
+                    .w_full()
+                    .px(px(12.))
+                    .pt(px(8.))
                     .child(
-                        Input::new(&self.shell_inputs.host_search)
-                            .flex_1()
-                            .appearance(true)
-                            .prefix(
+                        h_flex()
+                            .w_full()
+                            .h(px(36.))
+                            .px(px(12.))
+                            .gap(px(8.))
+                            .items_center()
+                            .rounded(px(8.))
+                            .bg(theme::with_alpha(theme::hover(), 0.6))
+                            .border_1()
+                            .border_color(theme::soft_border())
+                            .child(
                                 Icon::new(IconName::Search)
                                     .size(px(14.))
                                     .text_color(theme::text_muted()),
+                            )
+                            .child(Input::new(&self.shell_inputs.host_search).flex_1())
+                            .child(
+                                Button::new("library-quick-connect")
+                                    .xsmall()
+                                    .custom(Self::action_button_style(
+                                        if has_quick_connect {
+                                            theme::ActionTone::Accent
+                                        } else {
+                                            theme::ActionTone::Neutral
+                                        },
+                                        cx,
+                                    ))
+                                    .disabled(!has_quick_connect)
+                                    .label("CONNECT")
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        if let Some(qc) = this.try_quick_connect_from_search(cx) {
+                                            let password =
+                                                this.current_quick_connect_password(cx);
+                                            this.quick_connect(
+                                                qc,
+                                                if password.trim().is_empty() {
+                                                    None
+                                                } else {
+                                                    Some(password)
+                                                },
+                                                window,
+                                                cx,
+                                            );
+                                        }
+                                    })),
                             ),
-                    )
-                    .when_some(quick_connect, |this, qc| {
-                        let label = format!("Connect {}", qc.display_name());
-                        this.child(
-                            Input::new(&self.shell_inputs.quick_connect_password)
-                                .w(px(220.))
-                                .mask_toggle(),
-                        )
-                        .child(
-                            Button::new("library-quick-connect")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Success, cx))
-                                .label(label)
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    if let Some(qc) = this.try_quick_connect_from_search(cx) {
-                                        let password = this.current_quick_connect_password(cx);
-                                        this.quick_connect(
-                                            qc,
-                                            if password.trim().is_empty() {
-                                                None
-                                            } else {
-                                                Some(password)
-                                            },
-                                            window,
-                                            cx,
-                                        );
-                                    }
-                                })),
-                        )
-                    })
-                    .child(
-                        Button::new("library-new-host")
-                            .small()
-                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                            .label("New Host")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_editor_for_new_host(window, cx);
-                            })),
                     ),
             )
-            .when(!self.saved.profiles.is_empty(), |this| {
-                this.child(
-                    h_flex()
-                        .px_4()
-                        .gap_2()
-                        .items_center()
-                        .flex_wrap()
-                        .child(self.status_badge(
-                            format!("{filtered_host_count} visible"),
-                            theme::library_card(),
-                            theme::text_muted(),
-                        ))
-                        .when(selected_host_count > 0, |this| {
-                            this.child(self.status_badge(
-                                format!("{selected_host_count} selected"),
-                                theme::library_card(),
-                                theme::success(),
-                            ))
-                        })
-                        .child(
-                            Button::new("hosts-select-all")
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label("Select All")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.select_all_filtered_hosts(cx);
-                                })),
-                        )
-                        .when(selected_host_count > 0, |this| {
-                            this.child(
-                                Button::new("hosts-clear-selection")
-                                    .small()
+            .child(
+                h_flex()
+                    .flex_none()
+                    .h(px(44.))
+                    .px(px(12.))
+                    .py(px(6.))
+                    .gap(px(6.))
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        h_flex()
+                            .gap(px(6.))
+                            .items_center()
+                            .child(
+                                Button::new("library-new-host")
+                                    .xsmall()
                                     .custom(Self::action_button_style(
                                         theme::ActionTone::Neutral,
                                         cx,
                                     ))
-                                    .label("Clear")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.clear_host_batch_selection(cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("hosts-bulk-star")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Success,
-                                        cx,
-                                    ))
-                                    .label("Star")
+                                    .icon(IconName::Plus)
+                                    .label("NEW HOST")
                                     .on_click(cx.listener(|this, _, window, cx| {
-                                        this.bulk_set_selected_hosts_favorite(true, window, cx);
+                                        this.open_editor_for_new_host(window, cx);
                                     })),
                             )
                             .child(
-                                Button::new("hosts-bulk-unstar")
-                                    .small()
+                                Button::new("library-new-terminal")
+                                    .xsmall()
                                     .custom(Self::action_button_style(
                                         theme::ActionTone::Neutral,
                                         cx,
                                     ))
-                                    .label("Unstar")
+                                    .icon(IconName::SquareTerminal)
+                                    .label("TERMINAL")
                                     .on_click(cx.listener(|this, _, window, cx| {
-                                        this.bulk_set_selected_hosts_favorite(false, window, cx);
+                                        this.open_local_terminal(window, cx);
                                     })),
-                            )
-                            .child(Input::new(&self.shell_inputs.bulk_group).w(px(180.)))
-                            .child(
-                                Button::new("hosts-bulk-apply-group")
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::AccentSoft,
-                                        cx,
-                                    ))
-                                    .label("Apply Group")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.bulk_assign_selected_hosts_group(window, cx);
-                                    })),
-                            )
-                        }),
-                )
-            })
-            .when(
-                !quick_connect_password.trim().is_empty() && !has_quick_connect,
-                |this| {
-                    this.child(
-                        div()
-                            .px_4()
-                            .text_size(px(12.))
-                            .text_color(theme::text_muted())
-                            .child("Quick-connect password stays local until you connect."),
+                            ),
                     )
-                },
+                    .child(
+                        h_flex()
+                            .gap(px(4.))
+                            .items_center()
+                            .when(selected_host_count > 0, |this| {
+                                this.child(self.status_badge(
+                                    format!("{selected_host_count} selected"),
+                                    theme::with_alpha(theme::accent(), 0.16),
+                                    theme::accent(),
+                                ))
+                                .child(
+                                    Button::new("hosts-clear-selection")
+                                        .xsmall()
+                                        .ghost()
+                                        .label("Clear")
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.clear_host_batch_selection(cx);
+                                        })),
+                                )
+                                .child(
+                                    Button::new("hosts-bulk-star")
+                                        .xsmall()
+                                        .ghost()
+                                        .icon(IconName::Star)
+                                        .tooltip("Star selected")
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.bulk_set_selected_hosts_favorite(true, window, cx);
+                                        })),
+                                )
+                            })
+                            .child(
+                                Button::new("hosts-select-all")
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::CircleCheck)
+                                    .tooltip("Select all visible")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.select_all_filtered_hosts(cx);
+                                    })),
+                            ),
+                    ),
             )
             .child(
                 h_flex()
@@ -8800,13 +8777,15 @@ impl TermiRustApp {
                                 .when_some(self.render_recent_hosts_row(cx), |this, row| {
                                     this.child(row)
                                 })
-                                .child(
-                                    div()
-                                        .text_size(px(13.))
-                                        .font_medium()
-                                        .text_color(theme::text_muted())
-                                        .child("HOSTS"),
-                                )
+                                .when(!self.saved.profiles.is_empty(), |this| {
+                                    this.child(
+                                        div()
+                                            .text_size(px(13.))
+                                            .font_medium()
+                                            .text_color(theme::text_muted())
+                                            .child("Hosts"),
+                                    )
+                                })
                                 .child(self.render_host_grid(window, cx))
                                 .overflow_y_scrollbar(),
                         ),
