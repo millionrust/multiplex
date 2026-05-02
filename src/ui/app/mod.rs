@@ -4,6 +4,12 @@ mod hosts;
 mod library;
 mod sftp;
 mod terminal_panel;
+mod types;
+
+pub(crate) use types::{
+    ConnectDialogMode, ConnectProtocol, EditorMenu, HostsSort, HostsViewMode, TerminalPanelTab,
+    ToolbarMenu, WorkspaceRuntimeTone, WorkspaceViewMode,
+};
 
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -451,54 +457,6 @@ struct PendingSnippetPrompts {
     fields: Vec<SnippetPromptField>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum HostsViewMode {
-    Grid,
-    List,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum HostsSort {
-    AZ,
-    ZA,
-    NewestFirst,
-    OldestFirst,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum EditorMenu {
-    Vault,
-    Overflow,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ToolbarMenu {
-    ViewMode,
-    TagFilter,
-    Sort,
-    Avatar,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum TerminalPanelTab {
-    Quick,
-    Snippets,
-    History,
-    Themes,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ConnectDialogMode {
-    Username,
-    ChooseProtocol,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ConnectProtocol {
-    Ssh,
-    Mosh,
-    Telnet,
-}
 
 struct WorkspaceTab {
     id: u64,
@@ -548,13 +506,6 @@ struct WorkspaceIndicators {
     unread_events: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum WorkspaceRuntimeTone {
-    Live,
-    Connecting,
-    Error,
-    Closed,
-}
 
 
 #[derive(Clone)]
@@ -589,12 +540,6 @@ struct ContextCommandTemplate {
 }
 
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum WorkspaceViewMode {
-    #[default]
-    Terminal,
-    Files,
-}
 
 #[derive(Clone, Debug)]
 struct WorkspaceSftpState {
