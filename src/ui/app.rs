@@ -7007,9 +7007,19 @@ impl TermiRustApp {
                         "Save your connection details as hosts to connect in one click.",
                     )
                     .child(
-                        div()
+                        h_flex()
                             .w_full()
-                            .child(Input::new(&self.shell_inputs.create_host_address).w_full()),
+                            .h(px(40.))
+                            .px(px(12.))
+                            .items_center()
+                            .rounded(px(8.))
+                            .bg(theme::with_alpha(theme::hover(), 0.6))
+                            .border_1()
+                            .border_color(theme::soft_border())
+                            .child(
+                                Input::new(&self.shell_inputs.create_host_address)
+                                    .flex_1(),
+                            ),
                     )
                     .child(
                         Button::new("hosts-empty-new")
@@ -7017,7 +7027,9 @@ impl TermiRustApp {
                             .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                             .label("Continue")
                             .on_click(cx.listener(|this, _, window, cx| {
-                                this.submit_create_host_from_empty_state(window, cx);
+                                if !this.submit_create_host_from_empty_state(window, cx) {
+                                    this.open_editor_for_new_host(window, cx);
+                                }
                             })),
                     )
                 } else {
