@@ -245,6 +245,11 @@ struct ShellInputs {
     quick_connect_password: Entity<InputState>,
     create_host_address: Entity<InputState>,
     connect_username: Entity<InputState>,
+    protocol_ssh_port: Entity<InputState>,
+    protocol_mosh_port: Entity<InputState>,
+    protocol_mosh_command: Entity<InputState>,
+    protocol_telnet_port: Entity<InputState>,
+    sftp_local_filter: Entity<InputState>,
     bulk_group: Entity<InputState>,
     terminal_search: Entity<InputState>,
     command_palette: Entity<InputState>,
@@ -358,6 +363,18 @@ impl ShellInputs {
                 .new(|cx| InputState::new(window, cx).placeholder("Type IP or Hostname")),
             connect_username: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Username")),
+            protocol_ssh_port: cx
+                .new(|cx| InputState::new(window, cx).default_value("22")),
+            protocol_mosh_port: cx
+                .new(|cx| InputState::new(window, cx).default_value("22")),
+            protocol_mosh_command: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .default_value("mosh --server=/path/server host")
+            }),
+            protocol_telnet_port: cx
+                .new(|cx| InputState::new(window, cx).default_value("23")),
+            sftp_local_filter: cx
+                .new(|cx| InputState::new(window, cx).placeholder("Filter files")),
             bulk_group: cx.new(|cx| InputState::new(window, cx).placeholder("Bulk group name")),
             terminal_search: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Search terminal output")),
@@ -434,6 +451,19 @@ enum ToolbarMenu {
     Avatar,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ConnectDialogMode {
+    Username,
+    ChooseProtocol,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ConnectProtocol {
+    Ssh,
+    Mosh,
+    Telnet,
+}
+
 struct SftpLocalEntry {
     name: String,
     is_dir: bool,
@@ -456,6 +486,17 @@ struct WorkspaceTab {
     active_search_index: Option<usize>,
     broadcast_input: bool,
     pending_connect: Option<HostProfile>,
+    pending_connect_mode: ConnectDialogMode,
+    pending_connect_protocol: ConnectProtocol,
+    connect_failure: Option<ConnectFailure>,
+}
+
+#[derive(Clone)]
+struct ConnectFailure {
+    profile: HostProfile,
+    protocol: ConnectProtocol,
+    port: u16,
+    log: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -677,11 +718,13 @@ pub struct TermiRustApp {
     hosts_view_mode: HostsViewMode,
     hosts_sort: HostsSort,
     open_toolbar_menu: Option<ToolbarMenu>,
+    hosts_tag_filter: Option<String>,
     editor_advanced_expanded: bool,
     editor_telnet_added: bool,
     open_editor_menu: Option<EditorMenu>,
     sftp_local_path: std::path::PathBuf,
     sftp_show_host_picker: bool,
+    sftp_local_filter_visible: bool,
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
     tab_rename_input: Entity<InputState>,
@@ -786,6 +829,7 @@ impl TermiRustApp {
             hosts_view_mode: HostsViewMode::Grid,
             hosts_sort: HostsSort::NewestFirst,
             open_toolbar_menu: None,
+            hosts_tag_filter: None,
             editor_advanced_expanded: false,
             editor_telnet_added: false,
             open_editor_menu: None,
@@ -793,6 +837,7 @@ impl TermiRustApp {
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| std::path::PathBuf::from("/")),
             sftp_show_host_picker: false,
+            sftp_local_filter_visible: false,
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
             tab_rename_input: cx
@@ -1606,10 +1651,17 @@ impl TermiRustApp {
         self.draft_start_in_files = false;
         self.draft_port_forward_rules.clear();
         self.draft_port_forward_kind = PortForwardKind::Local;
-        self.draft_identity_id = None;
+        let first_identity = self.saved.identities.first().cloned();
+        if let Some(identity) = &first_identity {
+            self.draft_identity_id = Some(identity.id.clone());
+            Self::set_input_value(&self.inputs.key_path, identity.key_path.clone(), window, cx);
+            self.draft_auth_mode = AuthMode::PrivateKey;
+        } else {
+            self.draft_identity_id = None;
+            self.draft_auth_mode = AuthMode::Password;
+        }
         self.selected_profile_id = None;
         self.saved.selected_profile_id = None;
-        self.draft_auth_mode = AuthMode::Password;
         self.show_editor_panel = true;
         self.status_message = "Draft cleared. Define a host to save or connect.".into();
         self.error_message.clear();
@@ -2707,6 +2759,10 @@ impl TermiRustApp {
             })
         });
 
+        if let Some(tag) = &self.hosts_tag_filter {
+            profiles.retain(|p| p.tags.iter().any(|t| t == tag));
+        }
+
         if query.is_empty() {
             return profiles;
         }
@@ -2806,8 +2862,14 @@ impl TermiRustApp {
                     .display_name()
                     .to_ascii_lowercase()
                     .cmp(&a.display_name().to_ascii_lowercase()),
-                HostsSort::NewestFirst => std::cmp::Ordering::Equal,
-                HostsSort::OldestFirst => std::cmp::Ordering::Equal,
+                HostsSort::NewestFirst => self
+                    .last_connected_at(b)
+                    .unwrap_or(0)
+                    .cmp(&self.last_connected_at(a).unwrap_or(0)),
+                HostsSort::OldestFirst => self
+                    .last_connected_at(a)
+                    .unwrap_or(u64::MAX)
+                    .cmp(&self.last_connected_at(b).unwrap_or(u64::MAX)),
             });
         }
         groups
@@ -3718,6 +3780,9 @@ impl TermiRustApp {
                 active_search_index: None,
                 broadcast_input: false,
                 pending_connect: None,
+                pending_connect_mode: ConnectDialogMode::Username,
+                pending_connect_protocol: ConnectProtocol::Ssh,
+                connect_failure: None,
             });
             restored_workspace_ids.push(workspace_id);
         }
@@ -4310,7 +4375,15 @@ impl TermiRustApp {
 
         if draft.auth_mode == AuthMode::Password {
             let password = draft.password.trim().to_string();
-            if !password.is_empty() {
+            if password.is_empty()
+                && draft.password_credential_id.is_none()
+                && !self.saved.identities.is_empty()
+            {
+                let identity = self.saved.identities[0].clone();
+                draft.auth_mode = AuthMode::PrivateKey;
+                draft.identity_id = Some(identity.id.clone());
+                draft.key_path = identity.key_path.clone();
+            } else if !password.is_empty() {
                 let credential_id = self.draft_password_credential_id(&draft)?;
                 self.persist_password_to_keychain(&credential_id, &password)?;
                 draft.password_credential_id = Some(credential_id.clone());
@@ -4409,6 +4482,9 @@ impl TermiRustApp {
             active_search_index: None,
             broadcast_input: false,
             pending_connect: None,
+            pending_connect_mode: ConnectDialogMode::Username,
+            pending_connect_protocol: ConnectProtocol::Ssh,
+            connect_failure: None,
         });
 
         self.active_workspace_id = Some(workspace_id);
@@ -4431,15 +4507,55 @@ impl TermiRustApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(profile) = self
-            .saved
-            .profiles
-            .iter()
-            .find(|p| p.id == profile_id)
-            .cloned()
-        else {
+        self.open_connect_dialog_tab_mode(profile_id, ConnectDialogMode::Username, window, cx);
+    }
+
+    fn open_choose_protocol_tab(
+        &mut self,
+        profile_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_connect_dialog_tab_mode(
+            profile_id,
+            ConnectDialogMode::ChooseProtocol,
+            window,
+            cx,
+        );
+    }
+
+    fn open_choose_protocol_tab_from_draft(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let host = self.inputs.host.read(cx).value().trim().to_string();
+        if host.is_empty() {
+            self.error_message =
+                "Enter a host before choosing a protocol.".to_string();
+            cx.notify();
             return;
+        }
+        let label = self.inputs.label.read(cx).value().trim().to_string();
+        let display_label = if label.is_empty() { host.clone() } else { label };
+        let port: u16 = self
+            .inputs
+            .port
+            .read(cx)
+            .value()
+            .trim()
+            .parse()
+            .unwrap_or(22);
+        let username = self.inputs.username.read(cx).value().trim().to_string();
+        let mut profile = HostProfile {
+            id: format!("draft-{}", self.next_session_id()),
+            label: display_label,
+            host,
+            port,
+            username,
+            ..Default::default()
         };
+        profile.normalize();
         let workspace_id = self.next_workspace_id();
         let title = profile.display_name();
         Self::set_input_value(
@@ -4463,6 +4579,81 @@ impl TermiRustApp {
             active_search_index: None,
             broadcast_input: false,
             pending_connect: Some(profile),
+            pending_connect_mode: ConnectDialogMode::ChooseProtocol,
+            pending_connect_protocol: ConnectProtocol::Ssh,
+            connect_failure: None,
+        });
+        self.active_workspace_id = Some(workspace_id);
+        self.show_editor_panel = false;
+        cx.notify();
+    }
+
+    fn open_connect_dialog_tab_mode(
+        &mut self,
+        profile_id: &str,
+        mode: ConnectDialogMode,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(profile) = self
+            .saved
+            .profiles
+            .iter()
+            .find(|p| p.id == profile_id)
+            .cloned()
+        else {
+            return;
+        };
+        let workspace_id = self.next_workspace_id();
+        let title = profile.display_name();
+        Self::set_input_value(
+            &self.shell_inputs.connect_username,
+            &profile.username,
+            window,
+            cx,
+        );
+        Self::set_input_value(
+            &self.shell_inputs.protocol_ssh_port,
+            profile.port.to_string(),
+            window,
+            cx,
+        );
+        Self::set_input_value(
+            &self.shell_inputs.protocol_mosh_port,
+            profile.port.to_string(),
+            window,
+            cx,
+        );
+        Self::set_input_value(
+            &self.shell_inputs.protocol_mosh_command,
+            format!("mosh --server=/path/server {}", profile.host),
+            window,
+            cx,
+        );
+        Self::set_input_value(
+            &self.shell_inputs.protocol_telnet_port,
+            "23".to_string(),
+            window,
+            cx,
+        );
+        self.workspaces.push(WorkspaceTab {
+            id: workspace_id,
+            title,
+            pane_ids: Vec::new(),
+            active_pane_id: 0,
+            unread_events: 0,
+            split_axis: SplitAxis::Horizontal,
+            view_mode: WorkspaceViewMode::Terminal,
+            sftp: None,
+            search_visible: false,
+            search_query: String::new(),
+            search_results: Vec::new(),
+            active_search_index: None,
+            broadcast_input: false,
+            pending_connect: Some(profile),
+            pending_connect_mode: mode,
+            pending_connect_protocol: ConnectProtocol::Ssh,
+            connect_failure: None,
         });
         self.active_workspace_id = Some(workspace_id);
         self.show_editor_panel = false;
@@ -4521,6 +4712,39 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn connect_from_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let host_value = self.inputs.host.read(cx).value().trim().to_string();
+        let label_value = self.inputs.label.read(cx).value().trim().to_string();
+        if host_value.is_empty() && !label_value.is_empty() {
+            Self::set_input_value(&self.inputs.host, label_value.clone(), window, cx);
+        } else if label_value.is_empty() && !host_value.is_empty() {
+            Self::set_input_value(&self.inputs.label, host_value.clone(), window, cx);
+        }
+        if self.inputs.username.read(cx).value().trim().is_empty() {
+            let current_user = std::env::var("USER")
+                .ok()
+                .or_else(|| std::env::var("USERNAME").ok())
+                .filter(|name| !name.trim().is_empty())
+                .unwrap_or_else(|| "user".to_string());
+            Self::set_input_value(&self.inputs.username, current_user, window, cx);
+        }
+        let host_after = self.inputs.host.read(cx).value().trim().to_string();
+        if host_after.is_empty() {
+            self.error_message = "Type a host name or address to connect.".to_string();
+            cx.notify();
+            return;
+        }
+        // Save the profile so it persists in the library.
+        self.save_profile(window, cx);
+        let Some(profile_id) = self.selected_profile_id.clone() else {
+            self.error_message = "Could not save host.".to_string();
+            cx.notify();
+            return;
+        };
+        self.show_editor_panel = false;
+        self.open_choose_protocol_tab(&profile_id, window, cx);
+    }
+
     fn connect_current(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         eprintln!("[app] connect_current: building request from draft...");
         let _ = self.ensure_default_identity_selected(window, cx);
@@ -4556,6 +4780,9 @@ impl TermiRustApp {
                     active_search_index: None,
                     broadcast_input: false,
                     pending_connect: None,
+                    pending_connect_mode: ConnectDialogMode::Username,
+                    pending_connect_protocol: ConnectProtocol::Ssh,
+                    connect_failure: None,
                 });
 
                 self.active_workspace_id = Some(workspace_id);
@@ -4794,6 +5021,9 @@ impl TermiRustApp {
             active_search_index: None,
             broadcast_input: false,
             pending_connect: None,
+            pending_connect_mode: ConnectDialogMode::Username,
+            pending_connect_protocol: ConnectProtocol::Ssh,
+            connect_failure: None,
         });
 
         self.active_workspace_id = Some(workspace_id);
@@ -5507,6 +5737,9 @@ impl TermiRustApp {
             active_search_index: None,
             broadcast_input: false,
             pending_connect: None,
+            pending_connect_mode: ConnectDialogMode::Username,
+            pending_connect_protocol: ConnectProtocol::Ssh,
+            connect_failure: None,
         });
         self.active_workspace_id = Some(new_workspace_id);
         self.status_message = "Pane detached into a new workspace tab.".to_string();
@@ -7119,6 +7352,97 @@ impl TermiRustApp {
             })
     }
 
+    fn host_list_row(
+        &self,
+        card_ix: usize,
+        profile: &HostProfile,
+        selected: bool,
+        cx: &Context<Self>,
+    ) -> Stateful<Div> {
+        let profile_id = profile.id.clone();
+        let edit_id = profile.id.clone();
+        let display = profile.display_name();
+        let endpoint = format!("{}@{}", profile.username, profile.endpoint());
+        let accent = match profile.color_tag {
+            Some(tag) => gpui::rgb(tag.rgb_hex()).into(),
+            None => theme::host_chip_color(&display),
+        };
+        h_flex()
+            .id(("host-row-list", card_ix))
+            .w_full()
+            .h(px(40.))
+            .gap(px(10.))
+            .px(px(10.))
+            .items_center()
+            .rounded(px(6.))
+            .bg(if selected {
+                theme::accent_soft()
+            } else {
+                gpui::transparent_black()
+            })
+            .cursor_pointer()
+            .hover(|s| s.bg(theme::with_alpha(theme::hover(), 0.5)))
+            .on_click(cx.listener({
+                let pid = profile_id.clone();
+                move |this, event: &ClickEvent, window, cx| {
+                    let click_count = match event {
+                        ClickEvent::Mouse(e) => e.up.click_count,
+                        ClickEvent::Keyboard(_) => 1,
+                    };
+                    if click_count >= 2 {
+                        this.open_connect_dialog_tab(&pid, window, cx);
+                    } else {
+                        this.selected_profile_id = Some(pid.clone());
+                        cx.notify();
+                    }
+                }
+            }))
+            .child(div().size(px(8.)).rounded(px(999.)).bg(accent))
+            .child(
+                Icon::new(IconName::SquareTerminal)
+                    .size(px(13.))
+                    .text_color(theme::text_muted()),
+            )
+            .child(
+                div()
+                    .w(px(160.))
+                    .text_size(px(13.))
+                    .text_color(theme::text_main())
+                    .child(display),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .text_size(px(12.))
+                    .text_color(theme::text_muted())
+                    .child(endpoint),
+            )
+            .child({
+                div()
+                    .id(("host-row-list-edit", card_ix))
+                    .size(px(24.))
+                    .rounded(px(4.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .text_color(theme::text_muted())
+                    .hover(|s| {
+                        s.bg(theme::with_alpha(theme::hover(), 0.85))
+                            .text_color(theme::text_main())
+                    })
+                    .child(app_icon(ICON_PENCIL).size(px(13.)))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        cx.stop_propagation();
+                        this.load_profile_into_inputs(&edit_id, window, cx);
+                        this.show_editor_panel = true;
+                        cx.notify();
+                    }))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            })
+    }
+
     fn render_host_grid(&self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let groups = self.grouped_profiles(cx);
 
@@ -7134,18 +7458,33 @@ impl TermiRustApp {
                 .count();
             let _ = total_count;
             let is_only_ungrouped = groups.len() == 1 && group_name == "Ungrouped";
-            let cards = h_flex().w_full().flex_wrap().gap(px(10.)).children(
-                profiles.iter().enumerate().map(|(group_ix, profile)| {
-                    self.host_card(
-                        card_ix + group_ix,
-                        profile,
-                        self.selected_profile_id.as_deref() == Some(profile.id.as_str()),
-                        self.selected_host_ids.contains(profile.id.as_str()),
-                        cx,
-                    )
-                    .into_any_element()
-                }),
-            );
+            let is_list = self.hosts_view_mode == HostsViewMode::List;
+            let cards: Div = if is_list {
+                v_flex().w_full().gap(px(2.)).children(
+                    profiles.iter().enumerate().map(|(group_ix, profile)| {
+                        self.host_list_row(
+                            card_ix + group_ix,
+                            profile,
+                            self.selected_profile_id.as_deref() == Some(profile.id.as_str()),
+                            cx,
+                        )
+                        .into_any_element()
+                    }),
+                )
+            } else {
+                h_flex().w_full().flex_wrap().gap(px(10.)).children(
+                    profiles.iter().enumerate().map(|(group_ix, profile)| {
+                        self.host_card(
+                            card_ix + group_ix,
+                            profile,
+                            self.selected_profile_id.as_deref() == Some(profile.id.as_str()),
+                            self.selected_host_ids.contains(profile.id.as_str()),
+                            cx,
+                        )
+                        .into_any_element()
+                    }),
+                )
+            };
 
             let mut section = v_flex().w_full().gap(px(10.));
             if !is_only_ungrouped {
@@ -7695,23 +8034,22 @@ impl TermiRustApp {
         state: &Entity<InputState>,
         suffix: Option<AnyElement>,
     ) -> Div {
+        let _ = suffix;
         h_flex()
             .w_full()
-            .h(px(38.))
-            .px(px(10.))
             .gap(px(8.))
             .items_center()
-            .rounded(px(6.))
-            .bg(theme::library_bg())
-            .border_1()
-            .border_color(theme::soft_border())
-            .text_size(px(13.))
-            .text_color(theme::text_main())
             .when_some(icon, |this, ic| {
-                this.child(ic.size(px(14.)).text_color(theme::text_muted()))
+                this.child(
+                    div()
+                        .size(px(20.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(ic.size(px(14.)).text_color(theme::text_muted())),
+                )
             })
-            .child(Input::new(state).appearance(false).flex_1())
-            .when_some(suffix, |this, s| this.child(s))
+            .child(Input::new(state).flex_1())
     }
 
     fn editor_section_card(&self, title: Option<&str>, body: Div) -> Div {
@@ -7765,8 +8103,14 @@ impl TermiRustApp {
             )
     }
 
-    fn editor_theme_row(&self, _cx: &mut Context<Self>) -> Div {
+    fn editor_theme_row(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let preset = self.saved.settings.theme_preset;
+        let preset_label = match preset {
+            ThemePreset::Ocean => "Termius Dark",
+            ThemePreset::Daylight => "Daylight",
+        };
         h_flex()
+            .id("editor-theme-toggle")
             .w_full()
             .h(px(56.))
             .px(px(10.))
@@ -7776,6 +8120,8 @@ impl TermiRustApp {
             .bg(theme::library_bg())
             .border_1()
             .border_color(theme::soft_border())
+            .cursor_pointer()
+            .hover(|s| s.bg(theme::with_alpha(theme::hover(), 0.5)))
             .child(
                 div()
                     .w(px(64.))
@@ -7804,13 +8150,13 @@ impl TermiRustApp {
                             .text_size(px(13.))
                             .font_semibold()
                             .text_color(theme::text_main())
-                            .child("Termius Dark"),
+                            .child(preset_label),
                     )
                     .child(
                         div()
                             .text_size(px(11.))
                             .text_color(theme::text_muted())
-                            .child("Terminal theme"),
+                            .child("Click to toggle terminal theme"),
                     ),
             )
             .child(
@@ -7818,6 +8164,16 @@ impl TermiRustApp {
                     .size(px(14.))
                     .text_color(theme::text_muted()),
             )
+            .on_click(cx.listener(|this, _, _, cx| {
+                let next = match this.saved.settings.theme_preset {
+                    ThemePreset::Ocean => ThemePreset::Daylight,
+                    ThemePreset::Daylight => ThemePreset::Ocean,
+                };
+                this.saved.settings.theme_preset = next;
+                theme::set_theme_preset(next);
+                this.persist_runtime_state();
+                cx.notify();
+            }))
     }
 
     fn editor_protocol_row(
@@ -7835,25 +8191,7 @@ impl TermiRustApp {
                     .text_color(theme::text_main())
                     .child(format!("{protocol} on")),
             )
-            .child(
-                div()
-                    .w(px(60.))
-                    .h(px(30.))
-                    .px(px(8.))
-                    .rounded(px(6.))
-                    .bg(theme::library_bg())
-                    .border_1()
-                    .border_color(theme::soft_border())
-                    .flex()
-                    .items_center()
-                    .text_size(px(13.))
-                    .text_color(theme::text_main())
-                    .child(
-                        Input::new(port_state)
-                            .appearance(false)
-                            .flex_1(),
-                    ),
-            )
+            .child(div().w(px(70.)).child(Input::new(port_state).xsmall()))
             .child(
                 div()
                     .text_size(px(13.))
@@ -7882,11 +8220,6 @@ impl TermiRustApp {
                 Some(app_icon(ICON_TAG)),
                 &self.inputs.tags,
                 None,
-            ))
-            .child(self.editor_static_row(
-                app_icon(ICON_X),
-                "Backspace",
-                "Default",
             ));
 
         let ssh_body = v_flex()
@@ -7934,41 +8267,48 @@ impl TermiRustApp {
             )
             .when(self.editor_advanced_expanded, |this| {
                 this.child(div().h(px(1.)).bg(theme::soft_border()))
-                    .child(self.editor_static_row(
-                        Icon::new(IconName::Settings),
-                        "Agent Forwarding",
-                        "Disabled",
-                    ))
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .child("Startup command"),
+                    )
                     .child(self.editor_input_row(
                         Some(Icon::new(IconName::SquareTerminal)),
                         &self.inputs.startup_command,
                         None,
                     ))
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .pt(px(4.))
+                            .child("Host chaining (jump host)"),
+                    )
                     .child(self.editor_input_row(
                         Some(Icon::new(IconName::Globe)),
                         &self.inputs.jump_host,
                         None,
                     ))
-                    .child(self.editor_static_row(
-                        Icon::new(IconName::Globe),
-                        "Proxy",
-                        "",
-                    ))
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .pt(px(4.))
+                            .child("Environment variables (KEY=value, comma-separated)"),
+                    )
                     .child(self.editor_input_row(
                         Some(app_icon(ICON_TAG)),
                         &self.inputs.environment,
                         None,
                     ))
-                    .child(self.editor_static_row(
-                        Icon::new(IconName::Globe),
-                        "UTF-8",
-                        "",
-                    ))
-                    .child(self.editor_static_row(
-                        Icon::new(IconName::SquareTerminal),
-                        "Mosh",
-                        "Disabled",
-                    ))
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .pt(px(4.))
+                            .child("Terminal theme"),
+                    )
                     .child(self.editor_theme_row(cx))
             })
             .child(
@@ -8886,8 +9226,7 @@ impl TermiRustApp {
                     .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                     .label("Connect")
                     .on_click(cx.listener(|this, _, window, cx| {
-                        this.close_editor_dialog(window, cx);
-                        this.connect_current(window, cx);
+                        this.connect_from_editor(window, cx);
                     })),
             )
             .child(
@@ -9636,6 +9975,31 @@ impl TermiRustApp {
     fn render_hosts_overlays(&self, cx: &mut Context<Self>) -> AnyElement {
         if self.show_editor_panel {
             if self.open_editor_menu == Some(EditorMenu::Vault) {
+                let mut panel = v_flex()
+                    .min_w(px(220.))
+                    .p(px(6.))
+                    .gap(px(2.))
+                    .rounded(px(8.))
+                    .bg(theme::library_card())
+                    .border_1()
+                    .border_color(theme::soft_border())
+                    .shadow_lg();
+                let active = self.draft_vault_id.clone();
+                for (idx, vault) in self.saved.vaults.iter().enumerate() {
+                    let id = vault.id.clone();
+                    let display = vault.display_name();
+                    let is_active = active.as_deref() == Some(id.as_str());
+                    panel = panel.child(self.dropdown_item(
+                        ("vault-pick", idx),
+                        Some(app_icon(ICON_VAULT)),
+                        display,
+                        is_active,
+                        move |this, _, _| {
+                            this.draft_vault_id = Some(id.clone());
+                        },
+                        cx,
+                    ));
+                }
                 return div()
                     .id("editor-vault-overlay")
                     .absolute()
@@ -9645,33 +10009,7 @@ impl TermiRustApp {
                         this.open_editor_menu = None;
                         cx.notify();
                     }))
-                    .child(
-                        v_flex()
-                            .min_w(px(180.))
-                            .p(px(6.))
-                            .gap(px(2.))
-                            .rounded(px(8.))
-                            .bg(theme::library_card())
-                            .border_1()
-                            .border_color(theme::soft_border())
-                            .shadow_lg()
-                            .child(self.dropdown_item(
-                                "vault-personal",
-                                Some(Icon::new(IconName::User)),
-                                "Personal",
-                                true,
-                                |_, _, _| {},
-                                cx,
-                            ))
-                            .child(self.dropdown_item(
-                                "vault-team",
-                                Some(Icon::new(IconName::User)),
-                                "Team",
-                                false,
-                                |_, _, _| {},
-                                cx,
-                            )),
-                    )
+                    .child(panel)
                     .into_any_element();
             }
             if self.open_editor_menu == Some(EditorMenu::Overflow) {
@@ -9691,7 +10029,15 @@ impl TermiRustApp {
                         "Connect",
                         false,
                         |this, window, cx| {
-                            this.connect_current(window, cx);
+                            eprintln!(
+                                "[connect] overflow Connect clicked, selected_profile_id={:?}",
+                                this.selected_profile_id
+                            );
+                            if let Some(id) = this.selected_profile_id.clone() {
+                                this.open_choose_protocol_tab(&id, window, cx);
+                            } else {
+                                this.open_choose_protocol_tab_from_draft(window, cx);
+                            }
                         },
                         cx,
                     ))
@@ -9710,7 +10056,29 @@ impl TermiRustApp {
                         Some(Icon::new(IconName::Copy)),
                         "Duplicate",
                         false,
-                        |_, _, _| {},
+                        |this, _, cx| {
+                            if let Some(id) = this.selected_profile_id.clone() {
+                                if let Some(orig) = this
+                                    .saved
+                                    .profiles
+                                    .iter()
+                                    .find(|p| p.id == id)
+                                    .cloned()
+                                {
+                                    let mut copy = orig.clone();
+                                    copy.id = format!(
+                                        "{}-copy-{}",
+                                        orig.id,
+                                        this.next_session_id()
+                                    );
+                                    copy.label = format!("{} (copy)", orig.label);
+                                    this.saved.upsert_profile(copy.clone());
+                                    this.selected_profile_id = Some(copy.id);
+                                    this.persist_runtime_state();
+                                    cx.notify();
+                                }
+                            }
+                        },
                         cx,
                     ));
                 if has_profile {
@@ -9776,55 +10144,24 @@ impl TermiRustApp {
                         .child(self.new_host_menu_item(
                             "menu-import",
                             IconName::PanelLeft,
-                            "Import",
+                            "Import from ~/.ssh/config",
                             false,
                             cx,
                             |this, _, cx| {
                                 this.show_new_host_menu = false;
-                                this.status_message =
-                                    "Import from SSH config / OpenSSH already loads automatically."
-                                        .to_string();
-                                cx.notify();
-                            },
-                        ))
-                        .child(div().h(px(1.)).w_full().my(px(4.)).bg(theme::soft_border()))
-                        .child(self.new_host_menu_item(
-                            "menu-aws",
-                            IconName::Globe,
-                            "AWS Integration",
-                            true,
-                            cx,
-                            |this, _, cx| {
-                                this.show_new_host_menu = false;
-                                this.status_message =
-                                    "AWS integration ships in a future release.".to_string();
-                                cx.notify();
-                            },
-                        ))
-                        .child(self.new_host_menu_item(
-                            "menu-do",
-                            IconName::Globe,
-                            "DigitalOcean Integration",
-                            true,
-                            cx,
-                            |this, _, cx| {
-                                this.show_new_host_menu = false;
-                                this.status_message =
-                                    "DigitalOcean integration ships in a future release."
-                                        .to_string();
-                                cx.notify();
-                            },
-                        ))
-                        .child(self.new_host_menu_item(
-                            "menu-azure",
-                            IconName::Globe,
-                            "Azure Integration",
-                            true,
-                            cx,
-                            |this, _, cx| {
-                                this.show_new_host_menu = false;
-                                this.status_message =
-                                    "Azure integration ships in a future release.".to_string();
+                                match crate::storage::load_local_ssh_hosts() {
+                                    Ok(hosts) => {
+                                        let count = hosts.len();
+                                        this.saved.merge_imported_profiles(hosts);
+                                        this.persist_runtime_state();
+                                        this.status_message =
+                                            format!("Imported {count} hosts from ~/.ssh/config.");
+                                    }
+                                    Err(e) => {
+                                        this.error_message =
+                                            format!("Could not import SSH config: {e}");
+                                    }
+                                }
                                 cx.notify();
                             },
                         )),
@@ -9922,15 +10259,25 @@ impl TermiRustApp {
                         .border_1()
                         .border_color(theme::soft_border())
                         .shadow_lg();
+                    let active_filter = self.hosts_tag_filter.clone();
+                    panel = panel.child(self.dropdown_item(
+                        "tag-filter-all",
+                        Some(app_icon(ICON_TAG)),
+                        "All hosts",
+                        active_filter.is_none(),
+                        |this, _, _| this.hosts_tag_filter = None,
+                        cx,
+                    ));
                     for (idx, tag) in tags.iter().enumerate() {
                         let tag_owned = tag.clone();
+                        let is_active = active_filter.as_deref() == Some(tag.as_str());
                         panel = panel.child(self.dropdown_item(
                             ("tag-filter", idx),
                             Some(app_icon(ICON_TAG)),
                             tag.clone(),
-                            false,
-                            move |_, _, _| {
-                                let _ = tag_owned;
+                            is_active,
+                            move |this, _, _| {
+                                this.hosts_tag_filter = Some(tag_owned.clone());
                             },
                             cx,
                         ));
@@ -9981,33 +10328,50 @@ impl TermiRustApp {
                     cx,
                 ))
                 .into(),
-            Some(ToolbarMenu::Avatar) => v_flex()
-                .min_w(px(240.))
-                .p(px(6.))
-                .gap(px(2.))
-                .rounded(px(8.))
-                .bg(theme::library_card())
-                .border_1()
-                .border_color(theme::soft_border())
-                .shadow_lg()
-                .child(self.dropdown_item(
-                    "avatar-invite",
-                    Some(Icon::new(IconName::User)),
-                    "Invite team members",
-                    false,
-                    |_, _, _| {},
-                    cx,
-                ))
-                .child(div().h(px(1.)).my(px(4.)).bg(theme::soft_border()))
-                .child(self.dropdown_item(
-                    "avatar-email",
-                    None,
-                    email,
-                    false,
-                    |_, _, _| {},
-                    cx,
-                ))
-                .into(),
+            Some(ToolbarMenu::Avatar) => {
+                let invite_email = email.clone();
+                let copy_email = email.clone();
+                v_flex()
+                    .min_w(px(240.))
+                    .p(px(6.))
+                    .gap(px(2.))
+                    .rounded(px(8.))
+                    .bg(theme::library_card())
+                    .border_1()
+                    .border_color(theme::soft_border())
+                    .shadow_lg()
+                    .child(self.dropdown_item(
+                        "avatar-invite",
+                        Some(Icon::new(IconName::User)),
+                        "Invite team members",
+                        false,
+                        move |this, _, cx| {
+                            let _ = std::process::Command::new("open")
+                                .arg(format!(
+                                    "mailto:?subject=Join%20me%20on%20TermiRust&body=I%27m%20using%20TermiRust%20at%20{invite_email}"
+                                ))
+                                .spawn();
+                            this.status_message =
+                                "Opened your email client to invite a teammate.".to_string();
+                            cx.notify();
+                        },
+                        cx,
+                    ))
+                    .child(div().h(px(1.)).my(px(4.)).bg(theme::soft_border()))
+                    .child(self.dropdown_item(
+                        "avatar-email",
+                        None,
+                        email,
+                        false,
+                        move |this, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(copy_email.clone()));
+                            this.status_message = "Copied email to clipboard.".to_string();
+                            cx.notify();
+                        },
+                        cx,
+                    ))
+                    .into()
+            }
             None => return div().into_any_element(),
         };
         let (top_offset, right_offset, left_offset) = match menu {
@@ -10192,8 +10556,7 @@ impl TermiRustApp {
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.open_local_terminal(window, cx);
                                     })),
-                            )
-                            .child(self.serial_upgrade_button(cx)),
+                            ),
                     )
                     .child(
                         h_flex()
@@ -10447,7 +10810,15 @@ impl TermiRustApp {
                         "Connect",
                         false,
                         |this, window, cx| {
-                            this.connect_current(window, cx);
+                            eprintln!(
+                                "[connect] overflow Connect clicked, selected_profile_id={:?}",
+                                this.selected_profile_id
+                            );
+                            if let Some(id) = this.selected_profile_id.clone() {
+                                this.open_choose_protocol_tab(&id, window, cx);
+                            } else {
+                                this.open_choose_protocol_tab_from_draft(window, cx);
+                            }
                         },
                         cx,
                     ))
@@ -10466,7 +10837,29 @@ impl TermiRustApp {
                         Some(Icon::new(IconName::Copy)),
                         "Duplicate",
                         false,
-                        |_, _, _| {},
+                        |this, _, cx| {
+                            if let Some(id) = this.selected_profile_id.clone() {
+                                if let Some(orig) = this
+                                    .saved
+                                    .profiles
+                                    .iter()
+                                    .find(|p| p.id == id)
+                                    .cloned()
+                                {
+                                    let mut copy = orig.clone();
+                                    copy.id = format!(
+                                        "{}-copy-{}",
+                                        orig.id,
+                                        this.next_session_id()
+                                    );
+                                    copy.label = format!("{} (copy)", orig.label);
+                                    this.saved.upsert_profile(copy.clone());
+                                    this.selected_profile_id = Some(copy.id);
+                                    this.persist_runtime_state();
+                                    cx.notify();
+                                }
+                            }
+                        },
                         cx,
                     ));
                 if has_profile {
@@ -10533,13 +10926,39 @@ impl TermiRustApp {
                 ),
             )
             .child(
-                div()
+                v_flex()
                     .flex_none()
                     .px(px(20.))
                     .py(px(14.))
+                    .gap(px(10.))
                     .border_t_1()
                     .border_color(theme::soft_border())
                     .bg(theme::library_card())
+                    .when(!self.error_message.is_empty(), |this| {
+                        this.child(
+                            h_flex()
+                                .gap(px(8.))
+                                .items_start()
+                                .px(px(10.))
+                                .py(px(8.))
+                                .rounded(px(6.))
+                                .bg(theme::with_alpha(theme::danger(), 0.12))
+                                .border_1()
+                                .border_color(theme::with_alpha(theme::danger(), 0.4))
+                                .child(
+                                    Icon::new(IconName::TriangleAlert)
+                                        .size(px(13.))
+                                        .text_color(theme::danger()),
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .text_size(px(11.))
+                                        .text_color(theme::danger())
+                                        .child(self.error_message.clone()),
+                                ),
+                        )
+                    })
                     .child(self.render_editor_actions(cx)),
             )
     }
@@ -13147,7 +13566,17 @@ impl TermiRustApp {
     }
 
     fn render_sftp_local_pane(&self, cx: &mut Context<Self>) -> Div {
-        let entries = Self::read_local_dir(&self.sftp_local_path);
+        let mut entries = Self::read_local_dir(&self.sftp_local_path);
+        let filter_value = self
+            .shell_inputs
+            .sftp_local_filter
+            .read(cx)
+            .value()
+            .trim()
+            .to_ascii_lowercase();
+        if !filter_value.is_empty() {
+            entries.retain(|e| e.name.to_ascii_lowercase().contains(&filter_value));
+        }
         let path_segments: Vec<String> = self
             .sftp_local_path
             .components()
@@ -13198,8 +13627,11 @@ impl TermiRustApp {
                             .items_center()
                             .child(
                                 h_flex()
+                                    .id("sftp-filter-toggle")
                                     .gap(px(4.))
                                     .items_center()
+                                    .cursor_pointer()
+                                    .hover(|s| s.text_color(theme::text_main()))
                                     .child(
                                         Icon::new(IconName::Search)
                                             .size(px(12.))
@@ -13210,12 +13642,26 @@ impl TermiRustApp {
                                             .text_size(px(12.))
                                             .text_color(theme::text_muted())
                                             .child("Filter"),
-                                    ),
+                                    )
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.sftp_local_filter_visible =
+                                            !this.sftp_local_filter_visible;
+                                        if this.sftp_local_filter_visible {
+                                            this.shell_inputs.sftp_local_filter.update(
+                                                cx,
+                                                |state, cx| state.focus(window, cx),
+                                            );
+                                        }
+                                        cx.notify();
+                                    })),
                             )
                             .child(
                                 h_flex()
+                                    .id("sftp-actions-open")
                                     .gap(px(4.))
                                     .items_center()
+                                    .cursor_pointer()
+                                    .hover(|s| s.text_color(theme::text_main()))
                                     .child(
                                         div()
                                             .text_size(px(12.))
@@ -13226,7 +13672,16 @@ impl TermiRustApp {
                                         Icon::new(IconName::ChevronDown)
                                             .size(px(11.))
                                             .text_color(theme::text_muted()),
-                                    ),
+                                    )
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        let path = this.sftp_local_path.clone();
+                                        let _ = std::process::Command::new("open")
+                                            .arg(&path)
+                                            .spawn();
+                                        this.status_message =
+                                            format!("Opened {} in Finder.", path.display());
+                                        cx.notify();
+                                    })),
                             ),
                     ),
             )
@@ -13294,6 +13749,14 @@ impl TermiRustApp {
                         items
                     })),
             )
+            .when(self.sftp_local_filter_visible, |this| {
+                this.child(
+                    div()
+                        .px(px(16.))
+                        .pb(px(8.))
+                        .child(Input::new(&self.shell_inputs.sftp_local_filter).xsmall()),
+                )
+            })
             .child(
                 h_flex()
                     .h(px(32.))
@@ -15221,11 +15684,28 @@ impl TermiRustApp {
                 );
         };
 
-        if let Some(pending) = workspace.pending_connect.clone() {
+        if let Some(failure) = workspace.connect_failure.clone() {
+            let wid = workspace.id;
             return v_flex()
                 .flex_1()
                 .bg(theme::terminal_bg())
-                .child(self.render_connect_dialog(workspace.id, &pending, cx));
+                .child(self.render_connect_failure_dialog(wid, &failure, cx));
+        }
+        if let Some(pending) = workspace.pending_connect.clone() {
+            let mode = workspace.pending_connect_mode;
+            let protocol = workspace.pending_connect_protocol;
+            let wid = workspace.id;
+            return v_flex()
+                .flex_1()
+                .bg(theme::terminal_bg())
+                .child(match mode {
+                    ConnectDialogMode::Username => {
+                        self.render_connect_dialog(wid, &pending, cx).into_any_element()
+                    }
+                    ConnectDialogMode::ChooseProtocol => self
+                        .render_choose_protocol_dialog(wid, &pending, protocol, cx)
+                        .into_any_element(),
+                });
         }
 
         let panes = workspace
@@ -15257,6 +15737,516 @@ impl TermiRustApp {
             .p(px(WORKSPACE_PADDING))
             .bg(theme::terminal_bg())
             .child(content)
+    }
+
+    fn render_connect_failure_dialog(
+        &self,
+        workspace_id: u64,
+        failure: &ConnectFailure,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let title = failure.profile.display_name();
+        let endpoint = format!(
+            "{} {}:{}",
+            match failure.protocol {
+                ConnectProtocol::Ssh => "SSH",
+                ConnectProtocol::Mosh => "Mosh",
+                ConnectProtocol::Telnet => "Telnet",
+            },
+            failure.profile.host,
+            failure.port
+        );
+        let log_lines: Vec<String> = failure.log.clone();
+        let profile_id = failure.profile.id.clone();
+        v_flex()
+            .flex_1()
+            .items_center()
+            .pt(px(96.))
+            .gap(px(20.))
+            .child(
+                h_flex()
+                    .w(px(520.))
+                    .gap(px(12.))
+                    .items_center()
+                    .child(
+                        div()
+                            .size(px(44.))
+                            .rounded(px(8.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(theme::with_alpha(theme::accent(), 0.18))
+                            .child(
+                                Icon::new(IconName::SquareTerminal)
+                                    .size(px(20.))
+                                    .text_color(theme::accent()),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(15.))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child(title),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(theme::text_muted())
+                                    .child(endpoint),
+                            ),
+                    )
+                    .child(
+                        Button::new("connect-fail-copy")
+                            .small()
+                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                            .label("Copy logs")
+                            .on_click(cx.listener({
+                                let log = log_lines.clone();
+                                move |_, _, _, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(log.join("\n")));
+                                }
+                            })),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .w(px(520.))
+                    .items_center()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .size(px(28.))
+                            .rounded(px(999.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(theme::danger())
+                            .child(
+                                Icon::new(IconName::User)
+                                    .size(px(14.))
+                                    .text_color(theme::library_card()),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .h(px(2.))
+                            .bg(theme::with_alpha(theme::danger(), 0.7)),
+                    )
+                    .child(
+                        div()
+                            .size(px(28.))
+                            .rounded(px(999.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(theme::danger())
+                            .child(
+                                Icon::new(IconName::SquareTerminal)
+                                    .size(px(14.))
+                                    .text_color(theme::library_card()),
+                            ),
+                    ),
+            )
+            .child(
+                div()
+                    .w(px(520.))
+                    .text_size(px(13.))
+                    .font_semibold()
+                    .text_color(theme::danger())
+                    .child("Connection failed with connection log:"),
+            )
+            .child(
+                v_flex()
+                    .w(px(520.))
+                    .p(px(14.))
+                    .gap(px(8.))
+                    .rounded(px(8.))
+                    .bg(theme::with_alpha(theme::hover(), 0.4))
+                    .border_1()
+                    .border_color(theme::soft_border())
+                    .children(log_lines.iter().map(|line| {
+                        div()
+                            .text_size(px(12.))
+                            .text_color(theme::text_main())
+                            .child(line.clone())
+                            .into_any_element()
+                    })),
+            )
+            .child(
+                h_flex()
+                    .w(px(520.))
+                    .pt(px(8.))
+                    .gap(px(10.))
+                    .justify_end()
+                    .items_center()
+                    .child(
+                        Button::new("connect-fail-close")
+                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                            .label("Close")
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.close_connect_dialog_tab(workspace_id, window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("connect-fail-edit")
+                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                            .label("Edit host")
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.close_connect_dialog_tab(workspace_id, window, cx);
+                                this.activate_library_section(NavSection::Hosts, window, cx);
+                                this.load_profile_into_inputs(&profile_id, window, cx);
+                                this.show_editor_panel = true;
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        Button::new("connect-fail-restart")
+                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                            .label("Start over")
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.restart_choose_protocol(workspace_id, cx);
+                            })),
+                    ),
+            )
+    }
+
+    fn render_choose_protocol_dialog(
+        &self,
+        workspace_id: u64,
+        profile: &HostProfile,
+        selected: ConnectProtocol,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let host = profile.host.clone();
+        let display = profile.display_name();
+        v_flex()
+            .flex_1()
+            .items_center()
+            .pt(px(96.))
+            .gap(px(28.))
+            .child(
+                h_flex()
+                    .gap(px(12.))
+                    .items_center()
+                    .child(
+                        div()
+                            .size(px(44.))
+                            .rounded(px(8.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(theme::with_alpha(theme::accent(), 0.18))
+                            .child(
+                                Icon::new(IconName::SquareTerminal)
+                                    .size(px(20.))
+                                    .text_color(theme::accent()),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(15.))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child(display.clone()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(theme::text_muted())
+                                    .child(host.clone()),
+                            ),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .w(px(420.))
+                    .items_center()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .size(px(28.))
+                            .rounded(px(999.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(theme::accent())
+                            .child(
+                                Icon::new(IconName::User)
+                                    .size(px(14.))
+                                    .text_color(theme::library_card()),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .h(px(2.))
+                            .bg(theme::with_alpha(theme::text_muted(), 0.4)),
+                    )
+                    .child(
+                        div()
+                            .size(px(28.))
+                            .rounded(px(999.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(theme::with_alpha(theme::text_muted(), 0.3))
+                            .child(
+                                Icon::new(IconName::SquareTerminal)
+                                    .size(px(14.))
+                                    .text_color(theme::text_main()),
+                            ),
+                    ),
+            )
+            .child(
+                div()
+                    .w(px(420.))
+                    .text_size(px(13.))
+                    .font_semibold()
+                    .text_color(theme::text_main())
+                    .child("Choose protocol"),
+            )
+            .child(self.protocol_card(
+                "proto-ssh",
+                ConnectProtocol::Ssh,
+                "SSH",
+                &format!("ssh {host}"),
+                None,
+                &self.shell_inputs.protocol_ssh_port.clone(),
+                selected == ConnectProtocol::Ssh,
+                cx,
+            ))
+            .child(
+                h_flex()
+                    .w(px(420.))
+                    .pt(px(20.))
+                    .justify_between()
+                    .items_center()
+                    .gap(px(12.))
+                    .child(
+                        Button::new("choose-proto-close")
+                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                            .label("Close")
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.close_connect_dialog_tab(workspace_id, window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("choose-proto-continue")
+                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                            .label("Continue")
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.confirm_choose_protocol(workspace_id, window, cx);
+                            })),
+                    ),
+            )
+    }
+
+    fn protocol_card(
+        &self,
+        id: &'static str,
+        protocol: ConnectProtocol,
+        title: &str,
+        subtitle: &str,
+        hint_input: Option<Entity<InputState>>,
+        port_input: &Entity<InputState>,
+        selected: bool,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let title = title.to_string();
+        let subtitle = subtitle.to_string();
+        h_flex()
+            .id(id)
+            .w(px(420.))
+            .min_h(px(64.))
+            .py(px(10.))
+            .px(px(14.))
+            .gap(px(12.))
+            .items_center()
+            .rounded(px(10.))
+            .bg(theme::library_card())
+            .border_2()
+            .border_color(if selected {
+                theme::accent()
+            } else {
+                gpui::transparent_black()
+            })
+            .cursor_pointer()
+            .hover(|s| s.bg(theme::with_alpha(theme::hover(), 0.6)))
+            .child(
+                v_flex()
+                    .flex_1()
+                    .gap(px(4.))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child(title),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .child(subtitle),
+                    )
+                    .when_some(hint_input, |this, input| {
+                        this.child(Input::new(&input).xsmall())
+                    }),
+            )
+            .child(
+                h_flex()
+                    .gap(px(6.))
+                    .items_center()
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .child("port:"),
+                    )
+                    .child(div().w(px(60.)).child(Input::new(port_input).xsmall())),
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                if let Some(workspace) = this
+                    .active_workspace_id
+                    .and_then(|wid| this.workspaces.iter_mut().find(|w| w.id == wid))
+                {
+                    workspace.pending_connect_protocol = protocol;
+                    cx.notify();
+                }
+            }))
+    }
+
+    fn confirm_choose_protocol(
+        &mut self,
+        workspace_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(workspace) = self.workspaces.iter().find(|w| w.id == workspace_id) else {
+            return;
+        };
+        let Some(profile) = workspace.pending_connect.clone() else {
+            return;
+        };
+        let protocol = workspace.pending_connect_protocol;
+        if protocol != ConnectProtocol::Ssh {
+            let label = match protocol {
+                ConnectProtocol::Mosh => "Mosh",
+                ConnectProtocol::Telnet => "Telnet",
+                ConnectProtocol::Ssh => "SSH",
+            };
+            self.status_message =
+                format!("{label} protocol isn't supported yet — only SSH for now.");
+            cx.notify();
+            return;
+        }
+        let port_str = self
+            .shell_inputs
+            .protocol_ssh_port
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        let port: u16 = port_str.parse().unwrap_or(profile.port);
+
+        // Pre-flight check: resolve the host so we fail loudly with a log
+        // instead of dropping the user into a dead terminal.
+        let mut log: Vec<String> = Vec::new();
+        log.push(format!(
+            "👤 Starting a new connection to: \"{}\" port \"{}\"",
+            profile.host, port
+        ));
+        log.push(format!("⚙️ Starting address resolution of \"{}\"", profile.host));
+        let resolve_target = format!("{}:{port}", profile.host);
+        match std::net::ToSocketAddrs::to_socket_addrs(&resolve_target) {
+            Err(e) => {
+                log.push(format!("😞 Address resolution finished with error: {e}"));
+                if let Some(workspace) = self.workspaces.iter_mut().find(|w| w.id == workspace_id) {
+                    workspace.connect_failure = Some(ConnectFailure {
+                        profile: profile.clone(),
+                        protocol,
+                        port,
+                        log,
+                    });
+                    workspace.pending_connect = None;
+                    workspace.title = format!("{} [failed]", profile.display_name());
+                }
+                cx.notify();
+                return;
+            }
+            Ok(_) => {
+                log.push("✅ Address resolved.".to_string());
+            }
+        }
+
+        self.load_profile_into_inputs(&profile.id, window, cx);
+        if !port_str.is_empty() {
+            Self::set_input_value(&self.inputs.port, port_str, window, cx);
+        }
+        self.show_editor_panel = false;
+        let request = match self.build_request_for_current_draft(cx) {
+            Ok(r) => r,
+            Err(e) => {
+                log.push(format!("😞 {e}"));
+                if let Some(workspace) = self.workspaces.iter_mut().find(|w| w.id == workspace_id) {
+                    workspace.connect_failure = Some(ConnectFailure {
+                        profile: profile.clone(),
+                        protocol,
+                        port,
+                        log,
+                    });
+                    workspace.pending_connect = None;
+                }
+                cx.notify();
+                return;
+            }
+        };
+        let pane_id = self.spawn_pane(request.clone(), window, cx);
+        if let Some(workspace) = self.workspaces.iter_mut().find(|w| w.id == workspace_id) {
+            workspace.pane_ids = vec![pane_id];
+            workspace.active_pane_id = pane_id;
+            workspace.title = request.title.clone();
+            workspace.pending_connect = None;
+            workspace.connect_failure = None;
+        }
+        self.active_workspace_id = Some(workspace_id);
+        self.status_message = format!("Connecting to {}…", request.address());
+        self.error_message.clear();
+        self.sync_terminal_layout(window, cx);
+        if let Some(pane) = self.pane(pane_id) {
+            pane.terminal_focus.focus(window);
+        }
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
+    fn restart_choose_protocol(
+        &mut self,
+        workspace_id: u64,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(workspace) = self.workspaces.iter_mut().find(|w| w.id == workspace_id) {
+            if let Some(failure) = workspace.connect_failure.take() {
+                workspace.pending_connect = Some(failure.profile);
+                workspace.pending_connect_protocol = failure.protocol;
+                workspace.pending_connect_mode = ConnectDialogMode::ChooseProtocol;
+                workspace.title = workspace
+                    .pending_connect
+                    .as_ref()
+                    .map(|p| p.display_name())
+                    .unwrap_or_default();
+            }
+        }
+        cx.notify();
     }
 
     fn render_connect_dialog(
