@@ -67,13 +67,74 @@ pub enum ThemePreset {
     #[default]
     Ocean,
     Daylight,
+    FlexokiDark,
+    FlexokiLight,
+    KanagawaWave,
+    KanagawaDragon,
+    KanagawaLotus,
+    HackerBlue,
+    HackerGreen,
+    HackerRed,
 }
 
 impl ThemePreset {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Ocean => "Ocean",
-            Self::Daylight => "Daylight",
+            Self::Ocean => "Termius Dark",
+            Self::Daylight => "Termius Light",
+            Self::FlexokiDark => "Flexoki Dark",
+            Self::FlexokiLight => "Flexoki Light",
+            Self::KanagawaWave => "Kanagawa Wave",
+            Self::KanagawaDragon => "Kanagawa Dragon",
+            Self::KanagawaLotus => "Kanagawa Lotus",
+            Self::HackerBlue => "Hacker Blue",
+            Self::HackerGreen => "Hacker Green",
+            Self::HackerRed => "Hacker Red",
+        }
+    }
+
+    pub fn all() -> [ThemePreset; 10] {
+        [
+            Self::Ocean,
+            Self::Daylight,
+            Self::FlexokiDark,
+            Self::FlexokiLight,
+            Self::KanagawaWave,
+            Self::KanagawaDragon,
+            Self::KanagawaLotus,
+            Self::HackerBlue,
+            Self::HackerGreen,
+            Self::HackerRed,
+        ]
+    }
+
+    pub fn preview_bg(self) -> u32 {
+        match self {
+            Self::Ocean => 0x07101c,
+            Self::Daylight => 0xf6f1e6,
+            Self::FlexokiDark => 0x100f0f,
+            Self::FlexokiLight => 0xfffcf0,
+            Self::KanagawaWave => 0x1f1f28,
+            Self::KanagawaDragon => 0x181616,
+            Self::KanagawaLotus => 0xf2ecbc,
+            Self::HackerBlue => 0x0b1226,
+            Self::HackerGreen => 0x06160a,
+            Self::HackerRed => 0x1c0707,
+        }
+    }
+
+    pub fn preview_accent(self) -> u32 {
+        match self {
+            Self::Ocean => 0x3ec97a,
+            Self::Daylight => 0x2f9d7e,
+            Self::FlexokiDark => 0xda702c,
+            Self::FlexokiLight => 0xaf3029,
+            Self::KanagawaWave => 0x7e9cd8,
+            Self::KanagawaDragon => 0xc4746e,
+            Self::KanagawaLotus => 0x4d699b,
+            Self::HackerBlue => 0x4ea1ff,
+            Self::HackerGreen => 0x3df36c,
+            Self::HackerRed => 0xff5252,
         }
     }
 }

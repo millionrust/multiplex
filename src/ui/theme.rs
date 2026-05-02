@@ -107,8 +107,16 @@ fn palette() -> &'static ThemePalette {
         .read()
         .expect("theme preset lock poisoned");
     match preset {
-        ThemePreset::Ocean => &OCEAN,
-        ThemePreset::Daylight => &DAYLIGHT,
+        ThemePreset::Ocean
+        | ThemePreset::FlexokiDark
+        | ThemePreset::KanagawaWave
+        | ThemePreset::KanagawaDragon
+        | ThemePreset::HackerBlue
+        | ThemePreset::HackerGreen
+        | ThemePreset::HackerRed => &OCEAN,
+        ThemePreset::Daylight | ThemePreset::FlexokiLight | ThemePreset::KanagawaLotus => {
+            &DAYLIGHT
+        }
     }
 }
 
