@@ -57,6 +57,10 @@ const ICON_SHIELD_CHECK: &str = "icons/shield-check.svg";
 const ICON_VAULT: &str = "icons/vault.svg";
 const ICON_X: &str = "icons/x.svg";
 const ICON_PENCIL: &str = "icons/pencil.svg";
+const ICON_GRID: &str = "icons/grid.svg";
+const ICON_TAG: &str = "icons/tag.svg";
+const ICON_SERIAL: &str = "icons/serial.svg";
+const ICON_CALENDAR: &str = "icons/calendar.svg";
 
 fn app_icon(path: &'static str) -> Icon {
     Icon::new(Icon::empty().path(path))
@@ -236,6 +240,7 @@ struct ShellInputs {
     host_search: Entity<InputState>,
     quick_connect_password: Entity<InputState>,
     create_host_address: Entity<InputState>,
+    connect_username: Entity<InputState>,
     bulk_group: Entity<InputState>,
     terminal_search: Entity<InputState>,
     command_palette: Entity<InputState>,
@@ -347,6 +352,8 @@ impl ShellInputs {
             }),
             create_host_address: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Type IP or Hostname")),
+            connect_username: cx
+                .new(|cx| InputState::new(window, cx).placeholder("Username")),
             bulk_group: cx.new(|cx| InputState::new(window, cx).placeholder("Bulk group name")),
             terminal_search: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Search terminal output")),
@@ -395,6 +402,28 @@ struct PendingSnippetPrompts {
     fields: Vec<SnippetPromptField>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HostsViewMode {
+    Grid,
+    List,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HostsSort {
+    AZ,
+    ZA,
+    NewestFirst,
+    OldestFirst,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ToolbarMenu {
+    ViewMode,
+    TagFilter,
+    Sort,
+    Avatar,
+}
+
 struct WorkspaceTab {
     id: u64,
     title: String,
@@ -409,6 +438,7 @@ struct WorkspaceTab {
     search_results: Vec<SearchMatch>,
     active_search_index: Option<usize>,
     broadcast_input: bool,
+    pending_connect: Option<HostProfile>,
 }
 
 #[derive(Clone)]
@@ -627,6 +657,9 @@ pub struct TermiRustApp {
     keychain_tab: KeychainTab,
     show_command_palette: bool,
     show_new_host_menu: bool,
+    hosts_view_mode: HostsViewMode,
+    hosts_sort: HostsSort,
+    open_toolbar_menu: Option<ToolbarMenu>,
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
     tab_rename_input: Entity<InputState>,
@@ -638,6 +671,7 @@ pub struct TermiRustApp {
     sync_pull_pending_warning: bool,
     settings_scroll: ScrollHandle,
     host_editor_scroll: ScrollHandle,
+    hosts_list_scroll: ScrollHandle,
     _window_bounds_subscription: Option<Subscription>,
 }
 
@@ -727,6 +761,9 @@ impl TermiRustApp {
             keychain_tab: KeychainTab::Keys,
             show_command_palette: false,
             show_new_host_menu: false,
+            hosts_view_mode: HostsViewMode::Grid,
+            hosts_sort: HostsSort::NewestFirst,
+            open_toolbar_menu: None,
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
             tab_rename_input: cx
@@ -739,6 +776,7 @@ impl TermiRustApp {
             sync_pull_pending_warning: false,
             settings_scroll: ScrollHandle::new(),
             host_editor_scroll: ScrollHandle::new(),
+            hosts_list_scroll: ScrollHandle::new(),
             _window_bounds_subscription: None,
         };
 
@@ -748,12 +786,9 @@ impl TermiRustApp {
             app.restore_saved_workspaces(window, cx);
         }
 
-        if app.workspaces.is_empty() {
-            if let Some(profile_id) = app.selected_profile_id.clone() {
-                app.show_editor_panel = true;
-                app.load_profile_into_inputs(&profile_id, window, cx);
-            }
-        }
+        app.show_editor_panel = false;
+        app.selected_profile_id = None;
+        app.selected_host_ids.clear();
 
         let window_bounds_subscription = cx.observe_window_bounds(window, |this, window, cx| {
             this.sync_terminal_layout(window, cx);
@@ -2731,6 +2766,21 @@ impl TermiRustApp {
         groups.sort_by(|(left, _), (right, _)| {
             Self::group_sort_key(left).cmp(&Self::group_sort_key(right))
         });
+        let order = self.hosts_sort;
+        for (_, profiles) in groups.iter_mut() {
+            profiles.sort_by(|a, b| match order {
+                HostsSort::AZ => a
+                    .display_name()
+                    .to_ascii_lowercase()
+                    .cmp(&b.display_name().to_ascii_lowercase()),
+                HostsSort::ZA => b
+                    .display_name()
+                    .to_ascii_lowercase()
+                    .cmp(&a.display_name().to_ascii_lowercase()),
+                HostsSort::NewestFirst => std::cmp::Ordering::Equal,
+                HostsSort::OldestFirst => std::cmp::Ordering::Equal,
+            });
+        }
         groups
     }
 
@@ -3638,6 +3688,7 @@ impl TermiRustApp {
                 search_results: Vec::new(),
                 active_search_index: None,
                 broadcast_input: false,
+                pending_connect: None,
             });
             restored_workspace_ids.push(workspace_id);
         }
@@ -4328,6 +4379,7 @@ impl TermiRustApp {
             search_results: Vec::new(),
             active_search_index: None,
             broadcast_input: false,
+            pending_connect: None,
         });
 
         self.active_workspace_id = Some(workspace_id);
@@ -4341,6 +4393,102 @@ impl TermiRustApp {
             pane.terminal_focus.focus(window);
         }
         self.persist_runtime_state();
+        cx.notify();
+    }
+
+    fn open_connect_dialog_tab(
+        &mut self,
+        profile_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(profile) = self
+            .saved
+            .profiles
+            .iter()
+            .find(|p| p.id == profile_id)
+            .cloned()
+        else {
+            return;
+        };
+        let workspace_id = self.next_workspace_id();
+        let title = profile.display_name();
+        Self::set_input_value(
+            &self.shell_inputs.connect_username,
+            &profile.username,
+            window,
+            cx,
+        );
+        self.workspaces.push(WorkspaceTab {
+            id: workspace_id,
+            title,
+            pane_ids: Vec::new(),
+            active_pane_id: 0,
+            unread_events: 0,
+            split_axis: SplitAxis::Horizontal,
+            view_mode: WorkspaceViewMode::Terminal,
+            sftp: None,
+            search_visible: false,
+            search_query: String::new(),
+            search_results: Vec::new(),
+            active_search_index: None,
+            broadcast_input: false,
+            pending_connect: Some(profile),
+        });
+        self.active_workspace_id = Some(workspace_id);
+        self.show_editor_panel = false;
+        cx.notify();
+    }
+
+    fn confirm_connect_dialog(
+        &mut self,
+        save: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return;
+        };
+        let Some(workspace) = self.workspaces.iter_mut().find(|w| w.id == workspace_id) else {
+            return;
+        };
+        let Some(mut profile) = workspace.pending_connect.clone() else {
+            return;
+        };
+        let username = self
+            .shell_inputs
+            .connect_username
+            .read(cx)
+            .value()
+            .to_string();
+        let username = username.trim().to_string();
+        if !username.is_empty() {
+            profile.username = username;
+        }
+        if save {
+            self.saved.upsert_profile(profile.clone());
+            self.persist_runtime_state();
+        }
+        self.load_profile_into_inputs(&profile.id, window, cx);
+        self.show_editor_panel = false;
+        // Remove the placeholder workspace so connect_current creates a fresh one.
+        self.workspaces.retain(|w| w.id != workspace_id);
+        if self.active_workspace_id == Some(workspace_id) {
+            self.active_workspace_id = self.workspaces.last().map(|w| w.id);
+        }
+        self.connect_current(window, cx);
+    }
+
+    fn close_connect_dialog_tab(
+        &mut self,
+        workspace_id: u64,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.workspaces.retain(|w| w.id != workspace_id);
+        if self.active_workspace_id == Some(workspace_id) {
+            self.active_workspace_id = self.workspaces.last().map(|w| w.id);
+        }
         cx.notify();
     }
 
@@ -4378,6 +4526,7 @@ impl TermiRustApp {
                     search_results: Vec::new(),
                     active_search_index: None,
                     broadcast_input: false,
+                    pending_connect: None,
                 });
 
                 self.active_workspace_id = Some(workspace_id);
@@ -4615,6 +4764,7 @@ impl TermiRustApp {
             search_results: Vec::new(),
             active_search_index: None,
             broadcast_input: false,
+            pending_connect: None,
         });
 
         self.active_workspace_id = Some(workspace_id);
@@ -5327,6 +5477,7 @@ impl TermiRustApp {
             search_results: Vec::new(),
             active_search_index: None,
             broadcast_input: false,
+            pending_connect: None,
         });
         self.active_workspace_id = Some(new_workspace_id);
         self.status_message = "Pane detached into a new workspace tab.".to_string();
@@ -6791,109 +6942,129 @@ impl TermiRustApp {
             last_connected_label,
             protocols,
             protocol_icon,
+            selected,
         );
 
+        let _ = (
+            group_label,
+            visible_tags,
+            favorite_profile_id,
+            favorite_selected,
+            batch_profile_id,
+            connect_profile_id,
+        );
+        let sublabel = if profile.username.trim().is_empty() {
+            "ssh".to_string()
+        } else {
+            format!("{}@{}", profile.username, profile.endpoint())
+        };
+        let icon_bg = theme::with_alpha(accent, 0.18);
         h_flex()
             .id(("host-row", card_ix))
             .group(format!("host-row-group-{card_ix}"))
-            .w_full()
-            .h(px(48.))
+            .w(px(340.))
+            .h(px(64.))
             .gap(px(12.))
             .items_center()
-            .pl(px(14.))
-            .pr(px(12.))
-            .rounded(px(8.))
-            .border_l_2()
-            .border_color(if selected {
-                theme::accent()
+            .px(px(10.))
+            .rounded(px(10.))
+            .border_2()
+            .border_color(if batch_selected {
+                theme::with_alpha(theme::accent(), 0.5)
             } else {
                 gpui::transparent_black()
             })
-            .bg(if selected {
-                theme::accent_soft()
-            } else if batch_selected {
-                theme::with_alpha(theme::accent(), 0.06)
-            } else {
-                gpui::transparent_black()
-            })
+            .bg(theme::library_card())
             .cursor_pointer()
-            .hover(|style| style.bg(theme::hover()))
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.load_profile_into_inputs(&profile_id, window, cx);
+            .hover(|style| {
+                style
+                    .bg(theme::with_alpha(theme::hover(), 0.6))
+                    .border_color(theme::accent())
+            })
+            .on_click(cx.listener({
+                let profile_id = profile_id.clone();
+                move |this, event: &ClickEvent, window, cx| {
+                    let click_count = match event {
+                        ClickEvent::Mouse(e) => e.up.click_count,
+                        ClickEvent::Keyboard(_) => 1,
+                    };
+                    if click_count >= 2 {
+                        this.open_connect_dialog_tab(&profile_id, window, cx);
+                    } else {
+                        this.selected_profile_id = Some(profile_id.clone());
+                        cx.notify();
+                    }
+                }
             }))
-            .child(div().size(px(8.)).rounded(px(999.)).bg(accent))
             .child(
                 div()
-                    .text_size(px(13.))
-                    .font_medium()
-                    .text_color(theme::text_main())
-                    .child(profile.display_name()),
-            )
-            .when(profile.favorite, |this| {
-                this.child(
-                    Icon::new(IconName::Star)
-                        .size(px(12.))
-                        .text_color(theme::warning()),
-                )
-            })
-            .child(
-                div()
-                    .flex_1()
-                    .text_size(px(12.))
-                    .text_color(theme::text_muted())
-                    .child(format!("{}@{}", profile.username, profile.endpoint())),
-            )
-            .when(!visible_tags.is_empty(), |this| {
-                this.child(
-                    h_flex().gap(px(4.)).items_center().children(
-                        visible_tags
-                            .iter()
-                            .map(|tag| {
-                                div()
-                                    .px(px(7.))
-                                    .py(px(2.))
-                                    .rounded(px(4.))
-                                    .bg(theme::with_alpha(theme::hover(), 0.8))
-                                    .text_size(px(11.))
-                                    .text_color(theme::text_muted())
-                                    .child(tag.clone())
-                                    .into_any_element()
-                            })
-                            .collect::<Vec<_>>(),
+                    .size(px(44.))
+                    .rounded(px(8.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(icon_bg)
+                    .child(
+                        Icon::new(IconName::SquareTerminal)
+                            .size(px(20.))
+                            .text_color(accent),
                     ),
-                )
-            })
-            .when(!group_label.is_empty(), |this| {
-                this.child(
-                    div()
-                        .text_size(px(11.))
-                        .text_color(theme::text_muted())
-                        .child(group_label.clone()),
-                )
-            })
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .gap(px(2.))
+                    .child(
+                        h_flex()
+                            .gap(px(6.))
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child(profile.display_name()),
+                            )
+                            .when(profile.favorite, |this| {
+                                this.child(
+                                    Icon::new(IconName::Star)
+                                        .size(px(11.))
+                                        .text_color(theme::warning()),
+                                )
+                            }),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .child(sublabel),
+                    ),
+            )
             .child({
-                let _ = (favorite_profile_id, favorite_selected, batch_profile_id);
-                let edit_profile_id = connect_profile_id.clone();
+                let edit_profile_id = profile_id.clone();
                 div()
                     .id(("host-row-edit", card_ix))
-                    .size(px(30.))
+                    .size(px(28.))
                     .rounded(px(6.))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .bg(theme::with_alpha(theme::hover(), 0.85))
-                    .border_1()
-                    .border_color(theme::soft_border())
                     .cursor_pointer()
-                    .hover(|style| style.bg(theme::hover()))
-                    .child(
-                        app_icon(ICON_PENCIL)
-                            .size(px(14.))
-                            .text_color(theme::text_main()),
-                    )
+                    .text_color(theme::text_muted())
+                    .hover(|style| {
+                        style
+                            .bg(theme::with_alpha(theme::hover(), 0.85))
+                            .text_color(theme::text_main())
+                    })
+                    .child(app_icon(ICON_PENCIL).size(px(14.)))
                     .on_click(cx.listener(move |this, _, window, cx| {
+                        cx.stop_propagation();
                         this.load_profile_into_inputs(&edit_profile_id, window, cx);
+                        this.show_editor_panel = true;
+                        cx.notify();
                     }))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             })
     }
 
@@ -6910,66 +7081,9 @@ impl TermiRustApp {
                 .iter()
                 .filter(|profile| Self::profile_group_name(profile) == *group_name)
                 .count();
-            let group_name_for_select = group_name.clone();
-            let group_name_for_bulk = group_name.clone();
-            let header = h_flex()
-                .justify_between()
-                .items_center()
-                .child(
-                    div()
-                        .text_size(px(14.))
-                        .font_semibold()
-                        .text_color(theme::text_main())
-                        .child(group_name.clone()),
-                )
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(
-                            div()
-                                .text_size(px(12.))
-                                .text_color(theme::text_muted())
-                                .child(if visible_count == total_count {
-                                    format!(
-                                        "{} {}",
-                                        visible_count,
-                                        if visible_count == 1 { "host" } else { "hosts" }
-                                    )
-                                } else {
-                                    format!("{} visible • {} total", visible_count, total_count)
-                                }),
-                        )
-                        .child(
-                            Button::new(("group-select", card_ix))
-                                .small()
-                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label("Select Group")
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.select_filtered_group_hosts(&group_name_for_select, cx);
-                                })),
-                        )
-                        .when(group_name != "Favorites", |this| {
-                            this.child(
-                                Button::new(("group-bulk-target", card_ix))
-                                    .small()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::AccentSoft,
-                                        cx,
-                                    ))
-                                    .label("Use as Bulk")
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.prepare_bulk_group_assignment(
-                                            &group_name_for_bulk,
-                                            window,
-                                            cx,
-                                        );
-                                    })),
-                            )
-                        }),
-                );
-
-            let cards = v_flex().w_full().gap(px(2.)).children(
+            let _ = total_count;
+            let is_only_ungrouped = groups.len() == 1 && group_name == "Ungrouped";
+            let cards = h_flex().w_full().flex_wrap().gap(px(10.)).children(
                 profiles.iter().enumerate().map(|(group_ix, profile)| {
                     self.host_card(
                         card_ix + group_ix,
@@ -6982,13 +7096,36 @@ impl TermiRustApp {
                 }),
             );
 
-            sections.push(
-                v_flex()
-                    .gap_3()
-                    .child(header)
-                    .child(cards)
-                    .into_any_element(),
-            );
+            let mut section = v_flex().w_full().gap(px(10.));
+            if !is_only_ungrouped {
+                section = section.child(
+                    h_flex()
+                        .h(px(24.))
+                        .items_end()
+                        .gap(px(8.))
+                        .pl(px(2.))
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .font_semibold()
+                                .text_color(theme::text_main())
+                                .child(group_name.clone()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.))
+                                .text_color(theme::text_muted())
+                                .pb(px(1.))
+                                .child(format!(
+                                    "{} {}",
+                                    visible_count,
+                                    if visible_count == 1 { "host" } else { "hosts" }
+                                )),
+                        ),
+                );
+            }
+            section = section.child(cards);
+            sections.push(section.into_any_element());
             card_ix += profiles.len();
         }
 
@@ -7016,8 +7153,11 @@ impl TermiRustApp {
                             .bg(theme::with_alpha(theme::hover(), 0.6))
                             .border_1()
                             .border_color(theme::soft_border())
+                            .text_size(px(13.))
+                            .text_color(theme::text_main())
                             .child(
                                 Input::new(&self.shell_inputs.create_host_address)
+                                    .appearance(false)
                                     .flex_1(),
                             ),
                     )
@@ -8853,13 +8993,20 @@ impl TermiRustApp {
             }))
     }
 
-    fn toolbar_chevron_button(
+    fn toolbar_chevron_svg_button(
         &self,
         id: &'static str,
-        icon: IconName,
+        svg_path: &'static str,
         _tooltip: &'static str,
-        _cx: &mut Context<Self>,
+        menu: ToolbarMenu,
+        cx: &mut Context<Self>,
     ) -> Stateful<Div> {
+        let open = self.open_toolbar_menu == Some(menu);
+        let chevron = if open {
+            IconName::ChevronUp
+        } else {
+            IconName::ChevronDown
+        };
         div()
             .id(id)
             .h(px(28.))
@@ -8869,16 +9016,389 @@ impl TermiRustApp {
             .items_center()
             .rounded(px(6.))
             .cursor_pointer()
+            .when(open, |this| {
+                this.bg(theme::with_alpha(theme::hover(), 0.7))
+            })
             .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.7)))
             .child(
-                Icon::new(icon)
+                app_icon(svg_path)
                     .size(px(14.))
-                    .text_color(theme::text_muted_dark()),
+                    .text_color(theme::text_main()),
             )
             .child(
-                Icon::new(IconName::ChevronDown)
+                Icon::new(chevron)
                     .size(px(11.))
                     .text_color(theme::text_muted_dark()),
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.open_toolbar_menu = if this.open_toolbar_menu == Some(menu) {
+                    None
+                } else {
+                    Some(menu)
+                };
+                cx.notify();
+            }))
+    }
+
+    fn serial_upgrade_button(&self, _cx: &mut Context<Self>) -> Stateful<Div> {
+        div()
+            .id("library-new-serial")
+            .h(px(28.))
+            .pl(px(10.))
+            .pr(px(8.))
+            .gap(px(6.))
+            .flex()
+            .items_center()
+            .rounded(px(6.))
+            .bg(theme::with_alpha(theme::hover(), 0.7))
+            .border_1()
+            .border_color(theme::soft_border())
+            .cursor_pointer()
+            .hover(|style| style.bg(theme::hover()))
+            .child(
+                app_icon(ICON_SERIAL)
+                    .size(px(13.))
+                    .text_color(theme::text_main()),
+            )
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .font_semibold()
+                    .text_color(theme::text_main())
+                    .child("SERIAL"),
+            )
+            .child(
+                div()
+                    .size(px(14.))
+                    .rounded(px(999.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(theme::with_alpha(theme::accent(), 0.85))
+                    .child(
+                        Icon::new(IconName::Plus)
+                            .size(px(9.))
+                            .text_color(theme::library_card()),
+                    ),
+            )
+    }
+
+    fn render_dropdown_panel(&self, min_w: f32) -> Div {
+        v_flex()
+            .absolute()
+            .top(px(34.))
+            .right(px(0.))
+            .min_w(px(min_w))
+            .p(px(6.))
+            .gap(px(2.))
+            .rounded(px(8.))
+            .bg(theme::library_card())
+            .border_1()
+            .border_color(theme::soft_border())
+    }
+
+    fn dropdown_item(
+        &self,
+        id: impl Into<ElementId>,
+        icon: Option<Icon>,
+        label: impl Into<SharedString>,
+        selected: bool,
+        on_click: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let label: SharedString = label.into();
+        h_flex()
+            .id(id)
+            .h(px(30.))
+            .px(px(10.))
+            .gap(px(10.))
+            .items_center()
+            .rounded(px(6.))
+            .cursor_pointer()
+            .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.7)))
+            .when_some(icon, |this, icon| {
+                this.child(icon.size(px(13.)).text_color(theme::text_muted_dark()))
+            })
+            .child(
+                div()
+                    .flex_1()
+                    .text_size(px(12.))
+                    .text_color(theme::text_main())
+                    .child(label),
+            )
+            .when(selected, |this| {
+                this.child(
+                    Icon::new(IconName::Check)
+                        .size(px(12.))
+                        .text_color(theme::accent()),
+                )
+            })
+            .on_click(cx.listener(move |this, _, window, cx| {
+                on_click(this, window, cx);
+                this.open_toolbar_menu = None;
+                cx.notify();
+            }))
+    }
+
+    fn render_view_mode_dropdown(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let open = self.open_toolbar_menu == Some(ToolbarMenu::ViewMode);
+        div()
+            .id("library-view-mode-wrap")
+            .relative()
+            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                if this.open_toolbar_menu == Some(ToolbarMenu::ViewMode) {
+                    this.open_toolbar_menu = None;
+                    cx.notify();
+                }
+            }))
+            .child(self.toolbar_chevron_svg_button(
+                "library-view-mode",
+                ICON_GRID,
+                "View mode",
+                ToolbarMenu::ViewMode,
+                cx,
+            ))
+            .when(open, |this| {
+                this.child(
+                    self.render_dropdown_panel(140.)
+                        .child(self.dropdown_item(
+                            "view-mode-grid",
+                            Some(app_icon(ICON_GRID)),
+                            "Grid",
+                            self.hosts_view_mode == HostsViewMode::Grid,
+                            |this, _, _| this.hosts_view_mode = HostsViewMode::Grid,
+                            cx,
+                        ))
+                        .child(self.dropdown_item(
+                            "view-mode-list",
+                            Some(Icon::new(IconName::Menu)),
+                            "List",
+                            self.hosts_view_mode == HostsViewMode::List,
+                            |this, _, _| this.hosts_view_mode = HostsViewMode::List,
+                            cx,
+                        )),
+                )
+            })
+    }
+
+    fn render_tag_filter_dropdown(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let open = self.open_toolbar_menu == Some(ToolbarMenu::TagFilter);
+        let mut tags: Vec<String> = self
+            .saved
+            .profiles
+            .iter()
+            .flat_map(|p| p.tags.iter().cloned())
+            .collect();
+        tags.sort();
+        tags.dedup();
+        div()
+            .id("library-tag-filter-wrap")
+            .relative()
+            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                if this.open_toolbar_menu == Some(ToolbarMenu::TagFilter) {
+                    this.open_toolbar_menu = None;
+                    cx.notify();
+                }
+            }))
+            .child(self.toolbar_chevron_svg_button(
+                "library-tag-filter",
+                ICON_TAG,
+                "Filter by tag",
+                ToolbarMenu::TagFilter,
+                cx,
+            ))
+            .when(open, |this| {
+                this.child(if tags.is_empty() {
+                    v_flex()
+                        .absolute()
+                        .top(px(34.))
+                        .right(px(0.))
+                        .w(px(220.))
+                        .p(px(20.))
+                        .gap(px(10.))
+                        .items_center()
+                        .rounded(px(8.))
+                        .bg(theme::library_card())
+                        .border_1()
+                        .border_color(theme::soft_border())
+                        .child(
+                            div()
+                                .size(px(36.))
+                                .rounded(px(8.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .bg(theme::with_alpha(theme::hover(), 0.7))
+                                .child(
+                                    app_icon(ICON_TAG)
+                                        .size(px(16.))
+                                        .text_color(theme::text_main()),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .font_semibold()
+                                .text_color(theme::text_main())
+                                .child("Add tags"),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.))
+                                .text_color(theme::text_muted())
+                                .child(
+                                    "Tags help you filter your hosts. You can add a tag when editing a host.",
+                                ),
+                        )
+                } else {
+                    let mut panel = self.render_dropdown_panel(180.);
+                    for (idx, tag) in tags.iter().enumerate() {
+                        let tag_owned = tag.clone();
+                        panel = panel.child(self.dropdown_item(
+                            ("tag-filter", idx),
+                            Some(app_icon(ICON_TAG)),
+                            tag.clone(),
+                            false,
+                            move |_, _, _| {
+                                let _ = tag_owned;
+                            },
+                            cx,
+                        ));
+                    }
+                    panel
+                })
+            })
+    }
+
+    fn render_sort_dropdown(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let open = self.open_toolbar_menu == Some(ToolbarMenu::Sort);
+        div()
+            .id("library-sort-wrap")
+            .relative()
+            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                if this.open_toolbar_menu == Some(ToolbarMenu::Sort) {
+                    this.open_toolbar_menu = None;
+                    cx.notify();
+                }
+            }))
+            .child(self.toolbar_chevron_svg_button(
+                "library-sort",
+                ICON_CALENDAR,
+                "Sort hosts",
+                ToolbarMenu::Sort,
+                cx,
+            ))
+            .when(open, |this| {
+                this.child(
+                    self.render_dropdown_panel(180.)
+                        .child(self.dropdown_item(
+                            "sort-az",
+                            Some(Icon::new(IconName::SortAscending)),
+                            "A-z",
+                            self.hosts_sort == HostsSort::AZ,
+                            |this, _, _| this.hosts_sort = HostsSort::AZ,
+                            cx,
+                        ))
+                        .child(self.dropdown_item(
+                            "sort-za",
+                            Some(Icon::new(IconName::SortDescending)),
+                            "Z-a",
+                            self.hosts_sort == HostsSort::ZA,
+                            |this, _, _| this.hosts_sort = HostsSort::ZA,
+                            cx,
+                        ))
+                        .child(div().h(px(1.)).my(px(4.)).bg(theme::soft_border()))
+                        .child(self.dropdown_item(
+                            "sort-newest",
+                            Some(app_icon(ICON_CALENDAR)),
+                            "Newest to oldest",
+                            self.hosts_sort == HostsSort::NewestFirst,
+                            |this, _, _| this.hosts_sort = HostsSort::NewestFirst,
+                            cx,
+                        ))
+                        .child(self.dropdown_item(
+                            "sort-oldest",
+                            Some(app_icon(ICON_CALENDAR)),
+                            "Oldest to newest",
+                            self.hosts_sort == HostsSort::OldestFirst,
+                            |this, _, _| this.hosts_sort = HostsSort::OldestFirst,
+                            cx,
+                        )),
+                )
+            })
+    }
+
+    fn render_avatar_dropdown(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let open = self.open_toolbar_menu == Some(ToolbarMenu::Avatar);
+        let email = std::env::var("USER")
+            .ok()
+            .map(|u| format!("{u}@local"))
+            .unwrap_or_else(|| "user@local".to_string());
+        div()
+            .id("library-avatar-wrap")
+            .relative()
+            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                if this.open_toolbar_menu == Some(ToolbarMenu::Avatar) {
+                    this.open_toolbar_menu = None;
+                    cx.notify();
+                }
+            }))
+            .child(
+                div()
+                    .id("library-avatar-trigger")
+                    .cursor_pointer()
+                    .child(self.toolbar_avatar_pill(cx))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.open_toolbar_menu =
+                            if this.open_toolbar_menu == Some(ToolbarMenu::Avatar) {
+                                None
+                            } else {
+                                Some(ToolbarMenu::Avatar)
+                            };
+                        cx.notify();
+                    })),
+            )
+            .when(open, |this| {
+                this.child(
+                    self.render_dropdown_panel(240.)
+                        .child(self.dropdown_item(
+                            "avatar-invite",
+                            Some(Icon::new(IconName::User)),
+                            "Invite team members",
+                            false,
+                            |_, _, _| {},
+                            cx,
+                        ))
+                        .child(div().h(px(1.)).my(px(4.)).bg(theme::soft_border()))
+                        .child(self.dropdown_item(
+                            "avatar-email",
+                            None,
+                            email,
+                            false,
+                            |_, _, _| {},
+                            cx,
+                        )),
+                )
+            })
+    }
+
+    fn toolbar_avatar_pill(&self, _cx: &mut Context<Self>) -> Div {
+        h_flex()
+            .ml(px(4.))
+            .h(px(30.))
+            .pl(px(2.))
+            .pr(px(6.))
+            .gap(px(4.))
+            .items_center()
+            .rounded(px(999.))
+            .border_2()
+            .border_color(theme::accent())
+            .bg(theme::library_card())
+            .child(self.toolbar_avatar_button(_cx))
+            .child(
+                Icon::new(IconName::Plus)
+                    .size(px(12.))
+                    .text_color(theme::text_main()),
             )
     }
 
@@ -8909,13 +9429,13 @@ impl TermiRustApp {
 
         div()
             .id("library-avatar")
-            .size(px(28.))
+            .size(px(24.))
             .rounded(px(999.))
             .flex()
             .items_center()
             .justify_center()
             .bg(theme::warning())
-            .text_size(px(11.))
+            .text_size(px(10.))
             .font_semibold()
             .text_color(gpui::white())
             .cursor_pointer()
@@ -8952,12 +9472,18 @@ impl TermiRustApp {
                             .bg(theme::with_alpha(theme::hover(), 0.6))
                             .border_1()
                             .border_color(theme::soft_border())
+                            .text_size(px(13.))
+                            .text_color(theme::text_main())
                             .child(
                                 Icon::new(IconName::Search)
                                     .size(px(14.))
                                     .text_color(theme::text_muted()),
                             )
-                            .child(Input::new(&self.shell_inputs.host_search).flex_1())
+                            .child(
+                                Input::new(&self.shell_inputs.host_search)
+                                    .appearance(false)
+                                    .flex_1(),
+                            )
                             .child(
                                 Button::new("library-quick-connect")
                                     .xsmall()
@@ -9016,7 +9542,8 @@ impl TermiRustApp {
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.open_local_terminal(window, cx);
                                     })),
-                            ),
+                            )
+                            .child(self.serial_upgrade_button(cx)),
                     )
                     .child(
                         h_flex()
@@ -9048,86 +9575,51 @@ impl TermiRustApp {
                                         })),
                                 )
                             })
-                            .child(
-                                Button::new("hosts-select-all")
-                                    .xsmall()
-                                    .ghost()
-                                    .icon(IconName::CircleCheck)
-                                    .tooltip("Select all visible")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.select_all_filtered_hosts(cx);
-                                    })),
-                            )
-                            .child(self.toolbar_chevron_button(
-                                "library-view-mode",
-                                IconName::LayoutDashboard,
-                                "View mode",
-                                cx,
-                            ))
-                            .child(self.toolbar_chevron_button(
-                                "library-tag-filter",
-                                IconName::ChartPie,
-                                "Filter by tag",
-                                cx,
-                            ))
-                            .child(self.toolbar_chevron_button(
-                                "library-sort",
-                                IconName::Calendar,
-                                "Sort hosts",
-                                cx,
-                            ))
-                            .child(self.toolbar_avatar_button(cx))
-                            .child(
-                                Button::new("library-toolbar-add")
-                                    .xsmall()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
-                                    .icon(IconName::Plus)
-                                    .tooltip("New host")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.open_editor_for_new_host(window, cx);
-                                    })),
-                            ),
+                            .child(self.render_view_mode_dropdown(cx))
+                            .child(self.render_tag_filter_dropdown(cx))
+                            .child(self.render_sort_dropdown(cx))
+                            .child(self.render_avatar_dropdown(cx)),
                     ),
             )
             .child(
-                h_flex()
+                div()
+                    .flex()
+                    .flex_row()
                     .flex_1()
                     .min_h_0()
                     .gap_0()
                     .child(
-                        v_flex().flex_1().min_h_0().child(
-                            v_flex()
-                                .id("hosts-list-scroll")
-                                .flex_1()
-                                .min_h_0()
-                                .gap_3()
-                                .px_4()
-                                .pb_4()
-                                .when_some(
-                                    self.render_hosts_onboarding(window, cx),
-                                    |this, onboarding| this.child(onboarding),
+                        v_flex()
+                            .id("hosts-list-scroll")
+                            .flex_1()
+                            .min_h_0()
+                            .gap(px(10.))
+                            .px(px(12.))
+                            .pt(px(8.))
+                            .pb(px(16.))
+                            .track_scroll(&self.hosts_list_scroll)
+                            .overflow_y_scroll()
+                            .when_some(
+                                self.render_hosts_onboarding(window, cx),
+                                |this, onboarding| this.child(onboarding),
+                            )
+                            .when_some(self.render_saved_group_cards(cx), |this, cards| {
+                                this.child(cards)
+                            })
+                            .when_some(self.render_recent_hosts_row(cx), |this, row| {
+                                this.child(row)
+                            })
+                            .when(!self.saved.profiles.is_empty(), |this| {
+                                this.child(
+                                    div()
+                                        .pl(px(2.))
+                                        .text_size(px(13.))
+                                        .font_semibold()
+                                        .text_color(theme::text_main())
+                                        .child("Hosts"),
                                 )
-                                .when_some(self.render_saved_group_cards(cx), |this, cards| {
-                                    this.child(cards)
-                                })
-                                .when_some(self.render_recent_hosts_row(cx), |this, row| {
-                                    this.child(row)
-                                })
-                                .when(!self.saved.profiles.is_empty(), |this| {
-                                    this.child(
-                                        div()
-                                            .text_size(px(13.))
-                                            .font_medium()
-                                            .text_color(theme::text_muted())
-                                            .child("Hosts"),
-                                    )
-                                })
-                                .child(self.render_host_grid(window, cx))
-                                .overflow_y_scrollbar(),
-                        ),
+                            })
+                            .child(self.render_host_grid(window, cx)),
                     )
                     .when(self.show_editor_panel, |this| {
                         this.child(self.render_editor_side_panel(window, cx))
@@ -13355,6 +13847,13 @@ impl TermiRustApp {
                 );
         };
 
+        if let Some(pending) = workspace.pending_connect.clone() {
+            return v_flex()
+                .flex_1()
+                .bg(theme::terminal_bg())
+                .child(self.render_connect_dialog(workspace.id, &pending, cx));
+        }
+
         let panes = workspace
             .pane_ids
             .iter()
@@ -13384,6 +13883,149 @@ impl TermiRustApp {
             .p(px(WORKSPACE_PADDING))
             .bg(theme::terminal_bg())
             .child(content)
+    }
+
+    fn render_connect_dialog(
+        &self,
+        workspace_id: u64,
+        profile: &HostProfile,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let title = profile.display_name();
+        let endpoint = format!("SSH {}:{}", profile.host, profile.port);
+        v_flex()
+            .flex_1()
+            .items_center()
+            .pt(px(96.))
+            .gap(px(28.))
+            .child(
+                h_flex()
+                    .gap(px(12.))
+                    .items_center()
+                    .child(
+                        div()
+                            .size(px(44.))
+                            .rounded(px(8.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(theme::with_alpha(theme::accent(), 0.18))
+                            .child(
+                                Icon::new(IconName::SquareTerminal)
+                                    .size(px(20.))
+                                    .text_color(theme::accent()),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(15.))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child(title),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(theme::text_muted())
+                                    .child(endpoint),
+                            ),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .w(px(420.))
+                    .items_center()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .size(px(28.))
+                            .rounded(px(999.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(theme::accent())
+                            .child(
+                                Icon::new(IconName::User)
+                                    .size(px(14.))
+                                    .text_color(theme::library_card()),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .h(px(2.))
+                            .bg(theme::with_alpha(theme::text_muted(), 0.4)),
+                    )
+                    .child(
+                        div()
+                            .size(px(28.))
+                            .rounded(px(999.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(theme::with_alpha(theme::text_muted(), 0.3))
+                            .child(
+                                Icon::new(IconName::SquareTerminal)
+                                    .size(px(14.))
+                                    .text_color(theme::text_main()),
+                            ),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .w(px(420.))
+                    .gap(px(6.))
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .child("Username"),
+                    )
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .h(px(40.))
+                            .px(px(12.))
+                            .items_center()
+                            .rounded(px(8.))
+                            .bg(theme::library_card())
+                            .border_1()
+                            .border_color(theme::soft_border())
+                            .text_size(px(13.))
+                            .text_color(theme::text_main())
+                            .child(
+                                Input::new(&self.shell_inputs.connect_username)
+                                    .appearance(false)
+                                    .flex_1(),
+                            ),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .w(px(420.))
+                    .justify_between()
+                    .items_center()
+                    .gap(px(12.))
+                    .child(
+                        Button::new("connect-dialog-close")
+                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                            .label("Close")
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.close_connect_dialog_tab(workspace_id, window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("connect-dialog-save")
+                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                            .label("Continue & Save")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.confirm_connect_dialog(true, window, cx);
+                            })),
+                    ),
+            )
     }
 
     fn render_workspace_shell(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
