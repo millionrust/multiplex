@@ -56,6 +56,7 @@ const ICON_KEY: &str = "icons/key.svg";
 const ICON_SHIELD_CHECK: &str = "icons/shield-check.svg";
 const ICON_VAULT: &str = "icons/vault.svg";
 const ICON_X: &str = "icons/x.svg";
+const ICON_PENCIL: &str = "icons/pencil.svg";
 
 fn app_icon(path: &'static str) -> Icon {
     Icon::new(Icon::empty().path(path))
@@ -2764,7 +2765,7 @@ impl TermiRustApp {
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
+    ) -> bool {
         let value = self
             .shell_inputs
             .create_host_address
@@ -2772,7 +2773,22 @@ impl TermiRustApp {
             .value()
             .trim()
             .to_string();
+        if value.is_empty() {
+            return false;
+        }
+        // Open the editor with the typed value pre-filled in label + host,
+        // and seed username from the OS so save_profile validation passes.
         self.open_editor_for_new_host_with_address(value, window, cx);
+        let current_user = std::env::var("USER")
+            .ok()
+            .or_else(|| std::env::var("USERNAME").ok())
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| "user".to_string());
+        if self.inputs.username.read(cx).value().trim().is_empty() {
+            Self::set_input_value(&self.inputs.username, current_user, window, cx);
+        }
+        self.save_profile(window, cx);
+        true
     }
 
     fn toggle_new_host_menu(&mut self, cx: &mut Context<Self>) {
@@ -6855,50 +6871,30 @@ impl TermiRustApp {
                         .child(group_label.clone()),
                 )
             })
-            .child(
-                Button::new(("favorite-host-row", card_ix))
-                    .ghost()
-                    .xsmall()
-                    .icon(if profile.favorite {
-                        IconName::Star
-                    } else {
-                        IconName::StarOff
-                    })
-                    .tooltip(if profile.favorite { "Unstar" } else { "Star" })
+            .child({
+                let _ = (favorite_profile_id, favorite_selected, batch_profile_id);
+                let edit_profile_id = connect_profile_id.clone();
+                div()
+                    .id(("host-row-edit", card_ix))
+                    .size(px(30.))
+                    .rounded(px(6.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(theme::with_alpha(theme::hover(), 0.85))
+                    .border_1()
+                    .border_color(theme::soft_border())
+                    .cursor_pointer()
+                    .hover(|style| style.bg(theme::hover()))
+                    .child(
+                        app_icon(ICON_PENCIL)
+                            .size(px(14.))
+                            .text_color(theme::text_main()),
+                    )
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        this.set_profile_favorite(
-                            &favorite_profile_id,
-                            !favorite_selected,
-                            window,
-                            cx,
-                        );
-                    })),
-            )
-            .child(
-                Button::new(("select-host-row", card_ix))
-                    .ghost()
-                    .xsmall()
-                    .icon(if batch_selected {
-                        IconName::CircleCheck
-                    } else {
-                        IconName::Plus
-                    })
-                    .tooltip(if batch_selected { "Deselect" } else { "Select" })
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.toggle_host_batch_selection(&batch_profile_id, cx);
-                    })),
-            )
-            .child(
-                Button::new(("connect-host-row", card_ix))
-                    .small()
-                    .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                    .label("Connect")
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.show_editor_panel = false;
-                        this.load_profile_into_inputs(&connect_profile_id, window, cx);
-                        this.connect_current(window, cx);
-                    })),
-            )
+                        this.load_profile_into_inputs(&edit_profile_id, window, cx);
+                    }))
+            })
     }
 
     fn render_host_grid(&self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
@@ -7013,8 +7009,7 @@ impl TermiRustApp {
                     .child(
                         div()
                             .w_full()
-                            .px(px(2.))
-                            .child(Input::new(&self.shell_inputs.create_host_address)),
+                            .child(Input::new(&self.shell_inputs.create_host_address).w_full()),
                     )
                     .child(
                         Button::new("hosts-empty-new")
@@ -9132,7 +9127,7 @@ impl TermiRustApp {
         &self,
         _window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Div {
+    ) -> Stateful<Div> {
         let title = if self.selected_profile_id.is_some() {
             "Host Details"
         } else {
@@ -9141,6 +9136,7 @@ impl TermiRustApp {
         let vault_label = self.effective_vault_name(self.draft_vault_id.as_deref());
 
         v_flex()
+            .id("editor-side-panel")
             .flex_none()
             .w(px(380.))
             .h_full()
@@ -9148,6 +9144,12 @@ impl TermiRustApp {
             .border_l_1()
             .border_color(theme::border())
             .overflow_hidden()
+            .on_mouse_down_out(cx.listener(|this, _, window, cx| {
+                if this.submit_create_host_from_empty_state(window, cx) {
+                    return;
+                }
+                this.close_editor_dialog(window, cx);
+            }))
             .child(
                 h_flex()
                     .flex_none()
