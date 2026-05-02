@@ -61,6 +61,7 @@ const ICON_GRID: &str = "icons/grid.svg";
 const ICON_TAG: &str = "icons/tag.svg";
 const ICON_SERIAL: &str = "icons/serial.svg";
 const ICON_CALENDAR: &str = "icons/calendar.svg";
+const ICON_PANEL_COLLAPSE_RIGHT: &str = "icons/panel-collapse-right.svg";
 
 fn app_icon(path: &'static str) -> Icon {
     Icon::new(Icon::empty().path(path))
@@ -417,6 +418,12 @@ enum HostsSort {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+enum EditorMenu {
+    Vault,
+    Overflow,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum ToolbarMenu {
     ViewMode,
     TagFilter,
@@ -660,6 +667,9 @@ pub struct TermiRustApp {
     hosts_view_mode: HostsViewMode,
     hosts_sort: HostsSort,
     open_toolbar_menu: Option<ToolbarMenu>,
+    editor_advanced_expanded: bool,
+    editor_telnet_added: bool,
+    open_editor_menu: Option<EditorMenu>,
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
     tab_rename_input: Entity<InputState>,
@@ -764,6 +774,9 @@ impl TermiRustApp {
             hosts_view_mode: HostsViewMode::Grid,
             hosts_sort: HostsSort::NewestFirst,
             open_toolbar_menu: None,
+            editor_advanced_expanded: false,
+            editor_telnet_added: false,
+            open_editor_menu: None,
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
             tab_rename_input: cx
@@ -7638,6 +7651,401 @@ impl TermiRustApp {
             )
     }
 
+    fn editor_input_row(
+        &self,
+        icon: Option<Icon>,
+        state: &Entity<InputState>,
+        suffix: Option<AnyElement>,
+    ) -> Div {
+        h_flex()
+            .w_full()
+            .h(px(38.))
+            .px(px(10.))
+            .gap(px(8.))
+            .items_center()
+            .rounded(px(6.))
+            .bg(theme::library_bg())
+            .border_1()
+            .border_color(theme::soft_border())
+            .text_size(px(13.))
+            .text_color(theme::text_main())
+            .when_some(icon, |this, ic| {
+                this.child(ic.size(px(14.)).text_color(theme::text_muted()))
+            })
+            .child(Input::new(state).appearance(false).flex_1())
+            .when_some(suffix, |this, s| this.child(s))
+    }
+
+    fn editor_section_card(&self, title: Option<&str>, body: Div) -> Div {
+        v_flex()
+            .w_full()
+            .p(px(14.))
+            .gap(px(10.))
+            .rounded(px(10.))
+            .bg(theme::with_alpha(theme::hover(), 0.25))
+            .when_some(title, |this, t| {
+                this.child(
+                    div()
+                        .text_size(px(13.))
+                        .font_semibold()
+                        .text_color(theme::text_main())
+                        .child(t.to_string()),
+                )
+            })
+            .child(body)
+    }
+
+    fn editor_static_row(
+        &self,
+        icon: Icon,
+        label: &str,
+        value: &str,
+    ) -> Div {
+        h_flex()
+            .w_full()
+            .h(px(38.))
+            .px(px(10.))
+            .gap(px(8.))
+            .items_center()
+            .rounded(px(6.))
+            .bg(theme::library_bg())
+            .border_1()
+            .border_color(theme::soft_border())
+            .child(icon.size(px(14.)).text_color(theme::text_muted()))
+            .child(
+                div()
+                    .flex_1()
+                    .text_size(px(13.))
+                    .text_color(theme::text_muted())
+                    .child(label.to_string()),
+            )
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .text_color(theme::text_muted())
+                    .child(value.to_string()),
+            )
+    }
+
+    fn editor_theme_row(&self, _cx: &mut Context<Self>) -> Div {
+        h_flex()
+            .w_full()
+            .h(px(56.))
+            .px(px(10.))
+            .gap(px(12.))
+            .items_center()
+            .rounded(px(8.))
+            .bg(theme::library_bg())
+            .border_1()
+            .border_color(theme::soft_border())
+            .child(
+                div()
+                    .w(px(64.))
+                    .h(px(40.))
+                    .rounded(px(6.))
+                    .bg(theme::terminal_bg())
+                    .border_1()
+                    .border_color(theme::with_alpha(theme::accent(), 0.6))
+                    .flex()
+                    .items_center()
+                    .pl(px(8.))
+                    .child(
+                        div()
+                            .w(px(34.))
+                            .h(px(2.))
+                            .rounded(px(2.))
+                            .bg(theme::accent()),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .gap(px(2.))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child("Termius Dark"),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .child("Terminal theme"),
+                    ),
+            )
+            .child(
+                Icon::new(IconName::ChevronDown)
+                    .size(px(14.))
+                    .text_color(theme::text_muted()),
+            )
+    }
+
+    fn editor_protocol_row(
+        &self,
+        protocol: &str,
+        port_state: &Entity<InputState>,
+    ) -> Div {
+        h_flex()
+            .gap(px(8.))
+            .items_center()
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .font_semibold()
+                    .text_color(theme::text_main())
+                    .child(format!("{protocol} on")),
+            )
+            .child(
+                div()
+                    .w(px(60.))
+                    .h(px(30.))
+                    .px(px(8.))
+                    .rounded(px(6.))
+                    .bg(theme::library_bg())
+                    .border_1()
+                    .border_color(theme::soft_border())
+                    .flex()
+                    .items_center()
+                    .text_size(px(13.))
+                    .text_color(theme::text_main())
+                    .child(
+                        Input::new(port_state)
+                            .appearance(false)
+                            .flex_1(),
+                    ),
+            )
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .font_semibold()
+                    .text_color(theme::text_main())
+                    .child("port"),
+            )
+    }
+
+    fn render_editor_panel_termius(&self, cx: &mut Context<Self>) -> Div {
+        let address_row = self.editor_input_row(
+            Some(Icon::new(IconName::SquareTerminal)),
+            &self.inputs.host,
+            None,
+        );
+
+        let general_body = v_flex()
+            .gap(px(8.))
+            .child(self.editor_input_row(None, &self.inputs.label, None))
+            .child(self.editor_input_row(
+                Some(Icon::new(IconName::Folder)),
+                &self.inputs.group,
+                None,
+            ))
+            .child(self.editor_input_row(
+                Some(app_icon(ICON_TAG)),
+                &self.inputs.tags,
+                None,
+            ))
+            .child(self.editor_static_row(
+                app_icon(ICON_X),
+                "Backspace",
+                "Default",
+            ));
+
+        let ssh_body = v_flex()
+            .gap(px(10.))
+            .child(self.editor_protocol_row("SSH", &self.inputs.port))
+            .child(div().h(px(1.)).bg(theme::soft_border()))
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .font_semibold()
+                    .text_color(theme::text_main())
+                    .child("Credentials"),
+            )
+            .child(self.editor_input_row(
+                Some(Icon::new(IconName::User)),
+                &self.inputs.username,
+                None,
+            ))
+            .child(self.editor_input_row(
+                Some(app_icon(ICON_KEY)),
+                &self.inputs.password,
+                None,
+            ))
+            .child(
+                div()
+                    .id("editor-credentials-add")
+                    .cursor_pointer()
+                    .child(
+                        h_flex()
+                            .gap(px(6.))
+                            .items_center()
+                            .pt(px(2.))
+                            .child(
+                                Icon::new(IconName::Plus)
+                                    .size(px(12.))
+                                    .text_color(theme::text_muted()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(theme::text_muted())
+                                    .child("SSH.id, Key, Certificate, FIDO2"),
+                            ),
+                    ),
+            )
+            .when(self.editor_advanced_expanded, |this| {
+                this.child(div().h(px(1.)).bg(theme::soft_border()))
+                    .child(self.editor_static_row(
+                        Icon::new(IconName::Settings),
+                        "Agent Forwarding",
+                        "Disabled",
+                    ))
+                    .child(self.editor_input_row(
+                        Some(Icon::new(IconName::SquareTerminal)),
+                        &self.inputs.startup_command,
+                        None,
+                    ))
+                    .child(self.editor_input_row(
+                        Some(Icon::new(IconName::Globe)),
+                        &self.inputs.jump_host,
+                        None,
+                    ))
+                    .child(self.editor_static_row(
+                        Icon::new(IconName::Globe),
+                        "Proxy",
+                        "",
+                    ))
+                    .child(self.editor_input_row(
+                        Some(app_icon(ICON_TAG)),
+                        &self.inputs.environment,
+                        None,
+                    ))
+                    .child(self.editor_static_row(
+                        Icon::new(IconName::Globe),
+                        "UTF-8",
+                        "",
+                    ))
+                    .child(self.editor_static_row(
+                        Icon::new(IconName::SquareTerminal),
+                        "Mosh",
+                        "Disabled",
+                    ))
+                    .child(self.editor_theme_row(cx))
+            })
+            .child(
+                div()
+                    .id("editor-show-more")
+                    .cursor_pointer()
+                    .pt(px(2.))
+                    .child(
+                        h_flex()
+                            .gap(px(4.))
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(theme::text_muted())
+                                    .child(if self.editor_advanced_expanded {
+                                        "Show less"
+                                    } else {
+                                        "Show more"
+                                    }),
+                            )
+                            .child(
+                                Icon::new(if self.editor_advanced_expanded {
+                                    IconName::ChevronUp
+                                } else {
+                                    IconName::ChevronDown
+                                })
+                                .size(px(12.))
+                                .text_color(theme::text_muted()),
+                            ),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.editor_advanced_expanded = !this.editor_advanced_expanded;
+                        cx.notify();
+                    })),
+            );
+
+        let mut body = v_flex()
+            .w_full()
+            .gap(px(12.))
+            .child(self.editor_section_card(Some("Address"), address_row))
+            .child(self.editor_section_card(Some("General"), general_body))
+            .child(self.editor_section_card(None, ssh_body));
+
+        if self.editor_telnet_added {
+            let telnet_body = v_flex()
+                .gap(px(10.))
+                .child(self.editor_protocol_row("Telnet", &self.inputs.port))
+                .child(div().h(px(1.)).bg(theme::soft_border()))
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .font_semibold()
+                        .text_color(theme::text_main())
+                        .child("Credentials"),
+                )
+                .child(self.editor_input_row(
+                    Some(Icon::new(IconName::User)),
+                    &self.inputs.username,
+                    None,
+                ))
+                .child(self.editor_input_row(
+                    Some(app_icon(ICON_KEY)),
+                    &self.inputs.password,
+                    None,
+                ));
+            body = body.child(self.editor_section_card(None, telnet_body));
+        } else {
+            body = body.child(
+                div()
+                    .id("editor-add-telnet")
+                    .w_full()
+                    .h(px(40.))
+                    .rounded(px(8.))
+                    .border_1()
+                    .border_color(theme::soft_border())
+                    .bg(theme::with_alpha(theme::library_card(), 0.4))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(8.))
+                    .cursor_pointer()
+                    .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.5)))
+                    .child(
+                        div()
+                            .size(px(18.))
+                            .rounded(px(999.))
+                            .border_1()
+                            .border_color(theme::text_main())
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(
+                                Icon::new(IconName::Plus)
+                                    .size(px(11.))
+                                    .text_color(theme::text_main()),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child("Add Telnet"),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.editor_telnet_added = true;
+                        cx.notify();
+                    })),
+            );
+        }
+
+        body
+    }
+
     fn render_editor_panel(&self, cx: &Context<Self>) -> Div {
         let auth_mode = self.draft_auth_mode;
         let group_name = self.inputs.group.read(cx).value().trim().to_string();
@@ -8863,7 +9271,7 @@ impl TermiRustApp {
                             })),
                     ),
             )
-            .when(menu_open, |this| {
+            .when(false, |this| {
                 this.child(
                     v_flex()
                         .absolute()
@@ -8882,7 +9290,7 @@ impl TermiRustApp {
                             spread_radius: px(-6.),
                         }])
                         .child(self.new_host_menu_item(
-                            "menu-new-group",
+                            "menu-new-group-x",
                             IconName::Folder,
                             "New Group",
                             false,
@@ -8893,7 +9301,7 @@ impl TermiRustApp {
                             },
                         ))
                         .child(self.new_host_menu_item(
-                            "menu-import",
+                            "menu-import-x",
                             IconName::PanelLeft,
                             "Import",
                             false,
@@ -8908,7 +9316,7 @@ impl TermiRustApp {
                         ))
                         .child(div().h(px(1.)).w_full().my(px(4.)).bg(theme::soft_border()))
                         .child(self.new_host_menu_item(
-                            "menu-aws",
+                            "menu-aws-x",
                             IconName::Globe,
                             "AWS Integration",
                             true,
@@ -8921,7 +9329,7 @@ impl TermiRustApp {
                             },
                         ))
                         .child(self.new_host_menu_item(
-                            "menu-do",
+                            "menu-do-x",
                             IconName::Globe,
                             "DigitalOcean Integration",
                             true,
@@ -8935,7 +9343,7 @@ impl TermiRustApp {
                             },
                         ))
                         .child(self.new_host_menu_item(
-                            "menu-azure",
+                            "menu-azure-x",
                             IconName::Globe,
                             "Azure Integration",
                             true,
@@ -9136,53 +9544,260 @@ impl TermiRustApp {
             .on_click(cx.listener(move |this, _, window, cx| {
                 on_click(this, window, cx);
                 this.open_toolbar_menu = None;
+                this.open_editor_menu = None;
                 cx.notify();
             }))
     }
 
     fn render_view_mode_dropdown(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let open = self.open_toolbar_menu == Some(ToolbarMenu::ViewMode);
-        div()
-            .id("library-view-mode-wrap")
-            .relative()
-            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                if this.open_toolbar_menu == Some(ToolbarMenu::ViewMode) {
-                    this.open_toolbar_menu = None;
-                    cx.notify();
-                }
-            }))
-            .child(self.toolbar_chevron_svg_button(
-                "library-view-mode",
-                ICON_GRID,
-                "View mode",
-                ToolbarMenu::ViewMode,
-                cx,
-            ))
-            .when(open, |this| {
-                this.child(
-                    self.render_dropdown_panel(140.)
-                        .child(self.dropdown_item(
-                            "view-mode-grid",
-                            Some(app_icon(ICON_GRID)),
-                            "Grid",
-                            self.hosts_view_mode == HostsViewMode::Grid,
-                            |this, _, _| this.hosts_view_mode = HostsViewMode::Grid,
-                            cx,
-                        ))
-                        .child(self.dropdown_item(
-                            "view-mode-list",
-                            Some(Icon::new(IconName::Menu)),
-                            "List",
-                            self.hosts_view_mode == HostsViewMode::List,
-                            |this, _, _| this.hosts_view_mode = HostsViewMode::List,
-                            cx,
-                        )),
-                )
-            })
+        self.toolbar_chevron_svg_button(
+            "library-view-mode",
+            ICON_GRID,
+            "View mode",
+            ToolbarMenu::ViewMode,
+            cx,
+        )
     }
 
     fn render_tag_filter_dropdown(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let open = self.open_toolbar_menu == Some(ToolbarMenu::TagFilter);
+        self.toolbar_chevron_svg_button(
+            "library-tag-filter",
+            ICON_TAG,
+            "Filter by tag",
+            ToolbarMenu::TagFilter,
+            cx,
+        )
+    }
+
+    fn render_sort_dropdown(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        self.toolbar_chevron_svg_button(
+            "library-sort",
+            ICON_CALENDAR,
+            "Sort hosts",
+            ToolbarMenu::Sort,
+            cx,
+        )
+    }
+
+    fn render_avatar_dropdown(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        div()
+            .id("library-avatar-trigger")
+            .cursor_pointer()
+            .child(self.toolbar_avatar_pill(cx))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.open_toolbar_menu =
+                    if this.open_toolbar_menu == Some(ToolbarMenu::Avatar) {
+                        None
+                    } else {
+                        Some(ToolbarMenu::Avatar)
+                    };
+                cx.notify();
+            }))
+    }
+
+    fn render_hosts_overlays(&self, cx: &mut Context<Self>) -> AnyElement {
+        if self.show_editor_panel {
+            if self.open_editor_menu == Some(EditorMenu::Vault) {
+                return div()
+                    .id("editor-vault-overlay")
+                    .absolute()
+                    .top(px(148.))
+                    .right(px(200.))
+                    .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                        this.open_editor_menu = None;
+                        cx.notify();
+                    }))
+                    .child(
+                        v_flex()
+                            .min_w(px(180.))
+                            .p(px(6.))
+                            .gap(px(2.))
+                            .rounded(px(8.))
+                            .bg(theme::library_card())
+                            .border_1()
+                            .border_color(theme::soft_border())
+                            .shadow_lg()
+                            .child(self.dropdown_item(
+                                "vault-personal",
+                                Some(Icon::new(IconName::User)),
+                                "Personal",
+                                true,
+                                |_, _, _| {},
+                                cx,
+                            ))
+                            .child(self.dropdown_item(
+                                "vault-team",
+                                Some(Icon::new(IconName::User)),
+                                "Team",
+                                false,
+                                |_, _, _| {},
+                                cx,
+                            )),
+                    )
+                    .into_any_element();
+            }
+            if self.open_editor_menu == Some(EditorMenu::Overflow) {
+                let has_profile = self.selected_profile_id.is_some();
+                let mut menu = v_flex()
+                    .min_w(px(180.))
+                    .p(px(6.))
+                    .gap(px(2.))
+                    .rounded(px(8.))
+                    .bg(theme::library_card())
+                    .border_1()
+                    .border_color(theme::soft_border())
+                    .shadow_lg()
+                    .child(self.dropdown_item(
+                        "overflow-connect",
+                        Some(Icon::new(IconName::SquareTerminal)),
+                        "Connect",
+                        false,
+                        |this, window, cx| {
+                            this.connect_current(window, cx);
+                        },
+                        cx,
+                    ))
+                    .child(self.dropdown_item(
+                        "overflow-add-telnet",
+                        Some(Icon::new(IconName::Plus)),
+                        "Add Telnet",
+                        false,
+                        |this, _, _| {
+                            this.editor_telnet_added = true;
+                        },
+                        cx,
+                    ))
+                    .child(self.dropdown_item(
+                        "overflow-duplicate",
+                        Some(Icon::new(IconName::Copy)),
+                        "Duplicate",
+                        false,
+                        |_, _, _| {},
+                        cx,
+                    ));
+                if has_profile {
+                    menu = menu.child(self.dropdown_item(
+                        "overflow-remove",
+                        Some(Icon::new(IconName::Delete)),
+                        "Remove",
+                        false,
+                        |this, _, cx| {
+                            if let Some(id) = this.selected_profile_id.clone() {
+                                this.saved.remove_profile(&id);
+                                this.show_editor_panel = false;
+                                this.persist_runtime_state();
+                                cx.notify();
+                            }
+                        },
+                        cx,
+                    ));
+                }
+                return div()
+                    .id("editor-overflow-overlay")
+                    .absolute()
+                    .top(px(148.))
+                    .right(px(50.))
+                    .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                        this.open_editor_menu = None;
+                        cx.notify();
+                    }))
+                    .child(menu)
+                    .into_any_element();
+            }
+        }
+        if self.show_new_host_menu {
+            return div()
+                .id("new-host-overlay")
+                .absolute()
+                .top(px(94.))
+                .left(px(12.))
+                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                    this.show_new_host_menu = false;
+                    cx.notify();
+                }))
+                .child(
+                    v_flex()
+                        .w(px(220.))
+                        .py(px(6.))
+                        .rounded(px(8.))
+                        .bg(theme::library_card())
+                        .border_1()
+                        .border_color(theme::border())
+                        .shadow_lg()
+                        .child(self.new_host_menu_item(
+                            "menu-new-group",
+                            IconName::Folder,
+                            "New Group",
+                            false,
+                            cx,
+                            |this, window, cx| {
+                                this.show_new_host_menu = false;
+                                this.open_editor_for_new_host(window, cx);
+                            },
+                        ))
+                        .child(self.new_host_menu_item(
+                            "menu-import",
+                            IconName::PanelLeft,
+                            "Import",
+                            false,
+                            cx,
+                            |this, _, cx| {
+                                this.show_new_host_menu = false;
+                                this.status_message =
+                                    "Import from SSH config / OpenSSH already loads automatically."
+                                        .to_string();
+                                cx.notify();
+                            },
+                        ))
+                        .child(div().h(px(1.)).w_full().my(px(4.)).bg(theme::soft_border()))
+                        .child(self.new_host_menu_item(
+                            "menu-aws",
+                            IconName::Globe,
+                            "AWS Integration",
+                            true,
+                            cx,
+                            |this, _, cx| {
+                                this.show_new_host_menu = false;
+                                this.status_message =
+                                    "AWS integration ships in a future release.".to_string();
+                                cx.notify();
+                            },
+                        ))
+                        .child(self.new_host_menu_item(
+                            "menu-do",
+                            IconName::Globe,
+                            "DigitalOcean Integration",
+                            true,
+                            cx,
+                            |this, _, cx| {
+                                this.show_new_host_menu = false;
+                                this.status_message =
+                                    "DigitalOcean integration ships in a future release."
+                                        .to_string();
+                                cx.notify();
+                            },
+                        ))
+                        .child(self.new_host_menu_item(
+                            "menu-azure",
+                            IconName::Globe,
+                            "Azure Integration",
+                            true,
+                            cx,
+                            |this, _, cx| {
+                                this.show_new_host_menu = false;
+                                this.status_message =
+                                    "Azure integration ships in a future release.".to_string();
+                                cx.notify();
+                            },
+                        )),
+                )
+                .into_any_element();
+        }
+        let menu = self.open_toolbar_menu;
+        let email = std::env::var("USER")
+            .ok()
+            .map(|u| format!("{u}@local"))
+            .unwrap_or_else(|| "user@local".to_string());
         let mut tags: Vec<String> = self
             .saved
             .profiles
@@ -9191,28 +9806,36 @@ impl TermiRustApp {
             .collect();
         tags.sort();
         tags.dedup();
-        div()
-            .id("library-tag-filter-wrap")
-            .relative()
-            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                if this.open_toolbar_menu == Some(ToolbarMenu::TagFilter) {
-                    this.open_toolbar_menu = None;
-                    cx.notify();
-                }
-            }))
-            .child(self.toolbar_chevron_svg_button(
-                "library-tag-filter",
-                ICON_TAG,
-                "Filter by tag",
-                ToolbarMenu::TagFilter,
-                cx,
-            ))
-            .when(open, |this| {
-                this.child(if tags.is_empty() {
+        let inner: Div = match menu {
+            Some(ToolbarMenu::ViewMode) => v_flex()
+                .min_w(px(140.))
+                .p(px(6.))
+                .gap(px(2.))
+                .rounded(px(8.))
+                .bg(theme::library_card())
+                .border_1()
+                .border_color(theme::soft_border())
+                .shadow_lg()
+                .child(self.dropdown_item(
+                    "view-mode-grid",
+                    Some(app_icon(ICON_GRID)),
+                    "Grid",
+                    self.hosts_view_mode == HostsViewMode::Grid,
+                    |this, _, _| this.hosts_view_mode = HostsViewMode::Grid,
+                    cx,
+                ))
+                .child(self.dropdown_item(
+                    "view-mode-list",
+                    Some(Icon::new(IconName::Menu)),
+                    "List",
+                    self.hosts_view_mode == HostsViewMode::List,
+                    |this, _, _| this.hosts_view_mode = HostsViewMode::List,
+                    cx,
+                ))
+                .into(),
+            Some(ToolbarMenu::TagFilter) => {
+                if tags.is_empty() {
                     v_flex()
-                        .absolute()
-                        .top(px(34.))
-                        .right(px(0.))
                         .w(px(220.))
                         .p(px(20.))
                         .gap(px(10.))
@@ -9221,6 +9844,7 @@ impl TermiRustApp {
                         .bg(theme::library_card())
                         .border_1()
                         .border_color(theme::soft_border())
+                        .shadow_lg()
                         .child(
                             div()
                                 .size(px(36.))
@@ -9251,7 +9875,15 @@ impl TermiRustApp {
                                 ),
                         )
                 } else {
-                    let mut panel = self.render_dropdown_panel(180.);
+                    let mut panel = v_flex()
+                        .min_w(px(180.))
+                        .p(px(6.))
+                        .gap(px(2.))
+                        .rounded(px(8.))
+                        .bg(theme::library_card())
+                        .border_1()
+                        .border_color(theme::soft_border())
+                        .shadow_lg();
                     for (idx, tag) in tags.iter().enumerate() {
                         let tag_owned = tag.clone();
                         panel = panel.child(self.dropdown_item(
@@ -9266,120 +9898,99 @@ impl TermiRustApp {
                         ));
                     }
                     panel
-                })
-            })
-    }
-
-    fn render_sort_dropdown(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let open = self.open_toolbar_menu == Some(ToolbarMenu::Sort);
-        div()
-            .id("library-sort-wrap")
-            .relative()
-            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                if this.open_toolbar_menu == Some(ToolbarMenu::Sort) {
-                    this.open_toolbar_menu = None;
-                    cx.notify();
                 }
-            }))
-            .child(self.toolbar_chevron_svg_button(
-                "library-sort",
-                ICON_CALENDAR,
-                "Sort hosts",
-                ToolbarMenu::Sort,
-                cx,
-            ))
-            .when(open, |this| {
-                this.child(
-                    self.render_dropdown_panel(180.)
-                        .child(self.dropdown_item(
-                            "sort-az",
-                            Some(Icon::new(IconName::SortAscending)),
-                            "A-z",
-                            self.hosts_sort == HostsSort::AZ,
-                            |this, _, _| this.hosts_sort = HostsSort::AZ,
-                            cx,
-                        ))
-                        .child(self.dropdown_item(
-                            "sort-za",
-                            Some(Icon::new(IconName::SortDescending)),
-                            "Z-a",
-                            self.hosts_sort == HostsSort::ZA,
-                            |this, _, _| this.hosts_sort = HostsSort::ZA,
-                            cx,
-                        ))
-                        .child(div().h(px(1.)).my(px(4.)).bg(theme::soft_border()))
-                        .child(self.dropdown_item(
-                            "sort-newest",
-                            Some(app_icon(ICON_CALENDAR)),
-                            "Newest to oldest",
-                            self.hosts_sort == HostsSort::NewestFirst,
-                            |this, _, _| this.hosts_sort = HostsSort::NewestFirst,
-                            cx,
-                        ))
-                        .child(self.dropdown_item(
-                            "sort-oldest",
-                            Some(app_icon(ICON_CALENDAR)),
-                            "Oldest to newest",
-                            self.hosts_sort == HostsSort::OldestFirst,
-                            |this, _, _| this.hosts_sort = HostsSort::OldestFirst,
-                            cx,
-                        )),
-                )
-            })
-    }
-
-    fn render_avatar_dropdown(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let open = self.open_toolbar_menu == Some(ToolbarMenu::Avatar);
-        let email = std::env::var("USER")
-            .ok()
-            .map(|u| format!("{u}@local"))
-            .unwrap_or_else(|| "user@local".to_string());
+            }
+            Some(ToolbarMenu::Sort) => v_flex()
+                .min_w(px(180.))
+                .p(px(6.))
+                .gap(px(2.))
+                .rounded(px(8.))
+                .bg(theme::library_card())
+                .border_1()
+                .border_color(theme::soft_border())
+                .shadow_lg()
+                .child(self.dropdown_item(
+                    "sort-az",
+                    Some(Icon::new(IconName::SortAscending)),
+                    "A-z",
+                    self.hosts_sort == HostsSort::AZ,
+                    |this, _, _| this.hosts_sort = HostsSort::AZ,
+                    cx,
+                ))
+                .child(self.dropdown_item(
+                    "sort-za",
+                    Some(Icon::new(IconName::SortDescending)),
+                    "Z-a",
+                    self.hosts_sort == HostsSort::ZA,
+                    |this, _, _| this.hosts_sort = HostsSort::ZA,
+                    cx,
+                ))
+                .child(div().h(px(1.)).my(px(4.)).bg(theme::soft_border()))
+                .child(self.dropdown_item(
+                    "sort-newest",
+                    Some(app_icon(ICON_CALENDAR)),
+                    "Newest to oldest",
+                    self.hosts_sort == HostsSort::NewestFirst,
+                    |this, _, _| this.hosts_sort = HostsSort::NewestFirst,
+                    cx,
+                ))
+                .child(self.dropdown_item(
+                    "sort-oldest",
+                    Some(app_icon(ICON_CALENDAR)),
+                    "Oldest to newest",
+                    self.hosts_sort == HostsSort::OldestFirst,
+                    |this, _, _| this.hosts_sort = HostsSort::OldestFirst,
+                    cx,
+                ))
+                .into(),
+            Some(ToolbarMenu::Avatar) => v_flex()
+                .min_w(px(240.))
+                .p(px(6.))
+                .gap(px(2.))
+                .rounded(px(8.))
+                .bg(theme::library_card())
+                .border_1()
+                .border_color(theme::soft_border())
+                .shadow_lg()
+                .child(self.dropdown_item(
+                    "avatar-invite",
+                    Some(Icon::new(IconName::User)),
+                    "Invite team members",
+                    false,
+                    |_, _, _| {},
+                    cx,
+                ))
+                .child(div().h(px(1.)).my(px(4.)).bg(theme::soft_border()))
+                .child(self.dropdown_item(
+                    "avatar-email",
+                    None,
+                    email,
+                    false,
+                    |_, _, _| {},
+                    cx,
+                ))
+                .into(),
+            None => return div().into_any_element(),
+        };
+        let (top_offset, right_offset, left_offset) = match menu {
+            Some(ToolbarMenu::ViewMode) => (px(94.), None, Some(px(290.))),
+            Some(ToolbarMenu::TagFilter) => (px(94.), None, Some(px(220.))),
+            Some(ToolbarMenu::Sort) => (px(94.), None, Some(px(150.))),
+            Some(ToolbarMenu::Avatar) => (px(94.), Some(px(12.)), None),
+            None => return div().into_any_element(),
+        };
         div()
-            .id("library-avatar-wrap")
-            .relative()
+            .id("hosts-overlay")
+            .absolute()
+            .top(top_offset)
+            .when_some(right_offset, |this, r| this.right(r))
+            .when_some(left_offset, |this, l| this.right(l))
             .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                if this.open_toolbar_menu == Some(ToolbarMenu::Avatar) {
-                    this.open_toolbar_menu = None;
-                    cx.notify();
-                }
+                this.open_toolbar_menu = None;
+                cx.notify();
             }))
-            .child(
-                div()
-                    .id("library-avatar-trigger")
-                    .cursor_pointer()
-                    .child(self.toolbar_avatar_pill(cx))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.open_toolbar_menu =
-                            if this.open_toolbar_menu == Some(ToolbarMenu::Avatar) {
-                                None
-                            } else {
-                                Some(ToolbarMenu::Avatar)
-                            };
-                        cx.notify();
-                    })),
-            )
-            .when(open, |this| {
-                this.child(
-                    self.render_dropdown_panel(240.)
-                        .child(self.dropdown_item(
-                            "avatar-invite",
-                            Some(Icon::new(IconName::User)),
-                            "Invite team members",
-                            false,
-                            |_, _, _| {},
-                            cx,
-                        ))
-                        .child(div().h(px(1.)).my(px(4.)).bg(theme::soft_border()))
-                        .child(self.dropdown_item(
-                            "avatar-email",
-                            None,
-                            email,
-                            false,
-                            |_, _, _| {},
-                            cx,
-                        )),
-                )
-            })
+            .child(inner)
+            .into_any_element()
     }
 
     fn toolbar_avatar_pill(&self, _cx: &mut Context<Self>) -> Div {
@@ -9453,6 +10064,7 @@ impl TermiRustApp {
             .size_full()
             .flex_1()
             .min_h_0()
+            .relative()
             .bg(theme::library_bg())
             .child(
                 h_flex()
@@ -9625,6 +10237,219 @@ impl TermiRustApp {
                         this.child(self.render_editor_side_panel(window, cx))
                     }),
             )
+            .child(self.render_hosts_overlays(cx))
+    }
+
+    fn render_editor_side_header(
+        &self,
+        title: &str,
+        vault_label: &str,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let vault_open = self.open_editor_menu == Some(EditorMenu::Vault);
+        let overflow_open = self.open_editor_menu == Some(EditorMenu::Overflow);
+        h_flex()
+            .flex_none()
+            .h(px(60.))
+            .px(px(16.))
+            .items_center()
+            .justify_between()
+            .child(
+                v_flex()
+                    .gap(px(2.))
+                    .child(
+                        div()
+                            .text_size(px(15.))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child(title.to_string()),
+                    )
+                    .child(
+                        div()
+                            .id("editor-vault-trigger")
+                            .child(
+                                h_flex()
+                                    .gap(px(4.))
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .child(
+                                        div()
+                                            .text_size(px(11.))
+                                            .text_color(theme::text_muted())
+                                            .child(format!("{vault_label} vault")),
+                                    )
+                                    .child(
+                                        Icon::new(if vault_open {
+                                            IconName::ChevronUp
+                                        } else {
+                                            IconName::ChevronDown
+                                        })
+                                        .size(px(10.))
+                                        .text_color(theme::text_muted()),
+                                    ),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.open_editor_menu =
+                                    if this.open_editor_menu == Some(EditorMenu::Vault) {
+                                        None
+                                    } else {
+                                        Some(EditorMenu::Vault)
+                                    };
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .gap(px(6.))
+                    .items_center()
+                    .child(
+                        div()
+                            .id("editor-side-overflow")
+                            .size(px(28.))
+                            .rounded(px(6.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .when(overflow_open, |this| {
+                                this.bg(theme::with_alpha(theme::hover(), 0.7))
+                            })
+                            .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.7)))
+                            .child(
+                                Icon::new(IconName::Ellipsis)
+                                    .size(px(15.))
+                                    .text_color(theme::text_main()),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.open_editor_menu =
+                                    if this.open_editor_menu == Some(EditorMenu::Overflow) {
+                                        None
+                                    } else {
+                                        Some(EditorMenu::Overflow)
+                                    };
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id("editor-side-collapse")
+                            .size(px(28.))
+                            .rounded(px(6.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.7)))
+                            .child(
+                                app_icon(ICON_PANEL_COLLAPSE_RIGHT)
+                                    .size(px(15.))
+                                    .text_color(theme::text_main()),
+                            )
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.close_editor_dialog(window, cx);
+                            })),
+                    ),
+            )
+    }
+
+    fn render_editor_side_overlays(&self, cx: &mut Context<Self>) -> Div {
+        let vault_open = self.open_editor_menu == Some(EditorMenu::Vault);
+        let overflow_open = self.open_editor_menu == Some(EditorMenu::Overflow);
+        let has_profile = self.selected_profile_id.is_some();
+        div()
+            .when(vault_open, |this| {
+                this.child(
+                    v_flex()
+                        .absolute()
+                        .top(px(60.))
+                        .left(px(16.))
+                        .min_w(px(180.))
+                        .p(px(6.))
+                        .gap(px(2.))
+                        .rounded(px(8.))
+                        .bg(theme::library_card())
+                        .border_1()
+                        .border_color(theme::soft_border())
+                        .shadow_lg()
+                        .child(self.dropdown_item(
+                            "vault-personal",
+                            Some(Icon::new(IconName::User)),
+                            "Personal",
+                            true,
+                            |_, _, _| {},
+                            cx,
+                        ))
+                        .child(self.dropdown_item(
+                            "vault-team",
+                            Some(Icon::new(IconName::User)),
+                            "Team",
+                            false,
+                            |_, _, _| {},
+                            cx,
+                        )),
+                )
+            })
+            .when(overflow_open, |this| {
+                let mut menu = v_flex()
+                    .absolute()
+                    .top(px(48.))
+                    .right(px(48.))
+                    .min_w(px(180.))
+                    .p(px(6.))
+                    .gap(px(2.))
+                    .rounded(px(8.))
+                    .bg(theme::library_card())
+                    .border_1()
+                    .border_color(theme::soft_border())
+                    .shadow_lg()
+                    .child(self.dropdown_item(
+                        "overflow-connect",
+                        Some(Icon::new(IconName::SquareTerminal)),
+                        "Connect",
+                        false,
+                        |this, window, cx| {
+                            this.connect_current(window, cx);
+                        },
+                        cx,
+                    ))
+                    .child(self.dropdown_item(
+                        "overflow-add-telnet",
+                        Some(Icon::new(IconName::Plus)),
+                        "Add Telnet",
+                        false,
+                        |this, _, _| {
+                            this.editor_telnet_added = true;
+                        },
+                        cx,
+                    ))
+                    .child(self.dropdown_item(
+                        "overflow-duplicate",
+                        Some(Icon::new(IconName::Copy)),
+                        "Duplicate",
+                        false,
+                        |_, _, _| {},
+                        cx,
+                    ));
+                if has_profile {
+                    menu = menu.child(self.dropdown_item(
+                        "overflow-remove",
+                        Some(Icon::new(IconName::Delete)),
+                        "Remove",
+                        false,
+                        |this, _, cx| {
+                            if let Some(id) = this.selected_profile_id.clone() {
+                                this.saved.remove_profile(&id);
+                                this.show_editor_panel = false;
+                                this.persist_runtime_state();
+                                cx.notify();
+                            }
+                        },
+                        cx,
+                    ));
+                }
+                this.child(menu)
+            })
     }
 
     fn render_editor_side_panel(
@@ -9647,6 +10472,7 @@ impl TermiRustApp {
             .bg(theme::library_card())
             .border_l_1()
             .border_color(theme::border())
+            .relative()
             .overflow_hidden()
             .on_mouse_down_out(cx.listener(|this, _, window, cx| {
                 if this.submit_create_host_from_empty_state(window, cx) {
@@ -9654,43 +10480,7 @@ impl TermiRustApp {
                 }
                 this.close_editor_dialog(window, cx);
             }))
-            .child(
-                h_flex()
-                    .flex_none()
-                    .h(px(56.))
-                    .px(px(20.))
-                    .items_center()
-                    .justify_between()
-                    .border_b_1()
-                    .border_color(theme::soft_border())
-                    .child(
-                        v_flex()
-                            .gap(px(2.))
-                            .child(
-                                div()
-                                    .text_size(px(15.))
-                                    .font_semibold()
-                                    .text_color(theme::text_main())
-                                    .child(title),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(11.))
-                                    .text_color(theme::text_muted())
-                                    .child(format!("{vault_label} vault")),
-                            ),
-                    )
-                    .child(
-                        Button::new("editor-side-close")
-                            .ghost()
-                            .xsmall()
-                            .icon(IconName::Close)
-                            .tooltip("Close editor")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.close_editor_dialog(window, cx);
-                            })),
-                    ),
-            )
+            .child(self.render_editor_side_header(title, &vault_label, cx))
             .child(
                 v_flex().flex_1().min_h_0().child(
                     v_flex()
@@ -9700,7 +10490,7 @@ impl TermiRustApp {
                         .px(px(20.))
                         .py(px(16.))
                         .track_scroll(&self.host_editor_scroll)
-                        .child(self.render_editor_panel(cx))
+                        .child(self.render_editor_panel_termius(cx))
                         .overflow_y_scrollbar(),
                 ),
             )
