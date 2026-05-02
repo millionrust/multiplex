@@ -30,6 +30,7 @@ const ICONS: &[(&str, &[u8])] = &[
     icon!("copy"),
     icon!("delete"),
     icon!("ellipsis"),
+    icon!("folder"),
     icon!("folder-open"),
     icon!("globe"),
     icon!("grid"),
