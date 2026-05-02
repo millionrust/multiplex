@@ -10374,19 +10374,21 @@ impl TermiRustApp {
             }
             None => return div().into_any_element(),
         };
-        let (top_offset, right_offset, left_offset) = match menu {
-            Some(ToolbarMenu::ViewMode) => (px(94.), None, Some(px(290.))),
-            Some(ToolbarMenu::TagFilter) => (px(94.), None, Some(px(220.))),
-            Some(ToolbarMenu::Sort) => (px(94.), None, Some(px(150.))),
-            Some(ToolbarMenu::Avatar) => (px(94.), Some(px(12.)), None),
+        // Toolbar row layout (right-aligned): chrome pr=12, then AvatarPill (52px,
+        // ml=4), Sort chevron (45px), Tag (45px), View (45px), all separated by
+        // gap=4 in the parent h_flex.
+        let right_offset = match menu {
+            Some(ToolbarMenu::ViewMode) => px(170.),
+            Some(ToolbarMenu::TagFilter) => px(121.),
+            Some(ToolbarMenu::Sort) => px(72.),
+            Some(ToolbarMenu::Avatar) => px(12.),
             None => return div().into_any_element(),
         };
         div()
             .id("hosts-overlay")
             .absolute()
-            .top(top_offset)
-            .when_some(right_offset, |this, r| this.right(r))
-            .when_some(left_offset, |this, l| this.right(l))
+            .top(px(88.))
+            .right(right_offset)
             .on_mouse_down_out(cx.listener(|this, _, _, cx| {
                 this.open_toolbar_menu = None;
                 cx.notify();
