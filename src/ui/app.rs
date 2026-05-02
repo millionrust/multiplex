@@ -17953,8 +17953,8 @@ fn style_for_render(
 
 fn default_terminal_style() -> TerminalStyle {
     TerminalStyle {
-        fg: theme::text_on_dark(),
-        bg: theme::terminal_bg(),
+        fg: theme::terminal_default_fg(),
+        bg: theme::terminal_default_bg(),
         bold: false,
         italic: false,
         underline: false,

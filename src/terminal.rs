@@ -3,8 +3,7 @@ use std::mem;
 use gpui::Hsla;
 use vt100::{Color, MouseProtocolEncoding, MouseProtocolMode, Parser};
 
-const DEFAULT_FG_HEX: u32 = 0xe2e8f0;
-const DEFAULT_BG_HEX: u32 = 0x091521;
+use crate::ui::theme;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TerminalSize {
@@ -271,11 +270,13 @@ fn style_for_cell(cell: &vt100::Cell, cursor_here: bool) -> TerminalStyle {
 
 fn map_terminal_color(color: Color, foreground: bool) -> Hsla {
     match color {
-        Color::Default => hex_color(if foreground {
-            DEFAULT_FG_HEX
-        } else {
-            DEFAULT_BG_HEX
-        }),
+        Color::Default => {
+            if foreground {
+                theme::terminal_default_fg()
+            } else {
+                theme::terminal_default_bg()
+            }
+        }
         Color::Rgb(r, g, b) => rgb_color(r, g, b),
         Color::Idx(index) => palette_color(index),
     }
