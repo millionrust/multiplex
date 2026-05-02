@@ -1,4 +1,5 @@
 mod app;
+pub mod autocomplete;
 pub mod keys;
 pub mod path;
 pub mod render_terminal;
