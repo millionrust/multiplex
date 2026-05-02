@@ -319,7 +319,7 @@ pub fn host_chip_color(label: &str) -> Hsla {
 
 pub const HOST_SIDEBAR_WIDTH: f32 = 220.0;
 pub const CHROME_HEIGHT: f32 = 46.0;
-pub const CHROME_INSET_LEFT: f32 = 76.0;
+pub const CHROME_INSET_LEFT: f32 = 96.0;
 pub const STATUS_HEIGHT: f32 = 28.0;
 pub const WORKSPACE_HEADER_HEIGHT: f32 = 48.0;
 pub const CARD_RADIUS: f32 = 14.0;
