@@ -27,6 +27,11 @@ use crate::ui::render_terminal::{
     compare_cell_pos, default_terminal_style, display_terminal_text, normalized_selection,
     selection_contains, style_for_render, SelectionRange,
 };
+use crate::ui::path::{format_file_size, remote_parent_path};
+use crate::ui::sftp_local::{read_local_dir, SftpLocalEntry};
+use crate::ui::snippet::{
+    extract_snippet_prompt_names, substitute_snippet_placeholders, substitute_snippet_prompts,
+};
 use crate::ui::util::{
     current_unix_millis, format_count_label, format_modified_time, format_relative_time,
     format_relative_time_for, format_size, format_tag_values, is_word_char, merge_tag_values,
@@ -474,13 +479,6 @@ enum ConnectProtocol {
     Ssh,
     Mosh,
     Telnet,
-}
-
-struct SftpLocalEntry {
-    name: String,
-    is_dir: bool,
-    modified: Option<u64>,
-    size: u64,
 }
 
 struct WorkspaceTab {
@@ -13614,7 +13612,7 @@ impl TermiRustApp {
     }
 
     fn render_sftp_local_pane(&self, cx: &mut Context<Self>) -> Div {
-        let mut entries = Self::read_local_dir(&self.sftp_local_path);
+        let mut entries = read_local_dir(&self.sftp_local_path);
         let filter_value = self
             .shell_inputs
             .sftp_local_filter
@@ -14145,36 +14143,6 @@ impl TermiRustApp {
                             }))
                     })),
             )
-    }
-
-    fn read_local_dir(path: &std::path::Path) -> Vec<SftpLocalEntry> {
-        let mut out = Vec::new();
-        if let Ok(rd) = std::fs::read_dir(path) {
-            for entry in rd.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with('.') {
-                    continue;
-                }
-                let metadata = entry.metadata().ok();
-                let modified = metadata
-                    .as_ref()
-                    .and_then(|m| m.modified().ok())
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs());
-                out.push(SftpLocalEntry {
-                    name,
-                    is_dir: metadata.as_ref().map_or(false, |m| m.is_dir()),
-                    modified,
-                    size: metadata.as_ref().map_or(0, |m| m.len()),
-                });
-            }
-        }
-        out.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()),
-        });
-        out
     }
 
     fn render_library_shell(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
@@ -17868,40 +17836,6 @@ fn nav_section_key(section: NavSection) -> u64 {
 }
 
 
-fn remote_parent_path(path: &str) -> Option<String> {
-    let path = path.trim().trim_end_matches('/');
-    if path.is_empty() || path == "." || path == "/" {
-        return None;
-    }
-
-    if let Some((parent, _)) = path.rsplit_once('/') {
-        if parent.is_empty() {
-            Some("/".to_string())
-        } else {
-            Some(parent.to_string())
-        }
-    } else {
-        Some(".".to_string())
-    }
-}
-
-fn format_file_size(bytes: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
-
-    let mut value = bytes as f64;
-    let mut unit = 0usize;
-    while value >= 1024.0 && unit + 1 < UNITS.len() {
-        value /= 1024.0;
-        unit += 1;
-    }
-
-    if unit == 0 {
-        format!("{bytes} {}", UNITS[unit])
-    } else {
-        format!("{value:.1} {}", UNITS[unit])
-    }
-}
-
 fn collect_autocomplete_candidates(
     input: &str,
     command_history: &[String],
@@ -19165,86 +19099,6 @@ fn workspace_runtime_summary(
         tone,
     ))
 }
-
-fn extract_snippet_prompt_names(command: &str) -> Vec<String> {
-    let mut names: Vec<String> = Vec::new();
-    let mut rest = command;
-    while let Some(start) = rest.find("{{?") {
-        let after = &rest[start + 3..];
-        let Some(end_rel) = after.find("}}") else {
-            break;
-        };
-        let name = after[..end_rel].trim().to_string();
-        if !name.is_empty() && !names.iter().any(|n| n == &name) {
-            names.push(name);
-        }
-        rest = &after[end_rel + 2..];
-    }
-    names
-}
-
-fn substitute_snippet_prompts(command: &str, values: &[(String, String)]) -> String {
-    let mut out = String::with_capacity(command.len());
-    let mut rest = command;
-    while let Some(start) = rest.find("{{?") {
-        out.push_str(&rest[..start]);
-        let after = &rest[start + 3..];
-        let Some(end_rel) = after.find("}}") else {
-            out.push_str(&rest[start..]);
-            return out;
-        };
-        let name = after[..end_rel].trim();
-        let replacement = values
-            .iter()
-            .find(|(prompt, _)| prompt == name)
-            .map(|(_, value)| value.clone())
-            .unwrap_or_default();
-        out.push_str(&replacement);
-        rest = &after[end_rel + 2..];
-    }
-    out.push_str(rest);
-    out
-}
-
-fn substitute_snippet_placeholders(command: &str, request: &ConnectRequest) -> String {
-    let host = request.host.trim().to_string();
-    let user = request.username.trim().to_string();
-    let port = request.port.to_string();
-    let title = request.title.trim().to_string();
-    let address = request.address();
-
-    let mut out = String::with_capacity(command.len());
-    let mut rest = command;
-    while let Some(start) = rest.find("{{") {
-        out.push_str(&rest[..start]);
-        let after_open = &rest[start + 2..];
-        let Some(end_rel) = after_open.find("}}") else {
-            out.push_str(&rest[start..]);
-            return out;
-        };
-        let name = after_open[..end_rel].trim().to_ascii_uppercase();
-        let replacement = match name.as_str() {
-            "HOST" => Some(host.as_str()),
-            "USER" | "USERNAME" => Some(user.as_str()),
-            "PORT" => Some(port.as_str()),
-            "TITLE" => Some(title.as_str()),
-            "ADDRESS" => Some(address.as_str()),
-            _ => None,
-        };
-        match replacement {
-            Some(value) => out.push_str(value),
-            None => {
-                out.push_str("{{");
-                out.push_str(&after_open[..end_rel]);
-                out.push_str("}}");
-            }
-        }
-        rest = &after_open[end_rel + 2..];
-    }
-    out.push_str(rest);
-    out
-}
-
 
 fn merge_port_forward_rules(
     current: &[PortForwardRule],
