@@ -234,6 +234,7 @@ impl DraftInputs {
 struct ShellInputs {
     host_search: Entity<InputState>,
     quick_connect_password: Entity<InputState>,
+    create_host_address: Entity<InputState>,
     bulk_group: Entity<InputState>,
     terminal_search: Entity<InputState>,
     command_palette: Entity<InputState>,
@@ -343,6 +344,8 @@ impl ShellInputs {
                     .masked(true)
                     .placeholder("Password")
             }),
+            create_host_address: cx
+                .new(|cx| InputState::new(window, cx).placeholder("Type IP or Hostname")),
             bulk_group: cx.new(|cx| InputState::new(window, cx).placeholder("Bulk group name")),
             terminal_search: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Search terminal output")),
@@ -622,6 +625,7 @@ pub struct TermiRustApp {
     known_hosts: Arc<KnownHostStore>,
     keychain_tab: KeychainTab,
     show_command_palette: bool,
+    show_new_host_menu: bool,
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
     tab_rename_input: Entity<InputState>,
@@ -721,6 +725,7 @@ impl TermiRustApp {
             known_hosts,
             keychain_tab: KeychainTab::Keys,
             show_command_palette: false,
+            show_new_host_menu: false,
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
             tab_rename_input: cx
@@ -2732,6 +2737,54 @@ impl TermiRustApp {
         self.nav_section = NavSection::Hosts;
         self.clear_profile_form(window, cx);
         self.show_editor_panel = true;
+        self.show_new_host_menu = false;
+    }
+
+    fn open_editor_for_new_host_with_address(
+        &mut self,
+        address: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_editor_for_new_host(window, cx);
+        let trimmed = address.trim().to_string();
+        if !trimmed.is_empty() {
+            Self::set_input_value(&self.inputs.host, trimmed.clone(), window, cx);
+            Self::set_input_value(&self.inputs.label, trimmed, window, cx);
+        }
+        Self::set_input_value(
+            &self.shell_inputs.create_host_address,
+            String::new(),
+            window,
+            cx,
+        );
+    }
+
+    fn submit_create_host_from_empty_state(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let value = self
+            .shell_inputs
+            .create_host_address
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        self.open_editor_for_new_host_with_address(value, window, cx);
+    }
+
+    fn toggle_new_host_menu(&mut self, cx: &mut Context<Self>) {
+        self.show_new_host_menu = !self.show_new_host_menu;
+        cx.notify();
+    }
+
+    fn close_new_host_menu(&mut self, cx: &mut Context<Self>) {
+        if self.show_new_host_menu {
+            self.show_new_host_menu = false;
+            cx.notify();
+        }
     }
 
     fn close_editor_dialog(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -6958,12 +7011,18 @@ impl TermiRustApp {
                         "Save your connection details as hosts to connect in one click.",
                     )
                     .child(
+                        div()
+                            .w_full()
+                            .px(px(2.))
+                            .child(Input::new(&self.shell_inputs.create_host_address)),
+                    )
+                    .child(
                         Button::new("hosts-empty-new")
                             .w_full()
                             .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                            .label("New Host")
+                            .label("Continue")
                             .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_editor_for_new_host(window, cx);
+                                this.submit_create_host_from_empty_state(window, cx);
                             })),
                     )
                 } else {
@@ -8603,6 +8662,190 @@ impl TermiRustApp {
         )
     }
 
+    fn render_new_host_split_button(&self, cx: &mut Context<Self>) -> Div {
+        let menu_open = self.show_new_host_menu;
+        div()
+            .relative()
+            .child(
+                h_flex()
+                    .gap(px(0.))
+                    .items_center()
+                    .child(
+                        Button::new("library-new-host")
+                            .xsmall()
+                            .custom(Self::action_button_style(
+                                theme::ActionTone::Neutral,
+                                cx,
+                            ))
+                            .icon(IconName::Plus)
+                            .label("NEW HOST")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_editor_for_new_host(window, cx);
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id("library-new-host-chevron")
+                            .h(px(28.))
+                            .px(px(6.))
+                            .ml(px(2.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(6.))
+                            .bg(if menu_open {
+                                theme::with_alpha(theme::hover(), 0.85)
+                            } else {
+                                gpui::transparent_black()
+                            })
+                            .border_1()
+                            .border_color(theme::soft_border())
+                            .cursor_pointer()
+                            .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.7)))
+                            .child(
+                                Icon::new(if menu_open {
+                                    IconName::ChevronUp
+                                } else {
+                                    IconName::ChevronDown
+                                })
+                                .size(px(12.))
+                                .text_color(theme::text_main()),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_new_host_menu(cx);
+                            })),
+                    ),
+            )
+            .when(menu_open, |this| {
+                this.child(
+                    v_flex()
+                        .absolute()
+                        .top(px(36.))
+                        .left(px(0.))
+                        .w(px(220.))
+                        .py(px(6.))
+                        .rounded(px(8.))
+                        .bg(theme::library_card())
+                        .border_1()
+                        .border_color(theme::border())
+                        .shadow(vec![gpui::BoxShadow {
+                            color: theme::card_shadow_strong_color(),
+                            offset: point(px(0.), px(8.)),
+                            blur_radius: px(24.),
+                            spread_radius: px(-6.),
+                        }])
+                        .child(self.new_host_menu_item(
+                            "menu-new-group",
+                            IconName::Folder,
+                            "New Group",
+                            false,
+                            cx,
+                            |this, window, cx| {
+                                this.show_new_host_menu = false;
+                                this.open_editor_for_new_host(window, cx);
+                            },
+                        ))
+                        .child(self.new_host_menu_item(
+                            "menu-import",
+                            IconName::PanelLeft,
+                            "Import",
+                            false,
+                            cx,
+                            |this, _, cx| {
+                                this.show_new_host_menu = false;
+                                this.status_message =
+                                    "Import from SSH config / OpenSSH already loads automatically."
+                                        .to_string();
+                                cx.notify();
+                            },
+                        ))
+                        .child(div().h(px(1.)).w_full().my(px(4.)).bg(theme::soft_border()))
+                        .child(self.new_host_menu_item(
+                            "menu-aws",
+                            IconName::Globe,
+                            "AWS Integration",
+                            true,
+                            cx,
+                            |this, _, cx| {
+                                this.show_new_host_menu = false;
+                                this.status_message =
+                                    "AWS integration ships in a future release.".to_string();
+                                cx.notify();
+                            },
+                        ))
+                        .child(self.new_host_menu_item(
+                            "menu-do",
+                            IconName::Globe,
+                            "DigitalOcean Integration",
+                            true,
+                            cx,
+                            |this, _, cx| {
+                                this.show_new_host_menu = false;
+                                this.status_message =
+                                    "DigitalOcean integration ships in a future release."
+                                        .to_string();
+                                cx.notify();
+                            },
+                        ))
+                        .child(self.new_host_menu_item(
+                            "menu-azure",
+                            IconName::Globe,
+                            "Azure Integration",
+                            true,
+                            cx,
+                            |this, _, cx| {
+                                this.show_new_host_menu = false;
+                                this.status_message =
+                                    "Azure integration ships in a future release.".to_string();
+                                cx.notify();
+                            },
+                        )),
+                )
+            })
+    }
+
+    fn new_host_menu_item(
+        &self,
+        id: &'static str,
+        icon: IconName,
+        label: &'static str,
+        cloud: bool,
+        cx: &mut Context<Self>,
+        handler: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) -> Stateful<Div> {
+        h_flex()
+            .id(id)
+            .w_full()
+            .h(px(32.))
+            .px(px(12.))
+            .gap(px(10.))
+            .items_center()
+            .cursor_pointer()
+            .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.7)))
+            .child(
+                Icon::new(icon)
+                    .size(px(14.))
+                    .text_color(theme::text_muted_dark()),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .text_size(px(13.))
+                    .text_color(theme::text_main())
+                    .child(label),
+            )
+            .when(cloud, |this| {
+                this.child(
+                    Icon::new(IconName::ExternalLink)
+                        .size(px(11.))
+                        .text_color(theme::text_muted_dark()),
+                )
+            })
+            .on_click(cx.listener(move |this, _, window, cx| {
+                handler(this, window, cx);
+            }))
+    }
+
     fn toolbar_chevron_button(
         &self,
         id: &'static str,
@@ -8753,19 +8996,7 @@ impl TermiRustApp {
                         h_flex()
                             .gap(px(6.))
                             .items_center()
-                            .child(
-                                Button::new("library-new-host")
-                                    .xsmall()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::Neutral,
-                                        cx,
-                                    ))
-                                    .icon(IconName::Plus)
-                                    .label("NEW HOST")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.open_editor_for_new_host(window, cx);
-                                    })),
-                            )
+                            .child(self.render_new_host_split_button(cx))
                             .child(
                                 Button::new("library-new-terminal")
                                     .xsmall()
