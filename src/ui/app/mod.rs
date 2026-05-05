@@ -603,6 +603,7 @@ pub struct TermiRustApp {
     terminal_panel_tab: TerminalPanelTab,
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
+    open_workspace_tab_menu: Option<u64>,
     tab_rename_input: Entity<InputState>,
     pane_rename_id: Option<u64>,
     pane_rename_input: Entity<InputState>,
@@ -718,6 +719,7 @@ impl TermiRustApp {
             terminal_panel_tab: TerminalPanelTab::Quick,
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
+            open_workspace_tab_menu: None,
             tab_rename_input: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Workspace name")),
             pane_rename_id: None,
@@ -3747,10 +3749,24 @@ impl TermiRustApp {
         let Some(workspace_id) = self.active_workspace_id else {
             return;
         };
+        self.start_workspace_rename_for(workspace_id, window, cx);
+    }
+
+    fn start_workspace_rename_for(
+        &mut self,
+        workspace_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let title = self
             .workspace(workspace_id)
             .map(|workspace| workspace.title.clone())
             .unwrap_or_default();
+        if title.is_empty() {
+            return;
+        }
+        self.active_workspace_id = Some(workspace_id);
+        self.open_workspace_tab_menu = None;
         self.tab_rename_workspace_id = Some(workspace_id);
         Self::set_input_value(&self.tab_rename_input, title, window, cx);
         self.tab_rename_input
@@ -4300,9 +4316,32 @@ impl TermiRustApp {
 
     fn open_local_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let request = ConnectRequest::local_shell_with_config(
-            self.next_session_id(),
+            0,
             self.saved.settings.default_local_shell.clone(),
         );
+        let Some((_, pane_id)) = self.open_request_workspace(request.clone(), window, cx) else {
+            return;
+        };
+        self.show_editor_panel = false;
+        self.mark_onboarding_complete();
+        self.status_message = "Opening local terminal...".to_string();
+        self.error_message.clear();
+        self.set_terminal_search_input("", window, cx);
+        self.sync_terminal_layout(window, cx);
+        if let Some(pane) = self.pane(pane_id) {
+            pane.terminal_focus.focus(window);
+        }
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
+    fn open_request_workspace(
+        &mut self,
+        mut request: ConnectRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<(u64, u64)> {
+        request.session_id = self.next_session_id();
         let pane_id = self.spawn_pane(request.clone(), window, cx);
         let workspace_id = self.next_workspace_id();
 
@@ -4327,17 +4366,7 @@ impl TermiRustApp {
         });
 
         self.active_workspace_id = Some(workspace_id);
-        self.show_editor_panel = false;
-        self.mark_onboarding_complete();
-        self.status_message = "Opening local terminal...".to_string();
-        self.error_message.clear();
-        self.set_terminal_search_input("", window, cx);
-        self.sync_terminal_layout(window, cx);
-        if let Some(pane) = self.pane(pane_id) {
-            pane.terminal_focus.focus(window);
-        }
-        self.persist_runtime_state();
-        cx.notify();
+        Some((workspace_id, pane_id))
     }
 
     fn connect_current(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -5364,6 +5393,55 @@ impl TermiRustApp {
             .map(|workspace| workspace.split_axis)
             .unwrap_or(SplitAxis::Horizontal);
         self.split_active_workspace(axis, window, cx);
+    }
+
+    fn duplicate_workspace_in_new_tab(
+        &mut self,
+        workspace_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(request) = self
+            .workspace(workspace_id)
+            .and_then(|workspace| self.pane(workspace.active_pane_id))
+            .map(|pane| pane.request.clone())
+        else {
+            return;
+        };
+        let Some((_, pane_id)) = self.open_request_workspace(request.clone(), window, cx) else {
+            return;
+        };
+        self.open_workspace_tab_menu = None;
+        self.status_message = format!("Duplicating {} in a new tab...", request.address());
+        self.error_message.clear();
+        self.sync_terminal_layout(window, cx);
+        if let Some(pane) = self.pane(pane_id) {
+            pane.terminal_focus.focus(window);
+        }
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
+    fn split_workspace_horizontally(
+        &mut self,
+        workspace_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.activate_workspace(workspace_id, window, cx);
+        self.open_workspace_tab_menu = None;
+        self.split_active_workspace(SplitAxis::Horizontal, window, cx);
+    }
+
+    fn start_multiplayer_for_workspace(&mut self, workspace_id: u64, cx: &mut Context<Self>) {
+        self.open_workspace_tab_menu = None;
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
+            workspace.broadcast_input = true;
+        }
+        self.status_message =
+            "Multiplayer-style broadcast input started for this workspace.".to_string();
+        self.error_message.clear();
+        cx.notify();
     }
 
     fn toggle_workspace_broadcast(&mut self, workspace_id: u64, cx: &mut Context<Self>) {
@@ -7953,6 +8031,7 @@ impl Render for TermiRustApp {
 
         div()
             .size_full()
+            .relative()
             .bg(theme::app_bg())
             .font_family(cx.theme().font_family.clone())
             .text_color(theme::text_main())
@@ -8073,6 +8152,9 @@ impl Render for TermiRustApp {
             )
             .when(self.show_command_palette, |this| {
                 this.child(self.render_command_palette(window, cx))
+            })
+            .when_some(self.open_workspace_tab_menu, |this, workspace_id| {
+                this.child(self.render_workspace_tab_context_menu_layer(workspace_id, cx))
             })
     }
 }
