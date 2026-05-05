@@ -121,18 +121,15 @@ fn palette() -> ThemePalette {
 
 fn mix(a: u32, b: u32, t: f32) -> u32 {
     let t = t.clamp(0.0, 1.0);
-    let blend = |sa: u8, sb: u8| -> u8 {
-        ((sa as f32) * (1.0 - t) + (sb as f32) * t).round() as u8
-    };
+    let blend =
+        |sa: u8, sb: u8| -> u8 { ((sa as f32) * (1.0 - t) + (sb as f32) * t).round() as u8 };
     let ar = ((a >> 16) & 0xff) as u8;
     let ag = ((a >> 8) & 0xff) as u8;
     let ab = (a & 0xff) as u8;
     let br = ((b >> 16) & 0xff) as u8;
     let bg = ((b >> 8) & 0xff) as u8;
     let bb = (b & 0xff) as u8;
-    ((blend(ar, br) as u32) << 16)
-        | ((blend(ag, bg) as u32) << 8)
-        | (blend(ab, bb) as u32)
+    ((blend(ar, br) as u32) << 16) | ((blend(ag, bg) as u32) << 8) | (blend(ab, bb) as u32)
 }
 
 pub fn set_theme_preset(preset: ThemePreset) {
@@ -272,10 +269,6 @@ pub fn card_shadow_strong_color() -> Hsla {
 
 pub fn soft_border() -> Hsla {
     with_alpha(color(0x0a1322), 0.06)
-}
-
-pub fn avatar_glow(accent: Hsla) -> Hsla {
-    with_alpha(accent, 0.3)
 }
 
 pub fn terminal_default_bg() -> Hsla {

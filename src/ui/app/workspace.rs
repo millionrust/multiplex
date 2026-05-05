@@ -2,39 +2,34 @@
 //! view, terminal pane (cells/rows), workspace body and shell wrapper.
 //! All methods are part of `TermiRustApp`.
 
-use std::cmp::Ordering;
-
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    div, point, px, relative, AnyElement, ClickEvent, ClipboardItem, Context, Div, Entity,
-    FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, ParentElement, ScrollDelta, ScrollWheelEvent, SharedString,
-    Stateful, StatefulInteractiveElement as _, Styled, Window,
+    AnyElement, Context, Div, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, ScrollWheelEvent,
+    SharedString, Stateful, StatefulInteractiveElement as _, Styled, Window, div, point, px,
+    relative,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{h_flex, v_flex, Disableable, Icon, IconName, Sizable, StyledExt as _};
+use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::models::ConnectionKind;
 use crate::terminal::{TerminalRow, TerminalStyle};
 use crate::ui::app::{
-    primary_shortcut_label, ConnectDialogMode, SearchMatch, SessionPane, SplitAxis, TermiRustApp,
-    WorkspaceViewMode, MAX_SPLIT_PANES, PANE_GAP, PANE_HEADER_HEIGHT, TERMINAL_INNER_PADDING_X,
-    TERMINAL_INNER_PADDING_Y, TERMINAL_LINE_HEIGHT, WORKSPACE_AUTOCOMPLETE_HEIGHT,
-    WORKSPACE_PADDING, WORKSPACE_SEARCH_ROW_HEIGHT,
+    ConnectDialogMode, MAX_SPLIT_PANES, PANE_GAP, PANE_HEADER_HEIGHT, SearchMatch, SessionPane,
+    SplitAxis, TERMINAL_INNER_PADDING_X, TERMINAL_INNER_PADDING_Y, TERMINAL_LINE_HEIGHT,
+    TermiRustApp, WORKSPACE_AUTOCOMPLETE_HEIGHT, WORKSPACE_PADDING, WORKSPACE_SEARCH_ROW_HEIGHT,
+    WorkspaceViewMode, primary_shortcut_label,
 };
-use gpui_component::ActiveTheme as _;
 use crate::ui::autocomplete::AutocompleteSource;
-use crate::ui::keys::{
-    encode_mouse_report, encode_terminal_input, MouseEventKind, TerminalCellPos,
-};
 use crate::ui::path::format_file_size;
 use crate::ui::render_terminal::{
-    default_terminal_style, display_terminal_text, normalized_selection, selection_contains,
-    style_for_render, SelectionRange,
+    SelectionRange, default_terminal_style, display_terminal_text, selection_contains,
+    style_for_render,
 };
 use crate::ui::theme;
+use gpui_component::ActiveTheme as _;
 
 impl TermiRustApp {
     fn render_workspace_search(&self, _window: &mut Window, cx: &mut Context<Self>) -> Option<Div> {
@@ -1026,9 +1021,9 @@ impl TermiRustApp {
                 .flex_1()
                 .bg(theme::terminal_bg())
                 .child(match mode {
-                    ConnectDialogMode::Username => {
-                        self.render_connect_dialog(wid, &pending, cx).into_any_element()
-                    }
+                    ConnectDialogMode::Username => self
+                        .render_connect_dialog(wid, &pending, cx)
+                        .into_any_element(),
                     ConnectDialogMode::ChooseProtocol => self
                         .render_choose_protocol_dialog(wid, &pending, protocol, cx)
                         .into_any_element(),
@@ -1066,9 +1061,11 @@ impl TermiRustApp {
             .child(content)
     }
 
-
-
-    pub(super) fn render_workspace_shell(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+    pub(super) fn render_workspace_shell(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let content = if self
             .active_workspace()
             .is_some_and(|workspace| workspace.view_mode == WorkspaceViewMode::Files)
@@ -1110,5 +1107,4 @@ impl TermiRustApp {
             )
             .child(body)
     }
-
 }

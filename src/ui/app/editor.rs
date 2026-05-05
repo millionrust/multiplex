@@ -3,25 +3,23 @@
 //! Save / Delete), and the open / close / connect helpers.
 
 use gpui::prelude::FluentBuilder as _;
-use gpui::{div, px, AnyElement, Context, Div, Entity, InteractiveElement as _, IntoElement,
-    ParentElement, Stateful, StatefulInteractiveElement as _, Styled, Window};
+use gpui::{
+    AnyElement, Context, Div, Entity, InteractiveElement as _, ParentElement, Stateful,
+    StatefulInteractiveElement as _, Styled, Window, div, px,
+};
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::{Input, InputState};
 use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{h_flex, v_flex, Icon, IconName, Sizable, StyledExt as _};
+use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
+use crate::models::{AuthMode, ThemePreset};
 use crate::ui::app::{
-    app_icon, EditorMenu, NavSection, TermiRustApp, ICON_KEY, ICON_PANEL_COLLAPSE_RIGHT, ICON_TAG,
+    EditorMenu, ICON_KEY, ICON_PANEL_COLLAPSE_RIGHT, ICON_TAG, NavSection, TermiRustApp, app_icon,
 };
-use crate::models::ThemePreset;
 use crate::ui::theme;
 
 impl TermiRustApp {
-    pub(super) fn open_editor_for_new_host(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn open_editor_for_new_host(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.nav_section = NavSection::Hosts;
         self.clear_profile_form(window, cx);
         self.show_editor_panel = true;
@@ -48,11 +46,7 @@ impl TermiRustApp {
         );
     }
 
-    pub(super) fn close_editor_dialog(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn close_editor_dialog(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.show_editor_panel = false;
         cx.notify();
     }
@@ -113,6 +107,34 @@ impl TermiRustApp {
             .child(Input::new(state).flex_1())
     }
 
+    fn editor_labeled_input_row(
+        &self,
+        label: &str,
+        help: Option<&str>,
+        icon: Option<Icon>,
+        state: &Entity<InputState>,
+    ) -> Div {
+        v_flex()
+            .w_full()
+            .gap(px(5.))
+            .child(
+                div()
+                    .text_size(px(11.))
+                    .font_medium()
+                    .text_color(theme::text_muted())
+                    .child(label.to_string()),
+            )
+            .child(self.editor_input_row(icon, state, None))
+            .when_some(help, |this, help| {
+                this.child(
+                    div()
+                        .text_size(px(10.))
+                        .text_color(theme::text_muted())
+                        .child(help.to_string()),
+                )
+            })
+    }
+
     fn editor_section_card(&self, title: Option<&str>, body: Div) -> Div {
         v_flex()
             .w_full()
@@ -130,33 +152,6 @@ impl TermiRustApp {
                 )
             })
             .child(body)
-    }
-
-    fn editor_static_row(&self, icon: Icon, label: &str, value: &str) -> Div {
-        h_flex()
-            .w_full()
-            .h(px(38.))
-            .px(px(10.))
-            .gap(px(8.))
-            .items_center()
-            .rounded(px(6.))
-            .bg(theme::library_bg())
-            .border_1()
-            .border_color(theme::soft_border())
-            .child(icon.size(px(14.)).text_color(theme::text_muted()))
-            .child(
-                div()
-                    .flex_1()
-                    .text_size(px(13.))
-                    .text_color(theme::text_muted())
-                    .child(label.to_string()),
-            )
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .text_color(theme::text_muted())
-                    .child(value.to_string()),
-            )
     }
 
     fn editor_theme_row(&self, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -250,25 +245,68 @@ impl TermiRustApp {
             )
     }
 
+    fn editor_auth_mode_button(
+        &self,
+        id: &'static str,
+        label: &'static str,
+        mode: AuthMode,
+        active: bool,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        div()
+            .id(id)
+            .flex_1()
+            .h(px(30.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(6.))
+            .text_size(px(13.))
+            .font_medium()
+            .cursor_pointer()
+            .when(active, |this| {
+                this.bg(theme::library_card())
+                    .shadow_sm()
+                    .text_color(theme::text_main())
+            })
+            .when(!active, |this| this.text_color(theme::text_muted()))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.set_auth_mode(mode, cx);
+                if mode == AuthMode::PrivateKey {
+                    let _ = this.ensure_default_identity_selected(window, cx);
+                }
+            }))
+            .child(label)
+    }
+
     fn render_editor_panel_termius(&self, cx: &mut Context<Self>) -> Div {
-        let address_row = self.editor_input_row(
-            Some(Icon::new(IconName::SquareTerminal)),
+        let auth_mode = self.draft_auth_mode;
+        let address_row = self.editor_labeled_input_row(
+            "Server address",
+            Some("Use localhost, an IP address, or a domain. Do not put the username here."),
+            Some(Icon::new(IconName::Globe)),
             &self.inputs.host,
-            None,
         );
 
         let general_body = v_flex()
             .gap(px(8.))
-            .child(self.editor_input_row(None, &self.inputs.label, None))
-            .child(self.editor_input_row(
+            .child(self.editor_labeled_input_row(
+                "Display name",
+                Some("Only the name shown inside the app."),
+                None,
+                &self.inputs.label,
+            ))
+            .child(self.editor_labeled_input_row(
+                "Group / folder",
+                Some("Optional app organization, e.g. Local, Production, Staging."),
                 Some(Icon::new(IconName::Folder)),
                 &self.inputs.group,
-                None,
             ))
-            .child(self.editor_input_row(
+            .child(self.editor_labeled_input_row(
+                "Tags",
+                Some("Optional search/color labels separated by commas."),
                 Some(app_icon(ICON_TAG)),
                 &self.inputs.tags,
-                None,
             ));
 
         let ssh_body = v_flex()
@@ -282,37 +320,100 @@ impl TermiRustApp {
                     .text_color(theme::text_main())
                     .child("Credentials"),
             )
-            .child(self.editor_input_row(
+            .child(
+                h_flex()
+                    .p(px(3.))
+                    .rounded(px(8.))
+                    .bg(theme::hover())
+                    .child(self.editor_auth_mode_button(
+                        "editor-auth-password",
+                        "Password",
+                        AuthMode::Password,
+                        auth_mode == AuthMode::Password,
+                        cx,
+                    ))
+                    .child(self.editor_auth_mode_button(
+                        "editor-auth-private-key",
+                        "Private Key",
+                        AuthMode::PrivateKey,
+                        auth_mode == AuthMode::PrivateKey,
+                        cx,
+                    )),
+            )
+            .child(self.editor_labeled_input_row(
+                "Username",
+                Some("The account on the SSH server. For your local Mac test use jacob."),
                 Some(Icon::new(IconName::User)),
                 &self.inputs.username,
-                None,
             ))
-            .child(self.editor_input_row(
-                Some(app_icon(ICON_KEY)),
-                &self.inputs.password,
-                None,
-            ))
+            .when(auth_mode == AuthMode::Password, |this| {
+                this.child(self.editor_labeled_input_row(
+                    "Password",
+                    Some("Only needed when using password auth."),
+                    Some(app_icon(ICON_KEY)),
+                    &self.inputs.password,
+                ))
+            })
+            .when(auth_mode == AuthMode::PrivateKey, |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .gap(px(5.))
+                        .child(
+                            div()
+                                .text_size(px(11.))
+                                .font_medium()
+                                .text_color(theme::text_muted())
+                                .child("Private key file"),
+                        )
+                        .child(
+                            h_flex()
+                                .gap(px(6.))
+                                .child(Input::new(&self.inputs.key_path).flex_1())
+                                .child(
+                                    Button::new("editor-pick-key-file")
+                                        .small()
+                                        .ghost()
+                                        .icon(IconName::FolderOpen)
+                                        .label("Browse")
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.set_auth_mode(AuthMode::PrivateKey, cx);
+                                            this.pick_key_file(window, cx);
+                                        })),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(theme::text_muted())
+                                .child("Click Browse and select your private key file."),
+                        )
+                        .child(self.editor_labeled_input_row(
+                            "Key passphrase",
+                            Some("Leave empty for the local test key we created."),
+                            Some(app_icon(ICON_KEY)),
+                            &self.inputs.key_passphrase,
+                        )),
+                )
+            })
             .child(
-                div()
-                    .id("editor-credentials-add")
-                    .cursor_pointer()
-                    .child(
-                        h_flex()
-                            .gap(px(6.))
-                            .items_center()
-                            .pt(px(2.))
-                            .child(
-                                Icon::new(IconName::Plus)
-                                    .size(px(12.))
-                                    .text_color(theme::text_muted()),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(theme::text_muted())
-                                    .child("SSH.id, Key, Certificate, FIDO2"),
-                            ),
-                    ),
+                div().id("editor-credentials-add").cursor_pointer().child(
+                    h_flex()
+                        .gap(px(6.))
+                        .items_center()
+                        .pt(px(2.))
+                        .child(
+                            Icon::new(IconName::Plus)
+                                .size(px(12.))
+                                .text_color(theme::text_muted()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(theme::text_muted())
+                                .child("SSH.id, Key, Certificate, FIDO2"),
+                        ),
+                ),
             )
             .when(self.editor_advanced_expanded, |this| {
                 this.child(div().h(px(1.)).bg(theme::soft_border()))
@@ -628,135 +729,6 @@ impl TermiRustApp {
                             })),
                     ),
             )
-    }
-
-    pub(super) fn render_editor_side_overlays(&self, cx: &mut Context<Self>) -> Div {
-        let vault_open = self.open_editor_menu == Some(EditorMenu::Vault);
-        let overflow_open = self.open_editor_menu == Some(EditorMenu::Overflow);
-        let has_profile = self.selected_profile_id.is_some();
-        div()
-            .when(vault_open, |this| {
-                this.child(
-                    v_flex()
-                        .absolute()
-                        .top(px(60.))
-                        .left(px(16.))
-                        .min_w(px(180.))
-                        .p(px(6.))
-                        .gap(px(2.))
-                        .rounded(px(8.))
-                        .bg(theme::library_card())
-                        .border_1()
-                        .border_color(theme::soft_border())
-                        .shadow_lg()
-                        .child(self.dropdown_item(
-                            "vault-personal",
-                            Some(Icon::new(IconName::User)),
-                            "Personal",
-                            true,
-                            |_, _, _| {},
-                            cx,
-                        ))
-                        .child(self.dropdown_item(
-                            "vault-team",
-                            Some(Icon::new(IconName::User)),
-                            "Team",
-                            false,
-                            |_, _, _| {},
-                            cx,
-                        )),
-                )
-            })
-            .when(overflow_open, |this| {
-                let mut menu = v_flex()
-                    .absolute()
-                    .top(px(48.))
-                    .right(px(48.))
-                    .min_w(px(180.))
-                    .p(px(6.))
-                    .gap(px(2.))
-                    .rounded(px(8.))
-                    .bg(theme::library_card())
-                    .border_1()
-                    .border_color(theme::soft_border())
-                    .shadow_lg()
-                    .child(self.dropdown_item(
-                        "overflow-connect",
-                        Some(Icon::new(IconName::SquareTerminal)),
-                        "Connect",
-                        false,
-                        |this, window, cx| {
-                            eprintln!(
-                                "[connect] overflow Connect clicked, selected_profile_id={:?}",
-                                this.selected_profile_id
-                            );
-                            if let Some(id) = this.selected_profile_id.clone() {
-                                this.open_choose_protocol_tab(&id, window, cx);
-                            } else {
-                                this.open_choose_protocol_tab_from_draft(window, cx);
-                            }
-                        },
-                        cx,
-                    ))
-                    .child(self.dropdown_item(
-                        "overflow-add-telnet",
-                        Some(Icon::new(IconName::Plus)),
-                        "Add Telnet",
-                        false,
-                        |this, _, _| {
-                            this.editor_telnet_added = true;
-                        },
-                        cx,
-                    ))
-                    .child(self.dropdown_item(
-                        "overflow-duplicate",
-                        Some(Icon::new(IconName::Copy)),
-                        "Duplicate",
-                        false,
-                        |this, _, cx| {
-                            if let Some(id) = this.selected_profile_id.clone() {
-                                if let Some(orig) = this
-                                    .saved
-                                    .profiles
-                                    .iter()
-                                    .find(|p| p.id == id)
-                                    .cloned()
-                                {
-                                    let mut copy = orig.clone();
-                                    copy.id = format!(
-                                        "{}-copy-{}",
-                                        orig.id,
-                                        this.next_session_id()
-                                    );
-                                    copy.label = format!("{} (copy)", orig.label);
-                                    this.saved.upsert_profile(copy.clone());
-                                    this.selected_profile_id = Some(copy.id);
-                                    this.persist_runtime_state();
-                                    cx.notify();
-                                }
-                            }
-                        },
-                        cx,
-                    ));
-                if has_profile {
-                    menu = menu.child(self.dropdown_item(
-                        "overflow-remove",
-                        Some(Icon::new(IconName::Delete)),
-                        "Remove",
-                        false,
-                        |this, _, cx| {
-                            if let Some(id) = this.selected_profile_id.clone() {
-                                this.saved.remove_profile(&id);
-                                this.show_editor_panel = false;
-                                this.persist_runtime_state();
-                                cx.notify();
-                            }
-                        },
-                        cx,
-                    ));
-                }
-                this.child(menu)
-            })
     }
 
     pub(super) fn render_editor_side_panel(

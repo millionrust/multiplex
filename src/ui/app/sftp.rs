@@ -2,11 +2,13 @@
 //! host picker). All methods are part of the `TermiRustApp` impl.
 
 use gpui::prelude::FluentBuilder as _;
-use gpui::{px, AnyElement, Context, Div, InteractiveElement as _, IntoElement, ParentElement,
-    StatefulInteractiveElement as _, Styled};
+use gpui::{
+    AnyElement, Context, Div, InteractiveElement as _, IntoElement, ParentElement,
+    StatefulInteractiveElement as _, Styled, px,
+};
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
-use gpui_component::{h_flex, v_flex, Icon, IconName, Sizable, StyledExt as _};
+use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::ui::app::TermiRustApp;
 use crate::ui::sftp_local::read_local_dir;
@@ -23,12 +25,7 @@ impl TermiRustApp {
             .size_full()
             .bg(theme::library_bg())
             .child(self.render_sftp_local_pane(cx))
-            .child(
-                gpui::div()
-                    .w(px(1.))
-                    .h_full()
-                    .bg(theme::soft_border()),
-            )
+            .child(gpui::div().w(px(1.)).h_full().bg(theme::soft_border()))
             .child(if self.sftp_show_host_picker {
                 self.render_sftp_host_picker(cx)
             } else {
@@ -118,10 +115,9 @@ impl TermiRustApp {
                                         this.sftp_local_filter_visible =
                                             !this.sftp_local_filter_visible;
                                         if this.sftp_local_filter_visible {
-                                            this.shell_inputs.sftp_local_filter.update(
-                                                cx,
-                                                |state, cx| state.focus(window, cx),
-                                            );
+                                            this.shell_inputs
+                                                .sftp_local_filter
+                                                .update(cx, |state, cx| state.focus(window, cx));
                                         }
                                         cx.notify();
                                     })),
@@ -146,9 +142,8 @@ impl TermiRustApp {
                                     )
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         let path = this.sftp_local_path.clone();
-                                        let _ = std::process::Command::new("open")
-                                            .arg(&path)
-                                            .spawn();
+                                        let _ =
+                                            std::process::Command::new("open").arg(&path).spawn();
                                         this.status_message =
                                             format!("Opened {} in Finder.", path.display());
                                         cx.notify();
@@ -516,57 +511,63 @@ impl TermiRustApp {
                             .text_color(theme::text_muted())
                             .child("Hosts"),
                     )
-                    .children(self.saved.profiles.iter().enumerate().map(|(idx, profile)| {
-                        let profile_id = profile.id.clone();
-                        let display_name = profile.display_name();
-                        let proto_summary =
-                            format!("ssh, {}@{}", profile.username, profile.endpoint());
-                        h_flex()
-                            .id(("sftp-host", idx))
-                            .h(px(46.))
-                            .gap(px(10.))
-                            .items_center()
-                            .px(px(8.))
-                            .rounded(px(6.))
-                            .cursor_pointer()
-                            .hover(|s| s.bg(theme::with_alpha(theme::hover(), 0.5)))
-                            .child(
-                                gpui::div()
-                                    .size(px(34.))
-                                    .rounded(px(6.))
-                                    .flex()
+                    .children(
+                        self.saved
+                            .profiles
+                            .iter()
+                            .enumerate()
+                            .map(|(idx, profile)| {
+                                let profile_id = profile.id.clone();
+                                let display_name = profile.display_name();
+                                let proto_summary =
+                                    format!("ssh, {}@{}", profile.username, profile.endpoint());
+                                h_flex()
+                                    .id(("sftp-host", idx))
+                                    .h(px(46.))
+                                    .gap(px(10.))
                                     .items_center()
-                                    .justify_center()
-                                    .bg(theme::library_card())
-                                    .child(
-                                        Icon::new(IconName::SquareTerminal)
-                                            .size(px(15.))
-                                            .text_color(theme::accent()),
-                                    ),
-                            )
-                            .child(
-                                v_flex()
-                                    .flex_1()
-                                    .gap(px(2.))
+                                    .px(px(8.))
+                                    .rounded(px(6.))
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::with_alpha(theme::hover(), 0.5)))
                                     .child(
                                         gpui::div()
-                                            .text_size(px(12.))
-                                            .font_semibold()
-                                            .text_color(theme::text_main())
-                                            .child(display_name),
+                                            .size(px(34.))
+                                            .rounded(px(6.))
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .bg(theme::library_card())
+                                            .child(
+                                                Icon::new(IconName::SquareTerminal)
+                                                    .size(px(15.))
+                                                    .text_color(theme::accent()),
+                                            ),
                                     )
                                     .child(
-                                        gpui::div()
-                                            .text_size(px(10.))
-                                            .text_color(theme::text_muted())
-                                            .child(proto_summary),
-                                    ),
-                            )
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.sftp_show_host_picker = false;
-                                this.open_connect_dialog_tab(&profile_id, window, cx);
-                            }))
-                    })),
+                                        v_flex()
+                                            .flex_1()
+                                            .gap(px(2.))
+                                            .child(
+                                                gpui::div()
+                                                    .text_size(px(12.))
+                                                    .font_semibold()
+                                                    .text_color(theme::text_main())
+                                                    .child(display_name),
+                                            )
+                                            .child(
+                                                gpui::div()
+                                                    .text_size(px(10.))
+                                                    .text_color(theme::text_muted())
+                                                    .child(proto_summary),
+                                            ),
+                                    )
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.sftp_show_host_picker = false;
+                                        this.open_connect_dialog_tab(&profile_id, window, cx);
+                                    }))
+                            }),
+                    ),
             )
     }
 }

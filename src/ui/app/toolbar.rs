@@ -3,19 +3,17 @@
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    div, point, px, AnyElement, ClickEvent, ClipboardItem, Context, Div,
-    InteractiveElement as _, IntoElement, MouseButton, ParentElement, SharedString,
-    Stateful, StatefulInteractiveElement as _, Styled, Window,
+    Context, Div, InteractiveElement as _, ParentElement, StatefulInteractiveElement as _, Styled,
+    Window, div, px,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
-use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{h_flex, v_flex, Disableable, Icon, IconName, Sizable, StyledExt as _};
+use gpui_component::{Disableable, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::ssh::SessionCommand;
 use crate::ui::app::{
-    workspace_runtime_summary, SplitAxis, TermiRustApp, WorkspaceRuntimeTone, WorkspaceViewMode,
-    WORKSPACE_QUICK_ACTIONS_HEIGHT,
+    SplitAxis, TermiRustApp, WORKSPACE_QUICK_ACTIONS_HEIGHT, WorkspaceRuntimeTone,
+    WorkspaceViewMode, workspace_runtime_summary,
 };
 use crate::ui::theme;
 
@@ -553,5 +551,4 @@ impl TermiRustApp {
                 })
             })
     }
-
 }

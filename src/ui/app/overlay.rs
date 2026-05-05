@@ -3,16 +3,15 @@
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    div, point, px, relative, AnyElement, Context, Div, InteractiveElement as _, IntoElement,
-    KeyDownEvent, MouseButton, ParentElement, Render, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled, Window,
+    Context, Div, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, ParentElement,
+    SharedString, Stateful, StatefulInteractiveElement as _, Styled, Window, div, px, relative,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{h_flex, v_flex, Disableable, Icon, IconName, Sizable, StyledExt as _};
+use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
-use crate::ui::app::{primary_shortcut_label, TermiRustApp};
+use crate::ui::app::{TermiRustApp, primary_shortcut_label};
 use crate::ui::autocomplete::AutocompleteSource;
 use crate::ui::theme;
 
@@ -388,5 +387,4 @@ impl TermiRustApp {
                     ),
             )
     }
-
 }

@@ -3,11 +3,13 @@
 //! failure screen if the connection can't even reach the host.
 
 use gpui::prelude::FluentBuilder as _;
-use gpui::{div, px, ClipboardItem, Context, Div, Entity, InteractiveElement as _, IntoElement,
-    ParentElement, Stateful, StatefulInteractiveElement as _, Styled, Window};
+use gpui::{
+    ClipboardItem, Context, Div, Entity, InteractiveElement as _, IntoElement, ParentElement,
+    Stateful, StatefulInteractiveElement as _, Styled, Window, div, px,
+};
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::{Input, InputState};
-use gpui_component::{h_flex, v_flex, Icon, IconName, Sizable, StyledExt as _};
+use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::models::HostProfile;
 use crate::ui::app::{
@@ -52,7 +54,11 @@ impl TermiRustApp {
             return;
         }
         let label = self.inputs.label.read(cx).value().trim().to_string();
-        let display_label = if label.is_empty() { host.clone() } else { label };
+        let display_label = if label.is_empty() {
+            host.clone()
+        } else {
+            label
+        };
         let port: u16 = self
             .inputs
             .port
@@ -296,7 +302,9 @@ impl TermiRustApp {
                             .on_click(cx.listener({
                                 let log = log_lines.clone();
                                 move |_, _, _, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(log.join("\n")));
+                                    cx.write_to_clipboard(ClipboardItem::new_string(
+                                        log.join("\n"),
+                                    ));
                                 }
                             })),
                     ),
@@ -512,6 +520,26 @@ impl TermiRustApp {
                 selected == ConnectProtocol::Ssh,
                 cx,
             ))
+            .child(self.protocol_card(
+                "proto-mosh",
+                ConnectProtocol::Mosh,
+                "Mosh",
+                &format!("mosh {host}"),
+                Some(self.shell_inputs.protocol_mosh_command.clone()),
+                &self.shell_inputs.protocol_mosh_port.clone(),
+                selected == ConnectProtocol::Mosh,
+                cx,
+            ))
+            .child(self.protocol_card(
+                "proto-telnet",
+                ConnectProtocol::Telnet,
+                "Telnet",
+                &format!("telnet {host}"),
+                None,
+                &self.shell_inputs.protocol_telnet_port.clone(),
+                selected == ConnectProtocol::Telnet,
+                cx,
+            ))
             .child(
                 h_flex()
                     .w(px(420.))
@@ -651,7 +679,10 @@ impl TermiRustApp {
             "👤 Starting a new connection to: \"{}\" port \"{}\"",
             profile.host, port
         ));
-        log.push(format!("⚙️ Starting address resolution of \"{}\"", profile.host));
+        log.push(format!(
+            "⚙️ Starting address resolution of \"{}\"",
+            profile.host
+        ));
         let resolve_target = format!("{}:{port}", profile.host);
         match std::net::ToSocketAddrs::to_socket_addrs(&resolve_target) {
             Err(e) => {
@@ -715,11 +746,7 @@ impl TermiRustApp {
         cx.notify();
     }
 
-    pub(super) fn restart_choose_protocol(
-        &mut self,
-        workspace_id: u64,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn restart_choose_protocol(&mut self, workspace_id: u64, cx: &mut Context<Self>) {
         if let Some(workspace) = self.workspaces.iter_mut().find(|w| w.id == workspace_id) {
             if let Some(failure) = workspace.connect_failure.take() {
                 workspace.pending_connect = Some(failure.profile);

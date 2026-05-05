@@ -5,18 +5,17 @@
 
 use std::collections::HashSet;
 
-use crate::models::{ConnectRequest, SavedCommandHistoryEntry, SavedSnippet};
+use crate::models::{SavedCommandHistoryEntry, SavedSnippet};
 use crate::sftp::RemoteFileEntry;
 use crate::ui::app::SessionPane;
-use crate::ui::path::remote_parent_path;
 use crate::ui::autocomplete::{
-    autocomplete_match_kind, builtin_command_templates, context_detail, context_target_rank,
-    current_path_hint, extract_docker_targets, extract_git_branch_targets,
-    extract_kubernetes_pod_targets, extract_path_tokens, extract_systemd_unit_targets,
-    is_path_command, is_path_like_token, matches_command_prefix, palette_match_kind,
-    path_match_kind, path_query_context, AutocompleteCandidate, AutocompleteMatchKind,
-    AutocompleteSource,
+    AutocompleteCandidate, AutocompleteMatchKind, AutocompleteSource, autocomplete_match_kind,
+    builtin_command_templates, context_detail, context_target_rank, current_path_hint,
+    extract_docker_targets, extract_git_branch_targets, extract_kubernetes_pod_targets,
+    extract_path_tokens, extract_systemd_unit_targets, matches_command_prefix, palette_match_kind,
+    path_match_kind, path_query_context,
 };
+use crate::ui::path::remote_parent_path;
 #[derive(Clone)]
 pub(super) struct CommandPaletteCandidate {
     pub(super) command: String,
@@ -789,7 +788,6 @@ pub(super) fn collect_context_command_templates(
     }
 }
 
-
 pub(super) fn pane_recent_output_lines(pane: &SessionPane, limit: usize) -> Vec<String> {
     let mut lines = pane
         .terminal
@@ -802,4 +800,3 @@ pub(super) fn pane_recent_output_lines(pane: &SessionPane, limit: usize) -> Vec<
     lines.drain(0..keep_from);
     lines
 }
-

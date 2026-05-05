@@ -2,17 +2,15 @@
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    div, point, px, AnyElement, AppContext as _, ClickEvent, Context, Div, DragMoveEvent,
-    ElementId, InteractiveElement as _, IntoElement, MouseButton, ParentElement, SharedString,
-    Stateful, StatefulInteractiveElement as _, Styled, Window,
+    AnyElement, AppContext as _, Context, Div, ElementId, InteractiveElement as _, IntoElement,
+    ParentElement, SharedString, Stateful, StatefulInteractiveElement as _, Styled, Window, div,
+    px,
 };
-use gpui_component::button::{Button, ButtonVariants};
-use gpui_component::input::Input;
-use gpui_component::{h_flex, v_flex, Disableable, Icon, IconName, Sizable, StyledExt as _};
+use gpui_component::{Icon, IconName, StyledExt as _, h_flex, v_flex};
 
 use crate::ui::app::{
-    app_icon, nav_section_key, NavSection, TermiRustApp, WorkspaceIndicators, WorkspaceTab,
-    WorkspaceTabDrag, WorkspaceTabDragPreview, ICON_PANEL_COLLAPSE_RIGHT,
+    ICON_PANEL_COLLAPSE_RIGHT, NavSection, TermiRustApp, WorkspaceIndicators, WorkspaceTab,
+    WorkspaceTabDrag, WorkspaceTabDragPreview, app_icon, nav_section_key,
 };
 use crate::ui::theme;
 
@@ -517,5 +515,4 @@ impl TermiRustApp {
                 ),
             )
     }
-
 }

@@ -2,23 +2,20 @@
 //! split menu + Grid/Tag/Sort/Avatar dropdowns), the absolute overlay layer
 //! and the page wrapper. All methods are part of `TermiRustApp`.
 
-use std::collections::HashSet;
-
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    div, point, px, AnyElement, ClickEvent, ClipboardItem, Context, Div, ElementId,
-    InteractiveElement as _, IntoElement, MouseButton, ParentElement, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled, Window,
+    AnyElement, ClickEvent, ClipboardItem, Context, Div, ElementId, InteractiveElement as _,
+    IntoElement, MouseButton, ParentElement, SharedString, Stateful,
+    StatefulInteractiveElement as _, Styled, Window, div, point, px,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
-use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{h_flex, v_flex, Disableable, Icon, IconName, Sizable, StyledExt as _};
+use gpui_component::{Disableable, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
-use crate::models::{AuthMode, HostProfile, ProfileSource};
+use crate::models::{AuthMode, HostProfile};
 use crate::ui::app::{
-    app_icon, EditorMenu, HostsSort, HostsViewMode, NavSection, TermiRustApp, ToolbarMenu,
-    ICON_CALENDAR, ICON_GRID, ICON_KEY, ICON_PENCIL, ICON_SERIAL, ICON_TAG, ICON_VAULT,
+    EditorMenu, HostsSort, HostsViewMode, ICON_CALENDAR, ICON_GRID, ICON_KEY, ICON_PENCIL,
+    ICON_TAG, ICON_VAULT, TermiRustApp, ToolbarMenu, app_icon,
 };
 use crate::ui::theme;
 use crate::ui::util::format_relative_time;
@@ -98,14 +95,7 @@ impl TermiRustApp {
             selected,
         );
 
-        let _ = (
-            group_label,
-            visible_tags,
-            favorite_profile_id,
-            favorite_selected,
-            batch_profile_id,
-            connect_profile_id,
-        );
+        let _ = (group_label, visible_tags, connect_profile_id);
         let sublabel = if profile.username.trim().is_empty() {
             "ssh".to_string()
         } else {
@@ -193,32 +183,75 @@ impl TermiRustApp {
                             .child(sublabel),
                     ),
             )
-            .child({
-                let edit_profile_id = profile_id.clone();
-                div()
-                    .id(("host-row-edit", card_ix))
-                    .size(px(28.))
-                    .rounded(px(6.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .cursor_pointer()
-                    .text_color(theme::text_muted())
-                    .hover(|style| {
-                        style
-                            .bg(theme::with_alpha(theme::hover(), 0.85))
-                            .text_color(theme::text_main())
-                    })
-                    .child(app_icon(ICON_PENCIL).size(px(14.)))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        cx.stop_propagation();
-                        this.load_profile_into_inputs(&edit_profile_id, window, cx);
-                        this.show_editor_panel = true;
-                        cx.notify();
-                    }))
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            })
+            .child(
+                h_flex()
+                    .gap(px(2.))
+                    .child(
+                        Button::new(("host-row-select", card_ix))
+                            .xsmall()
+                            .ghost()
+                            .icon(if batch_selected {
+                                IconName::Check
+                            } else {
+                                IconName::Plus
+                            })
+                            .tooltip(if batch_selected {
+                                "Remove from batch"
+                            } else {
+                                "Select for batch"
+                            })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                cx.stop_propagation();
+                                this.toggle_host_batch_selection(&batch_profile_id, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new(("host-row-favorite", card_ix))
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Star)
+                            .tooltip(if favorite_selected {
+                                "Unstar host"
+                            } else {
+                                "Star host"
+                            })
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                cx.stop_propagation();
+                                this.set_profile_favorite(
+                                    &favorite_profile_id,
+                                    !favorite_selected,
+                                    window,
+                                    cx,
+                                );
+                            })),
+                    )
+                    .child({
+                        let edit_profile_id = profile_id.clone();
+                        div()
+                            .id(("host-row-edit", card_ix))
+                            .size(px(28.))
+                            .rounded(px(6.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .text_color(theme::text_muted())
+                            .hover(|style| {
+                                style
+                                    .bg(theme::with_alpha(theme::hover(), 0.85))
+                                    .text_color(theme::text_main())
+                            })
+                            .child(app_icon(ICON_PENCIL).size(px(14.)))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                cx.stop_propagation();
+                                this.load_profile_into_inputs(&edit_profile_id, window, cx);
+                                this.show_editor_panel = true;
+                                cx.notify();
+                            }))
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .on_mouse_up(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    }),
+            )
     }
 
     fn host_list_row(
@@ -229,9 +262,13 @@ impl TermiRustApp {
         cx: &Context<Self>,
     ) -> Stateful<Div> {
         let profile_id = profile.id.clone();
+        let select_id = profile.id.clone();
+        let favorite_id = profile.id.clone();
         let edit_id = profile.id.clone();
         let display = profile.display_name();
         let endpoint = format!("{}@{}", profile.username, profile.endpoint());
+        let is_batch_selected = self.selected_host_ids.contains(profile.id.as_str());
+        let favorite_selected = profile.favorite;
         let accent = match profile.color_tag {
             Some(tag) => gpui::rgb(tag.rgb_hex()).into(),
             None => theme::host_chip_color(&display),
@@ -286,6 +323,40 @@ impl TermiRustApp {
                     .text_color(theme::text_muted())
                     .child(endpoint),
             )
+            .child(
+                Button::new(("host-row-list-select", card_ix))
+                    .xsmall()
+                    .ghost()
+                    .icon(if is_batch_selected {
+                        IconName::Check
+                    } else {
+                        IconName::Plus
+                    })
+                    .tooltip(if is_batch_selected {
+                        "Remove from batch"
+                    } else {
+                        "Select for batch"
+                    })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.toggle_host_batch_selection(&select_id, cx);
+                    })),
+            )
+            .child(
+                Button::new(("host-row-list-favorite", card_ix))
+                    .xsmall()
+                    .ghost()
+                    .icon(IconName::Star)
+                    .tooltip(if favorite_selected {
+                        "Unstar host"
+                    } else {
+                        "Star host"
+                    })
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        cx.stop_propagation();
+                        this.set_profile_favorite(&favorite_id, !favorite_selected, window, cx);
+                    })),
+            )
             .child({
                 div()
                     .id(("host-row-list-edit", card_ix))
@@ -329,8 +400,10 @@ impl TermiRustApp {
             let is_only_ungrouped = groups.len() == 1 && group_name == "Ungrouped";
             let is_list = self.hosts_view_mode == HostsViewMode::List;
             let cards: Div = if is_list {
-                v_flex().w_full().gap(px(2.)).children(
-                    profiles.iter().enumerate().map(|(group_ix, profile)| {
+                v_flex()
+                    .w_full()
+                    .gap(px(2.))
+                    .children(profiles.iter().enumerate().map(|(group_ix, profile)| {
                         self.host_list_row(
                             card_ix + group_ix,
                             profile,
@@ -338,8 +411,7 @@ impl TermiRustApp {
                             cx,
                         )
                         .into_any_element()
-                    }),
-                )
+                    }))
             } else {
                 h_flex().w_full().flex_wrap().gap(px(10.)).children(
                     profiles.iter().enumerate().map(|(group_ix, profile)| {
@@ -474,9 +546,7 @@ impl TermiRustApp {
                             ),
                     )
                 };
-                this.child(
-                    empty_state,
-                )
+                this.child(empty_state)
             })
     }
 
@@ -491,10 +561,7 @@ impl TermiRustApp {
                     .child(
                         Button::new("library-new-host")
                             .xsmall()
-                            .custom(Self::action_button_style(
-                                theme::ActionTone::Neutral,
-                                cx,
-                            ))
+                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                             .icon(IconName::Plus)
                             .label("NEW HOST")
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -687,9 +754,7 @@ impl TermiRustApp {
             .items_center()
             .rounded(px(6.))
             .cursor_pointer()
-            .when(open, |this| {
-                this.bg(theme::with_alpha(theme::hover(), 0.7))
-            })
+            .when(open, |this| this.bg(theme::with_alpha(theme::hover(), 0.7)))
             .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.7)))
             .child(
                 app_icon(svg_path)
@@ -709,63 +774,6 @@ impl TermiRustApp {
                 };
                 cx.notify();
             }))
-    }
-
-    fn serial_upgrade_button(&self, _cx: &mut Context<Self>) -> Stateful<Div> {
-        div()
-            .id("library-new-serial")
-            .h(px(28.))
-            .pl(px(10.))
-            .pr(px(8.))
-            .gap(px(6.))
-            .flex()
-            .items_center()
-            .rounded(px(6.))
-            .bg(theme::with_alpha(theme::hover(), 0.7))
-            .border_1()
-            .border_color(theme::soft_border())
-            .cursor_pointer()
-            .hover(|style| style.bg(theme::hover()))
-            .child(
-                app_icon(ICON_SERIAL)
-                    .size(px(13.))
-                    .text_color(theme::text_main()),
-            )
-            .child(
-                div()
-                    .text_size(px(11.))
-                    .font_semibold()
-                    .text_color(theme::text_main())
-                    .child("SERIAL"),
-            )
-            .child(
-                div()
-                    .size(px(14.))
-                    .rounded(px(999.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .bg(theme::with_alpha(theme::accent(), 0.85))
-                    .child(
-                        Icon::new(IconName::Plus)
-                            .size(px(9.))
-                            .text_color(theme::library_card()),
-                    ),
-            )
-    }
-
-    fn render_dropdown_panel(&self, min_w: f32) -> Div {
-        v_flex()
-            .absolute()
-            .top(px(34.))
-            .right(px(0.))
-            .min_w(px(min_w))
-            .p(px(6.))
-            .gap(px(2.))
-            .rounded(px(8.))
-            .bg(theme::library_card())
-            .border_1()
-            .border_color(theme::soft_border())
     }
 
     pub(super) fn dropdown_item(
@@ -848,12 +856,11 @@ impl TermiRustApp {
             .cursor_pointer()
             .child(self.toolbar_avatar_pill(cx))
             .on_click(cx.listener(|this, _, _, cx| {
-                this.open_toolbar_menu =
-                    if this.open_toolbar_menu == Some(ToolbarMenu::Avatar) {
-                        None
-                    } else {
-                        Some(ToolbarMenu::Avatar)
-                    };
+                this.open_toolbar_menu = if this.open_toolbar_menu == Some(ToolbarMenu::Avatar) {
+                    None
+                } else {
+                    Some(ToolbarMenu::Avatar)
+                };
                 cx.notify();
             }))
     }
@@ -944,19 +951,12 @@ impl TermiRustApp {
                         false,
                         |this, _, cx| {
                             if let Some(id) = this.selected_profile_id.clone() {
-                                if let Some(orig) = this
-                                    .saved
-                                    .profiles
-                                    .iter()
-                                    .find(|p| p.id == id)
-                                    .cloned()
+                                if let Some(orig) =
+                                    this.saved.profiles.iter().find(|p| p.id == id).cloned()
                                 {
                                     let mut copy = orig.clone();
-                                    copy.id = format!(
-                                        "{}-copy-{}",
-                                        orig.id,
-                                        this.next_session_id()
-                                    );
+                                    copy.id =
+                                        format!("{}-copy-{}", orig.id, this.next_session_id());
                                     copy.label = format!("{} (copy)", orig.label);
                                     this.saved.upsert_profile(copy.clone());
                                     this.selected_profile_id = Some(copy.id);
@@ -1401,8 +1401,7 @@ impl TermiRustApp {
                                     .label("CONNECT")
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         if let Some(qc) = this.try_quick_connect_from_search(cx) {
-                                            let password =
-                                                this.current_quick_connect_password(cx);
+                                            let password = this.current_quick_connect_password(cx);
                                             this.quick_connect(
                                                 qc,
                                                 if password.trim().is_empty() {
@@ -1450,6 +1449,15 @@ impl TermiRustApp {
                         h_flex()
                             .gap(px(4.))
                             .items_center()
+                            .child(
+                                Button::new("hosts-select-visible")
+                                    .xsmall()
+                                    .ghost()
+                                    .label("Select Visible")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.select_all_filtered_hosts(cx);
+                                    })),
+                            )
                             .when(selected_host_count > 0, |this| {
                                 this.child(self.status_badge(
                                     format!("{selected_host_count} selected"),
@@ -1473,6 +1481,28 @@ impl TermiRustApp {
                                         .tooltip("Star selected")
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.bulk_set_selected_hosts_favorite(true, window, cx);
+                                        })),
+                                )
+                                .child(
+                                    Button::new("hosts-bulk-unstar")
+                                        .xsmall()
+                                        .ghost()
+                                        .icon(IconName::Star)
+                                        .tooltip("Unstar selected")
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.bulk_set_selected_hosts_favorite(
+                                                false, window, cx,
+                                            );
+                                        })),
+                                )
+                                .child(Input::new(&self.shell_inputs.bulk_group).w(px(130.)))
+                                .child(
+                                    Button::new("hosts-bulk-apply-group")
+                                        .xsmall()
+                                        .ghost()
+                                        .label("Apply Group")
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.bulk_assign_selected_hosts_group(window, cx);
                                         })),
                                 )
                             })
@@ -1528,6 +1558,4 @@ impl TermiRustApp {
             )
             .child(self.render_hosts_overlays(cx))
     }
-
-
 }

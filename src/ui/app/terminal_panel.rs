@@ -2,13 +2,15 @@
 //! tabs and the panel-tab button helper. Methods are part of `TermiRustApp`.
 
 use gpui::prelude::FluentBuilder as _;
-use gpui::{div, px, AnyElement, Context, Div, Hsla, InteractiveElement as _, IntoElement,
-    ParentElement, Stateful, StatefulInteractiveElement as _, Styled, Window};
+use gpui::{
+    Context, Div, Hsla, InteractiveElement as _, IntoElement, ParentElement, Stateful,
+    StatefulInteractiveElement as _, Styled, Window, div, px,
+};
 use gpui_component::input::Input;
-use gpui_component::{h_flex, v_flex, Icon, IconName, Sizable, StyledExt as _};
+use gpui_component::{Icon, IconName, StyledExt as _, h_flex, v_flex};
 
 use crate::models::ThemePreset;
-use crate::ui::app::{NavSection, TermiRustApp, TerminalPanelTab, ICON_PALETTE, app_icon};
+use crate::ui::app::{ICON_PALETTE, NavSection, TermiRustApp, TerminalPanelTab, app_icon};
 use crate::ui::theme;
 
 impl TermiRustApp {
@@ -56,22 +58,18 @@ impl TermiRustApp {
                         cx,
                     )),
             )
-            .child(
-                v_flex().flex_1().min_h_0().child(match active {
-                    TerminalPanelTab::Quick => {
-                        self.render_terminal_panel_quick(cx).into_any_element()
-                    }
-                    TerminalPanelTab::Snippets => {
-                        self.render_terminal_panel_snippets(cx).into_any_element()
-                    }
-                    TerminalPanelTab::History => {
-                        self.render_terminal_panel_history(cx).into_any_element()
-                    }
-                    TerminalPanelTab::Themes => {
-                        self.render_terminal_panel_themes(cx).into_any_element()
-                    }
-                }),
-            )
+            .child(v_flex().flex_1().min_h_0().child(match active {
+                TerminalPanelTab::Quick => self.render_terminal_panel_quick(cx).into_any_element(),
+                TerminalPanelTab::Snippets => {
+                    self.render_terminal_panel_snippets(cx).into_any_element()
+                }
+                TerminalPanelTab::History => {
+                    self.render_terminal_panel_history(cx).into_any_element()
+                }
+                TerminalPanelTab::Themes => {
+                    self.render_terminal_panel_themes(cx).into_any_element()
+                }
+            }))
     }
 
     fn terminal_panel_tab_button(
@@ -492,13 +490,7 @@ impl TermiRustApp {
                     } else {
                         theme::soft_border()
                     })
-                    .child(
-                        div()
-                            .w(px(40.))
-                            .h(px(2.))
-                            .rounded(px(2.))
-                            .bg(accent_color),
-                    )
+                    .child(div().w(px(40.)).h(px(2.)).rounded(px(2.)).bg(accent_color))
                     .child(
                         div()
                             .w(px(28.))

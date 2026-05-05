@@ -1,27 +1,23 @@
 //! Library secondary pages: Keychain (Keys + Identities), Vaults, Known
 //! Hosts, Logs, Snippets, and Settings. All methods are part of `TermiRustApp`.
 
-use std::collections::HashSet;
-use std::path::PathBuf;
-
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    div, point, px, relative, AnyElement, ClickEvent, ClipboardItem, Context, Div, ElementId,
-    FontWeight, InteractiveElement as _, IntoElement, MouseButton, ParentElement, SharedString,
-    Stateful, StatefulInteractiveElement as _, Styled, Window,
+    Context, Div, InteractiveElement as _, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement as _, Styled, div, point, px, relative,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{h_flex, v_flex, Disableable, Icon, IconName, Sizable, StyledExt as _};
+use gpui_component::{Disableable, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::models::{
-    AuthMode, ProfileSource, SessionLogEntry, SessionLogStatus, ThemePreset, VaultKind,
-    VaultMemberRole, DEFAULT_VAULT_ID,
+    AuthMode, DEFAULT_VAULT_ID, SessionLogEntry, SessionLogStatus, ThemePreset, VaultKind,
+    VaultMemberRole,
 };
 use crate::ui::app::{
-    app_icon, primary_shortcut_label, KeychainTab, NavSection, TermiRustApp, ICON_KEY,
-    ICON_SHIELD_CHECK,
+    ICON_KEY, ICON_SHIELD_CHECK, KeychainTab, NavSection, TermiRustApp, app_icon,
+    primary_shortcut_label,
 };
 use crate::ui::theme;
 use crate::ui::util::{format_relative_time, short_host_key};
@@ -2518,5 +2514,4 @@ impl TermiRustApp {
                 ),
             )
     }
-
 }

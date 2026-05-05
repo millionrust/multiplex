@@ -17,14 +17,10 @@ pub(crate) use types::{
 };
 
 use palette::{
-    collect_argument_autocomplete_candidates, collect_autocomplete_candidates,
-    collect_command_palette_candidates, collect_context_autocomplete_candidates,
-    collect_context_command_templates, collect_path_autocomplete_candidates,
-    pane_recent_output_lines, CommandPaletteCandidate, ContextCommandTemplate,
-    OutputSuggestionContext, PathSuggestionContext,
+    CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
+    collect_autocomplete_candidates, collect_command_palette_candidates, pane_recent_output_lines,
 };
 
-use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -32,55 +28,25 @@ use std::time::Duration;
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    ClipboardItem, InteractiveElement as _, KeyDownEvent, Keystroke, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, ScrollDelta, ScrollWheelEvent, StatefulInteractiveElement as _,
-    font, *,
+    ClipboardItem, InteractiveElement as _, KeyDownEvent, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, ScrollWheelEvent, StatefulInteractiveElement as _, font, *,
 };
 use gpui_component::IconName;
 use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::input::{Input, InputState};
 use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{ActiveTheme, Disableable, Icon, Sizable, StyledExt as _, h_flex, v_flex};
+use gpui_component::{ActiveTheme, Icon, Sizable, StyledExt as _, h_flex, v_flex};
 use rfd::FileDialog;
-use vt100::{MouseProtocolEncoding, MouseProtocolMode};
+use vt100::MouseProtocolMode;
 
 use crate::credentials;
 use crate::local::spawn_local_session;
-use crate::ui::keys::{
-    encode_control_char, encode_mouse_report, encode_terminal_input, modifier_bits, MouseEventKind,
-};
-use crate::ui::render_terminal::{
-    compare_cell_pos, default_terminal_style, display_terminal_text, normalized_selection,
-    selection_contains, style_for_render, SelectionRange,
-};
-use crate::ui::autocomplete::{
-    autocomplete_match_kind, builtin_command_templates, clean_context_token, context_detail,
-    context_target_rank, current_path_hint, current_path_segments, extract_docker_targets,
-    extract_git_branch_targets, extract_kubernetes_pod_targets, extract_path_tokens,
-    extract_systemd_unit_targets, is_path_command, is_path_like_token, looks_like_hex_id,
-    matches_command_prefix, palette_match_kind, path_match_kind, path_query_context,
-    AutocompleteCandidate, AutocompleteMatchKind, AutocompleteSource, BuiltinCommandTemplate,
-    PathAutocompleteQuery,
-};
-use crate::ui::path::{format_file_size, remote_parent_path};
-use crate::ui::sftp_local::{read_local_dir, SftpLocalEntry};
-use crate::ui::shell::{
-    shell_command_requires_continuation, shell_single_quote, startup_bytes_for_request,
-};
-use crate::ui::snippet::{
-    extract_snippet_prompt_names, substitute_snippet_placeholders, substitute_snippet_prompts,
-};
-use crate::ui::util::{
-    current_unix_millis, format_count_label, format_modified_time, format_relative_time,
-    format_relative_time_for, format_size, format_tag_values, is_word_char, merge_tag_values,
-    non_empty_string, parse_tag_values, short_host_key,
-};
 use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
     HostColorTag, HostProfile, JumpHostConnection, PortForwardKind, PortForwardRule, ProfileSource,
-    QuickConnect, SavedCommandHistoryEntry, SavedHostGroup, SavedIdentity, SavedSnippet,
-    SavedState, SavedVault, SavedVaultMember, SavedWorkspace, SessionLogEntry, SessionLogStatus,
-    SplitAxis, ThemePreset, VaultKind, VaultMemberRole,
+    QuickConnect, SavedHostGroup, SavedIdentity, SavedSnippet, SavedState, SavedVault,
+    SavedVaultMember, SavedWorkspace, SessionLogEntry, SplitAxis, ThemePreset, VaultKind,
+    VaultMemberRole,
 };
 use crate::sftp::{
     RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
@@ -92,11 +58,22 @@ use crate::storage::{
     import_encrypted_portable_data_bundle, import_portable_data_bundle, inspect_identity_file,
     load_local_ssh_identities, save_saved_state,
 };
-use crate::terminal::{TerminalCell, TerminalRow, TerminalSize, TerminalState, TerminalStyle};
+use crate::terminal::{TerminalSize, TerminalState};
+use crate::ui::autocomplete::{AutocompleteCandidate, AutocompleteSource};
+use crate::ui::keys::{MouseEventKind, encode_mouse_report, encode_terminal_input};
+use crate::ui::path::remote_parent_path;
+use crate::ui::render_terminal::{SelectionRange, normalized_selection};
+use crate::ui::shell::{shell_command_requires_continuation, startup_bytes_for_request};
+use crate::ui::snippet::{
+    extract_snippet_prompt_names, substitute_snippet_placeholders, substitute_snippet_prompts,
+};
 use crate::ui::theme;
+use crate::ui::util::{
+    current_unix_millis, format_count_label, format_relative_time, format_tag_values, is_word_char,
+    merge_tag_values, non_empty_string, parse_tag_values,
+};
 
 const TERMINAL_LINE_HEIGHT: f32 = 1.3;
-const LIBRARY_TOOLBAR_HEIGHT: f32 = 56.0;
 const WORKSPACE_SEARCH_ROW_HEIGHT: f32 = 52.0;
 const WORKSPACE_PADDING: f32 = 18.0;
 const PANE_GAP: f32 = 12.0;
@@ -114,7 +91,6 @@ const ICON_X: &str = "icons/x.svg";
 const ICON_PENCIL: &str = "icons/pencil.svg";
 const ICON_GRID: &str = "icons/grid.svg";
 const ICON_TAG: &str = "icons/tag.svg";
-const ICON_SERIAL: &str = "icons/serial.svg";
 const ICON_CALENDAR: &str = "icons/calendar.svg";
 const ICON_PANEL_COLLAPSE_RIGHT: &str = "icons/panel-collapse-right.svg";
 const ICON_PALETTE: &str = "icons/palette.svg";
@@ -205,7 +181,6 @@ impl NavSection {
 
 use crate::ui::keys::TerminalCellPos;
 
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct SearchMatch {
     full_row: usize,
@@ -250,24 +225,30 @@ struct DraftInputs {
 impl DraftInputs {
     fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
         Self {
-            label: cx.new(|cx| InputState::new(window, cx).placeholder("New host label")),
-            group: cx.new(|cx| InputState::new(window, cx).placeholder("Production / Staging")),
+            label: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Display name, e.g. Local Mac Test")
+            }),
+            group: cx.new(|cx| InputState::new(window, cx).placeholder("Folder/group, e.g. Local")),
             tags: cx.new(|cx| InputState::new(window, cx).placeholder("prod, blue, kubernetes")),
             jump_host: cx.new(|cx| InputState::new(window, cx).placeholder("Optional saved host")),
             startup_directory: cx.new(|cx| InputState::new(window, cx).placeholder("/var/www/app")),
             startup_command: cx
                 .new(|cx| InputState::new(window, cx).placeholder("docker compose logs -f")),
             terminal_scrollback_rows: cx.new(|cx| InputState::new(window, cx).placeholder("10000")),
-            host: cx.new(|cx| InputState::new(window, cx).placeholder("user@hostname or IP")),
+            host: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("localhost, IP address, or domain")
+            }),
             port: cx.new(|cx| InputState::new(window, cx).default_value("22")),
-            username: cx.new(|cx| InputState::new(window, cx).placeholder("root")),
+            username: cx
+                .new(|cx| InputState::new(window, cx).placeholder("SSH username, e.g. jacob")),
             password: cx.new(|cx| {
                 InputState::new(window, cx)
                     .masked(true)
-                    .placeholder("Session-only password")
+                    .placeholder("Password, only if using password auth")
             }),
-            key_path: cx
-                .new(|cx| InputState::new(window, cx).placeholder("Path to private key file")),
+            key_path: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Private key path, e.g. ~/.ssh/id_ed25519")
+            }),
             forward_local_port: cx.new(|cx| InputState::new(window, cx).placeholder("15432")),
             forward_remote_host: cx.new(|cx| InputState::new(window, cx).placeholder("127.0.0.1")),
             forward_remote_port: cx.new(|cx| InputState::new(window, cx).placeholder("5432")),
@@ -408,20 +389,14 @@ impl ShellInputs {
             }),
             create_host_address: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Type IP or Hostname")),
-            connect_username: cx
-                .new(|cx| InputState::new(window, cx).placeholder("Username")),
-            protocol_ssh_port: cx
-                .new(|cx| InputState::new(window, cx).default_value("22")),
-            protocol_mosh_port: cx
-                .new(|cx| InputState::new(window, cx).default_value("22")),
+            connect_username: cx.new(|cx| InputState::new(window, cx).placeholder("Username")),
+            protocol_ssh_port: cx.new(|cx| InputState::new(window, cx).default_value("22")),
+            protocol_mosh_port: cx.new(|cx| InputState::new(window, cx).default_value("22")),
             protocol_mosh_command: cx.new(|cx| {
-                InputState::new(window, cx)
-                    .default_value("mosh --server=/path/server host")
+                InputState::new(window, cx).default_value("mosh --server=/path/server host")
             }),
-            protocol_telnet_port: cx
-                .new(|cx| InputState::new(window, cx).default_value("23")),
-            sftp_local_filter: cx
-                .new(|cx| InputState::new(window, cx).placeholder("Filter files")),
+            protocol_telnet_port: cx.new(|cx| InputState::new(window, cx).default_value("23")),
+            sftp_local_filter: cx.new(|cx| InputState::new(window, cx).placeholder("Filter files")),
             bulk_group: cx.new(|cx| InputState::new(window, cx).placeholder("Bulk group name")),
             terminal_search: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Search terminal output")),
@@ -470,7 +445,6 @@ struct PendingSnippetPrompts {
     fields: Vec<SnippetPromptField>,
 }
 
-
 struct WorkspaceTab {
     id: u64,
     title: String,
@@ -518,8 +492,6 @@ struct WorkspaceIndicators {
     split_count: usize,
     unread_events: u32,
 }
-
-
 
 #[derive(Clone, Debug)]
 struct WorkspaceSftpState {
@@ -2816,13 +2788,6 @@ impl TermiRustApp {
         cx.notify();
     }
 
-    fn close_new_host_menu(&mut self, cx: &mut Context<Self>) {
-        if self.show_new_host_menu {
-            self.show_new_host_menu = false;
-            cx.notify();
-        }
-    }
-
     fn focus_host_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.shell_inputs
             .host_search
@@ -4375,7 +4340,6 @@ impl TermiRustApp {
         cx.notify();
     }
 
-
     fn connect_current(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         eprintln!("[app] connect_current: building request from draft...");
         let _ = self.ensure_default_identity_selected(window, cx);
@@ -4736,6 +4700,8 @@ impl TermiRustApp {
 
         for pane_id in pane_ids {
             if let Some(pane) = self.pane_mut(pane_id) {
+                pane.user_closed = true;
+                pane.auto_reconnect_at = None;
                 let _ = pane.runtime.command_tx.send(SessionCommand::Disconnect);
                 pane.connected = false;
                 pane.closed = true;
@@ -7524,31 +7490,6 @@ impl TermiRustApp {
             })
     }
 
-    fn editor_section<E: IntoElement>(
-        &self,
-        title: impl Into<SharedString>,
-        body: E,
-    ) -> Div {
-        let title: SharedString = title.into();
-        v_flex()
-            .w_full()
-            .gap(px(10.))
-            .px(px(14.))
-            .py(px(14.))
-            .rounded(px(10.))
-            .bg(theme::with_alpha(theme::hover(), 0.45))
-            .border_1()
-            .border_color(theme::soft_border())
-            .child(
-                div()
-                    .text_size(px(13.))
-                    .font_semibold()
-                    .text_color(theme::text_main())
-                    .child(title),
-            )
-            .child(body)
-    }
-
     fn form_field(&self, label: &str, input: Input) -> Div {
         let label = label.to_string();
         v_flex()
@@ -7945,7 +7886,6 @@ impl TermiRustApp {
             NavSection::Logs => self.render_logs_view(cx).into_any_element(),
         }
     }
-
 
     fn render_library_shell(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let sidebar_visible = self.nav_section != NavSection::Sftp;
@@ -8466,7 +8406,6 @@ fn nav_section_key(section: NavSection) -> u64 {
     }
 }
 
-
 fn workspace_runtime_summary(
     indicators: WorkspaceIndicators,
 ) -> Option<(String, WorkspaceRuntimeTone)> {
@@ -8585,8 +8524,8 @@ mod tests {
     use super::{
         AutocompleteSource, OutputSuggestionContext, PathSuggestionContext, WorkspaceIndicators,
         WorkspaceRuntimeTone, apply_group_defaults_to_draft, collect_autocomplete_candidates,
-        collect_command_palette_candidates, extract_snippet_prompt_names, format_relative_time_for,
-        shell_command_requires_continuation, shell_single_quote, startup_bytes_for_request,
+        collect_command_palette_candidates, extract_snippet_prompt_names,
+        shell_command_requires_continuation, startup_bytes_for_request,
         substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
     };
     use crate::models::{
@@ -8594,6 +8533,8 @@ mod tests {
         PortForwardKind, PortForwardRule, SavedHostGroup, SavedIdentity,
     };
     use crate::sftp::RemoteFileEntry;
+    use crate::ui::shell::shell_single_quote;
+    use crate::ui::util::format_relative_time_for;
 
     #[test]
     fn snippet_prompts_extract_unique_named_placeholders() {
@@ -9191,4 +9132,3 @@ mod tests {
         );
     }
 }
-

@@ -69,6 +69,7 @@ Cross-platform parity work is still in progress in the UI and packaging layers, 
 
 The tracked parity target is documented in [docs/termius-parity.md](docs/termius-parity.md).
 The working backlog for the remaining parity push is tracked in [docs/parity-todo.md](docs/parity-todo.md).
+Automated smoke testing is documented in [docs/testing.md](docs/testing.md); run `./scripts/auto-test.sh` before release checks or larger manual QA passes.
 
 ## Not built yet
 
