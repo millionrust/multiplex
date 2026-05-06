@@ -2,17 +2,46 @@
 name = "termirust"
 version = "0.1.0"
 edition = "2024"
+description = "Native desktop SSH client built with GPUI"
+authors = ["TermiRust contributors"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jacobsam/terminal"
+readme = "README.md"
+default-run = "termirust"
+
+[package.metadata.bundle]
+name = "TermiRust"
+identifier = "com.termirust.desktop"
+icon = ["assets/icons/app.png"]
+copyright = "Copyright (c) 2025 TermiRust contributors"
+category = "DeveloperTool"
+short_description = "Native desktop SSH client"
+long_description = """
+TermiRust is a native desktop SSH client with vault management,
+SFTP browsing, port forwarding, jump host chains, snippets,
+broadcast input, and more.
+"""
+osx_minimum_system_version = "12.0"
+osx_url_schemes = ["termirust"]
+deb_depends = ["libssl3", "libxkbcommon0"]
 
 [dependencies]
+aes-gcm-siv = "0.11"
 anyhow = "1.0"
+argon2 = "0.5"
+base64 = "0.22"
 dirs = "6.0"
 gpui = "0.2.2"
 gpui-component = "0.5.1"
+keyring = { version = "3.6.2", default-features = false, features = ["apple-native", "windows-native", "linux-native-sync-persistent", "crypto-rust"] }
+portable-pty = "0.9"
+rand = "0.8"
 rfd = "0.15"
 russh = { version = "0.57", default-features = false, features = ["ring", "rsa"] }
+russh-sftp = "2.1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1", features = ["io-util", "rt", "sync"] }
+tokio = { version = "1", features = ["io-util", "net", "rt", "sync", "time"] }
 vt100 = "0.16.2"
 
 [profile.dev]
@@ -20,3 +49,10 @@ opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+opt-level = 3
+panic = "abort"

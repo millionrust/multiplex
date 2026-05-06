@@ -1,5 +1,8 @@
 mod assets;
+mod credentials;
+mod local;
 mod models;
+mod sftp;
 mod ssh;
 mod storage;
 mod terminal;
@@ -37,6 +40,7 @@ fn main() {
 
     app.run(move |cx| {
         gpui_component::init(cx);
+        gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
 
         let initial_state = saved_state.clone();
         let bounds = Bounds::centered(None, size(px(1480.), px(960.)), cx);
@@ -46,7 +50,8 @@ fn main() {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: Some(TitlebarOptions {
                     title: Some("TermiRust".into()),
-                    ..Default::default()
+                    appears_transparent: true,
+                    traffic_light_position: Some(point(px(12.), px(14.))),
                 }),
                 ..Default::default()
             },

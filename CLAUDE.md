@@ -10,15 +10,29 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
 - Each pane is its own SSH session and PTY.
 - Quick connect: type `user@host` or `ssh user@host:port` in the search bar.
 - Reconnect button on disconnected/errored panes and workspace toolbar.
+- Optional automatic reconnect after non-user-initiated SSH drops, configurable in Settings.
+- Configurable SSH keep-alive ping interval to keep idle sessions alive across NAT/load-balancer timeouts.
+- Snippet commands accept {{HOST}}, {{USER}}, {{PORT}}, {{TITLE}}, {{ADDRESS}} placeholders that expand against the active pane on send.
+- Per-host color tag flows into the host card avatar and the connected pane status dot.
+- Per-host environment variables are exported into the remote shell before the startup directory and startup command.
+- Inline rename for workspace tabs and individual panes; Detach moves a pane into its own new workspace tab.
+- Multi-line clipboard pastes are held behind a confirmation banner by default to prevent accidental script execution.
+- Shared-folder sync ships the encrypted vault bundle through Dropbox / iCloud Drive / Google Drive / Syncthing with no server required.
+- Build/distribution metadata for cargo-bundle (macOS .app, Linux deb/rpm) lives in `Cargo.toml`; per-platform release flow is in `docs/building.md`.
+- Per-workspace Broadcast Input toggle that fans typed/pasted bytes out to every connected pane.
+- Per-pane Clear and Duplicate actions, plus Cmd+D / Cmd+Shift+B / Cmd+Shift+L / Cmd+Alt+arrow keyboard shortcuts.
 - Terminal surface supports:
   - raw VT rendering
   - PTY resize
   - local scrollback
   - terminal search
   - text selection and clipboard copy
+  - optional copy-on-select for mouse selections
   - clipboard paste with bracketed paste when requested
   - xterm mouse reporting for terminal apps that enable it
-- Persistent session history with timestamps and duration in the Logs view.
+  - configurable terminal font size and font family
+- Persistent session history with timestamps and duration in the Logs view; host cards surface a relative "Last connected" badge derived from this history.
+- Per-host description/notes field surfaced on cards and searchable from the Hosts library.
 - Keychain shows imported key type, public key availability, and an "Add Key File" picker.
 - Known Hosts view supports deleting pinned host keys.
 
