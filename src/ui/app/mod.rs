@@ -36,7 +36,7 @@ use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::input::{Input, InputState};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{ActiveTheme, Icon, Sizable, StyledExt as _, h_flex, v_flex};
-use rfd::FileDialog;
+use rfd::{AsyncFileDialog, FileDialog};
 use vt100::MouseProtocolMode;
 
 use crate::credentials;
@@ -2432,33 +2432,60 @@ impl TermiRustApp {
     }
 
     fn pick_key_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(path) = FileDialog::new().pick_file() {
-            match inspect_identity_file(&path) {
-                Ok(Some(imported)) => {
-                    let mut identity = imported.into_saved();
-                    identity.vault_id =
-                        Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
-                    let label = identity.label.clone();
-                    self.saved.upsert_identity(identity.clone());
-                    if let Err(error) = save_saved_state(&self.saved) {
-                        self.error_message = error.to_string();
-                        cx.notify();
-                        return;
-                    }
-                    self.use_identity(&identity, window, cx);
-                    self.status_message = format!("Identity '{}' added.", label);
-                    self.error_message.clear();
-                    cx.notify();
-                }
-                Ok(None) => {
-                    self.error_message =
-                        "That file does not look like a supported private key.".to_string();
-                    cx.notify();
-                }
-                Err(error) => {
+        self.status_message = "Choose a private key file.".to_string();
+        self.error_message.clear();
+        cx.notify();
+
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(path) = AsyncFileDialog::new()
+                .set_title("Choose private key file")
+                .pick_file()
+                .await
+                .map(|file| file.path().to_path_buf())
+            else {
+                return;
+            };
+
+            let _ = cx.update(|window, cx| {
+                let _ = this.update(cx, |app, cx| {
+                    app.import_key_file(path, window, cx);
+                });
+            });
+        })
+        .detach();
+    }
+
+    fn import_key_file(
+        &mut self,
+        path: std::path::PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match inspect_identity_file(&path) {
+            Ok(Some(imported)) => {
+                let mut identity = imported.into_saved();
+                identity.vault_id =
+                    Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
+                let label = identity.label.clone();
+                self.saved.upsert_identity(identity.clone());
+                if let Err(error) = save_saved_state(&self.saved) {
                     self.error_message = error.to_string();
                     cx.notify();
+                    return;
                 }
+                self.use_identity(&identity, window, cx);
+                self.status_message = format!("Identity '{}' added.", label);
+                self.error_message.clear();
+                cx.notify();
+            }
+            Ok(None) => {
+                self.error_message =
+                    "That file does not look like a supported private key.".to_string();
+                cx.notify();
+            }
+            Err(error) => {
+                self.error_message = error.to_string();
+                cx.notify();
             }
         }
     }
