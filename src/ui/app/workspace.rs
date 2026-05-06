@@ -1090,7 +1090,6 @@ impl TermiRustApp {
         v_flex()
             .flex_1()
             .bg(theme::terminal_bg())
-            .child(self.render_workspace_toolbar(window, cx))
             .when_some(self.render_snippet_prompts_panel(cx), |this, panel| {
                 this.child(panel)
             })

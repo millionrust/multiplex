@@ -24,6 +24,7 @@ pub struct RemoteFileEntry {
     pub size: Option<u64>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum SftpEvent {
     DirectoryLoaded {
@@ -109,6 +110,7 @@ pub fn spawn_list_directory(
     });
 }
 
+#[allow(dead_code)]
 pub fn spawn_upload_file(
     workspace_id: u64,
     operation_id: u64,
@@ -143,6 +145,7 @@ pub fn spawn_upload_file(
     });
 }
 
+#[allow(dead_code)]
 pub fn spawn_download_file(
     workspace_id: u64,
     operation_id: u64,
@@ -174,6 +177,7 @@ pub fn spawn_download_file(
     });
 }
 
+#[allow(dead_code)]
 pub fn spawn_delete_path(
     workspace_id: u64,
     operation_id: u64,

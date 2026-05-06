@@ -101,6 +101,7 @@ pub fn format_size(bytes: u64) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn format_count_label(count: usize, singular: &str, plural: &str) -> String {
     if count == 1 {
         format!("1 {singular}")

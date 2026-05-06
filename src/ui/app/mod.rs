@@ -7,7 +7,6 @@ mod overlay;
 mod palette;
 mod sftp;
 mod terminal_panel;
-mod toolbar;
 mod types;
 mod workspace;
 
@@ -3759,6 +3758,7 @@ impl TermiRustApp {
         self.pane(workspace.active_pane_id)
     }
 
+    #[allow(dead_code)]
     fn active_pane_mut(&mut self) -> Option<&mut SessionPane> {
         let pane_id = self.active_workspace()?.active_pane_id;
         self.pane_mut(pane_id)
@@ -3771,6 +3771,7 @@ impl TermiRustApp {
             .map(|workspace| workspace.id)
     }
 
+    #[allow(dead_code)]
     fn start_workspace_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(workspace_id) = self.active_workspace_id else {
             return;
@@ -4104,6 +4105,7 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    #[allow(dead_code)]
     fn navigate_workspace_files_up(&mut self, cx: &mut Context<Self>) {
         let Some(workspace_id) = self.active_workspace_id else {
             return;
@@ -4122,6 +4124,7 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    #[allow(dead_code)]
     fn upload_workspace_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(workspace_id) = self.active_workspace_id else {
             return;
@@ -4162,6 +4165,7 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    #[allow(dead_code)]
     fn download_workspace_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let Some(workspace_id) = self.active_workspace_id else {
             return;
@@ -4211,6 +4215,7 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    #[allow(dead_code)]
     fn delete_workspace_file(&mut self, cx: &mut Context<Self>) {
         let Some(workspace_id) = self.active_workspace_id else {
             return;
@@ -4584,6 +4589,7 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    #[allow(dead_code)]
     fn reconnect_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(workspace_id) = self.active_workspace_id else {
             return;
@@ -4747,6 +4753,7 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    #[allow(dead_code)]
     fn disconnect_workspace(&mut self, workspace_id: u64, cx: &mut Context<Self>) {
         let Some(workspace) = self.workspace(workspace_id) else {
             return;
@@ -5171,14 +5178,10 @@ impl TermiRustApp {
             WORKSPACE_AUTOCOMPLETE_HEIGHT
         };
         let available_x = WORKSPACE_PADDING;
-        let available_y = theme::CHROME_HEIGHT
-            + theme::WORKSPACE_HEADER_HEIGHT
-            + search_height
-            + WORKSPACE_PADDING;
+        let available_y = theme::CHROME_HEIGHT + search_height + WORKSPACE_PADDING;
         let available_width = (viewport_width - WORKSPACE_PADDING * 2.0).max(320.0);
         let available_height = (viewport_height
             - theme::CHROME_HEIGHT
-            - theme::WORKSPACE_HEADER_HEIGHT
             - search_height
             - autocomplete_height
             - theme::STATUS_HEIGHT
@@ -5878,6 +5881,7 @@ impl TermiRustApp {
         let _ = cx;
     }
 
+    #[allow(dead_code)]
     fn scroll_active_pane_top(&mut self, cx: &mut Context<Self>) {
         if let Some(pane) = self.active_pane_mut() {
             let max_scrollback = pane.terminal.max_scrollback();
@@ -5886,6 +5890,7 @@ impl TermiRustApp {
         }
     }
 
+    #[allow(dead_code)]
     fn scroll_active_pane_bottom(&mut self, cx: &mut Context<Self>) {
         if let Some(pane) = self.active_pane_mut() {
             pane.terminal.reset_scrollback();
@@ -8512,6 +8517,7 @@ fn nav_section_key(section: NavSection) -> u64 {
     }
 }
 
+#[allow(dead_code)]
 fn workspace_runtime_summary(
     indicators: WorkspaceIndicators,
 ) -> Option<(String, WorkspaceRuntimeTone)> {

@@ -51,6 +51,7 @@ pub enum ConnectProtocol {
     Telnet,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WorkspaceRuntimeTone {
     Live,
