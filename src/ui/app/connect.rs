@@ -14,7 +14,7 @@ use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 use crate::models::HostProfile;
 use crate::ui::app::{
     ConnectDialogMode, ConnectFailure, ConnectProtocol, NavSection, SplitAxis, TermiRustApp,
-    WorkspaceTab, WorkspaceViewMode,
+    WorkspacePaneLayout, WorkspaceTab, WorkspaceViewMode,
 };
 use crate::ui::theme;
 
@@ -88,8 +88,10 @@ impl TermiRustApp {
         self.workspaces.push(WorkspaceTab {
             id: workspace_id,
             title,
+            layout: WorkspacePaneLayout::Leaf(0),
             pane_ids: Vec::new(),
             active_pane_id: 0,
+            expanded_pane_id: None,
             unread_events: 0,
             split_axis: SplitAxis::Horizontal,
             view_mode: WorkspaceViewMode::Terminal,
@@ -160,8 +162,10 @@ impl TermiRustApp {
         self.workspaces.push(WorkspaceTab {
             id: workspace_id,
             title,
+            layout: WorkspacePaneLayout::Leaf(0),
             pane_ids: Vec::new(),
             active_pane_id: 0,
+            expanded_pane_id: None,
             unread_events: 0,
             split_axis: SplitAxis::Horizontal,
             view_mode: WorkspaceViewMode::Terminal,

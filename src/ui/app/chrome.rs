@@ -372,6 +372,7 @@ impl TermiRustApp {
                     appears_transparent: true,
                     traffic_light_position: Some(point(px(12.), px(14.))),
                 }),
+                is_movable: false,
                 ..Default::default()
             },
             move |window, cx| {
@@ -413,6 +414,7 @@ impl TermiRustApp {
         let terminal_workspace_open = self
             .active_workspace()
             .is_some_and(|workspace| workspace.view_mode == WorkspaceViewMode::Terminal);
+        let app_entity = cx.weak_entity();
 
         h_flex()
             .h(px(theme::CHROME_HEIGHT))
@@ -423,6 +425,29 @@ impl TermiRustApp {
             .gap(px(4.))
             .items_center()
             .bg(theme::chrome_bg())
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    this.chrome_window_drag_pending = true;
+                    window.prevent_default();
+                    cx.stop_propagation();
+                }),
+            )
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this, _, _, _| {
+                    this.chrome_window_drag_pending = false;
+                }),
+            )
+            .on_mouse_down_out(cx.listener(|this, _, _, _| {
+                this.chrome_window_drag_pending = false;
+            }))
+            .on_mouse_move(cx.listener(|this, _, window, _| {
+                if this.chrome_window_drag_pending {
+                    this.chrome_window_drag_pending = false;
+                    window.start_window_move();
+                }
+            }))
             .child(
                 self.render_chrome_tab(
                     "chrome-hosts",
@@ -478,6 +503,8 @@ impl TermiRustApp {
                     workspace_id,
                     title: workspace.title.clone(),
                 };
+                let tab_hover_entity = app_entity.clone();
+                let tab_drag_entity = app_entity.clone();
                 let indicators = self.workspace_indicators(workspace);
                 self.render_chrome_tab(
                     ("chrome-workspace", workspace.id),
@@ -509,16 +536,38 @@ impl TermiRustApp {
                             .into_any_element(),
                     ),
                 )
-                .on_drag(drag_info, |drag: &WorkspaceTabDrag, _, _, cx| {
-                    cx.stop_propagation();
-                    cx.new(|_| WorkspaceTabDragPreview {
+                .on_drag(drag_info, move |drag: &WorkspaceTabDrag, _, _, app| {
+                    let entity = tab_drag_entity.clone();
+                    let dragged_workspace_id = drag.workspace_id;
+                    app.defer(move |app| {
+                        let _ = entity.update(app, |this, cx| {
+                            this.activate_workspace_for_incoming_tab_drag(dragged_workspace_id, cx);
+                        });
+                    });
+                    app.stop_propagation();
+                    app.new(|_| WorkspaceTabDragPreview {
                         title: drag.title.clone(),
                     })
                 })
-                .drag_over::<WorkspaceTabDrag>(move |style, drag, _, _| {
+                .drag_over::<WorkspaceTabDrag>(move |style, drag, _, app| {
                     if drag.workspace_id == workspace_id {
                         style
                     } else {
+                        let entity = tab_hover_entity.clone();
+                        app.defer(move |app| {
+                            let _ = entity.update(app, |this, cx| {
+                                if this.active_workspace_id != Some(workspace_id) {
+                                    this.active_workspace_id = Some(workspace_id);
+                                    this.reset_workspace_activity(workspace_id);
+                                    this.open_workspace_tab_menu = None;
+                                    this.error_message.clear();
+                                    this.status_message =
+                                        "Drop the tab onto a pane edge to split it here."
+                                            .to_string();
+                                    cx.notify();
+                                }
+                            });
+                        });
                         style
                             .ml(px(2.))
                             .border_l_2()
@@ -526,14 +575,23 @@ impl TermiRustApp {
                             .bg(theme::with_alpha(theme::accent(), 0.12))
                     }
                 })
-                .on_drop(cx.listener(move |this, drag: &WorkspaceTabDrag, _, cx| {
-                    if drag.workspace_id != workspace_id {
-                        this.reorder_workspace_tabs(drag.workspace_id, Some(workspace_id), false);
-                        this.error_message.clear();
-                        cx.notify();
-                    }
-                }))
+                .on_drop(
+                    cx.listener(move |this, drag: &WorkspaceTabDrag, window, cx| {
+                        if drag.workspace_id != workspace_id {
+                            this.drop_workspace_on_workspace(
+                                drag.workspace_id,
+                                workspace_id,
+                                window,
+                                cx,
+                            );
+                        }
+                    }),
+                )
                 .cursor_grab()
+                .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                    window.prevent_default();
+                    cx.stop_propagation();
+                })
                 .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                     if event.is_right_click() {
                         this.open_workspace_tab_context_menu(workspace_id, window, cx);

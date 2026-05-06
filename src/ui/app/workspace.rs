@@ -4,10 +4,10 @@
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, Context, Div, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, ScrollWheelEvent,
-    SharedString, Stateful, StatefulInteractiveElement as _, Styled, Window, div, point, px,
-    relative,
+    AnyElement, AppContext as _, Context, Div, FontWeight, InteractiveElement as _, IntoElement,
+    KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement,
+    ScrollWheelEvent, SharedString, Stateful, StatefulInteractiveElement as _, Styled, Window, div,
+    point, px, relative,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
@@ -17,10 +17,11 @@ use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 use crate::models::ConnectionKind;
 use crate::terminal::{TerminalRow, TerminalStyle};
 use crate::ui::app::{
-    ConnectDialogMode, MAX_SPLIT_PANES, PANE_GAP, PANE_HEADER_HEIGHT, SearchMatch, SessionPane,
-    SplitAxis, TERMINAL_INNER_PADDING_X, TERMINAL_INNER_PADDING_Y, TERMINAL_LINE_HEIGHT,
-    TermiRustApp, WORKSPACE_AUTOCOMPLETE_HEIGHT, WORKSPACE_PADDING, WORKSPACE_SEARCH_ROW_HEIGHT,
-    WorkspaceViewMode, primary_shortcut_label,
+    ConnectDialogMode, EXPANDED_PANE_LIST_WIDTH, PANE_GAP, PANE_HEADER_HEIGHT, PaneDrag,
+    PaneDragPreview, SearchMatch, SessionPane, SplitAxis, TERMINAL_INNER_PADDING_X,
+    TERMINAL_INNER_PADDING_Y, TERMINAL_LINE_HEIGHT, TermiRustApp, WORKSPACE_AUTOCOMPLETE_HEIGHT,
+    WORKSPACE_PADDING, WORKSPACE_SEARCH_ROW_HEIGHT, WorkspacePaneLayout, WorkspaceTab,
+    WorkspaceTabDrag, WorkspaceViewMode, primary_shortcut_label,
 };
 use crate::ui::autocomplete::AutocompleteSource;
 use crate::ui::path::format_file_size;
@@ -659,6 +660,217 @@ impl TermiRustApp {
             .into_any_element()
     }
 
+    fn render_pane_drop_zones(&self, target_pane_id: u64, cx: &mut Context<Self>) -> Div {
+        let active_workspace_id = self.active_workspace_id;
+
+        div()
+            .absolute()
+            .top(px(PANE_HEADER_HEIGHT))
+            .left_0()
+            .right_0()
+            .bottom_0()
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .bottom_0()
+                    .w(relative(0.32))
+                    .drag_over::<PaneDrag>(move |style, drag, _, _| {
+                        if drag.pane_id == target_pane_id {
+                            style
+                        } else {
+                            style
+                                .bg(theme::with_alpha(theme::accent(), 0.14))
+                                .border_2()
+                                .border_color(theme::accent())
+                        }
+                    })
+                    .drag_over::<WorkspaceTabDrag>(move |style, drag, _, _| {
+                        if Some(drag.workspace_id) == active_workspace_id {
+                            style
+                        } else {
+                            style
+                                .bg(theme::with_alpha(theme::accent(), 0.16))
+                                .border_2()
+                                .border_color(theme::accent())
+                        }
+                    })
+                    .on_drop(cx.listener(move |this, drag: &PaneDrag, window, cx| {
+                        this.drop_pane_on_pane(
+                            drag.pane_id,
+                            target_pane_id,
+                            SplitAxis::Horizontal,
+                            false,
+                            window,
+                            cx,
+                        );
+                    }))
+                    .on_drop(
+                        cx.listener(move |this, drag: &WorkspaceTabDrag, window, cx| {
+                            this.drop_workspace_on_pane(
+                                drag.workspace_id,
+                                target_pane_id,
+                                SplitAxis::Horizontal,
+                                false,
+                                window,
+                                cx,
+                            );
+                        }),
+                    ),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .bottom_0()
+                    .w(relative(0.32))
+                    .drag_over::<PaneDrag>(move |style, drag, _, _| {
+                        if drag.pane_id == target_pane_id {
+                            style
+                        } else {
+                            style
+                                .bg(theme::with_alpha(theme::accent(), 0.14))
+                                .border_2()
+                                .border_color(theme::accent())
+                        }
+                    })
+                    .drag_over::<WorkspaceTabDrag>(move |style, drag, _, _| {
+                        if Some(drag.workspace_id) == active_workspace_id {
+                            style
+                        } else {
+                            style
+                                .bg(theme::with_alpha(theme::accent(), 0.16))
+                                .border_2()
+                                .border_color(theme::accent())
+                        }
+                    })
+                    .on_drop(cx.listener(move |this, drag: &PaneDrag, window, cx| {
+                        this.drop_pane_on_pane(
+                            drag.pane_id,
+                            target_pane_id,
+                            SplitAxis::Horizontal,
+                            true,
+                            window,
+                            cx,
+                        );
+                    }))
+                    .on_drop(
+                        cx.listener(move |this, drag: &WorkspaceTabDrag, window, cx| {
+                            this.drop_workspace_on_pane(
+                                drag.workspace_id,
+                                target_pane_id,
+                                SplitAxis::Horizontal,
+                                true,
+                                window,
+                                cx,
+                            );
+                        }),
+                    ),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .right_0()
+                    .top_0()
+                    .h(relative(0.32))
+                    .drag_over::<PaneDrag>(move |style, drag, _, _| {
+                        if drag.pane_id == target_pane_id {
+                            style
+                        } else {
+                            style
+                                .bg(theme::with_alpha(theme::accent(), 0.14))
+                                .border_2()
+                                .border_color(theme::accent())
+                        }
+                    })
+                    .drag_over::<WorkspaceTabDrag>(move |style, drag, _, _| {
+                        if Some(drag.workspace_id) == active_workspace_id {
+                            style
+                        } else {
+                            style
+                                .bg(theme::with_alpha(theme::accent(), 0.16))
+                                .border_2()
+                                .border_color(theme::accent())
+                        }
+                    })
+                    .on_drop(cx.listener(move |this, drag: &PaneDrag, window, cx| {
+                        this.drop_pane_on_pane(
+                            drag.pane_id,
+                            target_pane_id,
+                            SplitAxis::Vertical,
+                            false,
+                            window,
+                            cx,
+                        );
+                    }))
+                    .on_drop(
+                        cx.listener(move |this, drag: &WorkspaceTabDrag, window, cx| {
+                            this.drop_workspace_on_pane(
+                                drag.workspace_id,
+                                target_pane_id,
+                                SplitAxis::Vertical,
+                                false,
+                                window,
+                                cx,
+                            );
+                        }),
+                    ),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .right_0()
+                    .bottom_0()
+                    .h(relative(0.32))
+                    .drag_over::<PaneDrag>(move |style, drag, _, _| {
+                        if drag.pane_id == target_pane_id {
+                            style
+                        } else {
+                            style
+                                .bg(theme::with_alpha(theme::accent(), 0.14))
+                                .border_2()
+                                .border_color(theme::accent())
+                        }
+                    })
+                    .drag_over::<WorkspaceTabDrag>(move |style, drag, _, _| {
+                        if Some(drag.workspace_id) == active_workspace_id {
+                            style
+                        } else {
+                            style
+                                .bg(theme::with_alpha(theme::accent(), 0.16))
+                                .border_2()
+                                .border_color(theme::accent())
+                        }
+                    })
+                    .on_drop(cx.listener(move |this, drag: &PaneDrag, window, cx| {
+                        this.drop_pane_on_pane(
+                            drag.pane_id,
+                            target_pane_id,
+                            SplitAxis::Vertical,
+                            true,
+                            window,
+                            cx,
+                        );
+                    }))
+                    .on_drop(
+                        cx.listener(move |this, drag: &WorkspaceTabDrag, window, cx| {
+                            this.drop_workspace_on_pane(
+                                drag.workspace_id,
+                                target_pane_id,
+                                SplitAxis::Vertical,
+                                true,
+                                window,
+                                cx,
+                            );
+                        }),
+                    ),
+            )
+    }
+
     fn render_terminal_pane(
         &self,
         pane: &SessionPane,
@@ -674,6 +886,11 @@ impl TermiRustApp {
             .unwrap_or_default();
 
         let is_active_pane = self.active_workspace().map(|w| w.active_pane_id) == Some(pane.id);
+        let workspace_expanded_pane_id = self.active_workspace().and_then(|w| w.expanded_pane_id);
+        let workspace_has_multiple_panes = self
+            .active_workspace()
+            .map(|workspace| workspace.pane_ids.len() > 1)
+            .unwrap_or(false);
         let workspace_broadcasting = self
             .active_workspace()
             .map(|workspace| workspace.broadcast_input && workspace.pane_ids.len() > 1)
@@ -700,16 +917,21 @@ impl TermiRustApp {
         } else {
             theme::warning()
         };
+        let drag_info = PaneDrag {
+            pane_id,
+            title: pane.title.clone(),
+        };
 
         v_flex()
             .id(("terminal-pane", pane.id))
+            .relative()
             .flex_1()
             .rounded(px(10.))
             .border_1()
             .border_color(if is_active_pane {
                 theme::focus_ring()
             } else {
-                theme::with_alpha(theme::border_dark(), 0.5)
+                theme::with_alpha(theme::accent(), 0.35)
             })
             .when(is_active_pane, |this| {
                 this.shadow(vec![gpui::BoxShadow {
@@ -723,6 +945,7 @@ impl TermiRustApp {
             .overflow_hidden()
             .child(
                 h_flex()
+                    .id(("pane-header", pane.id))
                     .h(px(PANE_HEADER_HEIGHT))
                     .px(px(12.))
                     .items_center()
@@ -730,10 +953,63 @@ impl TermiRustApp {
                     .bg(theme::chrome_bg())
                     .border_b_1()
                     .border_color(theme::with_alpha(theme::border_dark(), 0.6))
+                    .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                        window.prevent_default();
+                        cx.stop_propagation();
+                    })
                     .child(
                         h_flex()
                             .gap(px(8.))
                             .items_center()
+                            .child(
+                                h_flex()
+                                    .id(("pane-drag-grip", pane.id))
+                                    .w(px(18.))
+                                    .h(px(22.))
+                                    .gap(px(2.))
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(5.))
+                                    .cursor_grab()
+                                    .hover(|style| {
+                                        style.bg(theme::with_alpha(theme::text_muted_dark(), 0.12))
+                                    })
+                                    .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                                        window.prevent_default();
+                                        cx.stop_propagation();
+                                    })
+                                    .on_drag(drag_info, |drag: &PaneDrag, _, _, cx| {
+                                        cx.stop_propagation();
+                                        cx.new(|_| PaneDragPreview {
+                                            title: drag.title.clone(),
+                                        })
+                                    })
+                                    .child(
+                                        v_flex()
+                                            .gap(px(2.))
+                                            .child(
+                                                div()
+                                                    .w(px(10.))
+                                                    .h(px(1.5))
+                                                    .rounded(px(999.))
+                                                    .bg(theme::text_muted_dark()),
+                                            )
+                                            .child(
+                                                div()
+                                                    .w(px(10.))
+                                                    .h(px(1.5))
+                                                    .rounded(px(999.))
+                                                    .bg(theme::text_muted_dark()),
+                                            )
+                                            .child(
+                                                div()
+                                                    .w(px(10.))
+                                                    .h(px(1.5))
+                                                    .rounded(px(999.))
+                                                    .bg(theme::text_muted_dark()),
+                                            ),
+                                    ),
+                            )
                             .child(div().size(px(9.)).rounded(px(999.)).bg(status_color))
                             .when(self.pane_rename_id == Some(pane.id), |this| {
                                 this.child(
@@ -808,92 +1084,44 @@ impl TermiRustApp {
                                 )
                             }),
                     )
-                    .child(
-                        h_flex()
-                            .gap_1()
-                            .items_center()
-                            .when(pane.connected, |this| {
-                                this.child(
-                                    Button::new(("clear-pane", pane.id))
-                                        .ghost()
-                                        .xsmall()
-                                        .icon(IconName::Replace)
-                                        .tooltip("Clear screen and scrollback")
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.clear_pane_screen(pane_id, cx);
-                                        })),
-                                )
-                                .when(
-                                    self.active_workspace()
-                                        .map(|workspace| workspace.pane_ids.len() < MAX_SPLIT_PANES)
-                                        .unwrap_or(false),
-                                    |this| {
-                                        this.child(
-                                            Button::new(("duplicate-pane", pane.id))
-                                                .ghost()
-                                                .xsmall()
-                                                .icon(IconName::Copy)
-                                                .tooltip("Duplicate pane")
-                                                .on_click(cx.listener(
-                                                    move |this, _, window, cx| {
-                                                        this.duplicate_pane(pane_id, window, cx);
-                                                    },
-                                                )),
-                                        )
-                                    },
-                                )
-                                .when(
-                                    self.active_workspace()
-                                        .map(|workspace| workspace.pane_ids.len() > 1)
-                                        .unwrap_or(false),
-                                    |this| {
-                                        this.child(
-                                            Button::new(("detach-pane", pane.id))
-                                                .ghost()
-                                                .xsmall()
-                                                .icon(IconName::ExternalLink)
-                                                .tooltip("Detach into new tab")
-                                                .on_click(cx.listener(
-                                                    move |this, _, window, cx| {
-                                                        this.move_pane_to_new_workspace(
-                                                            pane_id, window, cx,
-                                                        );
-                                                    },
-                                                )),
-                                        )
-                                    },
-                                )
-                            })
-                            .when(pane.closed, |this| {
-                                this.child(
-                                    Button::new(("reconnect-pane", pane.id))
-                                        .ghost()
-                                        .xsmall()
-                                        .icon(IconName::Redo)
-                                        .label("Reconnect")
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.reconnect_pane(pane_id, window, cx);
-                                        })),
-                                )
-                            })
-                            .when(
-                                self.active_workspace()
-                                    .map(|workspace| workspace.pane_ids.len() > 1)
-                                    .unwrap_or(false),
-                                |this| {
-                                    this.child(
-                                        Button::new(("close-pane", pane.id))
-                                            .ghost()
-                                            .xsmall()
-                                            .icon(IconName::Close)
-                                            .tooltip("Close pane")
-                                            .on_click(cx.listener(move |this, _, _, cx| {
-                                                this.close_pane(pane_id, cx);
-                                            })),
-                                    )
-                                },
-                            ),
-                    ),
+                    .when(workspace_has_multiple_panes, |this| {
+                        this.child(
+                            Button::new(("expand-pane", pane.id))
+                                .ghost()
+                                .xsmall()
+                                .icon(if workspace_expanded_pane_id == Some(pane_id) {
+                                    IconName::LayoutDashboard
+                                } else {
+                                    IconName::Maximize
+                                })
+                                .tooltip(if workspace_expanded_pane_id == Some(pane_id) {
+                                    "Show split view"
+                                } else {
+                                    "Expand terminal"
+                                })
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    if this
+                                        .active_workspace()
+                                        .and_then(|workspace| workspace.expanded_pane_id)
+                                        == Some(pane_id)
+                                    {
+                                        this.restore_workspace_split_view(window, cx);
+                                    } else {
+                                        this.expand_pane(pane_id, window, cx);
+                                    }
+                                })),
+                        )
+                        .child(
+                            Button::new(("close-pane", pane.id))
+                                .ghost()
+                                .xsmall()
+                                .icon(IconName::Close)
+                                .tooltip("Close terminal")
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.close_pane(pane_id, cx);
+                                })),
+                        )
+                    }),
             )
             .child(
                 div()
@@ -956,6 +1184,218 @@ impl TermiRustApp {
                             })),
                     ),
             )
+            .child(self.render_pane_drop_zones(pane_id, cx))
+    }
+
+    fn render_workspace_layout(
+        &self,
+        layout: &WorkspacePaneLayout,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        match layout {
+            WorkspacePaneLayout::Leaf(pane_id) => self
+                .pane(*pane_id)
+                .map(|pane| {
+                    self.render_terminal_pane(pane, window, cx)
+                        .into_any_element()
+                })
+                .unwrap_or_else(|| div().flex_1().into_any_element()),
+            WorkspacePaneLayout::Split {
+                axis,
+                first,
+                second,
+            } => {
+                let gap = px(PANE_GAP);
+                match axis {
+                    SplitAxis::Horizontal => h_flex()
+                        .flex_1()
+                        .gap(gap)
+                        .child(self.render_workspace_layout(first, window, cx))
+                        .child(self.render_workspace_layout(second, window, cx))
+                        .into_any_element(),
+                    SplitAxis::Vertical => v_flex()
+                        .flex_1()
+                        .gap(gap)
+                        .child(self.render_workspace_layout(first, window, cx))
+                        .child(self.render_workspace_layout(second, window, cx))
+                        .into_any_element(),
+                }
+            }
+        }
+    }
+
+    fn render_expanded_pane_list(
+        &self,
+        workspace: &WorkspaceTab,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        v_flex()
+            .w(px(EXPANDED_PANE_LIST_WIDTH))
+            .h_full()
+            .min_h_0()
+            .rounded(px(10.))
+            .bg(theme::chrome_bg())
+            .border_1()
+            .border_color(theme::with_alpha(theme::border_dark(), 0.45))
+            .overflow_hidden()
+            .child(
+                h_flex()
+                    .h(px(44.))
+                    .px(px(16.))
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::with_alpha(theme::border_dark(), 0.45))
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_size(px(14.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme::text_on_dark())
+                                    .child("Terminals"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(theme::text_muted_dark())
+                                    .child(format!("• {}", workspace.pane_ids.len())),
+                            ),
+                    )
+                    .child(
+                        Button::new("expanded-restore-splits")
+                            .small()
+                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                            .icon(IconName::PanelRight)
+                            .label("Split View")
+                            .tooltip("Show split view")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.restore_workspace_split_view(window, cx);
+                            })),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .p(px(10.))
+                    .gap(px(6.))
+                    .overflow_y_scrollbar()
+                    .children(workspace.pane_ids.iter().filter_map(|pane_id| {
+                        let pane = self.pane(*pane_id)?;
+                        let item_pane_id = *pane_id;
+                        let active = workspace.expanded_pane_id == Some(item_pane_id)
+                            || workspace.active_pane_id == item_pane_id;
+                        let status_color = if pane.connected {
+                            theme::success()
+                        } else if pane.closed && pane.status == "Error" {
+                            theme::danger()
+                        } else if pane.closed {
+                            theme::text_muted_dark()
+                        } else {
+                            theme::warning()
+                        };
+
+                        Some(
+                            h_flex()
+                                .id(("expanded-pane-list-item", item_pane_id))
+                                .w_full()
+                                .min_h(px(52.))
+                                .px(px(10.))
+                                .py(px(8.))
+                                .gap(px(10.))
+                                .items_start()
+                                .rounded(px(8.))
+                                .cursor_pointer()
+                                .bg(if active {
+                                    theme::with_alpha(theme::accent(), 0.12)
+                                } else {
+                                    gpui::transparent_black()
+                                })
+                                .hover(|style| {
+                                    style.bg(theme::with_alpha(theme::text_muted_dark(), 0.09))
+                                })
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.expand_pane(item_pane_id, window, cx);
+                                }))
+                                .child(
+                                    Icon::new(IconName::SquareTerminal)
+                                        .size(px(14.))
+                                        .text_color(if active {
+                                            theme::accent()
+                                        } else {
+                                            theme::text_muted_dark()
+                                        }),
+                                )
+                                .child(
+                                    v_flex()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .gap(px(3.))
+                                        .child(
+                                            div()
+                                                .truncate()
+                                                .text_size(px(14.))
+                                                .text_color(if active {
+                                                    theme::accent()
+                                                } else {
+                                                    theme::text_on_dark()
+                                                })
+                                                .child(pane.title.clone()),
+                                        )
+                                        .child(
+                                            div()
+                                                .truncate()
+                                                .text_size(px(11.))
+                                                .text_color(theme::text_muted_dark())
+                                                .child(pane.endpoint.clone()),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .mt(px(5.))
+                                        .size(px(5.))
+                                        .rounded(px(999.))
+                                        .bg(status_color),
+                                )
+                                .into_any_element(),
+                        )
+                    })),
+            )
+    }
+
+    fn render_expanded_workspace_body(
+        &self,
+        workspace: &WorkspaceTab,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let focused_pane_id = workspace
+            .expanded_pane_id
+            .filter(|pane_id| workspace.pane_ids.contains(pane_id))
+            .unwrap_or(workspace.active_pane_id);
+        let content = self
+            .pane(focused_pane_id)
+            .map(|pane| {
+                self.render_terminal_pane(pane, window, cx)
+                    .into_any_element()
+            })
+            .unwrap_or_else(|| div().flex_1().into_any_element());
+
+        div()
+            .flex()
+            .flex_row()
+            .flex_1()
+            .min_h_0()
+            .p(px(WORKSPACE_PADDING))
+            .gap(px(PANE_GAP))
+            .bg(theme::terminal_bg())
+            .child(self.render_expanded_pane_list(workspace, window, cx))
+            .child(content)
     }
 
     fn render_workspace_body(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
@@ -1030,29 +1470,11 @@ impl TermiRustApp {
                 });
         }
 
-        let panes = workspace
-            .pane_ids
-            .iter()
-            .filter_map(|pane_id| self.pane(*pane_id))
-            .map(|pane| {
-                self.render_terminal_pane(pane, window, cx)
-                    .into_any_element()
-            })
-            .collect::<Vec<_>>();
+        if workspace.expanded_pane_id.is_some() && workspace.pane_ids.len() > 1 {
+            return self.render_expanded_workspace_body(workspace, window, cx);
+        }
 
-        let gap = px(PANE_GAP);
-        let content = match workspace.split_axis {
-            SplitAxis::Horizontal => h_flex()
-                .flex_1()
-                .gap(gap)
-                .children(panes)
-                .into_any_element(),
-            SplitAxis::Vertical => v_flex()
-                .flex_1()
-                .gap(gap)
-                .children(panes)
-                .into_any_element(),
-        };
+        let content = self.render_workspace_layout(&workspace.layout, window, cx);
 
         v_flex()
             .flex_1()
