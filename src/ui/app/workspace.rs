@@ -1097,7 +1097,6 @@ impl TermiRustApp {
             .when_some(self.render_paste_confirmation(cx), |this, banner| {
                 this.child(banner)
             })
-            .child(self.render_quick_actions_bar(window, cx))
             .when_some(self.render_workspace_search(window, cx), |this, search| {
                 this.child(search)
             })

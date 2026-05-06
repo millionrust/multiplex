@@ -1,5 +1,4 @@
-//! Workspace toolbar (top of any open SSH/local terminal session) and the
-//! quick-actions bar below it. Methods are part of `TermiRustApp`.
+//! Workspace toolbar for open SSH/local terminal sessions. Methods are part of `TermiRustApp`.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -10,10 +9,8 @@ use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::{Disableable, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
-use crate::ssh::SessionCommand;
 use crate::ui::app::{
-    SplitAxis, TermiRustApp, WORKSPACE_QUICK_ACTIONS_HEIGHT, WorkspaceRuntimeTone,
-    WorkspaceViewMode, workspace_runtime_summary,
+    SplitAxis, TermiRustApp, WorkspaceRuntimeTone, WorkspaceViewMode, workspace_runtime_summary,
 };
 use crate::ui::theme;
 
@@ -410,145 +407,5 @@ impl TermiRustApp {
                         )
                     }),
             )
-    }
-
-    pub(super) fn render_quick_actions_bar(
-        &self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        let snippets = self.pinned_snippet_quick_actions();
-        let snippet_count = snippets.len();
-        let pane_count = self
-            .active_workspace()
-            .map(|w| w.pane_ids.len())
-            .unwrap_or(0);
-
-        h_flex()
-            .h(px(WORKSPACE_QUICK_ACTIONS_HEIGHT))
-            .w_full()
-            .px_4()
-            .gap_2()
-            .items_center()
-            .bg(theme::terminal_panel())
-            .border_b_1()
-            .border_color(theme::with_alpha(theme::border_dark(), 0.4))
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .font_medium()
-                    .text_color(theme::text_muted_dark())
-                    .child("Actions"),
-            )
-            .child(
-                Button::new("qa-new-tab")
-                    .xsmall()
-                    .ghost()
-                    .icon(IconName::Plus)
-                    .label("New Tab")
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.activate_library(window, cx);
-                        this.open_editor_for_new_host(window, cx);
-                    })),
-            )
-            .child(
-                Button::new("qa-split-h")
-                    .xsmall()
-                    .ghost()
-                    .icon(IconName::PanelRight)
-                    .label("Split H")
-                    .disabled(pane_count >= 4)
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.split_active_workspace(SplitAxis::Horizontal, window, cx);
-                    })),
-            )
-            .child(
-                Button::new("qa-split-v")
-                    .xsmall()
-                    .ghost()
-                    .icon(IconName::PanelBottom)
-                    .label("Split V")
-                    .disabled(pane_count >= 4)
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.split_active_workspace(SplitAxis::Vertical, window, cx);
-                    })),
-            )
-            .child(
-                Button::new("qa-toggle-files")
-                    .xsmall()
-                    .ghost()
-                    .icon(IconName::FolderOpen)
-                    .label("Files")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        if this.active_workspace().is_some_and(|workspace| {
-                            workspace.view_mode == WorkspaceViewMode::Files
-                        }) {
-                            this.show_active_workspace_terminal(cx);
-                        } else {
-                            this.open_active_workspace_files(cx);
-                        }
-                    })),
-            )
-            .child(
-                Button::new("qa-clear")
-                    .xsmall()
-                    .ghost()
-                    .icon(IconName::Delete)
-                    .label("Clear")
-                    .on_click(cx.listener(|this, _, _, _cx| {
-                        if let Some(pane) = this.active_pane() {
-                            let _ = pane
-                                .runtime
-                                .command_tx
-                                .send(SessionCommand::Input(b"clear\n".to_vec()));
-                        }
-                    })),
-            )
-            .when(snippet_count > 0, |this| {
-                this.child(
-                    div()
-                        .w(px(1.))
-                        .h(px(14.))
-                        .mx_1()
-                        .bg(theme::with_alpha(theme::text_muted_dark(), 0.2)),
-                )
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .font_medium()
-                        .text_color(theme::text_muted_dark())
-                        .child("Pinned"),
-                )
-                .child(
-                    h_flex().flex_1().gap_1().children(
-                        snippets
-                            .into_iter()
-                            .take(6)
-                            .enumerate()
-                            .map(|(index, snippet)| {
-                                let command = snippet.command.clone();
-                                Button::new(("qa-snippet", index))
-                                    .xsmall()
-                                    .custom(Self::action_button_style(
-                                        theme::ActionTone::AccentSoft,
-                                        cx,
-                                    ))
-                                    .label(snippet.label.clone())
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.run_snippet_command(&command, window, cx);
-                                    }))
-                            }),
-                    ),
-                )
-                .when(snippet_count > 6, |this| {
-                    let overflow = snippet_count - 6;
-                    this.child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(theme::text_muted_dark())
-                            .child(format!("+{overflow}")),
-                    )
-                })
-            })
     }
 }

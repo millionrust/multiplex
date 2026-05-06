@@ -79,7 +79,6 @@ const WORKSPACE_PADDING: f32 = 18.0;
 const PANE_GAP: f32 = 12.0;
 const PANE_HEADER_HEIGHT: f32 = 38.0;
 const WORKSPACE_AUTOCOMPLETE_HEIGHT: f32 = 56.0;
-const WORKSPACE_QUICK_ACTIONS_HEIGHT: f32 = 38.0;
 const TERMINAL_INNER_PADDING_X: f32 = 20.0;
 const TERMINAL_INNER_PADDING_Y: f32 = 14.0;
 const MAX_SPLIT_PANES: usize = 4;
@@ -5174,14 +5173,12 @@ impl TermiRustApp {
         let available_x = WORKSPACE_PADDING;
         let available_y = theme::CHROME_HEIGHT
             + theme::WORKSPACE_HEADER_HEIGHT
-            + WORKSPACE_QUICK_ACTIONS_HEIGHT
             + search_height
             + WORKSPACE_PADDING;
         let available_width = (viewport_width - WORKSPACE_PADDING * 2.0).max(320.0);
         let available_height = (viewport_height
             - theme::CHROME_HEIGHT
             - theme::WORKSPACE_HEADER_HEIGHT
-            - WORKSPACE_QUICK_ACTIONS_HEIGHT
             - search_height
             - autocomplete_height
             - theme::STATUS_HEIGHT
