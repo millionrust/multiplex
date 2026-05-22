@@ -42,32 +42,11 @@ impl TermiRustApp {
         indicators
     }
 
-    fn render_workspace_indicators(
-        &self,
-        indicators: WorkspaceIndicators,
-        active: bool,
-    ) -> AnyElement {
+    fn render_workspace_indicators(&self, indicators: WorkspaceIndicators) -> AnyElement {
         let mut nodes = Vec::new();
 
-        if indicators.unread_events > 0 {
-            nodes.push(
-                div()
-                    .min_w(px(18.))
-                    .h(px(18.))
-                    .px(px(6.))
-                    .rounded(px(999.))
-                    .bg(theme::accent())
-                    .text_size(px(11.))
-                    .font_semibold()
-                    .text_color(theme::library_card())
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(indicators.unread_events.min(99).to_string())
-                    .into_any_element(),
-            );
-        }
-
+        // Only flag notable states — a tab whose panes are all connected
+        // shows no dot at all, keeping the tab name clean.
         if indicators.error_panes > 0 {
             nodes.push(
                 div()
@@ -84,36 +63,12 @@ impl TermiRustApp {
                     .bg(theme::warning())
                     .into_any_element(),
             );
-        } else if indicators.live_panes > 0 {
-            nodes.push(
-                div()
-                    .size(px(9.))
-                    .rounded(px(999.))
-                    .bg(theme::success())
-                    .opacity(if active { 1.0 } else { 0.86 })
-                    .into_any_element(),
-            );
-        } else if indicators.closed_panes > 0 {
+        } else if indicators.closed_panes > 0 && indicators.live_panes == 0 {
             nodes.push(
                 div()
                     .size(px(9.))
                     .rounded(px(999.))
                     .bg(theme::with_alpha(theme::text_muted_dark(), 0.45))
-                    .into_any_element(),
-            );
-        }
-
-        if indicators.split_count > 1 {
-            nodes.push(
-                div()
-                    .px(px(6.))
-                    .py(px(2.))
-                    .rounded(px(999.))
-                    .bg(theme::with_alpha(theme::text_muted_dark(), 0.12))
-                    .text_size(px(11.))
-                    .font_medium()
-                    .text_color(theme::text_muted_dark())
-                    .child(format!("{}p", indicators.split_count))
                     .into_any_element(),
             );
         }
@@ -190,7 +145,7 @@ impl TermiRustApp {
                     .child(label),
             )
             .when_some(indicators, |this, indicators| {
-                this.child(self.render_workspace_indicators(indicators, active))
+                this.child(self.render_workspace_indicators(indicators))
             })
             .when_some(close_button, |this, button| this.child(button))
     }
