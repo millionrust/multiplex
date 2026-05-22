@@ -10271,4 +10271,305 @@ mod tests {
             assert!(app.show_editor_panel);
         });
     }
+
+    #[gpui::test]
+    fn e2e_snippet_save_run_pin_and_remove(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (_workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.snippet_inputs.label,
+                        "E2E Snippet",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.snippet_inputs.group, "Ops", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.snippet_inputs.command,
+                        "printf 'snippet-e2e\\n'",
+                        window,
+                        cx,
+                    );
+                    app.toggle_snippet_pinned(true, cx);
+                    app.save_snippet(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let snippet_id = app.read_with(cx, |app, _| {
+            let snippet_id = app
+                .selected_snippet_id
+                .clone()
+                .expect("snippet should be selected");
+            let snippet = app
+                .saved
+                .snippets
+                .iter()
+                .find(|snippet| snippet.id == snippet_id)
+                .expect("saved snippet should exist");
+            assert_eq!(snippet.label, "E2E Snippet");
+            assert_eq!(snippet.group, "Ops");
+            assert!(snippet.pinned);
+            snippet_id
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let command = app
+                        .saved
+                        .snippets
+                        .iter()
+                        .find(|snippet| snippet.id == snippet_id)
+                        .expect("saved snippet should exist")
+                        .command
+                        .clone();
+                    app.run_snippet_command(&command, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("snippet-e2e"))
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.set_saved_snippet_pinned(&snippet_id, false, window, cx);
+                    app.remove_selected_snippet(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.saved
+                    .snippets
+                    .iter()
+                    .all(|snippet| snippet.id != snippet_id)
+            );
+            assert!(app.selected_snippet_id.is_none());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_vault_member_and_sync_round_trip(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let sync_dir = std::env::temp_dir().join(format!("termirust-sync-{}", std::process::id()));
+        std::fs::create_dir_all(&sync_dir).expect("unable to create sync dir");
+
+        let (app_a, window_a) = open_test_app(cx);
+        window_a
+            .update(cx, |_, window, cx| {
+                app_a.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(&app.vault_inputs.label, "Ops Vault", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.vault_inputs.description,
+                        "Shared ops access",
+                        window,
+                        cx,
+                    );
+                    app.save_vault(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let vault_id = app_a.read_with(cx, |app, _| {
+            let vault_id = app
+                .selected_vault_id
+                .clone()
+                .expect("vault should be selected after save");
+            let vault = app
+                .saved
+                .vaults
+                .iter()
+                .find(|vault| vault.id == vault_id)
+                .expect("vault should exist");
+            assert_eq!(vault.label, "Ops Vault");
+            vault_id
+        });
+
+        window_a
+            .update(cx, |_, window, cx| {
+                app_a.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.vault_member_inputs.name,
+                        "Alex Rivera",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.vault_member_inputs.email,
+                        "alex@example.com",
+                        window,
+                        cx,
+                    );
+                    app.save_vault_member(window, cx);
+
+                    app.snippet_vault_id = Some(vault_id.clone());
+                    TermiRustApp::set_input_value(&app.snippet_inputs.label, "Deploy", window, cx);
+                    TermiRustApp::set_input_value(&app.snippet_inputs.group, "Ops", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.snippet_inputs.command,
+                        "echo deploy",
+                        window,
+                        cx,
+                    );
+                    app.save_snippet(window, cx);
+
+                    app.open_editor_for_new_host(window, cx);
+                    app.draft_vault_id = Some(vault_id.clone());
+                    app.selected_vault_id = Some(vault_id.clone());
+                    app.set_auth_mode(AuthMode::PrivateKey, cx);
+                    TermiRustApp::set_input_value(&app.inputs.label, "Vault Host", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.host, "10.0.0.5", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.username, "deploy", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.key_path,
+                        "/tmp/fake_sync_key",
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.sync_folder_input,
+                        sync_dir.display().to_string(),
+                        window,
+                        cx,
+                    );
+                    app.save_sync_folder_input(window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.export_backup_passphrase,
+                        "sync-pass",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.export_backup_confirm,
+                        "sync-pass",
+                        window,
+                        cx,
+                    );
+                    app.push_to_sync_folder(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let bundle_path = sync_dir.join("termirust-vault.encrypted.json");
+        assert!(bundle_path.exists(), "expected sync bundle to be written");
+
+        let (app_b, window_b) = open_test_app_with_state(cx, SavedState::default());
+        window_b
+            .update(cx, |_, window, cx| {
+                app_b.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.sync_folder_input,
+                        sync_dir.display().to_string(),
+                        window,
+                        cx,
+                    );
+                    app.save_sync_folder_input(window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.import_backup_passphrase,
+                        "sync-pass",
+                        window,
+                        cx,
+                    );
+                    app.pull_from_sync_folder(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app_b.read_with(cx, |app, _| {
+            let vault = app
+                .saved
+                .vaults
+                .iter()
+                .find(|vault| vault.id == vault_id)
+                .expect("vault should be imported");
+            assert!(
+                vault
+                    .members
+                    .iter()
+                    .any(|member| member.email == "alex@example.com")
+            );
+            assert!(
+                app.saved
+                    .snippets
+                    .iter()
+                    .any(|snippet| snippet.label == "Deploy"
+                        && snippet.vault_id.as_deref() == Some(vault_id.as_str()))
+            );
+            assert!(
+                app.saved
+                    .profiles
+                    .iter()
+                    .any(|profile| profile.label == "Vault Host"
+                        && profile.vault_id.as_deref() == Some(vault_id.as_str()))
+            );
+        });
+
+        window_b
+            .update(cx, |_, window, cx| {
+                app_b.update(cx, |app, cx| {
+                    app.load_vault_into_inputs(&vault_id, window, cx);
+                    app.remove_selected_vault(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app_b.read_with(cx, |app, _| {
+            assert!(app.saved.vaults.iter().all(|vault| vault.id != vault_id));
+            assert!(
+                app.saved
+                    .snippets
+                    .iter()
+                    .any(|snippet| snippet.label == "Deploy"
+                        && snippet.vault_id.as_deref() == Some(crate::models::DEFAULT_VAULT_ID))
+            );
+            assert!(
+                app.saved
+                    .profiles
+                    .iter()
+                    .any(|profile| profile.label == "Vault Host"
+                        && profile.vault_id.as_deref() == Some(crate::models::DEFAULT_VAULT_ID))
+            );
+        });
+
+        let _ = std::fs::remove_dir_all(sync_dir);
+    }
 }
