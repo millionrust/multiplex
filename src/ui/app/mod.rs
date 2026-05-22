@@ -4693,14 +4693,10 @@ impl TermiRustApp {
 
         if draft.auth_mode == AuthMode::Password {
             let password = draft.password.trim().to_string();
-            if password.is_empty()
-                && draft.password_credential_id.is_none()
-                && !self.saved.identities.is_empty()
-            {
-                let identity = self.saved.identities[0].clone();
-                draft.auth_mode = AuthMode::PrivateKey;
-                draft.identity_id = Some(identity.id.clone());
-                draft.key_path = identity.key_path.clone();
+            if password.is_empty() && draft.password_credential_id.is_none() {
+                anyhow::bail!(
+                    "Password authentication requires a password or a saved system credential."
+                );
             } else if !password.is_empty() {
                 let credential_id = self.draft_password_credential_id(&draft)?;
                 self.persist_password_to_keychain(&credential_id, &password)?;
@@ -7381,8 +7377,13 @@ impl TermiRustApp {
         v_flex()
             .w_full()
             .gap_4()
-            .child(self.form_field("Label", Input::new(&self.inputs.label)))
-            .child(self.form_field(
+            .child(self.form_field_with_id(
+                "editor-field-label",
+                "Label",
+                Input::new(&self.inputs.label),
+            ))
+            .child(self.form_field_with_id(
+                "editor-field-description",
                 "Description",
                 Input::new(&self.inputs.description),
             ))
@@ -7520,7 +7521,11 @@ impl TermiRustApp {
                 },
                 cx,
             ))
-            .child(self.form_field("Group", Input::new(&self.inputs.group)))
+            .child(self.form_field_with_id(
+                "editor-field-group",
+                "Group",
+                Input::new(&self.inputs.group),
+            ))
             .when(!group_name.is_empty(), |this| {
                 this.child(
                     v_flex()
@@ -7688,8 +7693,16 @@ impl TermiRustApp {
                         ),
                 )
             })
-            .child(self.form_field("Tags", Input::new(&self.inputs.tags)))
-            .child(self.form_field("Jump Host", Input::new(&self.inputs.jump_host)))
+            .child(self.form_field_with_id(
+                "editor-field-tags",
+                "Tags",
+                Input::new(&self.inputs.tags),
+            ))
+            .child(self.form_field_with_id(
+                "editor-field-jump-host",
+                "Jump Host",
+                Input::new(&self.inputs.jump_host),
+            ))
             .child(
                 v_flex()
                     .gap_2()
@@ -7824,16 +7837,29 @@ impl TermiRustApp {
                             ),
                     ),
             )
-            .child(self.form_field("Host", Input::new(&self.inputs.host)))
+            .child(self.form_field_with_id(
+                "editor-field-host",
+                "Host",
+                Input::new(&self.inputs.host),
+            ))
             .child(
                 h_flex()
+                    .id("editor-connection-row")
                     .gap_3()
                     .child(
-                        self.form_field("Port", Input::new(&self.inputs.port))
+                        self.form_field_with_id(
+                            "editor-field-port",
+                            "Port",
+                            Input::new(&self.inputs.port),
+                        )
                             .flex_1(),
                     )
                     .child(
-                        self.form_field("Username", Input::new(&self.inputs.username))
+                        self.form_field_with_id(
+                            "editor-field-username",
+                            "Username",
+                            Input::new(&self.inputs.username),
+                        )
                             .flex_1(),
                     ),
             )
@@ -8086,22 +8112,29 @@ impl TermiRustApp {
                     ),
             )
             .when(auth_mode == AuthMode::Password, |this| {
-                this.child(v_flex().gap_2().child(self.form_field(
-                    "Password",
-                    Input::new(&self.inputs.password).mask_toggle(),
-                ))
-                .when(has_stored_password, |this| {
-                    this.child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(theme::success())
-                            .child("A saved password is already available from the system credential store."),
-                    )
-                }))
+                this.child(
+                    v_flex()
+                        .id("editor-password-auth")
+                        .gap_2()
+                        .child(self.form_field_with_id(
+                            "editor-field-password",
+                            "Password",
+                            Input::new(&self.inputs.password).mask_toggle(),
+                        ))
+                        .when(has_stored_password, |this| {
+                            this.child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(theme::success())
+                                    .child("A saved password is already available from the system credential store."),
+                            )
+                        }),
+                )
             })
             .when(auth_mode == AuthMode::PrivateKey, |this| {
                 this.child(
                     v_flex()
+                        .id("editor-key-auth")
                         .gap_3()
                         .child(
                             div()
@@ -8112,8 +8145,14 @@ impl TermiRustApp {
                         )
                         .child(
                             h_flex()
+                                .id("editor-key-path-row")
                                 .gap_2()
-                                .child(Input::new(&self.inputs.key_path).flex_1())
+                                .child(
+                                    div()
+                                        .id("editor-field-key-path")
+                                        .flex_1()
+                                        .child(Input::new(&self.inputs.key_path).flex_1()),
+                                )
                                 .child(
                                     Button::new("pick-key-file")
                                         .small()
@@ -8136,7 +8175,8 @@ impl TermiRustApp {
                                     )),
                             )
                         })
-                        .child(self.form_field(
+                        .child(self.form_field_with_id(
+                            "editor-field-key-passphrase",
                             "Passphrase",
                             Input::new(&self.inputs.key_passphrase).mask_toggle(),
                         ))
@@ -8157,6 +8197,10 @@ impl TermiRustApp {
                     .child(label),
             )
             .child(input)
+    }
+
+    fn form_field_with_id(&self, id: impl Into<gpui::ElementId>, label: &str, input: Input) -> Div {
+        div().child(self.form_field(label, input).id(id))
     }
 
     fn render_library_empty_state<E: IntoElement>(
@@ -8624,6 +8668,7 @@ impl Render for TermiRustApp {
         };
 
         div()
+            .id("app-root")
             .size_full()
             .relative()
             .bg(theme::app_bg())
@@ -9112,13 +9157,12 @@ fn apply_group_defaults_to_draft(
 #[cfg(test)]
 mod tests {
     use super::{
-        AutocompleteSource, ConnectDialogMode, ConnectProtocol, NavSection,
-        OutputSuggestionContext, PathSuggestionContext, TermiRustApp, WorkspaceIndicators,
-        WorkspaceRuntimeTone, WorkspaceViewMode, apply_group_defaults_to_draft,
-        collect_autocomplete_candidates, collect_command_palette_candidates,
-        extract_snippet_prompt_names, shell_command_requires_continuation,
-        startup_bytes_for_request, substitute_snippet_placeholders, substitute_snippet_prompts,
-        workspace_runtime_summary,
+        AutocompleteSource, ConnectDialogMode, ConnectProtocol, OutputSuggestionContext,
+        PathSuggestionContext, TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone,
+        WorkspaceViewMode, apply_group_defaults_to_draft, collect_autocomplete_candidates,
+        collect_command_palette_candidates, extract_snippet_prompt_names,
+        shell_command_requires_continuation, startup_bytes_for_request,
+        substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
     };
     use crate::credentials;
     use crate::models::{
@@ -9135,10 +9179,12 @@ mod tests {
     use crate::ui::shell::shell_single_quote;
     use crate::ui::util::format_relative_time_for;
     use gpui::{
-        AppContext as _, Entity, MouseButton, MouseUpEvent, TestAppContext, WindowHandle, point, px,
+        AppContext as _, Entity, MouseButton, MouseDownEvent, MouseUpEvent, TestAppContext,
+        WindowHandle, point, px,
     };
     use gpui_component::Root;
     use std::time::{Duration, Instant};
+    use vt100::MouseProtocolMode;
 
     fn docker_ssh_request(server: &DockerSshServer) -> ConnectRequest {
         ConnectRequest {
@@ -10340,6 +10386,84 @@ mod tests {
     }
 
     #[gpui::test]
+    fn draft_to_connect_request_with_password_auth_keeps_password_mode(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut initial_state = SavedState::default();
+        initial_state.identities.push(SavedIdentity {
+            id: "identity-default".to_string(),
+            label: "default-key".to_string(),
+            vault_id: None,
+            key_path: "/tmp/default_key".to_string(),
+            kind: "OpenSSH".to_string(),
+            source: crate::models::IdentitySource::User,
+        });
+        let (app, window) = open_test_app_with_state(cx, initial_state);
+
+        let request = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(&app.inputs.label, "docker-e2e", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.host, "127.0.0.1", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, "55971", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.username, "termirust", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        "termirust-pass",
+                        window,
+                        cx,
+                    );
+                    app.current_profile_draft_raw(cx)
+                        .expect("draft should build")
+                        .to_connect_request(77)
+                        .expect("password auth request should build")
+                })
+            })
+            .expect("window update should succeed");
+
+        match request.auth {
+            Some(AuthConfig::Password { password }) => {
+                assert_eq!(password, "termirust-pass");
+            }
+            other => panic!("expected password auth, got {other:?}"),
+        }
+    }
+
+    #[gpui::test]
+    fn build_request_with_blank_password_does_not_fallback_to_private_key(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut initial_state = SavedState::default();
+        initial_state.identities.push(SavedIdentity {
+            id: "identity-default".to_string(),
+            label: "default-key".to_string(),
+            vault_id: None,
+            key_path: "/tmp/default_key".to_string(),
+            kind: "OpenSSH".to_string(),
+            source: crate::models::IdentitySource::User,
+        });
+        let (app, window) = open_test_app_with_state(cx, initial_state);
+
+        let error = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(&app.inputs.label, "docker-e2e", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.host, "127.0.0.1", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, "55971", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.username, "termirust", window, cx);
+                    app.build_request_for_current_draft(cx)
+                        .expect_err("blank password should be rejected")
+                        .to_string()
+                })
+            })
+            .expect("window update should succeed");
+
+        assert!(error.contains("Password authentication requires a password"));
+    }
+
+    #[gpui::test]
     fn e2e_host_editor_saves_and_removes_user_profile(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
@@ -11158,5 +11282,146 @@ mod tests {
             .expect("window update should succeed");
 
         wait_for_window_count(cx, 2, Duration::from_secs(10));
+    }
+
+    #[gpui::test]
+    fn e2e_mouse_reporting_sends_bytes_to_terminal_app(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (_workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        app.update(cx, |app, cx| {
+            assert!(app.run_command_in_active_pane(
+                "python3 -c \"import sys; sys.stdout.write('\\x1b[?1000h'); sys.stdout.flush(); data=sys.stdin.buffer.read(6); print(data)\"",
+                "Mouse probe started.",
+                cx
+            ));
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.terminal.mouse_protocol_mode() != MouseProtocolMode::None)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let event = MouseDownEvent {
+                        position: point(px(120.), px(120.)),
+                        modifiers: gpui::Modifiers::none(),
+                        button: MouseButton::Left,
+                        click_count: 1,
+                        first_mouse: false,
+                    };
+                    app.handle_pane_mouse_down(pane_id, &event, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("^[[M"))
+                .then_some(())
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_pane_context_menu_state_actions(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_pane_context_menu(pane_id, point(px(24.), px(24.)), window, cx);
+                    assert!(app.pane_context_menu.is_some());
+                    app.clear_pane_screen(pane_id, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.status_message, "Terminal cleared.");
+            assert!(app.pane_context_menu.is_some());
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.split_active_workspace(SplitAxis::Horizontal, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let second_pane_id = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 2)
+                .then(|| workspace.pane_ids.iter().copied().find(|id| *id != pane_id))
+                .flatten()
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.move_pane_to_new_workspace(second_pane_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.workspaces.len(), 2);
+            let original = app.workspace(workspace_id).expect("original workspace");
+            assert_eq!(original.pane_ids, vec![pane_id]);
+            assert!(app.workspace_id_for_pane(second_pane_id).is_some());
+        });
     }
 }

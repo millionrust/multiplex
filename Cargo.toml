@@ -12,7 +12,7 @@ default-run = "termirust"
 [package.metadata.bundle]
 name = "TermiRust"
 identifier = "com.termirust.desktop"
-icon = ["assets/icons/app.png"]
+icon = ["assets/icons/app.png", "assets/icons/app@2x.png"]
 copyright = "Copyright (c) 2025 TermiRust contributors"
 category = "DeveloperTool"
 short_description = "Native desktop SSH client"

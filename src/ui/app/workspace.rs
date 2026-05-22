@@ -56,7 +56,12 @@ impl TermiRustApp {
                 .bg(theme::terminal_bg())
                 .border_b_1()
                 .border_color(theme::border_dark())
-                .child(Input::new(&self.shell_inputs.terminal_search).flex_1())
+                .child(
+                    div()
+                        .id("workspace-search-input-wrap")
+                        .flex_1()
+                        .child(Input::new(&self.shell_inputs.terminal_search).flex_1()),
+                )
                 .child(
                     div()
                         .text_size(px(13.))

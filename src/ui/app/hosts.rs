@@ -1365,6 +1365,7 @@ impl TermiRustApp {
                     .pt(px(8.))
                     .child(
                         h_flex()
+                            .id("hosts-search-bar")
                             .w_full()
                             .h(px(36.))
                             .px(px(12.))
@@ -1382,9 +1383,11 @@ impl TermiRustApp {
                                     .text_color(theme::text_muted()),
                             )
                             .child(
-                                Input::new(&self.shell_inputs.host_search)
-                                    .appearance(false)
-                                    .flex_1(),
+                                div().id("hosts-search-input-wrap").flex_1().child(
+                                    Input::new(&self.shell_inputs.host_search)
+                                        .appearance(false)
+                                        .flex_1(),
+                                ),
                             )
                             .child(
                                 Button::new("library-quick-connect")
@@ -1495,7 +1498,11 @@ impl TermiRustApp {
                                             );
                                         })),
                                 )
-                                .child(Input::new(&self.shell_inputs.bulk_group).w(px(130.)))
+                                .child(
+                                    div().id("hosts-bulk-group-input-wrap").child(
+                                        Input::new(&self.shell_inputs.bulk_group).w(px(130.)),
+                                    ),
+                                )
                                 .child(
                                     Button::new("hosts-bulk-apply-group")
                                         .xsmall()

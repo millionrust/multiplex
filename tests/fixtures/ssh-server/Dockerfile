@@ -15,6 +15,11 @@ RUN adduser -D -s /bin/sh termirust \
 EXPOSE 22
 
 COPY entrypoint.sh /entrypoint.sh
+COPY id_ed25519.pub /tmp/id_ed25519.pub
+RUN cat /tmp/id_ed25519.pub >> /home/termirust/.ssh/authorized_keys \
+    && chown termirust:termirust /home/termirust/.ssh/authorized_keys \
+    && chmod 600 /home/termirust/.ssh/authorized_keys \
+    && rm /tmp/id_ed25519.pub
 RUN chmod +x /entrypoint.sh
 
 CMD ["/entrypoint.sh"]
