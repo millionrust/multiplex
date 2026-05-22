@@ -7,7 +7,8 @@ use gpui::{
     Point, SharedString, Stateful, StatefulInteractiveElement as _, Styled, TitlebarOptions,
     Window, WindowBounds, WindowOptions, div, point, px, size,
 };
-use gpui_component::{Icon, IconName, Root, StyledExt as _, h_flex, v_flex};
+use gpui_component::input::Input;
+use gpui_component::{Icon, IconName, Root, Sizable as _, StyledExt as _, h_flex, v_flex};
 
 use crate::ui::app::{
     NavSection, TermiRustApp, WorkspaceIndicators, WorkspaceTab, WorkspaceTabDrag,
@@ -92,6 +93,7 @@ impl TermiRustApp {
         let label: SharedString = label.into();
         h_flex()
             .id(id)
+            .flex_shrink_0()
             .gap(px(8.))
             .items_center()
             .pl(px(12.))
@@ -230,15 +232,6 @@ impl TermiRustApp {
                 "Duplicate in a new window",
                 move |this, window, cx| {
                     this.duplicate_workspace_in_new_window(workspace_id, window, cx);
-                },
-                cx,
-            ))
-            .child(self.workspace_tab_menu_item(
-                ("workspace-tab-menu-multiplayer", workspace_id),
-                IconName::User,
-                "Start multiplayer",
-                move |this, _, cx| {
-                    this.start_multiplayer_for_workspace(workspace_id, cx);
                 },
                 cx,
             ))
@@ -512,6 +505,7 @@ impl TermiRustApp {
     /// The three custom traffic lights, as an inline group for the chrome row.
     fn render_window_controls(&self, cx: &mut Context<Self>) -> Div {
         h_flex()
+            .flex_shrink_0()
             .gap(px(8.))
             .items_center()
             .pr(px(6.))
@@ -533,6 +527,33 @@ impl TermiRustApp {
                 |window| window.zoom_window(),
                 cx,
             ))
+    }
+
+    /// A workspace tab in rename mode: an inline text field in place of the
+    /// label. Enter commits and Esc cancels (handled in `handle_global_key`).
+    fn render_workspace_tab_rename(&self, workspace_id: u64) -> Stateful<Div> {
+        h_flex()
+            .id(("chrome-workspace-rename", workspace_id))
+            .flex_shrink_0()
+            .gap(px(6.))
+            .items_center()
+            .pl(px(10.))
+            .pr(px(6.))
+            .h(px(32.))
+            .rounded(px(6.))
+            .border_1()
+            .border_color(theme::accent())
+            .bg(theme::chrome_tab_active())
+            .child(
+                Icon::new(IconName::SquareTerminal)
+                    .size(px(14.))
+                    .text_color(theme::accent()),
+            )
+            .child(
+                div()
+                    .w(px(150.))
+                    .child(Input::new(&self.tab_rename_input).small()),
+            )
     }
 
     pub(super) fn render_top_chrome(&self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
@@ -591,97 +612,119 @@ impl TermiRustApp {
             .when(!self.workspaces.is_empty(), |this| {
                 this.child(
                     div()
+                        .flex_shrink_0()
                         .w(px(1.))
                         .h(px(20.))
                         .mx(px(4.))
                         .bg(theme::with_alpha(theme::text_muted_dark(), 0.2)),
                 )
             })
-            .children(self.workspaces.iter().map(|workspace| {
-                let workspace_id = workspace.id;
-                let close_id = workspace.id;
-                let active = self.active_workspace_id == Some(workspace.id);
-                let drag_info = WorkspaceTabDrag {
-                    workspace_id,
-                    title: workspace.title.clone(),
-                };
-                let indicators = self.workspace_indicators(workspace);
-                self.render_chrome_tab(
-                    ("chrome-workspace", workspace.id),
-                    Icon::new(IconName::SquareTerminal),
-                    workspace.title.clone(),
-                    active,
-                    Some(indicators),
-                    Some(
-                        div()
-                            .id(("chrome-close-wrap", workspace.id))
-                            .size(px(20.))
-                            .rounded(px(4.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .text_color(theme::text_muted_dark())
-                            .hover(|style| {
-                                style
-                                    .bg(theme::with_alpha(theme::text_muted_dark(), 0.15))
-                                    .text_color(theme::text_main())
+            .child(
+                h_flex()
+                    .id("chrome-tab-scroll")
+                    .track_scroll(&self.tab_strip_scroll)
+                    .overflow_x_scroll()
+                    .h_full()
+                    .min_w(px(0.))
+                    .gap(px(6.))
+                    .children(self.workspaces.iter().map(|workspace| {
+                        let workspace_id = workspace.id;
+                        if self.tab_rename_workspace_id == Some(workspace_id) {
+                            return self
+                                .render_workspace_tab_rename(workspace_id)
+                                .into_any_element();
+                        }
+                        let close_id = workspace.id;
+                        let active = self.active_workspace_id == Some(workspace.id);
+                        let drag_info = WorkspaceTabDrag {
+                            workspace_id,
+                            title: workspace.title.clone(),
+                        };
+                        let indicators = self.workspace_indicators(workspace);
+                        self.render_chrome_tab(
+                            ("chrome-workspace", workspace.id),
+                            Icon::new(IconName::SquareTerminal),
+                            workspace.title.clone(),
+                            active,
+                            Some(indicators),
+                            Some(
+                                div()
+                                    .id(("chrome-close-wrap", workspace.id))
+                                    .size(px(20.))
+                                    .rounded(px(4.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .cursor_pointer()
+                                    .text_color(theme::text_muted_dark())
+                                    .hover(|style| {
+                                        style
+                                            .bg(theme::with_alpha(theme::text_muted_dark(), 0.15))
+                                            .text_color(theme::text_main())
+                                    })
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.open_workspace_tab_menu = None;
+                                        this.close_workspace(close_id, cx);
+                                    }))
+                                    .child(Icon::new(IconName::Close).size(px(12.)))
+                                    .into_any_element(),
+                            ),
+                        )
+                        .on_drag(drag_info, |drag: &WorkspaceTabDrag, _, _, cx| {
+                            cx.stop_propagation();
+                            cx.new(|_| WorkspaceTabDragPreview {
+                                title: drag.title.clone(),
                             })
-                            .on_click(cx.listener(move |this, _, _, cx| {
+                        })
+                        .drag_over::<WorkspaceTabDrag>(move |style, drag, _, _| {
+                            if drag.workspace_id == workspace_id {
+                                style
+                            } else {
+                                style
+                                    .ml(px(2.))
+                                    .border_l_2()
+                                    .border_color(theme::accent())
+                                    .bg(theme::with_alpha(theme::accent(), 0.12))
+                            }
+                        })
+                        .on_drop(cx.listener(move |this, drag: &WorkspaceTabDrag, _, cx| {
+                            if drag.workspace_id != workspace_id {
+                                this.reorder_workspace_tabs(
+                                    drag.workspace_id,
+                                    Some(workspace_id),
+                                    false,
+                                );
+                                this.error_message.clear();
+                                cx.notify();
+                            }
+                        }))
+                        .cursor_grab()
+                        .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                            if event.is_right_click() {
+                                this.open_workspace_tab_context_menu(workspace_id, window, cx);
+                            } else if event.click_count() >= 2 {
                                 this.open_workspace_tab_menu = None;
-                                this.close_workspace(close_id, cx);
-                            }))
-                            .child(Icon::new(IconName::Close).size(px(12.)))
-                            .into_any_element(),
-                    ),
-                )
-                .on_drag(drag_info, |drag: &WorkspaceTabDrag, _, _, cx| {
-                    cx.stop_propagation();
-                    cx.new(|_| WorkspaceTabDragPreview {
-                        title: drag.title.clone(),
-                    })
-                })
-                .drag_over::<WorkspaceTabDrag>(move |style, drag, _, _| {
-                    if drag.workspace_id == workspace_id {
-                        style
-                    } else {
-                        style
-                            .ml(px(2.))
-                            .border_l_2()
-                            .border_color(theme::accent())
-                            .bg(theme::with_alpha(theme::accent(), 0.12))
-                    }
-                })
-                .on_drop(cx.listener(move |this, drag: &WorkspaceTabDrag, _, cx| {
-                    if drag.workspace_id != workspace_id {
-                        this.reorder_workspace_tabs(drag.workspace_id, Some(workspace_id), false);
-                        this.error_message.clear();
-                        cx.notify();
-                    }
-                }))
-                .cursor_grab()
-                .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                    if event.is_right_click() {
-                        this.open_workspace_tab_context_menu(workspace_id, window, cx);
-                    } else {
-                        this.open_workspace_tab_menu = None;
-                        this.activate_workspace(workspace_id, window, cx);
-                    }
-                }))
-                .on_mouse_down(
-                    MouseButton::Right,
-                    cx.listener(move |this, _, window, cx| {
-                        this.open_workspace_tab_context_menu(workspace_id, window, cx);
-                    }),
-                )
-                .into_any_element()
-            }))
+                                this.start_workspace_rename_for(workspace_id, window, cx);
+                            } else {
+                                this.open_workspace_tab_menu = None;
+                                this.activate_workspace(workspace_id, window, cx);
+                            }
+                        }))
+                        .on_mouse_down(
+                            MouseButton::Right,
+                            cx.listener(move |this, _, window, cx| {
+                                this.open_workspace_tab_context_menu(workspace_id, window, cx);
+                            }),
+                        )
+                        .into_any_element()
+                    })),
+            )
             .child(
                 div()
                     .id("chrome-workspace-drop-tail")
                     .h_full()
                     .flex_1()
-                    .min_w(px(24.))
+                    .min_w(px(80.))
                     .drag_over::<WorkspaceTabDrag>(|style, _, _, _| {
                         style.bg(theme::with_alpha(theme::accent(), 0.08))
                     })
@@ -692,20 +735,27 @@ impl TermiRustApp {
                     }))
                     .on_mouse_down(
                         MouseButton::Left,
-                        cx.listener(|this, event: &MouseDownEvent, window, cx| {
-                            if event.click_count >= 2 {
-                                this.open_workspace_tab_menu = None;
-                                this.open_local_terminal(window, cx);
-                            } else {
+                        cx.listener(|_, event: &MouseDownEvent, window, _| {
+                            // Only a plain single press starts a window drag;
+                            // a double-click is handled on click-up below so
+                            // the native drag loop doesn't swallow it.
+                            if event.click_count == 1 {
                                 crate::platform_mac::start_window_drag();
                                 window.start_window_move();
                             }
                         }),
-                    ),
+                    )
+                    .on_click(cx.listener(|this, event: &ClickEvent, window, cx| {
+                        if event.click_count() >= 2 {
+                            this.open_workspace_tab_menu = None;
+                            this.open_local_terminal(window, cx);
+                        }
+                    })),
             )
             .child(
                 div()
                     .id("chrome-local-btn")
+                    .flex_shrink_0()
                     .size(px(30.))
                     .rounded(px(7.))
                     .flex()
@@ -732,6 +782,7 @@ impl TermiRustApp {
             .child(
                 div()
                     .id("chrome-new-btn")
+                    .flex_shrink_0()
                     .size(px(30.))
                     .rounded(px(7.))
                     .flex()

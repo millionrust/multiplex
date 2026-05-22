@@ -873,6 +873,8 @@ pub struct TermiRustApp {
     settings_scroll: ScrollHandle,
     host_editor_scroll: ScrollHandle,
     hosts_list_scroll: ScrollHandle,
+    tab_strip_scroll: ScrollHandle,
+    tab_strip_scrolled_to: Option<u64>,
     _window_bounds_subscription: Option<Subscription>,
 }
 
@@ -991,6 +993,8 @@ impl TermiRustApp {
             settings_scroll: ScrollHandle::new(),
             host_editor_scroll: ScrollHandle::new(),
             hosts_list_scroll: ScrollHandle::new(),
+            tab_strip_scroll: ScrollHandle::new(),
+            tab_strip_scrolled_to: None,
             _window_bounds_subscription: None,
         };
 
@@ -8418,6 +8422,23 @@ impl TermiRustApp {
 
 impl Render for TermiRustApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // When the active workspace changes, scroll the tab strip so the
+        // active tab is visible. scroll_to_item keeps the request pending
+        // until the tab has layout bounds, so this also works for a tab
+        // created this very frame.
+        if self.active_workspace_id != self.tab_strip_scrolled_to {
+            self.tab_strip_scrolled_to = self.active_workspace_id;
+            if let Some(active_id) = self.active_workspace_id {
+                if let Some(index) = self
+                    .workspaces
+                    .iter()
+                    .position(|workspace| workspace.id == active_id)
+                {
+                    self.tab_strip_scroll.scroll_to_item(index);
+                }
+            }
+        }
+
         let content = if self.active_workspace_id.is_some() {
             self.render_workspace_shell(window, cx).into_any_element()
         } else {
