@@ -1,3 +1,4 @@
 .claude/settings.local.json
 /target
 .DS_Store
+.antigravitycli/
