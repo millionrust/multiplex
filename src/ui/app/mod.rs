@@ -9112,12 +9112,13 @@ fn apply_group_defaults_to_draft(
 #[cfg(test)]
 mod tests {
     use super::{
-        AutocompleteSource, ConnectDialogMode, ConnectProtocol, OutputSuggestionContext,
-        PathSuggestionContext, TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone,
-        WorkspaceViewMode, apply_group_defaults_to_draft, collect_autocomplete_candidates,
-        collect_command_palette_candidates, extract_snippet_prompt_names,
-        shell_command_requires_continuation, startup_bytes_for_request,
-        substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
+        AutocompleteSource, ConnectDialogMode, ConnectProtocol, NavSection,
+        OutputSuggestionContext, PathSuggestionContext, TermiRustApp, WorkspaceIndicators,
+        WorkspaceRuntimeTone, WorkspaceViewMode, apply_group_defaults_to_draft,
+        collect_autocomplete_candidates, collect_command_palette_candidates,
+        extract_snippet_prompt_names, shell_command_requires_continuation,
+        startup_bytes_for_request, substitute_snippet_placeholders, substitute_snippet_prompts,
+        workspace_runtime_summary,
     };
     use crate::credentials;
     use crate::models::{
@@ -11063,12 +11064,7 @@ mod tests {
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
-                    TermiRustApp::set_input_value(
-                        &app.inputs.label,
-                        "Broken Host",
-                        window,
-                        cx,
-                    );
+                    TermiRustApp::set_input_value(&app.inputs.label, "Broken Host", window, cx);
                     TermiRustApp::set_input_value(
                         &app.inputs.host,
                         "nonexistent.invalid.example",
@@ -11081,7 +11077,8 @@ mod tests {
             })
             .expect("window update should succeed");
 
-        let workspace_id = app.read_with(cx, |app, _| app.active_workspace_id)
+        let workspace_id = app
+            .read_with(cx, |app, _| app.active_workspace_id)
             .expect("workspace should exist");
 
         window
