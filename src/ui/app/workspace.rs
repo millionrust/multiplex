@@ -4,10 +4,10 @@
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, Context, Div, FontWeight, InteractiveElement as _, IntoElement, KeyDownEvent,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement, ScrollWheelEvent,
-    SharedString, Stateful, StatefulInteractiveElement as _, Styled, Window, div, point, px,
-    relative,
+    AnyElement, Context, CursorStyle, Div, DragMoveEvent, FontWeight, InteractiveElement as _,
+    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement, ScrollWheelEvent, SharedString, Stateful, StatefulInteractiveElement as _,
+    Styled, Window, div, px, relative,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
@@ -17,10 +17,10 @@ use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 use crate::models::ConnectionKind;
 use crate::terminal::{TerminalRow, TerminalStyle};
 use crate::ui::app::{
-    ConnectDialogMode, MAX_SPLIT_PANES, PANE_GAP, PANE_HEADER_HEIGHT, SearchMatch, SessionPane,
-    SplitAxis, TERMINAL_INNER_PADDING_X, TERMINAL_INNER_PADDING_Y, TERMINAL_LINE_HEIGHT,
-    TermiRustApp, WORKSPACE_AUTOCOMPLETE_HEIGHT, WORKSPACE_PADDING, WORKSPACE_SEARCH_ROW_HEIGHT,
-    WorkspaceViewMode, primary_shortcut_label,
+    ConnectDialogMode, DropZone, PANE_GAP, SearchMatch, SessionPane, SplitAxis,
+    TERMINAL_INNER_PADDING_X, TERMINAL_INNER_PADDING_Y, TERMINAL_LINE_HEIGHT, TermiRustApp,
+    WORKSPACE_AUTOCOMPLETE_HEIGHT, WORKSPACE_PADDING, WORKSPACE_SEARCH_ROW_HEIGHT,
+    WorkspaceTabDrag, WorkspaceViewMode, primary_shortcut_label,
 };
 use crate::ui::autocomplete::AutocompleteSource;
 use crate::ui::path::format_file_size;
@@ -672,228 +672,25 @@ impl TermiRustApp {
             .active_workspace()
             .map(|workspace| self.workspace_visible_matches(workspace, pane))
             .unwrap_or_default();
-
-        let is_active_pane = self.active_workspace().map(|w| w.active_pane_id) == Some(pane.id);
-        let workspace_broadcasting = self
-            .active_workspace()
-            .map(|workspace| workspace.broadcast_input && workspace.pane_ids.len() > 1)
-            .unwrap_or(false);
-        let host_color_tag = self
-            .saved
-            .profiles
-            .iter()
-            .find(|profile| {
-                profile.host == pane.request.host
-                    && profile.port == pane.request.port
-                    && profile.username == pane.request.username
-            })
-            .and_then(|profile| profile.color_tag);
-        let status_color = if pane.connected {
-            match host_color_tag {
-                Some(tag) => gpui::rgb(tag.rgb_hex()).into(),
-                None => theme::success(),
-            }
-        } else if pane.closed && pane.status == "Error" {
-            theme::danger()
-        } else if pane.closed {
-            theme::text_muted_dark()
-        } else {
-            theme::warning()
-        };
+        let drop_zone = self
+            .split_drop_target
+            .and_then(|(pid, zone)| (pid == pane.id).then_some(zone));
 
         v_flex()
             .id(("terminal-pane", pane.id))
-            .flex_1()
-            .rounded(px(10.))
-            .border_1()
-            .border_color(if is_active_pane {
-                theme::focus_ring()
-            } else {
-                theme::with_alpha(theme::border_dark(), 0.5)
-            })
-            .when(is_active_pane, |this| {
-                this.shadow(vec![gpui::BoxShadow {
-                    color: theme::pane_focus_glow(),
-                    offset: point(px(0.), px(0.)),
-                    blur_radius: px(12.),
-                    spread_radius: px(1.),
-                }])
-            })
+            .relative()
+            .size_full()
             .bg(theme::terminal_panel())
             .overflow_hidden()
-            .child(
-                h_flex()
-                    .h(px(PANE_HEADER_HEIGHT))
-                    .px(px(12.))
-                    .items_center()
-                    .justify_between()
-                    .bg(theme::chrome_bg())
-                    .border_b_1()
-                    .border_color(theme::with_alpha(theme::border_dark(), 0.6))
-                    .child(
-                        h_flex()
-                            .gap(px(8.))
-                            .items_center()
-                            .child(div().size(px(9.)).rounded(px(999.)).bg(status_color))
-                            .when(self.pane_rename_id == Some(pane.id), |this| {
-                                this.child(
-                                    h_flex()
-                                        .gap_2()
-                                        .items_center()
-                                        .child(
-                                            div()
-                                                .w(px(180.))
-                                                .child(Input::new(&self.pane_rename_input).small()),
-                                        )
-                                        .child(
-                                            Button::new(("pane-rename-save", pane.id))
-                                                .xsmall()
-                                                .custom(Self::action_button_style(
-                                                    theme::ActionTone::Accent,
-                                                    cx,
-                                                ))
-                                                .label("Save")
-                                                .on_click(cx.listener(|this, _, window, cx| {
-                                                    this.commit_pane_rename(window, cx);
-                                                })),
-                                        )
-                                        .child(
-                                            Button::new(("pane-rename-cancel", pane.id))
-                                                .xsmall()
-                                                .custom(Self::action_button_style(
-                                                    theme::ActionTone::Neutral,
-                                                    cx,
-                                                ))
-                                                .label("Cancel")
-                                                .on_click(cx.listener(|this, _, window, cx| {
-                                                    this.cancel_pane_rename(window, cx);
-                                                })),
-                                        ),
-                                )
-                            })
-                            .when(self.pane_rename_id != Some(pane.id), |this| {
-                                this.child(
-                                    div()
-                                        .id(("pane-title", pane.id))
-                                        .text_size(px(14.))
-                                        .font_medium()
-                                        .text_color(theme::text_on_dark())
-                                        .cursor_pointer()
-                                        .hover(|style| {
-                                            style.text_color(theme::with_alpha(
-                                                theme::accent(),
-                                                0.95,
-                                            ))
-                                        })
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.start_pane_rename(pane_id, window, cx);
-                                        }))
-                                        .child(pane.title.clone()),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(12.))
-                                        .text_color(theme::text_muted_dark())
-                                        .child(pane.endpoint.clone()),
-                                )
-                                .when(
-                                    workspace_broadcasting,
-                                    |this| {
-                                        this.child(self.status_badge(
-                                            "Broadcasting",
-                                            theme::with_alpha(theme::warning(), 0.18),
-                                            theme::warning(),
-                                        ))
-                                    },
-                                )
-                            }),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_1()
-                            .items_center()
-                            .when(pane.connected, |this| {
-                                this.child(
-                                    Button::new(("clear-pane", pane.id))
-                                        .ghost()
-                                        .xsmall()
-                                        .icon(IconName::Replace)
-                                        .tooltip("Clear screen and scrollback")
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.clear_pane_screen(pane_id, cx);
-                                        })),
-                                )
-                                .when(
-                                    self.active_workspace()
-                                        .map(|workspace| workspace.pane_ids.len() < MAX_SPLIT_PANES)
-                                        .unwrap_or(false),
-                                    |this| {
-                                        this.child(
-                                            Button::new(("duplicate-pane", pane.id))
-                                                .ghost()
-                                                .xsmall()
-                                                .icon(IconName::Copy)
-                                                .tooltip("Duplicate pane")
-                                                .on_click(cx.listener(
-                                                    move |this, _, window, cx| {
-                                                        this.duplicate_pane(pane_id, window, cx);
-                                                    },
-                                                )),
-                                        )
-                                    },
-                                )
-                                .when(
-                                    self.active_workspace()
-                                        .map(|workspace| workspace.pane_ids.len() > 1)
-                                        .unwrap_or(false),
-                                    |this| {
-                                        this.child(
-                                            Button::new(("detach-pane", pane.id))
-                                                .ghost()
-                                                .xsmall()
-                                                .icon(IconName::ExternalLink)
-                                                .tooltip("Detach into new tab")
-                                                .on_click(cx.listener(
-                                                    move |this, _, window, cx| {
-                                                        this.move_pane_to_new_workspace(
-                                                            pane_id, window, cx,
-                                                        );
-                                                    },
-                                                )),
-                                        )
-                                    },
-                                )
-                            })
-                            .when(pane.closed, |this| {
-                                this.child(
-                                    Button::new(("reconnect-pane", pane.id))
-                                        .ghost()
-                                        .xsmall()
-                                        .icon(IconName::Redo)
-                                        .label("Reconnect")
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.reconnect_pane(pane_id, window, cx);
-                                        })),
-                                )
-                            })
-                            .when(
-                                self.active_workspace()
-                                    .map(|workspace| workspace.pane_ids.len() > 1)
-                                    .unwrap_or(false),
-                                |this| {
-                                    this.child(
-                                        Button::new(("close-pane", pane.id))
-                                            .ghost()
-                                            .xsmall()
-                                            .icon(IconName::Close)
-                                            .tooltip("Close pane")
-                                            .on_click(cx.listener(move |this, _, _, cx| {
-                                                this.close_pane(pane_id, cx);
-                                            })),
-                                    )
-                                },
-                            ),
-                    ),
+            .on_drag_move(cx.listener(
+                move |this, event: &DragMoveEvent<WorkspaceTabDrag>, _, cx| {
+                    this.update_split_drop_target(pane_id, event, cx);
+                },
+            ))
+            .on_drop(
+                cx.listener(move |this, drag: &WorkspaceTabDrag, window, cx| {
+                    this.drop_tab_on_pane(drag.workspace_id, pane_id, window, cx);
+                }),
             )
             .child(
                 div()
@@ -956,6 +753,25 @@ impl TermiRustApp {
                             })),
                     ),
             )
+            .when_some(drop_zone, |this, zone| {
+                this.child(
+                    div()
+                        .absolute()
+                        .bg(theme::with_alpha(theme::accent(), 0.22))
+                        .border_2()
+                        .border_color(theme::accent())
+                        .map(|d| match zone {
+                            DropZone::Left => d.left(px(0.)).top(px(0.)).h_full().w(relative(0.5)),
+                            DropZone::Right => {
+                                d.right(px(0.)).top(px(0.)).h_full().w(relative(0.5))
+                            }
+                            DropZone::Top => d.top(px(0.)).left(px(0.)).w_full().h(relative(0.5)),
+                            DropZone::Bottom => {
+                                d.bottom(px(0.)).left(px(0.)).w_full().h(relative(0.5))
+                            }
+                        }),
+                )
+            })
     }
 
     fn render_workspace_body(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
@@ -1030,35 +846,42 @@ impl TermiRustApp {
                 });
         }
 
-        let panes = workspace
-            .pane_ids
-            .iter()
-            .filter_map(|pane_id| self.pane(*pane_id))
-            .map(|pane| {
-                self.render_terminal_pane(pane, window, cx)
-                    .into_any_element()
-            })
-            .collect::<Vec<_>>();
+        let workspace_id = workspace.id;
+        let axis = workspace.split_axis;
+        let pane_ids: Vec<u64> = workspace.pane_ids.clone();
+        let layouts = self.pane_layouts(window, cx);
+        let pane_count = pane_ids.len();
 
-        let gap = px(PANE_GAP);
-        let content = match workspace.split_axis {
-            SplitAxis::Horizontal => h_flex()
-                .flex_1()
-                .gap(gap)
-                .children(panes)
-                .into_any_element(),
-            SplitAxis::Vertical => v_flex()
-                .flex_1()
-                .gap(gap)
-                .children(panes)
-                .into_any_element(),
+        let mut children: Vec<AnyElement> = Vec::new();
+        for (index, pane_id) in pane_ids.iter().copied().enumerate() {
+            let Some(pane) = self.pane(pane_id) else {
+                continue;
+            };
+            let layout = layouts.iter().find(|layout| layout.pane_id == pane_id);
+            let pane_el = self.render_terminal_pane(pane, window, cx);
+            let sized = match axis {
+                SplitAxis::Horizontal => pane_el
+                    .h_full()
+                    .w(px(layout.map(|layout| layout.pane_width).unwrap_or(320.0))),
+                SplitAxis::Vertical => pane_el
+                    .w_full()
+                    .h(px(layout.map(|layout| layout.pane_height).unwrap_or(240.0))),
+            };
+            children.push(sized.into_any_element());
+            if index + 1 < pane_count {
+                children.push(
+                    self.render_pane_divider(workspace_id, index, axis, cx)
+                        .into_any_element(),
+                );
+            }
+        }
+
+        let content = match axis {
+            SplitAxis::Horizontal => h_flex().size_full().children(children).into_any_element(),
+            SplitAxis::Vertical => v_flex().size_full().children(children).into_any_element(),
         };
 
-        v_flex()
-            .flex_1()
-            .p(px(WORKSPACE_PADDING))
-            .bg(theme::terminal_bg())
-            .child(content)
+        v_flex().flex_1().bg(theme::terminal_bg()).child(content)
     }
 
     pub(super) fn render_workspace_shell(
@@ -1074,30 +897,15 @@ impl TermiRustApp {
         } else {
             self.render_workspace_body(window, cx)
         };
-        let body = if self.terminal_panel_visible {
-            div()
-                .flex()
-                .flex_row()
-                .flex_1()
-                .min_h_0()
-                .child(div().flex_1().min_w_0().child(content))
-                .child(self.render_terminal_side_panel(cx))
-                .into_any_element()
-        } else {
-            content.into_any_element()
-        };
-
         v_flex()
             .flex_1()
             .bg(theme::terminal_bg())
-            .child(self.render_workspace_toolbar(window, cx))
             .when_some(self.render_snippet_prompts_panel(cx), |this, panel| {
                 this.child(panel)
             })
             .when_some(self.render_paste_confirmation(cx), |this, banner| {
                 this.child(banner)
             })
-            .child(self.render_quick_actions_bar(window, cx))
             .when_some(self.render_workspace_search(window, cx), |this, search| {
                 this.child(search)
             })
@@ -1105,6 +913,99 @@ impl TermiRustApp {
                 self.render_workspace_autocomplete(window, cx),
                 |this, autocomplete| this.child(autocomplete),
             )
-            .child(body)
+            .child(content)
+    }
+
+    fn render_pane_divider(
+        &self,
+        workspace_id: u64,
+        index: usize,
+        axis: SplitAxis,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let active = self
+            .divider_drag
+            .is_some_and(|drag| drag.workspace_id == workspace_id && drag.index == index);
+        let grip = if active {
+            theme::accent()
+        } else {
+            theme::with_alpha(theme::text_muted_dark(), 0.45)
+        };
+        let base = div()
+            .id(("pane-divider", index as u64))
+            .flex()
+            .items_center()
+            .justify_center()
+            .hover(|style| style.bg(theme::with_alpha(theme::accent(), 0.12)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                    this.start_divider_drag(workspace_id, index, axis, event.position, window, cx);
+                }),
+            );
+        match axis {
+            SplitAxis::Horizontal => base
+                .w(px(PANE_GAP))
+                .h_full()
+                .cursor(CursorStyle::ResizeLeftRight)
+                .child(div().w(px(2.)).h(px(40.)).rounded(px(1.)).bg(grip)),
+            SplitAxis::Vertical => base
+                .h(px(PANE_GAP))
+                .w_full()
+                .cursor(CursorStyle::ResizeUpDown)
+                .child(div().h(px(2.)).w(px(40.)).rounded(px(1.)).bg(grip)),
+        }
+    }
+
+    fn update_split_drop_target(
+        &mut self,
+        pane_id: u64,
+        event: &DragMoveEvent<WorkspaceTabDrag>,
+        cx: &mut Context<Self>,
+    ) {
+        let source_workspace_id = event.drag(cx).workspace_id;
+        if self.workspace_id_for_pane(pane_id) == Some(source_workspace_id) {
+            if self.split_drop_target.is_some() {
+                self.split_drop_target = None;
+                cx.notify();
+            }
+            return;
+        }
+        let bounds = event.bounds;
+        let position = event.event.position;
+        let width = f32::from(bounds.size.width).max(1.0);
+        let height = f32::from(bounds.size.height).max(1.0);
+        let rx = (f32::from(position.x) - f32::from(bounds.origin.x)) / width - 0.5;
+        let ry = (f32::from(position.y) - f32::from(bounds.origin.y)) / height - 0.5;
+        let zone = if rx.abs() > ry.abs() {
+            if rx < 0.0 {
+                DropZone::Left
+            } else {
+                DropZone::Right
+            }
+        } else if ry < 0.0 {
+            DropZone::Top
+        } else {
+            DropZone::Bottom
+        };
+        let next = Some((pane_id, zone));
+        if self.split_drop_target != next {
+            self.split_drop_target = next;
+            cx.notify();
+        }
+    }
+
+    fn drop_tab_on_pane(
+        &mut self,
+        source_workspace_id: u64,
+        target_pane_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let zone = self
+            .split_drop_target
+            .and_then(|(pid, zone)| (pid == target_pane_id).then_some(zone))
+            .unwrap_or(DropZone::Right);
+        self.merge_tab_as_split(source_workspace_id, target_pane_id, zone, window, cx);
     }
 }

@@ -355,8 +355,12 @@ pub fn host_chip_color(label: &str) -> Hsla {
 }
 
 pub const HOST_SIDEBAR_WIDTH: f32 = 220.0;
-pub const CHROME_HEIGHT: f32 = 46.0;
-pub const CHROME_INSET_LEFT: f32 = 96.0;
+/// Slim strip across the top of the chrome that overlaps the macOS title-bar
+/// drag region — keeps the workspace tabs out of it so dragging a tab does not
+/// move the window.
+pub const CHROME_DRAG_STRIP: f32 = 30.0;
+pub const CHROME_TAB_ROW: f32 = 38.0;
+pub const CHROME_HEIGHT: f32 = CHROME_DRAG_STRIP + CHROME_TAB_ROW;
 pub const STATUS_HEIGHT: f32 = 28.0;
 pub const WORKSPACE_HEADER_HEIGHT: f32 = 48.0;
 pub const CARD_RADIUS: f32 = 14.0;

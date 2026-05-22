@@ -30,12 +30,14 @@ pub enum ToolbarMenu {
     Avatar,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum TerminalPanelTab {
-    Quick,
-    Snippets,
-    History,
-    Themes,
+/// Which half of a terminal pane a dragged tab is hovering over, deciding the
+/// split direction when it is dropped.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DropZone {
+    Left,
+    Right,
+    Top,
+    Bottom,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

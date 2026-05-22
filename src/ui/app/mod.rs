@@ -6,13 +6,11 @@ mod library;
 mod overlay;
 mod palette;
 mod sftp;
-mod terminal_panel;
-mod toolbar;
 mod types;
 mod workspace;
 
 pub(crate) use types::{
-    ConnectDialogMode, ConnectProtocol, EditorMenu, HostsSort, HostsViewMode, TerminalPanelTab,
+    ConnectDialogMode, ConnectProtocol, DropZone, EditorMenu, HostsSort, HostsViewMode,
     ToolbarMenu, WorkspaceRuntimeTone, WorkspaceViewMode,
 };
 
@@ -77,9 +75,7 @@ const TERMINAL_LINE_HEIGHT: f32 = 1.3;
 const WORKSPACE_SEARCH_ROW_HEIGHT: f32 = 52.0;
 const WORKSPACE_PADDING: f32 = 18.0;
 const PANE_GAP: f32 = 12.0;
-const PANE_HEADER_HEIGHT: f32 = 38.0;
 const WORKSPACE_AUTOCOMPLETE_HEIGHT: f32 = 56.0;
-const WORKSPACE_QUICK_ACTIONS_HEIGHT: f32 = 38.0;
 const TERMINAL_INNER_PADDING_X: f32 = 20.0;
 const TERMINAL_INNER_PADDING_Y: f32 = 14.0;
 const MAX_SPLIT_PANES: usize = 4;
@@ -195,6 +191,8 @@ struct PaneLayout {
     cell_y: f32,
     cell_width: f32,
     cell_height: f32,
+    pane_width: f32,
+    pane_height: f32,
     cols: u16,
     rows: u16,
     char_width: f32,
@@ -427,6 +425,8 @@ struct SessionPane {
     auto_reconnect_attempts: u8,
     auto_reconnect_at: Option<u64>,
     user_closed: bool,
+    /// Relative size of this pane within its workspace split (default 1.0).
+    split_weight: f32,
 }
 
 #[derive(Clone)]
@@ -481,6 +481,20 @@ struct WorkspaceTabDrag {
 
 struct WorkspaceTabDragPreview {
     title: String,
+}
+
+/// In-progress drag of a divider handle between two split panes.
+#[derive(Clone, Copy)]
+struct DividerDrag {
+    workspace_id: u64,
+    index: usize,
+    axis: SplitAxis,
+    origin: f32,
+    pane_a: u64,
+    pane_b: u64,
+    start_a_weight: f32,
+    start_b_weight: f32,
+    px_per_weight: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -599,8 +613,8 @@ pub struct TermiRustApp {
     sftp_local_path: std::path::PathBuf,
     sftp_show_host_picker: bool,
     sftp_local_filter_visible: bool,
-    terminal_panel_visible: bool,
-    terminal_panel_tab: TerminalPanelTab,
+    split_drop_target: Option<(u64, DropZone)>,
+    divider_drag: Option<DividerDrag>,
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
     open_workspace_tab_menu: Option<u64>,
@@ -715,8 +729,8 @@ impl TermiRustApp {
                 .unwrap_or_else(|_| std::path::PathBuf::from("/")),
             sftp_show_host_picker: false,
             sftp_local_filter_visible: false,
-            terminal_panel_visible: true,
-            terminal_panel_tab: TerminalPanelTab::Quick,
+            split_drop_target: None,
+            divider_drag: None,
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
             open_workspace_tab_menu: None,
@@ -4335,6 +4349,7 @@ impl TermiRustApp {
             auto_reconnect_attempts: 0,
             auto_reconnect_at: None,
             user_closed: false,
+            split_weight: 1.0,
         });
 
         let _ = window;
@@ -5171,64 +5186,65 @@ impl TermiRustApp {
         } else {
             WORKSPACE_AUTOCOMPLETE_HEIGHT
         };
-        let available_x = WORKSPACE_PADDING;
-        let available_y = theme::CHROME_HEIGHT
-            + theme::WORKSPACE_HEADER_HEIGHT
-            + WORKSPACE_QUICK_ACTIONS_HEIGHT
-            + search_height
-            + WORKSPACE_PADDING;
-        let available_width = (viewport_width - WORKSPACE_PADDING * 2.0).max(320.0);
-        let available_height = (viewport_height
-            - theme::CHROME_HEIGHT
-            - theme::WORKSPACE_HEADER_HEIGHT
-            - WORKSPACE_QUICK_ACTIONS_HEIGHT
-            - search_height
-            - autocomplete_height
-            - theme::STATUS_HEIGHT
-            - WORKSPACE_PADDING * 2.0)
-            .max(180.0);
+        let available_x: f32 = 0.0;
+        let available_y = theme::CHROME_HEIGHT + search_height;
+        let available_width = viewport_width.max(320.0);
+        let available_height =
+            (viewport_height - theme::CHROME_HEIGHT - search_height - autocomplete_height)
+                .max(180.0);
         let pane_count = workspace.pane_ids.len().max(1);
         let (char_width, line_height) = self.terminal_metrics(window, cx);
         let mut layouts = Vec::with_capacity(pane_count);
 
+        let weights: Vec<f32> = workspace
+            .pane_ids
+            .iter()
+            .map(|id| {
+                self.pane(*id)
+                    .map(|pane| pane.split_weight)
+                    .unwrap_or(1.0)
+                    .max(0.05)
+            })
+            .collect();
+        let total_weight: f32 = weights.iter().sum::<f32>().max(0.05);
+        let gaps = PANE_GAP * (pane_count as f32 - 1.0);
+        let usable_width = (available_width - gaps).max(120.0);
+        let usable_height = (available_height - gaps).max(120.0);
+        let mut cursor = match workspace.split_axis {
+            SplitAxis::Horizontal => available_x,
+            SplitAxis::Vertical => available_y,
+        };
+
         for (index, pane_id) in workspace.pane_ids.iter().copied().enumerate() {
+            let frac = weights.get(index).copied().unwrap_or(1.0) / total_weight;
             let (pane_width, pane_height, pane_x, pane_y) = match workspace.split_axis {
                 SplitAxis::Horizontal => {
-                    let width = ((available_width - PANE_GAP * (pane_count as f32 - 1.0))
-                        / pane_count as f32)
-                        .max(120.0);
-                    (
-                        width,
-                        available_height,
-                        available_x + index as f32 * (width + PANE_GAP),
-                        available_y,
-                    )
+                    let width = (usable_width * frac).max(80.0);
+                    let layout = (width, available_height, cursor, available_y);
+                    cursor += width + PANE_GAP;
+                    layout
                 }
                 SplitAxis::Vertical => {
-                    let height = ((available_height - PANE_GAP * (pane_count as f32 - 1.0))
-                        / pane_count as f32)
-                        .max(120.0);
-                    (
-                        available_width,
-                        height,
-                        available_x,
-                        available_y + index as f32 * (height + PANE_GAP),
-                    )
+                    let height = (usable_height * frac).max(80.0);
+                    let layout = (available_width, height, available_x, cursor);
+                    cursor += height + PANE_GAP;
+                    layout
                 }
             };
 
             let cell_width = (pane_width - TERMINAL_INNER_PADDING_X * 2.0).max(32.0);
-            let cell_height =
-                (pane_height - PANE_HEADER_HEIGHT - TERMINAL_INNER_PADDING_Y * 2.0).max(24.0);
+            let cell_height = (pane_height - TERMINAL_INNER_PADDING_Y * 2.0).max(24.0);
             let cols = (cell_width / char_width).floor().max(1.0) as u16;
             let rows = (cell_height / line_height).floor().max(1.0) as u16;
 
             layouts.push(PaneLayout {
                 pane_id,
                 cell_x: pane_x + TERMINAL_INNER_PADDING_X,
-                cell_y: pane_y + PANE_HEADER_HEIGHT + TERMINAL_INNER_PADDING_Y,
+                cell_y: pane_y + TERMINAL_INNER_PADDING_Y,
                 cell_width,
                 cell_height,
+                pane_width,
+                pane_height,
                 cols,
                 rows,
                 char_width,
@@ -5288,6 +5304,97 @@ impl TermiRustApp {
             .map(|workspace| workspace.id)
     }
 
+    /// Begin dragging the divider between split panes `index` and `index + 1`.
+    fn start_divider_drag(
+        &mut self,
+        workspace_id: u64,
+        index: usize,
+        axis: SplitAxis,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let layouts = self.pane_layouts(window, cx);
+        let Some(workspace) = self.workspace(workspace_id) else {
+            return;
+        };
+        if index + 1 >= workspace.pane_ids.len() {
+            return;
+        }
+        let pane_a = workspace.pane_ids[index];
+        let pane_b = workspace.pane_ids[index + 1];
+        let Some(layout_a) = layouts.iter().find(|layout| layout.pane_id == pane_a) else {
+            return;
+        };
+        let Some(layout_b) = layouts.iter().find(|layout| layout.pane_id == pane_b) else {
+            return;
+        };
+        let (a_px, b_px, origin) = match axis {
+            SplitAxis::Horizontal => (
+                layout_a.pane_width,
+                layout_b.pane_width,
+                f32::from(position.x),
+            ),
+            SplitAxis::Vertical => (
+                layout_a.pane_height,
+                layout_b.pane_height,
+                f32::from(position.y),
+            ),
+        };
+        let start_a_weight = self
+            .pane(pane_a)
+            .map(|pane| pane.split_weight)
+            .unwrap_or(1.0);
+        let start_b_weight = self
+            .pane(pane_b)
+            .map(|pane| pane.split_weight)
+            .unwrap_or(1.0);
+        let combined_px = (a_px + b_px).max(1.0);
+        let combined_weight = (start_a_weight + start_b_weight).max(0.05);
+        self.divider_drag = Some(DividerDrag {
+            workspace_id,
+            index,
+            axis,
+            origin,
+            pane_a,
+            pane_b,
+            start_a_weight,
+            start_b_weight,
+            px_per_weight: combined_px / combined_weight,
+        });
+        cx.notify();
+    }
+
+    fn handle_divider_drag_move(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let Some(drag) = self.divider_drag else {
+            return;
+        };
+        let pos = match drag.axis {
+            SplitAxis::Horizontal => f32::from(position.x),
+            SplitAxis::Vertical => f32::from(position.y),
+        };
+        let delta_weight = (pos - drag.origin) / drag.px_per_weight.max(0.01);
+        let combined = drag.start_a_weight + drag.start_b_weight;
+        let min = (combined * 0.12).max(0.05);
+        let new_a = (drag.start_a_weight + delta_weight).clamp(min, combined - min);
+        if let Some(pane) = self.pane_mut(drag.pane_a) {
+            pane.split_weight = new_a;
+        }
+        if let Some(pane) = self.pane_mut(drag.pane_b) {
+            pane.split_weight = combined - new_a;
+        }
+        cx.notify();
+    }
+
+    fn handle_divider_drag_end(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.divider_drag.take().is_none() {
+            return;
+        }
+        self.sync_terminal_layout(window, cx);
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
     fn send_input_bytes_broadcast(
         &mut self,
         pane_id: u64,
@@ -5331,6 +5438,93 @@ impl TermiRustApp {
         let _ = self.send_input_bytes(pane_id, bytes, cx);
         self.status_message = "Terminal cleared.".to_string();
         self.error_message.clear();
+        cx.notify();
+    }
+
+    /// Merge every pane from `source_workspace_id` into the workspace that owns
+    /// `target_pane_id`, as split panes. `zone` decides the split axis and
+    /// whether the merged panes land before or after the target pane.
+    fn merge_tab_as_split(
+        &mut self,
+        source_workspace_id: u64,
+        target_pane_id: u64,
+        zone: DropZone,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(target_workspace_id) = self.workspace_id_for_pane(target_pane_id) else {
+            return;
+        };
+        if source_workspace_id == target_workspace_id {
+            self.split_drop_target = None;
+            cx.notify();
+            return;
+        }
+        let Some(source_index) = self
+            .workspaces
+            .iter()
+            .position(|workspace| workspace.id == source_workspace_id)
+        else {
+            return;
+        };
+        let source_pane_ids = self.workspaces[source_index].pane_ids.clone();
+        if source_pane_ids.is_empty() {
+            return;
+        }
+        let target_len = self
+            .workspace(target_workspace_id)
+            .map(|workspace| workspace.pane_ids.len())
+            .unwrap_or(0);
+        if target_len + source_pane_ids.len() > MAX_SPLIT_PANES {
+            self.error_message = format!("Split panes are capped at {MAX_SPLIT_PANES} for now.");
+            self.split_drop_target = None;
+            cx.notify();
+            return;
+        }
+        let axis = match zone {
+            DropZone::Left | DropZone::Right => SplitAxis::Horizontal,
+            DropZone::Top | DropZone::Bottom => SplitAxis::Vertical,
+        };
+        // Drop the source workspace tab, but keep its panes alive — they are
+        // being re-parented into the target workspace, not closed.
+        self.workspaces
+            .retain(|workspace| workspace.id != source_workspace_id);
+        if let Some(target) = self.workspace_mut(target_workspace_id) {
+            let pos = target
+                .pane_ids
+                .iter()
+                .position(|id| *id == target_pane_id)
+                .unwrap_or(target.pane_ids.len());
+            let insert_at = match zone {
+                DropZone::Left | DropZone::Top => pos,
+                DropZone::Right | DropZone::Bottom => pos + 1,
+            };
+            for (offset, pane_id) in source_pane_ids.iter().enumerate() {
+                let at = (insert_at + offset).min(target.pane_ids.len());
+                target.pane_ids.insert(at, *pane_id);
+            }
+            target.split_axis = axis;
+            target.active_pane_id = source_pane_ids[0];
+            target.view_mode = WorkspaceViewMode::Terminal;
+        }
+        // Even out the split so every pane in the merged workspace shares space.
+        if let Some(target) = self.workspace(target_workspace_id) {
+            let pane_ids = target.pane_ids.clone();
+            for pane_id in pane_ids {
+                if let Some(pane) = self.pane_mut(pane_id) {
+                    pane.split_weight = 1.0;
+                }
+            }
+        }
+        self.active_workspace_id = Some(target_workspace_id);
+        self.split_drop_target = None;
+        self.status_message = "Merged tab into a split.".to_string();
+        self.error_message.clear();
+        self.sync_terminal_layout(window, cx);
+        if let Some(pane) = self.pane(source_pane_ids[0]) {
+            pane.terminal_focus.focus(window);
+        }
+        self.persist_runtime_state();
         cx.notify();
     }
 
@@ -5403,23 +5597,6 @@ impl TermiRustApp {
         }
         self.persist_runtime_state();
         cx.notify();
-    }
-
-    fn duplicate_pane(&mut self, pane_id: u64, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(workspace_id) = self.workspace_id_for_pane(pane_id) else {
-            return;
-        };
-        if let Some(workspace) = self.workspace_mut(workspace_id) {
-            workspace.active_pane_id = pane_id;
-        }
-        if self.active_workspace_id != Some(workspace_id) {
-            self.active_workspace_id = Some(workspace_id);
-        }
-        let axis = self
-            .workspace(workspace_id)
-            .map(|workspace| workspace.split_axis)
-            .unwrap_or(SplitAxis::Horizontal);
-        self.split_active_workspace(axis, window, cx);
     }
 
     fn duplicate_workspace_in_new_tab(
@@ -6186,6 +6363,9 @@ impl TermiRustApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.divider_drag.is_some() {
+            return;
+        }
         if self.pane_uses_mouse_reporting(pane_id) {
             if let Some(data) = self.mouse_report_bytes(
                 pane_id,
@@ -8067,109 +8247,27 @@ impl Render for TermiRustApp {
                     cx.stop_propagation();
                 }
             }))
+            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+                if this.divider_drag.is_some() {
+                    this.handle_divider_drag_move(event.position, cx);
+                }
+            }))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this, _: &MouseUpEvent, window, cx| {
+                    if this.divider_drag.is_some() {
+                        this.handle_divider_drag_end(window, cx);
+                    }
+                    if this.split_drop_target.take().is_some() {
+                        cx.notify();
+                    }
+                }),
+            )
             .child(
                 v_flex()
                     .size_full()
                     .child(self.render_top_chrome(window, cx))
-                    .child(div().flex_1().min_h_0().flex().flex_col().child(content))
-                    .child({
-                        let active_count = self.panes.iter().filter(|p| p.connected).count();
-                        let is_workspace = self.active_workspace_id.is_some();
-                        let muted_color = if is_workspace {
-                            theme::text_muted_dark()
-                        } else {
-                            theme::text_muted()
-                        };
-
-                        h_flex()
-                            .h(px(theme::STATUS_HEIGHT))
-                            .px(px(14.))
-                            .gap_2()
-                            .items_center()
-                            .justify_between()
-                            .bg(if is_workspace {
-                                theme::chrome_bg()
-                            } else {
-                                theme::library_sidebar()
-                            })
-                            .border_t_1()
-                            .border_color(if is_workspace {
-                                theme::border_dark()
-                            } else {
-                                theme::border()
-                            })
-                            .child(
-                                h_flex()
-                                    .gap(px(6.))
-                                    .items_center()
-                                    .when(!self.error_message.is_empty(), |this| {
-                                        this.child(
-                                            Icon::new(IconName::TriangleAlert)
-                                                .size(px(12.))
-                                                .text_color(theme::danger()),
-                                        )
-                                    })
-                                    .child(
-                                        div()
-                                            .text_size(px(13.))
-                                            .text_color(if !self.error_message.is_empty() {
-                                                theme::danger()
-                                            } else {
-                                                muted_color
-                                            })
-                                            .child(if !self.error_message.is_empty() {
-                                                self.error_message.clone()
-                                            } else {
-                                                self.status_message.clone()
-                                            }),
-                                    ),
-                            )
-                            .child(
-                                h_flex()
-                                    .gap(px(10.))
-                                    .items_center()
-                                    .child(
-                                        h_flex()
-                                            .gap(px(5.))
-                                            .items_center()
-                                            .when(active_count > 0, |this| {
-                                                this.child(
-                                                    div()
-                                                        .size(px(7.))
-                                                        .rounded(px(999.))
-                                                        .bg(theme::success()),
-                                                )
-                                            })
-                                            .child(
-                                                div()
-                                                    .text_size(px(12.))
-                                                    .text_color(muted_color)
-                                                    .child(format!(
-                                                        "{} {}",
-                                                        active_count,
-                                                        if active_count == 1 {
-                                                            "session"
-                                                        } else {
-                                                            "sessions"
-                                                        }
-                                                    )),
-                                            ),
-                                    )
-                                    .when(is_workspace, |this| {
-                                        this.child(
-                                            div()
-                                                .text_size(px(12.))
-                                                .text_color(theme::with_alpha(muted_color, 0.6))
-                                                .child(format!(
-                                                    "{}+F Search  {}+K Commands  {}+W Close",
-                                                    primary_shortcut_label(),
-                                                    primary_shortcut_label(),
-                                                    primary_shortcut_label()
-                                                )),
-                                        )
-                                    }),
-                            )
-                    }),
+                    .child(div().flex_1().min_h_0().flex().flex_col().child(content)),
             )
             .when(
                 self.show_editor_panel
@@ -8314,13 +8412,6 @@ impl TermiRustApp {
                     }
                 }
                 _ => {}
-            }
-        }
-
-        if !event.keystroke.modifiers.shift && event.keystroke.key.as_str() == "d" {
-            if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
-                self.duplicate_pane(pane_id, window, cx);
-                return true;
             }
         }
 
