@@ -384,7 +384,7 @@ impl TermiRustApp {
                 titlebar: Some(TitlebarOptions {
                     title: Some("TermiRust".into()),
                     appears_transparent: true,
-                    traffic_light_position: Some(point(px(12.), px(14.))),
+                    traffic_light_position: Some(point(px(12.), px(42.))),
                 }),
                 ..Default::default()
             },
@@ -436,7 +436,7 @@ impl TermiRustApp {
                     .h(px(theme::CHROME_TAB_ROW))
                     .w_full()
                     .relative()
-                    .pl(px(12.))
+                    .pl(px(80.))
                     .pr(px(12.))
                     .gap(px(6.))
                     .items_center()
