@@ -9014,10 +9014,11 @@ mod tests {
     };
     use crate::models::{
         AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, LocalPortForward,
-        PortForwardKind, PortForwardRule, SavedHostGroup, SavedIdentity, SavedState,
+        LocalShellConfig, PortForwardKind, PortForwardRule, SavedHostGroup, SavedIdentity,
+        SavedState, SplitAxis,
     };
     use crate::sftp::RemoteFileEntry;
-    use crate::test_support::{DockerSshServer, TestIsolation};
+    use crate::test_support::{DockerSshServer, TestIsolation, allocate_local_port};
     use crate::ui::shell::shell_single_quote;
     use crate::ui::util::format_relative_time_for;
     use gpui::{AppContext as _, Entity, TestAppContext, WindowHandle};
@@ -9046,13 +9047,16 @@ mod tests {
         }
     }
 
-    fn open_test_app(cx: &mut TestAppContext) -> (Entity<TermiRustApp>, WindowHandle<Root>) {
+    fn open_test_app_with_state(
+        cx: &mut TestAppContext,
+        initial_state: SavedState,
+    ) -> (Entity<TermiRustApp>, WindowHandle<Root>) {
         let mut app_entity = None;
         let window = cx.update(|cx| {
             gpui_component::init(cx);
             gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
             cx.open_window(Default::default(), |window, cx| {
-                let app = cx.new(|cx| TermiRustApp::new(SavedState::default(), window, cx));
+                let app = cx.new(|cx| TermiRustApp::new(initial_state.clone(), window, cx));
                 app_entity = Some(app.clone());
                 cx.new(|cx| Root::new(app, window, cx))
             })
@@ -9060,6 +9064,10 @@ mod tests {
         });
 
         (app_entity.expect("app entity should exist"), window)
+    }
+
+    fn open_test_app(cx: &mut TestAppContext) -> (Entity<TermiRustApp>, WindowHandle<Root>) {
+        open_test_app_with_state(cx, SavedState::default())
     }
 
     fn wait_for_app_state<R>(
@@ -9094,6 +9102,51 @@ mod tests {
                         .collect::<Vec<_>>()
                 });
                 panic!("timed out waiting for app state: {terminal_dump:#?}");
+            }
+
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
+    fn wait_for_window_app_state<R>(
+        cx: &mut TestAppContext,
+        window: WindowHandle<Root>,
+        app: &Entity<TermiRustApp>,
+        timeout: Duration,
+        mut check: impl FnMut(&mut TermiRustApp) -> Option<R>,
+    ) -> R {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let result = window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        app.process_events(cx);
+                        app.process_pending_auto_reconnects(window, cx);
+                        check(app)
+                    })
+                })
+                .expect("window update should succeed");
+            if let Some(result) = result {
+                return result;
+            }
+
+            if Instant::now() >= deadline {
+                let terminal_dump = app.read_with(cx, |app, _| {
+                    app.panes
+                        .iter()
+                        .map(|pane| {
+                            format!(
+                                "pane {} status={} connected={} closed={} rows={:?}",
+                                pane.id,
+                                pane.status,
+                                pane.connected,
+                                pane.closed,
+                                pane.terminal.all_rows_text()
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                });
+                panic!("timed out waiting for window app state: {terminal_dump:#?}");
             }
 
             std::thread::sleep(Duration::from_millis(25));
@@ -9765,5 +9818,225 @@ mod tests {
             log_status,
             Some(crate::models::SessionLogStatus::Disconnected)
         );
+    }
+
+    #[gpui::test]
+    fn e2e_local_shell_paste_confirmation_and_search(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            (pane.connected && !pane.closed).then_some(())
+        });
+
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+            "printf 'paste-cancelled\\n'\nprintf 'paste-cancelled-2\\n'\n".to_string(),
+        ));
+        app.update(cx, |app, cx| assert!(app.paste_to_active_pane(cx)));
+        app.update(cx, |app, cx| {
+            assert!(app.pending_paste.is_some());
+            app.cancel_pending_paste(cx);
+            assert!(app.pending_paste.is_none());
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(1), |app| {
+            let pane = app.pane(pane_id)?;
+            (!pane
+                .terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("paste-cancelled")))
+            .then_some(())
+        });
+
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+            "printf 'paste-confirmed\\n'\nprintf 'search-target\\n'\n".to_string(),
+        ));
+        app.update(cx, |app, cx| assert!(app.paste_to_active_pane(cx)));
+        app.update(cx, |app, cx| assert!(app.confirm_pending_paste(cx)));
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            let rows = pane.terminal.all_rows_text();
+            (rows.iter().any(|row| row.contains("paste-confirmed"))
+                && rows.iter().any(|row| row.contains("search-target")))
+            .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.toggle_workspace_search(window, cx);
+                    app.set_terminal_search_input("search-target", window, cx);
+                    app.refresh_workspace_search(workspace_id, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert!(workspace.search_visible);
+            assert_eq!(workspace.search_query, "search-target");
+            assert!(!workspace.search_results.is_empty());
+            assert_eq!(workspace.active_search_index, Some(0));
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_ssh_split_and_broadcast_reaches_all_panes(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping ssh split/broadcast e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let request = docker_ssh_request(&server);
+
+        let (workspace_id, first_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(first_pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("termirust-ui-ready"))
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.split_active_workspace(SplitAxis::Horizontal, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let pane_ids = wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            let ready = workspace.pane_ids.len() == 2
+                && workspace
+                    .pane_ids
+                    .iter()
+                    .all(|pane_id| app.pane(*pane_id).is_some_and(|pane| pane.connected));
+            ready.then_some(workspace.pane_ids.clone())
+        });
+        let second_pane_id = *pane_ids
+            .iter()
+            .find(|pane_id| **pane_id != first_pane_id)
+            .expect("split should create a second pane");
+
+        app.update(cx, |app, cx| {
+            app.toggle_workspace_broadcast(workspace_id, cx);
+            assert!(app.run_command_in_active_pane("printf 'broadcast-hit\\n'", "Sent.", cx));
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let first = app.pane(first_pane_id)?;
+            let second = app.pane(second_pane_id)?;
+            let rows_a = first.terminal.all_rows_text();
+            let rows_b = second.terminal.all_rows_text();
+            (rows_a.iter().any(|row| row.contains("broadcast-hit"))
+                && rows_b.iter().any(|row| row.contains("broadcast-hit")))
+            .then_some(())
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_ssh_auto_reconnect_recovers_after_server_restart(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping ssh auto-reconnect e2e: Docker is unavailable");
+            return;
+        }
+
+        let mut saved = SavedState::default();
+        saved.settings.auto_reconnect_attempts = 2;
+        saved.settings.auto_reconnect_delay_secs = 1;
+
+        let port = allocate_local_port();
+        let server = DockerSshServer::start_on_port(port)
+            .expect("unable to start initial docker ssh fixture");
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let request = ConnectRequest {
+            port,
+            ..docker_ssh_request(&server)
+        };
+
+        let (workspace_id, original_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(original_pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("termirust-ui-ready"))
+                .then_some(())
+        });
+
+        server.stop();
+
+        wait_for_window_app_state(cx, window, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(original_pane_id)?;
+            pane.status.starts_with("Reconnecting in 1s").then_some(())
+        });
+
+        let _replacement = DockerSshServer::start_on_port(port)
+            .expect("unable to restart docker ssh fixture on the same port");
+
+        let reconnected_pane_id =
+            wait_for_window_app_state(cx, window, &app, Duration::from_secs(15), |app| {
+                let workspace = app.workspace(workspace_id)?;
+                let pane_id = workspace.active_pane_id;
+                let pane = app.pane(pane_id)?;
+                (pane.connected
+                    && pane_id != original_pane_id
+                    && pane
+                        .terminal
+                        .all_rows_text()
+                        .iter()
+                        .any(|row| row.contains("termirust-ui-ready")))
+                .then_some(pane_id)
+            });
+
+        app.read_with(cx, |app, _| {
+            let pane = app
+                .pane(reconnected_pane_id)
+                .expect("reconnected pane should exist");
+            assert_eq!(pane.status, "Live");
+            assert_eq!(pane.auto_reconnect_attempts, 0);
+        });
     }
 }

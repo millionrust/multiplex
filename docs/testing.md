@@ -20,11 +20,15 @@ It runs:
 
 - `ssh::tests::docker_ssh_session_connects_and_streams_output`
 - `ui::app::tests::e2e_ssh_workspace_connects_renders_output_and_closes`
+- `ui::app::tests::e2e_ssh_split_and_broadcast_reaches_all_panes`
+- `ui::app::tests::e2e_ssh_auto_reconnect_recovers_after_server_restart`
+- `ui::app::tests::e2e_local_shell_paste_confirmation_and_search`
 
 Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH container, connect through the real `russh` session path, and verify both:
 
 - the raw SSH runtime can authenticate, stream output, and disconnect cleanly
-- the GPUI app can open a workspace, render terminal output, accept typed terminal input, and avoid auto-reconnecting after an explicit `exit`
+- the GPUI app can open a workspace, render terminal output, accept typed terminal input, split panes, broadcast commands, and auto-reconnect after a non-user disconnect
+- the local terminal path can confirm/cancel multi-line paste and drive workspace search against real terminal output
 
 If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests self-skip.
 

@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::Read;
-use std::net::{SocketAddr, TcpStream};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -111,6 +111,14 @@ impl DockerSshServer {
     }
 
     pub fn start() -> Result<Self, String> {
+        Self::start_with_port_mapping("127.0.0.1::22")
+    }
+
+    pub fn start_on_port(port: u16) -> Result<Self, String> {
+        Self::start_with_port_mapping(&format!("127.0.0.1:{port}:22"))
+    }
+
+    fn start_with_port_mapping(port_mapping: &str) -> Result<Self, String> {
         ensure_test_ssh_image()?;
 
         let container_name = format!("termirust-e2e-sshd-{}", unique_suffix());
@@ -123,7 +131,7 @@ impl DockerSshServer {
                 "--name",
                 &container_name,
                 "-p",
-                "127.0.0.1::22",
+                port_mapping,
                 TEST_SSH_IMAGE,
             ],
             None,
@@ -195,6 +203,14 @@ impl DockerSshServer {
             self.port, logs
         ))
     }
+}
+
+pub fn allocate_local_port() -> u16 {
+    TcpListener::bind(("127.0.0.1", 0))
+        .expect("unable to bind local test port")
+        .local_addr()
+        .expect("unable to read local test port")
+        .port()
 }
 
 impl Drop for DockerSshServer {
