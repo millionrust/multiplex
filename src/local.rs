@@ -186,6 +186,10 @@ fn build_command(shell: &LocalShellConfig) -> Result<CommandBuilder> {
     }
     if let Some(cwd) = shell.cwd.as_ref().filter(|cwd| !cwd.trim().is_empty()) {
         command.cwd(cwd);
+    } else if let Some(home) = dirs::home_dir() {
+        // Default to the user's home directory; otherwise the shell inherits
+        // the directory the app was launched from.
+        command.cwd(home);
     }
     Ok(command)
 }
