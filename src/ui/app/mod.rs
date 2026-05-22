@@ -22,7 +22,7 @@ use palette::{
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -876,6 +876,7 @@ pub struct TermiRustApp {
     hosts_list_scroll: ScrollHandle,
     tab_strip_scroll: ScrollHandle,
     tab_strip_scrolled_to: Option<u64>,
+    launched_at: Instant,
     _window_bounds_subscription: Option<Subscription>,
     _window_bounds_save_task: Option<Task<()>>,
 }
@@ -997,6 +998,7 @@ impl TermiRustApp {
             hosts_list_scroll: ScrollHandle::new(),
             tab_strip_scroll: ScrollHandle::new(),
             tab_strip_scrolled_to: None,
+            launched_at: Instant::now(),
             _window_bounds_subscription: None,
             _window_bounds_save_task: None,
         };
@@ -1035,6 +1037,20 @@ impl TermiRustApp {
                     break;
                 }
             }
+        })
+        .detach();
+
+        // One-shot capture once the window has settled, so its frame and
+        // display id are recorded even if the user never moves the window.
+        cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(1500))
+                .await;
+            let _ = cx.update(|window, cx| {
+                let _ = this.update(cx, |app, cx| {
+                    app.persist_window_bounds(window, cx);
+                });
+            });
         })
         .detach();
 
@@ -3864,20 +3880,21 @@ impl TermiRustApp {
         }
     }
 
-    /// Capture the current window frame and schedule a debounced save, so the
-    /// stream of resize/move events doesn't thrash `state.json`. The bounds are
-    /// reapplied on the next launch (see `main.rs`).
+    /// Capture the current window frame and the display it's on, then schedule
+    /// a debounced save so the stream of resize/move events doesn't thrash
+    /// `state.json`. The frame is reapplied on the next launch (see `main.rs`).
     fn persist_window_bounds(&mut self, window: &Window, cx: &mut Context<Self>) {
-        let frame = match window.window_bounds() {
-            WindowBounds::Windowed(bounds)
-            | WindowBounds::Maximized(bounds)
-            | WindowBounds::Fullscreen(bounds) => bounds,
-        };
+        // Ignore the unsettled bounds reported while the window is opening.
+        if self.launched_at.elapsed() < Duration::from_millis(1200) {
+            return;
+        }
+        let frame = window.bounds();
         let bounds = SavedWindowBounds {
             x: f32::from(frame.origin.x),
             y: f32::from(frame.origin.y),
             width: f32::from(frame.size.width),
             height: f32::from(frame.size.height),
+            display_id: window.display(cx).map(|display| display.id().into()),
         };
         if self.saved.window_bounds == Some(bounds) {
             return;

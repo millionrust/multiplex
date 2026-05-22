@@ -16,64 +16,99 @@ use crate::models::SavedWindowBounds;
 use crate::storage::{load_local_ssh_hosts, load_saved_state};
 use crate::ui::TermiRustApp;
 
-/// Resolve the bounds to open the window at. Restores the last saved frame,
-/// but only if it still lands on a connected display — and clamps it fully
-/// on-screen so a saved position can never strand the window off the visible
-/// area (e.g. after a monitor is disconnected or rearranged). Falls back to
-/// centered on the primary display.
-fn restored_window_bounds(saved: Option<SavedWindowBounds>, cx: &App) -> Bounds<Pixels> {
-    let fallback = || Bounds::centered(None, size(px(1480.), px(960.)), cx);
+/// Resolve the bounds and display to open the window at. Restores the last
+/// saved frame on the display it was saved on; if that display is no longer
+/// connected, the saved coordinates are meaningless, so it centers on the
+/// primary display instead.
+fn restored_window_bounds(
+    saved: Option<SavedWindowBounds>,
+    cx: &App,
+) -> (Bounds<Pixels>, Option<DisplayId>) {
+    let centered = || (Bounds::centered(None, size(px(1480.), px(960.)), cx), None);
+
+    for display in cx.displays() {
+        let b = display.bounds();
+        eprintln!(
+            "[main] display id={} origin=({:.0},{:.0}) size=({:.0}x{:.0})",
+            u32::from(display.id()),
+            f32::from(b.origin.x),
+            f32::from(b.origin.y),
+            f32::from(b.size.width),
+            f32::from(b.size.height),
+        );
+    }
+    eprintln!(
+        "[main] primary display id={:?}",
+        cx.primary_display().map(|d| u32::from(d.id()))
+    );
+    eprintln!("[main] saved window_bounds = {saved:?}");
 
     let Some(saved) = saved else {
-        return fallback();
+        return centered();
     };
     if saved.width < 200.0 || saved.height < 200.0 {
-        return fallback();
+        return centered();
     }
 
-    let (wx, wy) = (saved.x, saved.y);
-    let (mut ww, mut wh) = (saved.width, saved.height);
-
-    // Area of the saved window that overlaps a display rect.
-    let overlap = |dx: f32, dy: f32, dw: f32, dh: f32| -> f32 {
-        let ix = (wx + ww).min(dx + dw) - wx.max(dx);
-        let iy = (wy + wh).min(dy + dh) - wy.max(dy);
-        if ix > 0.0 && iy > 0.0 { ix * iy } else { 0.0 }
+    // Re-bind the saved display by id. macOS needs the display passed
+    // explicitly, otherwise a position on a secondary monitor is mis-mapped
+    // onto the primary one. If the display is gone, center instead.
+    let display_id = match saved.display_id {
+        Some(saved_id) => {
+            match cx
+                .displays()
+                .into_iter()
+                .find(|display| u32::from(display.id()) == saved_id)
+            {
+                Some(display) => Some(display.id()),
+                None => return centered(),
+            }
+        }
+        None => None,
     };
 
-    // Pick the display the saved window overlaps the most.
-    let display = cx
-        .displays()
-        .into_iter()
-        .map(|display| {
-            let bounds = display.bounds();
-            (
-                f32::from(bounds.origin.x),
-                f32::from(bounds.origin.y),
-                f32::from(bounds.size.width),
-                f32::from(bounds.size.height),
-            )
-        })
-        .filter(|&(dx, dy, dw, dh)| overlap(dx, dy, dw, dh) > 0.0)
-        .max_by(|a, b| overlap(a.0, a.1, a.2, a.3).total_cmp(&overlap(b.0, b.1, b.2, b.3)));
+    let bounds = Bounds::new(
+        point(px(saved.x), px(saved.y)),
+        size(px(saved.width), px(saved.height)),
+    );
+    eprintln!("[main] restoring at {bounds:?} display_id={display_id:?}");
+    (bounds, display_id)
+}
 
-    let Some((dx, dy, dw, dh)) = display else {
-        return fallback();
+/// Redirect stderr — every `eprintln!` line and panic backtrace — to a log
+/// file in the app data directory, so logs are available without a terminal.
+/// The file is truncated on each launch.
+fn init_file_logging() {
+    let Some(data_dir) = dirs::data_dir() else {
+        return;
     };
-
-    // Shrink to fit the display, then clamp the window fully on-screen.
-    ww = ww.min(dw);
-    wh = wh.min(dh);
-    let x = wx.clamp(dx, dx + dw - ww);
-    let y = wy.clamp(dy, dy + dh - wh);
-
-    Bounds {
-        origin: point(px(x), px(y)),
-        size: size(px(ww), px(wh)),
+    let log_dir = data_dir.join("termirust");
+    if std::fs::create_dir_all(&log_dir).is_err() {
+        return;
     }
+    let log_path = log_dir.join("termirust.log");
+    let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&log_path)
+    else {
+        return;
+    };
+    eprintln!("[main] logging to {}", log_path.display());
+    // Point fd 2 at the log file; all eprintln! output follows it from here.
+    unsafe {
+        libc::dup2(
+            std::os::fd::AsRawFd::as_raw_fd(&file),
+            libc::STDERR_FILENO,
+        );
+    }
+    std::mem::forget(file);
 }
 
 fn main() {
+    init_file_logging();
+
     std::panic::set_hook(Box::new(|info| {
         eprintln!("=== PANIC ===");
         eprintln!("{info}");
@@ -102,11 +137,13 @@ fn main() {
         gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
 
         let initial_state = saved_state.clone();
-        let bounds = restored_window_bounds(saved_state.window_bounds, cx);
+        let (bounds, restore_display_id) =
+            restored_window_bounds(saved_state.window_bounds, cx);
 
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
+                display_id: restore_display_id,
                 titlebar: Some(TitlebarOptions {
                     title: Some("TermiRust".into()),
                     appears_transparent: true,

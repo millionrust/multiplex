@@ -6959,6 +6959,7 @@ dependencies = [
  "gpui",
  "gpui-component",
  "keyring",
+ "libc",
  "objc",
  "portable-pty",
  "rand 0.8.5",

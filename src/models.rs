@@ -889,14 +889,16 @@ impl SavedIdentity {
     }
 }
 
-/// Persisted window frame (global coordinates), so the app reopens where the
-/// user last left it.
+/// Persisted window frame (global coordinates) plus the display it was on, so
+/// the app reopens where the user last left it — including the right monitor.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SavedWindowBounds {
     pub x: f32,
     pub y: f32,
     pub width: f32,
     pub height: f32,
+    #[serde(default)]
+    pub display_id: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
