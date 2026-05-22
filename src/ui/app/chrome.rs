@@ -554,15 +554,12 @@ impl TermiRustApp {
             .on_click(cx.listener(move |_, _, window, _| action(window)))
     }
 
-    /// The slim top band — holds the custom traffic lights and is the
-    /// window-drag handle (the macOS title-bar zone).
+    /// The three custom traffic lights, as an inline group for the chrome row.
     fn render_window_controls(&self, cx: &mut Context<Self>) -> Div {
         h_flex()
-            .h(px(theme::CHROME_DRAG_STRIP))
-            .w_full()
-            .pl(px(13.))
             .gap(px(8.))
             .items_center()
+            .pr(px(6.))
             .child(self.window_control_button(
                 "window-close",
                 gpui::rgb(0xff5f57).into(),
@@ -586,227 +583,222 @@ impl TermiRustApp {
     pub(super) fn render_top_chrome(&self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let library_active = self.active_workspace_id.is_none();
 
-        v_flex()
+        h_flex()
+            .h(px(theme::CHROME_HEIGHT))
             .w_full()
+            .relative()
+            .pl(px(13.))
+            .pr(px(12.))
+            .gap(px(6.))
+            .items_center()
             .bg(theme::chrome_bg())
             .border_b_1()
             .border_color(theme::with_alpha(theme::border_dark(), 0.5))
             .child(self.render_window_controls(cx))
             .child(
-                h_flex()
-                    .h(px(theme::CHROME_TAB_ROW))
-                    .w_full()
-                    .relative()
-                    .pl(px(12.))
-                    .pr(px(12.))
-                    .gap(px(6.))
-                    .items_center()
-                    .child(
-                        self.render_chrome_tab(
-                            "chrome-hosts",
-                            Icon::new(IconName::Globe),
-                            "Hosts",
-                            library_active && self.nav_section != NavSection::Sftp,
-                            None,
-                            None,
-                        )
-                        .cursor_pointer()
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_workspace_tab_menu = None;
-                            this.activate_library(window, cx);
-                        })),
-                    )
-                    .child(
-                        self.render_chrome_tab(
-                            "chrome-sftp",
-                            Icon::new(IconName::Folder),
-                            "SFTP",
-                            library_active && self.nav_section == NavSection::Sftp,
-                            None,
-                            None,
-                        )
-                        .cursor_pointer()
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_workspace_tab_menu = None;
-                            let active = this
-                                .active_workspace_id
-                                .and_then(|wid| this.workspaces.iter().find(|w| w.id == wid))
-                                .and_then(|w| Some((w.id, w.active_pane_id)));
-                            if let Some((wid, pid)) = active {
-                                this.open_workspace_files_for_pane(wid, pid, cx);
-                            } else {
-                                this.activate_library_section(NavSection::Sftp, window, cx);
-                            }
-                        })),
-                    )
-                    .when(!self.workspaces.is_empty(), |this| {
-                        this.child(
-                            div()
-                                .w(px(1.))
-                                .h(px(20.))
-                                .mx(px(4.))
-                                .bg(theme::with_alpha(theme::text_muted_dark(), 0.2)),
-                        )
-                    })
-                    .children(self.workspaces.iter().map(|workspace| {
-                        let workspace_id = workspace.id;
-                        let close_id = workspace.id;
-                        let active = self.active_workspace_id == Some(workspace.id);
-                        let drag_info = WorkspaceTabDrag {
-                            workspace_id,
-                            title: workspace.title.clone(),
-                        };
-                        let indicators = self.workspace_indicators(workspace);
-                        self.render_chrome_tab(
-                            ("chrome-workspace", workspace.id),
-                            Icon::new(IconName::SquareTerminal),
-                            workspace.title.clone(),
-                            active,
-                            Some(indicators),
-                            Some(
-                                div()
-                                    .id(("chrome-close-wrap", workspace.id))
-                                    .size(px(20.))
-                                    .rounded(px(4.))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .cursor_pointer()
-                                    .text_color(theme::text_muted_dark())
-                                    .hover(|style| {
-                                        style
-                                            .bg(theme::with_alpha(theme::text_muted_dark(), 0.15))
-                                            .text_color(theme::text_main())
-                                    })
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.open_workspace_tab_menu = None;
-                                        this.close_workspace(close_id, cx);
-                                    }))
-                                    .child(Icon::new(IconName::Close).size(px(12.)))
-                                    .into_any_element(),
-                            ),
-                        )
-                        .on_drag(drag_info, |drag: &WorkspaceTabDrag, _, _, cx| {
-                            cx.stop_propagation();
-                            cx.new(|_| WorkspaceTabDragPreview {
-                                title: drag.title.clone(),
-                            })
-                        })
-                        .drag_over::<WorkspaceTabDrag>(move |style, drag, _, _| {
-                            if drag.workspace_id == workspace_id {
-                                style
-                            } else {
-                                style
-                                    .ml(px(2.))
-                                    .border_l_2()
-                                    .border_color(theme::accent())
-                                    .bg(theme::with_alpha(theme::accent(), 0.12))
-                            }
-                        })
-                        .on_drop(cx.listener(move |this, drag: &WorkspaceTabDrag, _, cx| {
-                            if drag.workspace_id != workspace_id {
-                                this.reorder_workspace_tabs(
-                                    drag.workspace_id,
-                                    Some(workspace_id),
-                                    false,
-                                );
-                                this.error_message.clear();
-                                cx.notify();
-                            }
-                        }))
-                        .cursor_grab()
-                        .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
-                            if event.is_right_click() {
-                                this.open_workspace_tab_context_menu(workspace_id, window, cx);
-                            } else {
-                                this.open_workspace_tab_menu = None;
-                                this.activate_workspace(workspace_id, window, cx);
-                            }
-                        }))
-                        .on_mouse_down(
-                            MouseButton::Right,
-                            cx.listener(move |this, _, window, cx| {
-                                this.open_workspace_tab_context_menu(workspace_id, window, cx);
-                            }),
-                        )
-                        .into_any_element()
-                    }))
-                    .child(
+                self.render_chrome_tab(
+                    "chrome-hosts",
+                    Icon::new(IconName::Globe),
+                    "Hosts",
+                    library_active && self.nav_section != NavSection::Sftp,
+                    None,
+                    None,
+                )
+                .cursor_pointer()
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.open_workspace_tab_menu = None;
+                    this.activate_library(window, cx);
+                })),
+            )
+            .child(
+                self.render_chrome_tab(
+                    "chrome-sftp",
+                    Icon::new(IconName::Folder),
+                    "SFTP",
+                    library_active && self.nav_section == NavSection::Sftp,
+                    None,
+                    None,
+                )
+                .cursor_pointer()
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.open_workspace_tab_menu = None;
+                    let active = this
+                        .active_workspace_id
+                        .and_then(|wid| this.workspaces.iter().find(|w| w.id == wid))
+                        .and_then(|w| Some((w.id, w.active_pane_id)));
+                    if let Some((wid, pid)) = active {
+                        this.open_workspace_files_for_pane(wid, pid, cx);
+                    } else {
+                        this.activate_library_section(NavSection::Sftp, window, cx);
+                    }
+                })),
+            )
+            .when(!self.workspaces.is_empty(), |this| {
+                this.child(
+                    div()
+                        .w(px(1.))
+                        .h(px(20.))
+                        .mx(px(4.))
+                        .bg(theme::with_alpha(theme::text_muted_dark(), 0.2)),
+                )
+            })
+            .children(self.workspaces.iter().map(|workspace| {
+                let workspace_id = workspace.id;
+                let close_id = workspace.id;
+                let active = self.active_workspace_id == Some(workspace.id);
+                let drag_info = WorkspaceTabDrag {
+                    workspace_id,
+                    title: workspace.title.clone(),
+                };
+                let indicators = self.workspace_indicators(workspace);
+                self.render_chrome_tab(
+                    ("chrome-workspace", workspace.id),
+                    Icon::new(IconName::SquareTerminal),
+                    workspace.title.clone(),
+                    active,
+                    Some(indicators),
+                    Some(
                         div()
-                            .id("chrome-workspace-drop-tail")
-                            .h_full()
-                            .flex_1()
-                            .min_w(px(24.))
-                            .drag_over::<WorkspaceTabDrag>(|style, _, _, _| {
-                                style.bg(theme::with_alpha(theme::accent(), 0.08))
-                            })
-                            .on_drop(cx.listener(|this, drag: &WorkspaceTabDrag, _, cx| {
-                                this.reorder_workspace_tabs(drag.workspace_id, None, true);
-                                this.error_message.clear();
-                                cx.notify();
-                            }))
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(|this, event: &MouseDownEvent, window, cx| {
-                                    if event.click_count == 2 {
-                                        this.open_workspace_tab_menu = None;
-                                        this.open_local_terminal(window, cx);
-                                    }
-                                }),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .id("chrome-local-btn")
-                            .size(px(30.))
-                            .rounded(px(7.))
+                            .id(("chrome-close-wrap", workspace.id))
+                            .size(px(20.))
+                            .rounded(px(4.))
                             .flex()
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
-                            .border_1()
-                            .border_color(theme::with_alpha(theme::text_muted_dark(), 0.15))
+                            .text_color(theme::text_muted_dark())
                             .hover(|style| {
                                 style
-                                    .bg(theme::chrome_tab())
-                                    .border_color(theme::with_alpha(theme::text_muted_dark(), 0.3))
+                                    .bg(theme::with_alpha(theme::text_muted_dark(), 0.15))
+                                    .text_color(theme::text_main())
                             })
-                            .on_click(cx.listener(|this, _, window, cx| {
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.open_workspace_tab_menu = None;
+                                this.close_workspace(close_id, cx);
+                            }))
+                            .child(Icon::new(IconName::Close).size(px(12.)))
+                            .into_any_element(),
+                    ),
+                )
+                .on_drag(drag_info, |drag: &WorkspaceTabDrag, _, _, cx| {
+                    cx.stop_propagation();
+                    cx.new(|_| WorkspaceTabDragPreview {
+                        title: drag.title.clone(),
+                    })
+                })
+                .drag_over::<WorkspaceTabDrag>(move |style, drag, _, _| {
+                    if drag.workspace_id == workspace_id {
+                        style
+                    } else {
+                        style
+                            .ml(px(2.))
+                            .border_l_2()
+                            .border_color(theme::accent())
+                            .bg(theme::with_alpha(theme::accent(), 0.12))
+                    }
+                })
+                .on_drop(cx.listener(move |this, drag: &WorkspaceTabDrag, _, cx| {
+                    if drag.workspace_id != workspace_id {
+                        this.reorder_workspace_tabs(drag.workspace_id, Some(workspace_id), false);
+                        this.error_message.clear();
+                        cx.notify();
+                    }
+                }))
+                .cursor_grab()
+                .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                    if event.is_right_click() {
+                        this.open_workspace_tab_context_menu(workspace_id, window, cx);
+                    } else {
+                        this.open_workspace_tab_menu = None;
+                        this.activate_workspace(workspace_id, window, cx);
+                    }
+                }))
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |this, _, window, cx| {
+                        this.open_workspace_tab_context_menu(workspace_id, window, cx);
+                    }),
+                )
+                .into_any_element()
+            }))
+            .child(
+                div()
+                    .id("chrome-workspace-drop-tail")
+                    .h_full()
+                    .flex_1()
+                    .min_w(px(24.))
+                    .drag_over::<WorkspaceTabDrag>(|style, _, _, _| {
+                        style.bg(theme::with_alpha(theme::accent(), 0.08))
+                    })
+                    .on_drop(cx.listener(|this, drag: &WorkspaceTabDrag, _, cx| {
+                        this.reorder_workspace_tabs(drag.workspace_id, None, true);
+                        this.error_message.clear();
+                        cx.notify();
+                    }))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                            if event.click_count >= 2 {
                                 this.open_workspace_tab_menu = None;
                                 this.open_local_terminal(window, cx);
-                            }))
-                            .child(
-                                Icon::new(IconName::SquareTerminal)
-                                    .size(px(14.))
-                                    .text_color(theme::text_muted_dark()),
-                            ),
-                    )
+                            } else {
+                                crate::platform_mac::start_window_drag();
+                                window.start_window_move();
+                            }
+                        }),
+                    ),
+            )
+            .child(
+                div()
+                    .id("chrome-local-btn")
+                    .size(px(30.))
+                    .rounded(px(7.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .border_1()
+                    .border_color(theme::with_alpha(theme::text_muted_dark(), 0.15))
+                    .hover(|style| {
+                        style
+                            .bg(theme::chrome_tab())
+                            .border_color(theme::with_alpha(theme::text_muted_dark(), 0.3))
+                    })
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_workspace_tab_menu = None;
+                        this.open_local_terminal(window, cx);
+                    }))
                     .child(
-                        div()
-                            .id("chrome-new-btn")
-                            .size(px(30.))
-                            .rounded(px(7.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .border_1()
-                            .border_color(theme::with_alpha(theme::text_muted_dark(), 0.15))
-                            .hover(|style| {
-                                style
-                                    .bg(theme::chrome_tab())
-                                    .border_color(theme::with_alpha(theme::text_muted_dark(), 0.3))
-                            })
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_workspace_tab_menu = None;
-                                this.activate_library(window, cx);
-                                this.open_editor_for_new_host(window, cx);
-                            }))
-                            .child(
-                                Icon::new(IconName::Plus)
-                                    .size(px(14.))
-                                    .text_color(theme::text_muted_dark()),
-                            ),
+                        Icon::new(IconName::SquareTerminal)
+                            .size(px(14.))
+                            .text_color(theme::text_muted_dark()),
+                    ),
+            )
+            .child(
+                div()
+                    .id("chrome-new-btn")
+                    .size(px(30.))
+                    .rounded(px(7.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .border_1()
+                    .border_color(theme::with_alpha(theme::text_muted_dark(), 0.15))
+                    .hover(|style| {
+                        style
+                            .bg(theme::chrome_tab())
+                            .border_color(theme::with_alpha(theme::text_muted_dark(), 0.3))
+                    })
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_workspace_tab_menu = None;
+                        this.activate_library(window, cx);
+                        this.open_editor_for_new_host(window, cx);
+                    }))
+                    .child(
+                        Icon::new(IconName::Plus)
+                            .size(px(14.))
+                            .text_color(theme::text_muted_dark()),
                     ),
             )
     }

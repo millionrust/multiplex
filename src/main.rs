@@ -2,6 +2,7 @@ mod assets;
 mod credentials;
 mod local;
 mod models;
+mod platform_mac;
 mod sftp;
 mod ssh;
 mod storage;
@@ -62,6 +63,10 @@ fn main() {
             },
         )
         .unwrap();
+
+        // Take ownership of window dragging from the OS so the chrome tabs
+        // (which sit in the title-bar zone) stay draggable.
+        crate::platform_mac::disable_titlebar_window_drag();
 
         cx.activate(true);
     });
