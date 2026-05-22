@@ -19,12 +19,10 @@ use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 use crate::models::ConnectionKind;
 use crate::terminal::{TerminalRow, TerminalStyle};
 use crate::ui::app::{
-    ConnectDialogMode, DropZone, PANE_GAP, SearchMatch, SessionPane, SplitAxis,
+    ConnectDialogMode, DividerRect, DropZone, SearchMatch, SessionPane, SplitAxis,
     TERMINAL_INNER_PADDING_X, TERMINAL_INNER_PADDING_Y, TERMINAL_LINE_HEIGHT, TermiRustApp,
-    WORKSPACE_AUTOCOMPLETE_HEIGHT, WORKSPACE_PADDING, WORKSPACE_SEARCH_ROW_HEIGHT,
-    WorkspaceTabDrag, WorkspaceViewMode, primary_shortcut_label,
+    WORKSPACE_PADDING, WORKSPACE_SEARCH_ROW_HEIGHT, WorkspaceTabDrag, WorkspaceViewMode,
 };
-use crate::ui::autocomplete::AutocompleteSource;
 use crate::ui::path::format_file_size;
 use crate::ui::render_terminal::{
     SelectionRange, default_terminal_style, display_terminal_text, selection_contains,
@@ -91,155 +89,6 @@ impl TermiRustApp {
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.toggle_workspace_search(window, cx);
                         })),
-                ),
-        )
-    }
-
-    fn render_workspace_autocomplete(
-        &self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<Div> {
-        if self.show_command_palette {
-            return None;
-        }
-        let workspace = self.active_workspace()?;
-        if workspace.view_mode != WorkspaceViewMode::Terminal || workspace.search_visible {
-            return None;
-        }
-        let pane = self.active_pane()?;
-
-        let current_input = pane.current_input.trim().to_string();
-        if current_input.is_empty() {
-            let snippets = self.pinned_snippet_quick_actions();
-            if snippets.is_empty() {
-                return None;
-            }
-
-            return Some(
-                h_flex()
-                    .h(px(WORKSPACE_AUTOCOMPLETE_HEIGHT))
-                    .w_full()
-                    .px_4()
-                    .gap_3()
-                    .items_center()
-                    .bg(theme::terminal_bg())
-                    .border_b_1()
-                    .border_color(theme::border_dark())
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(theme::text_muted_dark())
-                            .child("Pinned commands"),
-                    )
-                    .child(h_flex().flex_1().gap_2().overflow_x_scrollbar().children(
-                        snippets.into_iter().enumerate().map(|(index, snippet)| {
-                            let command = snippet.command.clone();
-                            Button::new(("workspace-pinned-snippet", index))
-                                .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::AccentSoft,
-                                    cx,
-                                ))
-                                .label(snippet.display_name())
-                                .icon(IconName::BookOpen)
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.run_snippet_command(&command, window, cx);
-                                }))
-                                .into_any_element()
-                        }),
-                    ))
-                    .child(
-                        div()
-                            .text_size(px(12.))
-                            .text_color(theme::with_alpha(theme::text_muted_dark(), 0.75))
-                            .child("Pin snippets to keep your common commands one click away."),
-                    ),
-            );
-        }
-
-        let candidates = self.workspace_autocomplete_candidates();
-        if candidates.is_empty() {
-            return None;
-        }
-        let selected_index = self.selected_autocomplete_index(candidates.len());
-        let selected_candidate = candidates.get(selected_index);
-
-        Some(
-            h_flex()
-                .h(px(WORKSPACE_AUTOCOMPLETE_HEIGHT))
-                .w_full()
-                .px_4()
-                .gap_3()
-                .items_center()
-                .bg(theme::terminal_bg())
-                .border_b_1()
-                .border_color(theme::border_dark())
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(theme::text_muted_dark())
-                        .child(
-                            match selected_candidate.and_then(|candidate| {
-                                candidate.scope_label.as_ref().map(|scope| {
-                                    format!(
-                                        "Autocomplete for '{}' • {} • {}",
-                                        current_input,
-                                        candidate.source.label(),
-                                        scope
-                                    )
-                                })
-                            }) {
-                                Some(label) => label,
-                                None => format!(
-                                    "Autocomplete for '{}' • {}",
-                                    current_input,
-                                    selected_candidate
-                                        .map(|candidate| candidate.source.label())
-                                        .unwrap_or("suggestion")
-                                ),
-                            },
-                        ),
-                )
-                .child(h_flex().flex_1().gap_2().overflow_x_scrollbar().children(
-                    candidates.iter().enumerate().map(|(index, candidate)| {
-                        let command = candidate.command.clone();
-                        let source = candidate.source;
-                        let is_selected = index == selected_index;
-                        Button::new(("workspace-autocomplete", index))
-                            .small()
-                            .custom(Self::action_button_style(
-                                if is_selected {
-                                    theme::ActionTone::AccentSoft
-                                } else {
-                                    theme::ActionTone::Neutral
-                                },
-                                cx,
-                            ))
-                            .label(command.clone())
-                            .icon(match source {
-                                AutocompleteSource::Path => IconName::Folder,
-                                AutocompleteSource::Context => IconName::SquareTerminal,
-                                AutocompleteSource::Argument => IconName::ChevronRight,
-                                AutocompleteSource::History => IconName::Redo2,
-                                AutocompleteSource::Snippet => IconName::BookOpen,
-                                AutocompleteSource::Builtin => IconName::SquareTerminal,
-                            })
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.apply_autocomplete_candidate(&command, source, cx);
-                            }))
-                            .into_any_element()
-                    }),
-                ))
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(theme::with_alpha(theme::text_muted_dark(), 0.75))
-                        .child(format!(
-                            "{}+↑/↓ select  {}+Enter apply",
-                            primary_shortcut_label(),
-                            primary_shortcut_label()
-                        )),
                 ),
         )
     }
@@ -677,11 +526,22 @@ impl TermiRustApp {
         let drop_zone = self
             .split_drop_target
             .and_then(|(pid, zone)| (pid == pane.id).then_some(zone));
+        let is_active_pane = self
+            .active_workspace()
+            .map(|workspace| workspace.active_pane_id)
+            == Some(pane.id);
 
         v_flex()
             .id(("terminal-pane", pane.id))
             .relative()
             .size_full()
+            .rounded(px(10.))
+            .border_1()
+            .border_color(if is_active_pane {
+                theme::focus_ring()
+            } else {
+                theme::with_alpha(theme::border_dark(), 0.6)
+            })
             .bg(theme::terminal_panel())
             .overflow_hidden()
             .on_drag_move(cx.listener(
@@ -701,6 +561,12 @@ impl TermiRustApp {
                     .track_focus(&pane.terminal_focus)
                     .focusable()
                     .bg(theme::terminal_bg())
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                            this.open_pane_context_menu(pane_id, event.position, window, cx);
+                        }),
+                    )
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.activate_pane(pane_id, window, cx);
                     }))
@@ -854,41 +720,28 @@ impl TermiRustApp {
         }
 
         let workspace_id = workspace.id;
-        let axis = workspace.split_axis;
-        let pane_ids: Vec<u64> = workspace.pane_ids.clone();
-        let layouts = self.pane_layouts(window, cx);
-        let pane_count = pane_ids.len();
+        let (panes, dividers) = self.workspace_split_rects(window);
 
-        let mut children: Vec<AnyElement> = Vec::new();
-        for (index, pane_id) in pane_ids.iter().copied().enumerate() {
-            let Some(pane) = self.pane(pane_id) else {
+        let mut container = div().relative().size_full().bg(theme::terminal_bg());
+        for rect in panes {
+            let Some(pane) = self.pane(rect.pane_id) else {
                 continue;
             };
-            let layout = layouts.iter().find(|layout| layout.pane_id == pane_id);
-            let pane_el = self.render_terminal_pane(pane, window, cx);
-            let sized = match axis {
-                SplitAxis::Horizontal => pane_el
-                    .h_full()
-                    .w(px(layout.map(|layout| layout.pane_width).unwrap_or(320.0))),
-                SplitAxis::Vertical => pane_el
-                    .w_full()
-                    .h(px(layout.map(|layout| layout.pane_height).unwrap_or(240.0))),
-            };
-            children.push(sized.into_any_element());
-            if index + 1 < pane_count {
-                children.push(
-                    self.render_pane_divider(workspace_id, index, axis, cx)
-                        .into_any_element(),
-                );
-            }
+            container = container.child(
+                div()
+                    .absolute()
+                    .left(px(rect.x))
+                    .top(px(rect.y))
+                    .w(px(rect.width))
+                    .h(px(rect.height))
+                    .child(self.render_terminal_pane(pane, window, cx)),
+            );
+        }
+        for divider in dividers {
+            container = container.child(self.render_pane_divider(workspace_id, divider, cx));
         }
 
-        let content = match axis {
-            SplitAxis::Horizontal => h_flex().size_full().children(children).into_any_element(),
-            SplitAxis::Vertical => v_flex().size_full().children(children).into_any_element(),
-        };
-
-        v_flex().flex_1().bg(theme::terminal_bg()).child(content)
+        v_flex().flex_1().bg(theme::terminal_bg()).child(container)
     }
 
     pub(super) fn render_workspace_shell(
@@ -916,49 +769,63 @@ impl TermiRustApp {
             .when_some(self.render_workspace_search(window, cx), |this, search| {
                 this.child(search)
             })
-            .when_some(
-                self.render_workspace_autocomplete(window, cx),
-                |this, autocomplete| this.child(autocomplete),
-            )
             .child(content)
     }
 
     fn render_pane_divider(
         &self,
         workspace_id: u64,
-        index: usize,
-        axis: SplitAxis,
+        divider: DividerRect,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
+        let DividerRect {
+            divider_id,
+            axis,
+            x,
+            y,
+            width,
+            height,
+            span,
+            ratio,
+        } = divider;
         let active = self
             .divider_drag
-            .is_some_and(|drag| drag.workspace_id == workspace_id && drag.index == index);
+            .is_some_and(|drag| drag.divider_id == divider_id);
         let grip = if active {
             theme::accent()
         } else {
             theme::with_alpha(theme::text_muted_dark(), 0.45)
         };
         let base = div()
-            .id(("pane-divider", index as u64))
+            .id(("pane-divider", divider_id))
+            .absolute()
+            .left(px(x))
+            .top(px(y))
+            .w(px(width))
+            .h(px(height))
             .flex()
             .items_center()
             .justify_center()
             .hover(|style| style.bg(theme::with_alpha(theme::accent(), 0.12)))
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
-                    this.start_divider_drag(workspace_id, index, axis, event.position, window, cx);
+                cx.listener(move |this, event: &MouseDownEvent, _, cx| {
+                    this.start_divider_drag(
+                        workspace_id,
+                        divider_id,
+                        axis,
+                        span,
+                        ratio,
+                        event.position,
+                        cx,
+                    );
                 }),
             );
         match axis {
             SplitAxis::Horizontal => base
-                .w(px(PANE_GAP))
-                .h_full()
                 .cursor(CursorStyle::ResizeLeftRight)
                 .child(div().w(px(2.)).h(px(40.)).rounded(px(1.)).bg(grip)),
             SplitAxis::Vertical => base
-                .h(px(PANE_GAP))
-                .w_full()
                 .cursor(CursorStyle::ResizeUpDown)
                 .child(div().h(px(2.)).w(px(40.)).rounded(px(1.)).bg(grip)),
         }

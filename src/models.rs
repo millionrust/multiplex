@@ -2064,11 +2064,24 @@ impl RestorableJumpHostConnection {
     }
 }
 
+/// Persisted form of a workspace's recursive split layout — a binary tree of
+/// pane indices into `SavedWorkspace::panes`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SavedSplitNode {
+    Leaf(usize),
+    Split {
+        axis: SplitAxis,
+        ratio: f32,
+        a: Box<SavedSplitNode>,
+        b: Box<SavedSplitNode>,
+    },
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SavedWorkspace {
     pub title: String,
     #[serde(default)]
-    pub split_axis: SplitAxis,
+    pub layout: Option<SavedSplitNode>,
     #[serde(default)]
     pub active_pane_index: usize,
     #[serde(default)]
@@ -2489,7 +2502,7 @@ mod tests {
     fn saved_workspace_normalizes_active_pane() {
         let mut workspace = SavedWorkspace {
             title: "prod".to_string(),
-            split_axis: SplitAxis::Vertical,
+            layout: None,
             active_pane_index: 5,
             panes: vec![RestorableConnection {
                 title: "prod".to_string(),

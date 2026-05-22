@@ -13,7 +13,7 @@ use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::models::HostProfile;
 use crate::ui::app::{
-    ConnectDialogMode, ConnectFailure, ConnectProtocol, NavSection, SplitAxis, TermiRustApp,
+    ConnectDialogMode, ConnectFailure, ConnectProtocol, NavSection, SplitNode, TermiRustApp,
     WorkspaceTab, WorkspaceViewMode,
 };
 use crate::ui::theme;
@@ -91,7 +91,7 @@ impl TermiRustApp {
             pane_ids: Vec::new(),
             active_pane_id: 0,
             unread_events: 0,
-            split_axis: SplitAxis::Horizontal,
+            layout: None,
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
             search_visible: false,
@@ -163,7 +163,7 @@ impl TermiRustApp {
             pane_ids: Vec::new(),
             active_pane_id: 0,
             unread_events: 0,
-            split_axis: SplitAxis::Horizontal,
+            layout: None,
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
             search_visible: false,
@@ -730,6 +730,7 @@ impl TermiRustApp {
         let pane_id = self.spawn_pane(request.clone(), window, cx);
         if let Some(workspace) = self.workspaces.iter_mut().find(|w| w.id == workspace_id) {
             workspace.pane_ids = vec![pane_id];
+            workspace.layout = Some(SplitNode::Leaf(pane_id));
             workspace.active_pane_id = pane_id;
             workspace.title = request.title.clone();
             workspace.pending_connect = None;

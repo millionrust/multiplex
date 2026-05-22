@@ -42,9 +42,9 @@ use crate::local::spawn_local_session;
 use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
     HostColorTag, HostProfile, JumpHostConnection, PortForwardKind, PortForwardRule, ProfileSource,
-    QuickConnect, SavedHostGroup, SavedIdentity, SavedSnippet, SavedState, SavedVault,
-    SavedVaultMember, SavedWorkspace, SessionLogEntry, SplitAxis, ThemePreset, VaultKind,
-    VaultMemberRole,
+    QuickConnect, SavedHostGroup, SavedIdentity, SavedSnippet, SavedSplitNode, SavedState,
+    SavedVault, SavedVaultMember, SavedWorkspace, SessionLogEntry, SplitAxis, ThemePreset,
+    VaultKind, VaultMemberRole,
 };
 use crate::sftp::{
     RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
@@ -75,7 +75,6 @@ const TERMINAL_LINE_HEIGHT: f32 = 1.3;
 const WORKSPACE_SEARCH_ROW_HEIGHT: f32 = 52.0;
 const WORKSPACE_PADDING: f32 = 18.0;
 const PANE_GAP: f32 = 12.0;
-const WORKSPACE_AUTOCOMPLETE_HEIGHT: f32 = 56.0;
 const TERMINAL_INNER_PADDING_X: f32 = 20.0;
 const TERMINAL_INNER_PADDING_Y: f32 = 14.0;
 const MAX_SPLIT_PANES: usize = 4;
@@ -191,8 +190,6 @@ struct PaneLayout {
     cell_y: f32,
     cell_width: f32,
     cell_height: f32,
-    pane_width: f32,
-    pane_height: f32,
     cols: u16,
     rows: u16,
     char_width: f32,
@@ -425,8 +422,6 @@ struct SessionPane {
     auto_reconnect_attempts: u8,
     auto_reconnect_at: Option<u64>,
     user_closed: bool,
-    /// Relative size of this pane within its workspace split (default 1.0).
-    split_weight: f32,
 }
 
 #[derive(Clone)]
@@ -451,7 +446,8 @@ struct WorkspaceTab {
     pane_ids: Vec<u64>,
     active_pane_id: u64,
     unread_events: u32,
-    split_axis: SplitAxis,
+    /// Recursive split layout. `None` while the workspace has no panes yet.
+    layout: Option<SplitNode>,
     view_mode: WorkspaceViewMode,
     sftp: Option<WorkspaceSftpState>,
     search_visible: bool,
@@ -463,6 +459,253 @@ struct WorkspaceTab {
     pending_connect_mode: ConnectDialogMode,
     pending_connect_protocol: ConnectProtocol,
     connect_failure: Option<ConnectFailure>,
+}
+
+impl WorkspaceTab {
+    /// Rebuild the flat `pane_ids` cache from the `layout` tree.
+    fn sync_pane_ids(&mut self) {
+        self.pane_ids = self
+            .layout
+            .as_ref()
+            .map(|layout| layout.leaf_ids())
+            .unwrap_or_default();
+        if !self.pane_ids.contains(&self.active_pane_id) {
+            if let Some(first) = self.pane_ids.first().copied() {
+                self.active_pane_id = first;
+            }
+        }
+    }
+}
+
+/// Recursive split layout for a workspace — a binary tree of panes.
+#[derive(Clone, Debug)]
+enum SplitNode {
+    /// A single terminal pane (by id).
+    Leaf(u64),
+    /// Two children laid out along `axis`; `ratio` is the fraction given to `a`.
+    Split {
+        axis: SplitAxis,
+        ratio: f32,
+        a: Box<SplitNode>,
+        b: Box<SplitNode>,
+    },
+}
+
+impl SplitNode {
+    fn collect_leaves(&self, out: &mut Vec<u64>) {
+        match self {
+            SplitNode::Leaf(id) => out.push(*id),
+            SplitNode::Split { a, b, .. } => {
+                a.collect_leaves(out);
+                b.collect_leaves(out);
+            }
+        }
+    }
+
+    fn leaf_ids(&self) -> Vec<u64> {
+        let mut out = Vec::new();
+        self.collect_leaves(&mut out);
+        out
+    }
+
+    fn first_leaf(&self) -> u64 {
+        match self {
+            SplitNode::Leaf(id) => *id,
+            SplitNode::Split { a, .. } => a.first_leaf(),
+        }
+    }
+
+    /// Replace the leaf for `target` with a split of `target` and `new_node`.
+    fn split_leaf(
+        &mut self,
+        target: u64,
+        new_node: &SplitNode,
+        axis: SplitAxis,
+        new_first: bool,
+    ) -> bool {
+        match self {
+            SplitNode::Leaf(id) if *id == target => {
+                let existing = SplitNode::Leaf(*id);
+                let (a, b) = if new_first {
+                    (new_node.clone(), existing)
+                } else {
+                    (existing, new_node.clone())
+                };
+                *self = SplitNode::Split {
+                    axis,
+                    ratio: 0.5,
+                    a: Box::new(a),
+                    b: Box::new(b),
+                };
+                true
+            }
+            SplitNode::Leaf(_) => false,
+            SplitNode::Split { a, b, .. } => {
+                a.split_leaf(target, new_node, axis, new_first)
+                    || b.split_leaf(target, new_node, axis, new_first)
+            }
+        }
+    }
+
+    /// Remove `pane`'s leaf, collapsing the parent split into its sibling.
+    fn without_pane(self, pane: u64) -> Option<SplitNode> {
+        match self {
+            SplitNode::Leaf(id) => (id != pane).then_some(SplitNode::Leaf(id)),
+            SplitNode::Split { axis, ratio, a, b } => {
+                match (a.without_pane(pane), b.without_pane(pane)) {
+                    (None, None) => None,
+                    (Some(only), None) | (None, Some(only)) => Some(only),
+                    (Some(a), Some(b)) => Some(SplitNode::Split {
+                        axis,
+                        ratio,
+                        a: Box::new(a),
+                        b: Box::new(b),
+                    }),
+                }
+            }
+        }
+    }
+
+    /// Set the ratio of the split whose `b` subtree starts at `divider_id`.
+    fn set_ratio(&mut self, divider_id: u64, ratio: f32) -> bool {
+        if let SplitNode::Split { ratio: r, a, b, .. } = self {
+            if b.first_leaf() == divider_id {
+                *r = ratio.clamp(0.08, 0.92);
+                return true;
+            }
+            return a.set_ratio(divider_id, ratio) || b.set_ratio(divider_id, ratio);
+        }
+        false
+    }
+}
+
+/// Build a right-leaning flat split tree along one axis (used to reconstruct a
+/// layout from saved state that predates nested splits).
+fn flat_split(pane_ids: &[u64], axis: SplitAxis) -> Option<SplitNode> {
+    let (first, rest) = pane_ids.split_first()?;
+    let mut node = SplitNode::Leaf(*first);
+    for id in rest {
+        node = SplitNode::Split {
+            axis,
+            ratio: 0.5,
+            a: Box::new(node),
+            b: Box::new(SplitNode::Leaf(*id)),
+        };
+    }
+    Some(node)
+}
+
+/// Convert a runtime `SplitNode` (pane ids) to its persistable form, mapping
+/// each pane id to its index. Returns `None` if any pane id is missing.
+fn split_node_to_saved(
+    node: &SplitNode,
+    indices: &std::collections::HashMap<u64, usize>,
+) -> Option<SavedSplitNode> {
+    match node {
+        SplitNode::Leaf(id) => indices.get(id).copied().map(SavedSplitNode::Leaf),
+        SplitNode::Split { axis, ratio, a, b } => Some(SavedSplitNode::Split {
+            axis: *axis,
+            ratio: *ratio,
+            a: Box::new(split_node_to_saved(a, indices)?),
+            b: Box::new(split_node_to_saved(b, indices)?),
+        }),
+    }
+}
+
+/// Rebuild a runtime `SplitNode` from its persisted form, mapping pane indices
+/// back to live pane ids.
+fn saved_to_split_node(node: &SavedSplitNode, pane_ids: &[u64]) -> Option<SplitNode> {
+    match node {
+        SavedSplitNode::Leaf(index) => pane_ids.get(*index).copied().map(SplitNode::Leaf),
+        SavedSplitNode::Split { axis, ratio, a, b } => Some(SplitNode::Split {
+            axis: *axis,
+            ratio: *ratio,
+            a: Box::new(saved_to_split_node(a, pane_ids)?),
+            b: Box::new(saved_to_split_node(b, pane_ids)?),
+        }),
+    }
+}
+
+#[derive(Clone, Copy)]
+struct PaneRect {
+    pane_id: u64,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+#[derive(Clone, Copy)]
+struct DividerRect {
+    divider_id: u64,
+    axis: SplitAxis,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    span: f32,
+    ratio: f32,
+}
+
+/// Walk a `SplitNode` tree, emitting a flat pixel rect for every pane leaf and
+/// every divider, within the box `(x, y, width, height)`.
+fn compute_split_layout(
+    node: &SplitNode,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    panes: &mut Vec<PaneRect>,
+    dividers: &mut Vec<DividerRect>,
+) {
+    match node {
+        SplitNode::Leaf(id) => panes.push(PaneRect {
+            pane_id: *id,
+            x,
+            y,
+            width: width.max(1.0),
+            height: height.max(1.0),
+        }),
+        SplitNode::Split { axis, ratio, a, b } => {
+            let ratio = ratio.clamp(0.08, 0.92);
+            match axis {
+                SplitAxis::Horizontal => {
+                    let span = (width - PANE_GAP).max(2.0);
+                    let aw = (span * ratio).max(1.0);
+                    let bw = (span - aw).max(1.0);
+                    compute_split_layout(a, x, y, aw, height, panes, dividers);
+                    dividers.push(DividerRect {
+                        divider_id: b.first_leaf(),
+                        axis: *axis,
+                        x: x + aw,
+                        y,
+                        width: PANE_GAP,
+                        height,
+                        span,
+                        ratio,
+                    });
+                    compute_split_layout(b, x + aw + PANE_GAP, y, bw, height, panes, dividers);
+                }
+                SplitAxis::Vertical => {
+                    let span = (height - PANE_GAP).max(2.0);
+                    let ah = (span * ratio).max(1.0);
+                    let bh = (span - ah).max(1.0);
+                    compute_split_layout(a, x, y, width, ah, panes, dividers);
+                    dividers.push(DividerRect {
+                        divider_id: b.first_leaf(),
+                        axis: *axis,
+                        x,
+                        y: y + ah,
+                        width,
+                        height: PANE_GAP,
+                        span,
+                        ratio,
+                    });
+                    compute_split_layout(b, x, y + ah + PANE_GAP, width, bh, panes, dividers);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -483,18 +726,18 @@ struct WorkspaceTabDragPreview {
     title: String,
 }
 
-/// In-progress drag of a divider handle between two split panes.
+/// In-progress drag of a split divider handle.
 #[derive(Clone, Copy)]
 struct DividerDrag {
     workspace_id: u64,
-    index: usize,
+    /// Identifies the split: the first leaf pane id of the split's `b` subtree.
+    divider_id: u64,
     axis: SplitAxis,
+    /// Mouse position along the split axis when the drag started.
     origin: f32,
-    pane_a: u64,
-    pane_b: u64,
-    start_a_weight: f32,
-    start_b_weight: f32,
-    px_per_weight: f32,
+    start_ratio: f32,
+    /// Pixels spanned by the split's two children (excludes the gap).
+    span: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -618,6 +861,8 @@ pub struct TermiRustApp {
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
     open_workspace_tab_menu: Option<u64>,
+    /// Right-click context menu on a terminal pane: (pane id, click position).
+    pane_context_menu: Option<(u64, Point<Pixels>)>,
     tab_rename_input: Entity<InputState>,
     pane_rename_id: Option<u64>,
     pane_rename_input: Entity<InputState>,
@@ -734,6 +979,7 @@ impl TermiRustApp {
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
             open_workspace_tab_menu: None,
+            pane_context_menu: None,
             tab_rename_input: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Workspace name")),
             pane_rename_id: None,
@@ -3560,6 +3806,8 @@ impl TermiRustApp {
         for workspace in &self.workspaces {
             let mut panes = Vec::new();
             let mut active_pane_index = 0;
+            let mut saved_index: std::collections::HashMap<u64, usize> =
+                std::collections::HashMap::new();
 
             for pane_id in &workspace.pane_ids {
                 let Some(pane) = self.pane(*pane_id) else {
@@ -3572,6 +3820,7 @@ impl TermiRustApp {
                 if workspace.active_pane_id == *pane_id {
                     active_pane_index = panes.len();
                 }
+                saved_index.insert(*pane_id, panes.len());
                 panes.push(restorable);
             }
 
@@ -3579,9 +3828,14 @@ impl TermiRustApp {
                 continue;
             }
 
+            let layout = workspace
+                .layout
+                .as_ref()
+                .and_then(|node| split_node_to_saved(node, &saved_index));
+
             let mut saved_workspace = SavedWorkspace {
                 title: workspace.title.clone(),
-                split_axis: workspace.split_axis,
+                layout,
                 active_pane_index,
                 panes,
             };
@@ -3647,13 +3901,19 @@ impl TermiRustApp {
                 saved_workspace.title.trim().to_string()
             };
 
+            let layout = saved_workspace
+                .layout
+                .as_ref()
+                .and_then(|node| saved_to_split_node(node, &pane_ids))
+                .or_else(|| flat_split(&pane_ids, SplitAxis::Horizontal));
+
             self.workspaces.push(WorkspaceTab {
                 id: workspace_id,
                 title,
                 pane_ids,
                 active_pane_id,
                 unread_events: 0,
-                split_axis: saved_workspace.split_axis,
+                layout,
                 view_mode: WorkspaceViewMode::Terminal,
                 sftp: None,
                 search_visible: false,
@@ -4349,7 +4609,6 @@ impl TermiRustApp {
             auto_reconnect_attempts: 0,
             auto_reconnect_at: None,
             user_closed: false,
-            split_weight: 1.0,
         });
 
         let _ = window;
@@ -4393,7 +4652,7 @@ impl TermiRustApp {
             pane_ids: vec![pane_id],
             active_pane_id: pane_id,
             unread_events: 0,
-            split_axis: SplitAxis::Horizontal,
+            layout: Some(SplitNode::Leaf(pane_id)),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
             search_visible: false,
@@ -4437,7 +4696,7 @@ impl TermiRustApp {
                     pane_ids: vec![pane_id],
                     active_pane_id: pane_id,
                     unread_events: 0,
-                    split_axis: SplitAxis::Horizontal,
+                    layout: Some(SplitNode::Leaf(pane_id)),
                     view_mode: WorkspaceViewMode::Terminal,
                     sftp: None,
                     search_visible: false,
@@ -4678,7 +4937,7 @@ impl TermiRustApp {
             pane_ids: vec![pane_id],
             active_pane_id: pane_id,
             unread_events: 0,
-            split_axis: SplitAxis::Horizontal,
+            layout: Some(SplitNode::Leaf(pane_id)),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
             search_visible: false,
@@ -4742,9 +5001,17 @@ impl TermiRustApp {
         let pane_id = self.spawn_pane(request.clone(), window, cx);
 
         if let Some(workspace) = self.workspace_mut(workspace_id) {
-            workspace.pane_ids.push(pane_id);
+            let target = workspace.active_pane_id;
+            let inserted = workspace
+                .layout
+                .as_mut()
+                .map(|layout| layout.split_leaf(target, &SplitNode::Leaf(pane_id), axis, false))
+                .unwrap_or(false);
+            if !inserted {
+                workspace.layout = Some(SplitNode::Leaf(pane_id));
+            }
+            workspace.sync_pane_ids();
             workspace.active_pane_id = pane_id;
-            workspace.split_axis = axis;
             workspace.view_mode = WorkspaceViewMode::Terminal;
             workspace.title = request.title.clone();
         }
@@ -4798,12 +5065,11 @@ impl TermiRustApp {
 
         let mut remove_workspace = false;
         if let Some(workspace) = self.workspace_mut(workspace_id) {
-            workspace.pane_ids.retain(|item| *item != pane_id);
-            if workspace.active_pane_id == pane_id {
-                if let Some(next_id) = workspace.pane_ids.last().copied() {
-                    workspace.active_pane_id = next_id;
-                }
-            }
+            workspace.layout = workspace
+                .layout
+                .take()
+                .and_then(|layout| layout.without_pane(pane_id));
+            workspace.sync_pane_ids();
             if workspace
                 .sftp
                 .as_ref()
@@ -5168,11 +5434,18 @@ impl TermiRustApp {
         (char_width, line_height)
     }
 
-    fn pane_layouts(&self, window: &Window, cx: &Context<Self>) -> Vec<PaneLayout> {
+    /// Compute pixel rects for every pane leaf and divider of the active
+    /// workspace's split tree, in body-local coordinates (origin at the top-left
+    /// of the terminal body, below the chrome and any search/autocomplete rows).
+    fn workspace_split_rects(&self, window: &Window) -> (Vec<PaneRect>, Vec<DividerRect>) {
+        let mut panes = Vec::new();
+        let mut dividers = Vec::new();
         let Some(workspace) = self.active_workspace() else {
-            return Vec::new();
+            return (panes, dividers);
         };
-
+        let Some(layout) = workspace.layout.as_ref() else {
+            return (panes, dividers);
+        };
         let viewport = window.viewport_size();
         let viewport_width: f32 = viewport.width.into();
         let viewport_height: f32 = viewport.height.into();
@@ -5181,78 +5454,53 @@ impl TermiRustApp {
         } else {
             0.0
         };
-        let autocomplete_height = if self.workspace_autocomplete_candidates().is_empty() {
-            0.0
+        let body_width = viewport_width.max(320.0);
+        let body_height = (viewport_height - theme::CHROME_HEIGHT - search_height).max(180.0);
+        compute_split_layout(
+            layout,
+            0.0,
+            0.0,
+            body_width,
+            body_height,
+            &mut panes,
+            &mut dividers,
+        );
+        (panes, dividers)
+    }
+
+    fn pane_layouts(&self, window: &Window, cx: &Context<Self>) -> Vec<PaneLayout> {
+        let Some(workspace) = self.active_workspace() else {
+            return Vec::new();
+        };
+        let search_height = if workspace.search_visible {
+            WORKSPACE_SEARCH_ROW_HEIGHT
         } else {
-            WORKSPACE_AUTOCOMPLETE_HEIGHT
+            0.0
         };
-        let available_x: f32 = 0.0;
-        let available_y = theme::CHROME_HEIGHT + search_height;
-        let available_width = viewport_width.max(320.0);
-        let available_height =
-            (viewport_height - theme::CHROME_HEIGHT - search_height - autocomplete_height)
-                .max(180.0);
-        let pane_count = workspace.pane_ids.len().max(1);
+        let body_origin_y = theme::CHROME_HEIGHT + search_height;
         let (char_width, line_height) = self.terminal_metrics(window, cx);
-        let mut layouts = Vec::with_capacity(pane_count);
+        let (panes, _) = self.workspace_split_rects(window);
 
-        let weights: Vec<f32> = workspace
-            .pane_ids
-            .iter()
-            .map(|id| {
-                self.pane(*id)
-                    .map(|pane| pane.split_weight)
-                    .unwrap_or(1.0)
-                    .max(0.05)
+        panes
+            .into_iter()
+            .map(|rect| {
+                let cell_width = (rect.width - TERMINAL_INNER_PADDING_X * 2.0).max(32.0);
+                let cell_height = (rect.height - TERMINAL_INNER_PADDING_Y * 2.0).max(24.0);
+                let cols = (cell_width / char_width).floor().max(1.0) as u16;
+                let rows = (cell_height / line_height).floor().max(1.0) as u16;
+                PaneLayout {
+                    pane_id: rect.pane_id,
+                    cell_x: rect.x + TERMINAL_INNER_PADDING_X,
+                    cell_y: rect.y + body_origin_y + TERMINAL_INNER_PADDING_Y,
+                    cell_width,
+                    cell_height,
+                    cols,
+                    rows,
+                    char_width,
+                    line_height,
+                }
             })
-            .collect();
-        let total_weight: f32 = weights.iter().sum::<f32>().max(0.05);
-        let gaps = PANE_GAP * (pane_count as f32 - 1.0);
-        let usable_width = (available_width - gaps).max(120.0);
-        let usable_height = (available_height - gaps).max(120.0);
-        let mut cursor = match workspace.split_axis {
-            SplitAxis::Horizontal => available_x,
-            SplitAxis::Vertical => available_y,
-        };
-
-        for (index, pane_id) in workspace.pane_ids.iter().copied().enumerate() {
-            let frac = weights.get(index).copied().unwrap_or(1.0) / total_weight;
-            let (pane_width, pane_height, pane_x, pane_y) = match workspace.split_axis {
-                SplitAxis::Horizontal => {
-                    let width = (usable_width * frac).max(80.0);
-                    let layout = (width, available_height, cursor, available_y);
-                    cursor += width + PANE_GAP;
-                    layout
-                }
-                SplitAxis::Vertical => {
-                    let height = (usable_height * frac).max(80.0);
-                    let layout = (available_width, height, available_x, cursor);
-                    cursor += height + PANE_GAP;
-                    layout
-                }
-            };
-
-            let cell_width = (pane_width - TERMINAL_INNER_PADDING_X * 2.0).max(32.0);
-            let cell_height = (pane_height - TERMINAL_INNER_PADDING_Y * 2.0).max(24.0);
-            let cols = (cell_width / char_width).floor().max(1.0) as u16;
-            let rows = (cell_height / line_height).floor().max(1.0) as u16;
-
-            layouts.push(PaneLayout {
-                pane_id,
-                cell_x: pane_x + TERMINAL_INNER_PADDING_X,
-                cell_y: pane_y + TERMINAL_INNER_PADDING_Y,
-                cell_width,
-                cell_height,
-                pane_width,
-                pane_height,
-                cols,
-                rows,
-                char_width,
-                line_height,
-            });
-        }
-
-        layouts
+            .collect()
     }
 
     fn pane_layout_for(
@@ -5308,59 +5556,24 @@ impl TermiRustApp {
     fn start_divider_drag(
         &mut self,
         workspace_id: u64,
-        index: usize,
+        divider_id: u64,
         axis: SplitAxis,
+        span: f32,
+        ratio: f32,
         position: Point<Pixels>,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let layouts = self.pane_layouts(window, cx);
-        let Some(workspace) = self.workspace(workspace_id) else {
-            return;
+        let origin = match axis {
+            SplitAxis::Horizontal => f32::from(position.x),
+            SplitAxis::Vertical => f32::from(position.y),
         };
-        if index + 1 >= workspace.pane_ids.len() {
-            return;
-        }
-        let pane_a = workspace.pane_ids[index];
-        let pane_b = workspace.pane_ids[index + 1];
-        let Some(layout_a) = layouts.iter().find(|layout| layout.pane_id == pane_a) else {
-            return;
-        };
-        let Some(layout_b) = layouts.iter().find(|layout| layout.pane_id == pane_b) else {
-            return;
-        };
-        let (a_px, b_px, origin) = match axis {
-            SplitAxis::Horizontal => (
-                layout_a.pane_width,
-                layout_b.pane_width,
-                f32::from(position.x),
-            ),
-            SplitAxis::Vertical => (
-                layout_a.pane_height,
-                layout_b.pane_height,
-                f32::from(position.y),
-            ),
-        };
-        let start_a_weight = self
-            .pane(pane_a)
-            .map(|pane| pane.split_weight)
-            .unwrap_or(1.0);
-        let start_b_weight = self
-            .pane(pane_b)
-            .map(|pane| pane.split_weight)
-            .unwrap_or(1.0);
-        let combined_px = (a_px + b_px).max(1.0);
-        let combined_weight = (start_a_weight + start_b_weight).max(0.05);
         self.divider_drag = Some(DividerDrag {
             workspace_id,
-            index,
+            divider_id,
             axis,
             origin,
-            pane_a,
-            pane_b,
-            start_a_weight,
-            start_b_weight,
-            px_per_weight: combined_px / combined_weight,
+            start_ratio: ratio,
+            span,
         });
         cx.notify();
     }
@@ -5373,15 +5586,11 @@ impl TermiRustApp {
             SplitAxis::Horizontal => f32::from(position.x),
             SplitAxis::Vertical => f32::from(position.y),
         };
-        let delta_weight = (pos - drag.origin) / drag.px_per_weight.max(0.01);
-        let combined = drag.start_a_weight + drag.start_b_weight;
-        let min = (combined * 0.12).max(0.05);
-        let new_a = (drag.start_a_weight + delta_weight).clamp(min, combined - min);
-        if let Some(pane) = self.pane_mut(drag.pane_a) {
-            pane.split_weight = new_a;
-        }
-        if let Some(pane) = self.pane_mut(drag.pane_b) {
-            pane.split_weight = combined - new_a;
+        let new_ratio = drag.start_ratio + (pos - drag.origin) / drag.span.max(1.0);
+        if let Some(workspace) = self.workspace_mut(drag.workspace_id) {
+            if let Some(layout) = workspace.layout.as_mut() {
+                layout.set_ratio(drag.divider_id, new_ratio);
+            }
         }
         cx.notify();
     }
@@ -5420,6 +5629,19 @@ impl TermiRustApp {
             self.send_input_bytes(target, data.clone(), cx);
         }
         primary
+    }
+
+    fn open_pane_context_menu(
+        &mut self,
+        pane_id: u64,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.activate_pane(pane_id, window, cx);
+        self.pane_context_menu = Some((pane_id, position));
+        cx.stop_propagation();
+        cx.notify();
     }
 
     fn clear_pane_screen(&mut self, pane_id: u64, cx: &mut Context<Self>) {
@@ -5467,15 +5689,15 @@ impl TermiRustApp {
         else {
             return;
         };
-        let source_pane_ids = self.workspaces[source_index].pane_ids.clone();
-        if source_pane_ids.is_empty() {
+        let Some(source_layout) = self.workspaces[source_index].layout.clone() else {
             return;
-        }
-        let target_len = self
+        };
+        let source_count = source_layout.leaf_ids().len();
+        let target_count = self
             .workspace(target_workspace_id)
             .map(|workspace| workspace.pane_ids.len())
             .unwrap_or(0);
-        if target_len + source_pane_ids.len() > MAX_SPLIT_PANES {
+        if target_count + source_count > MAX_SPLIT_PANES {
             self.error_message = format!("Split panes are capped at {MAX_SPLIT_PANES} for now.");
             self.split_drop_target = None;
             cx.notify();
@@ -5485,43 +5707,31 @@ impl TermiRustApp {
             DropZone::Left | DropZone::Right => SplitAxis::Horizontal,
             DropZone::Top | DropZone::Bottom => SplitAxis::Vertical,
         };
+        let new_first = matches!(zone, DropZone::Left | DropZone::Top);
+        let first_source_pane = source_layout.first_leaf();
         // Drop the source workspace tab, but keep its panes alive — they are
-        // being re-parented into the target workspace, not closed.
+        // re-parented into the target workspace, not closed.
         self.workspaces
             .retain(|workspace| workspace.id != source_workspace_id);
         if let Some(target) = self.workspace_mut(target_workspace_id) {
-            let pos = target
-                .pane_ids
-                .iter()
-                .position(|id| *id == target_pane_id)
-                .unwrap_or(target.pane_ids.len());
-            let insert_at = match zone {
-                DropZone::Left | DropZone::Top => pos,
-                DropZone::Right | DropZone::Bottom => pos + 1,
-            };
-            for (offset, pane_id) in source_pane_ids.iter().enumerate() {
-                let at = (insert_at + offset).min(target.pane_ids.len());
-                target.pane_ids.insert(at, *pane_id);
+            let inserted = target
+                .layout
+                .as_mut()
+                .map(|layout| layout.split_leaf(target_pane_id, &source_layout, axis, new_first))
+                .unwrap_or(false);
+            if !inserted {
+                target.layout = Some(source_layout);
             }
-            target.split_axis = axis;
-            target.active_pane_id = source_pane_ids[0];
+            target.sync_pane_ids();
+            target.active_pane_id = first_source_pane;
             target.view_mode = WorkspaceViewMode::Terminal;
-        }
-        // Even out the split so every pane in the merged workspace shares space.
-        if let Some(target) = self.workspace(target_workspace_id) {
-            let pane_ids = target.pane_ids.clone();
-            for pane_id in pane_ids {
-                if let Some(pane) = self.pane_mut(pane_id) {
-                    pane.split_weight = 1.0;
-                }
-            }
         }
         self.active_workspace_id = Some(target_workspace_id);
         self.split_drop_target = None;
         self.status_message = "Merged tab into a split.".to_string();
         self.error_message.clear();
         self.sync_terminal_layout(window, cx);
-        if let Some(pane) = self.pane(source_pane_ids[0]) {
+        if let Some(pane) = self.pane(first_source_pane) {
             pane.terminal_focus.focus(window);
         }
         self.persist_runtime_state();
@@ -5552,12 +5762,11 @@ impl TermiRustApp {
             .unwrap_or_default();
 
         if let Some(workspace) = self.workspace_mut(workspace_id) {
-            workspace.pane_ids.retain(|id| *id != pane_id);
-            if workspace.active_pane_id == pane_id {
-                if let Some(next) = workspace.pane_ids.last().copied() {
-                    workspace.active_pane_id = next;
-                }
-            }
+            workspace.layout = workspace
+                .layout
+                .take()
+                .and_then(|layout| layout.without_pane(pane_id));
+            workspace.sync_pane_ids();
             if workspace
                 .sftp
                 .as_ref()
@@ -5575,7 +5784,7 @@ impl TermiRustApp {
             pane_ids: vec![pane_id],
             active_pane_id: pane_id,
             unread_events: 0,
-            split_axis: SplitAxis::Horizontal,
+            layout: Some(SplitNode::Leaf(pane_id)),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
             search_visible: false,
@@ -6194,27 +6403,6 @@ impl TermiRustApp {
                 "w" => {
                     if let Some(workspace_id) = self.active_workspace_id {
                         self.close_workspace(workspace_id, cx);
-                        return true;
-                    }
-                }
-                "up" => {
-                    if self.active_pane().is_some_and(|pane| pane.id == pane_id)
-                        && self.move_autocomplete_selection(-1, cx)
-                    {
-                        return true;
-                    }
-                }
-                "down" => {
-                    if self.active_pane().is_some_and(|pane| pane.id == pane_id)
-                        && self.move_autocomplete_selection(1, cx)
-                    {
-                        return true;
-                    }
-                }
-                "enter" => {
-                    if self.active_pane().is_some_and(|pane| pane.id == pane_id)
-                        && self.accept_selected_autocomplete(cx)
-                    {
                         return true;
                     }
                 }
@@ -8280,6 +8468,9 @@ impl Render for TermiRustApp {
             })
             .when_some(self.open_workspace_tab_menu, |this, workspace_id| {
                 this.child(self.render_workspace_tab_context_menu_layer(workspace_id, cx))
+            })
+            .when_some(self.pane_context_menu, |this, (pane_id, position)| {
+                this.child(self.render_pane_context_menu_layer(pane_id, position, cx))
             })
     }
 }

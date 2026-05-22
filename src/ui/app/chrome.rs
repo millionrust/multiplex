@@ -2,10 +2,10 @@
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, AppContext as _, Bounds, ClickEvent, Context, Div, ElementId,
-    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement, SharedString,
-    Stateful, StatefulInteractiveElement as _, Styled, TitlebarOptions, Window, WindowBounds,
-    WindowOptions, div, point, px, size,
+    AnyElement, AppContext as _, Bounds, ClickEvent, Context, Div, ElementId, Hsla,
+    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels,
+    Point, SharedString, Stateful, StatefulInteractiveElement as _, Styled, TitlebarOptions,
+    Window, WindowBounds, WindowOptions, div, point, px, size,
 };
 use gpui_component::{Icon, IconName, Root, StyledExt as _, h_flex, v_flex};
 
@@ -360,6 +360,121 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn render_pane_context_menu(
+        &self,
+        pane_id: u64,
+        position: Point<Pixels>,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let closed = self.pane(pane_id).map(|pane| pane.closed).unwrap_or(false);
+        v_flex()
+            .id(("pane-context-menu", pane_id))
+            .absolute()
+            .top(position.y)
+            .left(position.x)
+            .w(px(212.))
+            .p(px(6.))
+            .gap(px(2.))
+            .rounded(px(10.))
+            .bg(theme::library_card())
+            .border_1()
+            .border_color(theme::soft_border())
+            .shadow_lg()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(self.workspace_tab_menu_item(
+                ("pane-menu-copy", pane_id),
+                IconName::Copy,
+                "Copy",
+                move |this, _, cx| {
+                    this.pane_context_menu = None;
+                    this.copy_active_selection(cx);
+                },
+                cx,
+            ))
+            .child(self.workspace_tab_menu_item(
+                ("pane-menu-paste", pane_id),
+                IconName::File,
+                "Paste",
+                move |this, _, cx| {
+                    this.pane_context_menu = None;
+                    this.paste_to_active_pane(cx);
+                },
+                cx,
+            ))
+            .child(self.workspace_tab_menu_item(
+                ("pane-menu-clear", pane_id),
+                IconName::Replace,
+                "Clear",
+                move |this, _, cx| {
+                    this.pane_context_menu = None;
+                    this.clear_pane_screen(pane_id, cx);
+                },
+                cx,
+            ))
+            .child(div().h(px(1.)).my(px(3.)).bg(theme::soft_border()))
+            .when(closed, |this| {
+                this.child(self.workspace_tab_menu_item(
+                    ("pane-menu-reconnect", pane_id),
+                    IconName::Redo,
+                    "Reconnect",
+                    move |this, window, cx| {
+                        this.pane_context_menu = None;
+                        this.reconnect_pane(pane_id, window, cx);
+                    },
+                    cx,
+                ))
+            })
+            .child(self.workspace_tab_menu_item(
+                ("pane-menu-detach", pane_id),
+                IconName::ExternalLink,
+                "Detach to new tab",
+                move |this, window, cx| {
+                    this.pane_context_menu = None;
+                    this.move_pane_to_new_workspace(pane_id, window, cx);
+                },
+                cx,
+            ))
+            .child(self.workspace_tab_menu_item(
+                ("pane-menu-close", pane_id),
+                IconName::Close,
+                "Close pane",
+                move |this, _, cx| {
+                    this.pane_context_menu = None;
+                    this.close_pane(pane_id, cx);
+                },
+                cx,
+            ))
+    }
+
+    pub(super) fn render_pane_context_menu_layer(
+        &self,
+        pane_id: u64,
+        position: Point<Pixels>,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        div()
+            .id("pane-context-menu-layer")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.pane_context_menu = None;
+                    cx.notify();
+                }),
+            )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, _, _, cx| {
+                    this.pane_context_menu = None;
+                    cx.notify();
+                }),
+            )
+            .child(self.render_pane_context_menu(pane_id, position, cx))
+    }
+
     fn duplicate_workspace_in_new_window(
         &mut self,
         workspace_id: u64,
@@ -384,7 +499,7 @@ impl TermiRustApp {
                 titlebar: Some(TitlebarOptions {
                     title: Some("TermiRust".into()),
                     appears_transparent: true,
-                    traffic_light_position: Some(point(px(12.), px(42.))),
+                    traffic_light_position: Some(point(px(-200.), px(8.))),
                 }),
                 ..Default::default()
             },
@@ -422,6 +537,52 @@ impl TermiRustApp {
         }
     }
 
+    /// One custom macOS-style window-control dot (close / minimize / zoom).
+    fn window_control_button(
+        &self,
+        id: &'static str,
+        color: Hsla,
+        action: impl Fn(&mut Window) + 'static,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        div()
+            .id(id)
+            .size(px(12.))
+            .rounded(px(6.))
+            .bg(color)
+            .cursor_pointer()
+            .on_click(cx.listener(move |_, _, window, _| action(window)))
+    }
+
+    /// The slim top band — holds the custom traffic lights and is the
+    /// window-drag handle (the macOS title-bar zone).
+    fn render_window_controls(&self, cx: &mut Context<Self>) -> Div {
+        h_flex()
+            .h(px(theme::CHROME_DRAG_STRIP))
+            .w_full()
+            .pl(px(13.))
+            .gap(px(8.))
+            .items_center()
+            .child(self.window_control_button(
+                "window-close",
+                gpui::rgb(0xff5f57).into(),
+                |window| window.remove_window(),
+                cx,
+            ))
+            .child(self.window_control_button(
+                "window-minimize",
+                gpui::rgb(0xfebc2e).into(),
+                |window| window.minimize_window(),
+                cx,
+            ))
+            .child(self.window_control_button(
+                "window-zoom",
+                gpui::rgb(0x28c840).into(),
+                |window| window.zoom_window(),
+                cx,
+            ))
+    }
+
     pub(super) fn render_top_chrome(&self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let library_active = self.active_workspace_id.is_none();
 
@@ -430,13 +591,13 @@ impl TermiRustApp {
             .bg(theme::chrome_bg())
             .border_b_1()
             .border_color(theme::with_alpha(theme::border_dark(), 0.5))
-            .child(div().h(px(theme::CHROME_DRAG_STRIP)).w_full())
+            .child(self.render_window_controls(cx))
             .child(
                 h_flex()
                     .h(px(theme::CHROME_TAB_ROW))
                     .w_full()
                     .relative()
-                    .pl(px(80.))
+                    .pl(px(12.))
                     .pr(px(12.))
                     .gap(px(6.))
                     .items_center()
