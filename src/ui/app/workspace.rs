@@ -2,12 +2,14 @@
 //! view, terminal pane (cells/rows), workspace body and shell wrapper.
 //! All methods are part of `TermiRustApp`.
 
+use std::time::Duration;
+
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, Context, CursorStyle, Div, DragMoveEvent, FontWeight, InteractiveElement as _,
-    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ParentElement, ScrollWheelEvent, SharedString, Stateful, StatefulInteractiveElement as _,
-    Styled, Window, div, px, relative,
+    Animation, AnimationExt as _, AnyElement, Context, CursorStyle, Div, DragMoveEvent, FontWeight,
+    InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, ParentElement, ScrollWheelEvent, SharedString, Stateful,
+    StatefulInteractiveElement as _, Styled, Window, div, px, relative,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
@@ -757,7 +759,7 @@ impl TermiRustApp {
                 this.child(
                     div()
                         .absolute()
-                        .bg(theme::with_alpha(theme::accent(), 0.22))
+                        .bg(theme::with_alpha(theme::accent(), 0.3))
                         .border_2()
                         .border_color(theme::accent())
                         .map(|d| match zone {
@@ -769,7 +771,12 @@ impl TermiRustApp {
                             DropZone::Bottom => {
                                 d.bottom(px(0.)).left(px(0.)).w_full().h(relative(0.5))
                             }
-                        }),
+                        })
+                        .with_animation(
+                            ("split-drop-zone", pane.id),
+                            Animation::new(Duration::from_millis(140)),
+                            |element, delta| element.opacity(delta),
+                        ),
                 )
             })
     }
@@ -964,15 +971,21 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) {
         let source_workspace_id = event.drag(cx).workspace_id;
-        if self.workspace_id_for_pane(pane_id) == Some(source_workspace_id) {
-            if self.split_drop_target.is_some() {
+        let bounds = event.bounds;
+        let position = event.event.position;
+        let owns_target = matches!(self.split_drop_target, Some((pid, _)) if pid == pane_id);
+        let same_workspace = self.workspace_id_for_pane(pane_id) == Some(source_workspace_id);
+
+        // `on_drag_move` fires for every pane on every move — only react for the
+        // pane the cursor is actually over, and never for the drag's own workspace.
+        if same_workspace || !bounds.contains(&position) {
+            if owns_target {
                 self.split_drop_target = None;
                 cx.notify();
             }
             return;
         }
-        let bounds = event.bounds;
-        let position = event.event.position;
+
         let width = f32::from(bounds.size.width).max(1.0);
         let height = f32::from(bounds.size.height).max(1.0);
         let rx = (f32::from(position.x) - f32::from(bounds.origin.x)) / width - 0.5;
