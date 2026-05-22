@@ -9112,9 +9112,9 @@ fn apply_group_defaults_to_draft(
 #[cfg(test)]
 mod tests {
     use super::{
-        AutocompleteSource, ConnectProtocol, OutputSuggestionContext, PathSuggestionContext,
-        TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone, WorkspaceViewMode,
-        apply_group_defaults_to_draft, collect_autocomplete_candidates,
+        AutocompleteSource, ConnectDialogMode, ConnectProtocol, OutputSuggestionContext,
+        PathSuggestionContext, TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone,
+        WorkspaceViewMode, apply_group_defaults_to_draft, collect_autocomplete_candidates,
         collect_command_palette_candidates, extract_snippet_prompt_names,
         shell_command_requires_continuation, startup_bytes_for_request,
         substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
@@ -9275,6 +9275,23 @@ mod tests {
                 panic!("timed out waiting for window app state: {terminal_dump:#?}");
             }
 
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
+    fn wait_for_window_count(cx: &mut TestAppContext, expected: usize, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if cx.windows().len() == expected {
+                return;
+            }
+            if Instant::now() >= deadline {
+                panic!(
+                    "timed out waiting for {} windows, saw {}",
+                    expected,
+                    cx.windows().len()
+                );
+            }
             std::thread::sleep(Duration::from_millis(25));
         }
     }
@@ -11035,5 +11052,114 @@ mod tests {
                 2
             );
         });
+    }
+
+    #[gpui::test]
+    fn e2e_connect_failure_restart_and_close_dialog(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Broken Host",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.host,
+                        "nonexistent.invalid.example",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    app.open_choose_protocol_tab_from_draft(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let workspace_id = app.read_with(cx, |app, _| app.active_workspace_id)
+            .expect("workspace should exist");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.confirm_choose_protocol(workspace_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert!(workspace.connect_failure.is_some());
+            assert!(workspace.pending_connect.is_none());
+            assert!(workspace.title.contains("[failed]"));
+        });
+
+        app.update(cx, |app, cx| {
+            app.restart_choose_protocol(workspace_id, cx);
+        });
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert!(workspace.connect_failure.is_none());
+            assert!(workspace.pending_connect.is_some());
+            assert!(workspace.pending_connect_mode == ConnectDialogMode::ChooseProtocol);
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.close_connect_dialog_tab(workspace_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert!(app.workspace(workspace_id).is_none());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_duplicate_workspace_in_new_window_opens_second_window(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        let request = ConnectRequest {
+            title: "Window Dup".to_string(),
+            ..ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+
+        let workspace_id = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                        .0
+                })
+            })
+            .expect("window update should succeed");
+
+        assert_eq!(cx.windows().len(), 1);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.duplicate_workspace_in_new_window(workspace_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_window_count(cx, 2, Duration::from_secs(10));
     }
 }

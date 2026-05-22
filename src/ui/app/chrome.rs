@@ -423,7 +423,7 @@ impl TermiRustApp {
             .child(self.render_pane_context_menu(pane_id, position, cx))
     }
 
-    fn duplicate_workspace_in_new_window(
+    pub(super) fn duplicate_workspace_in_new_window(
         &mut self,
         workspace_id: u64,
         _window: &mut Window,
