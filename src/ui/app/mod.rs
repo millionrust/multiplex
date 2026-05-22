@@ -9112,8 +9112,8 @@ fn apply_group_defaults_to_draft(
 #[cfg(test)]
 mod tests {
     use super::{
-        AutocompleteSource, OutputSuggestionContext, PathSuggestionContext, TermiRustApp,
-        WorkspaceIndicators, WorkspaceRuntimeTone, WorkspaceViewMode,
+        AutocompleteSource, ConnectProtocol, OutputSuggestionContext, PathSuggestionContext,
+        TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone, WorkspaceViewMode,
         apply_group_defaults_to_draft, collect_autocomplete_candidates,
         collect_command_palette_candidates, extract_snippet_prompt_names,
         shell_command_requires_continuation, startup_bytes_for_request,
@@ -9129,9 +9129,13 @@ mod tests {
     use crate::test_support::{
         DockerSshServer, TestIsolation, allocate_local_port, queue_dialog_path,
     };
+    use crate::ui::keys::TerminalCellPos;
+    use crate::ui::render_terminal::SelectionRange;
     use crate::ui::shell::shell_single_quote;
     use crate::ui::util::format_relative_time_for;
-    use gpui::{AppContext as _, Entity, TestAppContext, WindowHandle};
+    use gpui::{
+        AppContext as _, Entity, MouseButton, MouseUpEvent, TestAppContext, WindowHandle, point, px,
+    };
     use gpui_component::Root;
     use std::time::{Duration, Instant};
 
@@ -10856,5 +10860,180 @@ mod tests {
         });
 
         let _ = std::fs::remove_dir_all(temp_dir);
+    }
+
+    #[gpui::test]
+    fn e2e_choose_protocol_rejects_unsupported_protocols(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.label, "Proto Host", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.host, "example.com", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    app.open_choose_protocol_tab_from_draft(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.update(cx, |app, _cx| {
+            let workspace_id = app.active_workspace_id.expect("workspace should exist");
+            let workspace = app
+                .workspace_mut(workspace_id)
+                .expect("workspace should exist");
+            workspace.pending_connect_protocol = ConnectProtocol::Telnet;
+        });
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let workspace_id = app.active_workspace_id.expect("active workspace");
+                    app.confirm_choose_protocol(workspace_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().expect("workspace should exist");
+            assert!(workspace.pane_ids.is_empty());
+            assert!(app.status_message.contains("isn't supported yet"));
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_copy_on_select_copies_selection_to_clipboard(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (_workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.saved.settings.copy_on_select = true;
+                    if let Some(pane) = app.pane_mut(pane_id) {
+                        pane.terminal = crate::terminal::TerminalState::new(
+                            crate::terminal::TerminalSize::default(),
+                            10_000,
+                        );
+                        pane.terminal.process_bytes(b"selectme");
+                        pane.selection = Some(SelectionRange {
+                            anchor: TerminalCellPos { row: 0, col: 0 },
+                            head: TerminalCellPos { row: 0, col: 5 },
+                        });
+                    }
+                    let event = MouseUpEvent {
+                        position: point(px(0.), px(0.)),
+                        modifiers: gpui::Modifiers::none(),
+                        button: MouseButton::Left,
+                        click_count: 1,
+                    };
+                    app.handle_pane_mouse_up(pane_id, &event, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let clipboard = cx
+            .read_from_clipboard()
+            .expect("clipboard should have text");
+        assert_eq!(clipboard.text().as_deref(), Some("select"));
+    }
+
+    #[gpui::test]
+    fn e2e_workspace_duplicate_and_reorder(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        let request_a = ConnectRequest {
+            title: "Local A".to_string(),
+            ..ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+        let request_b = ConnectRequest {
+            title: "Local B".to_string(),
+            ..ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+
+        let workspace_a = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request_a, window, cx)
+                        .expect("workspace A should open")
+                        .0
+                })
+            })
+            .expect("window update should succeed");
+        let workspace_b = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request_b, window, cx)
+                        .expect("workspace B should open")
+                        .0
+                })
+            })
+            .expect("window update should succeed");
+
+        app.update(cx, |app, _| {
+            app.reorder_workspace_tabs(workspace_b, Some(workspace_a), false);
+        });
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.workspaces[0].id, workspace_b);
+            assert_eq!(app.workspaces[1].id, workspace_a);
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.duplicate_workspace_in_new_tab(workspace_b, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.workspaces.len(), 3);
+            assert_eq!(
+                app.workspaces
+                    .iter()
+                    .filter(|workspace| workspace.title == "Local B")
+                    .count(),
+                2
+            );
+        });
     }
 }
