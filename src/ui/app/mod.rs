@@ -43,7 +43,8 @@ use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
     HostColorTag, HostProfile, JumpHostConnection, PortForwardKind, PortForwardRule, ProfileSource,
     QuickConnect, SavedHostGroup, SavedIdentity, SavedSnippet, SavedSplitNode, SavedState,
-    SavedVault, SavedVaultMember, SavedWorkspace, SessionLogEntry, SplitAxis, ThemePreset,
+    SavedVault, SavedVaultMember, SavedWindowBounds, SavedWorkspace, SessionLogEntry, SplitAxis,
+    ThemePreset,
     VaultKind, VaultMemberRole,
 };
 use crate::sftp::{
@@ -876,6 +877,7 @@ pub struct TermiRustApp {
     tab_strip_scroll: ScrollHandle,
     tab_strip_scrolled_to: Option<u64>,
     _window_bounds_subscription: Option<Subscription>,
+    _window_bounds_save_task: Option<Task<()>>,
 }
 
 impl TermiRustApp {
@@ -996,6 +998,7 @@ impl TermiRustApp {
             tab_strip_scroll: ScrollHandle::new(),
             tab_strip_scrolled_to: None,
             _window_bounds_subscription: None,
+            _window_bounds_save_task: None,
         };
 
         app.load_settings_inputs(window, cx);
@@ -1010,6 +1013,7 @@ impl TermiRustApp {
 
         let window_bounds_subscription = cx.observe_window_bounds(window, |this, window, cx| {
             this.sync_terminal_layout(window, cx);
+            this.persist_window_bounds(window, cx);
         });
         app._window_bounds_subscription = Some(window_bounds_subscription);
 
@@ -3858,6 +3862,37 @@ impl TermiRustApp {
         if let Err(error) = save_saved_state(&self.saved) {
             self.error_message = error.to_string();
         }
+    }
+
+    /// Capture the current window frame and schedule a debounced save, so the
+    /// stream of resize/move events doesn't thrash `state.json`. The bounds are
+    /// reapplied on the next launch (see `main.rs`).
+    fn persist_window_bounds(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let frame = match window.window_bounds() {
+            WindowBounds::Windowed(bounds)
+            | WindowBounds::Maximized(bounds)
+            | WindowBounds::Fullscreen(bounds) => bounds,
+        };
+        let bounds = SavedWindowBounds {
+            x: f32::from(frame.origin.x),
+            y: f32::from(frame.origin.y),
+            width: f32::from(frame.size.width),
+            height: f32::from(frame.size.height),
+        };
+        if self.saved.window_bounds == Some(bounds) {
+            return;
+        }
+        self.saved.window_bounds = Some(bounds);
+        self._window_bounds_save_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(600))
+                .await;
+            let _ = this.update(cx, |this, _| {
+                if let Err(error) = save_saved_state(&this.saved) {
+                    this.error_message = error.to_string();
+                }
+            });
+        }));
     }
 
     fn restore_saved_workspaces(&mut self, window: &mut Window, cx: &mut Context<Self>) {

@@ -889,6 +889,16 @@ impl SavedIdentity {
     }
 }
 
+/// Persisted window frame (global coordinates), so the app reopens where the
+/// user last left it.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SavedWindowBounds {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SavedState {
     #[serde(default)]
@@ -915,6 +925,8 @@ pub struct SavedState {
     pub restored_workspaces: Vec<SavedWorkspace>,
     #[serde(default)]
     pub active_workspace_index: Option<usize>,
+    #[serde(default)]
+    pub window_bounds: Option<SavedWindowBounds>,
 }
 
 impl SavedState {
