@@ -52,6 +52,7 @@ docker build -t termirust-e2e-sshd:local tests/fixtures/ssh-server >/dev/null
 CONTAINER_NAME="termirust-real-ax-$RANDOM-$RANDOM"
 docker run --detach --rm --name "$CONTAINER_NAME" -p 127.0.0.1::22 termirust-e2e-sshd:local >/dev/null
 PORT="$(docker inspect -f '{{(index (index .NetworkSettings.Ports "22/tcp") 0).HostPort}}' "$CONTAINER_NAME")"
+STARTUP_MARKER="/tmp/termirust-real-app-startup"
 
 PROFILE_ID="real-app-docker-e2e"
 TMP_KEY="$(mktemp)"
@@ -111,8 +112,8 @@ state = {
         "key_path": "${TMP_KEY}",
         "identity_id": "identity-real-app-docker-e2e",
         "jump_host_id": None,
-        "startup_directory": None,
-        "startup_command": None,
+        "startup_directory": "/tmp",
+        "startup_command": "pwd > ${STARTUP_MARKER}",
         "start_in_files": False,
         "terminal_scrollback_rows": 10000,
         "port_forward_rules": [],
@@ -149,8 +150,8 @@ state = {
             "username": "termirust",
             "auth": {"private_key": {"key_path": "${TMP_KEY}"}},
             "jump_host": None,
-            "startup_directory": None,
-            "startup_command": None,
+            "startup_directory": "/tmp",
+            "startup_command": "pwd > ${STARTUP_MARKER}",
             "start_in_files": False,
             "terminal_scrollback_rows": 10000,
             "port_forward_rules": [],
@@ -205,6 +206,19 @@ done
 if ! docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Accepted publickey for termirust"; then
   echo "real app never completed public-key auth against docker ssh server" >&2
   docker logs "$CONTAINER_NAME" >&2
+  exit 1
+fi
+
+for _ in {1..20}; do
+  if docker exec "$CONTAINER_NAME" sh -lc "test -f '$STARTUP_MARKER'"; then
+    break
+  fi
+  sleep 1
+done
+
+if ! docker exec "$CONTAINER_NAME" sh -lc "test \"\$(cat '$STARTUP_MARKER')\" = '/tmp'"; then
+  echo "bundled app never completed startup directory/command flow" >&2
+  docker exec "$CONTAINER_NAME" sh -lc "ls -l '$STARTUP_MARKER' 2>/dev/null || true; cat '$STARTUP_MARKER' 2>/dev/null || true" >&2
   exit 1
 fi
 

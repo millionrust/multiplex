@@ -80,6 +80,7 @@ That smoke path:
 - seeds a temporary restorable SSH workspace that uses the fixture key
 - launches the real bundled desktop app
 - verifies the Docker server accepted the SSH login
+- verifies the restored startup directory / startup command path runs on the remote side
 - verifies `known_hosts.json` was written for the launched-app endpoint
 
 It is intentionally separate from `auto-test.sh` because it is macOS-specific,
