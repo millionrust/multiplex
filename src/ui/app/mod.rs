@@ -6734,11 +6734,9 @@ impl TermiRustApp {
         let delta_y: f32 = delta.y.into();
         let line_height_px: f32 = line_height.into();
         let lines = (delta_y / line_height_px).round() as i32;
-        if let Some(pane) = self.pane_mut(pane_id) {
-            if lines < 0 {
-                pane.terminal.scroll_scrollback(lines.abs());
-            } else if lines > 0 {
-                pane.terminal.scroll_scrollback(-lines);
+        if lines != 0 {
+            if let Some(pane) = self.pane_mut(pane_id) {
+                pane.terminal.scroll_scrollback(lines);
             }
         }
         cx.notify();
