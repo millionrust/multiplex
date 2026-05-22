@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fs;
 use std::io::Read;
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -15,6 +16,11 @@ const TEST_SSH_PASSWORD: &str = "termirust-pass";
 fn test_mutex() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn dialog_paths() -> &'static Mutex<VecDeque<Option<PathBuf>>> {
+    static PATHS: OnceLock<Mutex<VecDeque<Option<PathBuf>>>> = OnceLock::new();
+    PATHS.get_or_init(|| Mutex::new(VecDeque::new()))
 }
 
 fn now_millis() -> u128 {
@@ -83,6 +89,10 @@ impl TestIsolation {
         let lock = test_mutex().lock().expect("test isolation lock poisoned");
         let temp_dir = std::env::temp_dir().join(format!("termirust-test-{}", now_millis()));
         fs::create_dir_all(&temp_dir).expect("unable to create test config dir");
+        dialog_paths()
+            .lock()
+            .expect("dialog path queue lock poisoned")
+            .clear();
         let previous_config_dir = set_test_app_dir_override(Some(temp_dir.clone()));
 
         Self {
@@ -95,6 +105,10 @@ impl TestIsolation {
 
 impl Drop for TestIsolation {
     fn drop(&mut self) {
+        dialog_paths()
+            .lock()
+            .expect("dialog path queue lock poisoned")
+            .clear();
         set_test_app_dir_override(self.previous_config_dir.clone());
         let _ = fs::remove_dir_all(&self.temp_dir);
     }
@@ -219,6 +233,21 @@ pub fn allocate_local_port() -> u16 {
         .local_addr()
         .expect("unable to read local test port")
         .port()
+}
+
+pub fn queue_dialog_path(path: Option<PathBuf>) {
+    dialog_paths()
+        .lock()
+        .expect("dialog path queue lock poisoned")
+        .push_back(path);
+}
+
+pub fn take_dialog_path() -> Option<PathBuf> {
+    dialog_paths()
+        .lock()
+        .expect("dialog path queue lock poisoned")
+        .pop_front()
+        .flatten()
 }
 
 impl Drop for DockerSshServer {

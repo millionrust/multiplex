@@ -881,6 +881,17 @@ pub struct TermiRustApp {
 }
 
 impl TermiRustApp {
+    fn take_dialog_path_for_tests() -> Option<std::path::PathBuf> {
+        #[cfg(test)]
+        {
+            crate::test_support::take_dialog_path()
+        }
+        #[cfg(not(test))]
+        {
+            None
+        }
+    }
+
     pub fn new(mut saved: SavedState, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let inputs = DraftInputs::new(window, cx);
         let shell_inputs = ShellInputs::new(window, cx);
@@ -2719,6 +2730,11 @@ impl TermiRustApp {
         self.error_message.clear();
         cx.notify();
 
+        if let Some(path) = Self::take_dialog_path_for_tests() {
+            self.import_key_file(path, window, cx);
+            return;
+        }
+
         cx.spawn_in(window, async move |this, cx| {
             let Some(path) = AsyncFileDialog::new()
                 .set_title("Choose private key file")
@@ -3461,11 +3477,12 @@ impl TermiRustApp {
     }
 
     fn export_portable_data(&mut self, cx: &mut Context<Self>) {
-        let Some(path) = FileDialog::new()
-            .add_filter("JSON", &["json"])
-            .set_file_name("termirust-export.json")
-            .save_file()
-        else {
+        let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
+            FileDialog::new()
+                .add_filter("JSON", &["json"])
+                .set_file_name("termirust-export.json")
+                .save_file()
+        }) else {
             return;
         };
 
@@ -3488,8 +3505,37 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn export_portable_data_to_path(
+        &mut self,
+        path: &std::path::Path,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        match export_portable_data_bundle(path, &self.saved, &self.known_hosts) {
+            Ok(report) => {
+                self.status_message = format!(
+                    "Exported {} hosts, {} identities, {} snippets, {} vaults, and {} known hosts.",
+                    report.profiles,
+                    report.identities,
+                    report.snippets,
+                    report.vaults,
+                    report.known_hosts
+                );
+                self.error_message.clear();
+                cx.notify();
+                true
+            }
+            Err(error) => {
+                self.error_message = format!("Failed to export data bundle: {error:#}");
+                cx.notify();
+                false
+            }
+        }
+    }
+
     fn pick_sync_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(path) = FileDialog::new().pick_folder() else {
+        let Some(path) =
+            Self::take_dialog_path_for_tests().or_else(|| FileDialog::new().pick_folder())
+        else {
             return;
         };
         let path_str = path.display().to_string();
@@ -3687,6 +3733,28 @@ impl TermiRustApp {
         self.pull_from_sync_folder(window, cx);
     }
 
+    fn remove_known_host_entry(&mut self, endpoint: &str, cx: &mut Context<Self>) -> bool {
+        match self.known_hosts.remove(endpoint) {
+            Ok(true) => {
+                self.status_message = format!("Removed known host '{}'.", endpoint);
+                self.error_message.clear();
+                cx.notify();
+                true
+            }
+            Ok(false) => {
+                self.status_message = "Host was already removed.".to_string();
+                self.error_message.clear();
+                cx.notify();
+                false
+            }
+            Err(error) => {
+                self.error_message = error.to_string();
+                cx.notify();
+                false
+            }
+        }
+    }
+
     fn export_encrypted_portable_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let passphrase = self
             .settings_inputs
@@ -3712,11 +3780,12 @@ impl TermiRustApp {
             return;
         }
 
-        let Some(path) = FileDialog::new()
-            .add_filter("Encrypted Backup", &["json"])
-            .set_file_name("termirust-backup.encrypted.json")
-            .save_file()
-        else {
+        let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
+            FileDialog::new()
+                .add_filter("Encrypted Backup", &["json"])
+                .set_file_name("termirust-backup.encrypted.json")
+                .save_file()
+        }) else {
             return;
         };
 
@@ -3746,7 +3815,9 @@ impl TermiRustApp {
     }
 
     fn import_portable_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(path) = FileDialog::new().add_filter("JSON", &["json"]).pick_file() else {
+        let Some(path) = Self::take_dialog_path_for_tests()
+            .or_else(|| FileDialog::new().add_filter("JSON", &["json"]).pick_file())
+        else {
             return;
         };
 
@@ -3773,6 +3844,37 @@ impl TermiRustApp {
         }
     }
 
+    fn import_portable_data_from_path(
+        &mut self,
+        path: &std::path::Path,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        match import_portable_data_bundle(path, &mut self.saved, &self.known_hosts) {
+            Ok(report) => {
+                let _ = save_saved_state(&self.saved);
+                self.load_settings_inputs(window, cx);
+                theme::set_theme_preset(self.saved.settings.theme_preset);
+                self.status_message = format!(
+                    "Imported {} hosts, {} identities, {} snippets, {} vaults, and {} known hosts.",
+                    report.profiles,
+                    report.identities,
+                    report.snippets,
+                    report.vaults,
+                    report.known_hosts
+                );
+                self.error_message.clear();
+                cx.notify();
+                true
+            }
+            Err(error) => {
+                self.error_message = format!("Failed to import data bundle: {error:#}");
+                cx.notify();
+                false
+            }
+        }
+    }
+
     fn import_encrypted_portable_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let passphrase = self
             .settings_inputs
@@ -3787,10 +3889,11 @@ impl TermiRustApp {
             return;
         }
 
-        let Some(path) = FileDialog::new()
-            .add_filter("Encrypted Backup", &["json"])
-            .pick_file()
-        else {
+        let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
+            FileDialog::new()
+                .add_filter("Encrypted Backup", &["json"])
+                .pick_file()
+        }) else {
             return;
         };
 
@@ -4464,7 +4567,9 @@ impl TermiRustApp {
         }) else {
             return;
         };
-        let Some(local_path) = FileDialog::new().pick_file() else {
+        let Some(local_path) =
+            Self::take_dialog_path_for_tests().or_else(|| FileDialog::new().pick_file())
+        else {
             return;
         };
 
@@ -4514,7 +4619,9 @@ impl TermiRustApp {
         else {
             return;
         };
-        let Some(local_path) = FileDialog::new().set_file_name(&entry.name).save_file() else {
+        let Some(local_path) = Self::take_dialog_path_for_tests()
+            .or_else(|| FileDialog::new().set_file_name(&entry.name).save_file())
+        else {
             return;
         };
 
@@ -9019,7 +9126,9 @@ mod tests {
         SavedState, SplitAxis,
     };
     use crate::sftp::RemoteFileEntry;
-    use crate::test_support::{DockerSshServer, TestIsolation, allocate_local_port};
+    use crate::test_support::{
+        DockerSshServer, TestIsolation, allocate_local_port, queue_dialog_path,
+    };
     use crate::ui::shell::shell_single_quote;
     use crate::ui::util::format_relative_time_for;
     use gpui::{AppContext as _, Entity, TestAppContext, WindowHandle};
@@ -10571,5 +10680,181 @@ mod tests {
         });
 
         let _ = std::fs::remove_dir_all(sync_dir);
+    }
+
+    #[gpui::test]
+    fn e2e_key_import_picker_and_known_host_removal(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        let key_path =
+            std::env::temp_dir().join(format!("termirust-test-key-{}.pem", std::process::id()));
+        std::fs::write(
+            &key_path,
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nZmFrZQ==\n-----END OPENSSH PRIVATE KEY-----\n",
+        )
+        .expect("unable to write test key file");
+        queue_dialog_path(Some(key_path.clone()));
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| app.pick_key_file(window, cx));
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.saved
+                    .identities
+                    .iter()
+                    .any(|identity| identity.key_path == key_path.display().to_string())
+            );
+        });
+
+        if !DockerSshServer::docker_available() {
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let request = docker_ssh_request(&server);
+        let (_workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            app.pane(pane_id)
+                .and_then(|pane| pane.connected.then_some(()))
+        });
+
+        let endpoint = format!("127.0.0.1:{}", server.port);
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.known_hosts
+                    .entries()
+                    .expect("known hosts should read")
+                    .iter()
+                    .any(|(saved, _)| saved == &endpoint)
+            );
+        });
+
+        app.update(cx, |app, cx| {
+            assert!(app.remove_known_host_entry(&endpoint, cx));
+        });
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.known_hosts
+                    .entries()
+                    .expect("known hosts should read")
+                    .iter()
+                    .all(|(saved, _)| saved != &endpoint)
+            );
+        });
+
+        let _ = std::fs::remove_file(key_path);
+    }
+
+    #[gpui::test]
+    fn e2e_portable_and_encrypted_import_export_round_trip(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let temp_dir =
+            std::env::temp_dir().join(format!("termirust-export-test-{}", std::process::id()));
+        std::fs::create_dir_all(&temp_dir).expect("unable to create export test dir");
+
+        let export_path = temp_dir.join("plain-export.json");
+        let encrypted_path = temp_dir.join("encrypted-export.json");
+
+        let (app_a, window_a) = open_test_app(cx);
+        window_a
+            .update(cx, |_, window, cx| {
+                app_a.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::PrivateKey, cx);
+                    TermiRustApp::set_input_value(&app.inputs.label, "Export Host", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.host, "192.168.1.10", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.username, "deploy", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.key_path,
+                        "/tmp/export_key",
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+
+                    TermiRustApp::set_input_value(
+                        &app.snippet_inputs.label,
+                        "Export Snippet",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.snippet_inputs.group, "Ops", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.snippet_inputs.command,
+                        "echo exported",
+                        window,
+                        cx,
+                    );
+                    app.save_snippet(window, cx);
+
+                    assert!(app.export_portable_data_to_path(&export_path, cx));
+
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.export_backup_passphrase,
+                        "backup-pass",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.export_backup_confirm,
+                        "backup-pass",
+                        window,
+                        cx,
+                    );
+                    queue_dialog_path(Some(encrypted_path.clone()));
+                    app.export_encrypted_portable_data(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        assert!(export_path.exists());
+        assert!(encrypted_path.exists());
+
+        let (app_b, window_b) = open_test_app_with_state(cx, SavedState::default());
+        window_b
+            .update(cx, |_, window, cx| {
+                app_b.update(cx, |app, cx| {
+                    assert!(app.import_portable_data_from_path(&export_path, window, cx));
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.import_backup_passphrase,
+                        "backup-pass",
+                        window,
+                        cx,
+                    );
+                    queue_dialog_path(Some(encrypted_path.clone()));
+                    app.import_encrypted_portable_data(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app_b.read_with(cx, |app, _| {
+            assert!(
+                app.saved
+                    .profiles
+                    .iter()
+                    .any(|profile| profile.label == "Export Host")
+            );
+            assert!(
+                app.saved
+                    .snippets
+                    .iter()
+                    .any(|snippet| snippet.label == "Export Snippet")
+            );
+        });
+
+        let _ = std::fs::remove_dir_all(temp_dir);
     }
 }
