@@ -137,41 +137,58 @@ impl TermiRustApp {
         let label: SharedString = label.into();
         h_flex()
             .id(id)
-            .gap(px(7.))
+            .gap(px(8.))
             .items_center()
             .pl(px(12.))
             .pr(if close_button.is_some() {
                 px(6.)
             } else {
-                px(14.)
+                px(12.)
             })
-            .h(px(34.))
-            .rounded(px(8.))
+            .h(px(32.))
+            .rounded(px(6.))
+            .border_1()
+            .border_color(if active {
+                theme::with_alpha(theme::border(), 0.8)
+            } else {
+                gpui::transparent_black()
+            })
             .bg(if active {
                 theme::chrome_tab_active()
             } else {
                 gpui::transparent_black()
             })
+            .when(active, |this| {
+                this.shadow(vec![gpui::BoxShadow {
+                    color: theme::with_alpha(gpui::black(), 0.12),
+                    offset: point(px(0.), px(2.)),
+                    blur_radius: px(4.),
+                    spread_radius: px(0.),
+                }])
+            })
             .when(!active, |this| {
                 this.hover(|style| style.bg(theme::chrome_tab()))
             })
-            .child(icon.size(px(14.)).text_color(if active {
-                theme::accent()
-            } else {
-                theme::text_muted_dark()
-            }))
+            .child(
+                icon.size(px(14.))
+                    .text_color(if active {
+                        theme::accent()
+                    } else {
+                        theme::text_muted_dark()
+                    }),
+            )
             .child(
                 div()
-                    .max_w(px(140.))
+                    .max_w(px(160.))
                     .overflow_hidden()
                     .text_ellipsis()
                     .whitespace_nowrap()
-                    .text_size(px(14.))
+                    .text_size(px(13.))
                     .font_medium()
                     .text_color(if active {
-                        theme::text_on_dark()
+                        theme::text_main()
                     } else {
-                        theme::with_alpha(theme::text_on_dark(), 0.72)
+                        theme::with_alpha(theme::text_on_dark(), 0.65)
                     })
                     .child(label),
             )
@@ -420,15 +437,17 @@ impl TermiRustApp {
             .relative()
             .pl(px(theme::CHROME_INSET_LEFT))
             .pr(px(12.))
-            .gap(px(4.))
+            .gap(px(6.))
             .items_center()
             .bg(theme::chrome_bg())
+            .border_b_1()
+            .border_color(theme::with_alpha(theme::border_dark(), 0.5))
             .child(
                 self.render_chrome_tab(
                     "chrome-hosts",
                     Icon::new(IconName::Globe),
                     "Hosts",
-                    library_active,
+                    library_active && self.nav_section != NavSection::Sftp,
                     None,
                     None,
                 )
@@ -488,24 +507,23 @@ impl TermiRustApp {
                     Some(
                         div()
                             .id(("chrome-close-wrap", workspace.id))
-                            .size(px(18.))
+                            .size(px(20.))
                             .rounded(px(4.))
                             .flex()
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
+                            .text_color(theme::text_muted_dark())
                             .hover(|style| {
-                                style.bg(theme::with_alpha(theme::text_muted_dark(), 0.2))
+                                style
+                                    .bg(theme::with_alpha(theme::text_muted_dark(), 0.15))
+                                    .text_color(theme::text_main())
                             })
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.open_workspace_tab_menu = None;
                                 this.close_workspace(close_id, cx);
                             }))
-                            .child(
-                                Icon::new(IconName::Close)
-                                    .size(px(12.))
-                                    .text_color(theme::text_muted_dark()),
-                            )
+                            .child(Icon::new(IconName::Close).size(px(12.)))
                             .into_any_element(),
                     ),
                 )

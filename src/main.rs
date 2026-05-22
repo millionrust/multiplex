@@ -53,6 +53,7 @@ fn main() {
                     appears_transparent: true,
                     traffic_light_position: Some(point(px(12.), px(14.))),
                 }),
+                window_min_size: Some(size(px(1120.), px(720.))),
                 ..Default::default()
             },
             |window, cx| {
