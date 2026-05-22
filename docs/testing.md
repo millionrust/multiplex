@@ -23,12 +23,18 @@ It runs:
 - `ui::app::tests::e2e_ssh_split_and_broadcast_reaches_all_panes`
 - `ui::app::tests::e2e_ssh_auto_reconnect_recovers_after_server_restart`
 - `ui::app::tests::e2e_local_shell_paste_confirmation_and_search`
+- `sftp::tests::docker_sftp_round_trips_directory_upload_download_and_delete`
+- `ui::app::tests::e2e_sftp_files_view_navigates_and_deletes_remote_files`
+- `ui::app::tests::e2e_quick_connect_password_flow_opens_workspace`
+- `ui::app::tests::e2e_host_editor_saves_and_removes_user_profile`
 
 Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH container, connect through the real `russh` session path, and verify both:
 
 - the raw SSH runtime can authenticate, stream output, and disconnect cleanly
 - the GPUI app can open a workspace, render terminal output, accept typed terminal input, split panes, broadcast commands, and auto-reconnect after a non-user disconnect
 - the local terminal path can confirm/cancel multi-line paste and drive workspace search against real terminal output
+- the SFTP runtime can list directories, upload files, download files, and delete remote files against the same Docker SSH target
+- the GPUI app can open the remote Files view, navigate folders, delete remote files, save/remove user hosts, and quick-connect with password auth
 
 If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests self-skip.
 

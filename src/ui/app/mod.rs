@@ -9006,12 +9006,13 @@ fn apply_group_defaults_to_draft(
 mod tests {
     use super::{
         AutocompleteSource, OutputSuggestionContext, PathSuggestionContext, TermiRustApp,
-        WorkspaceIndicators, WorkspaceRuntimeTone, apply_group_defaults_to_draft,
-        collect_autocomplete_candidates, collect_command_palette_candidates,
-        extract_snippet_prompt_names, shell_command_requires_continuation,
-        startup_bytes_for_request, substitute_snippet_placeholders, substitute_snippet_prompts,
-        workspace_runtime_summary,
+        WorkspaceIndicators, WorkspaceRuntimeTone, WorkspaceViewMode,
+        apply_group_defaults_to_draft, collect_autocomplete_candidates,
+        collect_command_palette_candidates, extract_snippet_prompt_names,
+        shell_command_requires_continuation, startup_bytes_for_request,
+        substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
     };
+    use crate::credentials;
     use crate::models::{
         AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, LocalPortForward,
         LocalShellConfig, PortForwardKind, PortForwardRule, SavedHostGroup, SavedIdentity,
@@ -9044,6 +9045,18 @@ mod tests {
             port_forward_rules: Vec::new(),
             local_shell: None,
             environment: Vec::new(),
+        }
+    }
+
+    fn docker_ssh_request_with_startup(
+        server: &DockerSshServer,
+        startup_directory: Option<&str>,
+        start_in_files: bool,
+    ) -> ConnectRequest {
+        ConnectRequest {
+            startup_directory: startup_directory.map(ToString::to_string),
+            start_in_files,
+            ..docker_ssh_request(server)
         }
     }
 
@@ -10037,6 +10050,225 @@ mod tests {
                 .expect("reconnected pane should exist");
             assert_eq!(pane.status, "Live");
             assert_eq!(pane.auto_reconnect_attempts, 0);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_sftp_files_view_navigates_and_deletes_remote_files(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping app sftp e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        server
+            .exec(
+                "mkdir -p /home/termirust/e2e-app/inner && printf 'delete-me\\n' > /home/termirust/e2e-app/delete.txt && printf 'nested\\n' > /home/termirust/e2e-app/inner/inside.txt && chown -R termirust:termirust /home/termirust/e2e-app",
+            )
+            .expect("unable to seed remote app sftp directory");
+
+        let (app, window) = open_test_app(cx);
+        let request =
+            docker_ssh_request_with_startup(&server, Some("/home/termirust/e2e-app"), false);
+
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(pane_id)?;
+            pane.connected.then_some(())
+        });
+
+        app.update(cx, |app, cx| {
+            app.open_workspace_files_for_pane(workspace_id, pane_id, cx);
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            let browser = workspace.sftp.as_ref()?;
+            (workspace.view_mode == WorkspaceViewMode::Files
+                && !browser.loading
+                && browser
+                    .entries
+                    .iter()
+                    .any(|entry| entry.name == "delete.txt")
+                && browser.entries.iter().any(|entry| entry.name == "inner"))
+            .then_some(())
+        });
+
+        app.update(cx, |app, cx| {
+            app.select_workspace_file_entry(
+                workspace_id,
+                "/home/termirust/e2e-app/inner".to_string(),
+                cx,
+            );
+            app.open_selected_workspace_file_entry(cx);
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let browser = app.workspace(workspace_id)?.sftp.as_ref()?;
+            (!browser.loading
+                && browser.current_path == "/home/termirust/e2e-app/inner"
+                && browser
+                    .entries
+                    .iter()
+                    .any(|entry| entry.name == "inside.txt"))
+            .then_some(())
+        });
+
+        app.update(cx, |app, cx| app.navigate_workspace_files_up(cx));
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let browser = app.workspace(workspace_id)?.sftp.as_ref()?;
+            (!browser.loading && browser.current_path == "/home/termirust/e2e-app").then_some(())
+        });
+
+        app.update(cx, |app, cx| {
+            app.select_workspace_file_entry(
+                workspace_id,
+                "/home/termirust/e2e-app/delete.txt".to_string(),
+                cx,
+            );
+            app.delete_workspace_file(cx);
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let browser = app.workspace(workspace_id)?.sftp.as_ref()?;
+            (!browser.loading
+                && browser.current_path == "/home/termirust/e2e-app"
+                && browser
+                    .entries
+                    .iter()
+                    .all(|entry| entry.name != "delete.txt"))
+            .then_some(())
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_quick_connect_password_flow_opens_workspace(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping quick connect e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let search_value = format!("{}@{}:{}", server.username(), server.host(), server.port);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.host_search,
+                        search_value,
+                        window,
+                        cx,
+                    );
+                    app.set_quick_connect_password_input(server.password().to_string(), window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let credential_id = credentials::connection_password_credential_id(
+            server.username(),
+            server.host(),
+            server.port,
+        );
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let qc = app
+                        .try_quick_connect_from_search(cx)
+                        .expect("quick connect should parse");
+                    let password = app.current_quick_connect_password(cx);
+                    app.quick_connect(qc, Some(password), window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.connected
+                && pane
+                    .terminal
+                    .all_rows_text()
+                    .iter()
+                    .any(|row| row.contains('$') || row.contains('#')))
+            .then_some(())
+        });
+
+        let _ = credentials::delete_password(&credential_id);
+    }
+
+    #[gpui::test]
+    fn e2e_host_editor_saves_and_removes_user_profile(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::PrivateKey, cx);
+                    TermiRustApp::set_input_value(&app.inputs.label, "E2E Host", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.host, "127.0.0.1", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, "2222", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.username, "termirust", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.key_path,
+                        "/tmp/fake_id_ed25519",
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let saved_profile_id = app.read_with(cx, |app, _| {
+            let profile_id = app
+                .selected_profile_id
+                .clone()
+                .expect("profile should be selected after save");
+            let profile = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.id == profile_id)
+                .expect("saved profile should exist");
+            assert_eq!(profile.label, "E2E Host");
+            assert_eq!(profile.host, "127.0.0.1");
+            assert_eq!(profile.port, 2222);
+            assert_eq!(profile.username, "termirust");
+            assert_eq!(profile.auth_mode, AuthMode::PrivateKey);
+            profile_id
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.remove_selected_profile(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.saved
+                    .profiles
+                    .iter()
+                    .all(|profile| profile.id != saved_profile_id)
+            );
+            assert!(app.selected_profile_id.is_none());
+            assert!(app.show_editor_panel);
         });
     }
 }

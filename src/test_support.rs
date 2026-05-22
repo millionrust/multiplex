@@ -173,6 +173,14 @@ impl DockerSshServer {
         TEST_SSH_PASSWORD
     }
 
+    pub fn exec(&self, command: &str) -> Result<String, String> {
+        run_command(
+            "docker",
+            &["exec", &self.container_name, "sh", "-lc", command],
+            None,
+        )
+    }
+
     pub fn stop(&self) {
         let _ = run_command("docker", &["rm", "-f", &self.container_name], None);
     }
