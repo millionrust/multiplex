@@ -4859,6 +4859,22 @@ impl TermiRustApp {
         let mut request = pane.request.clone();
         let workspace_id = self.pane_workspace_id(pane_id);
 
+        // A passphrase-protected key fails the first connect with an empty
+        // passphrase. The stored request still carries `None`, so pick up a
+        // passphrase the user has since typed in the host editor.
+        if let Some(AuthConfig::PrivateKey { passphrase, .. }) = request.auth.as_mut() {
+            let entered = self
+                .inputs
+                .key_passphrase
+                .read(cx)
+                .value()
+                .trim()
+                .to_string();
+            if !entered.is_empty() {
+                *passphrase = Some(entered);
+            }
+        }
+
         request.session_id = self.next_session_id();
         let new_pane_id = self.spawn_pane(request.clone(), window, cx);
 
