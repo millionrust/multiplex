@@ -2544,6 +2544,49 @@ mod tests {
     }
 
     #[test]
+    fn saved_state_serializes_restored_password_workspace_shape() {
+        let mut state = SavedState::default();
+        state.settings.restore_workspaces_on_launch = true;
+        state.restored_workspaces.push(SavedWorkspace {
+            title: "docker-e2e".to_string(),
+            layout: None,
+            active_pane_index: 0,
+            panes: vec![RestorableConnection {
+                title: "docker-e2e".to_string(),
+                kind: ConnectionKind::Ssh,
+                host: "127.0.0.1".to_string(),
+                port: 55558,
+                username: "termirust".to_string(),
+                auth: Some(RestorableAuth::PasswordKeychain {
+                    credential_id: "profile:real-app-docker-e2e".to_string(),
+                }),
+                jump_host: None,
+                startup_directory: None,
+                startup_command: None,
+                start_in_files: false,
+                terminal_scrollback_rows: Some(10_000),
+                port_forward_rules: Vec::new(),
+                local_forwards: Vec::new(),
+                local_forward: None,
+                local_shell: None,
+            }],
+        });
+        state.active_workspace_index = Some(0);
+
+        let value = serde_json::to_value(&state).expect("saved state should serialize");
+        let workspace = &value["restored_workspaces"][0];
+        assert_eq!(workspace["title"], "docker-e2e");
+        assert_eq!(workspace["layout"], serde_json::Value::Null);
+        assert_eq!(workspace["active_pane_index"], 0);
+        assert_eq!(workspace["panes"][0]["kind"], "ssh");
+        assert_eq!(
+            workspace["panes"][0]["auth"]["password_keychain"]["credential_id"],
+            "profile:real-app-docker-e2e"
+        );
+        assert_eq!(value["active_workspace_index"], 0);
+    }
+
+    #[test]
     fn local_shell_sessions_round_trip_as_restorable() {
         let request = ConnectRequest {
             session_id: 11,

@@ -64,6 +64,28 @@ If you use your normal SSH agent or default key, omit `TERMIRUST_TEST_SSH_KEY`.
 
 This smoke check proves the target is reachable and authenticated before you test the app UI against the same host.
 
+## Real Bundled-App SSH Smoke
+
+On macOS, you can also verify the packaged `TermiRust.app` against a disposable
+Docker SSH server:
+
+```bash
+./scripts/test-real-app-ssh-ax.sh
+```
+
+That smoke path:
+
+- builds `TermiRust.app` with `cargo bundle --release`
+- starts the Docker SSH fixture from `tests/fixtures/ssh-server/`
+- seeds a temporary restorable SSH workspace that uses the fixture key
+- launches the real bundled desktop app
+- verifies the Docker server accepted the SSH login
+- verifies `known_hosts.json` was written for the launched-app endpoint
+
+It is intentionally separate from `auto-test.sh` because it is macOS-specific,
+launches a real desktop bundle, and mutates local app state temporarily while it
+runs.
+
 ## What Still Needs Manual UI Testing
 
 Some desktop behaviors still benefit from manual checks because the app is a native GPUI desktop app and the automated coverage is currently focused on SSH session flows:
