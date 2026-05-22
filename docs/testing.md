@@ -14,6 +14,20 @@ It runs:
 - `cargo clippy --all-targets --all-features`
 - `git diff --check`
 
+## Docker SSH E2E
+
+`cargo test` now includes two Docker-backed end-to-end checks when Docker is available:
+
+- `ssh::tests::docker_ssh_session_connects_and_streams_output`
+- `ui::app::tests::e2e_ssh_workspace_connects_renders_output_and_closes`
+
+Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH container, connect through the real `russh` session path, and verify both:
+
+- the raw SSH runtime can authenticate, stream output, and disconnect cleanly
+- the GPUI app can open a workspace, render terminal output, accept typed terminal input, and avoid auto-reconnecting after an explicit `exit`
+
+If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests self-skip.
+
 ## Optional Live SSH Smoke
 
 The default suite does not touch any real server. To verify that your local machine or a test VM accepts SSH, set these environment variables:
@@ -32,10 +46,9 @@ This smoke check proves the target is reachable and authenticated before you tes
 
 ## What Still Needs Manual UI Testing
 
-Some desktop behaviors still need manual checks because the app is a native GPUI desktop app and does not currently expose a headless UI automation harness:
+Some desktop behaviors still benefit from manual checks because the app is a native GPUI desktop app and the automated coverage is currently focused on SSH session flows:
 
 - Creating/editing/deleting hosts from the UI.
-- Connecting a saved host and interacting with the terminal.
 - SFTP upload/download/delete flows.
 - Window resizing, tab dragging, split-pane layout, and copy/paste.
 - Visual polish across macOS, Windows, and Linux.

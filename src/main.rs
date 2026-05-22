@@ -7,6 +7,8 @@ mod sftp;
 mod ssh;
 mod storage;
 mod terminal;
+#[cfg(test)]
+mod test_support;
 mod ui;
 
 use gpui::*;
@@ -98,10 +100,7 @@ fn init_file_logging() {
     eprintln!("[main] logging to {}", log_path.display());
     // Point fd 2 at the log file; all eprintln! output follows it from here.
     unsafe {
-        libc::dup2(
-            std::os::fd::AsRawFd::as_raw_fd(&file),
-            libc::STDERR_FILENO,
-        );
+        libc::dup2(std::os::fd::AsRawFd::as_raw_fd(&file), libc::STDERR_FILENO);
     }
     std::mem::forget(file);
 }
@@ -137,8 +136,7 @@ fn main() {
         gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
 
         let initial_state = saved_state.clone();
-        let (bounds, restore_display_id) =
-            restored_window_bounds(saved_state.window_bounds, cx);
+        let (bounds, restore_display_id) = restored_window_bounds(saved_state.window_bounds, cx);
 
         cx.open_window(
             WindowOptions {

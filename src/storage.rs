@@ -7,6 +7,8 @@ use base64::engine::general_purpose::STANDARD_NO_PAD;
 use rand::RngCore;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -31,6 +33,11 @@ const PORTABLE_BUNDLE_NONCE_LEN: usize = 12;
 const PORTABLE_BUNDLE_ARGON2_MEMORY_KIB: u32 = 19_456;
 const PORTABLE_BUNDLE_ARGON2_ITERATIONS: u32 = 3;
 const PORTABLE_BUNDLE_ARGON2_PARALLELISM: u32 = 1;
+
+#[cfg(test)]
+thread_local! {
+    static TEST_APP_DIR_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct PortableDataBundle {
@@ -68,11 +75,27 @@ pub struct PortableDataReport {
 }
 
 fn app_dir() -> Result<PathBuf> {
-    let base_dir = dirs::config_dir().unwrap_or(std::env::current_dir()?);
-    let path = base_dir.join(APP_DIR_NAME);
+    #[cfg(test)]
+    if let Some(path) = TEST_APP_DIR_OVERRIDE.with(|override_path| override_path.borrow().clone()) {
+        fs::create_dir_all(&path)
+            .with_context(|| format!("Unable to create app directory at {}", path.display()))?;
+        return Ok(path);
+    }
+
+    let path = if let Some(explicit_dir) = std::env::var_os("TERMIRUST_CONFIG_DIR") {
+        PathBuf::from(explicit_dir)
+    } else {
+        let base_dir = dirs::config_dir().unwrap_or(std::env::current_dir()?);
+        base_dir.join(APP_DIR_NAME)
+    };
     fs::create_dir_all(&path)
         .with_context(|| format!("Unable to create app directory at {}", path.display()))?;
     Ok(path)
+}
+
+#[cfg(test)]
+pub(crate) fn set_test_app_dir_override(path: Option<PathBuf>) -> Option<PathBuf> {
+    TEST_APP_DIR_OVERRIDE.with(|override_path| override_path.replace(path))
 }
 
 fn state_file() -> Result<PathBuf> {

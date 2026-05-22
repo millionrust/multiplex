@@ -44,8 +44,7 @@ use crate::models::{
     HostColorTag, HostProfile, JumpHostConnection, PortForwardKind, PortForwardRule, ProfileSource,
     QuickConnect, SavedHostGroup, SavedIdentity, SavedSnippet, SavedSplitNode, SavedState,
     SavedVault, SavedVaultMember, SavedWindowBounds, SavedWorkspace, SessionLogEntry, SplitAxis,
-    ThemePreset,
-    VaultKind, VaultMemberRole,
+    ThemePreset, VaultKind, VaultMemberRole,
 };
 use crate::sftp::{
     RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
@@ -6008,11 +6007,17 @@ impl TermiRustApp {
                 b'\r' | b'\n' => {
                     let command = pane.current_input.trim().to_string();
                     if !command.is_empty() {
+                        let explicit_disconnect = pane.request.kind == ConnectionKind::Ssh
+                            && matches!(command.split_whitespace().next(), Some("exit" | "logout"));
                         if shell_command_requires_continuation(&command) {
                             if !pane.current_input.ends_with('\n') {
                                 pane.current_input.push('\n');
                             }
                         } else if !pane.current_input.contains('\n') {
+                            if explicit_disconnect {
+                                pane.user_closed = true;
+                                pane.auto_reconnect_at = None;
+                            }
                             completed_commands.push(command);
                             pane.current_input.clear();
                         } else {
@@ -9000,19 +9005,100 @@ fn apply_group_defaults_to_draft(
 #[cfg(test)]
 mod tests {
     use super::{
-        AutocompleteSource, OutputSuggestionContext, PathSuggestionContext, WorkspaceIndicators,
-        WorkspaceRuntimeTone, apply_group_defaults_to_draft, collect_autocomplete_candidates,
-        collect_command_palette_candidates, extract_snippet_prompt_names,
-        shell_command_requires_continuation, startup_bytes_for_request,
-        substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
+        AutocompleteSource, OutputSuggestionContext, PathSuggestionContext, TermiRustApp,
+        WorkspaceIndicators, WorkspaceRuntimeTone, apply_group_defaults_to_draft,
+        collect_autocomplete_candidates, collect_command_palette_candidates,
+        extract_snippet_prompt_names, shell_command_requires_continuation,
+        startup_bytes_for_request, substitute_snippet_placeholders, substitute_snippet_prompts,
+        workspace_runtime_summary,
     };
     use crate::models::{
         AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, LocalPortForward,
-        PortForwardKind, PortForwardRule, SavedHostGroup, SavedIdentity,
+        PortForwardKind, PortForwardRule, SavedHostGroup, SavedIdentity, SavedState,
     };
     use crate::sftp::RemoteFileEntry;
+    use crate::test_support::{DockerSshServer, TestIsolation};
     use crate::ui::shell::shell_single_quote;
     use crate::ui::util::format_relative_time_for;
+    use gpui::{AppContext as _, Entity, TestAppContext, WindowHandle};
+    use gpui_component::Root;
+    use std::time::{Duration, Instant};
+
+    fn docker_ssh_request(server: &DockerSshServer) -> ConnectRequest {
+        ConnectRequest {
+            session_id: 0,
+            title: "Docker SSH".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: server.host().to_string(),
+            port: server.port,
+            username: server.username().to_string(),
+            auth: Some(AuthConfig::Password {
+                password: server.password().to_string(),
+            }),
+            jump_host: None,
+            startup_directory: None,
+            startup_command: Some("printf 'termirust-ui-ready\\n'".to_string()),
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: Vec::new(),
+        }
+    }
+
+    fn open_test_app(cx: &mut TestAppContext) -> (Entity<TermiRustApp>, WindowHandle<Root>) {
+        let mut app_entity = None;
+        let window = cx.update(|cx| {
+            gpui_component::init(cx);
+            gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
+            cx.open_window(Default::default(), |window, cx| {
+                let app = cx.new(|cx| TermiRustApp::new(SavedState::default(), window, cx));
+                app_entity = Some(app.clone());
+                cx.new(|cx| Root::new(app, window, cx))
+            })
+            .unwrap()
+        });
+
+        (app_entity.expect("app entity should exist"), window)
+    }
+
+    fn wait_for_app_state<R>(
+        cx: &mut TestAppContext,
+        app: &Entity<TermiRustApp>,
+        timeout: Duration,
+        mut check: impl FnMut(&mut TermiRustApp) -> Option<R>,
+    ) -> R {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if let Some(result) = app.update(cx, |app, cx| {
+                app.process_events(cx);
+                check(app)
+            }) {
+                return result;
+            }
+
+            if Instant::now() >= deadline {
+                let terminal_dump = app.read_with(cx, |app, _| {
+                    app.panes
+                        .iter()
+                        .map(|pane| {
+                            format!(
+                                "pane {} status={} connected={} closed={} rows={:?}",
+                                pane.id,
+                                pane.status,
+                                pane.connected,
+                                pane.closed,
+                                pane.terminal.all_rows_text()
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                });
+                panic!("timed out waiting for app state: {terminal_dump:#?}");
+            }
+
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
 
     #[test]
     fn snippet_prompts_extract_unique_named_placeholders() {
@@ -9607,6 +9693,77 @@ mod tests {
         assert_eq!(
             suggestions.first().map(|item| item.command.as_str()),
             Some("docker logs worker")
+        );
+    }
+
+    #[gpui::test]
+    fn e2e_ssh_workspace_connects_renders_output_and_closes(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping app ssh e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let request = docker_ssh_request(&server);
+
+        let (_, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(pane_id)?;
+            let ready = pane
+                .terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("termirust-ui-ready"));
+            ready.then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, _| {
+                    let pane = app.pane(pane_id).expect("pane should exist");
+                    window.focus(&pane.terminal_focus);
+                })
+            })
+            .expect("window focus update should succeed");
+
+        cx.simulate_keystrokes(*window, "e c h o space a p p o k enter");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("appok"))
+                .then_some(())
+        });
+
+        cx.simulate_keystrokes(*window, "e x i t enter");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            (pane.closed && !pane.connected && pane.status == "Closed").then_some(())
+        });
+
+        let log_status = app.read_with(cx, |app, _| {
+            let pane = app.pane(pane_id).expect("pane should still exist");
+            app.saved
+                .session_logs
+                .iter()
+                .find(|entry| entry.id == pane.log_id)
+                .map(|entry| entry.status)
+        });
+        assert_eq!(
+            log_status,
+            Some(crate::models::SessionLogStatus::Disconnected)
         );
     }
 }
