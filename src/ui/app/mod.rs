@@ -9204,9 +9204,9 @@ fn apply_group_defaults_to_draft(
 #[cfg(test)]
 mod tests {
     use super::{
-        AutocompleteSource, ConnectDialogMode, ConnectProtocol, KeychainTab, NavSection,
-        OutputSuggestionContext, PathSuggestionContext, SplitNode, TermiRustApp,
-        WorkspaceIndicators, WorkspaceRuntimeTone, WorkspaceViewMode,
+        AutocompleteSource, ConnectDialogMode, ConnectProtocol, DropZone, KeychainTab,
+        MAX_SPLIT_PANES, NavSection, OutputSuggestionContext, PathSuggestionContext, SplitNode,
+        TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone, WorkspaceViewMode,
         apply_group_defaults_to_draft, collect_autocomplete_candidates,
         collect_command_palette_candidates, extract_snippet_prompt_names,
         shell_command_requires_continuation, startup_bytes_for_request,
@@ -10619,13 +10619,13 @@ mod tests {
         }
 
         let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
-        let credential_id = "profile:restored-password-e2e";
-        let _ = credentials::delete_password(credential_id);
-        credentials::store_password(credential_id, server.password())
+        let credential_id = format!("profile:restored-password-e2e-{}", server.port);
+        let _ = credentials::delete_password(&credential_id);
+        credentials::store_password(&credential_id, server.password())
             .expect("unable to seed restored password credential");
         let saved = restored_docker_ssh_password_state(
             &server,
-            credential_id,
+            &credential_id,
             Some("printf 'restored-password-ui-ready\\n'"),
         );
         let (app, window) = open_test_app_with_state(cx, saved);
@@ -10642,7 +10642,7 @@ mod tests {
             .then_some(())
         });
 
-        let _ = credentials::delete_password(credential_id);
+        let _ = credentials::delete_password(&credential_id);
     }
 
     #[gpui::test]
@@ -13246,6 +13246,261 @@ mod tests {
                     .count(),
                 2
             );
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_dragged_workspace_tab_drops_onto_pane_and_merges_split(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        let target_request = ConnectRequest {
+            title: "Drop Target".to_string(),
+            ..ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+        let source_request = ConnectRequest {
+            title: "Drop Source".to_string(),
+            ..ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+
+        let (target_workspace_id, target_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(target_request, window, cx)
+                        .expect("target workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+        let (source_workspace_id, source_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(source_request, window, cx)
+                        .expect("source workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            (app.pane(target_pane_id).is_some_and(|pane| pane.connected)
+                && app.pane(source_pane_id).is_some_and(|pane| pane.connected))
+            .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.duplicate_pane_into_split(
+                        source_pane_id,
+                        SplitAxis::Horizontal,
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        let source_split_pane_id = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(source_workspace_id)?;
+            (workspace.pane_ids.len() == 2)
+                .then(|| {
+                    workspace
+                        .pane_ids
+                        .iter()
+                        .copied()
+                        .find(|id| *id != source_pane_id)
+                })
+                .flatten()
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.split_drop_target = Some((target_pane_id, DropZone::Bottom));
+                    app.merge_tab_as_split(
+                        source_workspace_id,
+                        target_pane_id,
+                        DropZone::Bottom,
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.workspaces.len(), 1);
+            assert_eq!(app.active_workspace_id, Some(target_workspace_id));
+            assert_eq!(app.split_drop_target, None);
+            assert_eq!(app.status_message, "Merged tab into a split.");
+            assert!(app.error_message.is_empty());
+            assert!(app.workspace(source_workspace_id).is_none());
+
+            let workspace = app
+                .workspace(target_workspace_id)
+                .expect("target workspace should remain");
+            assert_eq!(
+                workspace.pane_ids,
+                vec![target_pane_id, source_pane_id, source_split_pane_id]
+            );
+            assert_eq!(workspace.active_pane_id, source_pane_id);
+            assert_eq!(workspace.view_mode, WorkspaceViewMode::Terminal);
+
+            match workspace
+                .layout
+                .as_ref()
+                .expect("merged layout should exist")
+            {
+                SplitNode::Split { axis, a, b, .. } => {
+                    assert_eq!(*axis, SplitAxis::Vertical);
+                    assert_eq!(a.leaf_ids(), vec![target_pane_id]);
+                    assert_eq!(b.leaf_ids(), vec![source_pane_id, source_split_pane_id]);
+                }
+                other => panic!("expected merged split layout, got {other:?}"),
+            }
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_dragged_workspace_tab_split_rejects_merges_over_max_panes(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        let target_request = ConnectRequest {
+            title: "Crowded Target".to_string(),
+            ..ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+        let source_request = ConnectRequest {
+            title: "Extra Source".to_string(),
+            ..ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+
+        let (target_workspace_id, target_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(target_request, window, cx)
+                        .expect("target workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(target_pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        for _ in 0..2 {
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        app.duplicate_pane_into_split(
+                            target_pane_id,
+                            SplitAxis::Horizontal,
+                            window,
+                            cx,
+                        );
+                    })
+                })
+                .expect("window update should succeed");
+        }
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(target_workspace_id)?;
+            (workspace.pane_ids.len() == 3).then_some(())
+        });
+
+        let (source_workspace_id, source_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(source_request, window, cx)
+                        .expect("source workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(source_pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.duplicate_pane_into_split(
+                        source_pane_id,
+                        SplitAxis::Horizontal,
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(source_workspace_id)?;
+            (workspace.pane_ids.len() == 2).then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.split_drop_target = Some((target_pane_id, DropZone::Right));
+                    app.merge_tab_as_split(
+                        source_workspace_id,
+                        target_pane_id,
+                        DropZone::Right,
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.workspaces.len(), 2);
+            assert_eq!(app.split_drop_target, None);
+            assert_eq!(
+                app.error_message,
+                format!("Split panes are capped at {} for now.", MAX_SPLIT_PANES)
+            );
+
+            let target = app
+                .workspace(target_workspace_id)
+                .expect("target workspace should remain");
+            let source = app
+                .workspace(source_workspace_id)
+                .expect("source workspace should remain");
+            assert_eq!(target.pane_ids.len(), 3);
+            assert_eq!(source.pane_ids.len(), 2);
         });
     }
 
