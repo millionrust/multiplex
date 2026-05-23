@@ -20,6 +20,9 @@ It runs:
 
 - `ssh::tests::docker_ssh_session_connects_and_streams_output`
 - `ssh::tests::docker_ssh_session_connects_through_jump_host_chain`
+- `ssh::tests::docker_ssh_local_port_forward_proxies_remote_service`
+- `ssh::tests::docker_ssh_dynamic_port_forward_proxies_remote_service`
+- `ssh::tests::docker_ssh_remote_port_forward_proxies_local_service`
 - `ui::app::tests::e2e_ssh_workspace_connects_renders_output_and_closes`
 - `ui::app::tests::e2e_ssh_workspace_connects_through_jump_host_and_renders_output`
 - `ui::app::tests::e2e_ssh_split_and_broadcast_reaches_all_panes`
@@ -51,6 +54,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 
 - the raw SSH runtime can authenticate, stream output, and disconnect cleanly
 - the raw SSH runtime can also authenticate through a real jump-host tunnel chain
+- the raw SSH runtime can open local forwards, SOCKS5 dynamic forwards, and remote reverse forwards against the Docker SSH fixture
 - the GPUI app can open a workspace, render terminal output, accept typed terminal input, split panes, broadcast commands, auto-reconnect after a non-user disconnect, and connect through a real jump host
 - restored SSH workspaces can reconnect on launch, run startup actions, and open directly into the Files view
 - restored SSH workspaces can also reconnect through the saved password-credential path on launch
