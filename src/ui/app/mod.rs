@@ -12471,6 +12471,38 @@ mod tests {
             );
         });
 
+        let new_click = selector_click_center(window, cx, "snippet-new");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(new_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert!(app.selected_snippet_id.is_none());
+            assert!(app.snippet_inputs.label.read(cx).value().is_empty());
+            assert!(app.snippet_inputs.command.read(cx).value().is_empty());
+            assert_eq!(app.status_message, "Snippet draft cleared.");
+            assert!(app.error_message.is_empty());
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.snippet_inputs.label,
+                        "Toolbar Snippet",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.snippet_inputs.command,
+                        "echo toolbar-snippet",
+                        window,
+                        cx,
+                    );
+                    app.save_snippet(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
         let delete_click = selector_click_center(window, cx, "snippet-delete");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(delete_click, gpui::Modifiers::none());
@@ -16319,6 +16351,102 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_keychain_rendered_empty_add_and_use_button_clicks(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        saved.identities.push(SavedIdentity {
+            id: "identity-use-button".to_string(),
+            label: "000 Use Button Key".to_string(),
+            vault_id: None,
+            key_path: docker_ssh_private_key_path(),
+            kind: "OpenSSH".to_string(),
+            source: IdentitySource::Imported,
+        });
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let key_path = std::path::PathBuf::from(docker_ssh_private_key_path());
+        queue_dialog_path(Some(key_path.clone()));
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Keychain, window, cx);
+                    app.saved.identities.clear();
+                    app.keychain_tab = KeychainTab::Identities;
+                    cx.notify();
+                })
+            })
+            .expect("window update should succeed");
+
+        let keys_tab_click = selector_click_center(window, cx, "keychain-tab-keys");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(keys_tab_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.nav_section, NavSection::Keychain);
+            assert_eq!(app.keychain_tab, KeychainTab::Keys);
+            assert!(app.error_message.is_empty());
+        });
+
+        let empty_add_click = selector_click_center(window, cx, "keys-empty-add");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(empty_add_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.show_editor_panel);
+            assert_eq!(app.draft_auth_mode, AuthMode::PrivateKey);
+            assert_eq!(app.current_key_path(cx), key_path.display().to_string());
+            let identity = app
+                .draft_identity_id
+                .as_deref()
+                .and_then(|id| app.identity_by_id(id))
+                .expect("imported identity should be selected");
+            assert_eq!(identity.key_path, key_path.display().to_string());
+            assert!(app.error_message.is_empty());
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Keychain, window, cx);
+                    app.saved.identities.clear();
+                    app.saved.upsert_identity(SavedIdentity {
+                        id: "identity-use-button".to_string(),
+                        label: "000 Use Button Key".to_string(),
+                        vault_id: None,
+                        key_path: docker_ssh_private_key_path(),
+                        kind: "OpenSSH".to_string(),
+                        source: IdentitySource::Imported,
+                    });
+                    app.keychain_tab = KeychainTab::Keys;
+                    cx.notify();
+                })
+            })
+            .expect("window update should succeed");
+
+        let use_click = selector_click_center(window, cx, "keychain-use-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(use_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.show_editor_panel);
+            assert_eq!(app.draft_auth_mode, AuthMode::PrivateKey);
+            assert_eq!(
+                app.draft_identity_id.as_deref(),
+                Some("identity-use-button")
+            );
+            assert_eq!(app.current_key_path(cx), docker_ssh_private_key_path());
+            assert_eq!(
+                app.status_message,
+                "Identity '000 Use Button Key' selected."
+            );
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
     fn e2e_keychain_rendered_cards_click_use_identity_and_load_password_profile(
         cx: &mut TestAppContext,
     ) {
@@ -16650,6 +16778,72 @@ mod tests {
             assert_eq!(settings.theme_preset, ThemePreset::Daylight);
             assert_eq!(settings.terminal_font_size, 18);
             assert_eq!(app.nav_section, NavSection::Settings);
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_settings_rendered_local_shell_save_and_reset_onboarding_clicks(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Settings, window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.local_shell_program,
+                        "/bin/bash",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.local_shell_cwd,
+                        "/tmp/settings-click-shell",
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        let save_shell_click = selector_click_center(window, cx, "settings-local-shell-save");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(save_shell_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.nav_section, NavSection::Settings);
+            assert_eq!(app.saved.settings.default_local_shell.program, "/bin/bash");
+            assert_eq!(
+                app.saved.settings.default_local_shell.cwd.as_deref(),
+                Some("/tmp/settings-click-shell")
+            );
+            assert_eq!(
+                app.settings_inputs.local_shell_program.read(cx).value(),
+                "/bin/bash"
+            );
+            assert_eq!(
+                app.settings_inputs.local_shell_cwd.read(cx).value(),
+                "/tmp/settings-click-shell"
+            );
+            assert_eq!(app.status_message, "Default local shell set to /bin/bash.");
+            assert!(app.error_message.is_empty());
+        });
+
+        let reset_onboarding_click = selector_click_center(window, cx, "settings-reset-onboarding");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(reset_onboarding_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(!app.saved.settings.onboarding_dismissed);
+            assert_eq!(
+                app.status_message,
+                "Welcome panel reset. Open Hosts to see it again."
+            );
             assert!(app.error_message.is_empty());
         });
     }

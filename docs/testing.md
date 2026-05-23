@@ -85,10 +85,12 @@ It runs:
 - `ui::app::tests::e2e_clear_shortcut_and_escape_from_files_view`
 - `ui::app::tests::e2e_keychain_browse_imports_identity_into_private_key_editor`
 - `ui::app::tests::e2e_keychain_rendered_tabs_and_buttons_click_import_and_open_editor`
+- `ui::app::tests::e2e_keychain_rendered_empty_add_and_use_button_clicks`
 - `ui::app::tests::e2e_keychain_rendered_cards_click_use_identity_and_load_password_profile`
 - `ui::app::tests::e2e_keychain_identity_tab_loads_password_profile_into_editor`
 - `ui::app::tests::e2e_settings_controls_persist_and_reset_preferences`
 - `ui::app::tests::e2e_settings_rendered_theme_and_font_clicks`
+- `ui::app::tests::e2e_settings_rendered_local_shell_save_and_reset_onboarding_clicks`
 - `ui::app::tests::e2e_restore_workspaces_disabled_skips_saved_workspace_launch`
 - `ui::app::tests::e2e_session_history_limit_change_trims_existing_logs`
 - `ui::app::tests::e2e_host_library_selection_loads_editor_and_tracks_last_connected`
@@ -171,8 +173,10 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the Keychain view can import a key file into the private-key editor flow and can load saved password-backed host identities from the Identities tab back into the editor
 - the rendered Keychain tabs, key-file add button, key cards, password-identity empty-state button, and identity cards all drive their actual click handlers into the editor flows
 - the rendered Keychain empty-state `Add Key File` button and per-row `Use` button both drive the same editor-loading auth flows as the rest of the Keychain UI
+- the rendered Keychain `Keys` tab button also returns from Identities to the key library through its actual click handler
 - the Settings view can persist theme, font, restore/reconnect/keepalive/history toggles, default shell settings, and SSH startup defaults, and can reset the font-family/startup-directory fields through the same app paths used by the UI
 - the rendered Settings theme pills and terminal font-size pills drive their actual click handlers
+- the rendered Settings local-shell save button and welcome-panel reset button drive their actual settings-update handlers
 - disabling workspace restore on launch skips previously saved restorable workspaces
 - lowering the session-history retention limit trims existing logs immediately
 - the Hosts library can load a saved host into the editor on selection, preserve favorite/color/description/environment metadata, toggle favorites, and surface a real last-connected timestamp after a live SSH session
