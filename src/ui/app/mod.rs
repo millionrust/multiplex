@@ -9210,9 +9210,9 @@ fn apply_group_defaults_to_draft(
 #[cfg(test)]
 mod tests {
     use super::{
-        AutocompleteSource, ConnectDialogMode, ConnectProtocol, DropZone, KeychainTab,
-        MAX_SPLIT_PANES, NavSection, OutputSuggestionContext, PathSuggestionContext, SplitNode,
-        TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone, WorkspaceViewMode,
+        AutocompleteSource, ConnectDialogMode, ConnectProtocol, DropZone, HostsViewMode,
+        KeychainTab, MAX_SPLIT_PANES, NavSection, OutputSuggestionContext, PathSuggestionContext,
+        SplitNode, TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone, WorkspaceViewMode,
         apply_group_defaults_to_draft, collect_autocomplete_candidates,
         collect_command_palette_candidates, extract_snippet_prompt_names,
         shell_command_requires_continuation, startup_bytes_for_request,
@@ -14180,9 +14180,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn e2e_rendered_pane_divider_drag_updates_and_persists_layout_ratio(
-        cx: &mut TestAppContext,
-    ) {
+    fn e2e_rendered_pane_divider_drag_updates_and_persists_layout_ratio(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let request = ConnectRequest::local_shell_with_config(
@@ -16037,6 +16035,76 @@ mod tests {
             assert_eq!(workspace.title, "Grid Host");
             assert!(workspace.pending_connect_mode == ConnectDialogMode::Username);
             assert_eq!(pending.label, "Grid Host");
+            assert_eq!(pending.host, "127.0.0.1");
+            assert_eq!(pending.username, "ops");
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_host_list_row_click_edits_and_opens_connect_dialog(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        saved.profiles.push(HostProfile {
+            id: "list-host".to_string(),
+            label: "List Host".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 22,
+            username: "ops".to_string(),
+            source: ProfileSource::User,
+            ..HostProfile::default()
+        });
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        app.update(cx, |app, cx| {
+            app.hosts_view_mode = HostsViewMode::List;
+            cx.notify();
+        });
+
+        let edit_click = selector_click_center(window, cx, "host-row-list-edit-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(edit_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert!(app.show_editor_panel);
+            assert_eq!(app.selected_profile_id.as_deref(), Some("list-host"));
+            assert_eq!(app.inputs.label.read(cx).value(), "List Host");
+            assert!(app.error_message.is_empty());
+        });
+
+        app.update(cx, |app, _| {
+            app.show_editor_panel = false;
+            app.selected_profile_id = None;
+        });
+
+        let row_click = selector_click_center(window, cx, "host-row-list-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_event(MouseDownEvent {
+            position: row_click,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Left,
+            click_count: 2,
+            first_mouse: false,
+        });
+        visual.simulate_event(MouseUpEvent {
+            position: row_click,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Left,
+            click_count: 2,
+        });
+
+        app.read_with(cx, |app, _| {
+            let workspace = app
+                .active_workspace()
+                .expect("connect dialog workspace should exist");
+            let pending = workspace
+                .pending_connect
+                .as_ref()
+                .expect("double click should open connect dialog tab");
+            assert_eq!(workspace.title, "List Host");
+            assert!(workspace.pending_connect_mode == ConnectDialogMode::Username);
+            assert_eq!(pending.label, "List Host");
             assert_eq!(pending.host, "127.0.0.1");
             assert_eq!(pending.username, "ops");
             assert!(app.error_message.is_empty());
