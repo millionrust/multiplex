@@ -16155,6 +16155,159 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_hosts_quick_connect_button_click_opens_workspace(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping hosts quick connect button e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let search_value = format!("{}@{}:{}", server.username(), server.host(), server.port);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.host_search,
+                        search_value,
+                        window,
+                        cx,
+                    );
+                    app.set_quick_connect_password_input(server.password().to_string(), window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let credential_id = credentials::connection_password_credential_id(
+            server.username(),
+            server.host(),
+            server.port,
+        );
+
+        let click = selector_click_center(window, cx, "library-quick-connect");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(click, gpui::Modifiers::none());
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.connected
+                && pane
+                    .terminal
+                    .all_rows_text()
+                    .iter()
+                    .any(|row| row.contains('$') || row.contains('#')))
+            .then_some(())
+        });
+
+        let _ = credentials::delete_password(&credential_id);
+    }
+
+    #[gpui::test]
+    fn e2e_hosts_bulk_toolbar_buttons_click_select_group_star_and_clear(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        for (id, label) in [
+            ("bulk-alpha", "Bulk Alpha"),
+            ("bulk-beta", "Bulk Beta"),
+            ("bulk-gamma", "Bulk Gamma"),
+        ] {
+            saved.profiles.push(HostProfile {
+                id: id.to_string(),
+                label: label.to_string(),
+                host: "127.0.0.1".to_string(),
+                port: 22,
+                username: "ops".to_string(),
+                source: ProfileSource::User,
+                ..HostProfile::default()
+            });
+        }
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        let select_visible = selector_click_center(window, cx, "hosts-select-visible");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(select_visible, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.selected_host_ids.len(), 3);
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.bulk_group,
+                        "Batch",
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        let apply_group = selector_click_center(window, cx, "hosts-bulk-apply-group");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(apply_group, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            for id in ["bulk-alpha", "bulk-beta", "bulk-gamma"] {
+                let profile = app
+                    .saved
+                    .profiles
+                    .iter()
+                    .find(|profile| profile.id == id)
+                    .expect("profile should exist");
+                assert_eq!(profile.group, "Batch");
+            }
+        });
+
+        let bulk_star = selector_click_center(window, cx, "hosts-bulk-star");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(bulk_star, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            for id in ["bulk-alpha", "bulk-beta", "bulk-gamma"] {
+                let profile = app
+                    .saved
+                    .profiles
+                    .iter()
+                    .find(|profile| profile.id == id)
+                    .expect("profile should exist");
+                assert!(profile.favorite);
+            }
+        });
+
+        let bulk_unstar = selector_click_center(window, cx, "hosts-bulk-unstar");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(bulk_unstar, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            for id in ["bulk-alpha", "bulk-beta", "bulk-gamma"] {
+                let profile = app
+                    .saved
+                    .profiles
+                    .iter()
+                    .find(|profile| profile.id == id)
+                    .expect("profile should exist");
+                assert!(!profile.favorite);
+            }
+        });
+
+        let clear = selector_click_center(window, cx, "hosts-clear-selection");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(clear, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.selected_host_ids.is_empty());
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
     fn e2e_hosts_view_mode_dropdown_click_switches_grid_and_list(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let mut saved = SavedState::default();

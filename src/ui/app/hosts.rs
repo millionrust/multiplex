@@ -1488,6 +1488,7 @@ impl TermiRustApp {
                             .items_center()
                             .child(
                                 Button::new("hosts-select-visible")
+                                    .debug_selector(|| "hosts-select-visible".to_string())
                                     .xsmall()
                                     .ghost()
                                     .label("Select Visible")
@@ -1503,6 +1504,7 @@ impl TermiRustApp {
                                 ))
                                 .child(
                                     Button::new("hosts-clear-selection")
+                                        .debug_selector(|| "hosts-clear-selection".to_string())
                                         .xsmall()
                                         .ghost()
                                         .label("Clear")
@@ -1512,6 +1514,7 @@ impl TermiRustApp {
                                 )
                                 .child(
                                     Button::new("hosts-bulk-star")
+                                        .debug_selector(|| "hosts-bulk-star".to_string())
                                         .xsmall()
                                         .ghost()
                                         .icon(IconName::Star)
@@ -1522,6 +1525,7 @@ impl TermiRustApp {
                                 )
                                 .child(
                                     Button::new("hosts-bulk-unstar")
+                                        .debug_selector(|| "hosts-bulk-unstar".to_string())
                                         .xsmall()
                                         .ghost()
                                         .icon(IconName::Star)
@@ -1539,6 +1543,7 @@ impl TermiRustApp {
                                 )
                                 .child(
                                     Button::new("hosts-bulk-apply-group")
+                                        .debug_selector(|| "hosts-bulk-apply-group".to_string())
                                         .xsmall()
                                         .ghost()
                                         .label("Apply Group")
