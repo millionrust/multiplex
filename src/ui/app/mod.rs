@@ -11737,6 +11737,169 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_saved_host_connect_runs_startup_actions(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping saved host startup e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        server
+            .exec(
+                "mkdir -p /home/termirust/e2e-saved-startup && chown -R termirust:termirust /home/termirust/e2e-saved-startup",
+            )
+            .expect("unable to prepare remote startup dir");
+        let (app, window) = open_test_app(cx);
+        let host = server.host().to_string();
+        let port = server.port;
+        let username = server.username().to_string();
+        let password = server.password().to_string();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Saved Startup Host",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        username.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        password.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.startup_directory,
+                        "/home/termirust/e2e-saved-startup",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.startup_command,
+                        "printf 'saved-startup-ok\\n' > startup.txt",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.environment,
+                        "DEPLOY_ENV=prod, FEATURE_FLAG=on",
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+                    app.connect_current(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.connected
+                && pane.request.startup_directory.as_deref()
+                    == Some("/home/termirust/e2e-saved-startup")
+                && pane.request.startup_command.as_deref()
+                    == Some("printf 'saved-startup-ok\\n' > startup.txt")
+                && pane
+                    .request
+                    .environment
+                    .iter()
+                    .any(|(key, value)| key == "DEPLOY_ENV" && value == "prod")
+                && pane
+                    .request
+                    .environment
+                    .iter()
+                    .any(|(key, value)| key == "FEATURE_FLAG" && value == "on"))
+            .then_some(())
+        });
+
+        let startup_output = server
+            .exec("cat /home/termirust/e2e-saved-startup/startup.txt")
+            .expect("startup output should exist");
+        assert_eq!(startup_output, "saved-startup-ok");
+    }
+
+    #[gpui::test]
+    fn e2e_saved_host_connect_opens_files_view(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping saved host files-view e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        server
+            .exec(
+                "mkdir -p /home/termirust/e2e-saved-files && printf 'from-saved-files\\n' > /home/termirust/e2e-saved-files/list.txt && chown -R termirust:termirust /home/termirust/e2e-saved-files",
+            )
+            .expect("unable to seed remote files dir");
+        let (app, window) = open_test_app(cx);
+        let host = server.host().to_string();
+        let port = server.port;
+        let username = server.username().to_string();
+        let password = server.password().to_string();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Saved Files Host",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        username.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        password.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.startup_directory,
+                        "/home/termirust/e2e-saved-files",
+                        window,
+                        cx,
+                    );
+                    app.set_draft_connect_view(true, cx);
+                    app.save_profile(window, cx);
+                    app.connect_current(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let browser = workspace.sftp.as_ref()?;
+            (workspace.view_mode == WorkspaceViewMode::Files
+                && !browser.loading
+                && browser.current_path == "/home/termirust/e2e-saved-files"
+                && browser.entries.iter().any(|entry| entry.name == "list.txt"))
+            .then_some(())
+        });
+    }
+
+    #[gpui::test]
     fn e2e_imported_private_key_connects_to_docker_ssh(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         if !DockerSshServer::docker_available() {
