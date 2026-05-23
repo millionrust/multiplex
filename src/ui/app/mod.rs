@@ -12398,6 +12398,161 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_snippets_toolbar_click_new_save_and_delete(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Snippets, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let empty_new_click = selector_click_center(window, cx, "snippets-empty-new");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(empty_new_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.nav_section, NavSection::Snippets);
+            assert!(app.selected_snippet_id.is_none());
+            assert_eq!(app.snippet_inputs.label.read(cx).value(), "");
+            assert!(app.error_message.is_empty());
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.snippet_inputs.label,
+                        "Toolbar Snippet",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.snippet_inputs.command,
+                        "echo toolbar-snippet",
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        let save_click = selector_click_center(window, cx, "snippet-save");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(save_click, gpui::Modifiers::none());
+
+        let snippet_id = app.read_with(cx, |app, _| {
+            let snippet = app
+                .saved
+                .snippets
+                .iter()
+                .find(|snippet| snippet.label == "Toolbar Snippet")
+                .expect("saved snippet should exist");
+            assert_eq!(snippet.command, "echo toolbar-snippet");
+            snippet.id.clone()
+        });
+
+        app.update(cx, |app, _| {
+            assert_eq!(app.selected_snippet_id.as_deref(), Some(snippet_id.as_str()));
+        });
+
+        let delete_click = selector_click_center(window, cx, "snippet-delete");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(delete_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert!(
+                app.saved
+                    .snippets
+                    .iter()
+                    .all(|snippet| snippet.id != snippet_id)
+            );
+            assert!(app.selected_snippet_id.is_none());
+            assert_eq!(app.snippet_inputs.label.read(cx).value(), "");
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_snippet_row_click_loads_pins_and_runs(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        saved.snippets.push(SavedSnippet {
+            id: "snippet-row".to_string(),
+            label: "Row Snippet".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            group: "Ops".to_string(),
+            pinned: false,
+            command: "echo row-snippet".to_string(),
+        });
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Snippets, window, cx);
+                    app.open_local_terminal(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.request.kind == ConnectionKind::LocalShell && pane.connected).then_some(())
+        });
+
+        app.update(cx, |app, cx| {
+            app.activate_library_section(NavSection::Snippets, window, cx);
+        });
+
+        let row_click = selector_click_center(window, cx, "snippet-card-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(row_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.selected_snippet_id.as_deref(), Some("snippet-row"));
+            assert_eq!(app.snippet_inputs.label.read(cx).value(), "Row Snippet");
+            assert_eq!(app.snippet_inputs.command.read(cx).value(), "echo row-snippet");
+            assert!(app.error_message.is_empty());
+        });
+
+        let pin_click = selector_click_center(window, cx, "snippet-pin-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(pin_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            let snippet = app
+                .saved
+                .snippets
+                .iter()
+                .find(|snippet| snippet.id == "snippet-row")
+                .expect("snippet should exist");
+            assert!(snippet.pinned);
+        });
+
+        let run_click = selector_click_center(window, cx, "snippet-run-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(run_click, gpui::Modifiers::none());
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("row-snippet"))
+                .then_some(())
+        });
+    }
+
+    #[gpui::test]
     fn e2e_workspace_search_navigates_between_results(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);

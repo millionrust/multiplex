@@ -48,6 +48,8 @@ It runs:
 - `ui::app::tests::e2e_saved_jump_host_profile_resolves_and_connects`
 - `ui::app::tests::e2e_imported_private_key_connects_to_docker_ssh`
 - `ui::app::tests::e2e_snippet_save_run_pin_and_remove`
+- `ui::app::tests::e2e_snippets_toolbar_click_new_save_and_delete`
+- `ui::app::tests::e2e_snippet_row_click_loads_pins_and_runs`
 - `ui::app::tests::e2e_vault_member_and_sync_round_trip`
 - `ui::app::tests::e2e_sync_folder_picker_and_force_pull_conflict_flow`
 - `ui::app::tests::e2e_choose_protocol_rejects_unsupported_protocols`
@@ -136,6 +138,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the GPUI app can import a private key through the picker and immediately use it to authenticate against the Docker SSH server
 - the GPUI app can also upload and download files through the same dialog-backed SFTP actions used by the desktop UI
 - the snippet workflow can save, pin, run, and remove commands against a live terminal session
+- the rendered Snippets view can create and delete snippets through its toolbar buttons, and snippet rows can load into the form, pin, and run through their actual click controls
 - the vault and sync workflow can save shared vaults, manage members, push an encrypted bundle, pull it into a fresh app state, and re-home items back to Personal when a vault is deleted
 - the Settings sync workflow can also pick the sync folder through the dialog-backed action and resolve pull conflicts through the force-pull path
 - the connect flow can reject unsupported protocol choices without opening a session
