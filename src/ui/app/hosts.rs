@@ -583,6 +583,7 @@ impl TermiRustApp {
                     .items_center()
                     .child(
                         Button::new("library-new-host")
+                            .debug_selector(|| "library-new-host".to_string())
                             .xsmall()
                             .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                             .icon(IconName::Plus)
@@ -594,6 +595,7 @@ impl TermiRustApp {
                     .child(
                         div()
                             .id("library-new-host-chevron")
+                            .debug_selector(|| "library-new-host-chevron".to_string())
                             .h(px(28.))
                             .px(px(6.))
                             .ml(px(2.))
@@ -770,6 +772,7 @@ impl TermiRustApp {
         };
         div()
             .id(id)
+            .debug_selector(|| id.to_string())
             .h(px(28.))
             .px(px(8.))
             .gap(px(4.))
@@ -1107,7 +1110,8 @@ impl TermiRustApp {
                     self.hosts_view_mode == HostsViewMode::Grid,
                     |this, _, _| this.hosts_view_mode = HostsViewMode::Grid,
                     cx,
-                ))
+                )
+                .debug_selector(|| "view-mode-grid".to_string()))
                 .child(self.dropdown_item(
                     "view-mode-list",
                     Some(Icon::new(IconName::Menu)),
@@ -1115,7 +1119,8 @@ impl TermiRustApp {
                     self.hosts_view_mode == HostsViewMode::List,
                     |this, _, _| this.hosts_view_mode = HostsViewMode::List,
                     cx,
-                ))
+                )
+                .debug_selector(|| "view-mode-list".to_string()))
                 .into(),
             Some(ToolbarMenu::TagFilter) => {
                 if tags.is_empty() {
@@ -1414,6 +1419,7 @@ impl TermiRustApp {
                             )
                             .child(
                                 Button::new("library-quick-connect")
+                                    .debug_selector(|| "library-quick-connect".to_string())
                                     .xsmall()
                                     .custom(Self::action_button_style(
                                         if has_quick_connect {
@@ -1459,6 +1465,7 @@ impl TermiRustApp {
                             .child(self.render_new_host_split_button(cx))
                             .child(
                                 Button::new("library-new-terminal")
+                                    .debug_selector(|| "library-new-terminal".to_string())
                                     .xsmall()
                                     .custom(Self::action_button_style(
                                         theme::ActionTone::Neutral,
