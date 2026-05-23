@@ -85,6 +85,8 @@ It runs:
 - `ui::app::tests::e2e_host_library_selection_loads_editor_and_tracks_last_connected`
 - `ui::app::tests::e2e_host_grid_row_click_selects_edits_and_opens_connect_dialog`
 - `ui::app::tests::e2e_host_list_row_click_edits_and_opens_connect_dialog`
+- `ui::app::tests::e2e_hosts_toolbar_buttons_click_open_editor_and_terminal`
+- `ui::app::tests::e2e_hosts_view_mode_dropdown_click_switches_grid_and_list`
 - `ui::app::tests::e2e_manual_reconnect_recovers_closed_ssh_pane`
 - `ui::app::tests::e2e_onboarding_dismiss_reset_and_local_terminal_marks_complete`
 - `ui::app::tests::e2e_onboarding_dismiss_button_click_hides_panel`
@@ -150,6 +152,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the Hosts library can load a saved host into the editor on selection, preserve favorite/color/description/environment metadata, toggle favorites, and surface a real last-connected timestamp after a live SSH session
 - the rendered host grid row can select a host by click, reopen it in the editor through the inline edit control, and open the connect dialog tab by double-click
 - the rendered host list row can reopen a host in the editor through the inline edit control and open the connect dialog tab by double-click
+- the rendered hosts toolbar can open the new-host editor, open a local terminal, and switch between grid and list view modes through the actual dropdown clicks
 - an explicitly closed SSH pane can be reconnected manually through the app’s reconnect path after the Docker server comes back on the same port
 - the onboarding panel can be dismissed, reset, and automatically completed by opening a local terminal
 - the onboarding dismiss, new-host, add-key, local-terminal, and focus-search buttons all drive their real click handlers

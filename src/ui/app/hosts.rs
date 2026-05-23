@@ -1103,24 +1103,28 @@ impl TermiRustApp {
                 .border_1()
                 .border_color(theme::soft_border())
                 .shadow_lg()
-                .child(self.dropdown_item(
-                    "view-mode-grid",
-                    Some(app_icon(ICON_GRID)),
-                    "Grid",
-                    self.hosts_view_mode == HostsViewMode::Grid,
-                    |this, _, _| this.hosts_view_mode = HostsViewMode::Grid,
-                    cx,
+                .child(
+                    self.dropdown_item(
+                        "view-mode-grid",
+                        Some(app_icon(ICON_GRID)),
+                        "Grid",
+                        self.hosts_view_mode == HostsViewMode::Grid,
+                        |this, _, _| this.hosts_view_mode = HostsViewMode::Grid,
+                        cx,
+                    )
+                    .debug_selector(|| "view-mode-grid".to_string()),
                 )
-                .debug_selector(|| "view-mode-grid".to_string()))
-                .child(self.dropdown_item(
-                    "view-mode-list",
-                    Some(Icon::new(IconName::Menu)),
-                    "List",
-                    self.hosts_view_mode == HostsViewMode::List,
-                    |this, _, _| this.hosts_view_mode = HostsViewMode::List,
-                    cx,
+                .child(
+                    self.dropdown_item(
+                        "view-mode-list",
+                        Some(Icon::new(IconName::Menu)),
+                        "List",
+                        self.hosts_view_mode == HostsViewMode::List,
+                        |this, _, _| this.hosts_view_mode = HostsViewMode::List,
+                        cx,
+                    )
+                    .debug_selector(|| "view-mode-list".to_string()),
                 )
-                .debug_selector(|| "view-mode-list".to_string()))
                 .into(),
             Some(ToolbarMenu::TagFilter) => {
                 if tags.is_empty() {

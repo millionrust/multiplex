@@ -16112,6 +16112,96 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_hosts_toolbar_buttons_click_open_editor_and_terminal(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        let new_host_click = selector_click_center(window, cx, "library-new-host");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(new_host_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert!(app.show_editor_panel);
+            assert!(app.selected_profile_id.is_none());
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert_eq!(app.inputs.label.read(cx).value(), "");
+            assert!(app.error_message.is_empty());
+        });
+
+        app.update(cx, |app, _| {
+            app.show_editor_panel = false;
+        });
+
+        let terminal_click = selector_click_center(window, cx, "library-new-terminal");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(terminal_click, gpui::Modifiers::none());
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.request.kind == ConnectionKind::LocalShell && pane.connected).then_some(())
+        });
+
+        app.read_with(cx, |app, _| {
+            assert!(app.active_workspace_id.is_some());
+            assert!(
+                app.status_message == "Opening local terminal..."
+                    || app.status_message == "Local terminal ready."
+            );
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_hosts_view_mode_dropdown_click_switches_grid_and_list(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        saved.profiles.push(HostProfile {
+            id: "view-mode-host".to_string(),
+            label: "View Mode Host".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 22,
+            username: "ops".to_string(),
+            source: ProfileSource::User,
+            ..HostProfile::default()
+        });
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        let trigger_click = selector_click_center(window, cx, "library-view-mode");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(trigger_click, gpui::Modifiers::none());
+
+        let list_click = selector_click_center(window, cx, "view-mode-list");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(list_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.hosts_view_mode == HostsViewMode::List);
+            assert!(app.open_toolbar_menu.is_none());
+        });
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        assert!(visual.debug_bounds("host-row-list-0").is_some());
+
+        let trigger_click = selector_click_center(window, cx, "library-view-mode");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(trigger_click, gpui::Modifiers::none());
+
+        let grid_click = selector_click_center(window, cx, "view-mode-grid");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(grid_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.hosts_view_mode == HostsViewMode::Grid);
+            assert!(app.open_toolbar_menu.is_none());
+        });
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        assert!(visual.debug_bounds("host-row-0").is_some());
+    }
+
+    #[gpui::test]
     fn e2e_manual_reconnect_recovers_closed_ssh_pane(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         if !DockerSshServer::docker_available() {
