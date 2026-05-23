@@ -9181,7 +9181,7 @@ fn apply_group_defaults_to_draft(
 #[cfg(test)]
 mod tests {
     use super::{
-        AutocompleteSource, ConnectDialogMode, ConnectProtocol, NavSection,
+        AutocompleteSource, ConnectDialogMode, ConnectProtocol, KeychainTab, NavSection,
         OutputSuggestionContext, PathSuggestionContext, SplitNode, TermiRustApp,
         WorkspaceIndicators, WorkspaceRuntimeTone, WorkspaceViewMode,
         apply_group_defaults_to_draft, collect_autocomplete_candidates,
@@ -14516,6 +14516,120 @@ mod tests {
             let workspace = app.workspace(workspace_id).expect("workspace should exist");
             assert_eq!(workspace.view_mode, WorkspaceViewMode::Terminal);
             assert_eq!(app.status_message, "Back to terminal view.");
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_keychain_browse_imports_identity_into_private_key_editor(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let key_path = std::path::PathBuf::from(docker_ssh_private_key_path());
+        queue_dialog_path(Some(key_path.clone()));
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Keychain, window, cx);
+                    app.pick_key_file(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.show_editor_panel);
+            assert_eq!(app.draft_auth_mode, AuthMode::PrivateKey);
+            assert_eq!(app.current_key_path(cx), key_path.display().to_string());
+            let identity = app
+                .draft_identity_id
+                .as_deref()
+                .and_then(|id| app.identity_by_id(id))
+                .expect("imported identity should be selected");
+            assert_eq!(identity.key_path, key_path.display().to_string());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_keychain_identity_tab_loads_password_profile_into_editor(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping keychain identity tab e2e: Docker is unavailable");
+            return;
+        }
+
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let host = server.host().to_string();
+        let port = server.port;
+        let username = server.username().to_string();
+        let password = server.password().to_string();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Keychain Password Host",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        username.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        password.clone(),
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let profile_id = app.read_with(cx, |app, _| {
+            app.saved
+                .profiles
+                .iter()
+                .find(|profile| profile.label == "Keychain Password Host")
+                .map(|profile| profile.id.clone())
+                .expect("saved password profile should exist")
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Keychain, window, cx);
+                    app.keychain_tab = KeychainTab::Identities;
+                    app.load_profile_into_inputs(&profile_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.show_editor_panel);
+            assert_eq!(app.keychain_tab, KeychainTab::Identities);
+            assert_eq!(
+                app.selected_profile_id.as_deref(),
+                Some(profile_id.as_str())
+            );
+            assert_eq!(app.draft_auth_mode, AuthMode::Password);
+            assert_eq!(app.inputs.label.read(cx).value(), "Keychain Password Host");
+            assert_eq!(app.inputs.host.read(cx).value(), host);
+            assert_eq!(app.inputs.username.read(cx).value(), username);
+            assert_eq!(app.inputs.password.read(cx).value(), "");
+            assert!(
+                app.status_message
+                    .contains("Password is available from the system credential store.")
+            );
         });
     }
 }
