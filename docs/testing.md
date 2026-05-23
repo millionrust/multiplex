@@ -107,6 +107,8 @@ It runs:
 - `ui::app::tests::e2e_connect_dialog_continue_and_save_updates_profile_and_connects`
 - `ui::app::tests::e2e_connect_dialog_close_discards_placeholder_workspace`
 - `ui::app::tests::e2e_choose_protocol_ssh_path_connects_saved_host`
+- `ui::app::tests::e2e_connect_failure_dialog_click_copy_logs_and_restart`
+- `ui::app::tests::e2e_connect_failure_dialog_click_edit_host_and_close`
 
 Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH container, connect through the real `russh` session path, and verify both:
 
@@ -171,6 +173,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - window resize events persist saved window bounds and display id into `state.json`
 - the saved-host connect dialog can update the username, persist it back into the profile, connect successfully, and also close cleanly without leaving a placeholder workspace behind
 - the saved-host choose-protocol dialog can still follow the supported SSH path and replace its placeholder tab with a real connected workspace
+- the rendered connect-failure dialog can copy logs, restart into choose-protocol mode, reopen the host editor, and close the failed placeholder tab through its actual button clicks
 
 If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests self-skip.
 

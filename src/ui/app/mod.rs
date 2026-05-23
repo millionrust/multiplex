@@ -14580,6 +14580,144 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_connect_failure_dialog_click_copy_logs_and_restart(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.label, "Broken Host", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.host,
+                        "nonexistent.invalid.example",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    app.open_choose_protocol_tab_from_draft(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let workspace_id = app
+            .read_with(cx, |app, _| app.active_workspace_id)
+            .expect("workspace should exist");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.confirm_choose_protocol(workspace_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert!(workspace.connect_failure.is_some());
+        });
+
+        let copy_click = selector_click_center(window, cx, "connect-fail-copy");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(copy_click, gpui::Modifiers::none());
+
+        let clipboard = cx
+            .read_from_clipboard()
+            .expect("connect failure logs should be copied");
+        assert!(clipboard
+            .text()
+            .as_deref()
+            .is_some_and(|text| text.contains("connection failed")));
+
+        let restart_click = selector_click_center(window, cx, "connect-fail-restart");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(restart_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert!(workspace.connect_failure.is_none());
+            assert!(workspace.pending_connect.is_some());
+            assert!(workspace.pending_connect_mode == ConnectDialogMode::ChooseProtocol);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_connect_failure_dialog_click_edit_host_and_close(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.label, "Broken Host", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.host,
+                        "nonexistent.invalid.example",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    app.open_choose_protocol_tab_from_draft(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let workspace_id = app
+            .read_with(cx, |app, _| app.active_workspace_id)
+            .expect("workspace should exist");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.confirm_choose_protocol(workspace_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let edit_click = selector_click_center(window, cx, "connect-fail-edit");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(edit_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert!(app.workspace(workspace_id).is_none());
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.show_editor_panel);
+            assert_eq!(app.inputs.label.read(cx).value(), "Broken Host");
+            assert_eq!(app.inputs.host.read(cx).value(), "nonexistent.invalid.example");
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_choose_protocol_tab_from_draft(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let workspace_id = app
+            .read_with(cx, |app, _| app.active_workspace_id)
+            .expect("workspace should exist");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.confirm_choose_protocol(workspace_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let close_click = selector_click_center(window, cx, "connect-fail-close");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(close_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.workspace(workspace_id).is_none());
+        });
+    }
+
+    #[gpui::test]
     fn e2e_duplicate_workspace_in_new_window_opens_second_window(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
