@@ -16623,6 +16623,38 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_settings_rendered_theme_and_font_clicks(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Settings, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let theme_click = selector_click_center(window, cx, "settings-theme-1");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(theme_click, gpui::Modifiers::none());
+
+        let font_click = selector_click_center(window, cx, "settings-font-size-5");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(font_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            let settings = &app.saved.settings;
+            assert_eq!(settings.theme_preset, ThemePreset::Daylight);
+            assert_eq!(settings.terminal_font_size, 18);
+            assert_eq!(app.nav_section, NavSection::Settings);
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
     fn e2e_restore_workspaces_disabled_skips_saved_workspace_launch(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let mut saved = SavedState::default();

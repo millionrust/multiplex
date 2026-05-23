@@ -1740,6 +1740,7 @@ impl TermiRustApp {
                                 let selected = preset == theme_preset;
                                 div()
                                     .id(("settings-theme", index))
+                                    .debug_selector(move || format!("settings-theme-{index}"))
                                     .px_3()
                                     .py(px(8.))
                                     .rounded(px(999.))
@@ -1834,6 +1835,9 @@ impl TermiRustApp {
                                 let selected = font_size == terminal_font_size;
                                 div()
                                     .id(("settings-font-size", index))
+                                    .debug_selector(move || {
+                                        format!("settings-font-size-{index}")
+                                    })
                                     .px_3()
                                     .py(px(8.))
                                     .rounded(px(999.))
@@ -1931,6 +1935,9 @@ impl TermiRustApp {
                         .items_center()
                         .child(
                             Button::new("settings-terminal-font-family-save")
+                                .debug_selector(|| {
+                                    "settings-terminal-font-family-save".to_string()
+                                })
                                 .small()
                                 .custom(Self::action_button_style(
                                     theme::ActionTone::Accent,
@@ -1943,6 +1950,9 @@ impl TermiRustApp {
                         )
                         .child(
                             Button::new("settings-terminal-font-family-reset")
+                                .debug_selector(|| {
+                                    "settings-terminal-font-family-reset".to_string()
+                                })
                                 .small()
                                 .custom(Self::action_button_style(
                                     theme::ActionTone::Neutral,
@@ -1977,6 +1987,9 @@ impl TermiRustApp {
                             |(index, restore)| {
                                 let active = restore == restore_workspaces_on_launch;
                                 Button::new(("settings-restore-workspaces", index))
+                                    .debug_selector(move || {
+                                        format!("settings-restore-workspaces-{index}")
+                                    })
                                     .small()
                                     .custom(Self::segmented_button_style(active, cx))
                                     .label(if restore {
@@ -1997,6 +2010,7 @@ impl TermiRustApp {
                         .items_center()
                         .child(
                             Button::new("settings-reset-onboarding")
+                                .debug_selector(|| "settings-reset-onboarding".to_string())
                                 .small()
                                 .custom(Self::action_button_style(
                                     theme::ActionTone::Neutral,
@@ -2082,6 +2096,9 @@ impl TermiRustApp {
                         .items_center()
                         .child(
                             Button::new("settings-default-ssh-dir-save")
+                                .debug_selector(|| {
+                                    "settings-default-ssh-dir-save".to_string()
+                                })
                                 .small()
                                 .custom(Self::action_button_style(
                                     theme::ActionTone::Accent,
@@ -2094,6 +2111,9 @@ impl TermiRustApp {
                         )
                         .child(
                             Button::new("settings-default-ssh-dir-clear")
+                                .debug_selector(|| {
+                                    "settings-default-ssh-dir-clear".to_string()
+                                })
                                 .small()
                                 .custom(Self::action_button_style(
                                     theme::ActionTone::Neutral,
@@ -2231,6 +2251,7 @@ impl TermiRustApp {
                         .items_center()
                         .child(
                             Button::new("settings-local-shell-save")
+                                .debug_selector(|| "settings-local-shell-save".to_string())
                                 .small()
                                 .custom(Self::action_button_style(
                                     theme::ActionTone::Accent,
