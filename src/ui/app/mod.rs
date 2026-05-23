@@ -9167,8 +9167,8 @@ mod tests {
     use crate::credentials;
     use crate::models::{
         AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, LocalPortForward,
-        LocalShellConfig, PortForwardKind, PortForwardRule, SavedHostGroup, SavedIdentity,
-        SavedState, SplitAxis,
+        LocalShellConfig, PortForwardKind, PortForwardRule, RestorableAuth, RestorableConnection,
+        SavedHostGroup, SavedIdentity, SavedState, SavedWorkspace, SplitAxis,
     };
     use crate::sftp::RemoteFileEntry;
     use crate::test_support::{
@@ -9183,6 +9183,7 @@ mod tests {
         WindowHandle, point, px,
     };
     use gpui_component::Root;
+    use std::path::Path;
     use std::time::{Duration, Instant};
     use vt100::MouseProtocolMode;
 
@@ -9218,6 +9219,49 @@ mod tests {
             start_in_files,
             ..docker_ssh_request(server)
         }
+    }
+
+    fn docker_ssh_private_key_path() -> String {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/ssh-server/id_ed25519")
+            .display()
+            .to_string()
+    }
+
+    fn restored_docker_ssh_state(
+        server: &DockerSshServer,
+        startup_directory: Option<&str>,
+        startup_command: Option<&str>,
+        start_in_files: bool,
+    ) -> SavedState {
+        let mut saved = SavedState::default();
+        saved.settings.restore_workspaces_on_launch = true;
+        saved.restored_workspaces.push(SavedWorkspace {
+            title: "docker-e2e".to_string(),
+            layout: None,
+            active_pane_index: 0,
+            panes: vec![RestorableConnection {
+                title: "docker-e2e".to_string(),
+                kind: ConnectionKind::Ssh,
+                host: server.host().to_string(),
+                port: server.port,
+                username: server.username().to_string(),
+                auth: Some(RestorableAuth::PrivateKey {
+                    key_path: docker_ssh_private_key_path(),
+                }),
+                jump_host: None,
+                startup_directory: startup_directory.map(ToString::to_string),
+                startup_command: startup_command.map(ToString::to_string),
+                start_in_files,
+                terminal_scrollback_rows: Some(10_000),
+                port_forward_rules: Vec::new(),
+                local_forwards: Vec::new(),
+                local_forward: None,
+                local_shell: None,
+            }],
+        });
+        saved.active_workspace_index = Some(0);
+        saved
     }
 
     fn open_test_app_with_state(
@@ -10227,6 +10271,79 @@ mod tests {
                 .expect("reconnected pane should exist");
             assert_eq!(pane.status, "Live");
             assert_eq!(pane.auto_reconnect_attempts, 0);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_restored_ssh_workspace_reconnects_and_runs_startup_on_launch(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping restored ssh launch e2e: Docker is unavailable");
+            return;
+        }
+
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let startup_marker = "/tmp/termirust-restored-startup";
+        server
+            .exec(&format!("rm -f {startup_marker}"))
+            .expect("unable to clear restore startup marker");
+        let saved = restored_docker_ssh_state(
+            &server,
+            Some("/tmp"),
+            Some(&format!("pwd > {startup_marker}")),
+            false,
+        );
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        let pane_id = wait_for_window_app_state(cx, window, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            pane.connected.then_some(pane.id)
+        });
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if server
+                .exec(&format!("cat {startup_marker}"))
+                .map(|content| content.trim() == "/tmp")
+                .unwrap_or(false)
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for restored startup marker"
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        app.read_with(cx, |app, _| {
+            let pane = app.pane(pane_id).expect("restored pane should exist");
+            assert!(pane.connected);
+            assert_eq!(pane.request.host, server.host());
+            assert_eq!(pane.request.port, server.port);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_restored_ssh_workspace_opens_files_view_on_launch(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping restored ssh files launch e2e: Docker is unavailable");
+            return;
+        }
+
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let saved = restored_docker_ssh_state(&server, Some("/home/termirust"), None, true);
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        wait_for_window_app_state(cx, window, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let browser = workspace.sftp.as_ref()?;
+            (workspace.view_mode == WorkspaceViewMode::Files
+                && !browser.loading
+                && browser.current_path == "/home/termirust")
+                .then_some(())
         });
     }
 
