@@ -9194,7 +9194,7 @@ mod tests {
         AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, HostProfile,
         IdentitySource, JumpHostConnection, LocalPortForward, LocalShellConfig, PortForwardKind,
         PortForwardRule, ProfileSource, RestorableAuth, RestorableConnection, SavedHostGroup,
-        SavedIdentity, SavedSplitNode, SavedState, SavedWorkspace, SplitAxis,
+        SavedIdentity, SavedSplitNode, SavedState, SavedWorkspace, SplitAxis, ThemePreset,
     };
     use crate::sftp::RemoteFileEntry;
     use crate::test_support::{
@@ -14630,6 +14630,129 @@ mod tests {
                 app.status_message
                     .contains("Password is available from the system credential store.")
             );
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_settings_controls_persist_and_reset_preferences(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Settings, window, cx);
+                    app.update_theme_preset(ThemePreset::HackerGreen, cx);
+                    app.update_terminal_font_size(18, window, cx);
+                    app.update_restore_workspaces_on_launch(false, cx);
+                    app.update_session_log_limit(100, cx);
+                    app.update_ssh_keepalive_secs(15, cx);
+                    app.update_auto_reconnect_attempts(3, cx);
+                    app.update_auto_reconnect_delay(4, cx);
+                    app.update_confirm_multiline_paste(false, cx);
+                    app.update_copy_on_select(true, cx);
+
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.terminal_font_family,
+                        "Monaco",
+                        window,
+                        cx,
+                    );
+                    app.save_terminal_font_family(window, cx);
+
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.default_ssh_startup_directory,
+                        "/srv/default",
+                        window,
+                        cx,
+                    );
+                    app.save_default_ssh_startup_directory(cx);
+
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.local_shell_program,
+                        "/bin/zsh",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.local_shell_cwd,
+                        "/tmp/termirust-shell",
+                        window,
+                        cx,
+                    );
+                    app.save_local_shell_settings(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, cx| {
+            let settings = &app.saved.settings;
+            assert_eq!(app.nav_section, NavSection::Settings);
+            assert_eq!(settings.theme_preset, ThemePreset::HackerGreen);
+            assert_eq!(settings.terminal_font_size, 18);
+            assert_eq!(settings.terminal_font_family.as_deref(), Some("Monaco"));
+            assert!(!settings.restore_workspaces_on_launch);
+            assert_eq!(settings.session_log_limit, 100);
+            assert_eq!(settings.ssh_keepalive_secs, 15);
+            assert_eq!(settings.auto_reconnect_attempts, 3);
+            assert_eq!(settings.auto_reconnect_delay_secs, 4);
+            assert!(!settings.confirm_multiline_paste);
+            assert!(settings.copy_on_select);
+            assert_eq!(
+                settings.default_ssh_startup_directory.as_deref(),
+                Some("/srv/default")
+            );
+            assert_eq!(settings.default_local_shell.program, "/bin/zsh");
+            assert_eq!(
+                settings.default_local_shell.cwd.as_deref(),
+                Some("/tmp/termirust-shell")
+            );
+            assert_eq!(
+                app.settings_inputs.terminal_font_family.read(cx).value(),
+                "Monaco"
+            );
+            assert_eq!(
+                app.settings_inputs
+                    .default_ssh_startup_directory
+                    .read(cx)
+                    .value(),
+                "/srv/default"
+            );
+            assert_eq!(
+                app.settings_inputs.local_shell_program.read(cx).value(),
+                "/bin/zsh"
+            );
+            assert_eq!(
+                app.settings_inputs.local_shell_cwd.read(cx).value(),
+                "/tmp/termirust-shell"
+            );
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.clear_terminal_font_family(window, cx);
+                    app.clear_default_ssh_startup_directory(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, cx| {
+            let settings = &app.saved.settings;
+            assert_eq!(settings.terminal_font_family, None);
+            assert_eq!(settings.default_ssh_startup_directory, None);
+            assert_eq!(
+                app.settings_inputs.terminal_font_family.read(cx).value(),
+                ""
+            );
+            assert_eq!(
+                app.settings_inputs
+                    .default_ssh_startup_directory
+                    .read(cx)
+                    .value(),
+                ""
+            );
+            assert_eq!(app.status_message, "Default SSH startup directory cleared.");
         });
     }
 }
