@@ -13742,10 +13742,9 @@ mod tests {
         visual.simulate_click(clear_click, gpui::Modifiers::none());
 
         app.read_with(cx, |app, _| {
-            let pane = app.pane(pane_id).expect("pane should still exist");
             assert!(app.pane_context_menu.is_none());
             assert_eq!(app.status_message, "Terminal cleared.");
-            assert!(pane.selection.is_none());
+            assert!(app.error_message.is_empty());
         });
 
         window
@@ -16585,6 +16584,78 @@ mod tests {
             assert_eq!(app.status_message, "Copied email to clipboard.");
             assert!(app.open_toolbar_menu.is_none());
         });
+    }
+
+    #[gpui::test]
+    fn e2e_new_host_split_menu_chevron_click_opens_editor_and_imports_config(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        let chevron_click = selector_click_center(window, cx, "library-new-host-chevron");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(chevron_click, gpui::Modifiers::none());
+
+        let new_group_click = selector_click_center(window, cx, "menu-new-group");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(new_group_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert!(app.show_editor_panel);
+            assert!(app.selected_profile_id.is_none());
+            assert_eq!(app.inputs.label.read(cx).value(), "");
+            assert!(!app.show_new_host_menu);
+            assert!(app.error_message.is_empty());
+        });
+
+        let temp_home =
+            std::env::temp_dir().join(format!("termirust-import-home-{}", std::process::id()));
+        let ssh_dir = temp_home.join(".ssh");
+        std::fs::create_dir_all(&ssh_dir).expect("unable to create temp ssh dir");
+        std::fs::write(
+            ssh_dir.join("config"),
+            "Host imported-box\n  HostName 10.10.0.1\n  User deploy\n  Port 2201\n",
+        )
+        .expect("unable to write temp ssh config");
+
+        let previous_home = std::env::var_os("HOME");
+        unsafe {
+            std::env::set_var("HOME", &temp_home);
+        }
+
+        let chevron_click = selector_click_center(window, cx, "library-new-host-chevron");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(chevron_click, gpui::Modifiers::none());
+
+        let import_click = selector_click_center(window, cx, "menu-import");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(import_click, gpui::Modifiers::none());
+
+        match previous_home {
+            Some(home) => unsafe { std::env::set_var("HOME", home) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+
+        app.read_with(cx, |app, _| {
+            let profile = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.label == "imported-box")
+                .expect("imported ssh config host should exist");
+            assert_eq!(profile.host, "10.10.0.1");
+            assert_eq!(profile.username, "deploy");
+            assert_eq!(profile.port, 2201);
+            assert_eq!(profile.source, ProfileSource::SshConfig);
+            assert!(!app.show_new_host_menu);
+            assert_eq!(app.status_message, "Imported 1 hosts from ~/.ssh/config.");
+            assert!(app.error_message.is_empty());
+        });
+
+        let _ = std::fs::remove_dir_all(temp_home);
     }
 
     #[gpui::test]

@@ -91,6 +91,7 @@ It runs:
 - `ui::app::tests::e2e_hosts_bulk_toolbar_buttons_click_select_group_star_and_clear`
 - `ui::app::tests::e2e_hosts_view_mode_dropdown_click_switches_grid_and_list`
 - `ui::app::tests::e2e_hosts_tag_sort_and_avatar_dropdown_clicks`
+- `ui::app::tests::e2e_new_host_split_menu_chevron_click_opens_editor_and_imports_config`
 - `ui::app::tests::e2e_manual_reconnect_recovers_closed_ssh_pane`
 - `ui::app::tests::e2e_onboarding_dismiss_reset_and_local_terminal_marks_complete`
 - `ui::app::tests::e2e_onboarding_dismiss_button_click_hides_panel`
@@ -159,6 +160,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the rendered hosts toolbar can open the new-host editor, open a local terminal, and switch between grid and list view modes through the actual dropdown clicks
 - the rendered hosts toolbar can also launch quick connect through the `CONNECT` button and drive select-visible, bulk group assignment, bulk star/unstar, and clear-selection through the actual bulk-action buttons
 - the rendered hosts toolbar can also drive tag filtering, sort changes, and avatar email-copy through the actual dropdown clicks
+- the rendered new-host split-menu chevron can open the editor through `New Group` and import hosts through `Import from ~/.ssh/config`
 - an explicitly closed SSH pane can be reconnected manually through the app’s reconnect path after the Docker server comes back on the same port
 - the onboarding panel can be dismissed, reset, and automatically completed by opening a local terminal
 - the onboarding dismiss, new-host, add-key, local-terminal, and focus-search buttons all drive their real click handlers
