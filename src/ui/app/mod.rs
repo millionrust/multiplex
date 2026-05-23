@@ -15236,4 +15236,158 @@ mod tests {
         assert!((disk_bounds.width - 1600.0).abs() < 0.5);
         assert!((disk_bounds.height - 900.0).abs() < 0.5);
     }
+
+    #[gpui::test]
+    fn e2e_connect_dialog_continue_and_save_updates_profile_and_connects(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping connect-dialog save e2e: Docker is unavailable");
+            return;
+        }
+
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let host = server.host().to_string();
+        let port = server.port;
+        let username = server.username().to_string();
+        let password = server.password().to_string();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Dialog Save Host",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.username, "stale-user", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        password.clone(),
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let profile_id = app.read_with(cx, |app, _| {
+            app.saved
+                .profiles
+                .iter()
+                .find(|profile| profile.label == "Dialog Save Host")
+                .map(|profile| profile.id.clone())
+                .expect("saved host should exist")
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_connect_dialog_tab(&profile_id, window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.connect_username,
+                        username.clone(),
+                        window,
+                        cx,
+                    );
+                    app.confirm_connect_dialog(true, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.connected
+                && pane.request.title == "Dialog Save Host"
+                && pane.request.username == username)
+                .then_some(())
+        });
+
+        app.read_with(cx, |app, _| {
+            let profile = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.id == profile_id)
+                .expect("profile should still exist");
+            assert_eq!(profile.username, username);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_connect_dialog_close_discards_placeholder_workspace(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Dialog Close Host",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.host,
+                        "close-dialog.example",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.username, "ops-user", window, cx);
+                    app.save_profile(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let profile_id = app.read_with(cx, |app, _| {
+            app.saved
+                .profiles
+                .iter()
+                .find(|profile| profile.label == "Dialog Close Host")
+                .map(|profile| profile.id.clone())
+                .expect("saved host should exist")
+        });
+
+        let workspace_id = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_connect_dialog_tab(&profile_id, window, cx);
+                    app.active_workspace_id
+                        .expect("connect dialog workspace should exist")
+                })
+            })
+            .expect("window update should succeed");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.close_connect_dialog_tab(workspace_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.workspaces
+                    .iter()
+                    .all(|workspace| workspace.id != workspace_id)
+            );
+            assert_eq!(app.active_workspace_id, None);
+            assert!(
+                app.saved
+                    .profiles
+                    .iter()
+                    .any(|profile| profile.id == profile_id)
+            );
+        });
+    }
 }
