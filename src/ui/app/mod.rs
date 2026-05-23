@@ -9169,10 +9169,10 @@ mod tests {
     };
     use crate::credentials;
     use crate::models::{
-        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, JumpHostConnection,
-        LocalPortForward, LocalShellConfig, PortForwardKind, PortForwardRule, RestorableAuth,
-        RestorableConnection, SavedHostGroup, SavedIdentity, SavedSplitNode, SavedState,
-        SavedWorkspace, SplitAxis,
+        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, HostProfile,
+        IdentitySource, JumpHostConnection, LocalPortForward, LocalShellConfig, PortForwardKind,
+        PortForwardRule, ProfileSource, RestorableAuth, RestorableConnection, SavedHostGroup,
+        SavedIdentity, SavedSplitNode, SavedState, SavedWorkspace, SplitAxis,
     };
     use crate::sftp::RemoteFileEntry;
     use crate::test_support::{
@@ -10973,6 +10973,230 @@ mod tests {
             );
             assert!(app.selected_profile_id.is_none());
             assert!(app.show_editor_panel);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_group_defaults_save_apply_and_remove_round_trip(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut state = SavedState::default();
+        state.identities.push(SavedIdentity {
+            id: "identity-default".to_string(),
+            label: "Default Key".to_string(),
+            key_path: "/tmp/default-key".to_string(),
+            kind: "OpenSSH".to_string(),
+            source: IdentitySource::User,
+            vault_id: None,
+        });
+        state.identities.push(SavedIdentity {
+            id: "identity-ops".to_string(),
+            label: "Ops Key".to_string(),
+            key_path: "/tmp/ops-key".to_string(),
+            kind: "OpenSSH".to_string(),
+            source: IdentitySource::User,
+            vault_id: None,
+        });
+        state.profiles.push(HostProfile {
+            id: "jump-bastion".to_string(),
+            label: "Bastion".to_string(),
+            host: "10.0.0.10".to_string(),
+            port: 22,
+            username: "jump".to_string(),
+            auth_mode: AuthMode::PrivateKey,
+            key_path: "/tmp/bastion-key".to_string(),
+            source: ProfileSource::User,
+            ..HostProfile::default()
+        });
+        let (app, window) = open_test_app_with_state(cx, state);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    let identity = app
+                        .identity_by_id("identity-ops")
+                        .cloned()
+                        .expect("ops identity should exist");
+                    app.use_identity(&identity, window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.group, "Ops", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.username, "deploy", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.tags, "prod, blue", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.jump_host, "Bastion", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.startup_directory,
+                        "/srv/app",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.startup_command,
+                        "echo ready",
+                        window,
+                        cx,
+                    );
+                    app.set_draft_port_forward_kind(PortForwardKind::Local, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.forward_local_port,
+                        "41000",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.forward_remote_host,
+                        "127.0.0.1",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.forward_remote_port,
+                        "8080",
+                        window,
+                        cx,
+                    );
+                    app.add_draft_port_forward_rule(window, cx);
+                    app.save_group_defaults_from_draft(cx);
+                    app.clear_profile_form(window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.group, "Ops", window, cx);
+                    app.apply_group_defaults_to_editor(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.saved.host_groups.len(), 1);
+            let group = app
+                .saved
+                .host_groups
+                .first()
+                .expect("group should be saved");
+            assert_eq!(group.label, "Ops");
+            assert_eq!(group.username.as_deref(), Some("deploy"));
+            assert_eq!(group.tags, vec!["prod".to_string(), "blue".to_string()]);
+            assert_eq!(group.jump_host_id.as_deref(), Some("jump-bastion"));
+            assert_eq!(group.startup_directory.as_deref(), Some("/srv/app"));
+            assert_eq!(group.startup_command.as_deref(), Some("echo ready"));
+            assert_eq!(group.port_forward_rules.len(), 1);
+
+            assert_eq!(app.inputs.username.read(cx).value(), "deploy");
+            assert_eq!(app.inputs.jump_host.read(cx).value(), "Bastion");
+            assert_eq!(app.inputs.tags.read(cx).value(), "prod, blue");
+            assert_eq!(app.inputs.startup_directory.read(cx).value(), "/srv/app");
+            assert_eq!(app.inputs.startup_command.read(cx).value(), "echo ready");
+            assert_eq!(app.current_key_path(cx), "/tmp/ops-key");
+            assert_eq!(app.draft_port_forward_rules.len(), 1);
+            assert!(matches!(
+                &app.draft_port_forward_rules[0],
+                PortForwardRule::Local { forward }
+                    if forward.local_port == 41000
+                        && forward.remote_host == "127.0.0.1"
+                        && forward.remote_port == 8080
+            ));
+        });
+
+        app.update(cx, |app, cx| {
+            app.remove_group_defaults(cx);
+        });
+
+        app.read_with(cx, |app, _| {
+            assert!(app.saved.host_groups.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_batch_selection_and_bulk_host_actions(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut state = SavedState::default();
+        state.profiles.push(HostProfile {
+            id: "profile-alpha".to_string(),
+            label: "Alpha".to_string(),
+            group: "Ops".to_string(),
+            host: "10.0.0.1".to_string(),
+            port: 22,
+            username: "deploy".to_string(),
+            auth_mode: AuthMode::PrivateKey,
+            key_path: "/tmp/alpha-key".to_string(),
+            source: ProfileSource::User,
+            ..HostProfile::default()
+        });
+        state.profiles.push(HostProfile {
+            id: "profile-beta".to_string(),
+            label: "Beta".to_string(),
+            group: "Ops".to_string(),
+            host: "10.0.0.2".to_string(),
+            port: 22,
+            username: "deploy".to_string(),
+            auth_mode: AuthMode::PrivateKey,
+            key_path: "/tmp/beta-key".to_string(),
+            source: ProfileSource::SshConfig,
+            ..HostProfile::default()
+        });
+        state.profiles.push(HostProfile {
+            id: "profile-gamma".to_string(),
+            label: "Gamma".to_string(),
+            group: "Dev".to_string(),
+            host: "10.0.0.3".to_string(),
+            port: 22,
+            username: "deploy".to_string(),
+            auth_mode: AuthMode::PrivateKey,
+            key_path: "/tmp/gamma-key".to_string(),
+            source: ProfileSource::User,
+            ..HostProfile::default()
+        });
+        let (app, window) = open_test_app_with_state(cx, state);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.select_filtered_group_hosts("Ops", cx);
+                    app.prepare_bulk_group_assignment("Batch", window, cx);
+                    app.bulk_assign_selected_hosts_group(window, cx);
+                    app.bulk_set_selected_hosts_favorite(true, window, cx);
+                    app.clear_host_batch_selection(cx);
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.host_search,
+                        "Gamma",
+                        window,
+                        cx,
+                    );
+                    app.select_all_filtered_hosts(cx);
+                    app.bulk_set_selected_hosts_favorite(true, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let alpha = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.id == "profile-alpha")
+                .expect("alpha should exist");
+            let beta = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.id == "profile-beta")
+                .expect("beta should exist");
+            let gamma = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.id == "profile-gamma")
+                .expect("gamma should exist");
+
+            assert_eq!(alpha.group, "Batch");
+            assert!(alpha.favorite);
+            assert_eq!(alpha.source, ProfileSource::User);
+
+            assert_eq!(beta.group, "Batch");
+            assert!(beta.favorite);
+            assert_eq!(beta.source, ProfileSource::User);
+
+            assert_eq!(gamma.group, "Dev");
+            assert!(gamma.favorite);
+
+            assert_eq!(app.selected_host_ids.len(), 1);
+            assert!(app.selected_host_ids.contains("profile-gamma"));
         });
     }
 
