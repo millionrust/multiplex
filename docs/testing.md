@@ -39,6 +39,8 @@ It runs:
 - `ui::app::tests::e2e_workspace_duplicate_and_reorder`
 - `ui::app::tests::e2e_ssh_logs_record_disconnect_and_logs_section_opens`
 - `ui::app::tests::e2e_workspace_and_pane_rename_persist_runtime_state`
+- `ui::app::tests::e2e_workspace_disconnect_and_reconnect_all_restores_split_panes`
+- `ui::app::tests::e2e_split_divider_drag_updates_and_persists_layout_ratio`
 
 Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH container, connect through the real `russh` session path, and verify both:
 
@@ -57,6 +59,8 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - workspace tabs can be duplicated and reordered through the same state paths used by the chrome drag/drop actions
 - SSH disconnects are recorded in the persisted Logs history and the Logs section can be opened directly from app state
 - workspace titles and pane titles persist across runtime state snapshots, including after split-pane creation
+- workspace-wide disconnect/reconnect can tear down and restore every pane in a split local-terminal workspace
+- split-pane divider drags update the runtime layout ratio and persist that ratio into restored workspace state
 
 If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests self-skip.
 

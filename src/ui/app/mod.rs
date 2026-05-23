@@ -9160,18 +9160,19 @@ fn apply_group_defaults_to_draft(
 mod tests {
     use super::{
         AutocompleteSource, ConnectDialogMode, ConnectProtocol, NavSection,
-        OutputSuggestionContext, PathSuggestionContext, TermiRustApp, WorkspaceIndicators,
-        WorkspaceRuntimeTone, WorkspaceViewMode, apply_group_defaults_to_draft,
-        collect_autocomplete_candidates, collect_command_palette_candidates,
-        extract_snippet_prompt_names, shell_command_requires_continuation,
-        startup_bytes_for_request, substitute_snippet_placeholders, substitute_snippet_prompts,
-        workspace_runtime_summary,
+        OutputSuggestionContext, PathSuggestionContext, SplitNode, TermiRustApp,
+        WorkspaceIndicators, WorkspaceRuntimeTone, WorkspaceViewMode,
+        apply_group_defaults_to_draft, collect_autocomplete_candidates,
+        collect_command_palette_candidates, extract_snippet_prompt_names,
+        shell_command_requires_continuation, startup_bytes_for_request,
+        substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
     };
     use crate::credentials;
     use crate::models::{
         AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, JumpHostConnection,
         LocalPortForward, LocalShellConfig, PortForwardKind, PortForwardRule, RestorableAuth,
-        RestorableConnection, SavedHostGroup, SavedIdentity, SavedState, SavedWorkspace, SplitAxis,
+        RestorableConnection, SavedHostGroup, SavedIdentity, SavedSplitNode, SavedState,
+        SavedWorkspace, SplitAxis,
     };
     use crate::sftp::RemoteFileEntry;
     use crate::test_support::{
@@ -11620,6 +11621,214 @@ mod tests {
                     .iter()
                     .any(|pane| pane.title == "Renamed Pane")
             );
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_workspace_disconnect_and_reconnect_all_restores_split_panes(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (workspace_id, first_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(first_pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.split_active_workspace(SplitAxis::Horizontal, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let original_pane_ids = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 2
+                && workspace
+                    .pane_ids
+                    .iter()
+                    .all(|pane_id| app.pane(*pane_id).is_some_and(|pane| pane.connected)))
+            .then(|| workspace.pane_ids.clone())
+        });
+
+        app.update(cx, |app, cx| {
+            app.disconnect_workspace(workspace_id, cx);
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            workspace
+                .pane_ids
+                .iter()
+                .all(|pane_id| {
+                    app.pane(*pane_id).is_some_and(|pane| {
+                        !pane.connected && pane.closed && pane.status == "Closing"
+                    })
+                })
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.reconnect_all(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let reconnected_pane_ids = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 2
+                && workspace
+                    .pane_ids
+                    .iter()
+                    .all(|pane_id| app.pane(*pane_id).is_some_and(|pane| pane.connected))
+                && workspace
+                    .pane_ids
+                    .iter()
+                    .all(|pane_id| !original_pane_ids.contains(pane_id)))
+            .then(|| workspace.pane_ids.clone())
+        });
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(reconnected_pane_ids.len(), 2);
+            for pane_id in &original_pane_ids {
+                assert!(app.pane(*pane_id).is_none());
+            }
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert_eq!(workspace.pane_ids, reconnected_pane_ids);
+            let restored = app
+                .saved
+                .restored_workspaces
+                .iter()
+                .find(|saved| saved.panes.len() == 2)
+                .expect("restored split workspace should be saved");
+            assert_eq!(restored.panes.len(), 2);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_split_divider_drag_updates_and_persists_layout_ratio(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (workspace_id, first_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(first_pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.split_active_workspace(SplitAxis::Horizontal, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 2).then_some(())
+        });
+
+        let (divider_id, axis, span, start_ratio, origin_x, origin_y) = window
+            .update(cx, |_, window, cx| {
+                app.read_with(cx, |app, _| {
+                    let (_, dividers) = app.workspace_split_rects(window);
+                    let divider = dividers
+                        .first()
+                        .copied()
+                        .expect("split workspace should expose one divider");
+                    (
+                        divider.divider_id,
+                        divider.axis,
+                        divider.span,
+                        divider.ratio,
+                        divider.x + divider.width / 2.0,
+                        divider.y + divider.height / 2.0,
+                    )
+                })
+            })
+            .expect("window update should succeed");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let start = point(px(origin_x), px(origin_y));
+                    let moved = point(px(origin_x + 96.0), px(origin_y));
+                    app.start_divider_drag(
+                        workspace_id,
+                        divider_id,
+                        axis,
+                        span,
+                        start_ratio,
+                        start,
+                        cx,
+                    );
+                    app.handle_divider_drag_move(moved, cx);
+                    app.handle_divider_drag_end(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            let runtime_ratio = match workspace.layout.as_ref() {
+                Some(SplitNode::Split { ratio, .. }) => *ratio,
+                _ => panic!("workspace should keep a split layout"),
+            };
+            assert!(runtime_ratio > start_ratio);
+            assert!(runtime_ratio <= 0.92);
+
+            let saved_ratio = match app.saved.restored_workspaces.first() {
+                Some(SavedWorkspace {
+                    layout:
+                        Some(SavedSplitNode::Split {
+                            ratio,
+                            axis: SplitAxis::Horizontal,
+                            ..
+                        }),
+                    ..
+                }) => *ratio,
+                _ => panic!("saved workspace should keep a split layout"),
+            };
+            assert!((saved_ratio - runtime_ratio).abs() < 0.001);
         });
     }
 
