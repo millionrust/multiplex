@@ -13477,6 +13477,77 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_workspace_tab_menu_click_split_horizontal(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        let menu_click =
+            dynamic_selector_click_center(window, cx, format!("chrome-workspace-{workspace_id}"));
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_event(MouseDownEvent {
+            position: menu_click,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Right,
+            click_count: 1,
+            first_mouse: false,
+        });
+        visual.simulate_event(MouseUpEvent {
+            position: menu_click,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Right,
+            click_count: 1,
+        });
+
+        let split_click = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("workspace-tab-menu-split-horizontal-{workspace_id}"),
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(split_click, gpui::Modifiers::none());
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 2
+                && workspace
+                    .pane_ids
+                    .iter()
+                    .all(|pane_id| app.pane(*pane_id).is_some_and(|pane| pane.connected)))
+            .then_some(())
+        });
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert_eq!(workspace.pane_ids.len(), 2);
+            assert!(app.open_workspace_tab_menu.is_none());
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
     fn e2e_pane_context_menu_click_duplicate_and_detach(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
@@ -14357,6 +14428,102 @@ mod tests {
             let original = app.workspace(workspace_id).expect("original workspace");
             assert_eq!(original.pane_ids, vec![pane_id]);
             assert!(app.workspace_id_for_pane(second_pane_id).is_some());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_pane_context_menu_click_reconnect_recovers_closed_ssh_pane(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping pane-menu reconnect e2e: Docker is unavailable");
+            return;
+        }
+
+        let mut saved = SavedState::default();
+        saved.settings.auto_reconnect_attempts = 0;
+        saved.settings.auto_reconnect_delay_secs = 1;
+
+        let port = allocate_local_port();
+        let server = DockerSshServer::start_on_port(port)
+            .expect("unable to start initial docker ssh fixture");
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let request = ConnectRequest {
+            port,
+            ..docker_ssh_request(&server)
+        };
+
+        let (workspace_id, original_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(original_pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("termirust-ui-ready"))
+                .then_some(())
+        });
+
+        server.stop();
+
+        wait_for_window_app_state(cx, window, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(original_pane_id)?;
+            (pane.closed && !pane.connected && pane.status == "Closed").then_some(())
+        });
+
+        let _replacement = DockerSshServer::start_on_port(port)
+            .expect("unable to restart docker ssh fixture on the same port");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_pane_context_menu(
+                        original_pane_id,
+                        point(px(32.), px(32.)),
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        let reconnect_click = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("pane-menu-reconnect-{original_pane_id}"),
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(reconnect_click, gpui::Modifiers::none());
+
+        let reconnected_pane_id =
+            wait_for_window_app_state(cx, window, &app, Duration::from_secs(20), |app| {
+                let workspace = app.workspace(workspace_id)?;
+                let pane_id = workspace.active_pane_id;
+                let pane = app.pane(pane_id)?;
+                (pane.connected
+                    && pane_id != original_pane_id
+                    && pane
+                        .terminal
+                        .all_rows_text()
+                        .iter()
+                        .any(|row| row.contains("termirust-ui-ready")))
+                .then_some(pane_id)
+            });
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert_eq!(workspace.active_pane_id, reconnected_pane_id);
+            assert!(!workspace.pane_ids.contains(&original_pane_id));
+            assert!(workspace.pane_ids.contains(&reconnected_pane_id));
+            assert!(app.open_workspace_tab_menu.is_none());
+            assert!(app.pane_context_menu.is_none());
+            assert!(app.error_message.is_empty());
         });
     }
 
@@ -15683,6 +15850,98 @@ mod tests {
                 .expect("profile should exist");
             assert!(profile.favorite);
             assert!(app.last_connected_at(profile).is_some());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_host_grid_row_click_selects_edits_and_opens_connect_dialog(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        saved.profiles.push(HostProfile {
+            id: "grid-host".to_string(),
+            label: "Grid Host".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 22,
+            username: "ops".to_string(),
+            source: ProfileSource::User,
+            ..HostProfile::default()
+        });
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        let favorite_click = selector_click_center(window, cx, "host-row-favorite-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(favorite_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            let profile = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.id == "grid-host")
+                .expect("profile should exist");
+            assert!(profile.favorite);
+            assert_eq!(app.status_message, "Starred 'Grid Host'.");
+            assert!(app.error_message.is_empty());
+        });
+
+        let row_click = selector_click_center(window, cx, "host-row-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(row_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert!(app.show_editor_panel);
+            assert_eq!(app.selected_profile_id.as_deref(), Some("grid-host"));
+            assert_eq!(app.inputs.label.read(cx).value(), "Grid Host");
+            assert!(app.error_message.is_empty());
+        });
+
+        app.update(cx, |app, _| {
+            app.show_editor_panel = false;
+            app.selected_profile_id = None;
+        });
+
+        let edit_click = selector_click_center(window, cx, "host-row-edit-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(edit_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert!(app.show_editor_panel);
+            assert_eq!(app.selected_profile_id.as_deref(), Some("grid-host"));
+            assert_eq!(app.inputs.label.read(cx).value(), "Grid Host");
+            assert!(app.error_message.is_empty());
+        });
+
+        let row_click = selector_click_center(window, cx, "host-row-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_event(MouseDownEvent {
+            position: row_click,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Left,
+            click_count: 2,
+            first_mouse: false,
+        });
+        visual.simulate_event(MouseUpEvent {
+            position: row_click,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Left,
+            click_count: 2,
+        });
+
+        app.read_with(cx, |app, _| {
+            let workspace = app
+                .active_workspace()
+                .expect("connect dialog workspace should exist");
+            let pending = workspace
+                .pending_connect
+                .as_ref()
+                .expect("double click should open connect dialog tab");
+            assert_eq!(workspace.title, "Grid Host");
+            assert!(workspace.pending_connect_mode == ConnectDialogMode::Username);
+            assert_eq!(pending.label, "Grid Host");
+            assert_eq!(pending.host, "127.0.0.1");
+            assert_eq!(pending.username, "ops");
+            assert!(app.error_message.is_empty());
         });
     }
 

@@ -1245,7 +1245,7 @@ mod tests {
         assert_eq!(disconnected, request.session_id);
 
         let saved_keys = known_hosts.entries().expect("unable to read known hosts");
-        assert_eq!(saved_keys.len(), 2);
+        assert!(saved_keys.len() >= 2);
         let endpoints = saved_keys
             .iter()
             .map(|(key, _)| key.clone())

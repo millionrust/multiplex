@@ -55,7 +55,9 @@ It runs:
 - `ui::app::tests::e2e_workspace_duplicate_and_reorder`
 - `ui::app::tests::e2e_workspace_tab_click_activate_rename_and_close`
 - `ui::app::tests::e2e_workspace_tab_menu_click_duplicate_and_close`
+- `ui::app::tests::e2e_workspace_tab_menu_click_split_horizontal`
 - `ui::app::tests::e2e_pane_context_menu_click_duplicate_and_detach`
+- `ui::app::tests::e2e_pane_context_menu_click_reconnect_recovers_closed_ssh_pane`
 - `ui::app::tests::e2e_dragged_workspace_tab_drops_onto_pane_and_merges_split`
 - `ui::app::tests::e2e_dragged_workspace_tab_split_rejects_merges_over_max_panes`
 - `ui::app::tests::e2e_ssh_logs_record_disconnect_and_logs_section_opens`
@@ -80,6 +82,7 @@ It runs:
 - `ui::app::tests::e2e_restore_workspaces_disabled_skips_saved_workspace_launch`
 - `ui::app::tests::e2e_session_history_limit_change_trims_existing_logs`
 - `ui::app::tests::e2e_host_library_selection_loads_editor_and_tracks_last_connected`
+- `ui::app::tests::e2e_host_grid_row_click_selects_edits_and_opens_connect_dialog`
 - `ui::app::tests::e2e_manual_reconnect_recovers_closed_ssh_pane`
 - `ui::app::tests::e2e_onboarding_dismiss_reset_and_local_terminal_marks_complete`
 - `ui::app::tests::e2e_onboarding_dismiss_button_click_hides_panel`
@@ -123,7 +126,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - terminal copy-on-select can push the selected text into the clipboard
 - workspace tabs can be duplicated and reordered through the same state paths used by the chrome drag/drop actions
 - workspace tabs can also be activated by click, enter rename mode by double-click, and close through the rendered close button
-- workspace tab context-menu items can duplicate and close through their rendered click handlers, and pane context-menu items can duplicate and detach through their rendered click handlers
+- workspace tab context-menu items can duplicate, split horizontally, and close through their rendered click handlers, and pane context-menu items can duplicate, detach, and reconnect through their rendered click handlers
 - dropping a workspace tab onto a terminal pane can merge the dragged tab into a real split layout, and over-cap merges are rejected without mutating either workspace
 - SSH disconnects are recorded in the persisted Logs history and the Logs section can be opened directly from app state
 - workspace titles and pane titles persist across runtime state snapshots, including after split-pane creation
@@ -142,6 +145,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - disabling workspace restore on launch skips previously saved restorable workspaces
 - lowering the session-history retention limit trims existing logs immediately
 - the Hosts library can load a saved host into the editor on selection, preserve favorite/color/description/environment metadata, toggle favorites, and surface a real last-connected timestamp after a live SSH session
+- the rendered host grid row can select a host by click, reopen it in the editor through the inline edit control, and open the connect dialog tab by double-click
 - an explicitly closed SSH pane can be reconnected manually through the app’s reconnect path after the Docker server comes back on the same port
 - the onboarding panel can be dismissed, reset, and automatically completed by opening a local terminal
 - the onboarding dismiss, new-host, add-key, local-terminal, and focus-search buttons all drive their real click handlers

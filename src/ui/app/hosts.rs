@@ -104,6 +104,7 @@ impl TermiRustApp {
         let icon_bg = theme::with_alpha(accent, 0.18);
         h_flex()
             .id(("host-row", card_ix))
+            .debug_selector(move || format!("host-row-{card_ix}"))
             .group(format!("host-row-group-{card_ix}"))
             .w(px(340.))
             .h(px(64.))
@@ -186,48 +187,57 @@ impl TermiRustApp {
                 h_flex()
                     .gap(px(2.))
                     .child(
-                        Button::new(("host-row-select", card_ix))
-                            .xsmall()
-                            .ghost()
-                            .icon(if batch_selected {
-                                IconName::Check
-                            } else {
-                                IconName::Plus
-                            })
-                            .tooltip(if batch_selected {
-                                "Remove from batch"
-                            } else {
-                                "Select for batch"
-                            })
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                cx.stop_propagation();
-                                this.toggle_host_batch_selection(&batch_profile_id, cx);
-                            })),
+                        div()
+                            .debug_selector(move || format!("host-row-select-{card_ix}"))
+                            .child(
+                                Button::new(("host-row-select", card_ix))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(if batch_selected {
+                                        IconName::Check
+                                    } else {
+                                        IconName::Plus
+                                    })
+                                    .tooltip(if batch_selected {
+                                        "Remove from batch"
+                                    } else {
+                                        "Select for batch"
+                                    })
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        this.toggle_host_batch_selection(&batch_profile_id, cx);
+                                    })),
+                            ),
                     )
                     .child(
-                        Button::new(("host-row-favorite", card_ix))
-                            .xsmall()
-                            .ghost()
-                            .icon(IconName::Star)
-                            .tooltip(if favorite_selected {
-                                "Unstar host"
-                            } else {
-                                "Star host"
-                            })
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                cx.stop_propagation();
-                                this.set_profile_favorite(
-                                    &favorite_profile_id,
-                                    !favorite_selected,
-                                    window,
-                                    cx,
-                                );
-                            })),
+                        div()
+                            .debug_selector(move || format!("host-row-favorite-{card_ix}"))
+                            .child(
+                                Button::new(("host-row-favorite", card_ix))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::Star)
+                                    .tooltip(if favorite_selected {
+                                        "Unstar host"
+                                    } else {
+                                        "Star host"
+                                    })
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        cx.stop_propagation();
+                                        this.set_profile_favorite(
+                                            &favorite_profile_id,
+                                            !favorite_selected,
+                                            window,
+                                            cx,
+                                        );
+                                    })),
+                            ),
                     )
                     .child({
                         let edit_profile_id = profile_id.clone();
                         div()
                             .id(("host-row-edit", card_ix))
+                            .debug_selector(move || format!("host-row-edit-{card_ix}"))
                             .size(px(28.))
                             .rounded(px(6.))
                             .flex()
@@ -274,6 +284,7 @@ impl TermiRustApp {
         };
         h_flex()
             .id(("host-row-list", card_ix))
+            .debug_selector(move || format!("host-row-list-{card_ix}"))
             .w_full()
             .h(px(40.))
             .gap(px(10.))
@@ -322,42 +333,56 @@ impl TermiRustApp {
                     .child(endpoint),
             )
             .child(
-                Button::new(("host-row-list-select", card_ix))
-                    .xsmall()
-                    .ghost()
-                    .icon(if is_batch_selected {
-                        IconName::Check
-                    } else {
-                        IconName::Plus
-                    })
-                    .tooltip(if is_batch_selected {
-                        "Remove from batch"
-                    } else {
-                        "Select for batch"
-                    })
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        cx.stop_propagation();
-                        this.toggle_host_batch_selection(&select_id, cx);
-                    })),
+                div()
+                    .debug_selector(move || format!("host-row-list-select-{card_ix}"))
+                    .child(
+                        Button::new(("host-row-list-select", card_ix))
+                            .xsmall()
+                            .ghost()
+                            .icon(if is_batch_selected {
+                                IconName::Check
+                            } else {
+                                IconName::Plus
+                            })
+                            .tooltip(if is_batch_selected {
+                                "Remove from batch"
+                            } else {
+                                "Select for batch"
+                            })
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                cx.stop_propagation();
+                                this.toggle_host_batch_selection(&select_id, cx);
+                            })),
+                    ),
             )
             .child(
-                Button::new(("host-row-list-favorite", card_ix))
-                    .xsmall()
-                    .ghost()
-                    .icon(IconName::Star)
-                    .tooltip(if favorite_selected {
-                        "Unstar host"
-                    } else {
-                        "Star host"
-                    })
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        cx.stop_propagation();
-                        this.set_profile_favorite(&favorite_id, !favorite_selected, window, cx);
-                    })),
+                div()
+                    .debug_selector(move || format!("host-row-list-favorite-{card_ix}"))
+                    .child(
+                        Button::new(("host-row-list-favorite", card_ix))
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Star)
+                            .tooltip(if favorite_selected {
+                                "Unstar host"
+                            } else {
+                                "Star host"
+                            })
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                cx.stop_propagation();
+                                this.set_profile_favorite(
+                                    &favorite_id,
+                                    !favorite_selected,
+                                    window,
+                                    cx,
+                                );
+                            })),
+                    ),
             )
             .child({
                 div()
                     .id(("host-row-list-edit", card_ix))
+                    .debug_selector(move || format!("host-row-list-edit-{card_ix}"))
                     .size(px(24.))
                     .rounded(px(4.))
                     .flex()
