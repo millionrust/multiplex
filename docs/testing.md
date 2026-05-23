@@ -49,6 +49,7 @@ It runs:
 - `ui::app::tests::e2e_imported_private_key_connects_to_docker_ssh`
 - `ui::app::tests::e2e_snippet_save_run_pin_and_remove`
 - `ui::app::tests::e2e_snippets_toolbar_click_new_save_and_delete`
+- `ui::app::tests::e2e_snippet_new_button_click_clears_selected_snippet`
 - `ui::app::tests::e2e_snippet_row_click_loads_and_pins`
 - `ui::app::tests::e2e_vault_cards_and_buttons_click_create_load_and_delete`
 - `ui::app::tests::e2e_vault_member_controls_click_select_role_save_clear_and_remove`
@@ -148,6 +149,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the GPUI app can also upload and download files through the same dialog-backed SFTP actions used by the desktop UI
 - the snippet workflow can save, pin, run, and remove commands against a live terminal session
 - the rendered Snippets view can create and delete snippets through its toolbar buttons, and snippet rows can load into the form and pin through their actual click controls
+- the rendered Snippets `New` button clears the active snippet draft through its actual click handler
 - the rendered Vaults view can create, clear, load, and delete shared vaults through its actual card and button click handlers, and can drive member role selection, save, clear, load, and remove through the rendered member controls
 - the vault and sync workflow can save shared vaults, manage members, push an encrypted bundle, pull it into a fresh app state, and re-home items back to Personal when a vault is deleted
 - the Settings sync workflow can also pick the sync folder through the dialog-backed action and resolve pull conflicts through the force-pull path

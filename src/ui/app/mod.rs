@@ -12471,38 +12471,6 @@ mod tests {
             );
         });
 
-        let new_click = selector_click_center(window, cx, "snippet-new");
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(new_click, gpui::Modifiers::none());
-
-        app.read_with(cx, |app, cx| {
-            assert!(app.selected_snippet_id.is_none());
-            assert!(app.snippet_inputs.label.read(cx).value().is_empty());
-            assert!(app.snippet_inputs.command.read(cx).value().is_empty());
-            assert_eq!(app.status_message, "Snippet draft cleared.");
-            assert!(app.error_message.is_empty());
-        });
-
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    TermiRustApp::set_input_value(
-                        &app.snippet_inputs.label,
-                        "Toolbar Snippet",
-                        window,
-                        cx,
-                    );
-                    TermiRustApp::set_input_value(
-                        &app.snippet_inputs.command,
-                        "echo toolbar-snippet",
-                        window,
-                        cx,
-                    );
-                    app.save_snippet(window, cx);
-                })
-            })
-            .expect("window update should succeed");
-
         let delete_click = selector_click_center(window, cx, "snippet-delete");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(delete_click, gpui::Modifiers::none());
@@ -12516,6 +12484,55 @@ mod tests {
             );
             assert!(app.selected_snippet_id.is_none());
             assert_eq!(app.snippet_inputs.label.read(cx).value(), "");
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_snippet_new_button_click_clears_selected_snippet(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        saved.snippets.push(SavedSnippet {
+            id: "snippet-new-btn".to_string(),
+            label: "Snippet New Btn".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            group: "Ops".to_string(),
+            pinned: false,
+            command: "echo snippet-new-btn".to_string(),
+        });
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Snippets, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let row_click = selector_click_center(window, cx, "snippet-card-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(row_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.selected_snippet_id.as_deref(), Some("snippet-new-btn"));
+            assert_eq!(app.snippet_inputs.label.read(cx).value(), "Snippet New Btn");
+            assert_eq!(
+                app.snippet_inputs.command.read(cx).value(),
+                "echo snippet-new-btn"
+            );
+        });
+
+        let new_click = selector_click_center(window, cx, "snippet-new");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(new_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert!(app.selected_snippet_id.is_none());
+            assert!(app.snippet_inputs.label.read(cx).value().is_empty());
+            assert!(app.snippet_inputs.command.read(cx).value().is_empty());
+            assert_eq!(app.status_message, "Snippet draft cleared.");
             assert!(app.error_message.is_empty());
         });
     }
