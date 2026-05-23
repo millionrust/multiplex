@@ -15546,6 +15546,53 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_onboarding_new_button_click_opens_new_host_editor(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let click_point = selector_click_center(window, cx, "hosts-onboarding-new");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+
+        visual.simulate_click(click_point, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.show_editor_panel);
+            assert!(app.selected_profile_id.is_none());
+            assert_eq!(app.inputs.label.read(cx).value(), "");
+            assert!(app.should_show_onboarding());
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_onboarding_local_button_click_opens_local_terminal(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let click_point = selector_click_center(window, cx, "hosts-onboarding-local");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+
+        visual.simulate_click(click_point, gpui::Modifiers::none());
+
+        let pane_id = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.request.kind == ConnectionKind::LocalShell && pane.connected).then_some(pane.id)
+        });
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().expect("workspace should exist");
+            assert_eq!(workspace.pane_ids, vec![pane_id]);
+            assert!(app.saved.settings.onboarding_dismissed);
+            assert!(!app.should_show_onboarding());
+            assert!(
+                app.status_message == "Opening local terminal..."
+                    || app.status_message == "Local terminal ready."
+            );
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
     fn e2e_onboarding_search_button_click_focuses_host_search(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let mut saved = SavedState::default();

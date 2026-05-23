@@ -80,6 +80,8 @@ It runs:
 - `ui::app::tests::e2e_onboarding_dismiss_reset_and_local_terminal_marks_complete`
 - `ui::app::tests::e2e_onboarding_dismiss_button_click_hides_panel`
 - `ui::app::tests::e2e_onboarding_key_button_click_imports_identity_into_editor`
+- `ui::app::tests::e2e_onboarding_new_button_click_opens_new_host_editor`
+- `ui::app::tests::e2e_onboarding_local_button_click_opens_local_terminal`
 - `ui::app::tests::e2e_onboarding_search_button_click_focuses_host_search`
 - `ui::app::tests::e2e_saved_host_open_connect_dialog_tab_preserves_profile_context`
 - `ui::app::tests::e2e_recent_host_chip_reopens_saved_ssh_workspace`
@@ -134,7 +136,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the Hosts library can load a saved host into the editor on selection, preserve favorite/color/description/environment metadata, toggle favorites, and surface a real last-connected timestamp after a live SSH session
 - an explicitly closed SSH pane can be reconnected manually through the app’s reconnect path after the Docker server comes back on the same port
 - the onboarding panel can be dismissed, reset, and automatically completed by opening a local terminal
-- the onboarding dismiss, add-key, and focus-search buttons all drive their real click handlers
+- the onboarding dismiss, new-host, add-key, local-terminal, and focus-search buttons all drive their real click handlers
 - a saved host can open the dedicated connect-dialog tab while preserving the profile context
 - the recent-host chip path can reopen a saved SSH workspace from persisted session history
 - window resize events persist saved window bounds and display id into `state.json`
