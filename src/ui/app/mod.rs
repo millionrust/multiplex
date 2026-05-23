@@ -11794,7 +11794,7 @@ mod tests {
                     );
                     TermiRustApp::set_input_value(
                         &app.inputs.environment,
-                        "DEPLOY_ENV=prod, FEATURE_FLAG=on",
+                        "DEPLOY_ENV=prod\nFEATURE_FLAG=on",
                         window,
                         cx,
                     );
@@ -11896,6 +11896,150 @@ mod tests {
                 && browser.current_path == "/home/termirust/e2e-saved-files"
                 && browser.entries.iter().any(|entry| entry.name == "list.txt"))
             .then_some(())
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_default_ssh_startup_directory_applies_on_saved_host_connect(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping default ssh startup-dir e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        server
+            .exec(
+                "mkdir -p /home/termirust/e2e-default-startup && chown -R termirust:termirust /home/termirust/e2e-default-startup",
+            )
+            .expect("unable to prepare remote default startup dir");
+        let (app, window) = open_test_app(cx);
+        let host = server.host().to_string();
+        let port = server.port;
+        let username = server.username().to_string();
+        let password = server.password().to_string();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.default_ssh_startup_directory,
+                        "/home/termirust/e2e-default-startup",
+                        window,
+                        cx,
+                    );
+                    app.save_default_ssh_startup_directory(cx);
+
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Default Startup Dir Host",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        username.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        password.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.startup_command,
+                        "printf 'default-startup-dir-ok\\n' > inherited.txt",
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+                    app.connect_current(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.connected
+                && pane.request.startup_directory.is_none()
+                && pane.request.startup_command.as_deref()
+                    == Some("printf 'default-startup-dir-ok\\n' > inherited.txt"))
+            .then_some(())
+        });
+
+        let output = server
+            .exec("cat /home/termirust/e2e-default-startup/inherited.txt")
+            .expect("default startup directory output should exist");
+        assert_eq!(output, "default-startup-dir-ok");
+    }
+
+    #[gpui::test]
+    fn e2e_saved_default_local_shell_settings_apply_to_new_local_terminal(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let local_dir =
+            std::env::temp_dir().join(format!("termirust-local-shell-{}", std::process::id()));
+        std::fs::create_dir_all(&local_dir).expect("unable to create local shell dir");
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.local_shell_program,
+                        "/bin/sh",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.local_shell_cwd,
+                        local_dir.display().to_string(),
+                        window,
+                        cx,
+                    );
+                    app.save_local_shell_settings(window, cx);
+                    app.open_local_terminal(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let pane_id = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            pane.connected.then_some(pane.id)
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, _| {
+                    let pane = app.pane(pane_id).expect("pane should exist");
+                    window.focus(&pane.terminal_focus);
+                })
+            })
+            .expect("window focus update should succeed");
+
+        cx.simulate_keystrokes(*window, "p w d enter");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains(local_dir.to_string_lossy().as_ref()))
+                .then_some(())
+        });
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.saved.settings.default_local_shell.program, "/bin/sh");
+            assert_eq!(
+                app.saved.settings.default_local_shell.cwd.as_deref(),
+                Some(local_dir.to_string_lossy().as_ref())
+            );
         });
     }
 

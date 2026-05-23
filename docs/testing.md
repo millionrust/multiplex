@@ -64,6 +64,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the raw SSH runtime can open local forwards, SOCKS5 dynamic forwards, and remote reverse forwards against the Docker SSH fixture
 - the GPUI app can save local, SOCKS5 dynamic, and remote reverse forwarding rules in the host editor and launch them automatically on connect
 - the GPUI app can connect a saved host and still honor its startup directory / startup command / environment plus Files-view launch mode
+- the Settings defaults for SSH startup directory and local shell program/cwd are applied by normal connect and open-local-terminal flows
 - the GPUI app can save group defaults, reapply them into a new draft, and remove them again
 - the GPUI app can batch-select hosts and apply bulk group/favorite operations across filtered library selections
 - the GPUI app can open a workspace, render terminal output, accept typed terminal input, split panes, broadcast commands, auto-reconnect after a non-user disconnect, and connect through a real jump host

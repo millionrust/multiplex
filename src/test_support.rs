@@ -86,12 +86,14 @@ pub struct TestIsolation {
 
 impl TestIsolation {
     pub fn acquire() -> Self {
-        let lock = test_mutex().lock().expect("test isolation lock poisoned");
+        let lock = test_mutex()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let temp_dir = std::env::temp_dir().join(format!("termirust-test-{}", now_millis()));
         fs::create_dir_all(&temp_dir).expect("unable to create test config dir");
         dialog_paths()
             .lock()
-            .expect("dialog path queue lock poisoned")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clear();
         let previous_config_dir = set_test_app_dir_override(Some(temp_dir.clone()));
 
@@ -107,7 +109,7 @@ impl Drop for TestIsolation {
     fn drop(&mut self) {
         dialog_paths()
             .lock()
-            .expect("dialog path queue lock poisoned")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clear();
         set_test_app_dir_override(self.previous_config_dir.clone());
         let _ = fs::remove_dir_all(&self.temp_dir);
@@ -238,14 +240,14 @@ pub fn allocate_local_port() -> u16 {
 pub fn queue_dialog_path(path: Option<PathBuf>) {
     dialog_paths()
         .lock()
-        .expect("dialog path queue lock poisoned")
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
         .push_back(path);
 }
 
 pub fn take_dialog_path() -> Option<PathBuf> {
     dialog_paths()
         .lock()
-        .expect("dialog path queue lock poisoned")
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
         .pop_front()
         .flatten()
 }
