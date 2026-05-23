@@ -12223,6 +12223,191 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_snippet_prompts_confirm_and_cancel(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (_workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.run_snippet_command("printf '{{?Word}}\\n'", window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let prompts = app
+                        .pending_snippet_prompts
+                        .as_ref()
+                        .expect("snippet prompts should be active");
+                    let first = prompts.fields.first().expect("prompt field should exist");
+                    TermiRustApp::set_input_value(&first.input, "hello-from-prompt", window, cx);
+                    app.confirm_snippet_prompts(cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("hello-from-prompt"))
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.run_snippet_command("printf '{{?CancelMe}}\\n'", window, cx);
+                    assert!(app.pending_snippet_prompts.is_some());
+                    app.cancel_snippet_prompts(cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert!(app.pending_snippet_prompts.is_none());
+            assert_eq!(app.status_message, "Snippet prompts cancelled.");
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_workspace_search_navigates_between_results(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, _| {
+                    let pane = app.pane(pane_id).expect("pane should exist");
+                    window.focus(&pane.terminal_focus);
+                })
+            })
+            .expect("window focus update should succeed");
+
+        cx.simulate_keystrokes(
+            *window,
+            "p r i n t f space 'm a t c h space o n e backslash n m a t c h space t w o backslash n m a t c h space t h r e e backslash n' enter",
+        );
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            (pane
+                .terminal
+                .all_rows_text()
+                .iter()
+                .filter(|row| row.contains("match "))
+                .count()
+                >= 3)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.toggle_workspace_search(window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.terminal_search,
+                        "match",
+                        window,
+                        cx,
+                    );
+                    app.refresh_workspace_search(workspace_id, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert!(workspace.search_visible);
+            assert_eq!(workspace.search_results.len(), 3);
+            assert_eq!(workspace.active_search_index, Some(0));
+        });
+
+        app.update(cx, |app, cx| app.jump_workspace_search(1, cx));
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert_eq!(workspace.active_search_index, Some(1));
+        });
+
+        app.update(cx, |app, cx| app.jump_workspace_search(1, cx));
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert_eq!(workspace.active_search_index, Some(2));
+        });
+
+        app.update(cx, |app, cx| app.jump_workspace_search(1, cx));
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert_eq!(workspace.active_search_index, Some(0));
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.toggle_workspace_search(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert!(!workspace.search_visible);
+            assert!(workspace.search_results.is_empty());
+            assert_eq!(workspace.active_search_index, None);
+        });
+    }
+
+    #[gpui::test]
     fn e2e_vault_member_and_sync_round_trip(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let sync_dir = std::env::temp_dir().join(format!("termirust-sync-{}", std::process::id()));
