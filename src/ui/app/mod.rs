@@ -8415,6 +8415,7 @@ impl TermiRustApp {
                         )
                         .child(
                             Button::new("hosts-onboarding-dismiss")
+                                .debug_selector(|| "hosts-onboarding-dismiss".to_string())
                                 .small()
                                 .custom(Self::action_button_style(
                                     theme::ActionTone::Neutral,
@@ -8457,6 +8458,7 @@ impl TermiRustApp {
                         .flex_wrap()
                         .child(
                             Button::new("hosts-onboarding-new")
+                                .debug_selector(|| "hosts-onboarding-new".to_string())
                                 .small()
                                 .custom(Self::action_button_style(
                                     theme::ActionTone::Accent,
@@ -8469,6 +8471,7 @@ impl TermiRustApp {
                         )
                         .child(
                             Button::new("hosts-onboarding-key")
+                                .debug_selector(|| "hosts-onboarding-key".to_string())
                                 .small()
                                 .custom(Self::action_button_style(
                                     theme::ActionTone::Neutral,
@@ -8486,6 +8489,7 @@ impl TermiRustApp {
                         )
                         .child(
                             Button::new("hosts-onboarding-local")
+                                .debug_selector(|| "hosts-onboarding-local".to_string())
                                 .small()
                                 .custom(Self::action_button_style(
                                     theme::ActionTone::AccentSoft,
@@ -8499,6 +8503,7 @@ impl TermiRustApp {
                         .when(imported_hosts > 0 || saved_hosts > 0, |this| {
                             this.child(
                                 Button::new("hosts-onboarding-search")
+                                    .debug_selector(|| "hosts-onboarding-search".to_string())
                                     .small()
                                     .custom(Self::action_button_style(
                                         theme::ActionTone::Neutral,
@@ -9407,7 +9412,7 @@ mod tests {
         open_test_app_with_state(cx, SavedState::default())
     }
 
-    fn chrome_click_center(
+    fn selector_click_center(
         window: WindowHandle<Root>,
         cx: &mut TestAppContext,
         selector: &'static str,
@@ -14220,7 +14225,7 @@ mod tests {
     fn e2e_chrome_local_button_click_opens_local_terminal(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
-        let click_point = chrome_click_center(window, cx, "chrome-local-btn");
+        let click_point = selector_click_center(window, cx, "chrome-local-btn");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
 
         visual.simulate_click(click_point, gpui::Modifiers::none());
@@ -14246,7 +14251,7 @@ mod tests {
     fn e2e_chrome_new_button_click_opens_new_host_editor(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
-        let click_point = chrome_click_center(window, cx, "chrome-new-btn");
+        let click_point = selector_click_center(window, cx, "chrome-new-btn");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
 
         visual.simulate_click(click_point, gpui::Modifiers::none());
@@ -14265,7 +14270,7 @@ mod tests {
     fn e2e_double_click_empty_chrome_opens_local_terminal(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
-        let click_point = chrome_click_center(window, cx, "chrome-workspace-drop-tail");
+        let click_point = selector_click_center(window, cx, "chrome-workspace-drop-tail");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
 
         visual.simulate_event(MouseDownEvent {
@@ -15494,6 +15499,76 @@ mod tests {
         app.read_with(cx, |app, _| {
             assert!(app.saved.settings.onboarding_dismissed);
             assert!(!app.should_show_onboarding());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_onboarding_dismiss_button_click_hides_panel(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let click_point = selector_click_center(window, cx, "hosts-onboarding-dismiss");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+
+        visual.simulate_click(click_point, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.saved.settings.onboarding_dismissed);
+            assert!(!app.should_show_onboarding());
+            assert_eq!(app.status_message, "Welcome panel dismissed.");
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_onboarding_key_button_click_imports_identity_into_editor(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        queue_dialog_path(Some(
+            std::path::PathBuf::from(docker_ssh_private_key_path()),
+        ));
+        let click_point = selector_click_center(window, cx, "hosts-onboarding-key");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+
+        visual.simulate_click(click_point, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.show_editor_panel);
+            assert_eq!(app.draft_auth_mode, AuthMode::PrivateKey);
+            assert!(!app.saved.identities.is_empty());
+            assert!(app.draft_identity_id.is_some());
+            assert_eq!(
+                app.inputs.key_path.read(cx).value(),
+                docker_ssh_private_key_path()
+            );
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_onboarding_search_button_click_focuses_host_search(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.profiles.push(HostProfile {
+            id: "saved-search-host".to_string(),
+            label: "Saved Search Host".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 22,
+            username: "termirust".to_string(),
+            source: ProfileSource::User,
+            ..HostProfile::default()
+        });
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let click_point = selector_click_center(window, cx, "hosts-onboarding-search");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+
+        visual.simulate_click(click_point, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert_eq!(app.status_message, "Host search focused.");
+            assert!(app.error_message.is_empty());
+            assert!(app.should_show_onboarding());
         });
     }
 
