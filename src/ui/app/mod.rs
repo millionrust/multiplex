@@ -11278,6 +11278,123 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_sync_folder_picker_and_force_pull_conflict_flow(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let sync_dir =
+            std::env::temp_dir().join(format!("termirust-sync-picker-{}", std::process::id()));
+        std::fs::create_dir_all(&sync_dir).expect("unable to create sync picker dir");
+
+        let (app_a, window_a) = open_test_app(cx);
+        queue_dialog_path(Some(sync_dir.clone()));
+        window_a
+            .update(cx, |_, window, cx| {
+                app_a.update(cx, |app, cx| {
+                    app.pick_sync_folder(window, cx);
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::PrivateKey, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Sync Picked Host",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.host, "10.0.0.9", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.username, "deploy", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.key_path,
+                        "/tmp/fake_sync_picker_key",
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.export_backup_passphrase,
+                        "sync-picker-pass",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.export_backup_confirm,
+                        "sync-picker-pass",
+                        window,
+                        cx,
+                    );
+                    app.push_to_sync_folder(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let bundle_path = sync_dir.join("termirust-vault.encrypted.json");
+        assert!(bundle_path.exists(), "expected sync bundle to be written");
+
+        let (app_b, window_b) = open_test_app_with_state(cx, SavedState::default());
+        queue_dialog_path(Some(sync_dir.clone()));
+        window_b
+            .update(cx, |_, window, cx| {
+                app_b.update(cx, |app, cx| {
+                    app.pick_sync_folder(window, cx);
+                    app.saved.settings.sync_last_pushed_at = Some(
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .expect("system time should be valid")
+                            .as_millis() as u64
+                            + 60_000,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.import_backup_passphrase,
+                        "sync-picker-pass",
+                        window,
+                        cx,
+                    );
+                    app.pull_from_sync_folder(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app_b.read_with(cx, |app, _| {
+            assert!(app.sync_pull_pending_warning);
+            assert!(
+                app.error_message
+                    .contains("Confirm to overwrite local state"),
+                "expected conflict warning, got: {}",
+                app.error_message
+            );
+            assert!(
+                app.saved
+                    .profiles
+                    .iter()
+                    .all(|profile| profile.label != "Sync Picked Host")
+            );
+        });
+
+        window_b
+            .update(cx, |_, window, cx| {
+                app_b.update(cx, |app, cx| {
+                    app.force_pull_from_sync_folder(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app_b.read_with(cx, |app, _| {
+            assert!(!app.sync_pull_pending_warning);
+            assert!(
+                app.saved
+                    .profiles
+                    .iter()
+                    .any(|profile| profile.label == "Sync Picked Host")
+            );
+            assert!(app.saved.settings.sync_last_pulled_at.is_some());
+            assert_eq!(
+                app.saved.settings.sync_folder_path.as_deref(),
+                Some(sync_dir.to_string_lossy().as_ref())
+            );
+        });
+
+        let _ = std::fs::remove_dir_all(sync_dir);
+    }
+
+    #[gpui::test]
     fn e2e_key_import_picker_and_known_host_removal(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);

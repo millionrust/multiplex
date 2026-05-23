@@ -35,6 +35,7 @@ It runs:
 - `ui::app::tests::e2e_host_editor_saves_and_removes_user_profile`
 - `ui::app::tests::e2e_snippet_save_run_pin_and_remove`
 - `ui::app::tests::e2e_vault_member_and_sync_round_trip`
+- `ui::app::tests::e2e_sync_folder_picker_and_force_pull_conflict_flow`
 - `ui::app::tests::e2e_choose_protocol_rejects_unsupported_protocols`
 - `ui::app::tests::e2e_copy_on_select_copies_selection_to_clipboard`
 - `ui::app::tests::e2e_workspace_duplicate_and_reorder`
@@ -56,6 +57,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the GPUI app can also upload and download files through the same dialog-backed SFTP actions used by the desktop UI
 - the snippet workflow can save, pin, run, and remove commands against a live terminal session
 - the vault and sync workflow can save shared vaults, manage members, push an encrypted bundle, pull it into a fresh app state, and re-home items back to Personal when a vault is deleted
+- the Settings sync workflow can also pick the sync folder through the dialog-backed action and resolve pull conflicts through the force-pull path
 - the connect flow can reject unsupported protocol choices without opening a session
 - terminal copy-on-select can push the selected text into the clipboard
 - workspace tabs can be duplicated and reordered through the same state paths used by the chrome drag/drop actions
