@@ -217,55 +217,74 @@ impl TermiRustApp {
             .border_color(theme::soft_border())
             .shadow_lg()
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .child(self.workspace_tab_menu_item(
-                ("workspace-tab-menu-duplicate", workspace_id),
-                IconName::Copy,
-                "Duplicate",
-                move |this, window, cx| {
-                    this.duplicate_workspace_in_new_tab(workspace_id, window, cx);
-                },
-                cx,
-            ))
-            .child(self.workspace_tab_menu_item(
-                ("workspace-tab-menu-duplicate-window", workspace_id),
-                IconName::ExternalLink,
-                "Duplicate in a new window",
-                move |this, window, cx| {
-                    this.duplicate_workspace_in_new_window(workspace_id, window, cx);
-                },
-                cx,
-            ))
-            .child(self.workspace_tab_menu_item(
-                ("workspace-tab-menu-rename", workspace_id),
-                IconName::ALargeSmall,
-                "Rename",
-                move |this, window, cx| {
-                    this.start_workspace_rename_for(workspace_id, window, cx);
-                },
-                cx,
-            ))
-            .when(can_split, |this| {
-                this.child(self.workspace_tab_menu_item(
-                    ("workspace-tab-menu-split-horizontal", workspace_id),
-                    IconName::PanelRight,
-                    "Split horizontally",
+            .child(
+                self.workspace_tab_menu_item(
+                    ("workspace-tab-menu-duplicate", workspace_id),
+                    IconName::Copy,
+                    "Duplicate",
                     move |this, window, cx| {
-                        this.split_workspace_horizontally(workspace_id, window, cx);
+                        this.duplicate_workspace_in_new_tab(workspace_id, window, cx);
                     },
                     cx,
-                ))
+                )
+                .debug_selector(move || format!("workspace-tab-menu-duplicate-{}", workspace_id)),
+            )
+            .child(
+                self.workspace_tab_menu_item(
+                    ("workspace-tab-menu-duplicate-window", workspace_id),
+                    IconName::ExternalLink,
+                    "Duplicate in a new window",
+                    move |this, window, cx| {
+                        this.duplicate_workspace_in_new_window(workspace_id, window, cx);
+                    },
+                    cx,
+                )
+                .debug_selector(move || {
+                    format!("workspace-tab-menu-duplicate-window-{}", workspace_id)
+                }),
+            )
+            .child(
+                self.workspace_tab_menu_item(
+                    ("workspace-tab-menu-rename", workspace_id),
+                    IconName::ALargeSmall,
+                    "Rename",
+                    move |this, window, cx| {
+                        this.start_workspace_rename_for(workspace_id, window, cx);
+                    },
+                    cx,
+                )
+                .debug_selector(move || format!("workspace-tab-menu-rename-{}", workspace_id)),
+            )
+            .when(can_split, |this| {
+                this.child(
+                    self.workspace_tab_menu_item(
+                        ("workspace-tab-menu-split-horizontal", workspace_id),
+                        IconName::PanelRight,
+                        "Split horizontally",
+                        move |this, window, cx| {
+                            this.split_workspace_horizontally(workspace_id, window, cx);
+                        },
+                        cx,
+                    )
+                    .debug_selector(move || {
+                        format!("workspace-tab-menu-split-horizontal-{}", workspace_id)
+                    }),
+                )
             })
             .child(div().h(px(1.)).my(px(3.)).bg(theme::soft_border()))
-            .child(self.workspace_tab_menu_item(
-                ("workspace-tab-menu-close", workspace_id),
-                IconName::Close,
-                "Close",
-                move |this, _, cx| {
-                    this.open_workspace_tab_menu = None;
-                    this.close_workspace(workspace_id, cx);
-                },
-                cx,
-            ))
+            .child(
+                self.workspace_tab_menu_item(
+                    ("workspace-tab-menu-close", workspace_id),
+                    IconName::Close,
+                    "Close",
+                    move |this, _, cx| {
+                        this.open_workspace_tab_menu = None;
+                        this.close_workspace(workspace_id, cx);
+                    },
+                    cx,
+                )
+                .debug_selector(move || format!("workspace-tab-menu-close-{}", workspace_id)),
+            )
     }
 
     pub(super) fn render_workspace_tab_context_menu_layer(
@@ -329,84 +348,105 @@ impl TermiRustApp {
             .border_color(theme::soft_border())
             .shadow_lg()
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .child(self.workspace_tab_menu_item(
-                ("pane-menu-copy", pane_id),
-                IconName::Copy,
-                "Copy",
-                move |this, _, cx| {
-                    this.pane_context_menu = None;
-                    this.copy_active_selection(cx);
-                },
-                cx,
-            ))
-            .child(self.workspace_tab_menu_item(
-                ("pane-menu-paste", pane_id),
-                IconName::File,
-                "Paste",
-                move |this, _, cx| {
-                    this.pane_context_menu = None;
-                    this.paste_to_active_pane(cx);
-                },
-                cx,
-            ))
-            .child(self.workspace_tab_menu_item(
-                ("pane-menu-clear", pane_id),
-                IconName::Replace,
-                "Clear",
-                move |this, _, cx| {
-                    this.pane_context_menu = None;
-                    this.clear_pane_screen(pane_id, cx);
-                },
-                cx,
-            ))
-            .child(self.workspace_tab_menu_item(
-                ("pane-menu-duplicate", pane_id),
-                IconName::PanelRight,
-                "Duplicate",
-                move |this, window, cx| {
-                    this.pane_context_menu = None;
-                    this.duplicate_pane_into_split(
-                        pane_id,
-                        super::SplitAxis::Horizontal,
-                        window,
-                        cx,
-                    );
-                },
-                cx,
-            ))
-            .child(div().h(px(1.)).my(px(3.)).bg(theme::soft_border()))
-            .when(closed, |this| {
-                this.child(self.workspace_tab_menu_item(
-                    ("pane-menu-reconnect", pane_id),
-                    IconName::Redo,
-                    "Reconnect",
-                    move |this, window, cx| {
+            .child(
+                self.workspace_tab_menu_item(
+                    ("pane-menu-copy", pane_id),
+                    IconName::Copy,
+                    "Copy",
+                    move |this, _, cx| {
                         this.pane_context_menu = None;
-                        this.reconnect_pane(pane_id, window, cx);
+                        this.copy_active_selection(cx);
                     },
                     cx,
-                ))
+                )
+                .debug_selector(move || format!("pane-menu-copy-{}", pane_id)),
+            )
+            .child(
+                self.workspace_tab_menu_item(
+                    ("pane-menu-paste", pane_id),
+                    IconName::File,
+                    "Paste",
+                    move |this, _, cx| {
+                        this.pane_context_menu = None;
+                        this.paste_to_active_pane(cx);
+                    },
+                    cx,
+                )
+                .debug_selector(move || format!("pane-menu-paste-{}", pane_id)),
+            )
+            .child(
+                self.workspace_tab_menu_item(
+                    ("pane-menu-clear", pane_id),
+                    IconName::Replace,
+                    "Clear",
+                    move |this, _, cx| {
+                        this.pane_context_menu = None;
+                        this.clear_pane_screen(pane_id, cx);
+                    },
+                    cx,
+                )
+                .debug_selector(move || format!("pane-menu-clear-{}", pane_id)),
+            )
+            .child(
+                self.workspace_tab_menu_item(
+                    ("pane-menu-duplicate", pane_id),
+                    IconName::PanelRight,
+                    "Duplicate",
+                    move |this, window, cx| {
+                        this.pane_context_menu = None;
+                        this.duplicate_pane_into_split(
+                            pane_id,
+                            super::SplitAxis::Horizontal,
+                            window,
+                            cx,
+                        );
+                    },
+                    cx,
+                )
+                .debug_selector(move || format!("pane-menu-duplicate-{}", pane_id)),
+            )
+            .child(div().h(px(1.)).my(px(3.)).bg(theme::soft_border()))
+            .when(closed, |this| {
+                this.child(
+                    self.workspace_tab_menu_item(
+                        ("pane-menu-reconnect", pane_id),
+                        IconName::Redo,
+                        "Reconnect",
+                        move |this, window, cx| {
+                            this.pane_context_menu = None;
+                            this.reconnect_pane(pane_id, window, cx);
+                        },
+                        cx,
+                    )
+                    .debug_selector(move || format!("pane-menu-reconnect-{}", pane_id)),
+                )
             })
-            .child(self.workspace_tab_menu_item(
-                ("pane-menu-detach", pane_id),
-                IconName::ExternalLink,
-                "Detach to new tab",
-                move |this, window, cx| {
-                    this.pane_context_menu = None;
-                    this.move_pane_to_new_workspace(pane_id, window, cx);
-                },
-                cx,
-            ))
-            .child(self.workspace_tab_menu_item(
-                ("pane-menu-close", pane_id),
-                IconName::Close,
-                "Close pane",
-                move |this, _, cx| {
-                    this.pane_context_menu = None;
-                    this.close_pane(pane_id, cx);
-                },
-                cx,
-            ))
+            .child(
+                self.workspace_tab_menu_item(
+                    ("pane-menu-detach", pane_id),
+                    IconName::ExternalLink,
+                    "Detach to new tab",
+                    move |this, window, cx| {
+                        this.pane_context_menu = None;
+                        this.move_pane_to_new_workspace(pane_id, window, cx);
+                    },
+                    cx,
+                )
+                .debug_selector(move || format!("pane-menu-detach-{}", pane_id)),
+            )
+            .child(
+                self.workspace_tab_menu_item(
+                    ("pane-menu-close", pane_id),
+                    IconName::Close,
+                    "Close pane",
+                    move |this, _, cx| {
+                        this.pane_context_menu = None;
+                        this.close_pane(pane_id, cx);
+                    },
+                    cx,
+                )
+                .debug_selector(move || format!("pane-menu-close-{}", pane_id)),
+            )
     }
 
     pub(super) fn render_pane_context_menu_layer(

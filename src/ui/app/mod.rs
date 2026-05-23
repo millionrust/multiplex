@@ -9426,6 +9426,15 @@ mod tests {
             .center()
     }
 
+    fn dynamic_selector_click_center(
+        window: WindowHandle<Root>,
+        cx: &mut TestAppContext,
+        selector: String,
+    ) -> gpui::Point<gpui::Pixels> {
+        let leaked: &'static str = Box::leak(selector.into_boxed_str());
+        selector_click_center(window, cx, leaked)
+    }
+
     fn wait_for_app_state<R>(
         cx: &mut TestAppContext,
         app: &Entity<TermiRustApp>,
@@ -13361,6 +13370,183 @@ mod tests {
             assert_eq!(app.workspaces[0].id, workspace_a);
             assert!(app.workspace(workspace_b).is_none());
             assert_eq!(app.active_workspace_id, Some(workspace_a));
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_workspace_tab_menu_click_duplicate_and_close(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        let request = ConnectRequest {
+            title: "Menu Workspace".to_string(),
+            ..ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        let menu_click =
+            dynamic_selector_click_center(window, cx, format!("chrome-workspace-{workspace_id}"));
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_event(MouseDownEvent {
+            position: menu_click,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Right,
+            click_count: 1,
+            first_mouse: false,
+        });
+        visual.simulate_event(MouseUpEvent {
+            position: menu_click,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Right,
+            click_count: 1,
+        });
+
+        let duplicate_click = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("workspace-tab-menu-duplicate-{workspace_id}"),
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(duplicate_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.workspaces.len(), 2);
+            assert_eq!(
+                app.workspaces
+                    .iter()
+                    .filter(|workspace| workspace.title == "Menu Workspace")
+                    .count(),
+                2
+            );
+            assert!(app.open_workspace_tab_menu.is_none());
+        });
+
+        let menu_click =
+            dynamic_selector_click_center(window, cx, format!("chrome-workspace-{workspace_id}"));
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_event(MouseDownEvent {
+            position: menu_click,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Right,
+            click_count: 1,
+            first_mouse: false,
+        });
+        visual.simulate_event(MouseUpEvent {
+            position: menu_click,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Right,
+            click_count: 1,
+        });
+
+        let close_click = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("workspace-tab-menu-close-{workspace_id}"),
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(close_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.workspaces.len(), 1);
+            assert!(app.workspace(workspace_id).is_none());
+            assert!(app.error_message.is_empty());
+            assert!(app.open_workspace_tab_menu.is_none());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_pane_context_menu_click_duplicate_and_detach(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_pane_context_menu(pane_id, point(px(24.), px(24.)), window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let duplicate_click =
+            dynamic_selector_click_center(window, cx, format!("pane-menu-duplicate-{pane_id}"));
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(duplicate_click, gpui::Modifiers::none());
+
+        let second_pane_id = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 2)
+                .then(|| workspace.pane_ids.iter().copied().find(|id| *id != pane_id))
+                .flatten()
+        });
+
+        app.read_with(cx, |app, _| {
+            assert!(app.pane_context_menu.is_none());
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_pane_context_menu(second_pane_id, point(px(28.), px(28.)), window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let detach_click =
+            dynamic_selector_click_center(window, cx, format!("pane-menu-detach-{second_pane_id}"));
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(detach_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.workspaces.len(), 2);
+            let original = app.workspace(workspace_id).expect("original workspace");
+            assert_eq!(original.pane_ids, vec![pane_id]);
+            assert!(app.workspace_id_for_pane(second_pane_id).is_some());
+            assert!(app.pane_context_menu.is_none());
             assert!(app.error_message.is_empty());
         });
     }
