@@ -62,6 +62,9 @@ It runs:
 - `ui::app::tests::e2e_workspace_shortcuts_toggle_views_broadcast_and_cycle_tabs`
 - `ui::app::tests::e2e_terminal_shortcuts_open_search_palette_and_close_workspace`
 - `ui::app::tests::e2e_terminal_paging_shortcuts_adjust_scrollback`
+- `ui::app::tests::e2e_terminal_clipboard_shortcuts_copy_and_cancel_multiline_paste`
+- `ui::app::tests::e2e_escape_closes_editor_dialog`
+- `ui::app::tests::e2e_clear_shortcut_and_escape_from_files_view`
 
 Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH container, connect through the real `russh` session path, and verify both:
 
@@ -98,6 +101,8 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - library navigation shortcuts can switch sections, jump back to host search, and open the new-host editor
 - workspace shortcuts can open remote Files view, toggle back to Terminal, toggle broadcast input, open a new local terminal tab, cycle between tabs, and jump to Logs
 - terminal shortcuts can open search, open/close the command palette, close the active workspace, and page through scrollback via the actual key path
+- terminal clipboard shortcuts can copy the active selection, open multi-line paste confirmation, and cancel that paste via `Esc`
+- `Esc` can close the editor dialog and return from Files view, and `Cmd+Shift+L` clears the active pane through the real shortcut path
 
 If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests self-skip.
 

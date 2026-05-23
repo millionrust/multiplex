@@ -14258,4 +14258,264 @@ mod tests {
             assert_eq!(pane.terminal.scrollback(), 0);
         });
     }
+
+    #[gpui::test]
+    fn e2e_terminal_clipboard_shortcuts_copy_and_cancel_multiline_paste(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (_workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, _| {
+                    let pane = app.pane_mut(pane_id).expect("pane should exist");
+                    pane.terminal = crate::terminal::TerminalState::new(
+                        crate::terminal::TerminalSize::default(),
+                        10_000,
+                    );
+                    pane.terminal.process_bytes(b"copy-via-shortcut");
+                    pane.selection = Some(SelectionRange {
+                        anchor: TerminalCellPos { row: 0, col: 0 },
+                        head: TerminalCellPos { row: 0, col: 4 },
+                    });
+                    window.focus(&pane.terminal_focus);
+                })
+            })
+            .expect("window update should succeed");
+
+        let copy_event = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-c").expect("copy shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_terminal_key(pane_id, &copy_event, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+
+        let clipboard = cx
+            .read_from_clipboard()
+            .expect("clipboard should contain copied text");
+        assert_eq!(clipboard.text().as_deref(), Some("copy-"));
+
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+            "printf 'escape-paste-cancelled\\n'\nprintf 'escape-paste-cancelled-2\\n'\n"
+                .to_string(),
+        ));
+
+        let paste_event = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-v").expect("paste shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_terminal_key(pane_id, &paste_event, window, cx));
+                    assert!(app.pending_paste.is_some());
+                })
+            })
+            .expect("window update should succeed");
+
+        let escape = KeyDownEvent {
+            keystroke: Keystroke::parse("escape").expect("escape should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&escape, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert!(app.pending_paste.is_none());
+            assert_eq!(app.status_message, "Paste cancelled.");
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(1), |app| {
+            let pane = app.pane(pane_id)?;
+            (!pane
+                .terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("escape-paste-cancelled")))
+            .then_some(())
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_escape_closes_editor_dialog(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    assert!(app.show_editor_panel);
+                })
+            })
+            .expect("window update should succeed");
+
+        let escape = KeyDownEvent {
+            keystroke: Keystroke::parse("escape").expect("escape should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&escape, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert!(!app.show_editor_panel);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_clear_shortcut_and_escape_from_files_view(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping clear/files escape e2e: Docker is unavailable");
+            return;
+        }
+
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        server
+            .exec(
+                "mkdir -p /home/termirust/e2e-escape-files && printf 'escape-files\\n' > /home/termirust/e2e-escape-files/list.txt && chown -R termirust:termirust /home/termirust/e2e-escape-files",
+            )
+            .expect("unable to seed remote files dir");
+
+        let (app, window) = open_test_app(cx);
+        let request = docker_ssh_request_with_startup(
+            &server,
+            Some("/home/termirust/e2e-escape-files"),
+            false,
+        );
+
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("ssh workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        app.update(cx, |app, cx| {
+            assert!(app.run_command_in_active_pane(
+                "i=1; while [ $i -le 80 ]; do printf 'clear-shortcut-%03d\\n' \"$i\"; i=$((i+1)); done",
+                "Clear shortcut probe started.",
+                cx
+            ));
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            (pane.terminal.max_scrollback() > 0).then_some(())
+        });
+
+        let page_up = KeyDownEvent {
+            keystroke: Keystroke::parse("shift-pageup").expect("pageup shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_terminal_key(pane_id, &page_up, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+
+        let clear = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-shift-l").expect("clear shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&clear, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let pane = app.pane(pane_id).expect("pane should exist");
+            assert_eq!(pane.terminal.scrollback(), 0);
+            assert_eq!(app.status_message, "Terminal cleared.");
+        });
+
+        let open_files = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-shift-f").expect("files shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&open_files, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.view_mode == WorkspaceViewMode::Files
+                && workspace.sftp.as_ref().is_some_and(|browser| {
+                    browser.entries.iter().any(|entry| entry.name == "list.txt")
+                }))
+            .then_some(())
+        });
+
+        let escape = KeyDownEvent {
+            keystroke: Keystroke::parse("escape").expect("escape should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&escape, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert_eq!(workspace.view_mode, WorkspaceViewMode::Terminal);
+            assert_eq!(app.status_message, "Back to terminal view.");
+        });
+    }
 }
