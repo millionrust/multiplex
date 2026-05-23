@@ -580,20 +580,34 @@ impl TermiRustApp {
                     .items_center()
                     .gap(px(12.))
                     .child(
-                        Button::new("choose-proto-close")
-                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                            .label("Close")
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.close_connect_dialog_tab(workspace_id, window, cx);
-                            })),
+                        div()
+                            .debug_selector(|| "choose-proto-close".to_string())
+                            .child(
+                                Button::new("choose-proto-close")
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    ))
+                                    .label("Close")
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.close_connect_dialog_tab(workspace_id, window, cx);
+                                    })),
+                            ),
                     )
                     .child(
-                        Button::new("choose-proto-continue")
-                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                            .label("Continue")
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.confirm_choose_protocol(workspace_id, window, cx);
-                            })),
+                        div()
+                            .debug_selector(|| "choose-proto-continue".to_string())
+                            .child(
+                                Button::new("choose-proto-continue")
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .label("Continue")
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.confirm_choose_protocol(workspace_id, window, cx);
+                                    })),
+                            ),
                     ),
             )
     }
@@ -920,20 +934,34 @@ impl TermiRustApp {
                     .items_center()
                     .gap(px(12.))
                     .child(
-                        Button::new("connect-dialog-close")
-                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                            .label("Close")
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.close_connect_dialog_tab(workspace_id, window, cx);
-                            })),
+                        div()
+                            .debug_selector(|| "connect-dialog-close".to_string())
+                            .child(
+                                Button::new("connect-dialog-close")
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    ))
+                                    .label("Close")
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.close_connect_dialog_tab(workspace_id, window, cx);
+                                    })),
+                            ),
                     )
                     .child(
-                        Button::new("connect-dialog-save")
-                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                            .label("Continue & Save")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.confirm_connect_dialog(true, window, cx);
-                            })),
+                        div()
+                            .debug_selector(|| "connect-dialog-save".to_string())
+                            .child(
+                                Button::new("connect-dialog-save")
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .label("Continue & Save")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.confirm_connect_dialog(true, window, cx);
+                                    })),
+                            ),
                     ),
             )
     }

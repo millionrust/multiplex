@@ -17257,6 +17257,231 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_choose_protocol_dialog_click_continue_and_close(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping choose-protocol dialog click e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Dialog Proto Host",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.host,
+                        server.host().to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.port,
+                        server.port.to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        server.username().to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        server.password().to_string(),
+                        window,
+                        cx,
+                    );
+                    app.open_choose_protocol_tab_from_draft(window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.protocol_ssh_port,
+                        server.port.to_string(),
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        let workspace_id = app
+            .read_with(cx, |app, _| app.active_workspace_id)
+            .expect("workspace should exist");
+
+        let close_click = selector_click_center(window, cx, "choose-proto-close");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(close_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.workspace(workspace_id).is_none());
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Dialog Proto Host",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.host,
+                        server.host().to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.port,
+                        server.port.to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        server.username().to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        server.password().to_string(),
+                        window,
+                        cx,
+                    );
+                    app.open_choose_protocol_tab_from_draft(window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.protocol_ssh_port,
+                        server.port.to_string(),
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        let workspace_id = app
+            .read_with(cx, |app, _| app.active_workspace_id)
+            .expect("workspace should exist");
+
+        let continue_click = selector_click_center(window, cx, "choose-proto-continue");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(continue_click, gpui::Modifiers::none());
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.active_workspace().expect("workspace should exist");
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.connected && pane.request.title == "Dialog Proto Host").then_some(())
+        });
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().expect("workspace should exist");
+            assert_eq!(workspace.id, workspace_id);
+            assert!(workspace.pending_connect.is_none());
+            assert!(workspace.connect_failure.is_none());
+            assert_eq!(workspace.title, "Dialog Proto Host");
+            assert!(!workspace.pane_ids.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_connect_dialog_click_save_and_close(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping connect dialog click save e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let host = server.host().to_string();
+        let port = server.port;
+        let username = server.username().to_string();
+        let password = server.password().to_string();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(&app.inputs.label, "Click Save Host", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        username.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        password.clone(),
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let profile_id = app.read_with(cx, |app, _| {
+            app.saved
+                .profiles
+                .iter()
+                .find(|profile| profile.label == "Click Save Host")
+                .map(|profile| profile.id.clone())
+                .expect("saved host should exist")
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_connect_dialog_tab(&profile_id, window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.connect_username,
+                        "termirust",
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        let credential_id = credentials::profile_password_credential_id(&profile_id);
+
+        let save_click = selector_click_center(window, cx, "connect-dialog-save");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(save_click, gpui::Modifiers::none());
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.connected && pane.request.title == "Click Save Host").then_some(())
+        });
+
+        app.read_with(cx, |app, _| {
+            let profile = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.id == profile_id)
+                .expect("profile should exist");
+            assert_eq!(profile.username, "termirust");
+        });
+
+        let _ = credentials::delete_password(&credential_id);
+    }
+
+    #[gpui::test]
     fn e2e_recent_host_chip_reopens_saved_ssh_workspace(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         if !DockerSshServer::docker_available() {
