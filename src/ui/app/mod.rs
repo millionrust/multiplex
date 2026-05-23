@@ -9216,6 +9216,7 @@ mod tests {
         ThemePreset,
     };
     use crate::sftp::RemoteFileEntry;
+    use crate::storage::load_saved_state;
     use crate::test_support::{
         DockerSshServer, TestIsolation, allocate_local_port, queue_dialog_path,
     };
@@ -9225,7 +9226,7 @@ mod tests {
     use crate::ui::util::format_relative_time_for;
     use gpui::{
         AppContext as _, Entity, KeyDownEvent, Keystroke, MouseButton, MouseDownEvent,
-        MouseUpEvent, TestAppContext, WindowHandle, point, px,
+        MouseUpEvent, TestAppContext, WindowHandle, point, px, size,
     };
     use gpui_component::Root;
     use std::path::Path;
@@ -15196,5 +15197,43 @@ mod tests {
                 && workspace.id != first_workspace_id)
                 .then_some(())
         });
+    }
+
+    #[gpui::test]
+    fn e2e_window_resize_persists_saved_window_bounds(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        app.update(cx, |app, _| {
+            app.launched_at = Instant::now() - Duration::from_secs(2);
+        });
+
+        let new_size = size(px(1600.), px(900.));
+        cx.simulate_window_resize(*window, new_size);
+        cx.executor().advance_clock(Duration::from_millis(700));
+        cx.run_until_parked();
+
+        let saved_bounds = wait_for_poll_result(
+            Duration::from_secs(1),
+            || {
+                app.read_with(cx, |app, _| {
+                    app.saved.window_bounds.filter(|bounds| {
+                        (bounds.width - 1600.0).abs() < 0.5 && (bounds.height - 900.0).abs() < 0.5
+                    })
+                })
+            },
+            "window bounds should persist into app state",
+        );
+
+        assert!((saved_bounds.width - 1600.0).abs() < 0.5);
+        assert!((saved_bounds.height - 900.0).abs() < 0.5);
+        assert!(saved_bounds.display_id.is_some());
+
+        let disk_bounds = load_saved_state()
+            .expect("saved state should load")
+            .window_bounds
+            .expect("window bounds should persist to disk");
+        assert!((disk_bounds.width - 1600.0).abs() < 0.5);
+        assert!((disk_bounds.height - 900.0).abs() < 0.5);
     }
 }

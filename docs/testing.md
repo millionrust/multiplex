@@ -73,6 +73,7 @@ It runs:
 - `ui::app::tests::e2e_onboarding_dismiss_reset_and_local_terminal_marks_complete`
 - `ui::app::tests::e2e_saved_host_open_connect_dialog_tab_preserves_profile_context`
 - `ui::app::tests::e2e_recent_host_chip_reopens_saved_ssh_workspace`
+- `ui::app::tests::e2e_window_resize_persists_saved_window_bounds`
 
 Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH container, connect through the real `russh` session path, and verify both:
 
@@ -118,6 +119,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the onboarding panel can be dismissed, reset, and automatically completed by opening a local terminal
 - a saved host can open the dedicated connect-dialog tab while preserving the profile context
 - the recent-host chip path can reopen a saved SSH workspace from persisted session history
+- window resize events persist saved window bounds and display id into `state.json`
 
 If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests self-skip.
 
