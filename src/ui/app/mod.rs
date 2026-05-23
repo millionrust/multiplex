@@ -16355,6 +16355,90 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_hosts_tag_sort_and_avatar_dropdown_clicks(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        saved.profiles.push(HostProfile {
+            id: "dropdown-alpha".to_string(),
+            label: "Dropdown Alpha".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 22,
+            username: "ops".to_string(),
+            tags: vec!["blue".to_string()],
+            source: ProfileSource::User,
+            ..HostProfile::default()
+        });
+        saved.profiles.push(HostProfile {
+            id: "dropdown-beta".to_string(),
+            label: "Dropdown Beta".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 22,
+            username: "ops".to_string(),
+            tags: vec!["green".to_string()],
+            source: ProfileSource::User,
+            ..HostProfile::default()
+        });
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        let tag_trigger = selector_click_center(window, cx, "library-tag-filter");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(tag_trigger, gpui::Modifiers::none());
+
+        let blue_click = selector_click_center(window, cx, "tag-filter-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(blue_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.hosts_tag_filter.as_deref(), Some("blue"));
+            assert!(app.open_toolbar_menu.is_none());
+        });
+
+        let tag_trigger = selector_click_center(window, cx, "library-tag-filter");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(tag_trigger, gpui::Modifiers::none());
+
+        let all_click = selector_click_center(window, cx, "tag-filter-all");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(all_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.hosts_tag_filter.is_none());
+            assert!(app.open_toolbar_menu.is_none());
+        });
+
+        let sort_trigger = selector_click_center(window, cx, "library-sort");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(sort_trigger, gpui::Modifiers::none());
+
+        let sort_oldest = selector_click_center(window, cx, "sort-oldest");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(sort_oldest, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.hosts_sort == HostsSort::OldestFirst);
+            assert!(app.open_toolbar_menu.is_none());
+        });
+
+        let avatar_trigger = selector_click_center(window, cx, "library-avatar-trigger");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(avatar_trigger, gpui::Modifiers::none());
+
+        let email_click = selector_click_center(window, cx, "avatar-email");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(email_click, gpui::Modifiers::none());
+
+        let clipboard = cx
+            .read_from_clipboard()
+            .expect("avatar dropdown should copy email");
+        assert!(clipboard.text().is_some());
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.status_message, "Copied email to clipboard.");
+            assert!(app.open_toolbar_menu.is_none());
+        });
+    }
+
+    #[gpui::test]
     fn e2e_manual_reconnect_recovers_closed_ssh_pane(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         if !DockerSshServer::docker_available() {

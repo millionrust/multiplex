@@ -879,6 +879,7 @@ impl TermiRustApp {
     fn render_avatar_dropdown(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         div()
             .id("library-avatar-trigger")
+            .debug_selector(|| "library-avatar-trigger".to_string())
             .cursor_pointer()
             .child(self.toolbar_avatar_pill(cx))
             .on_click(cx.listener(|this, _, _, cx| {
@@ -1178,27 +1179,33 @@ impl TermiRustApp {
                         .border_color(theme::soft_border())
                         .shadow_lg();
                     let active_filter = self.hosts_tag_filter.clone();
-                    panel = panel.child(self.dropdown_item(
-                        "tag-filter-all",
-                        Some(app_icon(ICON_TAG)),
-                        "All hosts",
-                        active_filter.is_none(),
-                        |this, _, _| this.hosts_tag_filter = None,
-                        cx,
-                    ));
+                    panel = panel.child(
+                        self.dropdown_item(
+                            "tag-filter-all",
+                            Some(app_icon(ICON_TAG)),
+                            "All hosts",
+                            active_filter.is_none(),
+                            |this, _, _| this.hosts_tag_filter = None,
+                            cx,
+                        )
+                        .debug_selector(|| "tag-filter-all".to_string()),
+                    );
                     for (idx, tag) in tags.iter().enumerate() {
                         let tag_owned = tag.clone();
                         let is_active = active_filter.as_deref() == Some(tag.as_str());
-                        panel = panel.child(self.dropdown_item(
-                            ("tag-filter", idx),
-                            Some(app_icon(ICON_TAG)),
-                            tag.clone(),
-                            is_active,
-                            move |this, _, _| {
-                                this.hosts_tag_filter = Some(tag_owned.clone());
-                            },
-                            cx,
-                        ));
+                        panel = panel.child(
+                            self.dropdown_item(
+                                ("tag-filter", idx),
+                                Some(app_icon(ICON_TAG)),
+                                tag.clone(),
+                                is_active,
+                                move |this, _, _| {
+                                    this.hosts_tag_filter = Some(tag_owned.clone());
+                                },
+                                cx,
+                            )
+                            .debug_selector(move || format!("tag-filter-{idx}")),
+                        );
                     }
                     panel
                 }
@@ -1212,39 +1219,51 @@ impl TermiRustApp {
                 .border_1()
                 .border_color(theme::soft_border())
                 .shadow_lg()
-                .child(self.dropdown_item(
-                    "sort-az",
-                    Some(Icon::new(IconName::SortAscending)),
-                    "A-z",
-                    self.hosts_sort == HostsSort::AZ,
-                    |this, _, _| this.hosts_sort = HostsSort::AZ,
-                    cx,
-                ))
-                .child(self.dropdown_item(
-                    "sort-za",
-                    Some(Icon::new(IconName::SortDescending)),
-                    "Z-a",
-                    self.hosts_sort == HostsSort::ZA,
-                    |this, _, _| this.hosts_sort = HostsSort::ZA,
-                    cx,
-                ))
+                .child(
+                    self.dropdown_item(
+                        "sort-az",
+                        Some(Icon::new(IconName::SortAscending)),
+                        "A-z",
+                        self.hosts_sort == HostsSort::AZ,
+                        |this, _, _| this.hosts_sort = HostsSort::AZ,
+                        cx,
+                    )
+                    .debug_selector(|| "sort-az".to_string()),
+                )
+                .child(
+                    self.dropdown_item(
+                        "sort-za",
+                        Some(Icon::new(IconName::SortDescending)),
+                        "Z-a",
+                        self.hosts_sort == HostsSort::ZA,
+                        |this, _, _| this.hosts_sort = HostsSort::ZA,
+                        cx,
+                    )
+                    .debug_selector(|| "sort-za".to_string()),
+                )
                 .child(div().h(px(1.)).my(px(4.)).bg(theme::soft_border()))
-                .child(self.dropdown_item(
-                    "sort-newest",
-                    Some(app_icon(ICON_CALENDAR)),
-                    "Newest to oldest",
-                    self.hosts_sort == HostsSort::NewestFirst,
-                    |this, _, _| this.hosts_sort = HostsSort::NewestFirst,
-                    cx,
-                ))
-                .child(self.dropdown_item(
-                    "sort-oldest",
-                    Some(app_icon(ICON_CALENDAR)),
-                    "Oldest to newest",
-                    self.hosts_sort == HostsSort::OldestFirst,
-                    |this, _, _| this.hosts_sort = HostsSort::OldestFirst,
-                    cx,
-                ))
+                .child(
+                    self.dropdown_item(
+                        "sort-newest",
+                        Some(app_icon(ICON_CALENDAR)),
+                        "Newest to oldest",
+                        self.hosts_sort == HostsSort::NewestFirst,
+                        |this, _, _| this.hosts_sort = HostsSort::NewestFirst,
+                        cx,
+                    )
+                    .debug_selector(|| "sort-newest".to_string()),
+                )
+                .child(
+                    self.dropdown_item(
+                        "sort-oldest",
+                        Some(app_icon(ICON_CALENDAR)),
+                        "Oldest to newest",
+                        self.hosts_sort == HostsSort::OldestFirst,
+                        |this, _, _| this.hosts_sort = HostsSort::OldestFirst,
+                        cx,
+                    )
+                    .debug_selector(|| "sort-oldest".to_string()),
+                )
                 .into(),
             Some(ToolbarMenu::Avatar) => {
                 let invite_email = email.clone();
