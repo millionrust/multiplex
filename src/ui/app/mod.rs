@@ -13269,6 +13269,103 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_workspace_tab_click_activate_rename_and_close(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        let request_a = ConnectRequest {
+            title: "Click A".to_string(),
+            ..ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+        let request_b = ConnectRequest {
+            title: "Click B".to_string(),
+            ..ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+
+        let (workspace_a, pane_a) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request_a, window, cx)
+                        .expect("workspace A should open")
+                })
+            })
+            .expect("window update should succeed");
+        let (workspace_b, pane_b) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request_b, window, cx)
+                        .expect("workspace B should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            (app.pane(pane_a).is_some_and(|pane| pane.connected)
+                && app.pane(pane_b).is_some_and(|pane| pane.connected))
+            .then_some(())
+        });
+
+        let click_a = selector_click_center(window, cx, "chrome-workspace-1");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(click_a, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.active_workspace_id, Some(workspace_a));
+            assert_eq!(
+                app.workspace(workspace_a)
+                    .map(|workspace| workspace.active_pane_id),
+                Some(pane_a)
+            );
+        });
+
+        let double_click_a = selector_click_center(window, cx, "chrome-workspace-1");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_event(MouseDownEvent {
+            position: double_click_a,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Left,
+            click_count: 2,
+            first_mouse: false,
+        });
+        visual.simulate_event(MouseUpEvent {
+            position: double_click_a,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Left,
+            click_count: 2,
+        });
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.tab_rename_workspace_id, Some(workspace_a));
+        });
+
+        let close_b = selector_click_center(window, cx, "chrome-workspace-close-2");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(close_b, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.workspaces.len(), 1);
+            assert_eq!(app.workspaces[0].id, workspace_a);
+            assert!(app.workspace(workspace_b).is_none());
+            assert_eq!(app.active_workspace_id, Some(workspace_a));
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
     fn e2e_dragged_workspace_tab_drops_onto_pane_and_merges_split(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
@@ -15754,7 +15851,7 @@ mod tests {
             (pane.connected && pane.request.title == "Recent Host").then_some(workspace.id)
         });
 
-        let profile_id = app.read_with(cx, |app, _| {
+        let _profile_id = app.read_with(cx, |app, _| {
             app.saved
                 .profiles
                 .iter()

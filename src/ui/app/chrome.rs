@@ -667,6 +667,9 @@ impl TermiRustApp {
                             Some(
                                 div()
                                     .id(("chrome-close-wrap", workspace.id))
+                                    .debug_selector(move || {
+                                        format!("chrome-workspace-close-{}", workspace.id)
+                                    })
                                     .size(px(20.))
                                     .rounded(px(4.))
                                     .flex()
@@ -687,6 +690,7 @@ impl TermiRustApp {
                                     .into_any_element(),
                             ),
                         )
+                        .debug_selector(move || format!("chrome-workspace-{}", workspace_id))
                         .on_drag(drag_info, |drag: &WorkspaceTabDrag, _, _, cx| {
                             cx.stop_propagation();
                             cx.new(|_| WorkspaceTabDragPreview {

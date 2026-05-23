@@ -53,6 +53,7 @@ It runs:
 - `ui::app::tests::e2e_choose_protocol_rejects_unsupported_protocols`
 - `ui::app::tests::e2e_copy_on_select_copies_selection_to_clipboard`
 - `ui::app::tests::e2e_workspace_duplicate_and_reorder`
+- `ui::app::tests::e2e_workspace_tab_click_activate_rename_and_close`
 - `ui::app::tests::e2e_dragged_workspace_tab_drops_onto_pane_and_merges_split`
 - `ui::app::tests::e2e_dragged_workspace_tab_split_rejects_merges_over_max_panes`
 - `ui::app::tests::e2e_ssh_logs_record_disconnect_and_logs_section_opens`
@@ -119,6 +120,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the connect flow can reject unsupported protocol choices without opening a session
 - terminal copy-on-select can push the selected text into the clipboard
 - workspace tabs can be duplicated and reordered through the same state paths used by the chrome drag/drop actions
+- workspace tabs can also be activated by click, enter rename mode by double-click, and close through the rendered close button
 - dropping a workspace tab onto a terminal pane can merge the dragged tab into a real split layout, and over-cap merges are rejected without mutating either workspace
 - SSH disconnects are recorded in the persisted Logs history and the Logs section can be opened directly from app state
 - workspace titles and pane titles persist across runtime state snapshots, including after split-pane creation
