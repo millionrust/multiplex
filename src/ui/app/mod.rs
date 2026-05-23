@@ -13840,4 +13840,250 @@ mod tests {
             assert_eq!(app.active_workspace_id, Some(workspace_id));
         });
     }
+
+    #[gpui::test]
+    fn e2e_library_navigation_shortcuts_switch_sections_and_open_editor(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        for (shortcut, expected) in [
+            ("cmd-2", NavSection::Vaults),
+            ("cmd-3", NavSection::Keychain),
+            ("cmd-4", NavSection::Snippets),
+            ("cmd-5", NavSection::Settings),
+            ("cmd-6", NavSection::KnownHosts),
+            ("cmd-7", NavSection::Logs),
+            ("cmd-1", NavSection::Hosts),
+        ] {
+            let event = KeyDownEvent {
+                keystroke: Keystroke::parse(shortcut).expect("shortcut should parse"),
+                is_held: false,
+            };
+
+            window
+                .update(cx, |_, window, cx| {
+                    app.update(cx, |app, cx| {
+                        assert!(app.handle_global_key(&event, window, cx));
+                    })
+                })
+                .expect("window update should succeed");
+
+            app.read_with(cx, |app, _| {
+                assert_eq!(app.active_workspace_id, None);
+                assert_eq!(app.nav_section, expected);
+                assert_eq!(app.status_message, format!("{} ready.", expected.label()));
+            });
+        }
+
+        let settings_event = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-,").expect("settings shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&settings_event, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.nav_section, NavSection::Settings);
+        });
+
+        let logs_shortcut = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-l").expect("logs shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&logs_shortcut, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert_eq!(app.status_message, "Host search focused.");
+        });
+
+        let new_host = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-n").expect("new-host shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&new_host, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert!(app.show_editor_panel);
+            assert_eq!(app.selected_profile_id, None);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_workspace_shortcuts_toggle_views_broadcast_and_cycle_tabs(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping workspace shortcut e2e: Docker is unavailable");
+            return;
+        }
+
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        server
+            .exec(
+                "mkdir -p /home/termirust/e2e-shortcuts && printf 'shortcut-file\\n' > /home/termirust/e2e-shortcuts/list.txt && chown -R termirust:termirust /home/termirust/e2e-shortcuts",
+            )
+            .expect("unable to seed remote files dir");
+
+        let (app, window) = open_test_app(cx);
+        let request =
+            docker_ssh_request_with_startup(&server, Some("/home/termirust/e2e-shortcuts"), false);
+
+        let (ssh_workspace_id, ssh_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("ssh workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            app.pane(ssh_pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        let open_files = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-shift-f").expect("files shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&open_files, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.workspace(ssh_workspace_id)?;
+            (workspace.view_mode == WorkspaceViewMode::Files
+                && workspace.sftp.as_ref().is_some_and(|browser| {
+                    browser.entries.iter().any(|entry| entry.name == "list.txt")
+                }))
+            .then_some(())
+        });
+
+        let toggle_files = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-shift-t").expect("toggle-files shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&toggle_files, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            let workspace = app
+                .workspace(ssh_workspace_id)
+                .expect("workspace should exist");
+            assert_eq!(workspace.view_mode, WorkspaceViewMode::Terminal);
+            assert_eq!(app.status_message, "Back to terminal view.");
+        });
+
+        let broadcast = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-shift-b").expect("broadcast shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&broadcast, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            let workspace = app
+                .workspace(ssh_workspace_id)
+                .expect("workspace should exist");
+            assert!(workspace.broadcast_input);
+        });
+
+        let local_shortcut = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-t").expect("local terminal shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&local_shortcut, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+
+        let local_workspace_id = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            (app.workspaces.len() == 2)
+                .then(|| {
+                    app.workspaces
+                        .iter()
+                        .find(|workspace| workspace.id != ssh_workspace_id)
+                        .map(|workspace| workspace.id)
+                })
+                .flatten()
+        });
+
+        let cycle_left = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-alt-left").expect("cycle-left shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&cycle_left, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.active_workspace_id, Some(ssh_workspace_id));
+        });
+
+        let cycle_right = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-alt-right")
+                .expect("cycle-right shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&cycle_right, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.active_workspace_id, Some(local_workspace_id));
+        });
+
+        let logs = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-l").expect("logs shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&logs, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.active_workspace_id, None);
+            assert_eq!(app.nav_section, NavSection::Logs);
+            assert_eq!(app.status_message, "Switched to Logs view.");
+        });
+    }
 }

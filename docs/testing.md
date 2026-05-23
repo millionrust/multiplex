@@ -58,6 +58,8 @@ It runs:
 - `ui::app::tests::e2e_workspace_disconnect_and_reconnect_all_restores_split_panes`
 - `ui::app::tests::e2e_split_divider_drag_updates_and_persists_layout_ratio`
 - `ui::app::tests::e2e_duplicate_active_pane_shortcut_splits_workspace`
+- `ui::app::tests::e2e_library_navigation_shortcuts_switch_sections_and_open_editor`
+- `ui::app::tests::e2e_workspace_shortcuts_toggle_views_broadcast_and_cycle_tabs`
 
 Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH container, connect through the real `russh` session path, and verify both:
 
@@ -91,6 +93,8 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - workspace-wide disconnect/reconnect can tear down and restore every pane in a split local-terminal workspace
 - split-pane divider drags update the runtime layout ratio and persist that ratio into restored workspace state
 - pane duplication now has direct coverage through both the documented `Cmd+D` shortcut path and the pane context-menu state action
+- library navigation shortcuts can switch sections, jump back to host search, and open the new-host editor
+- workspace shortcuts can open remote Files view, toggle back to Terminal, toggle broadcast input, open a new local terminal tab, cycle between tabs, and jump to Logs
 
 If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests self-skip.
 
