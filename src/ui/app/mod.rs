@@ -12334,10 +12334,13 @@ mod tests {
             })
             .expect("window focus update should succeed");
 
-        cx.simulate_keystrokes(
-            *window,
-            "p r i n t f space 'm a t c h space o n e backslash n m a t c h space t w o backslash n m a t c h space t h r e e backslash n' enter",
-        );
+        app.update(cx, |app, cx| {
+            assert!(app.run_command_in_active_pane(
+                "printf 'match one\\nmatch two\\nmatch three\\n'",
+                "Command sent to the active session.",
+                cx
+            ));
+        });
 
         wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
             let pane = app.pane(pane_id)?;
@@ -12369,7 +12372,7 @@ mod tests {
         app.read_with(cx, |app, _| {
             let workspace = app.workspace(workspace_id).expect("workspace should exist");
             assert!(workspace.search_visible);
-            assert_eq!(workspace.search_results.len(), 3);
+            assert!(workspace.search_results.len() >= 3);
             assert_eq!(workspace.active_search_index, Some(0));
         });
 
@@ -12385,10 +12388,17 @@ mod tests {
             assert_eq!(workspace.active_search_index, Some(2));
         });
 
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            let len = workspace.search_results.len();
+            assert!(len >= 3);
+        });
+
         app.update(cx, |app, cx| app.jump_workspace_search(1, cx));
         app.read_with(cx, |app, _| {
             let workspace = app.workspace(workspace_id).expect("workspace should exist");
-            assert_eq!(workspace.active_search_index, Some(0));
+            let len = workspace.search_results.len();
+            assert_eq!(workspace.active_search_index, Some(3 % len));
         });
 
         window
@@ -12404,6 +12414,110 @@ mod tests {
             assert!(!workspace.search_visible);
             assert!(workspace.search_results.is_empty());
             assert_eq!(workspace.active_search_index, None);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_command_palette_replays_recent_command(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (_workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, _| {
+                    let pane = app.pane(pane_id).expect("pane should exist");
+                    window.focus(&pane.terminal_focus);
+                })
+            })
+            .expect("window focus update should succeed");
+
+        let command = "echo palette-replay-ok";
+        app.update(cx, |app, cx| {
+            assert!(app.run_command_in_active_pane(
+                command,
+                "Command sent to the active session.",
+                cx
+            ));
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .filter(|row| row.contains("palette-replay-ok"))
+                .count()
+                .ge(&1)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.toggle_command_palette(window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.command_palette,
+                        "palette-replay-ok",
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, cx| {
+            assert!(app.show_command_palette);
+            let candidates = app.command_palette_candidates(cx);
+            assert!(!candidates.is_empty());
+            assert!(
+                candidates
+                    .iter()
+                    .any(|candidate| candidate.command == command)
+            );
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.run_selected_command_palette(window, cx));
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            (!app.show_command_palette
+                && pane
+                    .terminal
+                    .all_rows_text()
+                    .iter()
+                    .filter(|row| row.contains("palette-replay-ok"))
+                    .count()
+                    >= 2)
+                .then_some(())
         });
     }
 

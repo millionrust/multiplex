@@ -41,6 +41,7 @@ It runs:
 - `ui::app::tests::e2e_saved_host_connect_opens_files_view`
 - `ui::app::tests::e2e_group_defaults_save_apply_and_remove_round_trip`
 - `ui::app::tests::e2e_batch_selection_and_bulk_host_actions`
+- `ui::app::tests::e2e_command_palette_replays_recent_command`
 - `ui::app::tests::e2e_quick_connect_password_flow_opens_workspace`
 - `ui::app::tests::e2e_host_editor_saves_and_removes_user_profile`
 - `ui::app::tests::e2e_saved_password_profile_connects_via_keychain`
@@ -67,6 +68,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the Settings defaults for SSH startup directory and local shell program/cwd are applied by normal connect and open-local-terminal flows
 - the GPUI app can save group defaults, reapply them into a new draft, and remove them again
 - the GPUI app can batch-select hosts and apply bulk group/favorite operations across filtered library selections
+- the command palette can surface a real recent command and replay it into the active session
 - the GPUI app can open a workspace, render terminal output, accept typed terminal input, split panes, broadcast commands, auto-reconnect after a non-user disconnect, and connect through a real jump host
 - restored SSH workspaces can reconnect on launch, run startup actions, and open directly into the Files view
 - restored SSH workspaces can also reconnect through the saved password-credential path on launch
