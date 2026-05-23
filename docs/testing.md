@@ -68,6 +68,8 @@ It runs:
 - `ui::app::tests::e2e_keychain_browse_imports_identity_into_private_key_editor`
 - `ui::app::tests::e2e_keychain_identity_tab_loads_password_profile_into_editor`
 - `ui::app::tests::e2e_settings_controls_persist_and_reset_preferences`
+- `ui::app::tests::e2e_restore_workspaces_disabled_skips_saved_workspace_launch`
+- `ui::app::tests::e2e_session_history_limit_change_trims_existing_logs`
 - `ui::app::tests::e2e_host_library_selection_loads_editor_and_tracks_last_connected`
 - `ui::app::tests::e2e_manual_reconnect_recovers_closed_ssh_pane`
 - `ui::app::tests::e2e_onboarding_dismiss_reset_and_local_terminal_marks_complete`
@@ -117,6 +119,8 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - `Esc` can close the editor dialog and return from Files view, and `Cmd+Shift+L` clears the active pane through the real shortcut path
 - the Keychain view can import a key file into the private-key editor flow and can load saved password-backed host identities from the Identities tab back into the editor
 - the Settings view can persist theme, font, restore/reconnect/keepalive/history toggles, default shell settings, and SSH startup defaults, and can reset the font-family/startup-directory fields through the same app paths used by the UI
+- disabling workspace restore on launch skips previously saved restorable workspaces
+- lowering the session-history retention limit trims existing logs immediately
 - the Hosts library can load a saved host into the editor on selection, preserve favorite/color/description/environment metadata, toggle favorites, and surface a real last-connected timestamp after a live SSH session
 - an explicitly closed SSH pane can be reconnected manually through the app’s reconnect path after the Docker server comes back on the same port
 - the onboarding panel can be dismissed, reset, and automatically completed by opening a local terminal

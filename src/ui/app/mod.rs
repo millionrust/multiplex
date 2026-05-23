@@ -3309,6 +3309,11 @@ impl TermiRustApp {
     fn update_session_log_limit(&mut self, limit: u16, cx: &mut Context<Self>) {
         self.saved.settings.session_log_limit = limit;
         self.saved.ensure_settings();
+        let max_session_logs = usize::from(self.saved.settings.session_log_limit);
+        if self.saved.session_logs.len() > max_session_logs {
+            let drain_count = self.saved.session_logs.len() - max_session_logs;
+            self.saved.session_logs.drain(..drain_count);
+        }
         self.save_settings();
         self.status_message = format!("Session history retention set to {limit} entries.");
         self.error_message.clear();
@@ -14777,6 +14782,84 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_restore_workspaces_disabled_skips_saved_workspace_launch(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.restore_workspaces_on_launch = false;
+        saved.restored_workspaces.push(SavedWorkspace {
+            title: "should-not-restore".to_string(),
+            layout: None,
+            active_pane_index: 0,
+            panes: vec![RestorableConnection {
+                title: "should-not-restore".to_string(),
+                kind: ConnectionKind::LocalShell,
+                host: String::new(),
+                port: 0,
+                username: String::new(),
+                auth: None,
+                jump_host: None,
+                startup_directory: None,
+                startup_command: None,
+                start_in_files: false,
+                terminal_scrollback_rows: Some(10_000),
+                port_forward_rules: Vec::new(),
+                local_forwards: Vec::new(),
+                local_forward: None,
+                local_shell: Some(LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                }),
+            }],
+        });
+        saved.active_workspace_index = Some(0);
+
+        let (app, _window) = open_test_app_with_state(cx, saved);
+        app.read_with(cx, |app, _| {
+            assert!(app.workspaces.is_empty());
+            assert_eq!(app.active_workspace_id, None);
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert_eq!(app.saved.restored_workspaces.len(), 1);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_session_history_limit_change_trims_existing_logs(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.session_log_limit = 200;
+        for index in 0..120u64 {
+            saved.session_logs.push(crate::models::SessionLogEntry {
+                id: format!("log-{index}"),
+                title: format!("Host {index}"),
+                host: "127.0.0.1".to_string(),
+                port: 22,
+                username: "ops".to_string(),
+                started_at: index,
+                ended_at: Some(index + 1),
+                status: crate::models::SessionLogStatus::Disconnected,
+                error_message: None,
+            });
+        }
+
+        let (app, _window) = open_test_app_with_state(cx, saved);
+        app.update(cx, |app, cx| {
+            app.update_session_log_limit(50, cx);
+        });
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.saved.settings.session_log_limit, 50);
+            assert_eq!(app.saved.session_logs.len(), 50);
+            assert_eq!(app.saved.session_logs.first().unwrap().id, "log-70");
+            assert_eq!(app.saved.session_logs.last().unwrap().id, "log-119");
+            assert_eq!(
+                app.status_message,
+                "Session history retention set to 50 entries."
+            );
+        });
+    }
+
+    #[gpui::test]
     fn e2e_host_library_selection_loads_editor_and_tracks_last_connected(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         if !DockerSshServer::docker_available() {
@@ -15411,12 +15494,7 @@ mod tests {
                 app.update(cx, |app, cx| {
                     app.open_editor_for_new_host(window, cx);
                     app.set_auth_mode(AuthMode::Password, cx);
-                    TermiRustApp::set_input_value(
-                        &app.inputs.label,
-                        "Protocol Host",
-                        window,
-                        cx,
-                    );
+                    TermiRustApp::set_input_value(&app.inputs.label, "Protocol Host", window, cx);
                     TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
                     TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
                     TermiRustApp::set_input_value(
