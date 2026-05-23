@@ -9201,10 +9201,10 @@ mod tests {
     use crate::credentials;
     use crate::models::{
         AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, HostColorTag,
-        HostProfile,
-        IdentitySource, JumpHostConnection, LocalPortForward, LocalShellConfig, PortForwardKind,
-        PortForwardRule, ProfileSource, RestorableAuth, RestorableConnection, SavedHostGroup,
-        SavedIdentity, SavedSplitNode, SavedState, SavedWorkspace, SplitAxis, ThemePreset,
+        HostProfile, IdentitySource, JumpHostConnection, LocalPortForward, LocalShellConfig,
+        PortForwardKind, PortForwardRule, ProfileSource, RestorableAuth, RestorableConnection,
+        SavedHostGroup, SavedIdentity, SavedSplitNode, SavedState, SavedWorkspace, SplitAxis,
+        ThemePreset,
     };
     use crate::sftp::RemoteFileEntry;
     use crate::test_support::{
@@ -14767,9 +14767,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn e2e_host_library_selection_loads_editor_and_tracks_last_connected(
-        cx: &mut TestAppContext,
-    ) {
+    fn e2e_host_library_selection_loads_editor_and_tracks_last_connected(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         if !DockerSshServer::docker_available() {
             eprintln!("skipping host library selection e2e: Docker is unavailable");
@@ -14790,12 +14788,7 @@ mod tests {
                     app.set_auth_mode(AuthMode::Password, cx);
                     app.toggle_draft_profile_favorite(true, cx);
                     app.draft_color_tag = Some(HostColorTag::Blue);
-                    TermiRustApp::set_input_value(
-                        &app.inputs.label,
-                        "Metadata Host",
-                        window,
-                        cx,
-                    );
+                    TermiRustApp::set_input_value(&app.inputs.label, "Metadata Host", window, cx);
                     TermiRustApp::set_input_value(
                         &app.inputs.description,
                         "Important production host",
@@ -14864,10 +14857,16 @@ mod tests {
 
         app.read_with(cx, |app, cx| {
             assert!(app.show_editor_panel);
-            assert_eq!(app.selected_profile_id.as_deref(), Some(profile_id.as_str()));
+            assert_eq!(
+                app.selected_profile_id.as_deref(),
+                Some(profile_id.as_str())
+            );
             assert_eq!(app.draft_color_tag, Some(HostColorTag::Blue));
             assert!(app.draft_profile_favorite);
-            assert_eq!(app.inputs.description.read(cx).value(), "Important production host");
+            assert_eq!(
+                app.inputs.description.read(cx).value(),
+                "Important production host"
+            );
             assert_eq!(
                 app.inputs.environment.read(cx).value(),
                 "DEPLOY_ENV=prod\nROLE=web"
@@ -14918,6 +14917,96 @@ mod tests {
                 .expect("profile should exist");
             assert!(profile.favorite);
             assert!(app.last_connected_at(profile).is_some());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_manual_reconnect_recovers_closed_ssh_pane(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping manual reconnect e2e: Docker is unavailable");
+            return;
+        }
+
+        let mut saved = SavedState::default();
+        saved.settings.auto_reconnect_attempts = 0;
+        saved.settings.auto_reconnect_delay_secs = 1;
+
+        let port = allocate_local_port();
+        let server = DockerSshServer::start_on_port(port)
+            .expect("unable to start initial docker ssh fixture");
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let request = ConnectRequest {
+            port,
+            ..docker_ssh_request(&server)
+        };
+
+        let (workspace_id, original_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(original_pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("termirust-ui-ready"))
+                .then_some(())
+        });
+
+        server.stop();
+
+        wait_for_window_app_state(cx, window, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(original_pane_id)?;
+            (pane.closed && !pane.connected && pane.status == "Closed").then_some(())
+        });
+
+        let _replacement = DockerSshServer::start_on_port(port)
+            .expect("unable to restart docker ssh fixture on the same port");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_pane_context_menu(
+                        original_pane_id,
+                        point(px(32.), px(32.)),
+                        window,
+                        cx,
+                    );
+                    assert!(app.pane_context_menu.is_some());
+                    app.pane_context_menu = None;
+                    app.reconnect_pane(original_pane_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let reconnected_pane_id =
+            wait_for_window_app_state(cx, window, &app, Duration::from_secs(20), |app| {
+                let workspace = app.workspace(workspace_id)?;
+                let pane_id = workspace.active_pane_id;
+                let pane = app.pane(pane_id)?;
+                (pane.connected
+                    && pane_id != original_pane_id
+                    && pane
+                        .terminal
+                        .all_rows_text()
+                        .iter()
+                        .any(|row| row.contains("termirust-ui-ready")))
+                .then_some(pane_id)
+            });
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert_eq!(workspace.active_pane_id, reconnected_pane_id);
+            assert!(!workspace.pane_ids.contains(&original_pane_id));
+            assert!(workspace.pane_ids.contains(&reconnected_pane_id));
+            assert!(app.pane(original_pane_id).is_none());
+            assert!(app.error_message.is_empty());
         });
     }
 }
