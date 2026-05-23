@@ -56,6 +56,7 @@ It runs:
 - `ui::app::tests::e2e_workspace_tab_click_activate_rename_and_close`
 - `ui::app::tests::e2e_workspace_tab_menu_click_duplicate_and_close`
 - `ui::app::tests::e2e_workspace_tab_menu_click_split_horizontal`
+- `ui::app::tests::e2e_workspace_tab_menu_click_duplicate_window_and_rename`
 - `ui::app::tests::e2e_pane_context_menu_click_duplicate_and_detach`
 - `ui::app::tests::e2e_pane_context_menu_click_copy_paste_clear_and_close`
 - `ui::app::tests::e2e_pane_context_menu_click_reconnect_recovers_closed_ssh_pane`
@@ -135,7 +136,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - terminal copy-on-select can push the selected text into the clipboard
 - workspace tabs can be duplicated and reordered through the same state paths used by the chrome drag/drop actions
 - workspace tabs can also be activated by click, enter rename mode by double-click, and close through the rendered close button
-- workspace tab context-menu items can duplicate, split horizontally, and close through their rendered click handlers, and pane context-menu items can copy, open the paste-confirmation flow, clear, close, duplicate, detach, and reconnect through their rendered click handlers
+- workspace tab context-menu items can duplicate, duplicate into a new window, rename, split horizontally, and close through their rendered click handlers, and pane context-menu items can copy, open the paste-confirmation flow, clear, close, duplicate, detach, and reconnect through their rendered click handlers
 - dropping a workspace tab onto a terminal pane can merge the dragged tab into a real split layout, and over-cap merges are rejected without mutating either workspace
 - SSH disconnects are recorded in the persisted Logs history and the Logs section can be opened directly from app state
 - workspace titles and pane titles persist across runtime state snapshots, including after split-pane creation

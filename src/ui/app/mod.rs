@@ -13549,6 +13549,97 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_workspace_tab_menu_click_duplicate_window_and_rename(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        let menu_click =
+            dynamic_selector_click_center(window, cx, format!("chrome-workspace-{workspace_id}"));
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_event(MouseDownEvent {
+            position: menu_click,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Right,
+            click_count: 1,
+            first_mouse: false,
+        });
+        visual.simulate_event(MouseUpEvent {
+            position: menu_click,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Right,
+            click_count: 1,
+        });
+
+        let duplicate_window_click = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("workspace-tab-menu-duplicate-window-{workspace_id}"),
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(duplicate_window_click, gpui::Modifiers::none());
+
+        wait_for_window_count(cx, 2, Duration::from_secs(10));
+        app.read_with(cx, |app, _| {
+            assert!(app.open_workspace_tab_menu.is_none());
+            assert!(app.error_message.is_empty());
+        });
+
+        let menu_click =
+            dynamic_selector_click_center(window, cx, format!("chrome-workspace-{workspace_id}"));
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_event(MouseDownEvent {
+            position: menu_click,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Right,
+            click_count: 1,
+            first_mouse: false,
+        });
+        visual.simulate_event(MouseUpEvent {
+            position: menu_click,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Right,
+            click_count: 1,
+        });
+
+        let rename_click = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("workspace-tab-menu-rename-{workspace_id}"),
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(rename_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.tab_rename_workspace_id, Some(workspace_id));
+            assert!(app.open_workspace_tab_menu.is_none());
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
     fn e2e_pane_context_menu_click_duplicate_and_detach(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
