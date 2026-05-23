@@ -64,6 +64,7 @@ It runs:
 - `ui::app::tests::e2e_workspace_and_pane_rename_persist_runtime_state`
 - `ui::app::tests::e2e_workspace_disconnect_and_reconnect_all_restores_split_panes`
 - `ui::app::tests::e2e_split_divider_drag_updates_and_persists_layout_ratio`
+- `ui::app::tests::e2e_rendered_pane_divider_drag_updates_and_persists_layout_ratio`
 - `ui::app::tests::e2e_duplicate_active_pane_shortcut_splits_workspace`
 - `ui::app::tests::e2e_chrome_local_button_click_opens_local_terminal`
 - `ui::app::tests::e2e_chrome_new_button_click_opens_new_host_editor`
@@ -132,6 +133,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - workspace titles and pane titles persist across runtime state snapshots, including after split-pane creation
 - workspace-wide disconnect/reconnect can tear down and restore every pane in a split local-terminal workspace
 - split-pane divider drags update the runtime layout ratio and persist that ratio into restored workspace state
+- the rendered split-divider handle also responds to real mouse drag events and persists the resulting layout ratio
 - pane duplication now has direct coverage through both the documented `Cmd+D` shortcut path and the pane context-menu state action
 - the chrome local-terminal button, chrome new-host button, and empty-chrome double-click path all drive their real click handlers
 - the sidebar nav cards drive their real click handlers for Hosts, Vaults, Keychain, Snippets, Settings, Known Hosts, and Logs

@@ -803,6 +803,7 @@ impl TermiRustApp {
         };
         let base = div()
             .id(("pane-divider", divider_id))
+            .debug_selector(move || format!("pane-divider-{}", divider_id))
             .absolute()
             .left(px(x))
             .top(px(y))

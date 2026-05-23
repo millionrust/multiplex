@@ -14180,6 +14180,104 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_rendered_pane_divider_drag_updates_and_persists_layout_ratio(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (workspace_id, first_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(first_pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.split_active_workspace(SplitAxis::Horizontal, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 2).then_some(())
+        });
+
+        let (divider_id, axis, start_ratio, moved_x, moved_y) = window
+            .update(cx, |_, window, cx| {
+                app.read_with(cx, |app, _| {
+                    let (_, dividers) = app.workspace_split_rects(window);
+                    let divider = dividers
+                        .first()
+                        .copied()
+                        .expect("split workspace should expose one divider");
+                    (
+                        divider.divider_id,
+                        divider.axis,
+                        divider.ratio,
+                        divider.x + divider.width / 2.0 + 96.0,
+                        divider.y + divider.height / 2.0 + 96.0,
+                    )
+                })
+            })
+            .expect("window update should succeed");
+
+        let handle_center =
+            dynamic_selector_click_center(window, cx, format!("pane-divider-{divider_id}"));
+        let moved = match axis {
+            SplitAxis::Horizontal => point(px(moved_x), handle_center.y),
+            SplitAxis::Vertical => point(handle_center.x, px(moved_y)),
+        };
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_mouse_down(handle_center, MouseButton::Left, gpui::Modifiers::none());
+        visual.simulate_mouse_move(moved, Some(MouseButton::Left), gpui::Modifiers::none());
+        visual.simulate_mouse_up(moved, MouseButton::Left, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            let runtime_ratio = match workspace.layout.as_ref() {
+                Some(SplitNode::Split { ratio, .. }) => *ratio,
+                _ => panic!("workspace should keep a split layout"),
+            };
+            assert!(runtime_ratio > start_ratio);
+            assert!(runtime_ratio <= 0.92);
+
+            let saved_ratio = match app.saved.restored_workspaces.first() {
+                Some(SavedWorkspace {
+                    layout:
+                        Some(SavedSplitNode::Split {
+                            ratio,
+                            axis: SplitAxis::Horizontal,
+                            ..
+                        }),
+                    ..
+                }) => *ratio,
+                _ => panic!("saved workspace should keep a split layout"),
+            };
+            assert!((saved_ratio - runtime_ratio).abs() < 0.001);
+        });
+    }
+
+    #[gpui::test]
     fn e2e_connect_failure_restart_and_close_dialog(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
