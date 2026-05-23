@@ -14086,4 +14086,176 @@ mod tests {
             assert_eq!(app.status_message, "Switched to Logs view.");
         });
     }
+
+    #[gpui::test]
+    fn e2e_terminal_shortcuts_open_search_palette_and_close_workspace(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        let open_search = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-f").expect("search shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_terminal_key(pane_id, &open_search, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert!(workspace.search_visible);
+        });
+
+        let open_palette = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-k").expect("palette shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_terminal_key(pane_id, &open_palette, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert!(app.show_command_palette);
+        });
+
+        let close_palette = KeyDownEvent {
+            keystroke: Keystroke::parse("escape").expect("escape should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_command_palette_key(&close_palette, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert!(!app.show_command_palette);
+        });
+
+        let close_workspace = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-w").expect("close shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_terminal_key(pane_id, &close_workspace, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert!(app.workspaces.is_empty());
+            assert_eq!(app.active_workspace_id, None);
+            assert_eq!(app.status_message, "Workspace closed. Back to hosts.");
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_terminal_paging_shortcuts_adjust_scrollback(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (_workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        app.update(cx, |app, cx| {
+            assert!(app.run_command_in_active_pane(
+                "i=1; while [ $i -le 200 ]; do printf 'scroll-line-%03d\\n' \"$i\"; i=$((i+1)); done",
+                "Scrollback probe started.",
+                cx
+            ));
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            (pane.terminal.max_scrollback() > 0
+                && pane
+                    .terminal
+                    .all_rows_text()
+                    .iter()
+                    .any(|row| row.contains("scroll-line-200")))
+            .then_some(())
+        });
+
+        let page_up = KeyDownEvent {
+            keystroke: Keystroke::parse("shift-pageup").expect("pageup shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_terminal_key(pane_id, &page_up, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            let pane = app.pane(pane_id).expect("pane should exist");
+            assert!(pane.terminal.scrollback() > 0);
+        });
+
+        let page_down = KeyDownEvent {
+            keystroke: Keystroke::parse("shift-pagedown").expect("pagedown shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_terminal_key(pane_id, &page_down, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            let pane = app.pane(pane_id).expect("pane should exist");
+            assert_eq!(pane.terminal.scrollback(), 0);
+        });
+    }
 }

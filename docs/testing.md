@@ -60,6 +60,8 @@ It runs:
 - `ui::app::tests::e2e_duplicate_active_pane_shortcut_splits_workspace`
 - `ui::app::tests::e2e_library_navigation_shortcuts_switch_sections_and_open_editor`
 - `ui::app::tests::e2e_workspace_shortcuts_toggle_views_broadcast_and_cycle_tabs`
+- `ui::app::tests::e2e_terminal_shortcuts_open_search_palette_and_close_workspace`
+- `ui::app::tests::e2e_terminal_paging_shortcuts_adjust_scrollback`
 
 Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH container, connect through the real `russh` session path, and verify both:
 
@@ -95,6 +97,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - pane duplication now has direct coverage through both the documented `Cmd+D` shortcut path and the pane context-menu state action
 - library navigation shortcuts can switch sections, jump back to host search, and open the new-host editor
 - workspace shortcuts can open remote Files view, toggle back to Terminal, toggle broadcast input, open a new local terminal tab, cycle between tabs, and jump to Logs
+- terminal shortcuts can open search, open/close the command palette, close the active workspace, and page through scrollback via the actual key path
 
 If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests self-skip.
 
