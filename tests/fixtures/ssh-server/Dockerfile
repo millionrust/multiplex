@@ -10,7 +10,7 @@ RUN adduser -D -s /bin/sh termirust \
     && ssh-keygen -A \
     && sed -i 's/^#\\?PasswordAuthentication .*/PasswordAuthentication yes/' /etc/ssh/sshd_config \
     && sed -i 's/^#\\?PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config \
-    && printf '\nUsePAM no\nKbdInteractiveAuthentication no\nChallengeResponseAuthentication no\nPrintMotd no\n' >> /etc/ssh/sshd_config
+    && printf '\nUsePAM no\nKbdInteractiveAuthentication no\nChallengeResponseAuthentication no\nPrintMotd no\nAllowTcpForwarding yes\nGatewayPorts yes\nPermitOpen any\nPermitListen any\n' >> /etc/ssh/sshd_config
 
 EXPOSE 22
 

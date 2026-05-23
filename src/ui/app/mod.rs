@@ -9298,6 +9298,41 @@ mod tests {
         saved
     }
 
+    fn restored_docker_ssh_password_state(
+        server: &DockerSshServer,
+        credential_id: &str,
+        startup_command: Option<&str>,
+    ) -> SavedState {
+        let mut saved = SavedState::default();
+        saved.settings.restore_workspaces_on_launch = true;
+        saved.restored_workspaces.push(SavedWorkspace {
+            title: "docker-password-restore".to_string(),
+            layout: None,
+            active_pane_index: 0,
+            panes: vec![RestorableConnection {
+                title: "docker-password-restore".to_string(),
+                kind: ConnectionKind::Ssh,
+                host: server.host().to_string(),
+                port: server.port,
+                username: server.username().to_string(),
+                auth: Some(RestorableAuth::PasswordKeychain {
+                    credential_id: credential_id.to_string(),
+                }),
+                jump_host: None,
+                startup_directory: None,
+                startup_command: startup_command.map(ToString::to_string),
+                start_in_files: false,
+                terminal_scrollback_rows: Some(10_000),
+                port_forward_rules: Vec::new(),
+                local_forwards: Vec::new(),
+                local_forward: None,
+                local_shell: None,
+            }],
+        });
+        saved.active_workspace_index = Some(0);
+        saved
+    }
+
     fn open_test_app_with_state(
         cx: &mut TestAppContext,
         initial_state: SavedState,
@@ -10429,6 +10464,41 @@ mod tests {
                 && browser.current_path == "/home/termirust")
                 .then_some(())
         });
+    }
+
+    #[gpui::test]
+    fn e2e_restored_password_workspace_reconnects_on_launch(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping restored password ssh launch e2e: Docker is unavailable");
+            return;
+        }
+
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let credential_id = "profile:restored-password-e2e";
+        let _ = credentials::delete_password(credential_id);
+        credentials::store_password(credential_id, server.password())
+            .expect("unable to seed restored password credential");
+        let saved = restored_docker_ssh_password_state(
+            &server,
+            credential_id,
+            Some("printf 'restored-password-ui-ready\\n'"),
+        );
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        wait_for_window_app_state(cx, window, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.connected
+                && pane
+                    .terminal
+                    .all_rows_text()
+                    .iter()
+                    .any(|row| row.contains("restored-password-ui-ready")))
+            .then_some(())
+        });
+
+        let _ = credentials::delete_password(credential_id);
     }
 
     #[gpui::test]
