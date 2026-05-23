@@ -1277,36 +1277,42 @@ impl TermiRustApp {
                     .border_1()
                     .border_color(theme::soft_border())
                     .shadow_lg()
-                    .child(self.dropdown_item(
-                        "avatar-invite",
-                        Some(Icon::new(IconName::User)),
-                        "Invite team members",
-                        false,
-                        move |this, _, cx| {
-                            let _ = std::process::Command::new("open")
-                                .arg(format!(
-                                    "mailto:?subject=Join%20me%20on%20TermiRust&body=I%27m%20using%20TermiRust%20at%20{invite_email}"
-                                ))
-                                .spawn();
-                            this.status_message =
-                                "Opened your email client to invite a teammate.".to_string();
-                            cx.notify();
-                        },
-                        cx,
-                    ))
+                    .child(
+                        self.dropdown_item(
+                            "avatar-invite",
+                            Some(Icon::new(IconName::User)),
+                            "Invite team members",
+                            false,
+                            move |this, _, cx| {
+                                let _ = std::process::Command::new("open")
+                                    .arg(format!(
+                                        "mailto:?subject=Join%20me%20on%20TermiRust&body=I%27m%20using%20TermiRust%20at%20{invite_email}"
+                                    ))
+                                    .spawn();
+                                this.status_message =
+                                    "Opened your email client to invite a teammate.".to_string();
+                                cx.notify();
+                            },
+                            cx,
+                        )
+                        .debug_selector(|| "avatar-invite".to_string()),
+                    )
                     .child(div().h(px(1.)).my(px(4.)).bg(theme::soft_border()))
-                    .child(self.dropdown_item(
-                        "avatar-email",
-                        None,
-                        email,
-                        false,
-                        move |this, _, cx| {
-                            cx.write_to_clipboard(ClipboardItem::new_string(copy_email.clone()));
-                            this.status_message = "Copied email to clipboard.".to_string();
-                            cx.notify();
-                        },
-                        cx,
-                    ))
+                    .child(
+                        self.dropdown_item(
+                            "avatar-email",
+                            None,
+                            email,
+                            false,
+                            move |this, _, cx| {
+                                cx.write_to_clipboard(ClipboardItem::new_string(copy_email.clone()));
+                                this.status_message = "Copied email to clipboard.".to_string();
+                                cx.notify();
+                            },
+                            cx,
+                        )
+                        .debug_selector(|| "avatar-email".to_string()),
+                    )
                     .into()
             }
             None => return div().into_any_element(),

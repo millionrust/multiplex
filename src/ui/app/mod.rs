@@ -5862,6 +5862,7 @@ impl TermiRustApp {
     fn clear_pane_screen(&mut self, pane_id: u64, cx: &mut Context<Self>) {
         if let Some(pane) = self.pane_mut(pane_id) {
             pane.terminal.reset_scrollback();
+            pane.selection = None;
         }
         if !self
             .pane(pane_id)
@@ -9210,7 +9211,7 @@ fn apply_group_defaults_to_draft(
 #[cfg(test)]
 mod tests {
     use super::{
-        AutocompleteSource, ConnectDialogMode, ConnectProtocol, DropZone, HostsViewMode,
+        AutocompleteSource, ConnectDialogMode, ConnectProtocol, DropZone, HostsSort, HostsViewMode,
         KeychainTab, MAX_SPLIT_PANES, NavSection, OutputSuggestionContext, PathSuggestionContext,
         SplitNode, TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone, WorkspaceViewMode,
         apply_group_defaults_to_draft, collect_autocomplete_candidates,
@@ -13618,6 +13619,154 @@ mod tests {
             assert_eq!(original.pane_ids, vec![pane_id]);
             assert!(app.workspace_id_for_pane(second_pane_id).is_some());
             assert!(app.pane_context_menu.is_none());
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_pane_context_menu_click_copy_paste_clear_and_close(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, _| {
+                    let pane = app.pane_mut(pane_id).expect("pane should exist");
+                    pane.terminal = crate::terminal::TerminalState::new(
+                        crate::terminal::TerminalSize::default(),
+                        10_000,
+                    );
+                    pane.terminal.process_bytes(b"copy-via-menu");
+                    pane.selection = Some(SelectionRange {
+                        anchor: TerminalCellPos { row: 0, col: 0 },
+                        head: TerminalCellPos { row: 0, col: 4 },
+                    });
+                    window.focus(&pane.terminal_focus);
+                })
+            })
+            .expect("window update should succeed");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_pane_context_menu(pane_id, point(px(24.), px(24.)), window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let copy_click =
+            dynamic_selector_click_center(window, cx, format!("pane-menu-copy-{pane_id}"));
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(copy_click, gpui::Modifiers::none());
+
+        let clipboard = cx
+            .read_from_clipboard()
+            .expect("clipboard should contain copied text");
+        assert_eq!(clipboard.text().as_deref(), Some("copy-"));
+
+        app.read_with(cx, |app, _| {
+            assert!(app.pane_context_menu.is_none());
+            assert_eq!(app.status_message, "Selection copied to clipboard.");
+        });
+
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+            "printf 'pane-menu-paste-cancelled\\n'\nprintf 'pane-menu-paste-cancelled-2\\n'\n"
+                .to_string(),
+        ));
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_pane_context_menu(pane_id, point(px(28.), px(28.)), window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let paste_click =
+            dynamic_selector_click_center(window, cx, format!("pane-menu-paste-{pane_id}"));
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(paste_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.pane_context_menu.is_none());
+            assert!(app.pending_paste.is_some());
+        });
+
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| {
+                    app.cancel_pending_paste(cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert!(app.pending_paste.is_none());
+            assert_eq!(app.status_message, "Paste cancelled.");
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_pane_context_menu(pane_id, point(px(32.), px(32.)), window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let clear_click =
+            dynamic_selector_click_center(window, cx, format!("pane-menu-clear-{pane_id}"));
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(clear_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            let pane = app.pane(pane_id).expect("pane should still exist");
+            assert!(app.pane_context_menu.is_none());
+            assert_eq!(app.status_message, "Terminal cleared.");
+            assert!(pane.selection.is_none());
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_pane_context_menu(pane_id, point(px(36.), px(36.)), window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let close_click =
+            dynamic_selector_click_center(window, cx, format!("pane-menu-close-{pane_id}"));
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(close_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.pane_context_menu.is_none());
+            assert!(app.workspace(workspace_id).is_none());
+            assert!(app.pane(pane_id).is_none());
+            assert!(app.workspaces.is_empty());
+            assert!(app.active_workspace_id.is_none());
             assert!(app.error_message.is_empty());
         });
     }
