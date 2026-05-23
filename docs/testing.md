@@ -34,6 +34,7 @@ It runs:
 - `ui::app::tests::e2e_quick_connect_password_flow_opens_workspace`
 - `ui::app::tests::e2e_host_editor_saves_and_removes_user_profile`
 - `ui::app::tests::e2e_saved_password_profile_connects_via_keychain`
+- `ui::app::tests::e2e_saved_jump_host_profile_resolves_and_connects`
 - `ui::app::tests::e2e_imported_private_key_connects_to_docker_ssh`
 - `ui::app::tests::e2e_snippet_save_run_pin_and_remove`
 - `ui::app::tests::e2e_vault_member_and_sync_round_trip`
@@ -57,6 +58,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the SFTP runtime can list directories, upload files, download files, and delete remote files against the same Docker SSH target
 - the GPUI app can open the remote Files view, navigate folders, delete remote files, save/remove user hosts, and quick-connect with password auth
 - the GPUI app can save a password-backed host into the system credential store and later reconnect through the stored-password path without retyping the password
+- the GPUI app can save a jump-host profile and later resolve that saved host into a real jump chain during connect
 - the GPUI app can import a private key through the picker and immediately use it to authenticate against the Docker SSH server
 - the GPUI app can also upload and download files through the same dialog-backed SFTP actions used by the desktop UI
 - the snippet workflow can save, pin, run, and remove commands against a live terminal session

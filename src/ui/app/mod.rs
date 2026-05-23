@@ -11083,6 +11083,151 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_saved_jump_host_profile_resolves_and_connects(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping saved jump-host ssh e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let bastion_host = server.host().to_string();
+        let bastion_port = server.port;
+        let username = server.username().to_string();
+        let password = server.password().to_string();
+        let target_key_path = docker_ssh_private_key_path();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(&app.inputs.label, "Docker Bastion", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.host,
+                        bastion_host.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.port,
+                        bastion_port.to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        username.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        password.clone(),
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::PrivateKey, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Docker Via Saved Jump",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.host, "127.0.0.1", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        username.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.key_path,
+                        target_key_path.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.jump_host,
+                        "Docker Bastion",
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+                    app.connect_current(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let target_profile_id = app.read_with(cx, |app, _| {
+            app.selected_profile_id
+                .clone()
+                .expect("target profile should remain selected after save")
+        });
+        let pane_id = wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.connected
+                && pane
+                    .terminal
+                    .all_rows_text()
+                    .iter()
+                    .any(|row| row.contains('$') || row.contains('#')))
+            .then_some(pane.id)
+        });
+
+        let jump_credential_id = app.read_with(cx, |app, _| {
+            let target_profile = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.id == target_profile_id)
+                .expect("target profile should exist");
+            let jump_id = target_profile
+                .jump_host_id
+                .clone()
+                .expect("target profile should save jump host reference");
+            let jump_profile = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.id == jump_id)
+                .expect("jump host profile should exist");
+            let stored_credential_id = jump_profile
+                .password_credential_id
+                .clone()
+                .expect("jump host password should be stored");
+
+            let pane = app.pane(pane_id).expect("pane should exist");
+            let jump = pane
+                .request
+                .jump_host
+                .as_ref()
+                .expect("request should include resolved jump host");
+            assert_eq!(jump.title, "Docker Bastion");
+            assert_eq!(jump.host, bastion_host);
+            assert_eq!(jump.port, bastion_port);
+            assert_eq!(jump.username, username);
+            assert!(matches!(
+                jump.auth,
+                AuthConfig::PasswordRef { ref credential_id }
+                    if credential_id == &stored_credential_id
+            ));
+            assert!(matches!(
+                pane.request.auth.as_ref(),
+                Some(AuthConfig::PrivateKey { key_path, .. }) if key_path == &target_key_path
+            ));
+            stored_credential_id
+        });
+
+        let _ = credentials::delete_password(&jump_credential_id);
+    }
+
+    #[gpui::test]
     fn e2e_imported_private_key_connects_to_docker_ssh(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         if !DockerSshServer::docker_available() {
