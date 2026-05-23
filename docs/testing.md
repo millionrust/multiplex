@@ -183,7 +183,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the rendered Logs empty-state `Open Hosts` button returns to the Hosts section through its actual click handler
 - the rendered hosts toolbar can open the new-host editor, open a local terminal, and switch between grid and list view modes through the actual dropdown clicks
 - the rendered hosts toolbar can also launch quick connect through the `CONNECT` button and drive select-visible, bulk group assignment, bulk star/unstar, and clear-selection through the actual bulk-action buttons
-- the rendered hosts toolbar can also drive tag filtering, sort changes, and avatar email-copy through the actual dropdown clicks
+- the rendered hosts toolbar can also drive tag filtering, all sort variants, and both avatar invite/email actions through the actual dropdown clicks
 - the rendered new-host split-menu chevron can open the editor through `New Group` and import hosts through `Import from ~/.ssh/config`
 - an explicitly closed SSH pane can be reconnected manually through the app’s reconnect path after the Docker server comes back on the same port
 - the onboarding panel can be dismissed, reset, and automatically completed by opening a local terminal

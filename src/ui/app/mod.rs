@@ -17505,6 +17505,61 @@ mod tests {
             assert!(app.open_toolbar_menu.is_none());
         });
 
+        let sort_trigger = selector_click_center(window, cx, "library-sort");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(sort_trigger, gpui::Modifiers::none());
+
+        let sort_az = selector_click_center(window, cx, "sort-az");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(sort_az, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.hosts_sort == HostsSort::AZ);
+            assert!(app.open_toolbar_menu.is_none());
+        });
+
+        let sort_trigger = selector_click_center(window, cx, "library-sort");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(sort_trigger, gpui::Modifiers::none());
+
+        let sort_za = selector_click_center(window, cx, "sort-za");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(sort_za, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.hosts_sort == HostsSort::ZA);
+            assert!(app.open_toolbar_menu.is_none());
+        });
+
+        let sort_trigger = selector_click_center(window, cx, "library-sort");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(sort_trigger, gpui::Modifiers::none());
+
+        let sort_newest = selector_click_center(window, cx, "sort-newest");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(sort_newest, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.hosts_sort == HostsSort::NewestFirst);
+            assert!(app.open_toolbar_menu.is_none());
+        });
+
+        let avatar_trigger = selector_click_center(window, cx, "library-avatar-trigger");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(avatar_trigger, gpui::Modifiers::none());
+
+        let invite_click = selector_click_center(window, cx, "avatar-invite");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(invite_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.status_message,
+                "Opened your email client to invite a teammate."
+            );
+            assert!(app.open_toolbar_menu.is_none());
+        });
+
         let avatar_trigger = selector_click_center(window, cx, "library-avatar-trigger");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(avatar_trigger, gpui::Modifiers::none());
