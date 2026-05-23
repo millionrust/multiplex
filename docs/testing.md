@@ -70,6 +70,9 @@ It runs:
 - `ui::app::tests::e2e_settings_controls_persist_and_reset_preferences`
 - `ui::app::tests::e2e_host_library_selection_loads_editor_and_tracks_last_connected`
 - `ui::app::tests::e2e_manual_reconnect_recovers_closed_ssh_pane`
+- `ui::app::tests::e2e_onboarding_dismiss_reset_and_local_terminal_marks_complete`
+- `ui::app::tests::e2e_saved_host_open_connect_dialog_tab_preserves_profile_context`
+- `ui::app::tests::e2e_recent_host_chip_reopens_saved_ssh_workspace`
 
 Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH container, connect through the real `russh` session path, and verify both:
 
@@ -112,6 +115,9 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the Settings view can persist theme, font, restore/reconnect/keepalive/history toggles, default shell settings, and SSH startup defaults, and can reset the font-family/startup-directory fields through the same app paths used by the UI
 - the Hosts library can load a saved host into the editor on selection, preserve favorite/color/description/environment metadata, toggle favorites, and surface a real last-connected timestamp after a live SSH session
 - an explicitly closed SSH pane can be reconnected manually through the app’s reconnect path after the Docker server comes back on the same port
+- the onboarding panel can be dismissed, reset, and automatically completed by opening a local terminal
+- a saved host can open the dedicated connect-dialog tab while preserving the profile context
+- the recent-host chip path can reopen a saved SSH workspace from persisted session history
 
 If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests self-skip.
 

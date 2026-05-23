@@ -1809,6 +1809,17 @@ impl TermiRustApp {
         self.load_profile_into_inputs(profile_id, window, cx);
     }
 
+    fn open_recent_host_workspace(
+        &mut self,
+        profile_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.show_editor_panel = false;
+        self.load_profile_into_inputs(profile_id, window, cx);
+        self.connect_current(window, cx);
+    }
+
     fn clear_profile_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         Self::set_input_value(&self.inputs.label, "", window, cx);
         Self::set_input_value(&self.inputs.group, "", window, cx);
@@ -8580,9 +8591,7 @@ impl TermiRustApp {
                                 .cursor_pointer()
                                 .hover(|style| style.bg(theme::card_hover_subtle()))
                                 .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.show_editor_panel = false;
-                                    this.load_profile_into_inputs(&profile_id, window, cx);
-                                    this.connect_current(window, cx);
+                                    this.open_recent_host_workspace(&profile_id, window, cx);
                                 }))
                                 .child(div().size(px(7.)).rounded(px(999.)).bg(chip_color))
                                 .child(
@@ -15007,6 +15016,185 @@ mod tests {
             assert!(workspace.pane_ids.contains(&reconnected_pane_id));
             assert!(app.pane(original_pane_id).is_none());
             assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_onboarding_dismiss_reset_and_local_terminal_marks_complete(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        app.read_with(cx, |app, _| {
+            assert!(app.should_show_onboarding());
+            assert!(!app.saved.settings.onboarding_dismissed);
+        });
+
+        app.update(cx, |app, cx| app.dismiss_onboarding(cx));
+        app.read_with(cx, |app, _| {
+            assert!(app.saved.settings.onboarding_dismissed);
+            assert!(!app.should_show_onboarding());
+            assert_eq!(app.status_message, "Welcome panel dismissed.");
+        });
+
+        app.update(cx, |app, cx| app.reset_onboarding_panel(cx));
+        app.read_with(cx, |app, _| {
+            assert!(!app.saved.settings.onboarding_dismissed);
+            assert!(app.should_show_onboarding());
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_local_terminal(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.active_workspace()
+                .and_then(|workspace| app.pane(workspace.active_pane_id))
+                .is_some_and(|pane| pane.connected && pane.request.is_local_shell())
+                .then_some(())
+        });
+
+        app.read_with(cx, |app, _| {
+            assert!(app.saved.settings.onboarding_dismissed);
+            assert!(!app.should_show_onboarding());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_saved_host_open_connect_dialog_tab_preserves_profile_context(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.label, "Dialog Host", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.host, "dialog.example", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.username, "ops-user", window, cx);
+                    app.save_profile(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let profile_id = app.read_with(cx, |app, _| {
+            app.saved
+                .profiles
+                .iter()
+                .find(|profile| profile.label == "Dialog Host")
+                .map(|profile| profile.id.clone())
+                .expect("saved host should exist")
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_connect_dialog_tab(&profile_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, cx| {
+            let workspace = app.active_workspace().expect("workspace should exist");
+            let pending = workspace
+                .pending_connect
+                .as_ref()
+                .expect("connect dialog should have pending profile");
+            assert!(workspace.pending_connect_mode == ConnectDialogMode::Username);
+            assert_eq!(workspace.title, "Dialog Host");
+            assert!(workspace.pane_ids.is_empty());
+            assert_eq!(pending.label, "Dialog Host");
+            assert_eq!(pending.host, "dialog.example");
+            assert_eq!(
+                app.shell_inputs.connect_username.read(cx).value(),
+                "ops-user"
+            );
+            assert!(!app.show_editor_panel);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_recent_host_chip_reopens_saved_ssh_workspace(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping recent host chip e2e: Docker is unavailable");
+            return;
+        }
+
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let host = server.host().to_string();
+        let port = server.port;
+        let username = server.username().to_string();
+        let password = server.password().to_string();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(&app.inputs.label, "Recent Host", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        username.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        password.clone(),
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+                    app.connect_current(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let first_workspace_id = wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.connected && pane.request.title == "Recent Host").then_some(workspace.id)
+        });
+
+        let profile_id = app.read_with(cx, |app, _| {
+            app.saved
+                .profiles
+                .iter()
+                .find(|profile| profile.label == "Recent Host")
+                .map(|profile| profile.id.clone())
+                .expect("saved host should exist")
+        });
+
+        app.update(cx, |app, cx| {
+            app.close_workspace(first_workspace_id, cx);
+        });
+
+        app.read_with(cx, |app, _| {
+            assert!(app.active_workspace_id.is_none());
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_recent_host_workspace(&profile_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.connected
+                && pane.request.title == "Recent Host"
+                && workspace.id != first_workspace_id)
+                .then_some(())
         });
     }
 }
