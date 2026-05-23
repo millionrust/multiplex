@@ -10679,6 +10679,104 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_sftp_upload_and_download_via_dialog_actions(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping app sftp dialog e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        server
+            .exec(
+                "mkdir -p /home/termirust/e2e-transfer && chown -R termirust:termirust /home/termirust/e2e-transfer",
+            )
+            .expect("unable to seed remote transfer directory");
+
+        let (app, window) = open_test_app(cx);
+        let request =
+            docker_ssh_request_with_startup(&server, Some("/home/termirust/e2e-transfer"), false);
+
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(pane_id)?;
+            pane.connected.then_some(())
+        });
+
+        app.update(cx, |app, cx| {
+            app.open_workspace_files_for_pane(workspace_id, pane_id, cx);
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            let browser = workspace.sftp.as_ref()?;
+            (workspace.view_mode == WorkspaceViewMode::Files
+                && !browser.loading
+                && browser.current_path == "/home/termirust/e2e-transfer")
+                .then_some(())
+        });
+
+        let local_dir =
+            std::env::temp_dir().join(format!("termirust-sftp-app-{}", std::process::id()));
+        std::fs::create_dir_all(&local_dir).expect("unable to create local sftp app temp dir");
+        let upload_path = local_dir.join("upload-from-app.txt");
+        std::fs::write(&upload_path, "uploaded from app action\n")
+            .expect("unable to write upload fixture");
+
+        queue_dialog_path(Some(upload_path.clone()));
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.upload_workspace_file(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let browser = app.workspace(workspace_id)?.sftp.as_ref()?;
+            (!browser.loading
+                && browser
+                    .entries
+                    .iter()
+                    .any(|entry| entry.name == "upload-from-app.txt"))
+            .then_some(())
+        });
+
+        app.update(cx, |app, cx| {
+            app.select_workspace_file_entry(
+                workspace_id,
+                "/home/termirust/e2e-transfer/upload-from-app.txt".to_string(),
+                cx,
+            );
+        });
+
+        let download_path = local_dir.join("download-from-app.txt");
+        let _ = std::fs::remove_file(&download_path);
+        queue_dialog_path(Some(download_path.clone()));
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.download_workspace_file(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |_app| {
+            std::fs::read_to_string(&download_path)
+                .ok()
+                .filter(|content| content == "uploaded from app action\n")
+                .map(|_| ())
+        });
+    }
+
+    #[gpui::test]
     fn e2e_quick_connect_password_flow_opens_workspace(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         if !DockerSshServer::docker_available() {

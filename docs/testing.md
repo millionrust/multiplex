@@ -30,6 +30,7 @@ It runs:
 - `ui::app::tests::e2e_local_shell_paste_confirmation_and_search`
 - `sftp::tests::docker_sftp_round_trips_directory_upload_download_and_delete`
 - `ui::app::tests::e2e_sftp_files_view_navigates_and_deletes_remote_files`
+- `ui::app::tests::e2e_sftp_upload_and_download_via_dialog_actions`
 - `ui::app::tests::e2e_quick_connect_password_flow_opens_workspace`
 - `ui::app::tests::e2e_host_editor_saves_and_removes_user_profile`
 - `ui::app::tests::e2e_snippet_save_run_pin_and_remove`
@@ -52,6 +53,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the local terminal path can confirm/cancel multi-line paste and drive workspace search against real terminal output
 - the SFTP runtime can list directories, upload files, download files, and delete remote files against the same Docker SSH target
 - the GPUI app can open the remote Files view, navigate folders, delete remote files, save/remove user hosts, and quick-connect with password auth
+- the GPUI app can also upload and download files through the same dialog-backed SFTP actions used by the desktop UI
 - the snippet workflow can save, pin, run, and remove commands against a live terminal session
 - the vault and sync workflow can save shared vaults, manage members, push an encrypted bundle, pull it into a fresh app state, and re-home items back to Personal when a vault is deleted
 - the connect flow can reject unsupported protocol choices without opening a session
