@@ -595,6 +595,7 @@ impl TermiRustApp {
                     None,
                     None,
                 )
+                .debug_selector(|| "chrome-hosts".to_string())
                 .cursor_pointer()
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.open_workspace_tab_menu = None;
@@ -610,6 +611,7 @@ impl TermiRustApp {
                     None,
                     None,
                 )
+                .debug_selector(|| "chrome-sftp".to_string())
                 .cursor_pointer()
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.open_workspace_tab_menu = None;

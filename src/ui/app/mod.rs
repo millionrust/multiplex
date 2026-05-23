@@ -8590,6 +8590,7 @@ impl TermiRustApp {
                             };
                             h_flex()
                                 .id(("recent-host", index))
+                                .debug_selector(move || format!("recent-host-{index}"))
                                 .gap_2()
                                 .items_center()
                                 .px(px(10.))
@@ -14317,13 +14318,13 @@ mod tests {
             .expect("window update should succeed");
 
         for (selector, expected) in [
-            ("nav-card-vaults", NavSection::Vaults),
-            ("nav-card-keychain", NavSection::Keychain),
-            ("nav-card-snippets", NavSection::Snippets),
-            ("nav-card-settings", NavSection::Settings),
-            ("nav-card-known-hosts", NavSection::KnownHosts),
-            ("nav-card-logs", NavSection::Logs),
-            ("nav-card-hosts", NavSection::Hosts),
+            ("nav-card-1", NavSection::Vaults),
+            ("nav-card-2", NavSection::Keychain),
+            ("nav-card-3", NavSection::Snippets),
+            ("nav-card-4", NavSection::Settings),
+            ("nav-card-5", NavSection::KnownHosts),
+            ("nav-card-6", NavSection::Logs),
+            ("nav-card-0", NavSection::Hosts),
         ] {
             let click_point = selector_click_center(window, cx, selector);
             let mut visual = VisualTestContext::from_window(window.into(), cx);
@@ -15770,13 +15771,9 @@ mod tests {
             assert!(app.active_workspace_id.is_none());
         });
 
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.open_recent_host_workspace(&profile_id, window, cx);
-                })
-            })
-            .expect("window update should succeed");
+        let click_point = selector_click_center(window, cx, "recent-host-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(click_point, gpui::Modifiers::none());
 
         wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
             let workspace = app.active_workspace()?;
@@ -15785,6 +15782,75 @@ mod tests {
                 && pane.request.title == "Recent Host"
                 && workspace.id != first_workspace_id)
                 .then_some(())
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_chrome_hosts_and_sftp_tabs_click_switch_views(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping chrome hosts/sftp click e2e: Docker is unavailable");
+            return;
+        }
+
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+
+        let sftp_click = selector_click_center(window, cx, "chrome-sftp");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(sftp_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.nav_section, NavSection::Sftp);
+            assert_eq!(app.active_workspace_id, None);
+            assert!(app.error_message.is_empty());
+        });
+
+        let hosts_click = selector_click_center(window, cx, "chrome-hosts");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(hosts_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert_eq!(app.active_workspace_id, None);
+            assert!(app.error_message.is_empty());
+        });
+
+        let request =
+            docker_ssh_request_with_startup(&server, Some("/home/termirust/chrome-click"), false);
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(pane_id)?;
+            pane.connected.then_some(())
+        });
+
+        let sftp_click = selector_click_center(window, cx, "chrome-sftp");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(sftp_click, gpui::Modifiers::none());
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            let browser = workspace.sftp.as_ref()?;
+            (workspace.view_mode == WorkspaceViewMode::Files && !browser.loading).then_some(())
+        });
+
+        let hosts_click = selector_click_center(window, cx, "chrome-hosts");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(hosts_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.active_workspace_id, None);
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.workspace(workspace_id).is_some());
+            assert!(app.error_message.is_empty());
         });
     }
 

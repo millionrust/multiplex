@@ -86,6 +86,7 @@ It runs:
 - `ui::app::tests::e2e_onboarding_search_button_click_focuses_host_search`
 - `ui::app::tests::e2e_saved_host_open_connect_dialog_tab_preserves_profile_context`
 - `ui::app::tests::e2e_recent_host_chip_reopens_saved_ssh_workspace`
+- `ui::app::tests::e2e_chrome_hosts_and_sftp_tabs_click_switch_views`
 - `ui::app::tests::e2e_window_resize_persists_saved_window_bounds`
 - `ui::app::tests::e2e_connect_dialog_continue_and_save_updates_profile_and_connects`
 - `ui::app::tests::e2e_connect_dialog_close_discards_placeholder_workspace`
@@ -141,6 +142,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the onboarding dismiss, new-host, add-key, local-terminal, and focus-search buttons all drive their real click handlers
 - a saved host can open the dedicated connect-dialog tab while preserving the profile context
 - the recent-host chip path can reopen a saved SSH workspace from persisted session history
+- the top chrome Hosts/SFTP tabs drive their real click handlers in both library and active-workspace states
 - window resize events persist saved window bounds and display id into `state.json`
 - the saved-host connect dialog can update the username, persist it back into the profile, connect successfully, and also close cleanly without leaving a placeholder workspace behind
 - the saved-host choose-protocol dialog can still follow the supported SSH path and replace its placeholder tab with a real connected workspace
