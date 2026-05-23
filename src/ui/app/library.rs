@@ -1344,6 +1344,9 @@ impl TermiRustApp {
                                 |(index, pinned)| {
                                     let active = self.snippet_pinned == pinned;
                                     Button::new(("snippet-pin-toggle", index))
+                                        .debug_selector(move || {
+                                            format!("snippet-pin-toggle-{index}")
+                                        })
                                         .small()
                                         .custom(Self::segmented_button_style(active, _cx))
                                         .label(if pinned { "Pinned" } else { "Library" })
@@ -1359,6 +1362,7 @@ impl TermiRustApp {
                             .gap_2()
                             .child(
                                 Button::new("snippet-new")
+                                    .debug_selector(|| "snippet-new".to_string())
                                     .small()
                                     .custom(Self::action_button_style(
                                         theme::ActionTone::Neutral,
@@ -1371,6 +1375,7 @@ impl TermiRustApp {
                             )
                             .child(
                                 Button::new("snippet-save")
+                                    .debug_selector(|| "snippet-save".to_string())
                                     .small()
                                     .custom(Self::action_button_style(
                                         theme::ActionTone::Accent,
@@ -1384,6 +1389,7 @@ impl TermiRustApp {
                             .when(self.selected_snippet_id.is_some(), |this| {
                                 this.child(
                                     Button::new("snippet-delete")
+                                        .debug_selector(|| "snippet-delete".to_string())
                                         .small()
                                         .ghost()
                                         .icon(IconName::Delete)
@@ -1411,6 +1417,7 @@ impl TermiRustApp {
 
                         h_flex()
                             .id(("snippet-card", index))
+                            .debug_selector(move || format!("snippet-card-{index}"))
                             .justify_between()
                             .items_center()
                             .gap_3()
@@ -1477,6 +1484,7 @@ impl TermiRustApp {
                                     .gap_2()
                                     .child(
                                         Button::new(("snippet-pin", index))
+                                            .debug_selector(move || format!("snippet-pin-{index}"))
                                             .small()
                                             .custom(Self::action_button_style(
                                                 if snippet.pinned {
@@ -1498,6 +1506,7 @@ impl TermiRustApp {
                                     )
                                     .child(
                                         Button::new(("snippet-run", index))
+                                            .debug_selector(move || format!("snippet-run-{index}"))
                                             .small()
                                             .custom(Self::action_button_style(
                                                 theme::ActionTone::Success,
@@ -1526,6 +1535,7 @@ impl TermiRustApp {
                                     .justify_center()
                                     .child(
                                         Button::new("snippets-empty-new")
+                                            .debug_selector(|| "snippets-empty-new".to_string())
                                             .small()
                                             .custom(Self::action_button_style(
                                                 theme::ActionTone::Accent,
