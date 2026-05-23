@@ -12073,9 +12073,16 @@ mod tests {
             .then_some(())
         });
 
-        let output = server
-            .exec("cat /home/termirust/e2e-default-startup/inherited.txt")
-            .expect("default startup directory output should exist");
+        let output = wait_for_poll_result(
+            Duration::from_secs(5),
+            || {
+                server
+                    .exec("cat /home/termirust/e2e-default-startup/inherited.txt")
+                    .ok()
+                    .filter(|output| output == "default-startup-dir-ok")
+            },
+            "default startup directory output should exist",
+        );
         assert_eq!(output, "default-startup-dir-ok");
     }
 
