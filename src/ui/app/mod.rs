@@ -10977,6 +10977,112 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_saved_password_profile_connects_via_keychain(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping saved-password ssh e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let host = server.host().to_string();
+        let port = server.port;
+        let username = server.username().to_string();
+        let password = server.password().to_string();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Docker Password Host",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        username.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        password.clone(),
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let (profile_id, credential_id) = app.read_with(cx, |app, _| {
+            let profile_id = app
+                .selected_profile_id
+                .clone()
+                .expect("saved password profile should be selected");
+            let profile = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.id == profile_id)
+                .expect("saved password profile should exist");
+            let credential_id = profile
+                .password_credential_id
+                .clone()
+                .expect("password credential should be stored");
+            assert_eq!(profile.auth_mode, AuthMode::Password);
+            (profile_id, credential_id)
+        });
+        assert_eq!(
+            credentials::load_password(&credential_id).expect("stored password should load"),
+            password
+        );
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.load_profile_into_inputs(&profile_id, window, cx);
+                    app.connect_current(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let (_workspace_id, pane_id) =
+            wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+                let workspace = app.active_workspace()?;
+                let pane = app.pane(workspace.active_pane_id)?;
+                (pane.connected
+                    && pane
+                        .terminal
+                        .all_rows_text()
+                        .iter()
+                        .any(|row| row.contains('$') || row.contains('#')))
+                .then_some((workspace.id, pane.id))
+            });
+
+        app.read_with(cx, |app, cx| {
+            let pane = app.pane(pane_id).expect("pane should exist");
+            assert!(matches!(
+                pane.request.auth.as_ref(),
+                Some(AuthConfig::PasswordRef { credential_id: pane_credential })
+                    if pane_credential == &credential_id
+            ));
+            assert_eq!(app.inputs.password.read(cx).value(), "");
+            assert!(
+                app.status_message.contains("SSH session connected.")
+                    || app.status_message.contains("new host key trusted")
+            );
+        });
+
+        let _ = credentials::delete_password(&credential_id);
+    }
+
+    #[gpui::test]
     fn e2e_imported_private_key_connects_to_docker_ssh(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         if !DockerSshServer::docker_available() {
