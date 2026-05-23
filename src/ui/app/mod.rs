@@ -16498,6 +16498,62 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_known_hosts_remove_button_click_removes_entry(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let endpoint = "example.com:22".to_string();
+
+        app.update(cx, |app, cx| {
+            app.known_hosts
+                .merge_entries(std::collections::HashMap::from([(
+                    endpoint.clone(),
+                    "ssh-ed25519 AAAATESTKEY".to_string(),
+                )]))
+                .expect("known host entry should merge");
+            app.nav_section = NavSection::KnownHosts;
+            cx.notify();
+        });
+
+        let remove_click = selector_click_center(window, cx, "remove-known-host-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(remove_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.known_hosts
+                    .entries()
+                    .expect("known hosts should read")
+                    .iter()
+                    .all(|(saved, _)| saved != &endpoint)
+            );
+            assert_eq!(app.status_message, "Removed known host 'example.com:22'.");
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_known_hosts_empty_state_open_hosts_button_click_switches_section(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        app.update(cx, |app, cx| {
+            app.nav_section = NavSection::KnownHosts;
+            cx.notify();
+        });
+
+        let open_hosts_click = selector_click_center(window, cx, "known-hosts-open-hosts");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(open_hosts_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
     fn e2e_hosts_toolbar_buttons_click_open_editor_and_terminal(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let mut saved = SavedState::default();

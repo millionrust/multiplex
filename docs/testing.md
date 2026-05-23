@@ -87,6 +87,8 @@ It runs:
 - `ui::app::tests::e2e_host_library_selection_loads_editor_and_tracks_last_connected`
 - `ui::app::tests::e2e_host_grid_row_click_selects_edits_and_opens_connect_dialog`
 - `ui::app::tests::e2e_host_list_row_click_edits_and_opens_connect_dialog`
+- `ui::app::tests::e2e_known_hosts_remove_button_click_removes_entry`
+- `ui::app::tests::e2e_known_hosts_empty_state_open_hosts_button_click_switches_section`
 - `ui::app::tests::e2e_hosts_toolbar_buttons_click_open_editor_and_terminal`
 - `ui::app::tests::e2e_hosts_quick_connect_button_click_opens_workspace`
 - `ui::app::tests::e2e_hosts_bulk_toolbar_buttons_click_select_group_star_and_clear`
@@ -160,6 +162,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the Hosts library can load a saved host into the editor on selection, preserve favorite/color/description/environment metadata, toggle favorites, and surface a real last-connected timestamp after a live SSH session
 - the rendered host grid row can select a host by click, reopen it in the editor through the inline edit control, and open the connect dialog tab by double-click
 - the rendered host list row can reopen a host in the editor through the inline edit control and open the connect dialog tab by double-click
+- the rendered Known Hosts view can remove a pinned host and can return to Hosts through the empty-state `Open Hosts` button
 - the rendered hosts toolbar can open the new-host editor, open a local terminal, and switch between grid and list view modes through the actual dropdown clicks
 - the rendered hosts toolbar can also launch quick connect through the `CONNECT` button and drive select-visible, bulk group assignment, bulk star/unstar, and clear-selection through the actual bulk-action buttons
 - the rendered hosts toolbar can also drive tag filtering, sort changes, and avatar email-copy through the actual dropdown clicks
