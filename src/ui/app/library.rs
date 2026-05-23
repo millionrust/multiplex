@@ -1276,6 +1276,7 @@ impl TermiRustApp {
                                     .justify_center()
                                     .child(
                                         Button::new("logs-open-hosts")
+                                            .debug_selector(|| "logs-open-hosts".to_string())
                                             .small()
                                             .custom(Self::action_button_style(
                                                 theme::ActionTone::Accent,

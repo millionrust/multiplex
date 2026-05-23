@@ -96,6 +96,7 @@ It runs:
 - `ui::app::tests::e2e_host_row_inline_controls_toggle_batch_and_list_favorite`
 - `ui::app::tests::e2e_known_hosts_remove_button_click_removes_entry`
 - `ui::app::tests::e2e_known_hosts_empty_state_open_hosts_button_click_switches_section`
+- `ui::app::tests::e2e_logs_empty_state_open_hosts_button_click_switches_section`
 - `ui::app::tests::e2e_hosts_toolbar_buttons_click_open_editor_and_terminal`
 - `ui::app::tests::e2e_hosts_quick_connect_button_click_opens_workspace`
 - `ui::app::tests::e2e_hosts_bulk_toolbar_buttons_click_select_group_star_and_clear`
@@ -168,6 +169,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - `Esc` can close the editor dialog and return from Files view, and `Cmd+Shift+L` clears the active pane through the real shortcut path
 - the Keychain view can import a key file into the private-key editor flow and can load saved password-backed host identities from the Identities tab back into the editor
 - the rendered Keychain tabs, key-file add button, key cards, password-identity empty-state button, and identity cards all drive their actual click handlers into the editor flows
+- the rendered Keychain empty-state `Add Key File` button and per-row `Use` button both drive the same editor-loading auth flows as the rest of the Keychain UI
 - the Settings view can persist theme, font, restore/reconnect/keepalive/history toggles, default shell settings, and SSH startup defaults, and can reset the font-family/startup-directory fields through the same app paths used by the UI
 - disabling workspace restore on launch skips previously saved restorable workspaces
 - lowering the session-history retention limit trims existing logs immediately
@@ -176,6 +178,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the rendered host list row can reopen a host in the editor through the inline edit control and open the connect dialog tab by double-click
 - the rendered host-row inline controls can batch-select hosts without opening the editor, and list-row star controls can toggle favorites through their actual click handlers
 - the rendered Known Hosts view can remove a pinned host and can return to Hosts through the empty-state `Open Hosts` button
+- the rendered Logs empty-state `Open Hosts` button returns to the Hosts section through its actual click handler
 - the rendered hosts toolbar can open the new-host editor, open a local terminal, and switch between grid and list view modes through the actual dropdown clicks
 - the rendered hosts toolbar can also launch quick connect through the `CONNECT` button and drive select-visible, bulk group assignment, bulk star/unstar, and clear-selection through the actual bulk-action buttons
 - the rendered hosts toolbar can also drive tag filtering, sort changes, and avatar email-copy through the actual dropdown clicks

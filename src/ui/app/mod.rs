@@ -17066,6 +17066,26 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_logs_empty_state_open_hosts_button_click_switches_section(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        app.update(cx, |app, cx| {
+            app.nav_section = NavSection::Logs;
+            cx.notify();
+        });
+
+        let open_hosts_click = selector_click_center(window, cx, "logs-open-hosts");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(open_hosts_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
     fn e2e_hosts_toolbar_buttons_click_open_editor_and_terminal(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let mut saved = SavedState::default();
