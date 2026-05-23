@@ -57,6 +57,7 @@ It runs:
 - `ui::app::tests::e2e_workspace_and_pane_rename_persist_runtime_state`
 - `ui::app::tests::e2e_workspace_disconnect_and_reconnect_all_restores_split_panes`
 - `ui::app::tests::e2e_split_divider_drag_updates_and_persists_layout_ratio`
+- `ui::app::tests::e2e_duplicate_active_pane_shortcut_splits_workspace`
 
 Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH container, connect through the real `russh` session path, and verify both:
 
@@ -89,6 +90,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - workspace titles and pane titles persist across runtime state snapshots, including after split-pane creation
 - workspace-wide disconnect/reconnect can tear down and restore every pane in a split local-terminal workspace
 - split-pane divider drags update the runtime layout ratio and persist that ratio into restored workspace state
+- pane duplication now has direct coverage through both the documented `Cmd+D` shortcut path and the pane context-menu state action
 
 If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests self-skip.
 

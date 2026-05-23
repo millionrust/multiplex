@@ -359,6 +359,21 @@ impl TermiRustApp {
                 },
                 cx,
             ))
+            .child(self.workspace_tab_menu_item(
+                ("pane-menu-duplicate", pane_id),
+                IconName::PanelRight,
+                "Duplicate",
+                move |this, window, cx| {
+                    this.pane_context_menu = None;
+                    this.duplicate_pane_into_split(
+                        pane_id,
+                        super::SplitAxis::Horizontal,
+                        window,
+                        cx,
+                    );
+                },
+                cx,
+            ))
             .child(div().h(px(1.)).my(px(3.)).bg(theme::soft_border()))
             .when(closed, |this| {
                 this.child(self.workspace_tab_menu_item(

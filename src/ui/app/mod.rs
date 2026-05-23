@@ -5145,13 +5145,14 @@ impl TermiRustApp {
         QuickConnect::parse(&query)
     }
 
-    fn split_active_workspace(
+    fn duplicate_pane_into_split(
         &mut self,
+        pane_id: u64,
         axis: SplitAxis,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(workspace_id) = self.active_workspace_id else {
+        let Some(workspace_id) = self.workspace_id_for_pane(pane_id) else {
             return;
         };
         let Some(workspace) = self.workspace(workspace_id) else {
@@ -5163,35 +5164,36 @@ impl TermiRustApp {
             return;
         }
 
-        let Some(base_request) = self
-            .pane(workspace.active_pane_id)
-            .map(|pane| pane.request.clone())
-        else {
+        let target_pane_id = pane_id;
+        let Some(base_request) = self.pane(target_pane_id).map(|pane| pane.request.clone()) else {
             return;
         };
 
         let mut request = base_request;
         request.session_id = self.next_session_id();
-        let pane_id = self.spawn_pane(request.clone(), window, cx);
+        let new_pane_id = self.spawn_pane(request.clone(), window, cx);
 
         if let Some(workspace) = self.workspace_mut(workspace_id) {
-            let target = workspace.active_pane_id;
             let inserted = workspace
                 .layout
                 .as_mut()
-                .map(|layout| layout.split_leaf(target, &SplitNode::Leaf(pane_id), axis, false))
+                .map(|layout| {
+                    layout.split_leaf(target_pane_id, &SplitNode::Leaf(new_pane_id), axis, false)
+                })
                 .unwrap_or(false);
             if !inserted {
-                workspace.layout = Some(SplitNode::Leaf(pane_id));
+                workspace.layout = Some(SplitNode::Leaf(new_pane_id));
             }
             workspace.sync_pane_ids();
-            workspace.active_pane_id = pane_id;
+            workspace.active_pane_id = new_pane_id;
             workspace.view_mode = WorkspaceViewMode::Terminal;
             if workspace.title.trim().is_empty() {
                 workspace.title = request.title.clone();
             }
         }
 
+        self.active_workspace_id = Some(workspace_id);
+        self.pane_context_menu = None;
         self.status_message = if request.kind == ConnectionKind::LocalShell {
             "Launching split local terminal...".to_string()
         } else {
@@ -5199,11 +5201,23 @@ impl TermiRustApp {
         };
         self.error_message.clear();
         self.sync_terminal_layout(window, cx);
-        if let Some(pane) = self.pane(pane_id) {
+        if let Some(pane) = self.pane(new_pane_id) {
             pane.terminal_focus.focus(window);
         }
         self.persist_runtime_state();
         cx.notify();
+    }
+
+    fn split_active_workspace(
+        &mut self,
+        axis: SplitAxis,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(active_pane_id) = self.active_pane().map(|pane| pane.id) else {
+            return;
+        };
+        self.duplicate_pane_into_split(active_pane_id, axis, window, cx);
     }
 
     fn disconnect_workspace(&mut self, workspace_id: u64, cx: &mut Context<Self>) {
@@ -8917,6 +8931,14 @@ impl TermiRustApp {
                     false
                 }
             }
+            "d" => {
+                if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
+                    self.duplicate_pane_into_split(pane_id, SplitAxis::Horizontal, window, cx);
+                    true
+                } else {
+                    false
+                }
+            }
             _ => false,
         }
     }
@@ -9183,8 +9205,8 @@ mod tests {
     use crate::ui::shell::shell_single_quote;
     use crate::ui::util::format_relative_time_for;
     use gpui::{
-        AppContext as _, Entity, MouseButton, MouseDownEvent, MouseUpEvent, TestAppContext,
-        WindowHandle, point, px,
+        AppContext as _, Entity, KeyDownEvent, Keystroke, MouseButton, MouseDownEvent,
+        MouseUpEvent, TestAppContext, WindowHandle, point, px,
     };
     use gpui_component::Root;
     use std::path::Path;
@@ -9455,6 +9477,23 @@ mod tests {
                     expected,
                     cx.windows().len()
                 );
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
+    fn wait_for_poll_result<R>(
+        timeout: Duration,
+        mut check: impl FnMut() -> Option<R>,
+        failure_message: &str,
+    ) -> R {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if let Some(result) = check() {
+                return result;
+            }
+            if Instant::now() >= deadline {
+                panic!("{failure_message}");
             }
             std::thread::sleep(Duration::from_millis(25));
         }
@@ -11825,9 +11864,16 @@ mod tests {
             .then_some(())
         });
 
-        let startup_output = server
-            .exec("cat /home/termirust/e2e-saved-startup/startup.txt")
-            .expect("startup output should exist");
+        let startup_output = wait_for_poll_result(
+            Duration::from_secs(5),
+            || {
+                server
+                    .exec("cat /home/termirust/e2e-saved-startup/startup.txt")
+                    .ok()
+                    .filter(|output| output == "saved-startup-ok")
+            },
+            "startup output should exist",
+        );
         assert_eq!(startup_output, "saved-startup-ok");
     }
 
@@ -13698,7 +13744,9 @@ mod tests {
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    app.split_active_workspace(SplitAxis::Horizontal, window, cx);
+                    app.open_pane_context_menu(pane_id, point(px(28.), px(28.)), window, cx);
+                    assert!(app.pane_context_menu.is_some());
+                    app.duplicate_pane_into_split(pane_id, SplitAxis::Horizontal, window, cx);
                 })
             })
             .expect("window update should succeed");
@@ -13708,6 +13756,10 @@ mod tests {
             (workspace.pane_ids.len() == 2)
                 .then(|| workspace.pane_ids.iter().copied().find(|id| *id != pane_id))
                 .flatten()
+        });
+
+        app.read_with(cx, |app, _| {
+            assert!(app.pane_context_menu.is_none());
         });
 
         window
@@ -13723,6 +13775,69 @@ mod tests {
             let original = app.workspace(workspace_id).expect("original workspace");
             assert_eq!(original.pane_ids, vec![pane_id]);
             assert!(app.workspace_id_for_pane(second_pane_id).is_some());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_duplicate_active_pane_shortcut_splits_workspace(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        let duplicate = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-d").expect("cmd-d should parse"),
+            is_held: false,
+        };
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&duplicate, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+
+        let second_pane_id = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 2)
+                .then(|| workspace.pane_ids.iter().copied().find(|id| *id != pane_id))
+                .flatten()
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(second_pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert_eq!(workspace.pane_ids.len(), 2);
+            assert_eq!(workspace.active_pane_id, second_pane_id);
+            assert!(app.error_message.is_empty());
+            assert_eq!(app.active_workspace_id, Some(workspace_id));
         });
     }
 }
