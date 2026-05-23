@@ -621,6 +621,9 @@ impl TermiRustApp {
                                                         let selected = self.draft_vault_member_role == role;
                                                         div()
                                                             .id(("vault-member-role", index))
+                                                            .debug_selector(move || {
+                                                                format!("vault-member-role-{index}")
+                                                            })
                                                             .px_3()
                                                             .py(px(7.))
                                                             .rounded(px(999.))
@@ -661,6 +664,9 @@ impl TermiRustApp {
                                                     .gap_2()
                                                     .child(
                                                         Button::new("vault-member-clear")
+                                                            .debug_selector(|| {
+                                                                "vault-member-clear".to_string()
+                                                            })
                                                             .small()
                                                             .custom(Self::action_button_style(
                                                                 theme::ActionTone::Neutral,
@@ -673,6 +679,9 @@ impl TermiRustApp {
                                                     )
                                                     .child(
                                                         Button::new("vault-member-save")
+                                                            .debug_selector(|| {
+                                                                "vault-member-save".to_string()
+                                                            })
                                                             .small()
                                                             .custom(Self::action_button_style(
                                                                 theme::ActionTone::Accent,
@@ -697,6 +706,9 @@ impl TermiRustApp {
 
                                             h_flex()
                                                 .id(("vault-member-card", index))
+                                                .debug_selector(move || {
+                                                    format!("vault-member-card-{index}")
+                                                })
                                                 .justify_between()
                                                 .items_center()
                                                 .gap_3()
@@ -755,6 +767,9 @@ impl TermiRustApp {
                                                 .when(!vault.is_personal(), |this| {
                                                     this.child(
                                                         Button::new(("vault-member-remove", index))
+                                                            .debug_selector(move || {
+                                                                format!("vault-member-remove-{index}")
+                                                            })
                                                             .small()
                                                             .ghost()
                                                             .icon(IconName::Delete)
@@ -774,6 +789,7 @@ impl TermiRustApp {
                             .gap_2()
                             .child(
                                 Button::new("vault-new")
+                                    .debug_selector(|| "vault-new".to_string())
                                     .small()
                                     .custom(Self::action_button_style(
                                         theme::ActionTone::Neutral,
@@ -786,6 +802,7 @@ impl TermiRustApp {
                             )
                             .child(
                                 Button::new("vault-save")
+                                    .debug_selector(|| "vault-save".to_string())
                                     .small()
                                     .custom(Self::action_button_style(
                                         theme::ActionTone::Accent,
@@ -803,6 +820,7 @@ impl TermiRustApp {
                                 |this| {
                                     this.child(
                                         Button::new("vault-delete")
+                                            .debug_selector(|| "vault-delete".to_string())
                                             .small()
                                             .ghost()
                                             .icon(IconName::Delete)
@@ -830,6 +848,7 @@ impl TermiRustApp {
 
                         h_flex()
                             .id(("vault-card", index))
+                            .debug_selector(move || format!("vault-card-{index}"))
                             .justify_between()
                             .items_center()
                             .gap_4()

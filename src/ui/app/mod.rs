@@ -9225,7 +9225,7 @@ mod tests {
         HostColorTag, HostProfile, IdentitySource, JumpHostConnection, LocalPortForward,
         LocalShellConfig, PortForwardKind, PortForwardRule, ProfileSource, RestorableAuth,
         RestorableConnection, SavedHostGroup, SavedIdentity, SavedSnippet, SavedSplitNode,
-        SavedState, SavedWorkspace, SplitAxis, ThemePreset,
+        SavedState, SavedWorkspace, SplitAxis, ThemePreset, VaultMemberRole,
     };
     use crate::sftp::RemoteFileEntry;
     use crate::storage::load_saved_state;
@@ -12530,6 +12530,217 @@ mod tests {
                 .find(|snippet| snippet.id == "snippet-row")
                 .expect("snippet should exist");
             assert!(snippet.pinned);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_vault_cards_and_buttons_click_create_load_and_delete(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Vaults, window, cx);
+                    TermiRustApp::set_input_value(&app.vault_inputs.label, "Ops Vault", window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.vault_inputs.description,
+                        "Shared ops access",
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        let save_click = selector_click_center(window, cx, "vault-save");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(save_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+
+        let vault_id = app.read_with(cx, |app, _| {
+            let vault = app
+                .saved
+                .vaults
+                .iter()
+                .find(|vault| vault.label == "Ops Vault")
+                .expect("vault should be created");
+            assert_eq!(vault.description, "Shared ops access");
+            assert_eq!(app.selected_vault_id.as_deref(), Some(vault.id.as_str()));
+            vault.id.clone()
+        });
+
+        let new_click = selector_click_center(window, cx, "vault-new");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(new_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.nav_section, NavSection::Vaults);
+            assert_eq!(app.selected_vault_id.as_deref(), Some(DEFAULT_VAULT_ID));
+            assert!(app.vault_inputs.label.read(cx).value().is_empty());
+            assert!(app.vault_inputs.description.read(cx).value().is_empty());
+            assert_eq!(app.status_message, "Vault draft cleared.");
+            assert!(app.error_message.is_empty());
+        });
+
+        let card_click = selector_click_center(window, cx, "vault-card-1");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(card_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.selected_vault_id.as_deref(), Some(vault_id.as_str()));
+            assert_eq!(app.vault_inputs.label.read(cx).value(), "Ops Vault");
+            assert_eq!(
+                app.vault_inputs.description.read(cx).value(),
+                "Shared ops access"
+            );
+            assert_eq!(app.status_message, "Loaded vault 'Ops Vault'.");
+            assert!(app.error_message.is_empty());
+        });
+
+        let delete_click = selector_click_center(window, cx, "vault-delete");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(delete_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.saved.vaults.iter().all(|vault| vault.id != vault_id));
+            assert_eq!(app.selected_vault_id.as_deref(), Some(DEFAULT_VAULT_ID));
+            assert_eq!(
+                app.status_message,
+                "Vault removed. Its items were moved to Personal."
+            );
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_vault_member_controls_click_select_role_save_clear_and_remove(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Vaults, window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.vault_inputs.label,
+                        "Shared Vault",
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        let save_click = selector_click_center(window, cx, "vault-save");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(save_click, gpui::Modifiers::none());
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.vault_member_inputs.name,
+                        "Alex Rivera",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.vault_member_inputs.email,
+                        "alex@example.com",
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        let role_click = selector_click_center(window, cx, "vault-member-role-2");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(role_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+
+        let member_save_click = selector_click_center(window, cx, "vault-member-save");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(member_save_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+
+        let member_index = app.read_with(cx, |app, _| {
+            let vault = app
+                .saved
+                .vaults
+                .iter()
+                .find(|vault| vault.label == "Shared Vault")
+                .expect("vault should exist");
+            let (member_index, member) = vault
+                .members
+                .iter()
+                .enumerate()
+                .find(|(_, member)| member.email == "alex@example.com")
+                .expect("member should be saved");
+            assert_eq!(member.name, "Alex Rivera");
+            assert_eq!(member.email, "alex@example.com");
+            assert_eq!(member.role, VaultMemberRole::Viewer);
+            assert!(app.selected_vault_member_id.is_none());
+            assert_eq!(app.status_message, "Saved vault member 'Alex Rivera'.");
+            assert!(app.error_message.is_empty());
+            member_index
+        });
+
+        let member_card_click =
+            dynamic_selector_click_center(window, cx, format!("vault-member-card-{member_index}"));
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(member_card_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.vault_member_inputs.name.read(cx).value(), "Alex Rivera");
+            assert_eq!(
+                app.vault_member_inputs.email.read(cx).value(),
+                "alex@example.com"
+            );
+            assert_eq!(app.draft_vault_member_role, VaultMemberRole::Viewer);
+            assert_eq!(app.status_message, "Loaded vault member.");
+            assert!(app.error_message.is_empty());
+        });
+
+        let member_clear_click = selector_click_center(window, cx, "vault-member-clear");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(member_clear_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+
+        app.read_with(cx, |app, cx| {
+            assert!(app.selected_vault_member_id.is_none());
+            assert!(app.vault_member_inputs.name.read(cx).value().is_empty());
+            assert!(app.vault_member_inputs.email.read(cx).value().is_empty());
+            assert_eq!(app.draft_vault_member_role, VaultMemberRole::Editor);
+            assert!(app.error_message.is_empty());
+        });
+
+        let member_remove_click = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("vault-member-remove-{member_index}"),
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(member_remove_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+
+        app.read_with(cx, |app, _| {
+            let vault = app
+                .saved
+                .vaults
+                .iter()
+                .find(|vault| vault.label == "Shared Vault")
+                .expect("vault should exist");
+            assert!(
+                vault
+                    .members
+                    .iter()
+                    .all(|member| member.email != "alex@example.com")
+            );
+            assert_eq!(app.status_message, "Vault member removed.");
+            assert!(app.error_message.is_empty());
         });
     }
 
