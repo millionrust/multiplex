@@ -26,6 +26,7 @@ It runs:
 - `ui::app::tests::e2e_ssh_auto_reconnect_recovers_after_server_restart`
 - `ui::app::tests::e2e_restored_ssh_workspace_reconnects_and_runs_startup_on_launch`
 - `ui::app::tests::e2e_restored_ssh_workspace_opens_files_view_on_launch`
+- `ui::app::tests::e2e_restored_password_workspace_reconnects_on_launch`
 - `ui::app::tests::e2e_local_shell_paste_confirmation_and_search`
 - `sftp::tests::docker_sftp_round_trips_directory_upload_download_and_delete`
 - `ui::app::tests::e2e_sftp_files_view_navigates_and_deletes_remote_files`
@@ -36,6 +37,8 @@ It runs:
 - `ui::app::tests::e2e_choose_protocol_rejects_unsupported_protocols`
 - `ui::app::tests::e2e_copy_on_select_copies_selection_to_clipboard`
 - `ui::app::tests::e2e_workspace_duplicate_and_reorder`
+- `ui::app::tests::e2e_ssh_logs_record_disconnect_and_logs_section_opens`
+- `ui::app::tests::e2e_workspace_and_pane_rename_persist_runtime_state`
 
 Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH container, connect through the real `russh` session path, and verify both:
 
@@ -43,6 +46,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the raw SSH runtime can also authenticate through a real jump-host tunnel chain
 - the GPUI app can open a workspace, render terminal output, accept typed terminal input, split panes, broadcast commands, auto-reconnect after a non-user disconnect, and connect through a real jump host
 - restored SSH workspaces can reconnect on launch, run startup actions, and open directly into the Files view
+- restored SSH workspaces can also reconnect through the saved password-credential path on launch
 - the local terminal path can confirm/cancel multi-line paste and drive workspace search against real terminal output
 - the SFTP runtime can list directories, upload files, download files, and delete remote files against the same Docker SSH target
 - the GPUI app can open the remote Files view, navigate folders, delete remote files, save/remove user hosts, and quick-connect with password auth
@@ -51,6 +55,8 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the connect flow can reject unsupported protocol choices without opening a session
 - terminal copy-on-select can push the selected text into the clipboard
 - workspace tabs can be duplicated and reordered through the same state paths used by the chrome drag/drop actions
+- SSH disconnects are recorded in the persisted Logs history and the Logs section can be opened directly from app state
+- workspace titles and pane titles persist across runtime state snapshots, including after split-pane creation
 
 If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests self-skip.
 
@@ -95,11 +101,11 @@ runs.
 
 ## What Still Needs Manual UI Testing
 
-Some desktop behaviors still benefit from manual checks because the app is a native GPUI desktop app and the automated coverage is currently focused on SSH session flows:
+Some desktop behaviors still benefit from manual checks because the app is a native GPUI desktop app and the automated coverage is still thinner on visually-driven native interactions:
 
-- Creating/editing/deleting hosts from the UI.
-- SFTP upload/download/delete flows.
-- Window resizing, tab dragging, split-pane layout, and copy/paste.
+- Window resizing, tab dragging through rendered hit-testing, and split-pane divider interaction.
+- SFTP upload/download through the native file picker itself, rather than the app logic behind the dialog.
+- Platform-native keychain and OS file-dialog behavior.
 - Visual polish across macOS, Windows, and Linux.
 
 For manual checks, use a disposable local SSH server or VM first, not production infrastructure.

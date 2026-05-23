@@ -5187,7 +5187,9 @@ impl TermiRustApp {
             workspace.sync_pane_ids();
             workspace.active_pane_id = pane_id;
             workspace.view_mode = WorkspaceViewMode::Terminal;
-            workspace.title = request.title.clone();
+            if workspace.title.trim().is_empty() {
+                workspace.title = request.title.clone();
+            }
         }
 
         self.status_message = if request.kind == ConnectionKind::LocalShell {
@@ -9157,12 +9159,13 @@ fn apply_group_defaults_to_draft(
 #[cfg(test)]
 mod tests {
     use super::{
-        AutocompleteSource, ConnectDialogMode, ConnectProtocol, OutputSuggestionContext,
-        PathSuggestionContext, TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone,
-        WorkspaceViewMode, apply_group_defaults_to_draft, collect_autocomplete_candidates,
-        collect_command_palette_candidates, extract_snippet_prompt_names,
-        shell_command_requires_continuation, startup_bytes_for_request,
-        substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
+        AutocompleteSource, ConnectDialogMode, ConnectProtocol, NavSection,
+        OutputSuggestionContext, PathSuggestionContext, TermiRustApp, WorkspaceIndicators,
+        WorkspaceRuntimeTone, WorkspaceViewMode, apply_group_defaults_to_draft,
+        collect_autocomplete_candidates, collect_command_palette_candidates,
+        extract_snippet_prompt_names, shell_command_requires_continuation,
+        startup_bytes_for_request, substitute_snippet_placeholders, substitute_snippet_prompts,
+        workspace_runtime_summary,
     };
     use crate::credentials;
     use crate::models::{
@@ -10170,6 +10173,82 @@ mod tests {
                 .iter()
                 .any(|row| row.contains("jumpappok"))
                 .then_some(())
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_ssh_logs_record_disconnect_and_logs_section_opens(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping ssh logs e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let request = docker_ssh_request(&server);
+
+        let (_, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(pane_id)?;
+            let ready = pane
+                .terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("termirust-ui-ready"));
+            (pane.connected && ready).then_some(())
+        });
+
+        let log_id = app.read_with(cx, |app, _| {
+            let pane = app.pane(pane_id).expect("pane should exist");
+            pane.log_id.clone()
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, _| {
+                    let pane = app.pane(pane_id).expect("pane should exist");
+                    window.focus(&pane.terminal_focus);
+                })
+            })
+            .expect("window focus update should succeed");
+
+        cx.simulate_keystrokes(*window, "e x i t enter");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            (pane.closed && !pane.connected).then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Logs, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.active_workspace_id, None);
+            assert_eq!(app.nav_section, NavSection::Logs);
+            let log = app
+                .saved
+                .session_logs
+                .iter()
+                .find(|entry| entry.id == log_id)
+                .expect("session log should exist");
+            assert_eq!(log.status, crate::models::SessionLogStatus::Disconnected);
+            assert_eq!(log.host, server.host());
+            assert_eq!(log.port, server.port);
+            assert_eq!(log.username, server.username());
+            assert!(log.ended_at.is_some());
         });
     }
 
@@ -11446,6 +11525,100 @@ mod tests {
                     .filter(|workspace| workspace.title == "Local B")
                     .count(),
                 2
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_workspace_and_pane_rename_persist_runtime_state(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (workspace_id, first_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(first_pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.start_workspace_rename(window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.tab_rename_input,
+                        "Renamed Workspace",
+                        window,
+                        cx,
+                    );
+                    app.commit_workspace_rename(window, cx);
+                    app.split_active_workspace(SplitAxis::Horizontal, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let second_pane_id = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 2)
+                .then(|| {
+                    workspace
+                        .pane_ids
+                        .iter()
+                        .copied()
+                        .find(|id| *id != first_pane_id)
+                })
+                .flatten()
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.start_pane_rename(second_pane_id, window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.pane_rename_input,
+                        "Renamed Pane",
+                        window,
+                        cx,
+                    );
+                    app.commit_pane_rename(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert_eq!(workspace.title, "Renamed Workspace");
+            let pane = app.pane(second_pane_id).expect("renamed pane should exist");
+            assert_eq!(pane.title, "Renamed Pane");
+            assert_eq!(pane.request.title, "Renamed Pane");
+
+            let restored = app
+                .saved
+                .restored_workspaces
+                .iter()
+                .find(|saved| saved.title == "Renamed Workspace")
+                .expect("restored workspace should persist rename");
+            assert!(
+                restored
+                    .panes
+                    .iter()
+                    .any(|pane| pane.title == "Renamed Pane")
             );
         });
     }
