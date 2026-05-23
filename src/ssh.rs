@@ -926,9 +926,10 @@ impl client::Handler for SessionHandler {
 #[cfg(test)]
 mod tests {
     use super::{SessionCommand, SshEvent, spawn_session};
-    use crate::models::{AuthConfig, ConnectRequest, ConnectionKind};
+    use crate::models::{AuthConfig, ConnectRequest, ConnectionKind, JumpHostConnection};
     use crate::storage::KnownHostStore;
     use crate::test_support::{DockerSshServer, TestIsolation};
+    use std::path::Path;
     use std::sync::Arc;
     use std::sync::mpsc::{self, RecvTimeoutError};
     use std::time::{Duration, Instant};
@@ -945,6 +946,47 @@ mod tests {
                 password: server.password().to_string(),
             }),
             jump_host: None,
+            startup_directory: None,
+            startup_command: None,
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: Vec::new(),
+        }
+    }
+
+    fn docker_private_key_path() -> String {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/ssh-server/id_ed25519")
+            .display()
+            .to_string()
+    }
+
+    fn docker_jump_request(server: &DockerSshServer) -> ConnectRequest {
+        let key_path = docker_private_key_path();
+        ConnectRequest {
+            session_id: 77,
+            title: "Docker Via Jump".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: "127.0.0.1".to_string(),
+            port: 22,
+            username: server.username().to_string(),
+            auth: Some(AuthConfig::PrivateKey {
+                key_path: key_path.clone(),
+                passphrase: None,
+            }),
+            jump_host: Some(JumpHostConnection {
+                title: "Docker Bastion".to_string(),
+                host: server.host().to_string(),
+                port: server.port,
+                username: server.username().to_string(),
+                auth: AuthConfig::PrivateKey {
+                    key_path,
+                    passphrase: None,
+                },
+                jump_host: None,
+            }),
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
@@ -1041,5 +1083,105 @@ mod tests {
         let saved_keys = known_hosts.entries().expect("unable to read known hosts");
         assert_eq!(saved_keys.len(), 1);
         assert_eq!(saved_keys[0].0, request.known_host_key());
+    }
+
+    #[test]
+    fn docker_ssh_session_connects_through_jump_host_chain() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker jump-host e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+
+        let request = docker_jump_request(&server);
+        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+
+        let mut saw_connected = false;
+        let mut saw_output = false;
+        let deadline = Instant::now() + Duration::from_secs(20);
+
+        while Instant::now() < deadline && (!saw_connected || !saw_output) {
+            match event_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(SshEvent::Connected { session_id, .. }) => {
+                    assert_eq!(session_id, request.session_id);
+                    saw_connected = true;
+                    runtime
+                        .command_tx
+                        .send(SessionCommand::Input(
+                            b"printf 'jump-runtime-e2e-ok\\n'\n".to_vec(),
+                        ))
+                        .expect("unable to send jump-host test command");
+                }
+                Ok(SshEvent::Output { session_id, data }) => {
+                    assert_eq!(session_id, request.session_id);
+                    let output = String::from_utf8_lossy(&data);
+                    if output.contains("jump-runtime-e2e-ok") {
+                        saw_output = true;
+                        break;
+                    }
+                }
+                Ok(SshEvent::Error {
+                    session_id,
+                    message,
+                }) => {
+                    panic!(
+                        "jump-host ssh runtime emitted error for session {session_id}: {message}"
+                    );
+                }
+                Ok(SshEvent::Disconnected {
+                    session_id,
+                    message,
+                }) => {
+                    panic!(
+                        "jump-host ssh runtime disconnected before output for session {session_id}: {message}"
+                    );
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => {
+                    panic!("jump-host ssh runtime channel disconnected unexpectedly");
+                }
+            }
+        }
+
+        assert!(
+            saw_connected,
+            "did not observe jump-host ssh connected event"
+        );
+        assert!(
+            saw_output,
+            "did not observe runtime output from docker ssh server through jump host"
+        );
+
+        runtime
+            .command_tx
+            .send(SessionCommand::Disconnect)
+            .expect("unable to disconnect jump-host ssh runtime");
+
+        let disconnected = loop {
+            match event_rx.recv_timeout(Duration::from_secs(5)) {
+                Ok(SshEvent::Disconnected { session_id, .. }) => break session_id,
+                Ok(SshEvent::Output { .. } | SshEvent::Connected { .. }) => continue,
+                Ok(SshEvent::Error {
+                    session_id,
+                    message,
+                }) => panic!(
+                    "unexpected jump-host ssh error after disconnect for {session_id}: {message}"
+                ),
+                Err(error) => panic!("did not observe jump-host disconnect event: {error}"),
+            }
+        };
+        assert_eq!(disconnected, request.session_id);
+
+        let saved_keys = known_hosts.entries().expect("unable to read known hosts");
+        assert_eq!(saved_keys.len(), 2);
+        let endpoints = saved_keys
+            .iter()
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        assert!(endpoints.contains(&"127.0.0.1:22".to_string()));
+        assert!(endpoints.contains(&format!("127.0.0.1:{}", server.port)));
     }
 }

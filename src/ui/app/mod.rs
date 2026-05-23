@@ -9166,9 +9166,9 @@ mod tests {
     };
     use crate::credentials;
     use crate::models::{
-        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, LocalPortForward,
-        LocalShellConfig, PortForwardKind, PortForwardRule, RestorableAuth, RestorableConnection,
-        SavedHostGroup, SavedIdentity, SavedState, SavedWorkspace, SplitAxis,
+        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, JumpHostConnection,
+        LocalPortForward, LocalShellConfig, PortForwardKind, PortForwardRule, RestorableAuth,
+        RestorableConnection, SavedHostGroup, SavedIdentity, SavedState, SavedWorkspace, SplitAxis,
     };
     use crate::sftp::RemoteFileEntry;
     use crate::test_support::{
@@ -9226,6 +9226,40 @@ mod tests {
             .join("tests/fixtures/ssh-server/id_ed25519")
             .display()
             .to_string()
+    }
+
+    fn docker_jump_request(server: &DockerSshServer) -> ConnectRequest {
+        let key_path = docker_ssh_private_key_path();
+        ConnectRequest {
+            session_id: 0,
+            title: "Docker Via Jump".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: "127.0.0.1".to_string(),
+            port: 22,
+            username: server.username().to_string(),
+            auth: Some(AuthConfig::PrivateKey {
+                key_path: key_path.clone(),
+                passphrase: None,
+            }),
+            jump_host: Some(JumpHostConnection {
+                title: "Docker Bastion".to_string(),
+                host: server.host().to_string(),
+                port: server.port,
+                username: server.username().to_string(),
+                auth: AuthConfig::PrivateKey {
+                    key_path,
+                    passphrase: None,
+                },
+                jump_host: None,
+            }),
+            startup_directory: None,
+            startup_command: Some("printf 'jump-ui-ready\\n'".to_string()),
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: Vec::new(),
+        }
     }
 
     fn restored_docker_ssh_state(
@@ -10052,6 +10086,56 @@ mod tests {
             log_status,
             Some(crate::models::SessionLogStatus::Disconnected)
         );
+    }
+
+    #[gpui::test]
+    fn e2e_ssh_workspace_connects_through_jump_host_and_renders_output(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping app jump-host ssh e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let request = docker_jump_request(&server);
+
+        let (_, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("jump-host workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("jump-ui-ready"))
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, _| {
+                    let pane = app.pane(pane_id).expect("pane should exist");
+                    window.focus(&pane.terminal_focus);
+                })
+            })
+            .expect("window focus update should succeed");
+
+        cx.simulate_keystrokes(*window, "e c h o space j u m p a p p o k enter");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("jumpappok"))
+                .then_some(())
+        });
     }
 
     #[gpui::test]
