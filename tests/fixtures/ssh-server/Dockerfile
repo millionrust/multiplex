@@ -1,16 +1,18 @@
-FROM alpine:3.20
+FROM debian:bookworm-slim
 
-RUN apk add --no-cache openssh shadow
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        openssh-server \
+        netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN adduser -D -s /bin/sh termirust \
+RUN useradd -m -s /bin/sh termirust \
     && echo "termirust:termirust-pass" | chpasswd \
     && mkdir -p /home/termirust/.ssh /run/sshd \
     && chown -R termirust:termirust /home/termirust/.ssh \
     && chmod 700 /home/termirust/.ssh \
     && ssh-keygen -A \
-    && sed -i 's/^#\\?PasswordAuthentication .*/PasswordAuthentication yes/' /etc/ssh/sshd_config \
-    && sed -i 's/^#\\?PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config \
-    && printf '\nUsePAM no\nKbdInteractiveAuthentication no\nChallengeResponseAuthentication no\nPrintMotd no\nAllowTcpForwarding yes\nGatewayPorts yes\nPermitOpen any\nPermitListen any\n' >> /etc/ssh/sshd_config
+    && printf '\nPasswordAuthentication yes\nPermitRootLogin no\nKbdInteractiveAuthentication no\nChallengeResponseAuthentication no\nPrintMotd no\nUsePAM no\nAllowTcpForwarding yes\nGatewayPorts yes\nPermitOpen any\nPermitListen any\nAllowAgentForwarding yes\nX11Forwarding no\n' >> /etc/ssh/sshd_config
 
 EXPOSE 22
 
