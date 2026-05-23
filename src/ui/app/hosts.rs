@@ -725,6 +725,7 @@ impl TermiRustApp {
     ) -> Stateful<Div> {
         h_flex()
             .id(id)
+            .debug_selector(|| id.to_string())
             .w_full()
             .h(px(32.))
             .px(px(12.))
