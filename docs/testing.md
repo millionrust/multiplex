@@ -36,6 +36,7 @@ It runs:
 - `ui::app::tests::e2e_sftp_upload_and_download_via_dialog_actions`
 - `ui::app::tests::e2e_saved_local_forward_rule_launches_on_connect`
 - `ui::app::tests::e2e_saved_dynamic_forward_rule_launches_on_connect`
+- `ui::app::tests::e2e_saved_remote_forward_rule_launches_on_connect`
 - `ui::app::tests::e2e_quick_connect_password_flow_opens_workspace`
 - `ui::app::tests::e2e_host_editor_saves_and_removes_user_profile`
 - `ui::app::tests::e2e_saved_password_profile_connects_via_keychain`
@@ -57,7 +58,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the raw SSH runtime can authenticate, stream output, and disconnect cleanly
 - the raw SSH runtime can also authenticate through a real jump-host tunnel chain
 - the raw SSH runtime can open local forwards, SOCKS5 dynamic forwards, and remote reverse forwards against the Docker SSH fixture
-- the GPUI app can save local and SOCKS5 dynamic forwarding rules in the host editor and launch them automatically on connect
+- the GPUI app can save local, SOCKS5 dynamic, and remote reverse forwarding rules in the host editor and launch them automatically on connect
 - the GPUI app can open a workspace, render terminal output, accept typed terminal input, split panes, broadcast commands, auto-reconnect after a non-user disconnect, and connect through a real jump host
 - restored SSH workspaces can reconnect on launch, run startup actions, and open directly into the Files view
 - restored SSH workspaces can also reconnect through the saved password-credential path on launch

@@ -11415,6 +11415,104 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_saved_remote_forward_rule_launches_on_connect(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping saved remote forward e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let host = server.host().to_string();
+        let port = server.port;
+        let username = server.username().to_string();
+        let password = server.password().to_string();
+        let local_listener =
+            std::net::TcpListener::bind(("127.0.0.1", 0)).expect("should bind local target");
+        let local_port = local_listener
+            .local_addr()
+            .expect("should read local target addr")
+            .port();
+        let remote_port = allocate_local_port();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Docker Remote Forward",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        username.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        password.clone(),
+                        window,
+                        cx,
+                    );
+                    app.set_draft_port_forward_kind(PortForwardKind::Remote, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.forward_local_port,
+                        local_port.to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.forward_remote_host,
+                        "127.0.0.1",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.forward_remote_port,
+                        remote_port.to_string(),
+                        window,
+                        cx,
+                    );
+                    app.add_draft_port_forward_rule(window, cx);
+                    app.connect_current(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.connected
+                && pane
+                    .request
+                    .port_forward_rules
+                    .iter()
+                    .any(|rule| matches!(rule, PortForwardRule::Remote { .. })))
+            .then_some(())
+        });
+        std::thread::sleep(Duration::from_millis(250));
+
+        server
+            .exec(&format!(
+                "timeout 5 sh -lc \"printf 'app-forward-remote-ok\\\\n' | nc -w 3 127.0.0.1 {}\"",
+                remote_port
+            ))
+            .expect("remote forward should accept remote connection");
+
+        let (mut accepted, _) = local_listener.accept().expect("local target should accept");
+        let mut payload = String::new();
+        std::io::Read::read_to_string(&mut accepted, &mut payload)
+            .expect("local target should read payload");
+        assert!(payload.contains("app-forward-remote-ok"));
+    }
+
+    #[gpui::test]
     fn e2e_imported_private_key_connects_to_docker_ssh(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         if !DockerSshServer::docker_available() {
