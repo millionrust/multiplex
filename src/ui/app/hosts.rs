@@ -134,8 +134,7 @@ impl TermiRustApp {
                     if click_count >= 2 {
                         this.open_connect_dialog_tab(&profile_id, window, cx);
                     } else {
-                        this.selected_profile_id = Some(profile_id.clone());
-                        cx.notify();
+                        this.select_profile_from_library(&profile_id, window, cx);
                     }
                 }
             }))
@@ -298,8 +297,7 @@ impl TermiRustApp {
                     if click_count >= 2 {
                         this.open_connect_dialog_tab(&pid, window, cx);
                     } else {
-                        this.selected_profile_id = Some(pid.clone());
-                        cx.notify();
+                        this.select_profile_from_library(&pid, window, cx);
                     }
                 }
             }))

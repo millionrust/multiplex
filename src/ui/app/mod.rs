@@ -1800,6 +1800,15 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn select_profile_from_library(
+        &mut self,
+        profile_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.load_profile_into_inputs(profile_id, window, cx);
+    }
+
     fn clear_profile_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         Self::set_input_value(&self.inputs.label, "", window, cx);
         Self::set_input_value(&self.inputs.group, "", window, cx);
@@ -9191,7 +9200,8 @@ mod tests {
     };
     use crate::credentials;
     use crate::models::{
-        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, HostProfile,
+        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, HostColorTag,
+        HostProfile,
         IdentitySource, JumpHostConnection, LocalPortForward, LocalShellConfig, PortForwardKind,
         PortForwardRule, ProfileSource, RestorableAuth, RestorableConnection, SavedHostGroup,
         SavedIdentity, SavedSplitNode, SavedState, SavedWorkspace, SplitAxis, ThemePreset,
@@ -14753,6 +14763,161 @@ mod tests {
                 ""
             );
             assert_eq!(app.status_message, "Default SSH startup directory cleared.");
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_host_library_selection_loads_editor_and_tracks_last_connected(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping host library selection e2e: Docker is unavailable");
+            return;
+        }
+
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let host = server.host().to_string();
+        let port = server.port;
+        let username = server.username().to_string();
+        let password = server.password().to_string();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    app.toggle_draft_profile_favorite(true, cx);
+                    app.draft_color_tag = Some(HostColorTag::Blue);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Metadata Host",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.description,
+                        "Important production host",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.environment,
+                        "DEPLOY_ENV=prod\nROLE=web",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        username.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        password.clone(),
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+                    app.show_editor_panel = false;
+                    app.selected_profile_id = None;
+                })
+            })
+            .expect("window update should succeed");
+
+        let profile_id = app.read_with(cx, |app, _| {
+            let profile = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.label == "Metadata Host")
+                .expect("saved host should exist");
+            assert!(profile.favorite);
+            assert_eq!(profile.color_tag, Some(HostColorTag::Blue));
+            assert_eq!(profile.description, "Important production host");
+            assert!(
+                profile
+                    .environment
+                    .iter()
+                    .any(|(key, value)| key == "DEPLOY_ENV" && value == "prod")
+            );
+            assert!(
+                profile
+                    .environment
+                    .iter()
+                    .any(|(key, value)| key == "ROLE" && value == "web")
+            );
+            profile.id.clone()
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.select_profile_from_library(&profile_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, cx| {
+            assert!(app.show_editor_panel);
+            assert_eq!(app.selected_profile_id.as_deref(), Some(profile_id.as_str()));
+            assert_eq!(app.draft_color_tag, Some(HostColorTag::Blue));
+            assert!(app.draft_profile_favorite);
+            assert_eq!(app.inputs.description.read(cx).value(), "Important production host");
+            assert_eq!(
+                app.inputs.environment.read(cx).value(),
+                "DEPLOY_ENV=prod\nROLE=web"
+            );
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.set_profile_favorite(&profile_id, false, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let profile = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.id == profile_id)
+                .expect("profile should exist");
+            assert!(!profile.favorite);
+            assert_eq!(app.status_message, "Host removed from favorites.");
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.set_profile_favorite(&profile_id, true, window, cx);
+                    app.select_profile_from_library(&profile_id, window, cx);
+                    app.connect_current(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.connected && pane.request.title == "Metadata Host").then_some(())
+        });
+
+        app.read_with(cx, |app, _| {
+            let profile = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.id == profile_id)
+                .expect("profile should exist");
+            assert!(profile.favorite);
+            assert!(app.last_connected_at(profile).is_some());
         });
     }
 }
