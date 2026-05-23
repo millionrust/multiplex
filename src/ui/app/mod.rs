@@ -14304,6 +14304,40 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_library_nav_cards_click_switch_sections(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        for (selector, expected) in [
+            ("nav-card-vaults", NavSection::Vaults),
+            ("nav-card-keychain", NavSection::Keychain),
+            ("nav-card-snippets", NavSection::Snippets),
+            ("nav-card-settings", NavSection::Settings),
+            ("nav-card-known-hosts", NavSection::KnownHosts),
+            ("nav-card-logs", NavSection::Logs),
+            ("nav-card-hosts", NavSection::Hosts),
+        ] {
+            let click_point = selector_click_center(window, cx, selector);
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.simulate_click(click_point, gpui::Modifiers::none());
+
+            app.read_with(cx, |app, _| {
+                assert_eq!(app.nav_section, expected);
+                assert!(!app.show_editor_panel);
+                assert!(app.error_message.is_empty());
+            });
+        }
+    }
+
+    #[gpui::test]
     fn e2e_workspace_shortcuts_toggle_views_broadcast_and_cycle_tabs(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         if !DockerSshServer::docker_available() {

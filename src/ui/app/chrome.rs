@@ -837,6 +837,7 @@ impl TermiRustApp {
         let _ = cx;
         h_flex()
             .id(id)
+            .debug_selector(|| format!("nav-card-{}", nav_section_key(section)))
             .w_full()
             .items_center()
             .gap(px(10.))
