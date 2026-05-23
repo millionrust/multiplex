@@ -76,6 +76,7 @@ It runs:
 - `ui::app::tests::e2e_window_resize_persists_saved_window_bounds`
 - `ui::app::tests::e2e_connect_dialog_continue_and_save_updates_profile_and_connects`
 - `ui::app::tests::e2e_connect_dialog_close_discards_placeholder_workspace`
+- `ui::app::tests::e2e_choose_protocol_ssh_path_connects_saved_host`
 
 Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH container, connect through the real `russh` session path, and verify both:
 
@@ -123,6 +124,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the recent-host chip path can reopen a saved SSH workspace from persisted session history
 - window resize events persist saved window bounds and display id into `state.json`
 - the saved-host connect dialog can update the username, persist it back into the profile, connect successfully, and also close cleanly without leaving a placeholder workspace behind
+- the saved-host choose-protocol dialog can still follow the supported SSH path and replace its placeholder tab with a real connected workspace
 
 If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests self-skip.
 

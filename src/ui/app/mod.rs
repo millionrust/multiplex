@@ -15390,4 +15390,100 @@ mod tests {
             );
         });
     }
+
+    #[gpui::test]
+    fn e2e_choose_protocol_ssh_path_connects_saved_host(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping choose-protocol ssh e2e: Docker is unavailable");
+            return;
+        }
+
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let host = server.host().to_string();
+        let port = server.port;
+        let username = server.username().to_string();
+        let password = server.password().to_string();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Protocol Host",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        username.clone(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        password.clone(),
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let profile_id = app.read_with(cx, |app, _| {
+            app.saved
+                .profiles
+                .iter()
+                .find(|profile| profile.label == "Protocol Host")
+                .map(|profile| profile.id.clone())
+                .expect("saved host should exist")
+        });
+
+        let workspace_id = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_choose_protocol_tab(&profile_id, window, cx);
+                    app.active_workspace_id
+                        .expect("choose-protocol workspace should exist")
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert!(workspace.pending_connect.is_some());
+            assert!(workspace.pending_connect_mode == ConnectDialogMode::ChooseProtocol);
+            assert!(workspace.pane_ids.is_empty());
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.protocol_ssh_port,
+                        port.to_string(),
+                        window,
+                        cx,
+                    );
+                    app.confirm_choose_protocol(workspace_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.connected
+                && pane.request.title == "Protocol Host"
+                && pane.request.port == port
+                && workspace.pending_connect.is_none())
+            .then_some(())
+        });
+    }
 }
