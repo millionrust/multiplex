@@ -84,6 +84,8 @@ It runs:
 - `ui::app::tests::e2e_escape_closes_editor_dialog`
 - `ui::app::tests::e2e_clear_shortcut_and_escape_from_files_view`
 - `ui::app::tests::e2e_keychain_browse_imports_identity_into_private_key_editor`
+- `ui::app::tests::e2e_keychain_rendered_tabs_and_buttons_click_import_and_open_editor`
+- `ui::app::tests::e2e_keychain_rendered_cards_click_use_identity_and_load_password_profile`
 - `ui::app::tests::e2e_keychain_identity_tab_loads_password_profile_into_editor`
 - `ui::app::tests::e2e_settings_controls_persist_and_reset_preferences`
 - `ui::app::tests::e2e_restore_workspaces_disabled_skips_saved_workspace_launch`
@@ -165,6 +167,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - terminal clipboard shortcuts can copy the active selection, open multi-line paste confirmation, and cancel that paste via `Esc`
 - `Esc` can close the editor dialog and return from Files view, and `Cmd+Shift+L` clears the active pane through the real shortcut path
 - the Keychain view can import a key file into the private-key editor flow and can load saved password-backed host identities from the Identities tab back into the editor
+- the rendered Keychain tabs, key-file add button, key cards, password-identity empty-state button, and identity cards all drive their actual click handlers into the editor flows
 - the Settings view can persist theme, font, restore/reconnect/keepalive/history toggles, default shell settings, and SSH startup defaults, and can reset the font-family/startup-directory fields through the same app paths used by the UI
 - disabling workspace restore on launch skips previously saved restorable workspaces
 - lowering the session-history retention limit trims existing logs immediately

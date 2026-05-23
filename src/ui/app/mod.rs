@@ -16244,6 +16244,171 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_keychain_rendered_tabs_and_buttons_click_import_and_open_editor(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let key_path = std::path::PathBuf::from(docker_ssh_private_key_path());
+        queue_dialog_path(Some(key_path.clone()));
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Keychain, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let browse_click = selector_click_center(window, cx, "keychain-browse");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(browse_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.show_editor_panel);
+            assert_eq!(app.draft_auth_mode, AuthMode::PrivateKey);
+            assert_eq!(app.current_key_path(cx), key_path.display().to_string());
+            let identity = app
+                .draft_identity_id
+                .as_deref()
+                .and_then(|id| app.identity_by_id(id))
+                .expect("imported identity should be selected");
+            assert_eq!(identity.key_path, key_path.display().to_string());
+            assert!(app.error_message.is_empty());
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Keychain, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let identities_tab_click = selector_click_center(window, cx, "keychain-tab-identities");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(identities_tab_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.nav_section, NavSection::Keychain);
+            assert_eq!(app.keychain_tab, KeychainTab::Identities);
+            assert!(app.error_message.is_empty());
+        });
+
+        let new_host_click = selector_click_center(window, cx, "password-identities-open-hosts");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(new_host_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.show_editor_panel);
+            assert!(app.selected_profile_id.is_none());
+            assert!(app.inputs.label.read(cx).value().is_empty());
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_keychain_rendered_cards_click_use_identity_and_load_password_profile(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        saved.identities.push(SavedIdentity {
+            id: "identity-rendered".to_string(),
+            label: "000 Rendered Key".to_string(),
+            vault_id: None,
+            key_path: docker_ssh_private_key_path(),
+            kind: "OpenSSH".to_string(),
+            source: IdentitySource::Imported,
+        });
+        saved.profiles.push(HostProfile {
+            id: "profile-rendered-password".to_string(),
+            label: "Rendered Password Host".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 22,
+            username: "deploy".to_string(),
+            auth_mode: AuthMode::Password,
+            password_credential_id: Some("rendered-keychain-profile".to_string()),
+            source: ProfileSource::User,
+            ..HostProfile::default()
+        });
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Keychain, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let identity_index = app.read_with(cx, |app, _| {
+            app.saved
+                .identities
+                .iter()
+                .enumerate()
+                .find(|(_, identity)| identity.label == "000 Rendered Key")
+                .map(|(index, _)| index)
+                .expect("rendered identity should exist")
+        });
+        let use_click =
+            dynamic_selector_click_center(window, cx, format!("keychain-key-{identity_index}"));
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(use_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.show_editor_panel);
+            assert_eq!(app.draft_auth_mode, AuthMode::PrivateKey);
+            assert_eq!(app.draft_identity_id.as_deref(), Some("identity-rendered"));
+            assert_eq!(app.current_key_path(cx), docker_ssh_private_key_path());
+            assert_eq!(app.status_message, "Identity '000 Rendered Key' selected.");
+            assert!(app.error_message.is_empty());
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Keychain, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let identities_tab_click = selector_click_center(window, cx, "keychain-tab-identities");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(identities_tab_click, gpui::Modifiers::none());
+
+        let identity_card_click = selector_click_center(window, cx, "identity-card-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(identity_card_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.show_editor_panel);
+            assert_eq!(app.keychain_tab, KeychainTab::Identities);
+            assert_eq!(
+                app.selected_profile_id.as_deref(),
+                Some("profile-rendered-password")
+            );
+            assert_eq!(app.draft_auth_mode, AuthMode::Password);
+            assert_eq!(app.inputs.label.read(cx).value(), "Rendered Password Host");
+            assert_eq!(app.inputs.host.read(cx).value(), "127.0.0.1");
+            assert_eq!(app.inputs.username.read(cx).value(), "deploy");
+            assert_eq!(app.inputs.password.read(cx).value(), "");
+            assert_eq!(
+                app.status_message,
+                "Loaded host 'Rendered Password Host'. Password is available from the system credential store."
+            );
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
     fn e2e_keychain_identity_tab_loads_password_profile_into_editor(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         if !DockerSshServer::docker_available() {

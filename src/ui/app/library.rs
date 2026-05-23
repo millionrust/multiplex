@@ -32,6 +32,7 @@ impl TermiRustApp {
             .child(
                 div()
                     .id("keychain-tab-keys")
+                    .debug_selector(|| "keychain-tab-keys".to_string())
                     .flex_1()
                     .h(px(28.))
                     .flex()
@@ -66,6 +67,7 @@ impl TermiRustApp {
             .child(
                 div()
                     .id("keychain-tab-identities")
+                    .debug_selector(|| "keychain-tab-identities".to_string())
                     .flex_1()
                     .h(px(28.))
                     .flex()
@@ -137,6 +139,7 @@ impl TermiRustApp {
                             })
                             .child(
                                 Button::new("keychain-browse")
+                                    .debug_selector(|| "keychain-browse".to_string())
                                     .small()
                                     .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                                     .icon(IconName::FolderOpen)
@@ -168,6 +171,7 @@ impl TermiRustApp {
 
                             h_flex()
                                 .id(("keychain-key", index))
+                                .debug_selector(move || format!("keychain-key-{index}"))
                                 .justify_between()
                                 .items_center()
                                 .gap_4()
@@ -265,6 +269,7 @@ impl TermiRustApp {
                                 )
                                 .child(
                                     Button::new(("keychain-use", index))
+                                        .debug_selector(move || format!("keychain-use-{index}"))
                                         .small()
                                         .custom(Self::action_button_style(
                                             theme::ActionTone::AccentSoft,
@@ -293,6 +298,7 @@ impl TermiRustApp {
                                     .justify_center()
                                     .child(
                                         Button::new("keys-empty-add")
+                                            .debug_selector(|| "keys-empty-add".to_string())
                                             .small()
                                             .custom(Self::action_button_style(
                                                 theme::ActionTone::Accent,
@@ -366,6 +372,7 @@ impl TermiRustApp {
                                     self.effective_vault_name(profile.vault_id.as_deref());
                                 h_flex()
                                     .id(("identity-card", index))
+                                    .debug_selector(move || format!("identity-card-{index}"))
                                     .justify_between()
                                     .items_center()
                                     .gap_4()
@@ -446,6 +453,9 @@ impl TermiRustApp {
                                     .justify_center()
                                     .child(
                                         Button::new("password-identities-open-hosts")
+                                            .debug_selector(|| {
+                                                "password-identities-open-hosts".to_string()
+                                            })
                                             .small()
                                             .custom(Self::action_button_style(
                                                 theme::ActionTone::Accent,
