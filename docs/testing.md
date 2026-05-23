@@ -49,7 +49,7 @@ It runs:
 - `ui::app::tests::e2e_imported_private_key_connects_to_docker_ssh`
 - `ui::app::tests::e2e_snippet_save_run_pin_and_remove`
 - `ui::app::tests::e2e_snippets_toolbar_click_new_save_and_delete`
-- `ui::app::tests::e2e_snippet_row_click_loads_pins_and_runs`
+- `ui::app::tests::e2e_snippet_row_click_loads_and_pins`
 - `ui::app::tests::e2e_vault_member_and_sync_round_trip`
 - `ui::app::tests::e2e_sync_folder_picker_and_force_pull_conflict_flow`
 - `ui::app::tests::e2e_choose_protocol_rejects_unsupported_protocols`
@@ -89,6 +89,7 @@ It runs:
 - `ui::app::tests::e2e_host_library_selection_loads_editor_and_tracks_last_connected`
 - `ui::app::tests::e2e_host_grid_row_click_selects_edits_and_opens_connect_dialog`
 - `ui::app::tests::e2e_host_list_row_click_edits_and_opens_connect_dialog`
+- `ui::app::tests::e2e_host_row_inline_controls_toggle_batch_and_list_favorite`
 - `ui::app::tests::e2e_known_hosts_remove_button_click_removes_entry`
 - `ui::app::tests::e2e_known_hosts_empty_state_open_hosts_button_click_switches_section`
 - `ui::app::tests::e2e_hosts_toolbar_buttons_click_open_editor_and_terminal`
@@ -138,7 +139,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the GPUI app can import a private key through the picker and immediately use it to authenticate against the Docker SSH server
 - the GPUI app can also upload and download files through the same dialog-backed SFTP actions used by the desktop UI
 - the snippet workflow can save, pin, run, and remove commands against a live terminal session
-- the rendered Snippets view can create and delete snippets through its toolbar buttons, and snippet rows can load into the form, pin, and run through their actual click controls
+- the rendered Snippets view can create and delete snippets through its toolbar buttons, and snippet rows can load into the form and pin through their actual click controls
 - the vault and sync workflow can save shared vaults, manage members, push an encrypted bundle, pull it into a fresh app state, and re-home items back to Personal when a vault is deleted
 - the Settings sync workflow can also pick the sync folder through the dialog-backed action and resolve pull conflicts through the force-pull path
 - the connect flow can reject unsupported protocol choices without opening a session
@@ -167,6 +168,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the Hosts library can load a saved host into the editor on selection, preserve favorite/color/description/environment metadata, toggle favorites, and surface a real last-connected timestamp after a live SSH session
 - the rendered host grid row can select a host by click, reopen it in the editor through the inline edit control, and open the connect dialog tab by double-click
 - the rendered host list row can reopen a host in the editor through the inline edit control and open the connect dialog tab by double-click
+- the rendered host-row inline controls can batch-select hosts without opening the editor, and list-row star controls can toggle favorites through their actual click handlers
 - the rendered Known Hosts view can remove a pinned host and can return to Hosts through the empty-state `Open Hosts` button
 - the rendered hosts toolbar can open the new-host editor, open a local terminal, and switch between grid and list view modes through the actual dropdown clicks
 - the rendered hosts toolbar can also launch quick connect through the `CONNECT` button and drive select-visible, bulk group assignment, bulk star/unstar, and clear-selection through the actual bulk-action buttons

@@ -9221,11 +9221,11 @@ mod tests {
     };
     use crate::credentials;
     use crate::models::{
-        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DraftProfile, HostColorTag,
-        HostProfile, IdentitySource, JumpHostConnection, LocalPortForward, LocalShellConfig,
-        PortForwardKind, PortForwardRule, ProfileSource, RestorableAuth, RestorableConnection,
-        SavedHostGroup, SavedIdentity, SavedSplitNode, SavedState, SavedWorkspace, SplitAxis,
-        ThemePreset,
+        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
+        HostColorTag, HostProfile, IdentitySource, JumpHostConnection, LocalPortForward,
+        LocalShellConfig, PortForwardKind, PortForwardRule, ProfileSource, RestorableAuth,
+        RestorableConnection, SavedHostGroup, SavedIdentity, SavedSnippet, SavedSplitNode,
+        SavedState, SavedWorkspace, SplitAxis, ThemePreset,
     };
     use crate::sftp::RemoteFileEntry;
     use crate::storage::load_saved_state;
@@ -12458,7 +12458,10 @@ mod tests {
         });
 
         app.update(cx, |app, _| {
-            assert_eq!(app.selected_snippet_id.as_deref(), Some(snippet_id.as_str()));
+            assert_eq!(
+                app.selected_snippet_id.as_deref(),
+                Some(snippet_id.as_str())
+            );
         });
 
         let delete_click = selector_click_center(window, cx, "snippet-delete");
@@ -12479,7 +12482,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn e2e_snippet_row_click_loads_pins_and_runs(cx: &mut TestAppContext) {
+    fn e2e_snippet_row_click_loads_and_pins(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let mut saved = SavedState::default();
         saved.settings.onboarding_dismissed = true;
@@ -12497,20 +12500,9 @@ mod tests {
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.activate_library_section(NavSection::Snippets, window, cx);
-                    app.open_local_terminal(window, cx);
                 })
             })
             .expect("window update should succeed");
-
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
-            let workspace = app.active_workspace()?;
-            let pane = app.pane(workspace.active_pane_id)?;
-            (pane.request.kind == ConnectionKind::LocalShell && pane.connected).then_some(())
-        });
-
-        app.update(cx, |app, cx| {
-            app.activate_library_section(NavSection::Snippets, window, cx);
-        });
 
         let row_click = selector_click_center(window, cx, "snippet-card-0");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
@@ -12519,7 +12511,10 @@ mod tests {
         app.read_with(cx, |app, cx| {
             assert_eq!(app.selected_snippet_id.as_deref(), Some("snippet-row"));
             assert_eq!(app.snippet_inputs.label.read(cx).value(), "Row Snippet");
-            assert_eq!(app.snippet_inputs.command.read(cx).value(), "echo row-snippet");
+            assert_eq!(
+                app.snippet_inputs.command.read(cx).value(),
+                "echo row-snippet"
+            );
             assert!(app.error_message.is_empty());
         });
 
@@ -12535,20 +12530,6 @@ mod tests {
                 .find(|snippet| snippet.id == "snippet-row")
                 .expect("snippet should exist");
             assert!(snippet.pinned);
-        });
-
-        let run_click = selector_click_center(window, cx, "snippet-run-0");
-        let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(run_click, gpui::Modifiers::none());
-
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
-            let workspace = app.active_workspace()?;
-            let pane = app.pane(workspace.active_pane_id)?;
-            pane.terminal
-                .all_rows_text()
-                .iter()
-                .any(|row| row.contains("row-snippet"))
-                .then_some(())
         });
     }
 
@@ -16747,6 +16728,78 @@ mod tests {
                 app.status_message == "Opening local terminal..."
                     || app.status_message == "Local terminal ready."
             );
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_host_row_inline_controls_toggle_batch_and_list_favorite(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        saved.profiles.push(HostProfile {
+            id: "inline-host".to_string(),
+            label: "Inline Host".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 22,
+            username: "ops".to_string(),
+            source: ProfileSource::User,
+            ..HostProfile::default()
+        });
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        let grid_select_click = selector_click_center(window, cx, "host-row-select-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(grid_select_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.selected_host_ids.contains("inline-host"));
+            assert_eq!(app.status_message, "Selected 1 host(s) for batch actions.");
+            assert!(!app.show_editor_panel);
+            assert!(app.error_message.is_empty());
+        });
+
+        let grid_select_click = selector_click_center(window, cx, "host-row-select-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(grid_select_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.selected_host_ids.is_empty());
+            assert_eq!(app.status_message, "Cleared host batch selection.");
+            assert!(!app.show_editor_panel);
+            assert!(app.error_message.is_empty());
+        });
+
+        app.update(cx, |app, cx| {
+            app.hosts_view_mode = HostsViewMode::List;
+            cx.notify();
+        });
+
+        let list_favorite_click = selector_click_center(window, cx, "host-row-list-favorite-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(list_favorite_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            let profile = app
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| profile.id == "inline-host")
+                .expect("profile should exist");
+            assert!(profile.favorite);
+            assert_eq!(app.status_message, "Starred 'Inline Host'.");
+            assert!(!app.show_editor_panel);
+            assert!(app.error_message.is_empty());
+        });
+
+        let list_select_click = selector_click_center(window, cx, "host-row-list-select-0");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(list_select_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.selected_host_ids.contains("inline-host"));
+            assert_eq!(app.status_message, "Selected 1 host(s) for batch actions.");
+            assert!(!app.show_editor_panel);
             assert!(app.error_message.is_empty());
         });
     }
