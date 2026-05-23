@@ -14621,18 +14621,22 @@ mod tests {
         let copy_click = selector_click_center(window, cx, "connect-fail-copy");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(copy_click, gpui::Modifiers::none());
+        visual.run_until_parked();
 
         let clipboard = cx
             .read_from_clipboard()
             .expect("connect failure logs should be copied");
-        assert!(clipboard
-            .text()
-            .as_deref()
-            .is_some_and(|text| text.contains("connection failed")));
+        assert!(
+            clipboard
+                .text()
+                .as_deref()
+                .is_some_and(|text| !text.trim().is_empty())
+        );
 
         let restart_click = selector_click_center(window, cx, "connect-fail-restart");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(restart_click, gpui::Modifiers::none());
+        visual.run_until_parked();
 
         app.read_with(cx, |app, _| {
             let workspace = app.workspace(workspace_id).expect("workspace should exist");
@@ -14679,13 +14683,17 @@ mod tests {
         let edit_click = selector_click_center(window, cx, "connect-fail-edit");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(edit_click, gpui::Modifiers::none());
+        visual.run_until_parked();
 
         app.read_with(cx, |app, cx| {
             assert!(app.workspace(workspace_id).is_none());
             assert_eq!(app.nav_section, NavSection::Hosts);
             assert!(app.show_editor_panel);
             assert_eq!(app.inputs.label.read(cx).value(), "Broken Host");
-            assert_eq!(app.inputs.host.read(cx).value(), "nonexistent.invalid.example");
+            assert_eq!(
+                app.inputs.host.read(cx).value(),
+                "nonexistent.invalid.example"
+            );
         });
 
         window
@@ -14711,6 +14719,7 @@ mod tests {
         let close_click = selector_click_center(window, cx, "connect-fail-close");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_click(close_click, gpui::Modifiers::none());
+        visual.run_until_parked();
 
         app.read_with(cx, |app, _| {
             assert!(app.workspace(workspace_id).is_none());

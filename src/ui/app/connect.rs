@@ -295,18 +295,25 @@ impl TermiRustApp {
                             ),
                     )
                     .child(
-                        Button::new("connect-fail-copy")
-                            .small()
-                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                            .label("Copy logs")
-                            .on_click(cx.listener({
-                                let log = log_lines.clone();
-                                move |_, _, _, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(
-                                        log.join("\n"),
-                                    ));
-                                }
-                            })),
+                        div()
+                            .debug_selector(|| "connect-fail-copy".to_string())
+                            .child(
+                                Button::new("connect-fail-copy")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    ))
+                                    .label("Copy logs")
+                                    .on_click(cx.listener({
+                                        let log = log_lines.clone();
+                                        move |_, _, _, cx| {
+                                            cx.write_to_clipboard(ClipboardItem::new_string(
+                                                log.join("\n"),
+                                            ));
+                                        }
+                                    })),
+                            ),
                     ),
             )
             .child(
@@ -382,32 +389,57 @@ impl TermiRustApp {
                     .justify_end()
                     .items_center()
                     .child(
-                        Button::new("connect-fail-close")
-                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                            .label("Close")
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.close_connect_dialog_tab(workspace_id, window, cx);
-                            })),
+                        div()
+                            .debug_selector(|| "connect-fail-close".to_string())
+                            .child(
+                                Button::new("connect-fail-close")
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    ))
+                                    .label("Close")
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.close_connect_dialog_tab(workspace_id, window, cx);
+                                    })),
+                            ),
                     )
                     .child(
-                        Button::new("connect-fail-edit")
-                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                            .label("Edit host")
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.close_connect_dialog_tab(workspace_id, window, cx);
-                                this.activate_library_section(NavSection::Hosts, window, cx);
-                                this.load_profile_into_inputs(&profile_id, window, cx);
-                                this.show_editor_panel = true;
-                                cx.notify();
-                            })),
+                        div()
+                            .debug_selector(|| "connect-fail-edit".to_string())
+                            .child(
+                                Button::new("connect-fail-edit")
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Neutral,
+                                        cx,
+                                    ))
+                                    .label("Edit host")
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.close_connect_dialog_tab(workspace_id, window, cx);
+                                        this.activate_library_section(
+                                            NavSection::Hosts,
+                                            window,
+                                            cx,
+                                        );
+                                        this.load_profile_into_inputs(&profile_id, window, cx);
+                                        this.show_editor_panel = true;
+                                        cx.notify();
+                                    })),
+                            ),
                     )
                     .child(
-                        Button::new("connect-fail-restart")
-                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                            .label("Start over")
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.restart_choose_protocol(workspace_id, cx);
-                            })),
+                        div()
+                            .debug_selector(|| "connect-fail-restart".to_string())
+                            .child(
+                                Button::new("connect-fail-restart")
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .label("Start over")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.restart_choose_protocol(workspace_id, cx);
+                                    })),
+                            ),
                     ),
             )
     }
