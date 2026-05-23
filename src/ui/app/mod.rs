@@ -10977,6 +10977,73 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_imported_private_key_connects_to_docker_ssh(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping imported-key ssh e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let (app, window) = open_test_app(cx);
+        let host = server.host().to_string();
+        let port = server.port;
+        let username = server.username().to_string();
+
+        let key_path = std::path::PathBuf::from(docker_ssh_private_key_path());
+        queue_dialog_path(Some(key_path.clone()));
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.pick_key_file(window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.label, "Docker Key Host", window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.host, host.clone(), window, cx);
+                    TermiRustApp::set_input_value(&app.inputs.port, port.to_string(), window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        username.clone(),
+                        window,
+                        cx,
+                    );
+                    app.connect_current(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let (workspace_id, pane_id) =
+            wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+                let workspace = app.active_workspace()?;
+                let pane = app.pane(workspace.active_pane_id)?;
+                (pane.connected
+                    && pane
+                        .terminal
+                        .all_rows_text()
+                        .iter()
+                        .any(|row| row.contains('$') || row.contains('#')))
+                .then_some((workspace.id, pane.id))
+            });
+
+        app.read_with(cx, |app, _| {
+            let pane = app.pane(pane_id).expect("pane should exist");
+            assert!(matches!(
+                pane.request.auth.as_ref(),
+                Some(AuthConfig::PrivateKey { key_path, .. })
+                    if key_path == &docker_ssh_private_key_path()
+            ));
+            assert_eq!(pane.request.host, host);
+            assert_eq!(pane.request.port, port);
+            assert_eq!(pane.request.username, username);
+            assert!(
+                app.saved
+                    .identities
+                    .iter()
+                    .any(|identity| identity.key_path == key_path.display().to_string())
+            );
+            assert_eq!(app.active_workspace_id, Some(workspace_id));
+        });
+    }
+
+    #[gpui::test]
     fn e2e_snippet_save_run_pin_and_remove(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
