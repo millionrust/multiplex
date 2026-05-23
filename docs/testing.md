@@ -60,6 +60,9 @@ It runs:
 - `ui::app::tests::e2e_workspace_disconnect_and_reconnect_all_restores_split_panes`
 - `ui::app::tests::e2e_split_divider_drag_updates_and_persists_layout_ratio`
 - `ui::app::tests::e2e_duplicate_active_pane_shortcut_splits_workspace`
+- `ui::app::tests::e2e_chrome_local_button_click_opens_local_terminal`
+- `ui::app::tests::e2e_chrome_new_button_click_opens_new_host_editor`
+- `ui::app::tests::e2e_double_click_empty_chrome_opens_local_terminal`
 - `ui::app::tests::e2e_library_navigation_shortcuts_switch_sections_and_open_editor`
 - `ui::app::tests::e2e_workspace_shortcuts_toggle_views_broadcast_and_cycle_tabs`
 - `ui::app::tests::e2e_terminal_shortcuts_open_search_palette_and_close_workspace`
@@ -115,6 +118,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - workspace-wide disconnect/reconnect can tear down and restore every pane in a split local-terminal workspace
 - split-pane divider drags update the runtime layout ratio and persist that ratio into restored workspace state
 - pane duplication now has direct coverage through both the documented `Cmd+D` shortcut path and the pane context-menu state action
+- the chrome local-terminal button, chrome new-host button, and empty-chrome double-click path all drive their real click handlers
 - library navigation shortcuts can switch sections, jump back to host search, and open the new-host editor
 - workspace shortcuts can open remote Files view, toggle back to Terminal, toggle broadcast input, open a new local terminal tab, cycle between tabs, and jump to Logs
 - terminal shortcuts can open search, open/close the command palette, close the active workspace, and page through scrollback via the actual key path

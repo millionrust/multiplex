@@ -9231,7 +9231,7 @@ mod tests {
     use crate::ui::util::format_relative_time_for;
     use gpui::{
         AppContext as _, Entity, KeyDownEvent, Keystroke, MouseButton, MouseDownEvent,
-        MouseUpEvent, TestAppContext, WindowHandle, point, px, size,
+        MouseUpEvent, TestAppContext, VisualTestContext, WindowHandle, point, px, size,
     };
     use gpui_component::Root;
     use std::path::Path;
@@ -9405,6 +9405,19 @@ mod tests {
 
     fn open_test_app(cx: &mut TestAppContext) -> (Entity<TermiRustApp>, WindowHandle<Root>) {
         open_test_app_with_state(cx, SavedState::default())
+    }
+
+    fn chrome_click_center(
+        window: WindowHandle<Root>,
+        cx: &mut TestAppContext,
+        selector: &'static str,
+    ) -> gpui::Point<gpui::Pixels> {
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        visual
+            .debug_bounds(selector)
+            .unwrap_or_else(|| panic!("missing debug bounds for {selector}"))
+            .center()
     }
 
     fn wait_for_app_state<R>(
@@ -14200,6 +14213,88 @@ mod tests {
         app.read_with(cx, |app, _| {
             assert!(app.show_editor_panel);
             assert_eq!(app.selected_profile_id, None);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_chrome_local_button_click_opens_local_terminal(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let click_point = chrome_click_center(window, cx, "chrome-local-btn");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+
+        visual.simulate_click(click_point, gpui::Modifiers::none());
+
+        let pane_id = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.request.kind == ConnectionKind::LocalShell && pane.connected).then_some(pane.id)
+        });
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().expect("workspace should exist");
+            assert_eq!(workspace.pane_ids, vec![pane_id]);
+            assert!(app.error_message.is_empty());
+            assert!(
+                app.status_message == "Opening local terminal..."
+                    || app.status_message == "Local terminal ready."
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_chrome_new_button_click_opens_new_host_editor(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let click_point = chrome_click_center(window, cx, "chrome-new-btn");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+
+        visual.simulate_click(click_point, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, cx| {
+            assert!(app.active_workspace_id.is_none());
+            assert_eq!(app.nav_section, NavSection::Hosts);
+            assert!(app.show_editor_panel);
+            assert!(app.selected_profile_id.is_none());
+            assert_eq!(app.inputs.label.read(cx).value(), "");
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_double_click_empty_chrome_opens_local_terminal(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let click_point = chrome_click_center(window, cx, "chrome-workspace-drop-tail");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+
+        visual.simulate_event(MouseDownEvent {
+            position: click_point,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Left,
+            click_count: 2,
+            first_mouse: false,
+        });
+        visual.simulate_event(MouseUpEvent {
+            position: click_point,
+            modifiers: gpui::Modifiers::none(),
+            button: MouseButton::Left,
+            click_count: 2,
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (pane.request.kind == ConnectionKind::LocalShell && pane.connected).then_some(())
+        });
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.workspaces.len(), 1);
+            assert!(app.error_message.is_empty());
+            assert!(
+                app.status_message == "Opening local terminal..."
+                    || app.status_message == "Local terminal ready."
+            );
         });
     }
 

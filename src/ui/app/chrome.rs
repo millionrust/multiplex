@@ -737,6 +737,7 @@ impl TermiRustApp {
             .child(
                 div()
                     .id("chrome-workspace-drop-tail")
+                    .debug_selector(|| "chrome-workspace-drop-tail".to_string())
                     .h_full()
                     .flex_1()
                     .min_w(px(80.))
@@ -770,6 +771,7 @@ impl TermiRustApp {
             .child(
                 div()
                     .id("chrome-local-btn")
+                    .debug_selector(|| "chrome-local-btn".to_string())
                     .flex_shrink_0()
                     .size(px(30.))
                     .rounded(px(7.))
@@ -797,6 +799,7 @@ impl TermiRustApp {
             .child(
                 div()
                     .id("chrome-new-btn")
+                    .debug_selector(|| "chrome-new-btn".to_string())
                     .flex_shrink_0()
                     .size(px(30.))
                     .rounded(px(7.))
