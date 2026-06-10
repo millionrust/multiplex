@@ -11,11 +11,11 @@ use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
-use crate::ui::app::{TermiRustApp, primary_shortcut_label};
+use crate::ui::app::{TShellApp, primary_shortcut_label};
 use crate::ui::autocomplete::AutocompleteSource;
 use crate::ui::theme;
 
-impl TermiRustApp {
+impl TShellApp {
     pub(super) fn render_snippet_prompts_panel(&self, cx: &Context<Self>) -> Option<Div> {
         let prompts = self.pending_snippet_prompts.as_ref()?;
         let preview: SharedString = prompts

@@ -1,6 +1,6 @@
 //! Pure helpers shared by the UI layer.
 //!
-//! Only put functions here that have no dependency on `TermiRustApp`,
+//! Only put functions here that have no dependency on `TShellApp`,
 //! window/cx state, or other UI rendering primitives. Anything that needs
 //! the app, panes, or saved state stays in `app.rs` (for now).
 

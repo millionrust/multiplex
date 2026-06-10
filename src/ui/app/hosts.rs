@@ -1,6 +1,6 @@
 //! Hosts library page: host tile/list cards, top toolbar (search + NEW HOST
 //! split menu + Grid/Tag/Sort/Avatar dropdowns), the absolute overlay layer
-//! and the page wrapper. All methods are part of `TermiRustApp`.
+//! and the page wrapper. All methods are part of `TShellApp`.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -15,12 +15,12 @@ use gpui_component::{Disableable, Icon, IconName, Sizable, StyledExt as _, h_fle
 use crate::models::{AuthMode, HostProfile};
 use crate::ui::app::{
     EditorMenu, HostsSort, HostsViewMode, ICON_CALENDAR, ICON_GRID, ICON_KEY, ICON_PENCIL,
-    ICON_TAG, ICON_VAULT, TermiRustApp, ToolbarMenu, app_icon,
+    ICON_TAG, ICON_VAULT, TShellApp, ToolbarMenu, app_icon,
 };
 use crate::ui::theme;
 use crate::ui::util::format_relative_time;
 
-impl TermiRustApp {
+impl TShellApp {
     fn host_card(
         &self,
         card_ix: usize,
@@ -1234,7 +1234,7 @@ impl TermiRustApp {
                         move |this, _, cx| {
                             let _ = std::process::Command::new("open")
                                 .arg(format!(
-                                    "mailto:?subject=Join%20me%20on%20TermiRust&body=I%27m%20using%20TermiRust%20at%20{invite_email}"
+                                    "mailto:?subject=Join%20me%20on%20TShell&body=I%27m%20using%20TShell%20at%20{invite_email}"
                                 ))
                                 .spawn();
                             this.status_message =

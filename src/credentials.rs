@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use keyring::{Entry, Error as KeyringError};
 
-const SERVICE_NAME: &str = "com.termirust.password";
+const SERVICE_NAME: &str = "com.tshell.password";
 
 pub fn secure_store_label() -> &'static str {
     #[cfg(target_os = "macos")]

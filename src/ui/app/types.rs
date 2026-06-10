@@ -1,5 +1,5 @@
 //! Small shared enums for the app shell. No methods, no dependencies on
-//! `TermiRustApp` — purely state markers passed around between the UI
+//! `TShellApp` — purely state markers passed around between the UI
 //! sub-modules.
 
 #[derive(Clone, Copy, PartialEq, Eq)]

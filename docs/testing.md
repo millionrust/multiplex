@@ -185,20 +185,20 @@ If Docker is unavailable, the rest of the suite still runs and the SSH E2E tests
 The default suite does not touch any real server. To verify that your local machine or a test VM accepts SSH, set these environment variables:
 
 ```bash
-TERMIRUST_TEST_SSH_HOST=localhost \
-TERMIRUST_TEST_SSH_USER="$(whoami)" \
-TERMIRUST_TEST_SSH_PORT=22 \
-TERMIRUST_TEST_SSH_KEY="$HOME/.ssh/termirust_test_key" \
+TSHELL_TEST_SSH_HOST=localhost \
+TSHELL_TEST_SSH_USER="$(whoami)" \
+TSHELL_TEST_SSH_PORT=22 \
+TSHELL_TEST_SSH_KEY="$HOME/.ssh/tshell_test_key" \
 ./scripts/auto-test.sh
 ```
 
-If you use your normal SSH agent or default key, omit `TERMIRUST_TEST_SSH_KEY`.
+If you use your normal SSH agent or default key, omit `TSHELL_TEST_SSH_KEY`.
 
 This smoke check proves the target is reachable and authenticated before you test the app UI against the same host.
 
 ## Real Bundled-App SSH Smoke
 
-On macOS, you can also verify the packaged `TermiRust.app` against a disposable
+On macOS, you can also verify the packaged `TShell.app` against a disposable
 Docker SSH server:
 
 ```bash
@@ -209,12 +209,12 @@ If the release binary is already up to date and you just want to rerun the
 desktop smoke faster, you can reuse it with:
 
 ```bash
-TERMIRUST_SKIP_RELEASE_BUILD=1 ./scripts/test-real-app-ssh-ax.sh
+TSHELL_SKIP_RELEASE_BUILD=1 ./scripts/test-real-app-ssh-ax.sh
 ```
 
 That smoke path:
 
-- builds `TermiRust.app` with `cargo bundle --release`
+- builds `TShell.app` with `cargo bundle --release`
 - starts the Docker SSH fixture from `tests/fixtures/ssh-server/`
 - seeds a temporary restorable SSH workspace that uses the fixture key
 - launches the real bundled desktop app

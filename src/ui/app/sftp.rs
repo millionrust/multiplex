@@ -1,5 +1,5 @@
 //! SFTP page renderers (local file browser + connect-host empty state and
-//! host picker). All methods are part of the `TermiRustApp` impl.
+//! host picker). All methods are part of the `TShellApp` impl.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -10,12 +10,12 @@ use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
-use crate::ui::app::TermiRustApp;
+use crate::ui::app::TShellApp;
 use crate::ui::sftp_local::read_local_dir;
 use crate::ui::theme;
 use crate::ui::util::{format_modified_time, format_size};
 
-impl TermiRustApp {
+impl TShellApp {
     pub(super) fn render_sftp_view(&self, cx: &mut Context<Self>) -> Div {
         gpui::div()
             .flex()

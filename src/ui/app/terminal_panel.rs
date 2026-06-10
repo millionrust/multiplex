@@ -1,5 +1,5 @@
 //! Right-side terminal companion panel: Quick / Snippets / History / Themes
-//! tabs and the panel-tab button helper. Methods are part of `TermiRustApp`.
+//! tabs and the panel-tab button helper. Methods are part of `TShellApp`.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -10,10 +10,10 @@ use gpui_component::input::Input;
 use gpui_component::{Icon, IconName, StyledExt as _, h_flex, v_flex};
 
 use crate::models::ThemePreset;
-use crate::ui::app::{ICON_PALETTE, NavSection, TermiRustApp, TerminalPanelTab, app_icon};
+use crate::ui::app::{ICON_PALETTE, NavSection, TShellApp, TerminalPanelTab, app_icon};
 use crate::ui::theme;
 
-impl TermiRustApp {
+impl TShellApp {
     pub(super) fn render_terminal_side_panel(&self, cx: &mut Context<Self>) -> Div {
         let active = self.terminal_panel_tab;
         v_flex()

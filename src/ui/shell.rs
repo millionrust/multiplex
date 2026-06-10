@@ -115,7 +115,7 @@ pub fn persistent_session_name(request: &ConnectRequest) -> String {
     };
     let slug = slugify_tmux_name(&label);
     let hash = fnv1a64(&label);
-    format!("termirust-{kind}-{slug}-{hash:016x}")
+    format!("tshell-{kind}-{slug}-{hash:016x}")
 }
 
 pub fn startup_bytes_for_request(
@@ -274,7 +274,7 @@ mod tests {
         let script = String::from_utf8(startup_bytes_for_request(&request, None, true).unwrap())
             .expect("startup script should be utf8");
 
-        assert!(script.contains("exec tmux new-session -A -s 'termirust-ssh-"));
+        assert!(script.contains("exec tmux new-session -A -s 'tshell-ssh-"));
         assert!(script.contains("export AWS_PROFILE='prod'"));
         assert!(script.contains("cd -- '/srv/app'\"'\"'s'"));
         assert!(script.contains("docker compose logs -f"));
@@ -288,7 +288,7 @@ mod tests {
         let name = persistent_session_name(&request);
 
         assert_eq!(name, persistent_session_name(&request));
-        assert!(name.starts_with("termirust-ssh-prod-api-deploy-prod-example-com-22-"));
+        assert!(name.starts_with("tshell-ssh-prod-api-deploy-prod-example-com-22-"));
         assert!(
             name.chars()
                 .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
@@ -310,7 +310,7 @@ mod tests {
             None,
         );
 
-        assert!(script.contains("exec tmux new-session -A -s 'termirust-local-"));
+        assert!(script.contains("exec tmux new-session -A -s 'tshell-local-"));
         assert!(script.contains("tmux not found; continuing without persistent terminal."));
         assert!(script.contains("exec '/bin/zsh' '-l' '-i'"));
     }
@@ -324,6 +324,6 @@ mod tests {
         let script = local_tmux_wrapper_script(&request, "/bin/zsh", &[], Some("/app/bin/tmux"));
 
         assert!(script.contains("elif [ -x '/app/bin/tmux' ]; then"));
-        assert!(script.contains("exec '/app/bin/tmux' new-session -A -s 'termirust-local-"));
+        assert!(script.contains("exec '/app/bin/tmux' new-session -A -s 'tshell-local-"));
     }
 }

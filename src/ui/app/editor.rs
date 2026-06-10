@@ -14,11 +14,11 @@ use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::models::{AuthMode, ThemePreset};
 use crate::ui::app::{
-    EditorMenu, ICON_KEY, ICON_PANEL_COLLAPSE_RIGHT, ICON_TAG, NavSection, TermiRustApp, app_icon,
+    EditorMenu, ICON_KEY, ICON_PANEL_COLLAPSE_RIGHT, ICON_TAG, NavSection, TShellApp, app_icon,
 };
 use crate::ui::theme;
 
-impl TermiRustApp {
+impl TShellApp {
     pub(super) fn open_editor_for_new_host(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.nav_section = NavSection::Hosts;
         self.clear_profile_form(window, cx);

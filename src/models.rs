@@ -2378,7 +2378,7 @@ mod tests {
             port_forward_rules: Vec::new(),
             local_shell: None,
             environment: Vec::new(),
-            persistent_session_name: Some("termirust-ssh-app".to_string()),
+            persistent_session_name: Some("tshell-ssh-app".to_string()),
         };
 
         let restored = request.to_restorable().unwrap();
@@ -2453,7 +2453,7 @@ mod tests {
             ],
             local_shell: None,
             environment: Vec::new(),
-            persistent_session_name: Some("termirust-ssh-prod-stored".to_string()),
+            persistent_session_name: Some("tshell-ssh-prod-stored".to_string()),
         };
 
         let restored = request.to_restorable().unwrap();
@@ -2559,7 +2559,7 @@ mod tests {
                 cwd: Some("/tmp".to_string()),
             }),
             environment: Vec::new(),
-            persistent_session_name: Some("termirust-local-stored".to_string()),
+            persistent_session_name: Some("tshell-local-stored".to_string()),
         };
 
         let restored = request.to_restorable().unwrap();

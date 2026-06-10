@@ -13,12 +13,12 @@ use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::models::HostProfile;
 use crate::ui::app::{
-    ConnectDialogMode, ConnectFailure, ConnectProtocol, NavSection, SplitAxis, TermiRustApp,
+    ConnectDialogMode, ConnectFailure, ConnectProtocol, NavSection, SplitAxis, TShellApp,
     WorkspacePaneLayout, WorkspaceTab, WorkspaceViewMode,
 };
 use crate::ui::theme;
 
-impl TermiRustApp {
+impl TShellApp {
     pub(super) fn open_connect_dialog_tab(
         &mut self,
         profile_id: &str,

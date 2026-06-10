@@ -1,4 +1,4 @@
-//! Top tab bar (chrome) + library sidebar. All methods are part of `TermiRustApp`.
+//! Top tab bar (chrome) + library sidebar. All methods are part of `TShellApp`.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -10,12 +10,12 @@ use gpui::{
 use gpui_component::{Icon, IconName, Root, StyledExt as _, h_flex, v_flex};
 
 use crate::ui::app::{
-    ICON_PANEL_COLLAPSE_RIGHT, NavSection, TermiRustApp, WorkspaceIndicators, WorkspaceTab,
+    ICON_PANEL_COLLAPSE_RIGHT, NavSection, TShellApp, WorkspaceIndicators, WorkspaceTab,
     WorkspaceTabDrag, WorkspaceTabDragPreview, WorkspaceViewMode, app_icon, nav_section_key,
 };
 use crate::ui::theme;
 
-impl TermiRustApp {
+impl TShellApp {
     pub(super) fn workspace_indicators(&self, workspace: &WorkspaceTab) -> WorkspaceIndicators {
         let mut indicators = WorkspaceIndicators {
             split_count: workspace.pane_ids.len(),
@@ -368,7 +368,7 @@ impl TermiRustApp {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("TermiRust".into()),
+                    title: Some("TShell".into()),
                     appears_transparent: true,
                     traffic_light_position: Some(point(px(12.), px(14.))),
                 }),
@@ -379,7 +379,7 @@ impl TermiRustApp {
                 let state = initial_state.clone();
                 let request = request_for_window.clone();
                 let view = cx.new(|cx| {
-                    let mut app = TermiRustApp::new(state, window, cx);
+                    let mut app = TShellApp::new(state, window, cx);
                     if let Some((_, pane_id)) =
                         app.open_request_workspace(request.clone(), window, cx)
                     {

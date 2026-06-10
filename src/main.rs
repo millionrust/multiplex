@@ -15,7 +15,7 @@ use gpui::*;
 use gpui_component::Root;
 
 use crate::storage::{load_local_ssh_hosts, load_saved_state};
-use crate::ui::TermiRustApp;
+use crate::ui::TShellApp;
 
 fn main() {
     std::panic::set_hook(Box::new(|info| {
@@ -34,7 +34,7 @@ fn main() {
         eprintln!("=== END PANIC ===");
     }));
 
-    eprintln!("[main] starting termirust...");
+    eprintln!("[main] starting tshell...");
     let mut saved_state = load_saved_state().unwrap_or_default();
     if let Ok(imported_hosts) = load_local_ssh_hosts() {
         saved_state.merge_imported_profiles(imported_hosts);
@@ -52,7 +52,7 @@ fn main() {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("TermiRust".into()),
+                    title: Some("TShell".into()),
                     appears_transparent: true,
                     traffic_light_position: Some(point(px(12.), px(14.))),
                 }),
@@ -60,7 +60,7 @@ fn main() {
                 ..Default::default()
             },
             |window, cx| {
-                let view = cx.new(|cx| TermiRustApp::new(initial_state.clone(), window, cx));
+                let view = cx.new(|cx| TShellApp::new(initial_state.clone(), window, cx));
                 cx.new(|cx| Root::new(view, window, cx))
             },
         )

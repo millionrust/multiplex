@@ -223,7 +223,7 @@ fn build_command(
 }
 
 fn bundled_tmux_path() -> Option<PathBuf> {
-    std::env::var_os("TERMIRUST_TMUX_PATH")
+    std::env::var_os("TSHELL_TMUX_PATH")
         .map(PathBuf::from)
         .filter(|path| executable_file(path))
         .or_else(find_bundled_tmux_path)

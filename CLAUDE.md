@@ -1,4 +1,4 @@
-# TermiRust
+# TShell
 
 Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt100`.
 
@@ -51,7 +51,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
 - [src/assets.rs](src/assets.rs)
   - Embedded SVG asset source for the app chrome and custom Phosphor-style icons.
 - `src/ui/app/` — main application state and UI, split across modules:
-  - [mod.rs](src/ui/app/mod.rs) — `TermiRustApp` state, event loop, recursive split tree, window-bounds persistence.
+  - [mod.rs](src/ui/app/mod.rs) — `TShellApp` state, event loop, recursive split tree, window-bounds persistence.
   - [chrome.rs](src/ui/app/chrome.rs) — top chrome: tab strip, traffic lights, tab context menu.
   - [workspace.rs](src/ui/app/workspace.rs) — terminal pane rendering, split layout, SFTP files view.
   - [editor.rs](src/ui/app/editor.rs) / [hosts.rs](src/ui/app/hosts.rs) / [library.rs](src/ui/app/library.rs) — host editor and library.
@@ -95,7 +95,7 @@ cargo run            # debug build; use --release for performance testing
 On macOS, GPUI may need access to the system shader cache during first compile/run.
 
 Runtime logs (all `eprintln!` output and panic backtraces) are written to
-`<data dir>/termirust/termirust.log`, truncated on each launch.
+`<data dir>/tshell/tshell.log`, truncated on each launch.
 
 ## UI behavior details
 

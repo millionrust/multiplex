@@ -9,7 +9,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
-STATE_DIR="$HOME/Library/Application Support/termirust"
+STATE_DIR="$HOME/Library/Application Support/tshell"
 STATE_FILE="$STATE_DIR/state.json"
 KNOWN_HOSTS_FILE="$STATE_DIR/known_hosts.json"
 STATE_BACKUP=""
@@ -18,7 +18,7 @@ TMP_KEY=""
 
 cleanup() {
   set +e
-  pkill -x termirust >/dev/null 2>&1 || true
+  pkill -x tshell >/dev/null 2>&1 || true
   if [[ -n "${CONTAINER_NAME:-}" ]]; then
     docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
@@ -48,11 +48,11 @@ if [[ -f "$KNOWN_HOSTS_FILE" ]]; then
   cp "$KNOWN_HOSTS_FILE" "$KNOWN_HOSTS_BACKUP"
 fi
 
-docker build -t termirust-e2e-sshd:local tests/fixtures/ssh-server >/dev/null
-CONTAINER_NAME="termirust-real-ax-$RANDOM-$RANDOM"
-docker run --detach --rm --name "$CONTAINER_NAME" -p 127.0.0.1::22 termirust-e2e-sshd:local >/dev/null
+docker build -t tshell-e2e-sshd:local tests/fixtures/ssh-server >/dev/null
+CONTAINER_NAME="tshell-real-ax-$RANDOM-$RANDOM"
+docker run --detach --rm --name "$CONTAINER_NAME" -p 127.0.0.1::22 tshell-e2e-sshd:local >/dev/null
 PORT="$(docker inspect -f '{{(index (index .NetworkSettings.Ports "22/tcp") 0).HostPort}}' "$CONTAINER_NAME")"
-STARTUP_MARKER="/tmp/termirust-real-app-startup"
+STARTUP_MARKER="/tmp/tshell-real-app-startup"
 
 PROFILE_ID="real-app-docker-e2e"
 TMP_KEY="$(mktemp)"
@@ -107,7 +107,7 @@ state = {
         "tags": [],
         "host": "127.0.0.1",
         "port": int("${PORT}"),
-        "username": "termirust",
+        "username": "tshell",
         "auth_mode": "private_key",
         "key_path": "${TMP_KEY}",
         "identity_id": "identity-real-app-docker-e2e",
@@ -147,7 +147,7 @@ state = {
             "kind": "ssh",
             "host": "127.0.0.1",
             "port": int("${PORT}"),
-            "username": "termirust",
+            "username": "tshell",
             "auth": {"private_key": {"key_path": "${TMP_KEY}"}},
             "jump_host": None,
             "startup_directory": "/tmp",
@@ -175,11 +175,11 @@ PY
 
 rm -f "$KNOWN_HOSTS_FILE"
 
-if [[ "${TERMIRUST_SKIP_RELEASE_BUILD:-0}" != "1" ]]; then
+if [[ "${TSHELL_SKIP_RELEASE_BUILD:-0}" != "1" ]]; then
   cargo build --release >/dev/null
 fi
-APP_BUNDLE="/Volumes/Footages/cargo-target/terminal-c59500f320d9bfcc/release/bundle/osx/TermiRust.app"
-APP_BINARY="/Volumes/Footages/cargo-target/terminal-c59500f320d9bfcc/release/termirust"
+APP_BUNDLE="/Volumes/Footages/cargo-target/terminal-c59500f320d9bfcc/release/bundle/osx/TShell.app"
+APP_BINARY="/Volumes/Footages/cargo-target/terminal-c59500f320d9bfcc/release/tshell"
 if [[ ! -x "$APP_BINARY" ]]; then
   echo "release app binary not found at $APP_BINARY" >&2
   exit 1
@@ -188,33 +188,33 @@ if [[ ! -d "$APP_BUNDLE" ]]; then
   echo "bundled app not found at $APP_BUNDLE" >&2
   exit 1
 fi
-cp "$APP_BINARY" "$APP_BUNDLE/Contents/MacOS/termirust"
+cp "$APP_BINARY" "$APP_BUNDLE/Contents/MacOS/tshell"
 
-pkill -x termirust >/dev/null 2>&1 || true
+pkill -x tshell >/dev/null 2>&1 || true
 sleep 1
-"$APP_BUNDLE/Contents/MacOS/termirust" >/tmp/termirust-real-app.out 2>/tmp/termirust-real-app.err &
+"$APP_BUNDLE/Contents/MacOS/tshell" >/tmp/tshell-real-app.out 2>/tmp/tshell-real-app.err &
 APP_PID=""
 for _ in {1..20}; do
-  APP_PID="$(pgrep -x termirust | tail -n 1 || true)"
+  APP_PID="$(pgrep -x tshell | tail -n 1 || true)"
   if [[ -n "$APP_PID" ]]; then
     break
   fi
   sleep 1
 done
 if [[ -z "$APP_PID" ]]; then
-  echo "unable to find launched TermiRust pid" >&2
-  cat /tmp/termirust-real-app.err >&2 || true
+  echo "unable to find launched TShell pid" >&2
+  cat /tmp/tshell-real-app.err >&2 || true
   exit 1
 fi
 
 for _ in {1..20}; do
-  if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Accepted publickey for termirust"; then
+  if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Accepted publickey for tshell"; then
     break
   fi
   sleep 1
 done
 
-if ! docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Accepted publickey for termirust"; then
+if ! docker logs "$CONTAINER_NAME" 2>&1 | grep -q "Accepted publickey for tshell"; then
   echo "real app never completed public-key auth against docker ssh server" >&2
   docker logs "$CONTAINER_NAME" >&2
   exit 1

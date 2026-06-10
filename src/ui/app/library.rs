@@ -1,5 +1,5 @@
 //! Library secondary pages: Keychain (Keys + Identities), Vaults, Known
-//! Hosts, Logs, Snippets, and Settings. All methods are part of `TermiRustApp`.
+//! Hosts, Logs, Snippets, and Settings. All methods are part of `TShellApp`.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -16,13 +16,13 @@ use crate::models::{
     VaultMemberRole,
 };
 use crate::ui::app::{
-    ICON_KEY, ICON_SHIELD_CHECK, KeychainTab, NavSection, TermiRustApp, app_icon,
+    ICON_KEY, ICON_SHIELD_CHECK, KeychainTab, NavSection, TShellApp, app_icon,
     primary_shortcut_label,
 };
 use crate::ui::theme;
 use crate::ui::util::{format_relative_time, short_host_key};
 
-impl TermiRustApp {
+impl TShellApp {
     fn keychain_tab_control(&self, cx: &Context<Self>) -> Div {
         let tab = self.keychain_tab;
         h_flex()

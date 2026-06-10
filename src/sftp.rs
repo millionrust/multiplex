@@ -616,7 +616,7 @@ mod tests {
         let server = DockerSshServer::start().expect("unable to start docker ssh server");
         server
             .exec(
-                "mkdir -p /home/termirust/e2e-sftp && printf 'seed-file\\n' > /home/termirust/e2e-sftp/seed.txt && chown -R termirust:termirust /home/termirust/e2e-sftp",
+                "mkdir -p /home/tshell/e2e-sftp && printf 'seed-file\\n' > /home/tshell/e2e-sftp/seed.txt && chown -R tshell:tshell /home/tshell/e2e-sftp",
             )
             .expect("unable to seed remote sftp directory");
 
@@ -629,19 +629,19 @@ mod tests {
             1,
             request.clone(),
             known_hosts.clone(),
-            "/home/termirust/e2e-sftp".to_string(),
+            "/home/tshell/e2e-sftp".to_string(),
             event_tx.clone(),
         );
         match recv_sftp_event(&event_rx) {
             SftpEvent::DirectoryLoaded { path, entries, .. } => {
-                assert_eq!(path, "/home/termirust/e2e-sftp");
+                assert_eq!(path, "/home/tshell/e2e-sftp");
                 assert!(entries.iter().any(|entry| entry.name == "seed.txt"));
             }
             event => panic!("unexpected list event: {event:?}"),
         }
 
         let local_dir =
-            std::env::temp_dir().join(format!("termirust-sftp-test-{}", std::process::id()));
+            std::env::temp_dir().join(format!("tshell-sftp-test-{}", std::process::id()));
         fs::create_dir_all(&local_dir).expect("unable to create local sftp temp dir");
         let upload_path = local_dir.join("upload.txt");
         fs::write(&upload_path, "uploaded from test\n").expect("unable to write upload fixture");
@@ -651,7 +651,7 @@ mod tests {
             2,
             request.clone(),
             known_hosts.clone(),
-            "/home/termirust/e2e-sftp".to_string(),
+            "/home/tshell/e2e-sftp".to_string(),
             upload_path,
             event_tx.clone(),
         );
@@ -659,7 +659,7 @@ mod tests {
             SftpEvent::UploadComplete { remote_path, .. } => remote_path,
             event => panic!("unexpected upload event: {event:?}"),
         };
-        assert_eq!(uploaded_remote_path, "/home/termirust/e2e-sftp/upload.txt");
+        assert_eq!(uploaded_remote_path, "/home/tshell/e2e-sftp/upload.txt");
 
         let download_path = local_dir.join("downloaded.txt");
         spawn_download_file(
@@ -703,7 +703,7 @@ mod tests {
             5,
             request,
             known_hosts,
-            "/home/termirust/e2e-sftp".to_string(),
+            "/home/tshell/e2e-sftp".to_string(),
             event_tx,
         );
         match recv_sftp_event(&event_rx) {

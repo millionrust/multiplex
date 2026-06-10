@@ -21,12 +21,12 @@ use crate::models::{
     SavedSnippet, SavedState, SavedVault,
 };
 
-const APP_DIR_NAME: &str = "termirust";
+const APP_DIR_NAME: &str = "tshell";
 const STATE_FILE_NAME: &str = "state.json";
 const KNOWN_HOSTS_FILE_NAME: &str = "known_hosts.json";
 const PORTABLE_BUNDLE_VERSION: u16 = 1;
 const ENCRYPTED_PORTABLE_BUNDLE_VERSION: u16 = 1;
-const PORTABLE_BUNDLE_AAD: &[u8] = b"termirust.portable-bundle.v1";
+const PORTABLE_BUNDLE_AAD: &[u8] = b"tshell.portable-bundle.v1";
 const PORTABLE_BUNDLE_KEY_LEN: usize = 32;
 const PORTABLE_BUNDLE_SALT_LEN: usize = 16;
 const PORTABLE_BUNDLE_NONCE_LEN: usize = 12;
@@ -1067,9 +1067,9 @@ Host app-prod
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let export_path = std::env::temp_dir().join(format!("termirust-portable-{}.json", suffix));
+        let export_path = std::env::temp_dir().join(format!("tshell-portable-{}.json", suffix));
         let known_hosts_path =
-            std::env::temp_dir().join(format!("termirust-known-hosts-{suffix}.json"));
+            std::env::temp_dir().join(format!("tshell-known-hosts-{suffix}.json"));
         let known_hosts = KnownHostStore {
             path: known_hosts_path.clone(),
             entries: std::sync::Mutex::new(HashMap::from([(
@@ -1088,7 +1088,7 @@ Host app-prod
         let mut imported = SavedState::default();
         imported.settings.theme_preset = ThemePreset::Ocean;
         let imported_known_hosts_path =
-            std::env::temp_dir().join(format!("termirust-known-hosts-import-{suffix}.json"));
+            std::env::temp_dir().join(format!("tshell-known-hosts-import-{suffix}.json"));
         let imported_known_hosts = KnownHostStore {
             path: imported_known_hosts_path.clone(),
             entries: std::sync::Mutex::new(HashMap::new()),
@@ -1166,9 +1166,9 @@ Host app-prod
             .unwrap_or_default()
             .as_nanos();
         let export_path =
-            std::env::temp_dir().join(format!("termirust-portable-encrypted-{suffix}.json"));
+            std::env::temp_dir().join(format!("tshell-portable-encrypted-{suffix}.json"));
         let known_hosts_path =
-            std::env::temp_dir().join(format!("termirust-known-hosts-encrypted-{suffix}.json"));
+            std::env::temp_dir().join(format!("tshell-known-hosts-encrypted-{suffix}.json"));
         let known_hosts = KnownHostStore {
             path: known_hosts_path.clone(),
             entries: std::sync::Mutex::new(HashMap::from([(
@@ -1187,9 +1187,8 @@ Host app-prod
         assert!(!encrypted_file.contains("prod.example.com"));
         assert!(!encrypted_file.contains("sudo systemctl restart app"));
 
-        let imported_known_hosts_path = std::env::temp_dir().join(format!(
-            "termirust-known-hosts-encrypted-import-{suffix}.json"
-        ));
+        let imported_known_hosts_path =
+            std::env::temp_dir().join(format!("tshell-known-hosts-encrypted-import-{suffix}.json"));
         let imported_known_hosts = KnownHostStore {
             path: imported_known_hosts_path.clone(),
             entries: std::sync::Mutex::new(HashMap::new()),
@@ -1221,10 +1220,9 @@ Host app-prod
             .unwrap_or_default()
             .as_nanos();
         let export_path =
-            std::env::temp_dir().join(format!("termirust-portable-encrypted-reject-{suffix}.json"));
-        let known_hosts_path = std::env::temp_dir().join(format!(
-            "termirust-known-hosts-encrypted-reject-{suffix}.json"
-        ));
+            std::env::temp_dir().join(format!("tshell-portable-encrypted-reject-{suffix}.json"));
+        let known_hosts_path =
+            std::env::temp_dir().join(format!("tshell-known-hosts-encrypted-reject-{suffix}.json"));
         let known_hosts = KnownHostStore {
             path: known_hosts_path.clone(),
             entries: std::sync::Mutex::new(HashMap::new()),
@@ -1234,7 +1232,7 @@ Host app-prod
             .unwrap();
 
         let imported_known_hosts_path = std::env::temp_dir().join(format!(
-            "termirust-known-hosts-encrypted-reject-import-{suffix}.json"
+            "tshell-known-hosts-encrypted-reject-import-{suffix}.json"
         ));
         let imported_known_hosts = KnownHostStore {
             path: imported_known_hosts_path.clone(),
@@ -1262,7 +1260,7 @@ Host app-prod
     #[test]
     fn merge_known_host_entries_preserves_existing_items() {
         let path = std::env::temp_dir().join(format!(
-            "termirust-known-host-merge-{}.json",
+            "tshell-known-host-merge-{}.json",
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()

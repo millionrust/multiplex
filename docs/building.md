@@ -1,4 +1,4 @@
-# Building TermiRust for Distribution
+# Building TShell for Distribution
 
 This doc covers per-platform release builds and packaging. None of this
 is required for `cargo run` development; it only matters when shipping
@@ -26,7 +26,7 @@ binaries to users.
 
 ```bash
 cargo bundle --release
-open target/release/bundle/osx/TermiRust.app
+open target/release/bundle/osx/TShell.app
 ```
 
 ### Signed + notarized (distribution)
@@ -36,28 +36,28 @@ Developer ID Application certificate in your login keychain.
 
 ```bash
 cargo bundle --release
-mkdir -p target/release/bundle/osx/TermiRust.app/Contents/Resources/bin
+mkdir -p target/release/bundle/osx/TShell.app/Contents/Resources/bin
 install -m 0755 assets/bin/macos/aarch64/tmux \
-  target/release/bundle/osx/TermiRust.app/Contents/Resources/bin/tmux
+  target/release/bundle/osx/TShell.app/Contents/Resources/bin/tmux
 codesign --force --options runtime \
   --sign "Developer ID Application: <Your Name> (TEAMID)" \
-  target/release/bundle/osx/TermiRust.app/Contents/Resources/bin/tmux
+  target/release/bundle/osx/TShell.app/Contents/Resources/bin/tmux
 
 codesign --deep --force --options runtime \
   --sign "Developer ID Application: <Your Name> (TEAMID)" \
-  target/release/bundle/osx/TermiRust.app
+  target/release/bundle/osx/TShell.app
 
 # Zip and submit for notarization
 ditto -c -k --keepParent \
-  target/release/bundle/osx/TermiRust.app TermiRust.zip
-xcrun notarytool submit TermiRust.zip \
+  target/release/bundle/osx/TShell.app TShell.zip
+xcrun notarytool submit TShell.zip \
   --apple-id "<your-apple-id>" \
   --password "<app-specific-password>" \
   --team-id "TEAMID" \
   --wait
 
 # Staple the ticket so the bundle works offline
-xcrun stapler staple target/release/bundle/osx/TermiRust.app
+xcrun stapler staple target/release/bundle/osx/TShell.app
 ```
 
 The minimum supported macOS version is set in `Cargo.toml`
@@ -83,7 +83,7 @@ or more for an EV cert that bypasses SmartScreen prompts.
 
 ```powershell
 signtool sign /tr http://timestamp.digicert.com /td sha256 ^
-  /fd sha256 /a target\wix\TermiRust-0.1.0-x86_64.msi
+  /fd sha256 /a target\wix\TShell-0.1.0-x86_64.msi
 ```
 
 ## Linux
@@ -111,7 +111,7 @@ flatpak manifest). These aren't included yet; PRs welcome.
 
 ## Auto-update
 
-TermiRust does not yet ship an auto-updater. The intended path:
+TShell does not yet ship an auto-updater. The intended path:
 
 1. Wire the `self_update` crate into a periodic check.
 2. Host signed update manifests on a static origin (R2, S3, GitHub

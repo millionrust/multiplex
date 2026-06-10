@@ -32,21 +32,21 @@ run cargo clippy --all-targets --all-features
 section "Diff hygiene"
 run git diff --check
 
-if [[ -n "${TERMIRUST_TEST_SSH_HOST:-}" ]]; then
+if [[ -n "${TSHELL_TEST_SSH_HOST:-}" ]]; then
   section "Optional live SSH smoke"
 
   user_arg=()
-  if [[ -n "${TERMIRUST_TEST_SSH_USER:-}" ]]; then
-    user_arg=("${TERMIRUST_TEST_SSH_USER}@")
+  if [[ -n "${TSHELL_TEST_SSH_USER:-}" ]]; then
+    user_arg=("${TSHELL_TEST_SSH_USER}@")
   fi
 
-  port="${TERMIRUST_TEST_SSH_PORT:-22}"
+  port="${TSHELL_TEST_SSH_PORT:-22}"
   identity_args=()
-  if [[ -n "${TERMIRUST_TEST_SSH_KEY:-}" ]]; then
-    identity_args=(-i "$TERMIRUST_TEST_SSH_KEY")
+  if [[ -n "${TSHELL_TEST_SSH_KEY:-}" ]]; then
+    identity_args=(-i "$TSHELL_TEST_SSH_KEY")
   fi
 
-  target="${user_arg[*]}${TERMIRUST_TEST_SSH_HOST}"
+  target="${user_arg[*]}${TSHELL_TEST_SSH_HOST}"
   run ssh \
     -o BatchMode=yes \
     -o ConnectTimeout=8 \
@@ -54,10 +54,10 @@ if [[ -n "${TERMIRUST_TEST_SSH_HOST:-}" ]]; then
     -p "$port" \
     "${identity_args[@]}" \
     "$target" \
-    "printf 'termirust-ssh-smoke-ok\n'; uname -a"
+    "printf 'tshell-ssh-smoke-ok\n'; uname -a"
 else
   section "Optional live SSH smoke skipped"
-  printf '%s\n' "Set TERMIRUST_TEST_SSH_HOST, TERMIRUST_TEST_SSH_USER, TERMIRUST_TEST_SSH_PORT, and optionally TERMIRUST_TEST_SSH_KEY to test a real SSH target."
+  printf '%s\n' "Set TSHELL_TEST_SSH_HOST, TSHELL_TEST_SSH_USER, TSHELL_TEST_SSH_PORT, and optionally TSHELL_TEST_SSH_KEY to test a real SSH target."
 fi
 
 section "Done"

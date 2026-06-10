@@ -1,28 +1,28 @@
 [package]
-name = "termirust"
+name = "tshell"
 version = "0.1.0"
 edition = "2024"
 description = "Native desktop SSH client built with GPUI"
-authors = ["TermiRust contributors"]
+authors = ["TShell contributors"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/jacobsam/terminal"
 readme = "README.md"
-default-run = "termirust"
+default-run = "tshell"
 
 [package.metadata.bundle]
-name = "TermiRust"
-identifier = "com.termirust.desktop"
+name = "TShell"
+identifier = "com.tshell.desktop"
 icon = ["assets/icons/app.png", "assets/icons/app@2x.png"]
-copyright = "Copyright (c) 2025 TermiRust contributors"
+copyright = "Copyright (c) 2025 TShell contributors"
 category = "DeveloperTool"
 short_description = "Native desktop SSH client"
 long_description = """
-TermiRust is a native desktop SSH client with vault management,
+TShell is a native desktop SSH client with vault management,
 SFTP browsing, port forwarding, jump host chains, snippets,
 broadcast input, and more.
 """
 osx_minimum_system_version = "12.0"
-osx_url_schemes = ["termirust"]
+osx_url_schemes = ["tshell"]
 deb_depends = ["libssl3", "libxkbcommon0"]
 
 [dependencies]

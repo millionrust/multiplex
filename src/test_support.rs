@@ -9,9 +9,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::storage::set_test_app_dir_override;
 
-const TEST_SSH_IMAGE: &str = "termirust-e2e-sshd:local";
-const TEST_SSH_USER: &str = "termirust";
-const TEST_SSH_PASSWORD: &str = "termirust-pass";
+const TEST_SSH_IMAGE: &str = "tshell-e2e-sshd:local";
+const TEST_SSH_USER: &str = "tshell";
+const TEST_SSH_PASSWORD: &str = "tshell-pass";
 
 fn test_mutex() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -89,7 +89,7 @@ impl TestIsolation {
         let lock = test_mutex()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let temp_dir = std::env::temp_dir().join(format!("termirust-test-{}", now_millis()));
+        let temp_dir = std::env::temp_dir().join(format!("tshell-test-{}", now_millis()));
         fs::create_dir_all(&temp_dir).expect("unable to create test config dir");
         dialog_paths()
             .lock()
@@ -137,7 +137,7 @@ impl DockerSshServer {
     fn start_with_port_mapping(port_mapping: &str) -> Result<Self, String> {
         ensure_test_ssh_image()?;
 
-        let container_name = format!("termirust-e2e-sshd-{}", unique_suffix());
+        let container_name = format!("tshell-e2e-sshd-{}", unique_suffix());
         run_command(
             "docker",
             &[

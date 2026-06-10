@@ -224,7 +224,7 @@ struct DraftInputs {
 }
 
 impl DraftInputs {
-    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<TShellApp>) -> Self {
         Self {
             label: cx.new(|cx| {
                 InputState::new(window, cx).placeholder("Display name, e.g. Local Mac Test")
@@ -312,7 +312,7 @@ struct VaultMemberInputs {
 }
 
 impl SnippetInputs {
-    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<TShellApp>) -> Self {
         Self {
             label: cx.new(|cx| InputState::new(window, cx).placeholder("Restart service")),
             group: cx.new(|cx| InputState::new(window, cx).placeholder("Ops / Deploy")),
@@ -323,7 +323,7 @@ impl SnippetInputs {
 }
 
 impl SettingsInputs {
-    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<TShellApp>) -> Self {
         Self {
             local_shell_program: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Shell executable")),
@@ -351,14 +351,14 @@ impl SettingsInputs {
             }),
             sync_folder_input: cx.new(|cx| {
                 InputState::new(window, cx)
-                    .placeholder("e.g. ~/Dropbox/TermiRust or any cloud-synced folder")
+                    .placeholder("e.g. ~/Dropbox/TShell or any cloud-synced folder")
             }),
         }
     }
 }
 
 impl VaultInputs {
-    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<TShellApp>) -> Self {
         Self {
             label: cx.new(|cx| InputState::new(window, cx).placeholder("Ops Team")),
             description: cx
@@ -368,7 +368,7 @@ impl VaultInputs {
 }
 
 impl VaultMemberInputs {
-    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<TShellApp>) -> Self {
         Self {
             name: cx.new(|cx| InputState::new(window, cx).placeholder("Alex Rivera")),
             email: cx.new(|cx| InputState::new(window, cx).placeholder("alex@company.com")),
@@ -377,7 +377,7 @@ impl VaultMemberInputs {
 }
 
 impl ShellInputs {
-    fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<TShellApp>) -> Self {
         Self {
             host_search: cx.new(|cx| {
                 InputState::new(window, cx)
@@ -678,7 +678,7 @@ impl Render for PaneDragPreview {
     }
 }
 
-pub struct TermiRustApp {
+pub struct TShellApp {
     saved: SavedState,
     inputs: DraftInputs,
     shell_inputs: ShellInputs,
@@ -749,7 +749,7 @@ pub struct TermiRustApp {
     _window_bounds_subscription: Option<Subscription>,
 }
 
-impl TermiRustApp {
+impl TShellApp {
     pub fn new(mut saved: SavedState, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let inputs = DraftInputs::new(window, cx);
         let shell_inputs = ShellInputs::new(window, cx);
@@ -3326,7 +3326,7 @@ impl TermiRustApp {
     fn export_portable_data(&mut self, cx: &mut Context<Self>) {
         let Some(path) = FileDialog::new()
             .add_filter("JSON", &["json"])
-            .set_file_name("termirust-export.json")
+            .set_file_name("tshell-export.json")
             .save_file()
         else {
             return;
@@ -3394,7 +3394,7 @@ impl TermiRustApp {
             .sync_folder_path
             .as_deref()
             .filter(|p| !p.trim().is_empty())
-            .map(|p| std::path::Path::new(p).join("termirust-vault.encrypted.json"))
+            .map(|p| std::path::Path::new(p).join("tshell-vault.encrypted.json"))
     }
 
     fn push_to_sync_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -3577,7 +3577,7 @@ impl TermiRustApp {
 
         let Some(path) = FileDialog::new()
             .add_filter("Encrypted Backup", &["json"])
-            .set_file_name("termirust-backup.encrypted.json")
+            .set_file_name("tshell-backup.encrypted.json")
             .save_file()
         else {
             return;
@@ -8576,7 +8576,7 @@ impl TermiRustApp {
     }
 }
 
-impl Render for TermiRustApp {
+impl Render for TShellApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let content = if self.active_workspace_id.is_some() {
             self.render_workspace_shell(window, cx).into_any_element()
@@ -8714,7 +8714,7 @@ impl Render for TermiRustApp {
     }
 }
 
-impl TermiRustApp {
+impl TShellApp {
     fn handle_command_palette_key(
         &mut self,
         event: &KeyDownEvent,

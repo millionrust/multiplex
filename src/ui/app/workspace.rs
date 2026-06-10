@@ -1,6 +1,6 @@
 //! Workspace shell rendering: search bar, autocomplete bar, files (SFTP)
 //! view, terminal pane (cells/rows), workspace body and shell wrapper.
-//! All methods are part of `TermiRustApp`.
+//! All methods are part of `TShellApp`.
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -19,7 +19,7 @@ use crate::terminal::{TerminalRow, TerminalStyle};
 use crate::ui::app::{
     ConnectDialogMode, EXPANDED_PANE_LIST_WIDTH, PANE_GAP, PANE_HEADER_HEIGHT, PaneDrag,
     PaneDragPreview, SearchMatch, SessionPane, SplitAxis, TERMINAL_INNER_PADDING_X,
-    TERMINAL_INNER_PADDING_Y, TERMINAL_LINE_HEIGHT, TermiRustApp, WORKSPACE_AUTOCOMPLETE_HEIGHT,
+    TERMINAL_INNER_PADDING_Y, TERMINAL_LINE_HEIGHT, TShellApp, WORKSPACE_AUTOCOMPLETE_HEIGHT,
     WORKSPACE_PADDING, WORKSPACE_SEARCH_ROW_HEIGHT, WorkspacePaneLayout, WorkspaceTab,
     WorkspaceTabDrag, WorkspaceViewMode, primary_shortcut_label,
 };
@@ -32,7 +32,7 @@ use crate::ui::render_terminal::{
 use crate::ui::theme;
 use gpui_component::ActiveTheme as _;
 
-impl TermiRustApp {
+impl TShellApp {
     fn render_workspace_search(&self, _window: &mut Window, cx: &mut Context<Self>) -> Option<Div> {
         let workspace = self.active_workspace()?;
         if workspace.view_mode != WorkspaceViewMode::Terminal {
