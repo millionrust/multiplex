@@ -922,3 +922,493 @@ impl client::Handler for SessionHandler {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{SessionCommand, SshEvent, spawn_session};
+    use crate::models::{
+        AuthConfig, ConnectRequest, ConnectionKind, DynamicPortForward, JumpHostConnection,
+        LocalPortForward, PortForwardRule, RemotePortForward,
+    };
+    use crate::storage::KnownHostStore;
+    use crate::test_support::{DockerSshServer, TestIsolation, allocate_local_port};
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::path::Path;
+    use std::sync::Arc;
+    use std::sync::mpsc::{self, RecvTimeoutError};
+    use std::time::{Duration, Instant};
+
+    fn docker_ssh_request(server: &DockerSshServer) -> ConnectRequest {
+        ConnectRequest {
+            session_id: 42,
+            title: "Docker SSH".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: server.host().to_string(),
+            port: server.port,
+            username: server.username().to_string(),
+            auth: Some(AuthConfig::Password {
+                password: server.password().to_string(),
+            }),
+            jump_host: None,
+            startup_directory: None,
+            startup_command: None,
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: Vec::new(),
+        }
+    }
+
+    fn docker_private_key_path() -> String {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/ssh-server/id_ed25519")
+            .display()
+            .to_string()
+    }
+
+    fn docker_jump_request(server: &DockerSshServer) -> ConnectRequest {
+        let key_path = docker_private_key_path();
+        ConnectRequest {
+            session_id: 77,
+            title: "Docker Via Jump".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: "127.0.0.1".to_string(),
+            port: 22,
+            username: server.username().to_string(),
+            auth: Some(AuthConfig::PrivateKey {
+                key_path: key_path.clone(),
+                passphrase: None,
+            }),
+            jump_host: Some(JumpHostConnection {
+                title: "Docker Bastion".to_string(),
+                host: server.host().to_string(),
+                port: server.port,
+                username: server.username().to_string(),
+                auth: AuthConfig::PrivateKey {
+                    key_path,
+                    passphrase: None,
+                },
+                jump_host: None,
+            }),
+            startup_directory: None,
+            startup_command: None,
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: Vec::new(),
+        }
+    }
+
+    fn wait_for_connected(
+        request: &ConnectRequest,
+        event_rx: &mpsc::Receiver<SshEvent>,
+        label: &str,
+    ) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while Instant::now() < deadline {
+            match event_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(SshEvent::Connected { session_id, .. }) => {
+                    assert_eq!(session_id, request.session_id);
+                    return;
+                }
+                Ok(SshEvent::Output { .. }) => {}
+                Ok(SshEvent::Error {
+                    session_id,
+                    message,
+                }) => {
+                    panic!("{label} emitted error for session {session_id}: {message}");
+                }
+                Ok(SshEvent::Disconnected {
+                    session_id,
+                    message,
+                }) => {
+                    panic!(
+                        "{label} disconnected before connect for session {session_id}: {message}"
+                    );
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => {
+                    panic!("{label} channel disconnected unexpectedly");
+                }
+            }
+        }
+
+        panic!("did not observe connected event for {label}");
+    }
+
+    fn disconnect_runtime(
+        request: &ConnectRequest,
+        runtime: &super::SessionRuntimeHandle,
+        event_rx: &mpsc::Receiver<SshEvent>,
+        label: &str,
+    ) {
+        runtime
+            .command_tx
+            .send(SessionCommand::Disconnect)
+            .expect("unable to disconnect ssh runtime");
+
+        let disconnected = loop {
+            match event_rx.recv_timeout(Duration::from_secs(5)) {
+                Ok(SshEvent::Disconnected { session_id, .. }) => break session_id,
+                Ok(SshEvent::Output { .. } | SshEvent::Connected { .. }) => continue,
+                Ok(SshEvent::Error {
+                    session_id,
+                    message,
+                }) => {
+                    panic!("unexpected {label} error after disconnect for {session_id}: {message}")
+                }
+                Err(error) => panic!("did not observe {label} disconnect event: {error}"),
+            }
+        };
+        assert_eq!(disconnected, request.session_id);
+    }
+
+    #[test]
+    fn docker_ssh_session_connects_and_streams_output() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker ssh e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+
+        let request = docker_ssh_request(&server);
+        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+
+        let mut saw_connected = false;
+        let mut saw_output = false;
+        let deadline = Instant::now() + Duration::from_secs(20);
+
+        while Instant::now() < deadline && (!saw_connected || !saw_output) {
+            match event_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(SshEvent::Connected { session_id, .. }) => {
+                    assert_eq!(session_id, request.session_id);
+                    saw_connected = true;
+                    runtime
+                        .command_tx
+                        .send(SessionCommand::Input(
+                            b"printf 'runtime-e2e-ok\\n'\n".to_vec(),
+                        ))
+                        .expect("unable to send test command");
+                }
+                Ok(SshEvent::Output { session_id, data }) => {
+                    assert_eq!(session_id, request.session_id);
+                    let output = String::from_utf8_lossy(&data);
+                    if output.contains("runtime-e2e-ok") {
+                        saw_output = true;
+                        break;
+                    }
+                }
+                Ok(SshEvent::Error {
+                    session_id,
+                    message,
+                }) => {
+                    panic!("ssh runtime emitted error for session {session_id}: {message}");
+                }
+                Ok(SshEvent::Disconnected {
+                    session_id,
+                    message,
+                }) => {
+                    panic!(
+                        "ssh runtime disconnected before output for session {session_id}: {message}"
+                    );
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => {
+                    panic!("ssh runtime channel disconnected unexpectedly");
+                }
+            }
+        }
+
+        assert!(saw_connected, "did not observe ssh connected event");
+        assert!(
+            saw_output,
+            "did not observe runtime output from docker ssh server"
+        );
+
+        runtime
+            .command_tx
+            .send(SessionCommand::Disconnect)
+            .expect("unable to disconnect ssh runtime");
+
+        let disconnected = loop {
+            match event_rx.recv_timeout(Duration::from_secs(5)) {
+                Ok(SshEvent::Disconnected { session_id, .. }) => break session_id,
+                Ok(SshEvent::Output { .. } | SshEvent::Connected { .. }) => continue,
+                Ok(SshEvent::Error {
+                    session_id,
+                    message,
+                }) => panic!("unexpected ssh error after disconnect for {session_id}: {message}"),
+                Err(error) => panic!("did not observe disconnect event: {error}"),
+            }
+        };
+        assert_eq!(disconnected, request.session_id);
+
+        let saved_keys = known_hosts.entries().expect("unable to read known hosts");
+        assert_eq!(saved_keys.len(), 1);
+        assert_eq!(saved_keys[0].0, request.known_host_key());
+    }
+
+    #[test]
+    fn docker_ssh_session_connects_through_jump_host_chain() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker jump-host e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+
+        let request = docker_jump_request(&server);
+        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+
+        let mut saw_connected = false;
+        let mut saw_output = false;
+        let deadline = Instant::now() + Duration::from_secs(20);
+
+        while Instant::now() < deadline && (!saw_connected || !saw_output) {
+            match event_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(SshEvent::Connected { session_id, .. }) => {
+                    assert_eq!(session_id, request.session_id);
+                    saw_connected = true;
+                    runtime
+                        .command_tx
+                        .send(SessionCommand::Input(
+                            b"printf 'jump-runtime-e2e-ok\\n'\n".to_vec(),
+                        ))
+                        .expect("unable to send jump-host test command");
+                }
+                Ok(SshEvent::Output { session_id, data }) => {
+                    assert_eq!(session_id, request.session_id);
+                    let output = String::from_utf8_lossy(&data);
+                    if output.contains("jump-runtime-e2e-ok") {
+                        saw_output = true;
+                        break;
+                    }
+                }
+                Ok(SshEvent::Error {
+                    session_id,
+                    message,
+                }) => {
+                    panic!(
+                        "jump-host ssh runtime emitted error for session {session_id}: {message}"
+                    );
+                }
+                Ok(SshEvent::Disconnected {
+                    session_id,
+                    message,
+                }) => {
+                    panic!(
+                        "jump-host ssh runtime disconnected before output for session {session_id}: {message}"
+                    );
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => {
+                    panic!("jump-host ssh runtime channel disconnected unexpectedly");
+                }
+            }
+        }
+
+        assert!(
+            saw_connected,
+            "did not observe jump-host ssh connected event"
+        );
+        assert!(
+            saw_output,
+            "did not observe runtime output from docker ssh server through jump host"
+        );
+
+        runtime
+            .command_tx
+            .send(SessionCommand::Disconnect)
+            .expect("unable to disconnect jump-host ssh runtime");
+
+        let disconnected = loop {
+            match event_rx.recv_timeout(Duration::from_secs(5)) {
+                Ok(SshEvent::Disconnected { session_id, .. }) => break session_id,
+                Ok(SshEvent::Output { .. } | SshEvent::Connected { .. }) => continue,
+                Ok(SshEvent::Error {
+                    session_id,
+                    message,
+                }) => panic!(
+                    "unexpected jump-host ssh error after disconnect for {session_id}: {message}"
+                ),
+                Err(error) => panic!("did not observe jump-host disconnect event: {error}"),
+            }
+        };
+        assert_eq!(disconnected, request.session_id);
+
+        let saved_keys = known_hosts.entries().expect("unable to read known hosts");
+        assert!(saved_keys.len() >= 2);
+        let endpoints = saved_keys
+            .iter()
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        assert!(endpoints.contains(&"127.0.0.1:22".to_string()));
+        assert!(endpoints.contains(&format!("127.0.0.1:{}", server.port)));
+    }
+
+    #[test]
+    fn docker_ssh_local_port_forward_proxies_remote_service() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker local forward e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        server
+            .exec(
+                "nohup sh -lc 'while true; do printf \"forward-local-ok\\n\" | nc -l -p 39001 -q 1; done' >/tmp/forward-local.log 2>&1 &",
+            )
+            .expect("unable to start remote forwarded fixture service");
+
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let local_port = allocate_local_port();
+
+        let mut request = docker_ssh_request(&server);
+        request.port_forward_rules = vec![PortForwardRule::Local {
+            forward: LocalPortForward {
+                local_host: "127.0.0.1".to_string(),
+                local_port,
+                remote_host: "127.0.0.1".to_string(),
+                remote_port: 39001,
+            },
+        }];
+
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        wait_for_connected(&request, &event_rx, "local forward");
+        std::thread::sleep(Duration::from_millis(250));
+
+        let mut stream =
+            TcpStream::connect(("127.0.0.1", local_port)).expect("local forward should accept");
+        let mut buffer = String::new();
+        stream
+            .read_to_string(&mut buffer)
+            .expect("local forward should return remote payload");
+        assert!(buffer.contains("forward-local-ok"));
+
+        disconnect_runtime(&request, &runtime, &event_rx, "local forward");
+    }
+
+    #[test]
+    fn docker_ssh_dynamic_port_forward_proxies_remote_service() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker dynamic forward e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        server
+            .exec(
+                "nohup sh -lc 'while true; do printf \"forward-socks-ok\\n\" | nc -l -p 39002 -q 1; done' >/tmp/forward-socks.log 2>&1 &",
+            )
+            .expect("unable to start remote socks fixture service");
+
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let local_port = allocate_local_port();
+
+        let mut request = docker_ssh_request(&server);
+        request.port_forward_rules = vec![PortForwardRule::Dynamic {
+            forward: DynamicPortForward {
+                local_host: "127.0.0.1".to_string(),
+                local_port,
+            },
+        }];
+
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        wait_for_connected(&request, &event_rx, "dynamic forward");
+        std::thread::sleep(Duration::from_millis(250));
+
+        let mut stream =
+            TcpStream::connect(("127.0.0.1", local_port)).expect("socks proxy should accept");
+        stream
+            .write_all(&[0x05, 0x01, 0x00])
+            .expect("should send socks greeting");
+        let mut greeting = [0u8; 2];
+        stream
+            .read_exact(&mut greeting)
+            .expect("should read socks greeting");
+        assert_eq!(greeting, [0x05, 0x00]);
+
+        let request_bytes = [
+            0x05, 0x01, 0x00, 0x03, 9, b'l', b'o', b'c', b'a', b'l', b'h', b'o', b's', b't', 0x98,
+            0x5a,
+        ];
+        stream
+            .write_all(&request_bytes)
+            .expect("should send socks connect");
+        let mut response = [0u8; 10];
+        stream
+            .read_exact(&mut response)
+            .expect("should read socks connect response");
+        assert_eq!(response[0], 0x05);
+        assert_eq!(response[1], 0x00);
+
+        let mut buffer = String::new();
+        stream
+            .read_to_string(&mut buffer)
+            .expect("socks forward should return remote payload");
+        assert!(buffer.contains("forward-socks-ok"));
+
+        disconnect_runtime(&request, &runtime, &event_rx, "dynamic forward");
+    }
+
+    #[test]
+    fn docker_ssh_remote_port_forward_proxies_local_service() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker remote forward e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let local_listener =
+            TcpListener::bind(("127.0.0.1", 0)).expect("should bind local forwarded target");
+        let local_port = local_listener
+            .local_addr()
+            .expect("should read local forwarded target addr")
+            .port();
+        let remote_port = allocate_local_port();
+
+        let mut request = docker_ssh_request(&server);
+        request.port_forward_rules = vec![PortForwardRule::Remote {
+            forward: RemotePortForward {
+                local_host: "127.0.0.1".to_string(),
+                local_port,
+                remote_host: "127.0.0.1".to_string(),
+                remote_port,
+            },
+        }];
+
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        wait_for_connected(&request, &event_rx, "remote forward");
+        std::thread::sleep(Duration::from_millis(250));
+
+        server
+            .exec(&format!(
+                "timeout 5 sh -lc \"printf 'reverse-forward-ok\\\\n' | nc -w 3 127.0.0.1 {}\"",
+                remote_port
+            ))
+            .expect("remote forward should accept remote connection");
+
+        let (mut accepted, _) = local_listener
+            .accept()
+            .expect("local forwarded target should accept");
+        let mut payload = String::new();
+        accepted
+            .read_to_string(&mut payload)
+            .expect("local forwarded target should read payload");
+        assert!(payload.contains("reverse-forward-ok"));
+
+        disconnect_runtime(&request, &runtime, &event_rx, "remote forward");
+    }
+}

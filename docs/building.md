@@ -10,7 +10,8 @@ binaries to users.
 - `cargo install cargo-bundle` for the macOS app bundle and Linux
   packages. `cargo-bundle` reads the `[package.metadata.bundle]`
   section in `Cargo.toml`.
-- A 1024×1024 PNG at `assets/icons/app.png`. Until that's added,
+- Bundle icons at `assets/icons/app.png` (512×512) and
+  `assets/icons/app@2x.png` (1024×1024 retina). Until those are added,
   cargo-bundle falls back to a placeholder.
 
 ## macOS

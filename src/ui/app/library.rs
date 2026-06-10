@@ -1002,6 +1002,9 @@ impl TermiRustApp {
                             )
                             .child(
                                 Button::new(("remove-known-host", index))
+                                    .debug_selector(move || {
+                                        format!("remove-known-host-{index}")
+                                    })
                                     .ghost()
                                     .xsmall()
                                     .icon(IconName::Delete)
@@ -1042,6 +1045,7 @@ impl TermiRustApp {
                                     .justify_center()
                                     .child(
                                         Button::new("known-hosts-open-hosts")
+                                            .debug_selector(|| "known-hosts-open-hosts".to_string())
                                             .small()
                                             .custom(Self::action_button_style(
                                                 theme::ActionTone::Accent,

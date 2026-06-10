@@ -131,7 +131,11 @@ pub fn spawn_upload_file(
             .with_context(|| format!("Unable to read {}", local_path.display()))?;
 
         with_sftp(request, known_hosts, move |sftp| async move {
-            sftp.write(remote_path.clone(), &bytes)
+            let mut file = sftp
+                .create(remote_path.clone())
+                .await
+                .with_context(|| format!("Unable to create remote file {remote_path}"))?;
+            tokio::io::AsyncWriteExt::write_all(&mut file, &bytes)
                 .await
                 .with_context(|| format!("Unable to upload to {remote_path}"))?;
             Ok(remote_path)
@@ -555,5 +559,160 @@ impl client::Handler for SftpHandler {
                 Ok(true)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory, spawn_upload_file,
+    };
+    use crate::models::{AuthConfig, ConnectRequest, ConnectionKind};
+    use crate::storage::KnownHostStore;
+    use crate::test_support::{DockerSshServer, TestIsolation};
+    use std::fs;
+    use std::sync::Arc;
+    use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+    use std::time::Duration;
+
+    fn docker_sftp_request(server: &DockerSshServer) -> ConnectRequest {
+        ConnectRequest {
+            session_id: 7,
+            title: "Docker SFTP".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: server.host().to_string(),
+            port: server.port,
+            username: server.username().to_string(),
+            auth: Some(AuthConfig::Password {
+                password: server.password().to_string(),
+            }),
+            jump_host: None,
+            startup_directory: None,
+            startup_command: None,
+            start_in_files: false,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: Vec::new(),
+        }
+    }
+
+    fn recv_sftp_event(rx: &Receiver<SftpEvent>) -> SftpEvent {
+        match rx.recv_timeout(Duration::from_secs(20)) {
+            Ok(event) => event,
+            Err(RecvTimeoutError::Timeout) => panic!("timed out waiting for SFTP event"),
+            Err(RecvTimeoutError::Disconnected) => panic!("SFTP event channel disconnected"),
+        }
+    }
+
+    #[test]
+    fn docker_sftp_round_trips_directory_upload_download_and_delete() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker sftp e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        server
+            .exec(
+                "mkdir -p /home/termirust/e2e-sftp && printf 'seed-file\\n' > /home/termirust/e2e-sftp/seed.txt && chown -R termirust:termirust /home/termirust/e2e-sftp",
+            )
+            .expect("unable to seed remote sftp directory");
+
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let request = docker_sftp_request(&server);
+
+        spawn_list_directory(
+            1,
+            1,
+            request.clone(),
+            known_hosts.clone(),
+            "/home/termirust/e2e-sftp".to_string(),
+            event_tx.clone(),
+        );
+        match recv_sftp_event(&event_rx) {
+            SftpEvent::DirectoryLoaded { path, entries, .. } => {
+                assert_eq!(path, "/home/termirust/e2e-sftp");
+                assert!(entries.iter().any(|entry| entry.name == "seed.txt"));
+            }
+            event => panic!("unexpected list event: {event:?}"),
+        }
+
+        let local_dir =
+            std::env::temp_dir().join(format!("termirust-sftp-test-{}", std::process::id()));
+        fs::create_dir_all(&local_dir).expect("unable to create local sftp temp dir");
+        let upload_path = local_dir.join("upload.txt");
+        fs::write(&upload_path, "uploaded from test\n").expect("unable to write upload fixture");
+
+        spawn_upload_file(
+            1,
+            2,
+            request.clone(),
+            known_hosts.clone(),
+            "/home/termirust/e2e-sftp".to_string(),
+            upload_path,
+            event_tx.clone(),
+        );
+        let uploaded_remote_path = match recv_sftp_event(&event_rx) {
+            SftpEvent::UploadComplete { remote_path, .. } => remote_path,
+            event => panic!("unexpected upload event: {event:?}"),
+        };
+        assert_eq!(uploaded_remote_path, "/home/termirust/e2e-sftp/upload.txt");
+
+        let download_path = local_dir.join("downloaded.txt");
+        spawn_download_file(
+            1,
+            3,
+            request.clone(),
+            known_hosts.clone(),
+            uploaded_remote_path.clone(),
+            download_path.clone(),
+            event_tx.clone(),
+        );
+        match recv_sftp_event(&event_rx) {
+            SftpEvent::DownloadComplete { remote_path, .. } => {
+                assert_eq!(remote_path, uploaded_remote_path);
+            }
+            event => panic!("unexpected download event: {event:?}"),
+        }
+        assert_eq!(
+            fs::read_to_string(&download_path).expect("unable to read downloaded file"),
+            "uploaded from test\n"
+        );
+
+        spawn_delete_path(
+            1,
+            4,
+            request.clone(),
+            known_hosts.clone(),
+            uploaded_remote_path.clone(),
+            false,
+            event_tx.clone(),
+        );
+        match recv_sftp_event(&event_rx) {
+            SftpEvent::DeleteComplete { remote_path, .. } => {
+                assert_eq!(remote_path, uploaded_remote_path);
+            }
+            event => panic!("unexpected delete event: {event:?}"),
+        }
+
+        spawn_list_directory(
+            1,
+            5,
+            request,
+            known_hosts,
+            "/home/termirust/e2e-sftp".to_string(),
+            event_tx,
+        );
+        match recv_sftp_event(&event_rx) {
+            SftpEvent::DirectoryLoaded { entries, .. } => {
+                assert!(entries.iter().all(|entry| entry.name != "upload.txt"));
+                assert!(entries.iter().any(|entry| entry.name == "seed.txt"));
+            }
+            event => panic!("unexpected final list event: {event:?}"),
+        }
+
+        let _ = fs::remove_dir_all(local_dir);
     }
 }

@@ -40,12 +40,9 @@ Other things worth knowing about:
 - Library and workspace empty states now include direct actions, so dead ends turn into obvious next steps like creating a host, adding a key, opening local terminal, or returning to terminal view.
 - The Hosts library now has a dismissible first-run welcome panel with import counts, quick-start actions, and shortcut guidance, and it automatically gets out of the way once you save a host or open a session.
 - Vaults are now first-class local containers for hosts, snippets, and identities, with a dedicated library view plus local shared-vault member/role management.
-- The active terminal now gets keyboard-selectable, target-aware inline command autocomplete, ranked from current-host history, snippets, and built-in shell shortcuts.
-- Command history capture is now prompt-aware enough to ignore alternate-screen apps and avoid learning obviously incomplete shell continuations.
-- Inline autocomplete is now path-aware for path commands, using loaded remote-files context plus saved startup/current directories and recent path history.
-- Autocomplete also includes argument-aware command templates for common Git, Docker, Kubernetes, and systemd workflows, and the command palette carries the same task metadata through search and execution.
-- Autocomplete and the command palette now also lift live shell context out of recent terminal output, so branch names, container targets, Kubernetes pods, and systemd units can be suggested from what the session just printed.
-- Live shell-context suggestions are now ranked against the active working directory too, so targets that match the current service or project surface ahead of generic recent-output matches.
+- Command history capture is prompt-aware enough to ignore alternate-screen apps and avoid learning obviously incomplete shell continuations.
+- The command palette carries argument-aware command templates for common Git, Docker, Kubernetes, and systemd workflows through search and execution.
+- The command palette lifts live shell context out of recent terminal output, so branch names, container targets, Kubernetes pods, and systemd units can be suggested from what the session just printed, ranked against the active working directory.
 - Every terminal workspace now has a searchable command palette for snippets, recent commands, and built-in tasks, with keyboard navigation and direct execution.
 - Cross-platform shortcuts now cover library section switching, settings, host-search focus, new-host flow, and Files/Terminal workspace toggles without colliding with common shell keys.
 - Workspace chrome now shows aggregate runtime health for split tabs, so mixed live/connecting/error states are visible without hunting through individual panes.
@@ -60,6 +57,11 @@ Other things worth knowing about:
 - One-click reconnect when a session drops.
 - Password-backed hosts can store credentials in the system credential manager.
 - Reopenable workspaces are restored after relaunch, including password sessions that can reconnect through the system credential manager.
+- Window size and position are remembered across launches, including which monitor on multi-display setups.
+- The top chrome is a single row with custom window controls; workspace tabs scroll horizontally when they overflow, can be renamed by double-clicking, and have a right-click menu for duplicate, rename, and close.
+- Splits are a recursive tree -- drop a tab onto any pane to split that pane, nest freely, and drag the dividers to resize.
+- Local terminal sessions start in your home directory rather than wherever the app was launched.
+- Runtime logs are written to a file in the app data directory, so issues can be diagnosed without a console.
 
 ## Platforms
 
