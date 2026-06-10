@@ -22,6 +22,10 @@ fn default_restore_workspaces_on_launch() -> bool {
     true
 }
 
+fn default_persistent_terminal_sessions() -> bool {
+    true
+}
+
 fn default_terminal_scrollback_rows() -> u32 {
     10_000
 }
@@ -547,6 +551,8 @@ pub struct AppSettings {
     pub onboarding_dismissed: bool,
     #[serde(default = "default_restore_workspaces_on_launch")]
     pub restore_workspaces_on_launch: bool,
+    #[serde(default = "default_persistent_terminal_sessions")]
+    pub persistent_terminal_sessions: bool,
     #[serde(default = "default_session_log_limit")]
     pub session_log_limit: u16,
     #[serde(default = "default_local_shell_config")]
@@ -596,6 +602,7 @@ impl Default for AppSettings {
             terminal_font_size: default_terminal_font_size(),
             onboarding_dismissed: false,
             restore_workspaces_on_launch: default_restore_workspaces_on_launch(),
+            persistent_terminal_sessions: default_persistent_terminal_sessions(),
             session_log_limit: default_session_log_limit(),
             default_local_shell: default_local_shell_config(),
             default_ssh_startup_directory: None,
@@ -1610,6 +1617,7 @@ impl DraftProfile {
             port_forward_rules,
             local_shell: None,
             environment: profile.environment,
+            persistent_session_name: None,
         })
     }
 }
@@ -1759,6 +1767,7 @@ pub struct ConnectRequest {
     pub port_forward_rules: Vec<PortForwardRule>,
     pub local_shell: Option<LocalShellConfig>,
     pub environment: Vec<(String, String)>,
+    pub persistent_session_name: Option<String>,
 }
 
 impl ConnectRequest {
@@ -1835,6 +1844,7 @@ impl ConnectRequest {
                 local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: None,
+                persistent_session_name: self.persistent_session_name.clone(),
             }),
             ConnectionKind::LocalShell => Some(RestorableConnection {
                 title: self.title.clone(),
@@ -1852,6 +1862,7 @@ impl ConnectRequest {
                 local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: self.local_shell.clone(),
+                persistent_session_name: self.persistent_session_name.clone(),
             }),
         }
     }
@@ -1879,6 +1890,7 @@ impl ConnectRequest {
             port_forward_rules: Vec::new(),
             local_shell: Some(shell),
             environment: Vec::new(),
+            persistent_session_name: None,
         }
     }
 }
@@ -1956,6 +1968,8 @@ pub struct RestorableConnection {
     pub local_forward: Option<LocalPortForward>,
     #[serde(default)]
     pub local_shell: Option<LocalShellConfig>,
+    #[serde(default)]
+    pub persistent_session_name: Option<String>,
 }
 
 impl RestorableConnection {
@@ -1998,6 +2012,7 @@ impl RestorableConnection {
                     ),
                     local_shell: None,
                     environment: Vec::new(),
+                    persistent_session_name: self.persistent_session_name.clone(),
                 })
             }
             ConnectionKind::LocalShell => Some(ConnectRequest {
@@ -2019,6 +2034,7 @@ impl RestorableConnection {
                     .clone()
                     .or_else(|| Some(default_local_shell_config())),
                 environment: Vec::new(),
+                persistent_session_name: self.persistent_session_name.clone(),
             }),
         }
         .expect("restorable connection should be valid")
@@ -2252,6 +2268,7 @@ impl QuickConnect {
             port_forward_rules: Vec::new(),
             local_shell: None,
             environment: Vec::new(),
+            persistent_session_name: None,
         }
     }
 }
@@ -2335,6 +2352,7 @@ mod tests {
             port_forward_rules: Vec::new(),
             local_shell: None,
             environment: Vec::new(),
+            persistent_session_name: None,
         };
 
         assert!(request.to_restorable().is_none());
@@ -2360,6 +2378,7 @@ mod tests {
             port_forward_rules: Vec::new(),
             local_shell: None,
             environment: Vec::new(),
+            persistent_session_name: Some("termirust-ssh-app".to_string()),
         };
 
         let restored = request.to_restorable().unwrap();
@@ -2434,6 +2453,7 @@ mod tests {
             ],
             local_shell: None,
             environment: Vec::new(),
+            persistent_session_name: Some("termirust-ssh-prod-stored".to_string()),
         };
 
         let restored = request.to_restorable().unwrap();
@@ -2509,6 +2529,7 @@ mod tests {
                 local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: None,
+                persistent_session_name: None,
             }],
         };
 
@@ -2538,6 +2559,7 @@ mod tests {
                 cwd: Some("/tmp".to_string()),
             }),
             environment: Vec::new(),
+            persistent_session_name: Some("termirust-local-stored".to_string()),
         };
 
         let restored = request.to_restorable().unwrap();
@@ -3107,6 +3129,7 @@ mod tests {
             port_forward_rules: Vec::new(),
             local_shell: None,
             environment: Vec::new(),
+            persistent_session_name: None,
         };
         assert_eq!(
             ssh.history_scope_key(),

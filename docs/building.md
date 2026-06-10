@@ -13,6 +13,12 @@ binaries to users.
 - Bundle icons at `assets/icons/app.png` (512×512) and
   `assets/icons/app@2x.png` (1024×1024 retina). Until those are added,
   cargo-bundle falls back to a placeholder.
+- For managed persistent terminals, bundle a platform `tmux` executable
+  in app resources. Development builds look under
+  `assets/bin/{macos,linux}/<arch>/tmux`; release bundles should copy it
+  to `Resources/bin/tmux` or `Resources/bin/<platform>/<arch>/tmux`.
+  The app uses system `tmux` first, bundled `tmux` second, then falls
+  back to a plain shell.
 
 ## macOS
 
@@ -30,6 +36,13 @@ Developer ID Application certificate in your login keychain.
 
 ```bash
 cargo bundle --release
+mkdir -p target/release/bundle/osx/TermiRust.app/Contents/Resources/bin
+install -m 0755 assets/bin/macos/aarch64/tmux \
+  target/release/bundle/osx/TermiRust.app/Contents/Resources/bin/tmux
+codesign --force --options runtime \
+  --sign "Developer ID Application: <Your Name> (TEAMID)" \
+  target/release/bundle/osx/TermiRust.app/Contents/Resources/bin/tmux
+
 codesign --deep --force --options runtime \
   --sign "Developer ID Application: <Your Name> (TEAMID)" \
   target/release/bundle/osx/TermiRust.app

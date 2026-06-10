@@ -958,6 +958,7 @@ mod tests {
             port_forward_rules: Vec::new(),
             local_shell: None,
             environment: Vec::new(),
+            persistent_session_name: None,
         }
     }
 
@@ -999,6 +1000,7 @@ mod tests {
             port_forward_rules: Vec::new(),
             local_shell: None,
             environment: Vec::new(),
+            persistent_session_name: None,
         }
     }
 

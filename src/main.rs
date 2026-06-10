@@ -6,6 +6,9 @@ mod sftp;
 mod ssh;
 mod storage;
 mod terminal;
+#[allow(dead_code)]
+#[cfg(test)]
+mod test_support;
 mod ui;
 
 use gpui::*;

@@ -62,7 +62,9 @@ use crate::ui::autocomplete::{AutocompleteCandidate, AutocompleteSource};
 use crate::ui::keys::{MouseEventKind, encode_mouse_report, encode_terminal_input};
 use crate::ui::path::remote_parent_path;
 use crate::ui::render_terminal::{SelectionRange, normalized_selection};
-use crate::ui::shell::{shell_command_requires_continuation, startup_bytes_for_request};
+use crate::ui::shell::{
+    persistent_session_name, shell_command_requires_continuation, startup_bytes_for_request,
+};
 use crate::ui::snippet::{
     extract_snippet_prompt_names, substitute_snippet_placeholders, substitute_snippet_prompts,
 };
@@ -2312,6 +2314,7 @@ impl TermiRustApp {
             startup_bytes_for_request(
                 &pane.request,
                 self.saved.settings.default_ssh_startup_directory.as_deref(),
+                self.saved.settings.persistent_terminal_sessions,
             )
             .map(|bytes| (pane.runtime.command_tx.clone(), bytes))
         }) else {
@@ -3113,6 +3116,18 @@ impl TermiRustApp {
             "Saved workspaces will reopen on launch.".to_string()
         } else {
             "Launch now opens directly into the library.".to_string()
+        };
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn update_persistent_terminal_sessions(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.saved.settings.persistent_terminal_sessions = enabled;
+        self.save_settings();
+        self.status_message = if enabled {
+            "New terminals will attach to tmux sessions when available.".to_string()
+        } else {
+            "New terminals will start plain shells without tmux persistence.".to_string()
         };
         self.error_message.clear();
         cx.notify();
@@ -4698,18 +4713,25 @@ impl TermiRustApp {
 
     fn spawn_pane(
         &mut self,
-        request: ConnectRequest,
+        mut request: ConnectRequest,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> u64 {
         let pane_id = request.session_id;
+        if request.persistent_session_name.is_none() {
+            request.persistent_session_name = Some(persistent_session_name(&request));
+        }
         let endpoint = request.endpoint_label();
         let title = request.title.clone();
         let terminal_scrollback_rows = request.terminal_scrollback_rows;
         eprintln!("[app] spawn_pane: pane_id={pane_id} title='{title}' endpoint={endpoint}");
         let terminal_focus = cx.focus_handle().tab_stop(true);
         let runtime = if request.kind == ConnectionKind::LocalShell {
-            spawn_local_session(request.clone(), self.event_tx.clone())
+            spawn_local_session(
+                request.clone(),
+                self.event_tx.clone(),
+                self.saved.settings.persistent_terminal_sessions,
+            )
         } else {
             spawn_session(
                 request.clone(),
@@ -9195,6 +9217,7 @@ mod tests {
             port_forward_rules: Vec::new(),
             local_shell: None,
             environment: Vec::new(),
+            persistent_session_name: None,
         };
 
         assert_eq!(
@@ -9293,8 +9316,9 @@ mod tests {
                 ("AWS_PROFILE".to_string(), "prod".to_string()),
                 ("MESSAGE".to_string(), "hello it's me".to_string()),
             ],
+            persistent_session_name: None,
         };
-        let bytes = startup_bytes_for_request(&request, None).unwrap();
+        let bytes = startup_bytes_for_request(&request, None, false).unwrap();
         let script = String::from_utf8(bytes).unwrap();
         assert_eq!(
             script,
@@ -9322,9 +9346,10 @@ mod tests {
             port_forward_rules: Vec::new(),
             local_shell: None,
             environment: Vec::new(),
+            persistent_session_name: None,
         };
 
-        let bytes = startup_bytes_for_request(&request, None).unwrap();
+        let bytes = startup_bytes_for_request(&request, None, false).unwrap();
         assert_eq!(
             String::from_utf8(bytes).unwrap(),
             "cd -- '/var/www/app'\"'\"'s'\ndocker compose logs -f\n"
@@ -9349,9 +9374,10 @@ mod tests {
             port_forward_rules: Vec::new(),
             local_shell: None,
             environment: Vec::new(),
+            persistent_session_name: None,
         };
 
-        assert!(startup_bytes_for_request(&request, None).is_none());
+        assert!(startup_bytes_for_request(&request, None, false).is_none());
         assert_eq!(shell_single_quote("a'b"), "'a'\"'\"'b'");
     }
 

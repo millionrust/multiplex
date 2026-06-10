@@ -1676,6 +1676,7 @@ impl TermiRustApp {
         let theme_preset = self.saved.settings.theme_preset;
         let terminal_font_size = self.saved.settings.terminal_font_size;
         let restore_workspaces_on_launch = self.saved.settings.restore_workspaces_on_launch;
+        let persistent_terminal_sessions = self.saved.settings.persistent_terminal_sessions;
         let session_log_limit = self.saved.settings.session_log_limit;
         let onboarding_dismissed = self.saved.settings.onboarding_dismissed;
         let auto_reconnect_attempts = self.saved.settings.auto_reconnect_attempts;
@@ -1871,6 +1872,30 @@ impl TermiRustApp {
                                     .label(if enabled { "Confirm" } else { "Direct" })
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.update_confirm_multiline_paste(enabled, cx);
+                                    }))
+                                    .into_any_element()
+                            },
+                        )),
+                )
+                .child(self.settings_divider())
+                .child(self.settings_subhead(
+                    "Persistent sessions",
+                    "Attach new local and SSH terminals to stable tmux sessions when tmux is installed, so restored workspaces reconnect instead of starting from scratch.",
+                ))
+                .child(
+                    h_flex()
+                        .p(px(3.))
+                        .rounded(px(8.))
+                        .bg(theme::hover())
+                        .children([true, false].into_iter().enumerate().map(
+                            |(index, enabled)| {
+                                let active = enabled == persistent_terminal_sessions;
+                                Button::new(("settings-persistent-terminals", index))
+                                    .small()
+                                    .custom(Self::segmented_button_style(active, cx))
+                                    .label(if enabled { "Use tmux" } else { "Plain Shells" })
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.update_persistent_terminal_sessions(enabled, cx);
                                     }))
                                     .into_any_element()
                             },

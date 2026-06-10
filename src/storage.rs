@@ -12,6 +12,8 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
+#[cfg(test)]
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::{
@@ -31,6 +33,20 @@ const PORTABLE_BUNDLE_NONCE_LEN: usize = 12;
 const PORTABLE_BUNDLE_ARGON2_MEMORY_KIB: u32 = 19_456;
 const PORTABLE_BUNDLE_ARGON2_ITERATIONS: u32 = 3;
 const PORTABLE_BUNDLE_ARGON2_PARALLELISM: u32 = 1;
+
+#[cfg(test)]
+fn test_app_dir_override() -> &'static Mutex<Option<PathBuf>> {
+    static OVERRIDE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
+    OVERRIDE.get_or_init(|| Mutex::new(None))
+}
+
+#[cfg(test)]
+pub fn set_test_app_dir_override(path: Option<PathBuf>) -> Option<PathBuf> {
+    let mut override_path = test_app_dir_override()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    std::mem::replace(&mut *override_path, path)
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct PortableDataBundle {
@@ -68,6 +84,17 @@ pub struct PortableDataReport {
 }
 
 fn app_dir() -> Result<PathBuf> {
+    #[cfg(test)]
+    if let Some(path) = test_app_dir_override()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+    {
+        fs::create_dir_all(&path)
+            .with_context(|| format!("Unable to create app directory at {}", path.display()))?;
+        return Ok(path);
+    }
+
     let base_dir = dirs::config_dir().unwrap_or(std::env::current_dir()?);
     let path = base_dir.join(APP_DIR_NAME);
     fs::create_dir_all(&path)
