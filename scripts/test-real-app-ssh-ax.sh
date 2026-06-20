@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+TARGET_DIR="$(
+  cargo metadata --format-version 1 --no-deps \
+    | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])'
+)"
+
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "real app AX smoke only runs on macOS" >&2
   exit 1
@@ -178,8 +183,8 @@ rm -f "$KNOWN_HOSTS_FILE"
 if [[ "${TERMIRUST_SKIP_RELEASE_BUILD:-0}" != "1" ]]; then
   cargo build --release >/dev/null
 fi
-APP_BUNDLE="/Volumes/Footages/cargo-target/terminal-c59500f320d9bfcc/release/bundle/osx/TermiRust.app"
-APP_BINARY="/Volumes/Footages/cargo-target/terminal-c59500f320d9bfcc/release/termirust"
+APP_BUNDLE="$TARGET_DIR/release/bundle/osx/TermiRust.app"
+APP_BINARY="$TARGET_DIR/release/termirust"
 if [[ ! -x "$APP_BINARY" ]]; then
   echo "release app binary not found at $APP_BINARY" >&2
   exit 1

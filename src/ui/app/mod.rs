@@ -9238,7 +9238,8 @@ mod tests {
     use crate::ui::util::format_relative_time_for;
     use gpui::{
         AppContext as _, Entity, KeyDownEvent, Keystroke, MouseButton, MouseDownEvent,
-        MouseUpEvent, TestAppContext, VisualTestContext, WindowHandle, point, px, size,
+        MouseUpEvent, ScrollWheelEvent, TestAppContext, VisualTestContext, WindowHandle, point, px,
+        size,
     };
     use gpui_component::Root;
     use std::path::Path;
@@ -9434,6 +9435,105 @@ mod tests {
     ) -> gpui::Point<gpui::Pixels> {
         let leaked: &'static str = Box::leak(selector.into_boxed_str());
         selector_click_center(window, cx, leaked)
+    }
+
+    fn drag_between_points(
+        window: WindowHandle<Root>,
+        cx: &mut TestAppContext,
+        start: gpui::Point<gpui::Pixels>,
+        end: gpui::Point<gpui::Pixels>,
+    ) {
+        let midpoint = point((start.x + end.x) / 2.0, (start.y + end.y) / 2.0);
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_mouse_down(start, MouseButton::Left, gpui::Modifiers::none());
+        visual.simulate_mouse_move(midpoint, Some(MouseButton::Left), gpui::Modifiers::none());
+        visual.simulate_mouse_move(end, Some(MouseButton::Left), gpui::Modifiers::none());
+        visual.simulate_mouse_up(end, MouseButton::Left, gpui::Modifiers::none());
+    }
+
+    fn scroll_selector(
+        window: WindowHandle<Root>,
+        cx: &mut TestAppContext,
+        position_selector: &'static str,
+        delta_y: f32,
+    ) {
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        let bounds = visual
+            .debug_bounds(position_selector)
+            .unwrap_or_else(|| panic!("missing debug bounds for {position_selector}"));
+        visual.simulate_event(ScrollWheelEvent {
+            position: bounds.center(),
+            delta: gpui::ScrollDelta::Pixels(point(px(0.), px(delta_y))),
+            ..Default::default()
+        });
+        visual.run_until_parked();
+    }
+
+    fn scroll_selector_into_view(
+        window: WindowHandle<Root>,
+        cx: &mut TestAppContext,
+        viewport_selector: &'static str,
+        target_selector: &'static str,
+    ) {
+        fn bounds_state(
+            window: WindowHandle<Root>,
+            cx: &mut TestAppContext,
+            viewport_selector: &'static str,
+            target_selector: &'static str,
+        ) -> (f32, f32, f32) {
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.run_until_parked();
+            let viewport = visual
+                .debug_bounds(viewport_selector)
+                .unwrap_or_else(|| panic!("missing debug bounds for {viewport_selector}"));
+            let target = visual
+                .debug_bounds(target_selector)
+                .unwrap_or_else(|| panic!("missing debug bounds for {target_selector}"));
+            let top: f32 = viewport.origin.y.into();
+            let bottom = top + f32::from(viewport.size.height);
+            let center_y: f32 = target.center().y.into();
+            (top, bottom, center_y)
+        }
+
+        fn is_visible(top: f32, bottom: f32, center_y: f32) -> bool {
+            center_y >= top && center_y <= bottom
+        }
+
+        let (top, bottom, center_y) = bounds_state(window, cx, viewport_selector, target_selector);
+        if is_visible(top, bottom, center_y) {
+            return;
+        }
+
+        let target_below = center_y > bottom;
+        let initial_center_y = center_y;
+        scroll_selector(window, cx, viewport_selector, -400.0);
+        let (_, _, after_negative_center_y) =
+            bounds_state(window, cx, viewport_selector, target_selector);
+        let negative_moves_toward_view = if target_below {
+            after_negative_center_y < initial_center_y
+        } else {
+            after_negative_center_y > initial_center_y
+        };
+        let step = if negative_moves_toward_view {
+            -400.0
+        } else {
+            400.0
+        };
+
+        for _ in 0..12 {
+            let (top, bottom, center_y) =
+                bounds_state(window, cx, viewport_selector, target_selector);
+            if is_visible(top, bottom, center_y) {
+                return;
+            }
+            scroll_selector(window, cx, viewport_selector, step);
+        }
+
+        let (top, bottom, center_y) = bounds_state(window, cx, viewport_selector, target_selector);
+        assert!(
+            is_visible(top, bottom, center_y),
+            "{target_selector} was not scrolled into view"
+        );
     }
 
     fn wait_for_app_state<R>(
@@ -13779,6 +13879,111 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_workspace_tab_drag_reorders_and_moves_to_tail(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        let request_a = ConnectRequest {
+            title: "Drag A".to_string(),
+            ..ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+        let request_b = ConnectRequest {
+            title: "Drag B".to_string(),
+            ..ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+        let request_c = ConnectRequest {
+            title: "Drag C".to_string(),
+            ..ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+
+        let (workspace_a, pane_a) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request_a, window, cx)
+                        .expect("workspace A should open")
+                })
+            })
+            .expect("window update should succeed");
+        let (workspace_b, pane_b) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request_b, window, cx)
+                        .expect("workspace B should open")
+                })
+            })
+            .expect("window update should succeed");
+        let (workspace_c, pane_c) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request_c, window, cx)
+                        .expect("workspace C should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            (app.pane(pane_a).is_some_and(|pane| pane.connected)
+                && app.pane(pane_b).is_some_and(|pane| pane.connected)
+                && app.pane(pane_c).is_some_and(|pane| pane.connected))
+            .then_some(())
+        });
+
+        let drag_b =
+            dynamic_selector_click_center(window, cx, format!("chrome-workspace-{workspace_b}"));
+        let drop_a =
+            dynamic_selector_click_center(window, cx, format!("chrome-workspace-{workspace_a}"));
+        drag_between_points(window, cx, drag_b, drop_a);
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.workspaces
+                    .iter()
+                    .map(|workspace| workspace.id)
+                    .collect::<Vec<_>>(),
+                vec![workspace_b, workspace_a, workspace_c]
+            );
+            assert!(app.error_message.is_empty());
+        });
+
+        let drag_b =
+            dynamic_selector_click_center(window, cx, format!("chrome-workspace-{workspace_b}"));
+        let tail = selector_click_center(window, cx, "chrome-workspace-drop-tail");
+        drag_between_points(window, cx, drag_b, tail);
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.workspaces
+                    .iter()
+                    .map(|workspace| workspace.id)
+                    .collect::<Vec<_>>(),
+                vec![workspace_a, workspace_c, workspace_b]
+            );
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
     fn e2e_workspace_tab_menu_click_duplicate_and_close(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
@@ -16800,9 +17005,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn e2e_settings_rendered_local_shell_save_and_reset_onboarding_clicks(
-        cx: &mut TestAppContext,
-    ) {
+    fn e2e_settings_rendered_local_shell_save_and_reset_onboarding_clicks(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let mut saved = SavedState::default();
         saved.settings.onboarding_dismissed = true;
@@ -16828,9 +17031,22 @@ mod tests {
             })
             .expect("window update should succeed");
 
+        scroll_selector_into_view(
+            window,
+            cx,
+            "settings-scroll-viewport",
+            "settings-local-shell-save",
+        );
+
         let save_shell_click = selector_click_center(window, cx, "settings-local-shell-save");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(save_shell_click, gpui::Modifiers::none());
+        visual.simulate_mouse_down(save_shell_click, MouseButton::Left, gpui::Modifiers::none());
+        visual.simulate_mouse_up(save_shell_click, MouseButton::Left, gpui::Modifiers::none());
+        visual.run_until_parked();
+
+        wait_for_app_state(cx, &app, Duration::from_secs(2), |app| {
+            (app.saved.settings.default_local_shell.program == "/bin/bash").then_some(())
+        });
 
         app.read_with(cx, |app, cx| {
             assert_eq!(app.nav_section, NavSection::Settings);
@@ -16851,9 +17067,30 @@ mod tests {
             assert!(app.error_message.is_empty());
         });
 
+        scroll_selector_into_view(
+            window,
+            cx,
+            "settings-scroll-viewport",
+            "settings-reset-onboarding",
+        );
+
         let reset_onboarding_click = selector_click_center(window, cx, "settings-reset-onboarding");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
-        visual.simulate_click(reset_onboarding_click, gpui::Modifiers::none());
+        visual.simulate_mouse_down(
+            reset_onboarding_click,
+            MouseButton::Left,
+            gpui::Modifiers::none(),
+        );
+        visual.simulate_mouse_up(
+            reset_onboarding_click,
+            MouseButton::Left,
+            gpui::Modifiers::none(),
+        );
+        visual.run_until_parked();
+
+        wait_for_app_state(cx, &app, Duration::from_secs(2), |app| {
+            (!app.saved.settings.onboarding_dismissed).then_some(())
+        });
 
         app.read_with(cx, |app, _| {
             assert!(!app.saved.settings.onboarding_dismissed);

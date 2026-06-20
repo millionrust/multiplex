@@ -58,6 +58,7 @@ It runs:
 - `ui::app::tests::e2e_choose_protocol_rejects_unsupported_protocols`
 - `ui::app::tests::e2e_copy_on_select_copies_selection_to_clipboard`
 - `ui::app::tests::e2e_workspace_duplicate_and_reorder`
+- `ui::app::tests::e2e_workspace_tab_drag_reorders_and_moves_to_tail`
 - `ui::app::tests::e2e_workspace_tab_click_activate_rename_and_close`
 - `ui::app::tests::e2e_workspace_tab_menu_click_duplicate_and_close`
 - `ui::app::tests::e2e_workspace_tab_menu_click_split_horizontal`
@@ -156,6 +157,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the connect flow can reject unsupported protocol choices without opening a session
 - terminal copy-on-select can push the selected text into the clipboard
 - workspace tabs can be duplicated and reordered through the same state paths used by the chrome drag/drop actions
+- workspace tabs can also be dragged through the rendered chrome tab-strip hit-testing to reorder before another tab or move to the tail drop zone
 - workspace tabs can also be activated by click, enter rename mode by double-click, and close through the rendered close button
 - workspace tab context-menu items can duplicate, duplicate into a new window, rename, split horizontally, and close through their rendered click handlers, and pane context-menu items can copy, open the paste-confirmation flow, clear, close, duplicate, detach, and reconnect through their rendered click handlers
 - dropping a workspace tab onto a terminal pane can merge the dragged tab into a real split layout, and over-cap merges are rejected without mutating either workspace
@@ -253,11 +255,10 @@ runs.
 
 ## What Still Needs Manual UI Testing
 
-Some desktop behaviors still benefit from manual checks because the app is a native GPUI desktop app and the automated coverage is still thinner on visually-driven native interactions:
+Some desktop behaviors still benefit from manual checks because the app is a native GPUI desktop app and the automated coverage is still thinner on platform-native integrations:
 
-- Window resizing, tab dragging through rendered hit-testing, and split-pane divider interaction.
 - SFTP upload/download through the native file picker itself, rather than the app logic behind the dialog.
-- Platform-native keychain and OS file-dialog behavior.
+- Platform-native keychain behavior and OS file-dialog behavior.
 - Visual polish across macOS, Windows, and Linux.
 
 For manual checks, use a disposable local SSH server or VM first, not production infrastructure.
