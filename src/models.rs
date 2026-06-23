@@ -244,6 +244,12 @@ pub struct HostProfile {
     #[serde(default)]
     pub start_in_files: bool,
     #[serde(default)]
+    pub persistent_session: bool,
+    #[serde(default)]
+    pub persistent_session_name: Option<String>,
+    #[serde(default)]
+    pub persistent_session_detach_others: bool,
+    #[serde(default)]
     pub terminal_scrollback_rows: Option<u32>,
     #[serde(default)]
     pub port_forward_rules: Vec<PortForwardRule>,
@@ -314,6 +320,42 @@ impl HostColorTag {
             HostColorTag::Pink,
             HostColorTag::Gray,
         ]
+    }
+}
+
+pub fn default_persistent_session_name_from_id(id: &str) -> String {
+    let slug = id.replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "-");
+    format!("tr-{slug}")
+}
+
+pub fn default_persistent_session_name_for_endpoint(
+    username: &str,
+    host: &str,
+    port: u16,
+) -> String {
+    let raw = format!("{username}-{host}-{port}");
+    let slug = raw
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    if slug.is_empty() {
+        "tr-session".to_string()
+    } else {
+        format!("tr-{slug}")
+    }
+}
+
+impl HostProfile {
+    pub fn default_persistent_session_name(&self) -> String {
+        default_persistent_session_name_from_id(&self.id)
     }
 }
 
@@ -1354,6 +1396,9 @@ pub struct DraftProfile {
     pub startup_directory: String,
     pub startup_command: String,
     pub start_in_files: bool,
+    pub persistent_session: bool,
+    pub persistent_session_name: String,
+    pub persistent_session_detach_others: bool,
     pub terminal_scrollback_rows: String,
     pub saved_port_forward_rules: Vec<PortForwardRule>,
     pub forward_kind: PortForwardKind,
@@ -1386,6 +1431,16 @@ impl DraftProfile {
             startup_directory: profile.startup_directory.clone().unwrap_or_default(),
             startup_command: profile.startup_command.clone().unwrap_or_default(),
             start_in_files: profile.start_in_files,
+            persistent_session: profile.persistent_session,
+            persistent_session_name: if profile.persistent_session {
+                profile
+                    .persistent_session_name
+                    .clone()
+                    .unwrap_or_else(|| profile.default_persistent_session_name())
+            } else {
+                profile.persistent_session_name.clone().unwrap_or_default()
+            },
+            persistent_session_detach_others: profile.persistent_session_detach_others,
             terminal_scrollback_rows: profile
                 .terminal_scrollback_rows
                 .unwrap_or(default_terminal_scrollback_rows())
@@ -1568,6 +1623,9 @@ impl DraftProfile {
             startup_directory: non_empty(self.startup_directory.trim()),
             startup_command: non_empty(self.startup_command.trim()),
             start_in_files: self.start_in_files,
+            persistent_session: self.persistent_session,
+            persistent_session_name: non_empty(self.persistent_session_name.trim()),
+            persistent_session_detach_others: self.persistent_session_detach_others,
             terminal_scrollback_rows: self.parse_terminal_scrollback_rows()?,
             port_forward_rules: self.parse_port_forward_rules()?,
             local_forwards: Vec::new(),
@@ -1604,6 +1662,15 @@ impl DraftProfile {
                 passphrase: non_empty(self.key_passphrase.trim()),
             },
         };
+        let persistent_session_name = profile.persistent_session_name.clone().or_else(|| {
+            profile.persistent_session.then(|| {
+                default_persistent_session_name_for_endpoint(
+                    &profile.username,
+                    &profile.host,
+                    profile.port,
+                )
+            })
+        });
 
         Ok(ConnectRequest {
             session_id,
@@ -1617,6 +1684,9 @@ impl DraftProfile {
             startup_directory: profile.startup_directory,
             startup_command: profile.startup_command,
             start_in_files: profile.start_in_files,
+            persistent_session: profile.persistent_session,
+            persistent_session_name,
+            persistent_session_detach_others: profile.persistent_session_detach_others,
             terminal_scrollback_rows: profile
                 .terminal_scrollback_rows
                 .unwrap_or(default_terminal_scrollback_rows())
@@ -1769,6 +1839,9 @@ pub struct ConnectRequest {
     pub startup_directory: Option<String>,
     pub startup_command: Option<String>,
     pub start_in_files: bool,
+    pub persistent_session: bool,
+    pub persistent_session_name: Option<String>,
+    pub persistent_session_detach_others: bool,
     pub terminal_scrollback_rows: usize,
     pub port_forward_rules: Vec<PortForwardRule>,
     pub local_shell: Option<LocalShellConfig>,
@@ -1844,6 +1917,9 @@ impl ConnectRequest {
                 startup_directory: self.startup_directory.clone(),
                 startup_command: self.startup_command.clone(),
                 start_in_files: self.start_in_files,
+                persistent_session: self.persistent_session,
+                persistent_session_name: self.persistent_session_name.clone(),
+                persistent_session_detach_others: self.persistent_session_detach_others,
                 terminal_scrollback_rows: Some(self.terminal_scrollback_rows as u32),
                 port_forward_rules: self.port_forward_rules.clone(),
                 local_forwards: Vec::new(),
@@ -1861,6 +1937,9 @@ impl ConnectRequest {
                 startup_directory: None,
                 startup_command: None,
                 start_in_files: false,
+                persistent_session: false,
+                persistent_session_name: None,
+                persistent_session_detach_others: false,
                 terminal_scrollback_rows: None,
                 port_forward_rules: Vec::new(),
                 local_forwards: Vec::new(),
@@ -1889,6 +1968,9 @@ impl ConnectRequest {
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: Some(shell),
@@ -1961,6 +2043,12 @@ pub struct RestorableConnection {
     #[serde(default)]
     pub start_in_files: bool,
     #[serde(default)]
+    pub persistent_session: bool,
+    #[serde(default)]
+    pub persistent_session_name: Option<String>,
+    #[serde(default)]
+    pub persistent_session_detach_others: bool,
+    #[serde(default)]
     pub terminal_scrollback_rows: Option<u32>,
     #[serde(default)]
     pub port_forward_rules: Vec<PortForwardRule>,
@@ -2001,6 +2089,9 @@ impl RestorableConnection {
                     startup_directory: self.startup_directory.clone(),
                     startup_command: self.startup_command.clone(),
                     start_in_files: self.start_in_files,
+                    persistent_session: self.persistent_session,
+                    persistent_session_name: self.persistent_session_name.clone(),
+                    persistent_session_detach_others: self.persistent_session_detach_others,
                     terminal_scrollback_rows: self
                         .terminal_scrollback_rows
                         .unwrap_or(default_terminal_scrollback_rows())
@@ -2026,6 +2117,9 @@ impl RestorableConnection {
                 startup_directory: None,
                 startup_command: None,
                 start_in_files: false,
+                persistent_session: false,
+                persistent_session_name: None,
+                persistent_session_detach_others: false,
                 terminal_scrollback_rows: default_terminal_scrollback_rows() as usize,
                 port_forward_rules: Vec::new(),
                 local_shell: self
@@ -2275,6 +2369,9 @@ impl QuickConnect {
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
@@ -2304,8 +2401,9 @@ mod tests {
         JumpHostConnection, LocalPortForward, LocalShellConfig, PortForwardKind, PortForwardRule,
         ProfileSource, QuickConnect, RestorableAuth, RestorableConnection,
         SavedCommandHistoryEntry, SavedIdentity, SavedSnippet, SavedState, SavedVault,
-        SavedVaultMember, SavedWorkspace, SessionLogEntry, SessionLogStatus, SplitAxis,
-        ThemePreset, VaultKind, VaultMemberRole, identity_id_for_path,
+        SavedVaultMember, SavedWorkspace, SessionLogEntry, SessionLogStatus, ThemePreset,
+        VaultKind, VaultMemberRole, default_persistent_session_name_for_endpoint,
+        default_persistent_session_name_from_id, identity_id_for_path,
     };
 
     #[test]
@@ -2358,6 +2456,9 @@ mod tests {
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
@@ -2383,6 +2484,9 @@ mod tests {
             startup_directory: Some("/srv/app".to_string()),
             startup_command: Some("git status".to_string()),
             start_in_files: true,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: 4096,
             port_forward_rules: Vec::new(),
             local_shell: None,
@@ -2440,6 +2544,9 @@ mod tests {
             startup_directory: Some("/var/www/prod".to_string()),
             startup_command: Some("docker compose ps".to_string()),
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: 12000,
             port_forward_rules: vec![
                 PortForwardRule::Local {
@@ -2513,6 +2620,88 @@ mod tests {
     }
 
     #[test]
+    fn persistent_session_default_name_sanitizes_profile_id() {
+        assert_eq!(
+            default_persistent_session_name_from_id("profile-1719356789123"),
+            "tr-profile-1719356789123"
+        );
+        assert_eq!(
+            default_persistent_session_name_from_id("profile:prod/east"),
+            "tr-profile-prod-east"
+        );
+    }
+
+    #[test]
+    fn persistent_session_endpoint_fallback_is_deterministic() {
+        assert_eq!(
+            default_persistent_session_name_for_endpoint("deploy", "prod.example.com", 2222),
+            "tr-deploy-prod-example-com-2222"
+        );
+        assert_eq!(
+            default_persistent_session_name_for_endpoint("", "", 22),
+            "tr-22"
+        );
+    }
+
+    #[test]
+    fn legacy_host_profile_defaults_to_non_persistent_session() {
+        let profile: HostProfile = serde_json::from_str(
+            r#"{
+                "id": "profile-1",
+                "label": "prod",
+                "host": "prod.example.com",
+                "port": 22,
+                "username": "deploy"
+            }"#,
+        )
+        .expect("legacy profile should deserialize");
+
+        assert!(!profile.persistent_session);
+        assert_eq!(profile.persistent_session_name, None);
+        assert!(!profile.persistent_session_detach_others);
+    }
+
+    #[test]
+    fn persistent_session_fields_round_trip_through_restorable_connection() {
+        let request = ConnectRequest {
+            session_id: 4,
+            title: "prod".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: "prod.example.com".to_string(),
+            port: 22,
+            username: "deploy".to_string(),
+            auth: Some(AuthConfig::PrivateKey {
+                key_path: "/tmp/id_ed25519".to_string(),
+                passphrase: None,
+            }),
+            jump_host: None,
+            startup_directory: Some("/srv/app".to_string()),
+            startup_command: Some("uptime".to_string()),
+            start_in_files: false,
+            persistent_session: true,
+            persistent_session_name: Some("tr-prod".to_string()),
+            persistent_session_detach_others: true,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: Vec::new(),
+        };
+
+        let restored = request.to_restorable().expect("request should restore");
+        assert!(restored.persistent_session);
+        assert_eq!(restored.persistent_session_name.as_deref(), Some("tr-prod"));
+        assert!(restored.persistent_session_detach_others);
+
+        let round_trip = restored.to_connect_request(8);
+        assert!(round_trip.persistent_session);
+        assert_eq!(
+            round_trip.persistent_session_name.as_deref(),
+            Some("tr-prod")
+        );
+        assert!(round_trip.persistent_session_detach_others);
+    }
+
+    #[test]
     fn saved_workspace_normalizes_active_pane() {
         let mut workspace = SavedWorkspace {
             title: "prod".to_string(),
@@ -2531,6 +2720,9 @@ mod tests {
                 startup_directory: None,
                 startup_command: None,
                 start_in_files: false,
+                persistent_session: false,
+                persistent_session_name: None,
+                persistent_session_detach_others: false,
                 terminal_scrollback_rows: None,
                 port_forward_rules: Vec::new(),
                 local_forwards: Vec::new(),
@@ -2564,6 +2756,9 @@ mod tests {
                 startup_directory: None,
                 startup_command: None,
                 start_in_files: false,
+                persistent_session: false,
+                persistent_session_name: None,
+                persistent_session_detach_others: false,
                 terminal_scrollback_rows: Some(10_000),
                 port_forward_rules: Vec::new(),
                 local_forwards: Vec::new(),
@@ -2600,6 +2795,9 @@ mod tests {
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: Some(LocalShellConfig {
@@ -2684,6 +2882,9 @@ mod tests {
             startup_directory: "/var/www/app".to_string(),
             startup_command: "docker compose ps".to_string(),
             start_in_files: true,
+            persistent_session: false,
+            persistent_session_name: String::new(),
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: "4096".to_string(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Local,
@@ -2739,6 +2940,9 @@ mod tests {
             startup_directory: String::new(),
             startup_command: String::new(),
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: String::new(),
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: "10000".to_string(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Local,
@@ -2777,6 +2981,9 @@ mod tests {
                 startup_directory: String::new(),
                 startup_command: String::new(),
                 start_in_files: false,
+                persistent_session: false,
+                persistent_session_name: String::new(),
+                persistent_session_detach_others: false,
                 terminal_scrollback_rows: "10000".to_string(),
                 saved_port_forward_rules: Vec::new(),
                 forward_kind: PortForwardKind::Local,
@@ -2810,6 +3017,9 @@ mod tests {
                 startup_directory: String::new(),
                 startup_command: String::new(),
                 start_in_files: false,
+                persistent_session: false,
+                persistent_session_name: String::new(),
+                persistent_session_detach_others: false,
                 terminal_scrollback_rows: "10000".to_string(),
                 saved_port_forward_rules: Vec::new(),
                 forward_kind: PortForwardKind::Local,
@@ -2893,6 +3103,9 @@ mod tests {
             startup_directory: String::new(),
             startup_command: String::new(),
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: String::new(),
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: "10000".to_string(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Local,
@@ -2935,6 +3148,9 @@ mod tests {
             startup_directory: String::new(),
             startup_command: String::new(),
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: String::new(),
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: "10000".to_string(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Dynamic,
@@ -2977,6 +3193,9 @@ mod tests {
             startup_directory: String::new(),
             startup_command: String::new(),
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: String::new(),
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: "10000".to_string(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Remote,
@@ -3020,6 +3239,9 @@ mod tests {
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: None,
             port_forward_rules: Vec::new(),
             local_forwards: Vec::new(),
@@ -3173,6 +3395,9 @@ mod tests {
             startup_directory: Some("/srv/app".to_string()),
             startup_command: Some("npm run status".to_string()),
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,

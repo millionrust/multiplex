@@ -44,7 +44,7 @@ use crate::models::{
     HostColorTag, HostProfile, JumpHostConnection, PortForwardKind, PortForwardRule, ProfileSource,
     QuickConnect, SavedHostGroup, SavedIdentity, SavedSnippet, SavedSplitNode, SavedState,
     SavedVault, SavedVaultMember, SavedWindowBounds, SavedWorkspace, SessionLogEntry, SplitAxis,
-    ThemePreset, VaultKind, VaultMemberRole,
+    ThemePreset, VaultKind, VaultMemberRole, default_persistent_session_name_from_id,
 };
 use crate::sftp::{
     RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
@@ -203,6 +203,7 @@ struct DraftInputs {
     jump_host: Entity<InputState>,
     startup_directory: Entity<InputState>,
     startup_command: Entity<InputState>,
+    persistent_session_name: Entity<InputState>,
     terminal_scrollback_rows: Entity<InputState>,
     host: Entity<InputState>,
     port: Entity<InputState>,
@@ -229,6 +230,8 @@ impl DraftInputs {
             startup_directory: cx.new(|cx| InputState::new(window, cx).placeholder("/var/www/app")),
             startup_command: cx
                 .new(|cx| InputState::new(window, cx).placeholder("docker compose logs -f")),
+            persistent_session_name: cx
+                .new(|cx| InputState::new(window, cx).placeholder("tr-profile-...")),
             terminal_scrollback_rows: cx.new(|cx| InputState::new(window, cx).placeholder("10000")),
             host: cx.new(|cx| {
                 InputState::new(window, cx).placeholder("localhost, IP address, or domain")
@@ -836,6 +839,8 @@ pub struct TermiRustApp {
     draft_vault_id: Option<String>,
     draft_profile_favorite: bool,
     draft_start_in_files: bool,
+    draft_persistent_session: bool,
+    draft_persistent_session_detach_others: bool,
     draft_color_tag: Option<HostColorTag>,
     draft_port_forward_rules: Vec<PortForwardRule>,
     draft_port_forward_kind: PortForwardKind,
@@ -967,6 +972,8 @@ impl TermiRustApp {
             draft_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             draft_profile_favorite: false,
             draft_start_in_files: false,
+            draft_persistent_session: false,
+            draft_persistent_session_detach_others: false,
             draft_color_tag: None,
             draft_port_forward_rules: Vec::new(),
             draft_port_forward_kind: PortForwardKind::Local,
@@ -1154,6 +1161,14 @@ impl TermiRustApp {
             startup_directory: self.inputs.startup_directory.read(cx).value().to_string(),
             startup_command: self.inputs.startup_command.read(cx).value().to_string(),
             start_in_files: self.draft_start_in_files,
+            persistent_session: self.draft_persistent_session,
+            persistent_session_name: self
+                .inputs
+                .persistent_session_name
+                .read(cx)
+                .value()
+                .to_string(),
+            persistent_session_detach_others: self.draft_persistent_session_detach_others,
             terminal_scrollback_rows: self
                 .inputs
                 .terminal_scrollback_rows
@@ -1759,6 +1774,12 @@ impl TermiRustApp {
             window,
             cx,
         );
+        Self::set_input_value(
+            &self.inputs.persistent_session_name,
+            draft.persistent_session_name,
+            window,
+            cx,
+        );
         Self::set_input_value(&self.inputs.host, draft.host, window, cx);
         Self::set_input_value(&self.inputs.port, draft.port, window, cx);
         Self::set_input_value(&self.inputs.username, draft.username, window, cx);
@@ -1774,6 +1795,8 @@ impl TermiRustApp {
         self.draft_vault_id = Some(self.effective_vault_id(draft.vault_id.as_deref()));
         self.draft_profile_favorite = draft.favorite;
         self.draft_start_in_files = draft.start_in_files;
+        self.draft_persistent_session = draft.persistent_session;
+        self.draft_persistent_session_detach_others = draft.persistent_session_detach_others;
         self.draft_port_forward_rules = draft.saved_port_forward_rules;
         self.draft_port_forward_kind = PortForwardKind::Local;
         self.draft_identity_id = draft.identity_id.or_else(|| {
@@ -1827,6 +1850,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.jump_host, "", window, cx);
         Self::set_input_value(&self.inputs.startup_directory, "", window, cx);
         Self::set_input_value(&self.inputs.startup_command, "", window, cx);
+        Self::set_input_value(&self.inputs.persistent_session_name, "", window, cx);
         Self::set_input_value(&self.inputs.terminal_scrollback_rows, "10000", window, cx);
         Self::set_input_value(&self.inputs.host, "", window, cx);
         Self::set_input_value(&self.inputs.port, "22", window, cx);
@@ -1843,6 +1867,8 @@ impl TermiRustApp {
         self.draft_vault_id = Some(self.effective_vault_id(self.selected_vault_id.as_deref()));
         self.draft_profile_favorite = false;
         self.draft_start_in_files = false;
+        self.draft_persistent_session = false;
+        self.draft_persistent_session_detach_others = false;
         self.draft_port_forward_rules.clear();
         self.draft_port_forward_kind = PortForwardKind::Local;
         let first_identity = self.saved.identities.first().cloned();
@@ -4736,6 +4762,12 @@ impl TermiRustApp {
 
         let jump_host_id = draft.jump_host_id.clone();
         let mut request = draft.to_connect_request(self.next_session_id())?;
+        if request.persistent_session && request.persistent_session_name.is_none() {
+            request.persistent_session_name = self
+                .selected_profile_id
+                .as_deref()
+                .map(default_persistent_session_name_from_id);
+        }
         if let Some(jump_host_id) = jump_host_id {
             request.jump_host = Some(self.resolve_jump_host_connection(&jump_host_id)?);
         }
@@ -9261,6 +9293,9 @@ mod tests {
             startup_directory: None,
             startup_command: Some("printf 'termirust-ui-ready\\n'".to_string()),
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
@@ -9314,6 +9349,9 @@ mod tests {
             startup_directory: None,
             startup_command: Some("printf 'jump-ui-ready\\n'".to_string()),
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
@@ -9346,6 +9384,9 @@ mod tests {
                 startup_directory: startup_directory.map(ToString::to_string),
                 startup_command: startup_command.map(ToString::to_string),
                 start_in_files,
+                persistent_session: false,
+                persistent_session_name: None,
+                persistent_session_detach_others: false,
                 terminal_scrollback_rows: Some(10_000),
                 port_forward_rules: Vec::new(),
                 local_forwards: Vec::new(),
@@ -9381,6 +9422,9 @@ mod tests {
                 startup_directory: None,
                 startup_command: startup_command.map(ToString::to_string),
                 start_in_files: false,
+                persistent_session: false,
+                persistent_session_name: None,
+                persistent_session_detach_others: false,
                 terminal_scrollback_rows: Some(10_000),
                 port_forward_rules: Vec::new(),
                 local_forwards: Vec::new(),
@@ -9692,6 +9736,9 @@ mod tests {
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
@@ -9787,6 +9834,9 @@ mod tests {
             startup_directory: Some("/srv".to_string()),
             startup_command: Some("uptime".to_string()),
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
@@ -9819,6 +9869,9 @@ mod tests {
             startup_directory: Some("/var/www/app's".to_string()),
             startup_command: Some("docker compose logs -f".to_string()),
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
@@ -9846,6 +9899,9 @@ mod tests {
             startup_directory: Some(" ".to_string()),
             startup_command: None,
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: 10_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
@@ -9874,6 +9930,9 @@ mod tests {
             startup_directory: String::new(),
             startup_command: "htop".to_string(),
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: String::new(),
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: "10000".to_string(),
             saved_port_forward_rules: Vec::new(),
             forward_kind: PortForwardKind::Local,
@@ -9959,6 +10018,9 @@ mod tests {
             startup_directory: String::new(),
             startup_command: String::new(),
             start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: String::new(),
+            persistent_session_detach_others: false,
             terminal_scrollback_rows: "10000".to_string(),
             saved_port_forward_rules: vec![existing_rule.clone()],
             forward_kind: PortForwardKind::Local,
@@ -17122,6 +17184,9 @@ mod tests {
                 startup_directory: None,
                 startup_command: None,
                 start_in_files: false,
+                persistent_session: false,
+                persistent_session_name: None,
+                persistent_session_detach_others: false,
                 terminal_scrollback_rows: Some(10_000),
                 port_forward_rules: Vec::new(),
                 local_forwards: Vec::new(),
