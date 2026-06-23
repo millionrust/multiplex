@@ -626,6 +626,15 @@ impl TermiRustApp {
                             })),
                     ),
             )
+            .when(pane.request.persistent_session, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .top(px(10.))
+                        .right(px(10.))
+                        .child(self.status_badge("tmux", theme::terminal_bg(), theme::accent())),
+                )
+            })
             .when_some(drop_zone, |this, zone| {
                 this.child(
                     div()
