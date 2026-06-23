@@ -2561,22 +2561,27 @@ impl TermiRustApp {
                     ),
             )
             .child(
-                v_flex().flex_1().min_h_0().child(
-                    v_flex()
-                        .id("settings-scroll")
-                        .gap_4()
-                        .track_scroll(&self.settings_scroll)
-                        .child(appearance_card)
-                        .child(terminal_card)
-                        .child(startup_card)
-                        .child(sessions_card)
-                        .child(local_shell_card)
-                        .child(shortcuts_card)
-                        .child(portable_card)
-                        .child(encrypted_card)
-                        .child(sync_card)
-                        .overflow_y_scrollbar(),
-                ),
+                v_flex()
+                    .id("settings-scroll-viewport")
+                    .debug_selector(|| "settings-scroll-viewport".to_string())
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        v_flex()
+                            .id("settings-scroll")
+                            .gap_4()
+                            .track_scroll(&self.settings_scroll)
+                            .child(appearance_card)
+                            .child(terminal_card)
+                            .child(startup_card)
+                            .child(sessions_card)
+                            .child(local_shell_card)
+                            .child(shortcuts_card)
+                            .child(portable_card)
+                            .child(encrypted_card)
+                            .child(sync_card)
+                            .overflow_y_scrollbar(),
+                    ),
             )
     }
 }
