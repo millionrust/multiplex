@@ -4,6 +4,7 @@ RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         openssh-server \
         netcat-openbsd \
+        tmux \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m -s /bin/sh termirust \

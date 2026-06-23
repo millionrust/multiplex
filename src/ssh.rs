@@ -932,6 +932,7 @@ mod tests {
     };
     use crate::storage::KnownHostStore;
     use crate::test_support::{DockerSshServer, TestIsolation, allocate_local_port};
+    use crate::ui::shell::startup_bytes_for_request;
     use std::io::{Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::path::Path;
@@ -1072,6 +1073,82 @@ mod tests {
         assert_eq!(disconnected, request.session_id);
     }
 
+    fn send_startup_payload(request: &ConnectRequest, runtime: &super::SessionRuntimeHandle) {
+        let bytes = startup_bytes_for_request(request, None)
+            .expect("persistent ssh request should generate startup bytes");
+        runtime
+            .command_tx
+            .send(SessionCommand::Input(bytes))
+            .expect("unable to send startup payload");
+    }
+
+    fn wait_for_remote_success(server: &DockerSshServer, command: &str, label: &str) -> String {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let mut last_error = String::new();
+        while Instant::now() < deadline {
+            match server.exec(command) {
+                Ok(output) => return output,
+                Err(error) => last_error = error,
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+
+        panic!("{label} did not become true before timeout.\nlast error:\n{last_error}");
+    }
+
+    fn assert_remote_success_stays_true(
+        server: &DockerSshServer,
+        command: &str,
+        duration: Duration,
+        label: &str,
+    ) {
+        let deadline = Instant::now() + duration;
+        while Instant::now() < deadline {
+            if let Err(error) = server.exec(command) {
+                panic!("{label} stopped being true.\nerror:\n{error}");
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    }
+
+    fn wait_for_output_contains(
+        request: &ConnectRequest,
+        event_rx: &mpsc::Receiver<SshEvent>,
+        needle: &str,
+        label: &str,
+    ) {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while Instant::now() < deadline {
+            match event_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(SshEvent::Output { session_id, data }) => {
+                    assert_eq!(session_id, request.session_id);
+                    if String::from_utf8_lossy(&data).contains(needle) {
+                        return;
+                    }
+                }
+                Ok(SshEvent::Connected { .. }) => {}
+                Ok(SshEvent::Error {
+                    session_id,
+                    message,
+                }) => panic!("{label} emitted error for session {session_id}: {message}"),
+                Ok(SshEvent::Disconnected {
+                    session_id,
+                    message,
+                }) => {
+                    panic!(
+                        "{label} disconnected before expected output for {session_id}: {message}"
+                    )
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => {
+                    panic!("{label} channel disconnected unexpectedly");
+                }
+            }
+        }
+
+        panic!("{label} did not emit expected output containing {needle:?}");
+    }
+
     #[test]
     fn docker_ssh_session_connects_and_streams_output() {
         let _isolation = TestIsolation::acquire();
@@ -1158,6 +1235,126 @@ mod tests {
         let saved_keys = known_hosts.entries().expect("unable to read known hosts");
         assert_eq!(saved_keys.len(), 1);
         assert_eq!(saved_keys[0].0, request.known_host_key());
+    }
+
+    #[test]
+    fn docker_ssh_persistent_tmux_session_survives_reconnect_without_rerunning_startup() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker tmux persistence e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let startup_dir = "/home/termirust/tmux e2e dir";
+        let marker_path = "/home/termirust/tmux-startup-count";
+        let pwd_path = "/home/termirust/tmux-startup-pwd";
+        let session_name = format!("tr-e2e-{}", server.port);
+        server
+            .exec(&format!(
+                "rm -f {marker_path} {pwd_path}; mkdir -p '{}'",
+                startup_dir
+            ))
+            .expect("unable to prepare remote tmux persistence fixture");
+
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+
+        let mut request = docker_ssh_request(&server);
+        request.session_id = 501;
+        request.persistent_session = true;
+        request.persistent_session_name = Some(session_name.clone());
+        request.startup_directory = Some(startup_dir.to_string());
+        request.startup_command = Some(format!(
+            "pwd > {pwd_path}; printf 'startup-ran\\n' >> {marker_path}"
+        ));
+
+        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+        wait_for_connected(&request, &event_rx, "tmux persistence first connect");
+        send_startup_payload(&request, &runtime);
+
+        wait_for_remote_success(
+            &server,
+            &format!("tmux has-session -t {session_name}"),
+            "tmux session creation",
+        );
+        wait_for_remote_success(
+            &server,
+            &format!("test \"$(cat {pwd_path})\" = '{}'", startup_dir),
+            "startup directory application",
+        );
+        wait_for_remote_success(
+            &server,
+            &format!("test \"$(wc -l < {marker_path})\" = '1'"),
+            "startup command first run",
+        );
+
+        disconnect_runtime(
+            &request,
+            &runtime,
+            &event_rx,
+            "tmux persistence first connect",
+        );
+        wait_for_remote_success(
+            &server,
+            &format!("tmux has-session -t {session_name}"),
+            "tmux session survives ssh disconnect",
+        );
+
+        let (reconnect_tx, reconnect_rx) = mpsc::channel();
+        let mut reconnect_request = request.clone();
+        reconnect_request.session_id = 502;
+        let reconnect_runtime =
+            spawn_session(reconnect_request.clone(), known_hosts, reconnect_tx, 0);
+        wait_for_connected(
+            &reconnect_request,
+            &reconnect_rx,
+            "tmux persistence reconnect",
+        );
+        send_startup_payload(&reconnect_request, &reconnect_runtime);
+
+        assert_remote_success_stays_true(
+            &server,
+            &format!("test \"$(wc -l < {marker_path})\" = '1'"),
+            Duration::from_secs(2),
+            "startup command should not rerun on tmux attach",
+        );
+
+        disconnect_runtime(
+            &reconnect_request,
+            &reconnect_runtime,
+            &reconnect_rx,
+            "tmux persistence reconnect",
+        );
+        let _ = server.exec(&format!("tmux kill-session -t {session_name}"));
+    }
+
+    #[test]
+    fn docker_ssh_persistent_tmux_missing_binary_prints_fallback_message() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker tmux fallback e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+
+        let mut request = docker_ssh_request(&server);
+        request.session_id = 503;
+        request.persistent_session = true;
+        request.persistent_session_name = Some("tr-no-tmux-e2e".to_string());
+        request.environment = vec![("PATH".to_string(), "/tmp/termirust-no-tmux".to_string())];
+
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        wait_for_connected(&request, &event_rx, "tmux missing fallback");
+        send_startup_payload(&request, &runtime);
+        wait_for_output_contains(
+            &request,
+            &event_rx,
+            "TermiRust persistent sessions require tmux on this host.",
+            "tmux missing fallback",
+        );
+        disconnect_runtime(&request, &runtime, &event_rx, "tmux missing fallback");
     }
 
     #[test]
