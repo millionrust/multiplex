@@ -7449,6 +7449,177 @@ impl TermiRustApp {
             )
     }
 
+    fn render_persistent_session_editor(&self, cx: &Context<Self>) -> Stateful<Div> {
+        v_flex()
+            .id("persistent-session-settings")
+            .debug_selector(|| "persistent-session-settings".to_string())
+            .gap_3()
+            .p_3()
+            .rounded(px(8.))
+            .bg(if self.draft_persistent_session {
+                theme::with_alpha(theme::accent(), 0.08)
+            } else {
+                theme::card_hover_subtle()
+            })
+            .border_1()
+            .border_color(if self.draft_persistent_session {
+                theme::with_alpha(theme::accent(), 0.32)
+            } else {
+                theme::soft_border()
+            })
+            .child(
+                v_flex()
+                    .gap_2()
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_size(px(14.))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child("Persistent Session"),
+                            )
+                            .when(self.draft_persistent_session, |this| {
+                                this.child(self.status_badge(
+                                    "tmux enabled",
+                                    theme::library_card(),
+                                    theme::success(),
+                                ))
+                            }),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .line_height(relative(1.45))
+                            .text_color(theme::text_muted())
+                            .child(
+                                "Keep the remote terminal running after closing the tab or losing the network.",
+                            ),
+                    )
+                    .child(
+                        div()
+                            .id("persistent-session-toggle")
+                            .debug_selector(|| "persistent-session-toggle".to_string())
+                            .w_full()
+                            .h(px(28.))
+                            .px_3()
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(if self.draft_persistent_session {
+                                theme::border()
+                            } else {
+                                theme::with_alpha(theme::accent(), 0.45)
+                            })
+                            .bg(if self.draft_persistent_session {
+                                theme::card_hover()
+                            } else {
+                                theme::accent()
+                            })
+                            .hover(|style| style.bg(theme::hover()))
+                            .cursor_pointer()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                let enabled = !this.draft_persistent_session;
+                                this.set_draft_persistent_session(enabled, cx);
+                            }))
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .font_medium()
+                                    .text_color(if self.draft_persistent_session {
+                                        theme::text_main()
+                                    } else {
+                                        theme::text_on_dark()
+                                    })
+                                    .child(if self.draft_persistent_session {
+                                        "Disable"
+                                    } else {
+                                        "Enable persistent tmux"
+                                    }),
+                            ),
+                    ),
+            )
+            .when(self.draft_persistent_session, |this| {
+                this.child(
+                    v_flex()
+                        .gap_3()
+                        .child(
+                            v_flex()
+                                .gap_2()
+                                .child(
+                                    self.form_field(
+                                        "Tmux Session Name",
+                                        Input::new(&self.inputs.persistent_session_name),
+                                    )
+                                )
+                                .child(
+                                    v_flex()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .text_size(px(12.))
+                                                .text_color(theme::text_muted())
+                                                .child("Attach behavior"),
+                                        )
+                                        .child(h_flex().gap_2().children(
+                                            [false, true].into_iter().map(|detach_others| {
+                                                let active = self
+                                                    .draft_persistent_session_detach_others
+                                                    == detach_others;
+                                                Button::new((
+                                                    "persistent-session-detach",
+                                                    detach_others as usize,
+                                                ))
+                                                .small()
+                                                .custom(Self::segmented_button_style(active, cx))
+                                                .label(if detach_others {
+                                                    "Detach others"
+                                                } else {
+                                                    "Share attach"
+                                                })
+                                                .on_click(cx.listener(
+                                                    move |this, _, _, cx| {
+                                                        this.set_draft_persistent_session_detach_others(
+                                                            detach_others,
+                                                            cx,
+                                                        );
+                                                    },
+                                                ))
+                                                .into_any_element()
+                                            }),
+                                        )),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .line_height(relative(1.45))
+                                .text_color(theme::text_muted())
+                                .child(
+                                    "Requires tmux on the remote server. Startup commands run only when the tmux session is first created.",
+                                ),
+                        ),
+                )
+            })
+            .when(
+                self.draft_persistent_session && self.draft_persistent_session_detach_others,
+                |this| {
+                    this.child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(theme::warning())
+                            .child(
+                                "Detach others can disconnect another TermiRust window or terminal from this tmux session.",
+                            ),
+                    )
+                },
+            )
+    }
+
     fn render_editor_panel(&self, cx: &Context<Self>) -> Div {
         let auth_mode = self.draft_auth_mode;
         let group_name = self.inputs.group.read(cx).value().trim().to_string();
@@ -7487,6 +7658,7 @@ impl TermiRustApp {
                 "Description",
                 Input::new(&self.inputs.description),
             ))
+            .child(self.render_persistent_session_editor(cx))
             .child(
                 v_flex()
                     .gap_2()
@@ -7838,90 +8010,6 @@ impl TermiRustApp {
                             .child(
                                 "When the SSH shell opens, the app can change into a saved directory and optionally run one startup command.",
                             ),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .children([false, true].into_iter().map(|enabled| {
-                                let active = self.draft_persistent_session == enabled;
-                                Button::new(("persistent-session-mode", enabled as usize))
-                                    .small()
-                                    .custom(Self::segmented_button_style(active, cx))
-                                    .label(if enabled {
-                                        "Persistent tmux"
-                                    } else {
-                                        "Normal shell"
-                                    })
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.set_draft_persistent_session(enabled, cx);
-                                    }))
-                                    .into_any_element()
-                            })),
-                    )
-                    .when(self.draft_persistent_session, |this| {
-                        this.child(
-                            h_flex()
-                                .gap_3()
-                                .child(
-                                    self.form_field(
-                                        "Tmux Session Name",
-                                        Input::new(&self.inputs.persistent_session_name),
-                                    )
-                                    .flex_1(),
-                                )
-                                .child(
-                                    v_flex()
-                                        .gap_2()
-                                        .flex_1()
-                                        .child(
-                                            div()
-                                                .text_size(px(12.))
-                                                .text_color(theme::text_muted())
-                                                .child("Attach behavior"),
-                                        )
-                                        .child(h_flex().gap_2().children(
-                                            [false, true].into_iter().map(|detach_others| {
-                                                let active = self
-                                                    .draft_persistent_session_detach_others
-                                                    == detach_others;
-                                                Button::new((
-                                                    "persistent-session-detach",
-                                                    detach_others as usize,
-                                                ))
-                                                .small()
-                                                .custom(Self::segmented_button_style(active, cx))
-                                                .label(if detach_others {
-                                                    "Detach others"
-                                                } else {
-                                                    "Share attach"
-                                                })
-                                                .on_click(cx.listener(
-                                                    move |this, _, _, cx| {
-                                                        this.set_draft_persistent_session_detach_others(
-                                                            detach_others,
-                                                            cx,
-                                                        );
-                                                    },
-                                                ))
-                                                .into_any_element()
-                                            }),
-                                        )),
-                                ),
-                        )
-                    })
-                    .when(
-                        self.draft_persistent_session
-                            && self.draft_persistent_session_detach_others,
-                        |this| {
-                            this.child(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(theme::warning())
-                                    .child(
-                                        "Detach others can disconnect another TermiRust window or terminal from this tmux session.",
-                                    ),
-                            )
-                        },
                     ),
             )
             .child(
@@ -11275,6 +11363,39 @@ mod tests {
             .expect("window update should succeed");
 
         assert!(error.contains("Password authentication requires a password"));
+    }
+
+    #[gpui::test]
+    fn e2e_host_editor_exposes_persistent_session_setting(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        for _ in 0..8 {
+            if visual.debug_bounds("persistent-session-settings").is_some() {
+                break;
+            }
+            scroll_selector(window, cx, "editor-side-scroll", -400.0);
+            visual = VisualTestContext::from_window(window.into(), cx);
+            visual.run_until_parked();
+        }
+        assert!(
+            visual.debug_bounds("persistent-session-settings").is_some(),
+            "persistent session section should be visible in the host editor"
+        );
+        assert!(
+            visual.debug_bounds("persistent-session-toggle").is_some(),
+            "persistent session enable control should be visible in the host editor"
+        );
     }
 
     #[gpui::test]

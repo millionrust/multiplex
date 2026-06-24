@@ -312,6 +312,7 @@ impl TermiRustApp {
         let ssh_body = v_flex()
             .gap(px(10.))
             .child(self.editor_protocol_row("SSH", &self.inputs.port))
+            .child(self.render_persistent_session_editor(cx))
             .child(div().h(px(1.)).bg(theme::soft_border()))
             .child(
                 div()
@@ -764,6 +765,7 @@ impl TermiRustApp {
                 v_flex().flex_1().min_h_0().child(
                     v_flex()
                         .id("editor-side-scroll")
+                        .debug_selector(|| "editor-side-scroll".to_string())
                         .flex_1()
                         .min_h_0()
                         .px(px(20.))
