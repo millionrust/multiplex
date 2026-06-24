@@ -148,7 +148,7 @@ pub fn tmux_bootstrap_script(
     }
 
     format!(
-        "if command -v tmux >/dev/null 2>&1; then\n  if tmux has-session -t {session} 2>/dev/null; then\n    {attach}\n  else\n    {new_session}\n  fi\nelse\n  printf 'TermiRust persistent sessions require tmux on this host. Falling back to a normal shell.\\n' >&2\n  exec \"${{SHELL:-/bin/sh}}\"\nfi"
+        "if command -v tmux >/dev/null 2>&1; then\n  if tmux has-session -t {session} 2>/dev/null; then\n    {attach}\n  else\n    {new_session}\n  fi\nelse\n  printf '\\033[2J\\033[H'\n  printf '\\nTermiRust Persistent Session could not start because tmux is not installed on this host.\\n\\n' >&2\n  printf 'Install tmux on the remote machine, then reconnect:\\n' >&2\n  if command -v brew >/dev/null 2>&1 || [ -x /opt/homebrew/bin/brew ] || [ -x /usr/local/bin/brew ]; then\n    printf '  brew install tmux\\n' >&2\n  elif command -v apt-get >/dev/null 2>&1; then\n    printf '  sudo apt-get update && sudo apt-get install -y tmux\\n' >&2\n  elif command -v dnf >/dev/null 2>&1; then\n    printf '  sudo dnf install -y tmux\\n' >&2\n  elif command -v yum >/dev/null 2>&1; then\n    printf '  sudo yum install -y tmux\\n' >&2\n  elif command -v pacman >/dev/null 2>&1; then\n    printf '  sudo pacman -S tmux\\n' >&2\n  else\n    printf '  Install tmux with this system package manager.\\n' >&2\n  fi\n  printf '\\nTermiRust opened a normal shell for now.\\n\\n' >&2\n  exec \"${{SHELL:-/bin/sh}}\"\nfi"
     )
 }
 
@@ -325,7 +325,12 @@ mod tests {
         request.persistent_session_name = Some("tr-prod".to_string());
 
         let script = startup_text(&request, None);
-        assert!(script.contains("TermiRust persistent sessions require tmux on this host."));
+        assert!(script.contains("TermiRust Persistent Session could not start"));
+        assert!(script.contains("Install tmux on the remote machine, then reconnect:"));
+        assert!(script.contains("brew install tmux"));
+        assert!(script.contains("sudo apt-get update && sudo apt-get install -y tmux"));
+        assert!(script.contains("TermiRust opened a normal shell for now."));
+        assert!(script.contains("printf '\\033[2J\\033[H'"));
         assert!(script.contains("exec \"${SHELL:-/bin/sh}\""));
     }
 }

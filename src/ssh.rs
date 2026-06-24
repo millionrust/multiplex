@@ -1368,7 +1368,7 @@ mod tests {
         wait_for_output_contains(
             &request,
             &event_rx,
-            "TermiRust persistent sessions require tmux on this host.",
+            "TermiRust Persistent Session could not start because tmux is not installed on this host.",
             "tmux missing fallback",
         );
         disconnect_runtime(&request, &runtime, &event_rx, "tmux missing fallback");

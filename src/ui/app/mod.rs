@@ -7600,7 +7600,7 @@ impl TermiRustApp {
                                 .line_height(relative(1.45))
                                 .text_color(theme::text_muted())
                                 .child(
-                                    "Requires tmux on the remote server. Startup commands run only when the tmux session is first created.",
+                                    "Requires tmux on the remote host. If tmux is missing, TermiRust shows install help and opens a normal shell. Startup commands run only when the tmux session is first created.",
                                 ),
                         ),
                 )
