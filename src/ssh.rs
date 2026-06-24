@@ -932,7 +932,7 @@ mod tests {
     };
     use crate::storage::KnownHostStore;
     use crate::test_support::{DockerSshServer, TestIsolation, allocate_local_port};
-    use crate::ui::shell::startup_bytes_for_request;
+    use crate::ui::shell::{shell_single_quote, startup_bytes_for_request};
     use std::io::{Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::path::Path;
@@ -1096,6 +1096,10 @@ mod tests {
         panic!("{label} did not become true before timeout.\nlast error:\n{last_error}");
     }
 
+    fn docker_fixture_user_command(command: &str) -> String {
+        format!("su -s /bin/sh -c {} termirust", shell_single_quote(command))
+    }
+
     fn assert_remote_success_stays_true(
         server: &DockerSshServer,
         command: &str,
@@ -1251,8 +1255,9 @@ mod tests {
         let session_name = format!("tr-e2e-{}", server.port);
         server
             .exec(&format!(
-                "rm -f {marker_path} {pwd_path}; mkdir -p '{}'",
-                startup_dir
+                "rm -f {marker_path} {pwd_path}; mkdir -p {}; chown -R termirust:termirust {}",
+                shell_single_quote(startup_dir),
+                shell_single_quote(startup_dir)
             ))
             .expect("unable to prepare remote tmux persistence fixture");
 
@@ -1274,12 +1279,18 @@ mod tests {
 
         wait_for_remote_success(
             &server,
-            &format!("tmux has-session -t {session_name}"),
+            &docker_fixture_user_command(&format!(
+                "tmux has-session -t {}",
+                shell_single_quote(&session_name)
+            )),
             "tmux session creation",
         );
         wait_for_remote_success(
             &server,
-            &format!("test \"$(cat {pwd_path})\" = '{}'", startup_dir),
+            &format!(
+                "test \"$(cat {pwd_path})\" = {}",
+                shell_single_quote(startup_dir)
+            ),
             "startup directory application",
         );
         wait_for_remote_success(
@@ -1296,7 +1307,10 @@ mod tests {
         );
         wait_for_remote_success(
             &server,
-            &format!("tmux has-session -t {session_name}"),
+            &docker_fixture_user_command(&format!(
+                "tmux has-session -t {}",
+                shell_single_quote(&session_name)
+            )),
             "tmux session survives ssh disconnect",
         );
 
@@ -1325,7 +1339,10 @@ mod tests {
             &reconnect_rx,
             "tmux persistence reconnect",
         );
-        let _ = server.exec(&format!("tmux kill-session -t {session_name}"));
+        let _ = server.exec(&docker_fixture_user_command(&format!(
+            "tmux kill-session -t {}",
+            shell_single_quote(&session_name)
+        )));
     }
 
     #[test]

@@ -1285,11 +1285,14 @@ impl TermiRustApp {
                             "Invite team members",
                             false,
                             move |this, _, cx| {
+                                #[cfg(not(test))]
                                 let _ = std::process::Command::new("open")
                                     .arg(format!(
                                         "mailto:?subject=Join%20me%20on%20TermiRust&body=I%27m%20using%20TermiRust%20at%20{invite_email}"
                                     ))
                                     .spawn();
+                                #[cfg(test)]
+                                let _ = &invite_email;
                                 this.status_message =
                                     "Opened your email client to invite a teammate.".to_string();
                                 cx.notify();
