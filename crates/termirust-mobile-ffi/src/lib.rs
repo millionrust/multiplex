@@ -120,6 +120,67 @@ fn empty_buffer() -> TermiRustMobileByteBuffer {
     }
 }
 
+#[cfg(target_os = "android")]
+mod android_jni {
+    use jni::JNIEnv;
+    use jni::objects::{JByteArray, JClass};
+    use jni::sys::jbyteArray;
+    use std::ptr;
+    use std::str;
+    use termirust_protocol::decrypt_mobile_vault_export_to_json;
+
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_com_termirust_mobile_data_NativeMobileVaultCrypto_decryptVaultJson(
+        mut env: JNIEnv<'_>,
+        _class: JClass<'_>,
+        encrypted_json: JByteArray<'_>,
+        passphrase: JByteArray<'_>,
+    ) -> jbyteArray {
+        match decrypt(&mut env, encrypted_json, passphrase) {
+            Ok(bytes) => match env.byte_array_from_slice(bytes.as_bytes()) {
+                Ok(array) => array.into_raw(),
+                Err(error) => {
+                    throw(
+                        &mut env,
+                        "java/lang/IllegalStateException",
+                        &error.to_string(),
+                    );
+                    ptr::null_mut()
+                }
+            },
+            Err(error) => {
+                throw(&mut env, "java/lang/IllegalArgumentException", &error);
+                ptr::null_mut()
+            }
+        }
+    }
+
+    fn decrypt(
+        env: &mut JNIEnv<'_>,
+        encrypted_json: JByteArray<'_>,
+        passphrase: JByteArray<'_>,
+    ) -> Result<String, String> {
+        let encrypted_json = env
+            .convert_byte_array(encrypted_json)
+            .map_err(|error| error.to_string())?;
+        let passphrase = env
+            .convert_byte_array(passphrase)
+            .map_err(|error| error.to_string())?;
+
+        let encrypted_json = str::from_utf8(&encrypted_json)
+            .map_err(|_| "Encrypted mobile vault JSON was not valid UTF-8.".to_string())?;
+        let passphrase = str::from_utf8(&passphrase)
+            .map_err(|_| "Mobile vault passphrase was not valid UTF-8.".to_string())?;
+
+        decrypt_mobile_vault_export_to_json(encrypted_json, passphrase)
+            .map_err(|error| error.to_string())
+    }
+
+    fn throw(env: &mut JNIEnv<'_>, class: &str, message: &str) {
+        let _ = env.throw_new(class, message);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -57,6 +57,11 @@ Link that XCFramework into `terminal_swift`.
 ## Android Integration Path
 
 The Android app has a `MobileVaultDecryptor` interface. Implement it through JNI or UniFFI and delegate to the same Rust function.
+The Kotlin prototype includes `NativeMobileVaultDecryptor`, which calls the JNI export:
+
+```text
+Java_com_termirust_mobile_data_NativeMobileVaultCrypto_decryptVaultJson
+```
 
 Build JNI libraries:
 
