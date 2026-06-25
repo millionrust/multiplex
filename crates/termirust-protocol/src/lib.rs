@@ -292,6 +292,21 @@ impl MobileVaultExport {
         }
     }
 
+    pub fn is_device_revoked(&self, device_id: &str) -> bool {
+        let device_id = device_id.trim();
+        !device_id.is_empty()
+            && self
+                .devices
+                .iter()
+                .any(|device| device.device_id == device_id && device.revoked_at_millis.is_some())
+    }
+
+    pub fn source_device_record(&self) -> Option<&MobileDeviceRecord> {
+        self.devices
+            .iter()
+            .find(|device| device.device_id == self.source_device_id)
+    }
+
     pub fn from_desktop_portable_json(
         input: &str,
         export_id: impl Into<String>,
@@ -498,6 +513,18 @@ pub struct MobileDeviceRecord {
     pub public_key: Option<String>,
     #[serde(default)]
     pub revoked_at_millis: Option<u128>,
+}
+
+impl MobileDeviceRecord {
+    pub fn active_desktop(device_id: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            device_id: device_id.into(),
+            label: label.into(),
+            platform: Some("desktop".to_string()),
+            public_key: None,
+            revoked_at_millis: None,
+        }
+    }
 }
 
 fn default_ssh_port() -> u16 {
@@ -728,6 +755,38 @@ mod tests {
         let parsed: MobileVaultExport =
             serde_json::from_str(&json).expect("deserialize mobile vault");
         assert_eq!(parsed, export);
+        assert_eq!(
+            parsed
+                .source_device_record()
+                .map(|device| device.label.as_str()),
+            None
+        );
+        assert!(!parsed.is_device_revoked("ios-1"));
+    }
+
+    #[test]
+    fn mobile_vault_detects_revoked_devices() {
+        let mut export = MobileVaultExport::empty("export-1", "desktop-1");
+        export.devices = vec![
+            MobileDeviceRecord::active_desktop("desktop-1", "Desktop"),
+            MobileDeviceRecord {
+                device_id: "ios-1".to_string(),
+                label: "Jacob iPhone".to_string(),
+                platform: Some("ios".to_string()),
+                public_key: None,
+                revoked_at_millis: Some(1719356789123),
+            },
+        ];
+
+        assert_eq!(
+            export
+                .source_device_record()
+                .map(|device| device.label.as_str()),
+            Some("Desktop")
+        );
+        assert!(export.is_device_revoked("ios-1"));
+        assert!(!export.is_device_revoked("desktop-1"));
+        assert!(!export.is_device_revoked(""));
     }
 
     #[test]

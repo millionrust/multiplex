@@ -20,9 +20,10 @@ use termirust_protocol::{
     EncryptedMobileVaultEnvelope, decrypt_mobile_vault_export as decrypt_mobile_vault_envelope,
 };
 use termirust_protocol::{
-    MOBILE_VAULT_SCHEMA_VERSION, MobileAuthKind, MobileAuthMetadata, MobileEnvironmentVariable,
-    MobileGroup, MobileHost, MobileIdentityMetadata, MobileKnownHost, MobilePersistentSession,
-    MobileVault, MobileVaultExport, encrypt_mobile_vault_export as encrypt_mobile_vault_envelope,
+    MOBILE_VAULT_SCHEMA_VERSION, MobileAuthKind, MobileAuthMetadata, MobileDeviceRecord,
+    MobileEnvironmentVariable, MobileGroup, MobileHost, MobileIdentityMetadata, MobileKnownHost,
+    MobilePersistentSession, MobileVault, MobileVaultExport,
+    encrypt_mobile_vault_export as encrypt_mobile_vault_envelope,
 };
 
 use crate::models::{
@@ -263,6 +264,7 @@ fn build_mobile_vault_export(
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
+    let source_device_id = source_device_id.into();
     let mut groups = Vec::new();
     let mut tags = BTreeMap::<String, ()>::new();
     let hosts = exported
@@ -291,7 +293,7 @@ fn build_mobile_vault_export(
         export_id: export_id.into(),
         created_at_millis: exported_at_millis,
         updated_at_millis: exported_at_millis,
-        source_device_id: source_device_id.into(),
+        source_device_id: source_device_id.clone(),
         vaults: exported
             .vaults
             .into_iter()
@@ -316,7 +318,10 @@ fn build_mobile_vault_export(
             })
             .collect(),
         sync: Default::default(),
-        devices: Vec::new(),
+        devices: vec![MobileDeviceRecord::active_desktop(
+            source_device_id,
+            "TermiRust Desktop",
+        )],
     })
 }
 
@@ -1514,6 +1519,11 @@ Host app-prod
         assert_eq!(mobile.schema_version, MOBILE_VAULT_SCHEMA_VERSION);
         assert_eq!(mobile.export_id, "export-1");
         assert_eq!(mobile.source_device_id, "desktop-1");
+        assert_eq!(mobile.devices.len(), 1);
+        assert_eq!(mobile.devices[0].device_id, "desktop-1");
+        assert_eq!(mobile.devices[0].label, "TermiRust Desktop");
+        assert_eq!(mobile.devices[0].platform.as_deref(), Some("desktop"));
+        assert_eq!(mobile.devices[0].revoked_at_millis, None);
         assert_eq!(mobile.vaults[1].kind, "shared");
         assert_eq!(mobile.known_hosts[0].endpoint, "prod.example.com:2222");
 

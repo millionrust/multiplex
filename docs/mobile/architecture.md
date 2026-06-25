@@ -80,6 +80,12 @@ Secrets must not be stored as plaintext JSON. Passwords, private keys, key
 passphrases, vault wrapping keys, and device pairing keys must be encrypted or
 stored only in the platform secure store.
 
+Device records use `device_id` as the stable identifier. Desktop mobile exports
+include the exporting desktop as an active device record with `platform:
+desktop`. Mobile clients must preserve and decode the `devices` array even when
+they do not yet expose a device-management UI. A device is considered revoked
+when its matching record has `revoked_at_millis` set.
+
 ## Platform Security
 
 ### iOS
