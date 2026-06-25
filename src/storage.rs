@@ -15,10 +15,14 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(test)]
+use termirust_protocol::{
+    EncryptedMobileVaultEnvelope, decrypt_mobile_vault_export as decrypt_mobile_vault_envelope,
+};
 use termirust_protocol::{
     MOBILE_VAULT_SCHEMA_VERSION, MobileAuthKind, MobileAuthMetadata, MobileEnvironmentVariable,
     MobileGroup, MobileHost, MobileIdentityMetadata, MobileKnownHost, MobilePersistentSession,
-    MobileVault, MobileVaultExport,
+    MobileVault, MobileVaultExport, encrypt_mobile_vault_export as encrypt_mobile_vault_envelope,
 };
 
 use crate::models::{
@@ -31,9 +35,7 @@ const STATE_FILE_NAME: &str = "state.json";
 const KNOWN_HOSTS_FILE_NAME: &str = "known_hosts.json";
 const PORTABLE_BUNDLE_VERSION: u16 = 1;
 const ENCRYPTED_PORTABLE_BUNDLE_VERSION: u16 = 1;
-const ENCRYPTED_MOBILE_VAULT_VERSION: u16 = 1;
 const PORTABLE_BUNDLE_AAD: &[u8] = b"termirust.portable-bundle.v1";
-const MOBILE_VAULT_AAD: &[u8] = b"termirust.mobile-vault.v1";
 const PORTABLE_BUNDLE_KEY_LEN: usize = 32;
 const PORTABLE_BUNDLE_SALT_LEN: usize = 16;
 const PORTABLE_BUNDLE_NONCE_LEN: usize = 12;
@@ -65,17 +67,6 @@ struct PortableDataBundle {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct EncryptedPortableDataBundle {
     version: u16,
-    cipher: String,
-    kdf: String,
-    salt: String,
-    nonce: String,
-    ciphertext: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct EncryptedMobileVaultExport {
-    version: u16,
-    schema_version: u16,
     cipher: String,
     kdf: String,
     salt: String,
@@ -171,8 +162,7 @@ pub fn export_encrypted_mobile_vault(
     ensure_backup_passphrase(passphrase)?;
     let export = build_mobile_vault_export(state, known_hosts, export_id, source_device_id)?;
     let report = report_for_mobile_vault_export(&export);
-    let plaintext = serde_json::to_vec_pretty(&export)?;
-    let encrypted = encrypt_mobile_vault_export(&plaintext, passphrase)?;
+    let encrypted = encrypt_mobile_vault_envelope(&export, passphrase)?;
     let content = serde_json::to_string_pretty(&encrypted)?;
     write_bundle_file(path.as_ref(), content)?;
     Ok(report)
@@ -186,10 +176,9 @@ pub fn read_encrypted_mobile_vault_export(
     ensure_backup_passphrase(passphrase)?;
     let content = fs::read_to_string(path.as_ref())
         .with_context(|| format!("Unable to read {}", path.as_ref().display()))?;
-    let encrypted: EncryptedMobileVaultExport = serde_json::from_str(&content)
+    let encrypted: EncryptedMobileVaultEnvelope = serde_json::from_str(&content)
         .with_context(|| format!("Unable to parse {}", path.as_ref().display()))?;
-    let plaintext = decrypt_mobile_vault_export(&encrypted, passphrase)?;
-    serde_json::from_slice(&plaintext).with_context(|| {
+    decrypt_mobile_vault_envelope(&encrypted, passphrase).with_context(|| {
         format!(
             "Unable to decode encrypted mobile vault {}",
             path.as_ref().display()
@@ -508,39 +497,6 @@ fn encrypt_portable_data_bundle(
     })
 }
 
-fn encrypt_mobile_vault_export(
-    plaintext: &[u8],
-    passphrase: &str,
-) -> Result<EncryptedMobileVaultExport> {
-    let mut salt = [0u8; PORTABLE_BUNDLE_SALT_LEN];
-    let mut nonce = [0u8; PORTABLE_BUNDLE_NONCE_LEN];
-    OsRng.fill_bytes(&mut salt);
-    OsRng.fill_bytes(&mut nonce);
-
-    let key = derive_portable_bundle_key(passphrase, &salt)?;
-    let cipher =
-        Aes256GcmSiv::new_from_slice(&key).context("Unable to initialize mobile vault cipher")?;
-    let ciphertext = cipher
-        .encrypt(
-            Nonce::from_slice(&nonce),
-            Payload {
-                msg: plaintext,
-                aad: MOBILE_VAULT_AAD,
-            },
-        )
-        .map_err(|_| anyhow::anyhow!("Unable to encrypt mobile vault"))?;
-
-    Ok(EncryptedMobileVaultExport {
-        version: ENCRYPTED_MOBILE_VAULT_VERSION,
-        schema_version: MOBILE_VAULT_SCHEMA_VERSION,
-        cipher: "AES-256-GCM-SIV".to_string(),
-        kdf: "Argon2id(m=19456,t=3,p=1)".to_string(),
-        salt: STANDARD_NO_PAD.encode(salt),
-        nonce: STANDARD_NO_PAD.encode(nonce),
-        ciphertext: STANDARD_NO_PAD.encode(ciphertext),
-    })
-}
-
 fn decrypt_portable_data_bundle(
     encrypted: &EncryptedPortableDataBundle,
     passphrase: &str,
@@ -584,59 +540,6 @@ fn decrypt_portable_data_bundle(
         .map_err(|_| {
             anyhow::anyhow!(
                 "Unable to decrypt encrypted bundle. Check the passphrase and file integrity."
-            )
-        })
-}
-
-#[cfg(test)]
-fn decrypt_mobile_vault_export(
-    encrypted: &EncryptedMobileVaultExport,
-    passphrase: &str,
-) -> Result<Vec<u8>> {
-    anyhow::ensure!(
-        encrypted.version == ENCRYPTED_MOBILE_VAULT_VERSION,
-        "Unsupported encrypted mobile vault version {}.",
-        encrypted.version
-    );
-    anyhow::ensure!(
-        encrypted.schema_version == MOBILE_VAULT_SCHEMA_VERSION,
-        "Unsupported mobile vault schema version {}.",
-        encrypted.schema_version
-    );
-
-    let salt = STANDARD_NO_PAD
-        .decode(&encrypted.salt)
-        .context("Encrypted mobile vault salt is invalid.")?;
-    let nonce = STANDARD_NO_PAD
-        .decode(&encrypted.nonce)
-        .context("Encrypted mobile vault nonce is invalid.")?;
-    let ciphertext = STANDARD_NO_PAD
-        .decode(&encrypted.ciphertext)
-        .context("Encrypted mobile vault ciphertext is invalid.")?;
-
-    anyhow::ensure!(
-        salt.len() == PORTABLE_BUNDLE_SALT_LEN,
-        "Encrypted mobile vault salt is invalid."
-    );
-    anyhow::ensure!(
-        nonce.len() == PORTABLE_BUNDLE_NONCE_LEN,
-        "Encrypted mobile vault nonce is invalid."
-    );
-
-    let key = derive_portable_bundle_key(passphrase, &salt)?;
-    let cipher =
-        Aes256GcmSiv::new_from_slice(&key).context("Unable to initialize mobile vault cipher")?;
-    cipher
-        .decrypt(
-            Nonce::from_slice(&nonce),
-            Payload {
-                msg: &ciphertext,
-                aad: MOBILE_VAULT_AAD,
-            },
-        )
-        .map_err(|_| {
-            anyhow::anyhow!(
-                "Unable to decrypt encrypted mobile vault. Check the passphrase and file integrity."
             )
         })
 }

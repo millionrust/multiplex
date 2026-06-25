@@ -7054,6 +7054,10 @@ dependencies = [
 name = "termirust-protocol"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm-siv",
+ "argon2",
+ "base64",
+ "rand 0.8.5",
  "serde",
  "serde_json",
 ]

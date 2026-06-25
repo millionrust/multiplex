@@ -1,7 +1,252 @@
+use aes_gcm_siv::aead::{Aead, Payload};
+use aes_gcm_siv::{Aes256GcmSiv, KeyInit, Nonce};
+use argon2::{Algorithm, Argon2, Params, Version};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD_NO_PAD;
+use rand::RngCore;
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::fmt;
 
 pub const MOBILE_VAULT_SCHEMA_VERSION: u16 = 1;
+pub const ENCRYPTED_MOBILE_VAULT_VERSION: u16 = 1;
+
+const MOBILE_VAULT_AAD: &[u8] = b"termirust.mobile-vault.v1";
+const MOBILE_VAULT_CIPHER: &str = "AES-256-GCM-SIV";
+const MOBILE_VAULT_KDF: &str = "Argon2id(m=19456,t=3,p=1)";
+const MOBILE_VAULT_KEY_LEN: usize = 32;
+const MOBILE_VAULT_SALT_LEN: usize = 16;
+const MOBILE_VAULT_NONCE_LEN: usize = 12;
+const MOBILE_VAULT_ARGON2_MEMORY_KIB: u32 = 19_456;
+const MOBILE_VAULT_ARGON2_ITERATIONS: u32 = 3;
+const MOBILE_VAULT_ARGON2_PARALLELISM: u32 = 1;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EncryptedMobileVaultEnvelope {
+    pub version: u16,
+    pub schema_version: u16,
+    pub cipher: String,
+    pub kdf: String,
+    pub salt: String,
+    pub nonce: String,
+    pub ciphertext: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MobileVaultCryptoError {
+    EmptyPassphrase,
+    UnsupportedEnvelopeVersion(u16),
+    UnsupportedSchemaVersion(u16),
+    UnsupportedCipher(String),
+    UnsupportedKdf(String),
+    InvalidSalt,
+    InvalidNonce,
+    InvalidCiphertext,
+    InvalidKdfParams,
+    InvalidKey,
+    EncryptFailed,
+    DecryptFailed,
+    EncodeFailed(String),
+    DecodeFailed(String),
+}
+
+impl fmt::Display for MobileVaultCryptoError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyPassphrase => write!(f, "Mobile vault passphrase cannot be empty."),
+            Self::UnsupportedEnvelopeVersion(version) => {
+                write!(f, "Unsupported encrypted mobile vault version {version}.")
+            }
+            Self::UnsupportedSchemaVersion(version) => {
+                write!(f, "Unsupported mobile vault schema version {version}.")
+            }
+            Self::UnsupportedCipher(cipher) => {
+                write!(f, "Unsupported encrypted mobile vault cipher {cipher}.")
+            }
+            Self::UnsupportedKdf(kdf) => {
+                write!(f, "Unsupported encrypted mobile vault KDF {kdf}.")
+            }
+            Self::InvalidSalt => write!(f, "Encrypted mobile vault salt is invalid."),
+            Self::InvalidNonce => write!(f, "Encrypted mobile vault nonce is invalid."),
+            Self::InvalidCiphertext => write!(f, "Encrypted mobile vault ciphertext is invalid."),
+            Self::InvalidKdfParams => {
+                write!(f, "Encrypted mobile vault KDF parameters are invalid.")
+            }
+            Self::InvalidKey => write!(f, "Unable to initialize mobile vault cipher."),
+            Self::EncryptFailed => write!(f, "Unable to encrypt mobile vault."),
+            Self::DecryptFailed => write!(
+                f,
+                "Unable to decrypt encrypted mobile vault. Check the passphrase and file integrity."
+            ),
+            Self::EncodeFailed(error) => write!(f, "Unable to encode mobile vault: {error}"),
+            Self::DecodeFailed(error) => write!(f, "Unable to decode mobile vault: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for MobileVaultCryptoError {}
+
+pub fn encrypt_mobile_vault_export(
+    export: &MobileVaultExport,
+    passphrase: &str,
+) -> Result<EncryptedMobileVaultEnvelope, MobileVaultCryptoError> {
+    if passphrase.trim().is_empty() {
+        return Err(MobileVaultCryptoError::EmptyPassphrase);
+    }
+    let plaintext = serde_json::to_vec_pretty(export)
+        .map_err(|error| MobileVaultCryptoError::EncodeFailed(error.to_string()))?;
+    encrypt_mobile_vault_bytes(&plaintext, passphrase)
+}
+
+pub fn encrypt_mobile_vault_export_json(
+    export: &MobileVaultExport,
+    passphrase: &str,
+) -> Result<String, MobileVaultCryptoError> {
+    let envelope = encrypt_mobile_vault_export(export, passphrase)?;
+    serde_json::to_string_pretty(&envelope)
+        .map_err(|error| MobileVaultCryptoError::EncodeFailed(error.to_string()))
+}
+
+pub fn decrypt_mobile_vault_export(
+    envelope: &EncryptedMobileVaultEnvelope,
+    passphrase: &str,
+) -> Result<MobileVaultExport, MobileVaultCryptoError> {
+    let plaintext = decrypt_mobile_vault_bytes(envelope, passphrase)?;
+    serde_json::from_slice(&plaintext)
+        .map_err(|error| MobileVaultCryptoError::DecodeFailed(error.to_string()))
+}
+
+pub fn decrypt_mobile_vault_export_json(
+    envelope_json: &str,
+    passphrase: &str,
+) -> Result<MobileVaultExport, MobileVaultCryptoError> {
+    let envelope: EncryptedMobileVaultEnvelope = serde_json::from_str(envelope_json)
+        .map_err(|error| MobileVaultCryptoError::DecodeFailed(error.to_string()))?;
+    decrypt_mobile_vault_export(&envelope, passphrase)
+}
+
+pub fn decrypt_mobile_vault_export_to_json(
+    envelope_json: &str,
+    passphrase: &str,
+) -> Result<String, MobileVaultCryptoError> {
+    let export = decrypt_mobile_vault_export_json(envelope_json, passphrase)?;
+    serde_json::to_string_pretty(&export)
+        .map_err(|error| MobileVaultCryptoError::EncodeFailed(error.to_string()))
+}
+
+pub fn encrypt_mobile_vault_bytes(
+    plaintext: &[u8],
+    passphrase: &str,
+) -> Result<EncryptedMobileVaultEnvelope, MobileVaultCryptoError> {
+    if passphrase.trim().is_empty() {
+        return Err(MobileVaultCryptoError::EmptyPassphrase);
+    }
+
+    let mut salt = [0u8; MOBILE_VAULT_SALT_LEN];
+    let mut nonce = [0u8; MOBILE_VAULT_NONCE_LEN];
+    OsRng.fill_bytes(&mut salt);
+    OsRng.fill_bytes(&mut nonce);
+
+    let key = derive_mobile_vault_key(passphrase, &salt)?;
+    let cipher =
+        Aes256GcmSiv::new_from_slice(&key).map_err(|_| MobileVaultCryptoError::InvalidKey)?;
+    let ciphertext = cipher
+        .encrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: plaintext,
+                aad: MOBILE_VAULT_AAD,
+            },
+        )
+        .map_err(|_| MobileVaultCryptoError::EncryptFailed)?;
+
+    Ok(EncryptedMobileVaultEnvelope {
+        version: ENCRYPTED_MOBILE_VAULT_VERSION,
+        schema_version: MOBILE_VAULT_SCHEMA_VERSION,
+        cipher: MOBILE_VAULT_CIPHER.to_string(),
+        kdf: MOBILE_VAULT_KDF.to_string(),
+        salt: STANDARD_NO_PAD.encode(salt),
+        nonce: STANDARD_NO_PAD.encode(nonce),
+        ciphertext: STANDARD_NO_PAD.encode(ciphertext),
+    })
+}
+
+pub fn decrypt_mobile_vault_bytes(
+    envelope: &EncryptedMobileVaultEnvelope,
+    passphrase: &str,
+) -> Result<Vec<u8>, MobileVaultCryptoError> {
+    if passphrase.trim().is_empty() {
+        return Err(MobileVaultCryptoError::EmptyPassphrase);
+    }
+    if envelope.version != ENCRYPTED_MOBILE_VAULT_VERSION {
+        return Err(MobileVaultCryptoError::UnsupportedEnvelopeVersion(
+            envelope.version,
+        ));
+    }
+    if envelope.schema_version != MOBILE_VAULT_SCHEMA_VERSION {
+        return Err(MobileVaultCryptoError::UnsupportedSchemaVersion(
+            envelope.schema_version,
+        ));
+    }
+    if envelope.cipher != MOBILE_VAULT_CIPHER {
+        return Err(MobileVaultCryptoError::UnsupportedCipher(
+            envelope.cipher.clone(),
+        ));
+    }
+    if envelope.kdf != MOBILE_VAULT_KDF {
+        return Err(MobileVaultCryptoError::UnsupportedKdf(envelope.kdf.clone()));
+    }
+
+    let salt = STANDARD_NO_PAD
+        .decode(&envelope.salt)
+        .map_err(|_| MobileVaultCryptoError::InvalidSalt)?;
+    let nonce = STANDARD_NO_PAD
+        .decode(&envelope.nonce)
+        .map_err(|_| MobileVaultCryptoError::InvalidNonce)?;
+    let ciphertext = STANDARD_NO_PAD
+        .decode(&envelope.ciphertext)
+        .map_err(|_| MobileVaultCryptoError::InvalidCiphertext)?;
+
+    if salt.len() != MOBILE_VAULT_SALT_LEN {
+        return Err(MobileVaultCryptoError::InvalidSalt);
+    }
+    if nonce.len() != MOBILE_VAULT_NONCE_LEN {
+        return Err(MobileVaultCryptoError::InvalidNonce);
+    }
+
+    let key = derive_mobile_vault_key(passphrase, &salt)?;
+    let cipher =
+        Aes256GcmSiv::new_from_slice(&key).map_err(|_| MobileVaultCryptoError::InvalidKey)?;
+    cipher
+        .decrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: &ciphertext,
+                aad: MOBILE_VAULT_AAD,
+            },
+        )
+        .map_err(|_| MobileVaultCryptoError::DecryptFailed)
+}
+
+fn derive_mobile_vault_key(
+    passphrase: &str,
+    salt: &[u8],
+) -> Result<[u8; MOBILE_VAULT_KEY_LEN], MobileVaultCryptoError> {
+    let params = Params::new(
+        MOBILE_VAULT_ARGON2_MEMORY_KIB,
+        MOBILE_VAULT_ARGON2_ITERATIONS,
+        MOBILE_VAULT_ARGON2_PARALLELISM,
+        Some(MOBILE_VAULT_KEY_LEN),
+    )
+    .map_err(|_| MobileVaultCryptoError::InvalidKdfParams)?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    let mut key = [0u8; MOBILE_VAULT_KEY_LEN];
+    argon2
+        .hash_password_into(passphrase.as_bytes(), salt, &mut key)
+        .map_err(|_| MobileVaultCryptoError::InvalidKdfParams)?;
+    Ok(key)
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MobileVaultExport {
@@ -572,5 +817,150 @@ mod tests {
         let identity = &mobile.identities[0];
         assert_eq!(identity.kind, "ed25519");
         assert_eq!(identity.secret_ref, None);
+    }
+
+    #[test]
+    fn encrypted_mobile_vault_round_trips_without_plaintext() {
+        let export = MobileVaultExport {
+            schema_version: MOBILE_VAULT_SCHEMA_VERSION,
+            export_id: "export-1".to_string(),
+            created_at_millis: 10,
+            updated_at_millis: 11,
+            source_device_id: "desktop-1".to_string(),
+            vaults: Vec::new(),
+            hosts: vec![MobileHost {
+                id: "profile-1".to_string(),
+                label: "Production".to_string(),
+                vault_id: None,
+                group: "Ops".to_string(),
+                tags: Vec::new(),
+                host: "prod.example.com".to_string(),
+                port: 22,
+                username: "deploy".to_string(),
+                auth: MobileAuthMetadata {
+                    kind: MobileAuthKind::PrivateKey,
+                    identity_id: Some("identity-1".to_string()),
+                    secret_ref: None,
+                },
+                jump_host_id: None,
+                startup_directory: Some("/srv/app".to_string()),
+                startup_command: Some("uptime".to_string()),
+                start_in_files: false,
+                persistent_session: MobilePersistentSession {
+                    enabled: true,
+                    session_name: Some("tr-prod".to_string()),
+                    detach_others: true,
+                },
+                terminal_scrollback_rows: None,
+                color_tag: None,
+                environment: Vec::new(),
+                known_host_endpoint: Some("prod.example.com:22".to_string()),
+            }],
+            groups: Vec::new(),
+            tags: Vec::new(),
+            identities: Vec::new(),
+            known_hosts: Vec::new(),
+            sync: MobileSyncMetadata::default(),
+            devices: Vec::new(),
+        };
+
+        let envelope =
+            encrypt_mobile_vault_export(&export, "hunter2").expect("encrypt mobile vault");
+        let envelope_json = serde_json::to_string(&envelope).expect("serialize envelope");
+
+        assert_eq!(envelope.version, ENCRYPTED_MOBILE_VAULT_VERSION);
+        assert_eq!(envelope.schema_version, MOBILE_VAULT_SCHEMA_VERSION);
+        assert_eq!(envelope.cipher, MOBILE_VAULT_CIPHER);
+        assert_eq!(envelope.kdf, MOBILE_VAULT_KDF);
+        assert!(!envelope_json.contains("prod.example.com"));
+        assert!(!envelope_json.contains("uptime"));
+
+        let decrypted =
+            decrypt_mobile_vault_export(&envelope, "hunter2").expect("decrypt mobile vault");
+        assert_eq!(decrypted, export);
+    }
+
+    #[test]
+    fn encrypted_mobile_vault_json_bridge_round_trips() {
+        let export = MobileVaultExport::empty("export-1", "desktop-1");
+        let envelope_json =
+            encrypt_mobile_vault_export_json(&export, "hunter2").expect("encrypt mobile vault");
+
+        assert!(envelope_json.contains("\"cipher\": \"AES-256-GCM-SIV\""));
+        assert!(!envelope_json.contains("\"export_id\": \"export-1\""));
+
+        let decrypted =
+            decrypt_mobile_vault_export_json(&envelope_json, "hunter2").expect("decrypt export");
+        let decrypted_json =
+            decrypt_mobile_vault_export_to_json(&envelope_json, "hunter2").expect("decrypt json");
+
+        assert_eq!(decrypted, export);
+        assert!(decrypted_json.contains("\"export_id\": \"export-1\""));
+        assert!(decrypted_json.contains("\"source_device_id\": \"desktop-1\""));
+    }
+
+    #[test]
+    fn encrypted_mobile_vault_rejects_wrong_passphrase() {
+        let export = MobileVaultExport::empty("export-1", "desktop-1");
+        let envelope =
+            encrypt_mobile_vault_export(&export, "correct").expect("encrypt mobile vault");
+
+        let error = decrypt_mobile_vault_export(&envelope, "wrong")
+            .expect_err("wrong passphrase should fail");
+
+        assert_eq!(error, MobileVaultCryptoError::DecryptFailed);
+    }
+
+    #[test]
+    fn encrypted_mobile_vault_rejects_unsupported_schema_version() {
+        let export = MobileVaultExport::empty("export-1", "desktop-1");
+        let mut envelope =
+            encrypt_mobile_vault_export(&export, "hunter2").expect("encrypt mobile vault");
+        envelope.schema_version = MOBILE_VAULT_SCHEMA_VERSION + 1;
+
+        let error = decrypt_mobile_vault_export(&envelope, "hunter2")
+            .expect_err("unsupported schema should fail");
+
+        assert_eq!(
+            error,
+            MobileVaultCryptoError::UnsupportedSchemaVersion(MOBILE_VAULT_SCHEMA_VERSION + 1)
+        );
+    }
+
+    #[test]
+    fn encrypted_mobile_vault_rejects_unsupported_cipher_and_kdf() {
+        let export = MobileVaultExport::empty("export-1", "desktop-1");
+        let mut envelope =
+            encrypt_mobile_vault_export(&export, "hunter2").expect("encrypt mobile vault");
+        envelope.cipher = "AES-128-GCM".to_string();
+
+        let error = decrypt_mobile_vault_export(&envelope, "hunter2")
+            .expect_err("unsupported cipher should fail");
+
+        assert_eq!(
+            error,
+            MobileVaultCryptoError::UnsupportedCipher("AES-128-GCM".to_string())
+        );
+
+        let mut envelope =
+            encrypt_mobile_vault_export(&export, "hunter2").expect("encrypt mobile vault");
+        envelope.kdf = "PBKDF2".to_string();
+
+        let error = decrypt_mobile_vault_export(&envelope, "hunter2").expect_err("unsupported kdf");
+
+        assert_eq!(
+            error,
+            MobileVaultCryptoError::UnsupportedKdf("PBKDF2".to_string())
+        );
+    }
+
+    #[test]
+    fn encrypted_mobile_vault_rejects_empty_passphrase() {
+        let export = MobileVaultExport::empty("export-1", "desktop-1");
+
+        let error =
+            encrypt_mobile_vault_export(&export, " ").expect_err("empty passphrase should fail");
+
+        assert_eq!(error, MobileVaultCryptoError::EmptyPassphrase);
     }
 }

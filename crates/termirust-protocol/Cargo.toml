@@ -6,5 +6,9 @@ description = "Shared TermiRust mobile vault and protocol schema"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+aes-gcm-siv = "0.11"
+argon2 = "0.5"
+base64 = "0.22"
+rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
