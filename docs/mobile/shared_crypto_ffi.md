@@ -40,33 +40,37 @@ after copying the returned buffer.
 
 The Swift app has a `MobileVaultDecrypting` protocol. Implement it with a thin Swift wrapper over `termirust_mobile_decrypt_vault_json`.
 
-Build targets to add:
+Build the XCFramework:
 
 ```bash
-rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+scripts/build-mobile-ffi-ios.sh
 ```
 
-Then build static libraries per target and package them as an `.xcframework` with the header:
+The script installs missing Rust iOS targets, builds the device and simulator static libraries, and writes:
 
-```bash
-cargo build -p termirust-mobile-ffi --release --target aarch64-apple-ios
-cargo build -p termirust-mobile-ffi --release --target aarch64-apple-ios-sim
-cargo build -p termirust-mobile-ffi --release --target x86_64-apple-ios
+```text
+dist/mobile/ios/TermiRustMobileCrypto.xcframework
 ```
 
-Package the simulator slices together before creating the final XCFramework, then link the XCFramework into `terminal_swift`.
+Link that XCFramework into `terminal_swift`.
 
 ## Android Integration Path
 
 The Android app has a `MobileVaultDecryptor` interface. Implement it through JNI or UniFFI and delegate to the same Rust function.
 
-Recommended NDK targets:
+Build JNI libraries:
 
 ```bash
-rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+scripts/build-mobile-ffi-android.sh
 ```
 
-Use Android Studio plus the NDK, or `cargo-ndk`, to build `.so` files into `app/src/main/jniLibs/<abi>/`.
+The script installs missing Rust Android targets, finds the local Android NDK, and writes:
+
+```text
+dist/mobile/android/jniLibs/
+```
+
+Copy or sync those ABI folders into `terminal_kotlin/app/src/main/jniLibs/`.
 
 ## Verification
 
