@@ -9,6 +9,10 @@ repository = "https://github.com/jacobsam/terminal"
 readme = "README.md"
 default-run = "termirust"
 
+[workspace]
+members = ["crates/termirust-protocol"]
+resolver = "3"
+
 [package.metadata.bundle]
 name = "TermiRust"
 identifier = "com.termirust.desktop"
