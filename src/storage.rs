@@ -9,16 +9,21 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+use termirust_protocol::{
+    MOBILE_VAULT_SCHEMA_VERSION, MobileAuthKind, MobileAuthMetadata, MobileEnvironmentVariable,
+    MobileGroup, MobileHost, MobileIdentityMetadata, MobileKnownHost, MobilePersistentSession,
+    MobileVault, MobileVaultExport,
+};
 
 use crate::models::{
     AuthMode, DEFAULT_VAULT_ID, HostProfile, ImportedIdentity, ProfileSource, SavedIdentity,
-    SavedSnippet, SavedState, SavedVault,
+    SavedSnippet, SavedState, SavedVault, VaultKind,
 };
 
 const APP_DIR_NAME: &str = "termirust";
@@ -26,7 +31,9 @@ const STATE_FILE_NAME: &str = "state.json";
 const KNOWN_HOSTS_FILE_NAME: &str = "known_hosts.json";
 const PORTABLE_BUNDLE_VERSION: u16 = 1;
 const ENCRYPTED_PORTABLE_BUNDLE_VERSION: u16 = 1;
+const ENCRYPTED_MOBILE_VAULT_VERSION: u16 = 1;
 const PORTABLE_BUNDLE_AAD: &[u8] = b"termirust.portable-bundle.v1";
+const MOBILE_VAULT_AAD: &[u8] = b"termirust.mobile-vault.v1";
 const PORTABLE_BUNDLE_KEY_LEN: usize = 32;
 const PORTABLE_BUNDLE_SALT_LEN: usize = 16;
 const PORTABLE_BUNDLE_NONCE_LEN: usize = 12;
@@ -65,12 +72,31 @@ struct EncryptedPortableDataBundle {
     ciphertext: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct EncryptedMobileVaultExport {
+    version: u16,
+    schema_version: u16,
+    cipher: String,
+    kdf: String,
+    salt: String,
+    nonce: String,
+    ciphertext: String,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PortableDataReport {
     pub vaults: usize,
     pub profiles: usize,
     pub identities: usize,
     pub snippets: usize,
+    pub known_hosts: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MobileVaultExportReport {
+    pub vaults: usize,
+    pub hosts: usize,
+    pub identities: usize,
     pub known_hosts: usize,
 }
 
@@ -134,6 +160,43 @@ pub fn export_encrypted_portable_data_bundle(
     Ok(report)
 }
 
+pub fn export_encrypted_mobile_vault(
+    path: impl AsRef<Path>,
+    state: &SavedState,
+    known_hosts: &KnownHostStore,
+    passphrase: &str,
+    export_id: impl Into<String>,
+    source_device_id: impl Into<String>,
+) -> Result<MobileVaultExportReport> {
+    ensure_backup_passphrase(passphrase)?;
+    let export = build_mobile_vault_export(state, known_hosts, export_id, source_device_id)?;
+    let report = report_for_mobile_vault_export(&export);
+    let plaintext = serde_json::to_vec_pretty(&export)?;
+    let encrypted = encrypt_mobile_vault_export(&plaintext, passphrase)?;
+    let content = serde_json::to_string_pretty(&encrypted)?;
+    write_bundle_file(path.as_ref(), content)?;
+    Ok(report)
+}
+
+#[cfg(test)]
+pub fn read_encrypted_mobile_vault_export(
+    path: impl AsRef<Path>,
+    passphrase: &str,
+) -> Result<MobileVaultExport> {
+    ensure_backup_passphrase(passphrase)?;
+    let content = fs::read_to_string(path.as_ref())
+        .with_context(|| format!("Unable to read {}", path.as_ref().display()))?;
+    let encrypted: EncryptedMobileVaultExport = serde_json::from_str(&content)
+        .with_context(|| format!("Unable to parse {}", path.as_ref().display()))?;
+    let plaintext = decrypt_mobile_vault_export(&encrypted, passphrase)?;
+    serde_json::from_slice(&plaintext).with_context(|| {
+        format!(
+            "Unable to decode encrypted mobile vault {}",
+            path.as_ref().display()
+        )
+    })
+}
+
 pub fn import_portable_data_bundle(
     path: impl AsRef<Path>,
     state: &mut SavedState,
@@ -192,6 +255,153 @@ fn report_for_portable_data_bundle(bundle: &PortableDataBundle) -> PortableDataR
         identities: bundle.identities.len(),
         snippets: bundle.snippets.len(),
         known_hosts: bundle.known_hosts.len(),
+    }
+}
+
+fn build_mobile_vault_export(
+    state: &SavedState,
+    known_hosts: &KnownHostStore,
+    export_id: impl Into<String>,
+    source_device_id: impl Into<String>,
+) -> Result<MobileVaultExport> {
+    let mut exported = state.clone();
+    exported.ensure_vaults();
+    exported
+        .profiles
+        .retain(|profile| profile.source == ProfileSource::User);
+
+    let exported_at_millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let mut groups = Vec::new();
+    let mut tags = BTreeMap::<String, ()>::new();
+    let hosts = exported
+        .profiles
+        .into_iter()
+        .map(|profile| {
+            if !profile.group.trim().is_empty()
+                && !groups
+                    .iter()
+                    .any(|group: &MobileGroup| group.name == profile.group)
+            {
+                groups.push(MobileGroup {
+                    id: profile.group.clone(),
+                    name: profile.group.clone(),
+                });
+            }
+            for tag in &profile.tags {
+                tags.insert(tag.clone(), ());
+            }
+            mobile_host_from_profile(profile)
+        })
+        .collect();
+
+    Ok(MobileVaultExport {
+        schema_version: MOBILE_VAULT_SCHEMA_VERSION,
+        export_id: export_id.into(),
+        created_at_millis: exported_at_millis,
+        updated_at_millis: exported_at_millis,
+        source_device_id: source_device_id.into(),
+        vaults: exported
+            .vaults
+            .into_iter()
+            .map(mobile_vault_from_saved)
+            .collect(),
+        hosts,
+        groups,
+        tags: tags.into_keys().collect(),
+        identities: exported
+            .identities
+            .into_iter()
+            .map(mobile_identity_from_saved)
+            .collect(),
+        known_hosts: known_hosts
+            .entries()?
+            .into_iter()
+            .map(|(endpoint, public_key)| MobileKnownHost {
+                endpoint,
+                public_key,
+                algorithm: None,
+                fingerprint: None,
+            })
+            .collect(),
+        sync: Default::default(),
+        devices: Vec::new(),
+    })
+}
+
+fn report_for_mobile_vault_export(export: &MobileVaultExport) -> MobileVaultExportReport {
+    MobileVaultExportReport {
+        vaults: export.vaults.len(),
+        hosts: export.hosts.len(),
+        identities: export.identities.len(),
+        known_hosts: export.known_hosts.len(),
+    }
+}
+
+fn mobile_vault_from_saved(vault: SavedVault) -> MobileVault {
+    MobileVault {
+        id: vault.id,
+        label: vault.label,
+        description: vault.description,
+        kind: match vault.kind {
+            VaultKind::Personal => "personal",
+            VaultKind::Shared => "shared",
+        }
+        .to_string(),
+    }
+}
+
+fn mobile_identity_from_saved(identity: SavedIdentity) -> MobileIdentityMetadata {
+    MobileIdentityMetadata {
+        id: identity.id,
+        label: identity.label,
+        vault_id: identity.vault_id,
+        kind: identity.kind,
+        public_key: None,
+        fingerprint: None,
+        secret_ref: None,
+    }
+}
+
+fn mobile_host_from_profile(profile: HostProfile) -> MobileHost {
+    MobileHost {
+        id: profile.id,
+        label: profile.label,
+        vault_id: profile.vault_id,
+        group: profile.group,
+        tags: profile.tags,
+        host: profile.host.clone(),
+        port: profile.port,
+        username: profile.username,
+        auth: MobileAuthMetadata {
+            kind: match profile.auth_mode {
+                AuthMode::Password => MobileAuthKind::Password,
+                AuthMode::PrivateKey => MobileAuthKind::PrivateKey,
+            },
+            identity_id: profile.identity_id,
+            secret_ref: None,
+        },
+        jump_host_id: profile.jump_host_id,
+        startup_directory: profile.startup_directory,
+        startup_command: profile.startup_command,
+        start_in_files: profile.start_in_files,
+        persistent_session: MobilePersistentSession {
+            enabled: profile.persistent_session,
+            session_name: profile.persistent_session_name,
+            detach_others: profile.persistent_session_detach_others,
+        },
+        terminal_scrollback_rows: profile.terminal_scrollback_rows,
+        color_tag: profile
+            .color_tag
+            .map(|tag| tag.label().to_ascii_lowercase()),
+        environment: profile
+            .environment
+            .into_iter()
+            .map(|(name, value)| MobileEnvironmentVariable { name, value })
+            .collect(),
+        known_host_endpoint: Some(format!("{}:{}", profile.host, profile.port)),
     }
 }
 
@@ -298,6 +508,39 @@ fn encrypt_portable_data_bundle(
     })
 }
 
+fn encrypt_mobile_vault_export(
+    plaintext: &[u8],
+    passphrase: &str,
+) -> Result<EncryptedMobileVaultExport> {
+    let mut salt = [0u8; PORTABLE_BUNDLE_SALT_LEN];
+    let mut nonce = [0u8; PORTABLE_BUNDLE_NONCE_LEN];
+    OsRng.fill_bytes(&mut salt);
+    OsRng.fill_bytes(&mut nonce);
+
+    let key = derive_portable_bundle_key(passphrase, &salt)?;
+    let cipher =
+        Aes256GcmSiv::new_from_slice(&key).context("Unable to initialize mobile vault cipher")?;
+    let ciphertext = cipher
+        .encrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: plaintext,
+                aad: MOBILE_VAULT_AAD,
+            },
+        )
+        .map_err(|_| anyhow::anyhow!("Unable to encrypt mobile vault"))?;
+
+    Ok(EncryptedMobileVaultExport {
+        version: ENCRYPTED_MOBILE_VAULT_VERSION,
+        schema_version: MOBILE_VAULT_SCHEMA_VERSION,
+        cipher: "AES-256-GCM-SIV".to_string(),
+        kdf: "Argon2id(m=19456,t=3,p=1)".to_string(),
+        salt: STANDARD_NO_PAD.encode(salt),
+        nonce: STANDARD_NO_PAD.encode(nonce),
+        ciphertext: STANDARD_NO_PAD.encode(ciphertext),
+    })
+}
+
 fn decrypt_portable_data_bundle(
     encrypted: &EncryptedPortableDataBundle,
     passphrase: &str,
@@ -341,6 +584,59 @@ fn decrypt_portable_data_bundle(
         .map_err(|_| {
             anyhow::anyhow!(
                 "Unable to decrypt encrypted bundle. Check the passphrase and file integrity."
+            )
+        })
+}
+
+#[cfg(test)]
+fn decrypt_mobile_vault_export(
+    encrypted: &EncryptedMobileVaultExport,
+    passphrase: &str,
+) -> Result<Vec<u8>> {
+    anyhow::ensure!(
+        encrypted.version == ENCRYPTED_MOBILE_VAULT_VERSION,
+        "Unsupported encrypted mobile vault version {}.",
+        encrypted.version
+    );
+    anyhow::ensure!(
+        encrypted.schema_version == MOBILE_VAULT_SCHEMA_VERSION,
+        "Unsupported mobile vault schema version {}.",
+        encrypted.schema_version
+    );
+
+    let salt = STANDARD_NO_PAD
+        .decode(&encrypted.salt)
+        .context("Encrypted mobile vault salt is invalid.")?;
+    let nonce = STANDARD_NO_PAD
+        .decode(&encrypted.nonce)
+        .context("Encrypted mobile vault nonce is invalid.")?;
+    let ciphertext = STANDARD_NO_PAD
+        .decode(&encrypted.ciphertext)
+        .context("Encrypted mobile vault ciphertext is invalid.")?;
+
+    anyhow::ensure!(
+        salt.len() == PORTABLE_BUNDLE_SALT_LEN,
+        "Encrypted mobile vault salt is invalid."
+    );
+    anyhow::ensure!(
+        nonce.len() == PORTABLE_BUNDLE_NONCE_LEN,
+        "Encrypted mobile vault nonce is invalid."
+    );
+
+    let key = derive_portable_bundle_key(passphrase, &salt)?;
+    let cipher =
+        Aes256GcmSiv::new_from_slice(&key).context("Unable to initialize mobile vault cipher")?;
+    cipher
+        .decrypt(
+            Nonce::from_slice(&nonce),
+            Payload {
+                msg: &ciphertext,
+                aad: MOBILE_VAULT_AAD,
+            },
+        )
+        .map_err(|_| {
+            anyhow::anyhow!(
+                "Unable to decrypt encrypted mobile vault. Check the passphrase and file integrity."
             )
         })
 }
@@ -871,10 +1167,10 @@ impl KnownHostStore {
 #[cfg(test)]
 mod tests {
     use super::{
-        KnownHostStore, KnownHostsFile, detect_identity_kind,
+        KnownHostStore, KnownHostsFile, detect_identity_kind, export_encrypted_mobile_vault,
         export_encrypted_portable_data_bundle, export_portable_data_bundle, identity_priority,
         import_encrypted_portable_data_bundle, import_portable_data_bundle, parse_ssh_config_hosts,
-        should_skip_ssh_entry,
+        read_encrypted_mobile_vault_export, should_skip_ssh_entry,
     };
     use crate::models::{
         AppSettings, AuthMode, DEFAULT_VAULT_ID, HostProfile, ProfileSource, SavedIdentity,
@@ -883,6 +1179,7 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use termirust_protocol::{MOBILE_VAULT_SCHEMA_VERSION, MobileAuthKind};
 
     #[test]
     fn detects_supported_identity_formats() {
@@ -1216,6 +1513,122 @@ Host app-prod
         let _ = fs::remove_file(export_path);
         let _ = fs::remove_file(known_hosts_path);
         let _ = fs::remove_file(imported_known_hosts_path);
+    }
+
+    #[test]
+    fn encrypted_mobile_vault_export_contains_mobile_schema_without_plaintext() {
+        let mut state = SavedState::default();
+        state.vaults.push(SavedVault {
+            id: "vault-shared-ops".to_string(),
+            label: "Ops".to_string(),
+            description: "Operations vault".to_string(),
+            kind: VaultKind::Shared,
+            members: vec![crate::models::SavedVaultMember {
+                id: "member-1".to_string(),
+                name: "Jacob".to_string(),
+                email: "jacob@example.com".to_string(),
+                role: VaultMemberRole::Owner,
+            }],
+        });
+        state.identities.push(SavedIdentity {
+            id: "identity-prod".to_string(),
+            label: "Prod key".to_string(),
+            vault_id: Some("vault-shared-ops".to_string()),
+            key_path: "/Users/jacob/.ssh/prod_ed25519".to_string(),
+            kind: "ed25519".to_string(),
+            source: crate::models::IdentitySource::User,
+        });
+        state.upsert_profile(HostProfile {
+            id: "profile-prod".to_string(),
+            label: "Prod".to_string(),
+            vault_id: Some("vault-shared-ops".to_string()),
+            favorite: false,
+            group: "Production".to_string(),
+            tags: vec!["critical".to_string(), "ssh".to_string()],
+            host: "prod.example.com".to_string(),
+            port: 2222,
+            username: "ubuntu".to_string(),
+            auth_mode: AuthMode::PrivateKey,
+            key_path: "/Users/jacob/.ssh/prod_ed25519".to_string(),
+            identity_id: Some("identity-prod".to_string()),
+            jump_host_id: None,
+            startup_directory: Some("/srv/app".to_string()),
+            startup_command: Some("uptime".to_string()),
+            start_in_files: false,
+            persistent_session: true,
+            persistent_session_name: Some("tr-prod".to_string()),
+            persistent_session_detach_others: true,
+            terminal_scrollback_rows: Some(20_000),
+            port_forward_rules: Vec::new(),
+            local_forwards: Vec::new(),
+            local_forward: None,
+            password_credential_id: Some("desktop-secret-ref".to_string()),
+            source: ProfileSource::User,
+            description: String::new(),
+            color_tag: None,
+            environment: vec![("APP_ENV".to_string(), "prod".to_string())],
+        });
+
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let export_path =
+            std::env::temp_dir().join(format!("termirust-mobile-vault-{suffix}.json"));
+        let known_hosts_path =
+            std::env::temp_dir().join(format!("termirust-mobile-known-hosts-{suffix}.json"));
+        let known_hosts = KnownHostStore {
+            path: known_hosts_path.clone(),
+            entries: std::sync::Mutex::new(HashMap::from([(
+                "prod.example.com:2222".to_string(),
+                "ssh-ed25519 AAAAC3Nza".to_string(),
+            )])),
+        };
+
+        let report = export_encrypted_mobile_vault(
+            &export_path,
+            &state,
+            &known_hosts,
+            "hunter2",
+            "export-1",
+            "desktop-1",
+        )
+        .unwrap();
+        assert_eq!(report.vaults, 2);
+        assert_eq!(report.hosts, 1);
+        assert_eq!(report.identities, 1);
+        assert_eq!(report.known_hosts, 1);
+
+        let encrypted_file = fs::read_to_string(&export_path).unwrap();
+        assert!(encrypted_file.contains("\"schema_version\": 1"));
+        assert!(!encrypted_file.contains("prod.example.com"));
+        assert!(!encrypted_file.contains("uptime"));
+        assert!(!encrypted_file.contains("desktop-secret-ref"));
+        assert!(!encrypted_file.contains("/Users/jacob/.ssh/prod_ed25519"));
+
+        let mobile = read_encrypted_mobile_vault_export(&export_path, "hunter2")
+            .expect("decrypt mobile vault");
+        assert_eq!(mobile.schema_version, MOBILE_VAULT_SCHEMA_VERSION);
+        assert_eq!(mobile.export_id, "export-1");
+        assert_eq!(mobile.source_device_id, "desktop-1");
+        assert_eq!(mobile.vaults[1].kind, "shared");
+        assert_eq!(mobile.known_hosts[0].endpoint, "prod.example.com:2222");
+
+        let host = &mobile.hosts[0];
+        assert_eq!(host.auth.kind, MobileAuthKind::PrivateKey);
+        assert_eq!(host.auth.identity_id.as_deref(), Some("identity-prod"));
+        assert_eq!(host.auth.secret_ref, None);
+        assert!(host.persistent_session.enabled);
+        assert_eq!(
+            host.persistent_session.session_name.as_deref(),
+            Some("tr-prod")
+        );
+        assert!(host.persistent_session.detach_others);
+        assert_eq!(host.startup_directory.as_deref(), Some("/srv/app"));
+        assert_eq!(host.startup_command.as_deref(), Some("uptime"));
+
+        let _ = fs::remove_file(export_path);
+        let _ = fs::remove_file(known_hosts_path);
     }
 
     #[test]

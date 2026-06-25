@@ -7045,6 +7045,7 @@ dependencies = [
  "russh-sftp",
  "serde",
  "serde_json",
+ "termirust-protocol",
  "tokio",
  "vt100",
 ]

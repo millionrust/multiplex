@@ -11,6 +11,8 @@ pub struct MobileVaultExport {
     pub updated_at_millis: u128,
     pub source_device_id: String,
     #[serde(default)]
+    pub vaults: Vec<MobileVault>,
+    #[serde(default)]
     pub hosts: Vec<MobileHost>,
     #[serde(default)]
     pub groups: Vec<MobileGroup>,
@@ -34,6 +36,7 @@ impl MobileVaultExport {
             created_at_millis: 0,
             updated_at_millis: 0,
             source_device_id: source_device_id.into(),
+            vaults: Vec::new(),
             hosts: Vec::new(),
             groups: Vec::new(),
             tags: Vec::new(),
@@ -91,6 +94,11 @@ impl MobileVaultExport {
             created_at_millis: desktop.exported_at_millis,
             updated_at_millis: desktop.exported_at_millis,
             source_device_id: source_device_id.into(),
+            vaults: desktop
+                .vaults
+                .into_iter()
+                .map(DesktopVault::into_mobile_vault)
+                .collect(),
             hosts,
             groups,
             tags: tag_set.into_keys().collect(),
@@ -113,6 +121,16 @@ impl MobileVaultExport {
             devices: Vec::new(),
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MobileVault {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub kind: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -247,11 +265,34 @@ struct DesktopPortableBundle {
     version: u16,
     exported_at_millis: u128,
     #[serde(default)]
+    vaults: Vec<DesktopVault>,
+    #[serde(default)]
     profiles: Vec<DesktopHostProfile>,
     #[serde(default)]
     identities: Vec<DesktopIdentity>,
     #[serde(default)]
     known_hosts: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct DesktopVault {
+    id: String,
+    label: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    kind: String,
+}
+
+impl DesktopVault {
+    fn into_mobile_vault(self) -> MobileVault {
+        MobileVault {
+            id: self.id,
+            label: self.label,
+            description: self.description,
+            kind: self.kind,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -368,6 +409,12 @@ mod tests {
             created_at_millis: 100,
             updated_at_millis: 101,
             source_device_id: "desktop-1".to_string(),
+            vaults: vec![MobileVault {
+                id: "vault-1".to_string(),
+                label: "Ops".to_string(),
+                description: String::new(),
+                kind: "shared".to_string(),
+            }],
             hosts: vec![MobileHost {
                 id: "profile-1".to_string(),
                 label: "Production".to_string(),
@@ -462,6 +509,12 @@ mod tests {
             r#"{
               "version": 1,
               "exported_at_millis": 1719356789123,
+              "vaults": [{
+                "id": "vault-ops",
+                "label": "Ops",
+                "description": "Operations vault",
+                "kind": "shared"
+              }],
               "profiles": [{
                 "id": "profile-1",
                 "label": "Production",
@@ -498,6 +551,8 @@ mod tests {
 
         assert_eq!(mobile.schema_version, MOBILE_VAULT_SCHEMA_VERSION);
         assert_eq!(mobile.created_at_millis, 1719356789123);
+        assert_eq!(mobile.vaults[0].id, "vault-ops");
+        assert_eq!(mobile.vaults[0].kind, "shared");
         assert_eq!(mobile.groups[0].name, "Ops");
         assert_eq!(mobile.tags, vec!["prod".to_string(), "ssh".to_string()]);
         assert_eq!(mobile.known_hosts[0].endpoint, "prod.example.com:2222");

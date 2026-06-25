@@ -613,6 +613,8 @@ pub struct AppSettings {
     pub sync_last_pushed_at: Option<u64>,
     #[serde(default)]
     pub sync_last_pulled_at: Option<u64>,
+    #[serde(default)]
+    pub mobile_device_id: Option<String>,
 }
 
 fn default_confirm_multiline_paste() -> bool {
@@ -650,6 +652,7 @@ impl Default for AppSettings {
             sync_folder_path: None,
             sync_last_pushed_at: None,
             sync_last_pulled_at: None,
+            mobile_device_id: None,
         }
     }
 }
@@ -684,6 +687,11 @@ impl AppSettings {
             .take()
             .map(|path| path.trim().to_string())
             .filter(|path| !path.is_empty());
+        self.mobile_device_id = self
+            .mobile_device_id
+            .take()
+            .map(|device_id| device_id.trim().to_string())
+            .filter(|device_id| !device_id.is_empty());
     }
 }
 

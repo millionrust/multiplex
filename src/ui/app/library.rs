@@ -2338,6 +2338,29 @@ impl TermiRustApp {
                                 .child("Use a strong passphrase you can recover later. The file cannot be opened without it."),
                         ),
                 )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Button::new("settings-export-mobile-vault")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Accent,
+                                    cx,
+                                ))
+                                .label("Export Mobile Vault")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.export_mobile_vault(window, cx);
+                                })),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(theme::text_muted())
+                                .child("Creates the encrypted host vault for iOS and Android import, including tmux settings and known-host pins."),
+                        ),
+                )
                 .child(self.settings_divider())
                 .child(self.form_field(
                     "Import Passphrase",

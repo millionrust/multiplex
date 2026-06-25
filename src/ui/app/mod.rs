@@ -52,9 +52,10 @@ use crate::sftp::{
 };
 use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent, spawn_session};
 use crate::storage::{
-    KnownHostStore, export_encrypted_portable_data_bundle, export_portable_data_bundle,
-    import_encrypted_portable_data_bundle, import_portable_data_bundle, inspect_identity_file,
-    load_local_ssh_identities, save_saved_state,
+    KnownHostStore, export_encrypted_mobile_vault, export_encrypted_portable_data_bundle,
+    export_portable_data_bundle, import_encrypted_portable_data_bundle,
+    import_portable_data_bundle, inspect_identity_file, load_local_ssh_identities,
+    save_saved_state,
 };
 use crate::terminal::{TerminalSize, TerminalState};
 use crate::ui::autocomplete::{AutocompleteCandidate, AutocompleteSource};
@@ -3609,6 +3610,16 @@ impl TermiRustApp {
         }
     }
 
+    fn mobile_device_id(&mut self) -> String {
+        if let Some(device_id) = self.saved.settings.mobile_device_id.clone() {
+            return device_id;
+        }
+        let device_id = format!("desktop-{}", current_unix_millis());
+        self.saved.settings.mobile_device_id = Some(device_id.clone());
+        self.save_settings();
+        device_id
+    }
+
     fn pick_sync_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(path) =
             Self::take_dialog_path_for_tests().or_else(|| FileDialog::new().pick_folder())
@@ -3889,6 +3900,78 @@ impl TermiRustApp {
             }
         }
         cx.notify();
+    }
+
+    fn export_mobile_vault_to_path(
+        &mut self,
+        path: &std::path::Path,
+        passphrase: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let export_id = format!("mobile-export-{}", current_unix_millis());
+        let source_device_id = self.mobile_device_id();
+        match export_encrypted_mobile_vault(
+            path,
+            &self.saved,
+            &self.known_hosts,
+            passphrase,
+            export_id,
+            source_device_id,
+        ) {
+            Ok(report) => {
+                self.clear_backup_inputs(window, cx);
+                self.status_message = format!(
+                    "Mobile vault exported with {} hosts, {} identities, {} vaults, and {} known hosts.",
+                    report.hosts, report.identities, report.vaults, report.known_hosts
+                );
+                self.error_message.clear();
+                cx.notify();
+                true
+            }
+            Err(error) => {
+                self.error_message = format!("Failed to export mobile vault: {error:#}");
+                cx.notify();
+                false
+            }
+        }
+    }
+
+    fn export_mobile_vault(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let passphrase = self
+            .settings_inputs
+            .export_backup_passphrase
+            .read(cx)
+            .value()
+            .to_string();
+        let confirm = self
+            .settings_inputs
+            .export_backup_confirm
+            .read(cx)
+            .value()
+            .to_string();
+
+        if passphrase.trim().is_empty() {
+            self.error_message = "Mobile vault passphrase cannot be empty.".to_string();
+            cx.notify();
+            return;
+        }
+        if passphrase != confirm {
+            self.error_message = "Mobile vault passphrase confirmation does not match.".to_string();
+            cx.notify();
+            return;
+        }
+
+        let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
+            FileDialog::new()
+                .add_filter("Encrypted Mobile Vault", &["json"])
+                .set_file_name("termirust-mobile-vault.encrypted.json")
+                .save_file()
+        }) else {
+            return;
+        };
+
+        self.export_mobile_vault_to_path(&path, &passphrase, window, cx);
     }
 
     fn import_portable_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -13807,6 +13890,7 @@ mod tests {
 
         let export_path = temp_dir.join("plain-export.json");
         let encrypted_path = temp_dir.join("encrypted-export.json");
+        let mobile_path = temp_dir.join("mobile-vault.encrypted.json");
 
         let (app_a, window_a) = open_test_app(cx);
         window_a
@@ -13821,6 +13905,13 @@ mod tests {
                     TermiRustApp::set_input_value(
                         &app.inputs.key_path,
                         "/tmp/export_key",
+                        window,
+                        cx,
+                    );
+                    app.set_draft_persistent_session(true, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.persistent_session_name,
+                        "mobile-demo",
                         window,
                         cx,
                     );
@@ -13857,12 +13948,48 @@ mod tests {
                     );
                     queue_dialog_path(Some(encrypted_path.clone()));
                     app.export_encrypted_portable_data(window, cx);
+
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.export_backup_passphrase,
+                        "backup-pass",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.export_backup_confirm,
+                        "backup-pass",
+                        window,
+                        cx,
+                    );
+                    assert!(app.export_mobile_vault_to_path(
+                        &mobile_path,
+                        "backup-pass",
+                        window,
+                        cx
+                    ));
                 })
             })
             .expect("window update should succeed");
 
         assert!(export_path.exists());
         assert!(encrypted_path.exists());
+        assert!(mobile_path.exists());
+
+        let mobile_envelope = std::fs::read_to_string(&mobile_path).unwrap();
+        assert!(!mobile_envelope.contains("192.168.1.10"));
+        let mobile_export =
+            crate::storage::read_encrypted_mobile_vault_export(&mobile_path, "backup-pass")
+                .expect("mobile export should decrypt");
+        let mobile_host = mobile_export
+            .hosts
+            .iter()
+            .find(|host| host.label == "Export Host")
+            .expect("mobile export should contain host");
+        assert!(mobile_host.persistent_session.enabled);
+        assert_eq!(
+            mobile_host.persistent_session.session_name.as_deref(),
+            Some("mobile-demo")
+        );
 
         let (app_b, window_b) = open_test_app_with_state(cx, SavedState::default());
         window_b
