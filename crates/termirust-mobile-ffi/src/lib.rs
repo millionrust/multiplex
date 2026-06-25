@@ -2,6 +2,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::slice;
 use std::str;
 use termirust_protocol::decrypt_mobile_vault_export_to_json;
+use vt100::Parser;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -35,6 +36,22 @@ pub extern "C" fn termirust_mobile_decrypt_vault_json(
     })) {
         Ok(result) => result,
         Err(_) => error_result("TermiRust mobile vault decryptor panicked."),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn termirust_mobile_render_terminal_utf8(
+    input_ptr: *const u8,
+    input_len: usize,
+    columns: u16,
+    rows: u16,
+    scrollback_rows: usize,
+) -> TermiRustMobileResult {
+    match catch_unwind(AssertUnwindSafe(|| {
+        render_terminal_utf8(input_ptr, input_len, columns, rows, scrollback_rows)
+    })) {
+        Ok(result) => result,
+        Err(_) => error_result("TermiRust mobile terminal renderer panicked."),
     }
 }
 
@@ -76,6 +93,66 @@ fn decrypt_vault_json(
     }
 }
 
+fn render_terminal_utf8(
+    input_ptr: *const u8,
+    input_len: usize,
+    columns: u16,
+    rows: u16,
+    scrollback_rows: usize,
+) -> TermiRustMobileResult {
+    let input = match read_bytes(input_ptr, input_len, "terminal input") {
+        Ok(value) => value,
+        Err(error) => return error_result(&error),
+    };
+
+    let columns = columns.max(1);
+    let rows = rows.max(1);
+    let mut parser = Parser::new(rows, columns, scrollback_rows);
+    parser.process(input);
+
+    let mut lines = terminal_rows_text(&parser);
+    if lines.len() > scrollback_rows {
+        lines = lines.split_off(lines.len() - scrollback_rows);
+    }
+    while lines.last().is_some_and(|line| line.trim().is_empty()) && lines.len() > 1 {
+        lines.pop();
+    }
+
+    success_result(lines.join("\n").into_bytes())
+}
+
+fn terminal_rows_text(parser: &Parser) -> Vec<String> {
+    let screen = parser.screen().clone();
+    let (rows, cols) = screen.size();
+    let viewport_rows = usize::from(rows.max(1));
+    let max_scrollback = {
+        let mut top = screen.clone();
+        top.set_scrollback(usize::MAX);
+        top.scrollback()
+    };
+    let mut all_rows = Vec::with_capacity(max_scrollback + viewport_rows);
+
+    let full_pages = max_scrollback / viewport_rows;
+    let remainder = max_scrollback % viewport_rows;
+
+    for page in 0..full_pages {
+        let mut view = screen.clone();
+        view.set_scrollback(max_scrollback - page * viewport_rows);
+        all_rows.extend(view.rows(0, cols));
+    }
+
+    if remainder > 0 {
+        let mut view = screen.clone();
+        view.set_scrollback(remainder);
+        all_rows.extend(view.rows(0, cols).take(remainder));
+    }
+
+    let mut view = screen;
+    view.set_scrollback(0);
+    all_rows.extend(view.rows(0, cols));
+    all_rows
+}
+
 fn read_utf8<'a>(ptr: *const u8, len: usize, label: &str) -> Result<&'a str, String> {
     if ptr.is_null() {
         return Err(format!("TermiRust mobile {label} pointer was null."));
@@ -83,6 +160,17 @@ fn read_utf8<'a>(ptr: *const u8, len: usize, label: &str) -> Result<&'a str, Str
 
     let bytes = unsafe { slice::from_raw_parts(ptr, len) };
     str::from_utf8(bytes).map_err(|_| format!("TermiRust mobile {label} was not valid UTF-8."))
+}
+
+fn read_bytes<'a>(ptr: *const u8, len: usize, label: &str) -> Result<&'a [u8], String> {
+    if ptr.is_null() {
+        if len == 0 {
+            return Ok(&[]);
+        }
+        return Err(format!("TermiRust mobile {label} pointer was null."));
+    }
+
+    Ok(unsafe { slice::from_raw_parts(ptr, len) })
 }
 
 fn success_result(bytes: Vec<u8>) -> TermiRustMobileResult {
@@ -128,6 +216,7 @@ mod android_jni {
     use std::ptr;
     use std::str;
     use termirust_protocol::decrypt_mobile_vault_export_to_json;
+    use vt100::Parser;
 
     #[unsafe(no_mangle)]
     pub extern "system" fn Java_com_termirust_mobile_data_NativeMobileVaultCrypto_decryptVaultJson(
@@ -137,6 +226,34 @@ mod android_jni {
         passphrase: JByteArray<'_>,
     ) -> jbyteArray {
         match decrypt(&mut env, encrypted_json, passphrase) {
+            Ok(bytes) => match env.byte_array_from_slice(bytes.as_bytes()) {
+                Ok(array) => array.into_raw(),
+                Err(error) => {
+                    throw(
+                        &mut env,
+                        "java/lang/IllegalStateException",
+                        &error.to_string(),
+                    );
+                    ptr::null_mut()
+                }
+            },
+            Err(error) => {
+                throw(&mut env, "java/lang/IllegalArgumentException", &error);
+                ptr::null_mut()
+            }
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "system" fn Java_com_termirust_mobile_terminal_NativeMobileTerminal_renderUtf8(
+        mut env: JNIEnv<'_>,
+        _class: JClass<'_>,
+        input: JByteArray<'_>,
+        columns: i32,
+        rows: i32,
+        scrollback_rows: i32,
+    ) -> jbyteArray {
+        match render(&mut env, input, columns, rows, scrollback_rows) {
             Ok(bytes) => match env.byte_array_from_slice(bytes.as_bytes()) {
                 Ok(array) => array.into_raw(),
                 Err(error) => {
@@ -174,6 +291,32 @@ mod android_jni {
 
         decrypt_mobile_vault_export_to_json(encrypted_json, passphrase)
             .map_err(|error| error.to_string())
+    }
+
+    fn render(
+        env: &mut JNIEnv<'_>,
+        input: JByteArray<'_>,
+        columns: i32,
+        rows: i32,
+        scrollback_rows: i32,
+    ) -> Result<String, String> {
+        let input = env
+            .convert_byte_array(input)
+            .map_err(|error| error.to_string())?;
+        let columns = u16::try_from(columns.max(1)).unwrap_or(u16::MAX);
+        let rows = u16::try_from(rows.max(1)).unwrap_or(u16::MAX);
+        let scrollback_rows = usize::try_from(scrollback_rows.max(1)).unwrap_or(2_000);
+
+        let mut parser = Parser::new(rows, columns, scrollback_rows);
+        parser.process(&input);
+        let mut lines = super::terminal_rows_text(&parser);
+        if lines.len() > scrollback_rows {
+            lines = lines.split_off(lines.len() - scrollback_rows);
+        }
+        while lines.last().is_some_and(|line| line.trim().is_empty()) && lines.len() > 1 {
+            lines.pop();
+        }
+        Ok(lines.join("\n"))
     }
 
     fn throw(env: &mut JNIEnv<'_>, class: &str, message: &str) {
@@ -245,6 +388,19 @@ mod tests {
             buffer_to_str(result.error),
             "TermiRust mobile vault JSON pointer was null."
         );
+
+        termirust_mobile_free_result(result);
+    }
+
+    #[test]
+    fn ffi_renders_terminal_with_vt_sequences() {
+        let input = b"progress 1\rprogress 2\r\n\x1b[31mred\x1b[0m\r\nabc\x08Z";
+
+        let result =
+            termirust_mobile_render_terminal_utf8(input.as_ptr(), input.len(), 80, 24, 2_000);
+
+        assert!(result.ok);
+        assert_eq!(buffer_to_str(result.data), "progress 2\nred\nabZ");
 
         termirust_mobile_free_result(result);
     }

@@ -7116,6 +7116,7 @@ version = "0.1.0"
 dependencies = [
  "jni",
  "termirust-protocol",
+ "vt100",
 ]
 
 [[package]]
