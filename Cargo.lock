@@ -7051,6 +7051,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "termirust-mobile-ffi"
+version = "0.1.0"
+dependencies = [
+ "termirust-protocol",
+]
+
+[[package]]
 name = "termirust-protocol"
 version = "0.1.0"
 dependencies = [

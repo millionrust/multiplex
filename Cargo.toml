@@ -10,7 +10,7 @@ readme = "README.md"
 default-run = "termirust"
 
 [workspace]
-members = ["crates/termirust-protocol"]
+members = ["crates/termirust-mobile-ffi", "crates/termirust-protocol"]
 resolver = "3"
 
 [package.metadata.bundle]

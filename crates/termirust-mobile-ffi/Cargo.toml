@@ -1,0 +1,12 @@
+[package]
+name = "termirust-mobile-ffi"
+version = "0.1.0"
+edition = "2024"
+description = "C ABI bridge for TermiRust mobile vault crypto"
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+termirust-protocol = { path = "../termirust-protocol" }
