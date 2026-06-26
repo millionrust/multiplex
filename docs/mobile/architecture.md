@@ -94,6 +94,23 @@ one active `device_id` to an encrypted vault key using an explicit
 records so paired-device sync can be added without replacing the vault format.
 If a device is revoked, its matching device-key record must not be used.
 
+Mobile clients can generate a non-secret pairing request JSON document with:
+
+- `schema_version`
+- `request_id`
+- `device_id`
+- `label`
+- `platform`
+- optional `public_key`
+- `created_at_millis`
+
+The desktop/shared protocol accepts that request only after the desktop has
+created an encrypted device-specific vault key. Applying the request adds or
+updates the device record, rotates any previous active device key for that
+device, increments sync revision, and refuses revoked devices. The request
+itself must never contain SSH passwords, private keys, vault passphrases, or raw
+vault keys.
+
 ## Platform Security
 
 ### iOS

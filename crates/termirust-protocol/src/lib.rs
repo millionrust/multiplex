@@ -11,6 +11,7 @@ use std::fmt;
 
 pub const MOBILE_VAULT_SCHEMA_VERSION: u16 = 1;
 pub const ENCRYPTED_MOBILE_VAULT_VERSION: u16 = 1;
+pub const MOBILE_DEVICE_WRAPPING_ALGORITHM: &str = "x25519-xsalsa20poly1305";
 
 const MOBILE_VAULT_AAD: &[u8] = b"termirust.mobile-vault.v1";
 const MOBILE_VAULT_CIPHER: &str = "AES-256-GCM-SIV";
@@ -315,11 +316,117 @@ impl MobileVaultExport {
     }
 
     pub fn active_device_key(&self, device_id: &str) -> Option<&MobileDeviceVaultKey> {
-        self.device_keys.iter().find(|key| {
-            key.device_id == device_id
-                && key.revoked_at_millis.is_none()
-                && !self.is_device_revoked(device_id)
-        })
+        let device_id = device_id.trim();
+        if device_id.is_empty() || self.is_device_revoked(device_id) {
+            return None;
+        }
+        self.device_keys
+            .iter()
+            .find(|key| key.device_id == device_id && key.revoked_at_millis.is_none())
+    }
+
+    pub fn apply_pairing_request(
+        &mut self,
+        request: MobileDevicePairingRequest,
+        encrypted_vault_key: impl Into<String>,
+        key_id: impl Into<String>,
+        created_at_millis: u128,
+    ) -> Result<(), MobileDevicePairingError> {
+        request.validate()?;
+
+        if self.is_device_revoked(&request.device_id) {
+            return Err(MobileDevicePairingError::DeviceRevoked(
+                request.device_id.clone(),
+            ));
+        }
+
+        let encrypted_vault_key = encrypted_vault_key.into();
+        if encrypted_vault_key.trim().is_empty() {
+            return Err(MobileDevicePairingError::MissingEncryptedVaultKey);
+        }
+
+        let key_id = key_id.into();
+        if key_id.trim().is_empty() {
+            return Err(MobileDevicePairingError::MissingKeyId);
+        }
+
+        if let Some(device) = self
+            .devices
+            .iter_mut()
+            .find(|device| device.device_id == request.device_id)
+        {
+            device.label = request.label;
+            device.platform = Some(request.platform);
+            device.public_key = request.public_key;
+            device.paired_at_millis = device.paired_at_millis.or(Some(created_at_millis));
+            device.last_seen_at_millis = Some(created_at_millis);
+        } else {
+            self.devices.push(MobileDeviceRecord {
+                device_id: request.device_id.clone(),
+                label: request.label,
+                platform: Some(request.platform),
+                public_key: request.public_key,
+                paired_at_millis: Some(created_at_millis),
+                last_seen_at_millis: Some(created_at_millis),
+                revoked_at_millis: None,
+            });
+        }
+
+        for key in self
+            .device_keys
+            .iter_mut()
+            .filter(|key| key.device_id == request.device_id && key.revoked_at_millis.is_none())
+        {
+            key.revoked_at_millis = Some(created_at_millis);
+        }
+
+        self.device_keys.push(MobileDeviceVaultKey {
+            key_id,
+            device_id: request.device_id,
+            wrapping_algorithm: MOBILE_DEVICE_WRAPPING_ALGORITHM.to_string(),
+            encrypted_vault_key,
+            created_at_millis: Some(created_at_millis),
+            revoked_at_millis: None,
+        });
+        self.updated_at_millis = self.updated_at_millis.max(created_at_millis);
+        self.sync.revision = self.sync.revision.saturating_add(1);
+
+        Ok(())
+    }
+
+    pub fn revoke_device(
+        &mut self,
+        device_id: &str,
+        revoked_at_millis: u128,
+    ) -> Result<(), MobileDevicePairingError> {
+        let device_id = device_id.trim();
+        if device_id.is_empty() {
+            return Err(MobileDevicePairingError::MissingDeviceId);
+        }
+
+        let Some(device) = self
+            .devices
+            .iter_mut()
+            .find(|device| device.device_id == device_id)
+        else {
+            return Err(MobileDevicePairingError::UnknownDevice(
+                device_id.to_string(),
+            ));
+        };
+
+        device.revoked_at_millis = Some(revoked_at_millis);
+        device.last_seen_at_millis = Some(revoked_at_millis);
+        for key in self
+            .device_keys
+            .iter_mut()
+            .filter(|key| key.device_id == device_id && key.revoked_at_millis.is_none())
+        {
+            key.revoked_at_millis = Some(revoked_at_millis);
+        }
+        self.updated_at_millis = self.updated_at_millis.max(revoked_at_millis);
+        self.sync.revision = self.sync.revision.saturating_add(1);
+
+        Ok(())
     }
 
     pub fn from_desktop_portable_json(
@@ -617,6 +724,108 @@ pub struct MobileDeviceVaultKey {
     pub revoked_at_millis: Option<u128>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MobileDevicePairingRequest {
+    pub schema_version: u16,
+    pub request_id: String,
+    pub device_id: String,
+    pub label: String,
+    pub platform: String,
+    #[serde(default)]
+    pub public_key: Option<String>,
+    pub created_at_millis: u128,
+}
+
+impl MobileDevicePairingRequest {
+    pub fn new(
+        request_id: impl Into<String>,
+        device_id: impl Into<String>,
+        label: impl Into<String>,
+        platform: impl Into<String>,
+        public_key: Option<String>,
+        created_at_millis: u128,
+    ) -> Self {
+        Self {
+            schema_version: MOBILE_VAULT_SCHEMA_VERSION,
+            request_id: request_id.into(),
+            device_id: device_id.into(),
+            label: label.into(),
+            platform: platform.into(),
+            public_key,
+            created_at_millis,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), MobileDevicePairingError> {
+        if self.schema_version != MOBILE_VAULT_SCHEMA_VERSION {
+            return Err(MobileDevicePairingError::UnsupportedSchemaVersion(
+                self.schema_version,
+            ));
+        }
+        if self.request_id.trim().is_empty() {
+            return Err(MobileDevicePairingError::MissingRequestId);
+        }
+        if self.device_id.trim().is_empty() {
+            return Err(MobileDevicePairingError::MissingDeviceId);
+        }
+        if self.label.trim().is_empty() {
+            return Err(MobileDevicePairingError::MissingLabel);
+        }
+        if self.platform.trim().is_empty() {
+            return Err(MobileDevicePairingError::MissingPlatform);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MobileDevicePairingError {
+    UnsupportedSchemaVersion(u16),
+    MissingRequestId,
+    MissingDeviceId,
+    MissingLabel,
+    MissingPlatform,
+    MissingEncryptedVaultKey,
+    MissingKeyId,
+    DeviceRevoked(String),
+    UnknownDevice(String),
+}
+
+impl fmt::Display for MobileDevicePairingError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnsupportedSchemaVersion(version) => {
+                write!(
+                    f,
+                    "Unsupported mobile pairing request schema version {version}."
+                )
+            }
+            Self::MissingRequestId => write!(f, "Mobile pairing request id is required."),
+            Self::MissingDeviceId => write!(f, "Mobile pairing device id is required."),
+            Self::MissingLabel => write!(f, "Mobile pairing device label is required."),
+            Self::MissingPlatform => write!(f, "Mobile pairing platform is required."),
+            Self::MissingEncryptedVaultKey => {
+                write!(
+                    f,
+                    "Encrypted vault key is required for mobile device pairing."
+                )
+            }
+            Self::MissingKeyId => write!(f, "Mobile device vault key id is required."),
+            Self::DeviceRevoked(device_id) => {
+                write!(
+                    f,
+                    "Mobile device {device_id} is revoked and cannot be paired."
+                )
+            }
+            Self::UnknownDevice(device_id) => {
+                write!(f, "Mobile device {device_id} is not present in this vault.")
+            }
+        }
+    }
+}
+
+impl std::error::Error for MobileDevicePairingError {}
+
 fn default_ssh_port() -> u16 {
     22
 }
@@ -900,6 +1109,116 @@ mod tests {
         assert!(!export.is_device_revoked("desktop-1"));
         assert!(!export.is_device_revoked(""));
         assert_eq!(export.active_devices().count(), 1);
+    }
+
+    #[test]
+    fn mobile_pairing_request_adds_device_and_wrapped_key() {
+        let mut export = MobileVaultExport::empty("export-1", "desktop-1");
+        export.updated_at_millis = 10;
+        let request = MobileDevicePairingRequest::new(
+            "pair-1",
+            "ios-1",
+            "Jacob iPhone",
+            "ios",
+            Some("x25519-public-key".to_string()),
+            20,
+        );
+
+        export
+            .apply_pairing_request(request, "wrapped-key-1", "vault-key-ios-1", 20)
+            .expect("pairing request should apply");
+
+        let device = export
+            .devices
+            .iter()
+            .find(|device| device.device_id == "ios-1")
+            .expect("paired device should be present");
+        assert_eq!(device.label, "Jacob iPhone");
+        assert_eq!(device.platform.as_deref(), Some("ios"));
+        assert_eq!(device.public_key.as_deref(), Some("x25519-public-key"));
+        assert_eq!(device.paired_at_millis, Some(20));
+        assert_eq!(export.updated_at_millis, 20);
+        assert_eq!(export.sync.revision, 1);
+        assert_eq!(
+            export
+                .active_device_key("ios-1")
+                .map(|key| key.encrypted_vault_key.as_str()),
+            Some("wrapped-key-1")
+        );
+    }
+
+    #[test]
+    fn mobile_pairing_request_rotates_existing_active_device_key() {
+        let mut export = MobileVaultExport::empty("export-1", "desktop-1");
+        let request = MobileDevicePairingRequest::new(
+            "pair-1",
+            "android-1",
+            "Jacob Android",
+            "android",
+            None,
+            20,
+        );
+        export
+            .apply_pairing_request(request.clone(), "wrapped-key-1", "vault-key-1", 20)
+            .expect("first pairing should apply");
+
+        export
+            .apply_pairing_request(request, "wrapped-key-2", "vault-key-2", 30)
+            .expect("second pairing should rotate key");
+
+        assert_eq!(export.device_keys.len(), 2);
+        assert_eq!(export.device_keys[0].revoked_at_millis, Some(30));
+        assert_eq!(
+            export
+                .active_device_key("android-1")
+                .map(|key| key.key_id.as_str()),
+            Some("vault-key-2")
+        );
+        assert_eq!(export.sync.revision, 2);
+    }
+
+    #[test]
+    fn mobile_revoke_device_revokes_active_wrapped_keys() {
+        let mut export = MobileVaultExport::empty("export-1", "desktop-1");
+        let request =
+            MobileDevicePairingRequest::new("pair-1", "ios-1", "Jacob iPhone", "ios", None, 20);
+        export
+            .apply_pairing_request(request, "wrapped-key-1", "vault-key-ios-1", 20)
+            .expect("pairing request should apply");
+
+        export
+            .revoke_device("ios-1", 40)
+            .expect("device should revoke");
+
+        assert!(export.is_device_revoked("ios-1"));
+        assert!(export.active_device_key("ios-1").is_none());
+        assert_eq!(export.device_keys[0].revoked_at_millis, Some(40));
+        assert_eq!(export.sync.revision, 2);
+    }
+
+    #[test]
+    fn mobile_pairing_rejects_revoked_device() {
+        let mut export = MobileVaultExport::empty("export-1", "desktop-1");
+        export.devices.push(MobileDeviceRecord {
+            device_id: "ios-1".to_string(),
+            label: "Old iPhone".to_string(),
+            platform: Some("ios".to_string()),
+            public_key: None,
+            paired_at_millis: Some(10),
+            last_seen_at_millis: Some(10),
+            revoked_at_millis: Some(20),
+        });
+        let request =
+            MobileDevicePairingRequest::new("pair-1", "ios-1", "Jacob iPhone", "ios", None, 30);
+
+        let error = export
+            .apply_pairing_request(request, "wrapped-key-1", "vault-key-ios-1", 30)
+            .expect_err("revoked devices should not pair");
+
+        assert_eq!(
+            error,
+            MobileDevicePairingError::DeviceRevoked("ios-1".to_string())
+        );
     }
 
     #[test]
