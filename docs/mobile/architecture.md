@@ -182,11 +182,15 @@ environment variables.
 
 Known-host pinning must be part of the mobile MVP:
 
-- First connection shows the host-key fingerprint and requires user approval.
-- Approved keys are stored as known-host records.
-- Mismatch blocks the connection and shows a clear warning.
-- Importing a desktop vault may include known-host pins, but mobile must still
-  enforce mismatch blocking locally.
+- Mobile requires a known-host pin exported from desktop before it authenticates
+  to a host.
+- If no known-host pin is present, connection is blocked with clear guidance to
+  trust the host on desktop and export a fresh mobile vault.
+- If a known-host pin is present but the server key differs, connection is a
+  hard stop and shows a clear warning.
+- Mobile-side trust-on-first-use can be added later, but the MVP keeps host-key
+  approval centralized in desktop TermiRust so phones do not train users to
+  accept unknown production host keys on small screens.
 
 ## Persistent Tmux Behavior
 

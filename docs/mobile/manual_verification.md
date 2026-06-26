@@ -24,6 +24,7 @@ cd /Users/jacob/Projects/terminal_app/terminal_swift
 xcodebuild test -project TermiRustMobile.xcodeproj -scheme TermiRustMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 
 cd /Users/jacob/Projects/terminal_app/terminal_kotlin
+echo "sdk.dir=/Users/jacob/Library/Android/sdk" > local.properties
 ./gradlew testDebugUnitTest
 ./gradlew assembleDebug
 ```
@@ -31,6 +32,10 @@ cd /Users/jacob/Projects/terminal_app/terminal_kotlin
 Pass: all commands complete successfully.
 
 Fail: fix build or test failures before starting device verification.
+
+If Android Studio installed the SDK somewhere else, replace
+`/Users/jacob/Library/Android/sdk` with that path or run the Gradle commands
+with `ANDROID_HOME=/path/to/sdk`.
 
 ## Prepare The SSH Host
 

@@ -43,6 +43,7 @@ The Swift app has a `MobileVaultDecrypting` protocol. Implement it with a thin S
 Build the XCFramework:
 
 ```bash
+cd /Users/jacob/Projects/terminal
 scripts/build-mobile-ffi-ios.sh
 ```
 
@@ -52,7 +53,18 @@ The script installs missing Rust iOS targets, builds the device and simulator st
 dist/mobile/ios/TermiRustMobileCrypto.xcframework
 ```
 
-Link that XCFramework into `terminal_swift`.
+Copy or sync that generated framework into the companion iOS repo before
+opening Xcode:
+
+```bash
+rm -rf /Users/jacob/Projects/terminal_app/terminal_swift/Frameworks/TermiRustMobileCrypto.xcframework
+cp -R \
+  /Users/jacob/Projects/terminal/dist/mobile/ios/TermiRustMobileCrypto.xcframework \
+  /Users/jacob/Projects/terminal_app/terminal_swift/Frameworks/
+```
+
+If Xcode reports `There is no XCFramework found`, rerun the build script and
+copy command above.
 
 ## Android Integration Path
 
@@ -66,6 +78,7 @@ Java_com_termirust_mobile_data_NativeMobileVaultCrypto_decryptVaultJson
 Build JNI libraries:
 
 ```bash
+cd /Users/jacob/Projects/terminal
 scripts/build-mobile-ffi-android.sh
 ```
 
@@ -76,6 +89,13 @@ dist/mobile/android/jniLibs/
 ```
 
 Copy or sync those ABI folders into `terminal_kotlin/app/src/main/jniLibs/`.
+
+```bash
+rm -rf /Users/jacob/Projects/terminal_app/terminal_kotlin/app/src/main/jniLibs
+cp -R \
+  /Users/jacob/Projects/terminal/dist/mobile/android/jniLibs \
+  /Users/jacob/Projects/terminal_app/terminal_kotlin/app/src/main/
+```
 
 ## Verification
 
