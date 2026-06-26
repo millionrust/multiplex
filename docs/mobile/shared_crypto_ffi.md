@@ -127,6 +127,20 @@ cargo test -p termirust-mobile-ffi
 cargo build -p termirust-mobile-ffi
 ```
 
+Broader local mobile MVP checks:
+
+```bash
+scripts/verify-mobile-mvp.sh
+```
+
+Direct SSH/tmux smoke tests for both mobile apps:
+
+```bash
+scripts/verify-mobile-mvp.sh --live-ssh
+```
+
+The live smoke mode requires Docker Desktop to be running, or `TERMIRUST_MOBILE_TEST_SSH_*` variables pointing at a reachable SSH host.
+
 After mobile linking:
 
 - Import an encrypted vault exported by desktop TermiRust.
