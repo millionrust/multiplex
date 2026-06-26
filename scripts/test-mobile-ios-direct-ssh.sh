@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IOS_DIR="${TERMIRUST_IOS_DIR:-/Users/jacob/Projects/terminal_app/terminal_swift}"
 IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 17 Pro}"
+SSH_IMAGE="${TERMIRUST_MOBILE_TEST_SSH_IMAGE:-termirust-e2e-sshd:local}"
+CONFIG_PATH="$IOS_DIR/TermiRustMobileTests/.termirust-mobile-live-ssh.properties"
 
 if [[ ! -d "$IOS_DIR/TermiRustMobile.xcodeproj" ]]; then
   echo "iOS project not found at $IOS_DIR/TermiRustMobile.xcodeproj" >&2
@@ -19,6 +21,21 @@ run_ios_smoke() {
     -only-testing:TermiRustMobileTests/DirectSSHIntegrationTests/testDirectSSHAttachesToPersistentTmuxSessionAndSurvivesReconnect
 }
 
+write_smoke_config() {
+  mkdir -p "$(dirname "$CONFIG_PATH")"
+  {
+    printf 'TERMIRUST_MOBILE_TEST_SSH_HOST=%s\n' "$TERMIRUST_MOBILE_TEST_SSH_HOST"
+    printf 'TERMIRUST_MOBILE_TEST_SSH_PORT=%s\n' "$TERMIRUST_MOBILE_TEST_SSH_PORT"
+    printf 'TERMIRUST_MOBILE_TEST_SSH_USER=%s\n' "$TERMIRUST_MOBILE_TEST_SSH_USER"
+    printf 'TERMIRUST_MOBILE_TEST_SSH_KEY_BASE64=%s\n' "$(printf '%s' "$TERMIRUST_MOBILE_TEST_SSH_KEY" | base64 | tr -d '\n')"
+    printf 'TERMIRUST_MOBILE_TEST_KNOWN_HOST_KEY_BASE64=%s\n' "$(printf '%s' "$TERMIRUST_MOBILE_TEST_KNOWN_HOST_KEY" | base64 | tr -d '\n')"
+  } > "$CONFIG_PATH"
+}
+
+cleanup_config() {
+  rm -f "$CONFIG_PATH"
+}
+
 if [[ -n "${TERMIRUST_MOBILE_TEST_SSH_HOST:-}" ]]; then
   required=(
     TERMIRUST_MOBILE_TEST_SSH_PORT
@@ -32,6 +49,8 @@ if [[ -n "${TERMIRUST_MOBILE_TEST_SSH_HOST:-}" ]]; then
       exit 1
     fi
   done
+  trap cleanup_config EXIT
+  write_smoke_config
   run_ios_smoke
   exit 0
 fi
@@ -48,6 +67,7 @@ fi
 
 cleanup() {
   set +e
+  cleanup_config
   if [[ -n "${CONTAINER_NAME:-}" ]]; then
     docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
@@ -55,16 +75,18 @@ cleanup() {
 trap cleanup EXIT
 
 cd "$ROOT_DIR"
-docker build -t termirust-e2e-sshd:local tests/fixtures/ssh-server >/dev/null
+if [[ "${TERMIRUST_MOBILE_REBUILD_SSH_IMAGE:-0}" == "1" ]] || ! docker image inspect "$SSH_IMAGE" >/dev/null 2>&1; then
+  docker build -t "$SSH_IMAGE" tests/fixtures/ssh-server >/dev/null
+fi
 
 CONTAINER_NAME="termirust-mobile-ios-ssh-$RANDOM-$RANDOM"
-docker run --detach --rm --name "$CONTAINER_NAME" -p 127.0.0.1::22 termirust-e2e-sshd:local >/dev/null
+docker run --detach --rm --name "$CONTAINER_NAME" -p 127.0.0.1::22 "$SSH_IMAGE" >/dev/null
 PORT="$(docker inspect -f '{{(index (index .NetworkSettings.Ports "22/tcp") 0).HostPort}}' "$CONTAINER_NAME")"
 
 KNOWN_HOST_KEY=""
 for _ in {1..30}; do
   KNOWN_HOST_KEY="$(
-    ssh-keyscan -p "$PORT" 127.0.0.1 2>/dev/null \
+    ssh-keyscan -t ed25519 -p "$PORT" 127.0.0.1 2>/dev/null \
       | awk 'NF >= 3 && $2 ~ /^ssh-/ { print $2 " " $3; exit }'
   )"
   if [[ -n "$KNOWN_HOST_KEY" ]]; then
@@ -79,9 +101,10 @@ if [[ -z "$KNOWN_HOST_KEY" ]]; then
   exit 1
 fi
 
-TERMIRUST_MOBILE_TEST_SSH_HOST="127.0.0.1" \
-TERMIRUST_MOBILE_TEST_SSH_PORT="$PORT" \
-TERMIRUST_MOBILE_TEST_SSH_USER="termirust" \
-TERMIRUST_MOBILE_TEST_SSH_KEY="$(cat "$ROOT_DIR/tests/fixtures/ssh-server/id_ed25519")" \
-TERMIRUST_MOBILE_TEST_KNOWN_HOST_KEY="$KNOWN_HOST_KEY" \
-  run_ios_smoke
+export TERMIRUST_MOBILE_TEST_SSH_HOST="127.0.0.1"
+export TERMIRUST_MOBILE_TEST_SSH_PORT="$PORT"
+export TERMIRUST_MOBILE_TEST_SSH_USER="termirust"
+export TERMIRUST_MOBILE_TEST_SSH_KEY="$(cat "$ROOT_DIR/tests/fixtures/ssh-server/id_ed25519")"
+export TERMIRUST_MOBILE_TEST_KNOWN_HOST_KEY="$KNOWN_HOST_KEY"
+write_smoke_config
+run_ios_smoke

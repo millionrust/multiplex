@@ -140,6 +140,7 @@ scripts/verify-mobile-mvp.sh --live-ssh
 ```
 
 The live smoke mode requires Docker Desktop to be running, or `TERMIRUST_MOBILE_TEST_SSH_*` variables pointing at a reachable SSH host.
+If `termirust-e2e-sshd:local` already exists locally, the smoke scripts reuse it. Set `TERMIRUST_MOBILE_REBUILD_SSH_IMAGE=1` to force a rebuild.
 
 After mobile linking:
 
