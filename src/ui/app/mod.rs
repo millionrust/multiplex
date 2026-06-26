@@ -35,6 +35,7 @@ use gpui_component::input::{Input, InputState};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{ActiveTheme, Icon, Sizable, StyledExt as _, h_flex, v_flex};
 use rfd::{AsyncFileDialog, FileDialog};
+use termirust_protocol::MobileDevicePairingRequest;
 use vt100::MouseProtocolMode;
 
 use crate::credentials;
@@ -297,6 +298,7 @@ struct SettingsInputs {
     default_ssh_startup_directory: Entity<InputState>,
     terminal_font_family: Entity<InputState>,
     sync_folder_input: Entity<InputState>,
+    mobile_pairing_request: Entity<InputState>,
 }
 
 struct VaultInputs {
@@ -350,6 +352,9 @@ impl SettingsInputs {
             sync_folder_input: cx.new(|cx| {
                 InputState::new(window, cx)
                     .placeholder("e.g. ~/Dropbox/TermiRust or any cloud-synced folder")
+            }),
+            mobile_pairing_request: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Paste mobile pairing request JSON")
             }),
         }
     }
@@ -3972,6 +3977,50 @@ impl TermiRustApp {
         };
 
         self.export_mobile_vault_to_path(&path, &passphrase, window, cx);
+    }
+
+    fn import_mobile_pairing_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let raw = self
+            .settings_inputs
+            .mobile_pairing_request
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        if raw.is_empty() {
+            self.error_message = "Paste a mobile pairing request before importing.".to_string();
+            cx.notify();
+            return;
+        }
+
+        let request: MobileDevicePairingRequest = match serde_json::from_str(&raw) {
+            Ok(request) => request,
+            Err(error) => {
+                self.error_message = format!("Invalid mobile pairing request JSON: {error}");
+                cx.notify();
+                return;
+            }
+        };
+        let device_id = request.device_id.clone();
+        let label = request.label.clone();
+        match self
+            .saved
+            .settings
+            .apply_mobile_pairing_request(request, current_unix_millis() as u128)
+        {
+            Ok(()) => {
+                self.save_settings();
+                Self::set_input_value(&self.settings_inputs.mobile_pairing_request, "", window, cx);
+                self.status_message = format!(
+                    "Mobile device '{label}' ({device_id}) approved. Export a new mobile vault for this device."
+                );
+                self.error_message.clear();
+            }
+            Err(error) => {
+                self.error_message = format!("Failed to import mobile pairing request: {error}");
+            }
+        }
+        cx.notify();
     }
 
     fn import_portable_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -13950,6 +13999,23 @@ mod tests {
                     app.export_encrypted_portable_data(window, cx);
 
                     TermiRustApp::set_input_value(
+                        &app.settings_inputs.mobile_pairing_request,
+                        r#"{
+                          "schema_version": 1,
+                          "request_id": "pair-ios-1",
+                          "device_id": "ios-1",
+                          "label": "Jacob iPhone",
+                          "platform": "ios",
+                          "public_key": "x25519-public-key",
+                          "created_at_millis": 42
+                        }"#,
+                        window,
+                        cx,
+                    );
+                    app.import_mobile_pairing_request(window, cx);
+                    assert_eq!(app.saved.settings.mobile_devices.len(), 1);
+
+                    TermiRustApp::set_input_value(
                         &app.settings_inputs.export_backup_passphrase,
                         "backup-pass",
                         window,
@@ -13989,6 +14055,14 @@ mod tests {
         assert_eq!(
             mobile_host.persistent_session.session_name.as_deref(),
             Some("mobile-demo")
+        );
+        assert!(
+            mobile_export
+                .devices
+                .iter()
+                .any(|device| device.device_id == "ios-1"
+                    && device.label == "Jacob iPhone"
+                    && device.public_key.as_deref() == Some("x25519-public-key"))
         );
 
         let (app_b, window_b) = open_test_app_with_state(cx, SavedState::default());

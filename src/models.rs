@@ -1,6 +1,9 @@
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use termirust_protocol::{
+    MobileDevicePairingError, MobileDevicePairingRequest, MobileDeviceRecord, MobileDeviceVaultKey,
+};
 
 fn default_ssh_port() -> u16 {
     22
@@ -615,6 +618,10 @@ pub struct AppSettings {
     pub sync_last_pulled_at: Option<u64>,
     #[serde(default)]
     pub mobile_device_id: Option<String>,
+    #[serde(default)]
+    pub mobile_devices: Vec<MobileDeviceRecord>,
+    #[serde(default)]
+    pub mobile_device_keys: Vec<MobileDeviceVaultKey>,
 }
 
 fn default_confirm_multiline_paste() -> bool {
@@ -653,6 +660,8 @@ impl Default for AppSettings {
             sync_last_pushed_at: None,
             sync_last_pulled_at: None,
             mobile_device_id: None,
+            mobile_devices: Vec::new(),
+            mobile_device_keys: Vec::new(),
         }
     }
 }
@@ -692,6 +701,76 @@ impl AppSettings {
             .take()
             .map(|device_id| device_id.trim().to_string())
             .filter(|device_id| !device_id.is_empty());
+        self.mobile_devices
+            .retain(|device| !device.device_id.trim().is_empty());
+        self.mobile_device_keys
+            .retain(|key| !key.device_id.trim().is_empty() && !key.key_id.trim().is_empty());
+    }
+
+    pub fn apply_mobile_pairing_request(
+        &mut self,
+        request: MobileDevicePairingRequest,
+        now_millis: u128,
+    ) -> std::result::Result<(), MobileDevicePairingError> {
+        request.validate()?;
+        if self.mobile_devices.iter().any(|device| {
+            device.device_id == request.device_id && device.revoked_at_millis.is_some()
+        }) {
+            return Err(MobileDevicePairingError::DeviceRevoked(request.device_id));
+        }
+
+        if let Some(device) = self
+            .mobile_devices
+            .iter_mut()
+            .find(|device| device.device_id == request.device_id)
+        {
+            device.label = request.label;
+            device.platform = Some(request.platform);
+            device.public_key = request.public_key;
+            device.paired_at_millis = device.paired_at_millis.or(Some(now_millis));
+            device.last_seen_at_millis = Some(now_millis);
+        } else {
+            self.mobile_devices.push(MobileDeviceRecord {
+                device_id: request.device_id,
+                label: request.label,
+                platform: Some(request.platform),
+                public_key: request.public_key,
+                paired_at_millis: Some(now_millis),
+                last_seen_at_millis: Some(now_millis),
+                revoked_at_millis: None,
+            });
+        }
+        Ok(())
+    }
+
+    pub fn revoke_mobile_device(
+        &mut self,
+        device_id: &str,
+        revoked_at_millis: u128,
+    ) -> std::result::Result<(), MobileDevicePairingError> {
+        let device_id = device_id.trim();
+        if device_id.is_empty() {
+            return Err(MobileDevicePairingError::MissingDeviceId);
+        }
+        let Some(device) = self
+            .mobile_devices
+            .iter_mut()
+            .find(|device| device.device_id == device_id)
+        else {
+            return Err(MobileDevicePairingError::UnknownDevice(
+                device_id.to_string(),
+            ));
+        };
+        device.revoked_at_millis = Some(revoked_at_millis);
+        device.last_seen_at_millis = Some(revoked_at_millis);
+        for key in self
+            .mobile_device_keys
+            .iter_mut()
+            .filter(|key| key.device_id == device_id && key.revoked_at_millis.is_none())
+        {
+            key.revoked_at_millis = Some(revoked_at_millis);
+        }
+        Ok(())
     }
 }
 
@@ -2406,11 +2485,11 @@ mod tests {
     use super::{
         AppSettings, AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID,
         DraftProfile, HostColorTag, HostProfile, IdentitySource, ImportedIdentity,
-        JumpHostConnection, LocalPortForward, LocalShellConfig, PortForwardKind, PortForwardRule,
-        ProfileSource, QuickConnect, RestorableAuth, RestorableConnection,
-        SavedCommandHistoryEntry, SavedIdentity, SavedSnippet, SavedState, SavedVault,
-        SavedVaultMember, SavedWorkspace, SessionLogEntry, SessionLogStatus, ThemePreset,
-        VaultKind, VaultMemberRole, default_persistent_session_name_for_endpoint,
+        JumpHostConnection, LocalPortForward, LocalShellConfig, MobileDevicePairingRequest,
+        PortForwardKind, PortForwardRule, ProfileSource, QuickConnect, RestorableAuth,
+        RestorableConnection, SavedCommandHistoryEntry, SavedIdentity, SavedSnippet, SavedState,
+        SavedVault, SavedVaultMember, SavedWorkspace, SessionLogEntry, SessionLogStatus,
+        ThemePreset, VaultKind, VaultMemberRole, default_persistent_session_name_for_endpoint,
         default_persistent_session_name_from_id, identity_id_for_path,
     };
 
@@ -3525,6 +3604,64 @@ mod tests {
         assert_eq!(from_legacy.auto_reconnect_attempts, 3);
         assert_eq!(from_legacy.auto_reconnect_delay_secs, 5);
         assert!(from_legacy.confirm_multiline_paste);
+        assert!(from_legacy.mobile_devices.is_empty());
+        assert!(from_legacy.mobile_device_keys.is_empty());
+    }
+
+    #[test]
+    fn settings_apply_mobile_pairing_request_persists_device_record() {
+        let mut settings = AppSettings::default();
+        let request = MobileDevicePairingRequest::new(
+            "pair-1",
+            "ios-1",
+            "Jacob iPhone",
+            "ios",
+            Some("x25519-public-key".to_string()),
+            10,
+        );
+
+        settings
+            .apply_mobile_pairing_request(request, 20)
+            .expect("pairing request should apply");
+
+        assert_eq!(settings.mobile_devices.len(), 1);
+        let device = &settings.mobile_devices[0];
+        assert_eq!(device.device_id, "ios-1");
+        assert_eq!(device.label, "Jacob iPhone");
+        assert_eq!(device.platform.as_deref(), Some("ios"));
+        assert_eq!(device.public_key.as_deref(), Some("x25519-public-key"));
+        assert_eq!(device.paired_at_millis, Some(20));
+        assert_eq!(device.last_seen_at_millis, Some(20));
+        assert_eq!(device.revoked_at_millis, None);
+    }
+
+    #[test]
+    fn settings_revoke_mobile_device_blocks_repairing() {
+        let mut settings = AppSettings::default();
+        let request = MobileDevicePairingRequest::new(
+            "pair-1",
+            "android-1",
+            "Jacob Android",
+            "android",
+            None,
+            10,
+        );
+        settings
+            .apply_mobile_pairing_request(request.clone(), 20)
+            .expect("pairing request should apply");
+        settings
+            .revoke_mobile_device("android-1", 30)
+            .expect("device should revoke");
+
+        let error = settings
+            .apply_mobile_pairing_request(request, 40)
+            .expect_err("revoked device should not pair");
+
+        assert_eq!(
+            error.to_string(),
+            "Mobile device android-1 is revoked and cannot be paired."
+        );
+        assert_eq!(settings.mobile_devices[0].revoked_at_millis, Some(30));
     }
 
     #[test]

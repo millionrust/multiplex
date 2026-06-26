@@ -288,6 +288,21 @@ fn build_mobile_vault_export(
         })
         .collect();
 
+    let mut devices = exported.settings.mobile_devices;
+    if let Some(device) = devices
+        .iter_mut()
+        .find(|device| device.device_id == source_device_id)
+    {
+        device.label = "TermiRust Desktop".to_string();
+        device.platform = Some("desktop".to_string());
+        device.revoked_at_millis = None;
+    } else {
+        devices.push(MobileDeviceRecord::active_desktop(
+            source_device_id.clone(),
+            "TermiRust Desktop",
+        ));
+    }
+
     Ok(MobileVaultExport {
         schema_version: MOBILE_VAULT_SCHEMA_VERSION,
         export_id: export_id.into(),
@@ -318,11 +333,8 @@ fn build_mobile_vault_export(
             })
             .collect(),
         sync: Default::default(),
-        devices: vec![MobileDeviceRecord::active_desktop(
-            source_device_id,
-            "TermiRust Desktop",
-        )],
-        device_keys: Vec::new(),
+        devices,
+        device_keys: exported.settings.mobile_device_keys,
     })
 }
 
@@ -1091,7 +1103,7 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
-    use termirust_protocol::{MOBILE_VAULT_SCHEMA_VERSION, MobileAuthKind};
+    use termirust_protocol::{MOBILE_VAULT_SCHEMA_VERSION, MobileAuthKind, MobileDeviceRecord};
 
     #[test]
     fn detects_supported_identity_formats() {
@@ -1430,6 +1442,15 @@ Host app-prod
     #[test]
     fn encrypted_mobile_vault_export_contains_mobile_schema_without_plaintext() {
         let mut state = SavedState::default();
+        state.settings.mobile_devices.push(MobileDeviceRecord {
+            device_id: "ios-1".to_string(),
+            label: "Jacob iPhone".to_string(),
+            platform: Some("ios".to_string()),
+            public_key: Some("x25519-public-key".to_string()),
+            paired_at_millis: Some(1719356789000),
+            last_seen_at_millis: Some(1719356789000),
+            revoked_at_millis: None,
+        });
         state.vaults.push(SavedVault {
             id: "vault-shared-ops".to_string(),
             label: "Ops".to_string(),
@@ -1523,11 +1544,23 @@ Host app-prod
         assert_eq!(mobile.schema_version, MOBILE_VAULT_SCHEMA_VERSION);
         assert_eq!(mobile.export_id, "export-1");
         assert_eq!(mobile.source_device_id, "desktop-1");
-        assert_eq!(mobile.devices.len(), 1);
-        assert_eq!(mobile.devices[0].device_id, "desktop-1");
-        assert_eq!(mobile.devices[0].label, "TermiRust Desktop");
-        assert_eq!(mobile.devices[0].platform.as_deref(), Some("desktop"));
-        assert_eq!(mobile.devices[0].revoked_at_millis, None);
+        assert_eq!(mobile.devices.len(), 2);
+        let desktop_device = mobile
+            .devices
+            .iter()
+            .find(|device| device.device_id == "desktop-1")
+            .expect("desktop device should export");
+        assert_eq!(desktop_device.label, "TermiRust Desktop");
+        assert_eq!(desktop_device.platform.as_deref(), Some("desktop"));
+        assert_eq!(desktop_device.revoked_at_millis, None);
+        let ios_device = mobile
+            .devices
+            .iter()
+            .find(|device| device.device_id == "ios-1")
+            .expect("approved iOS device should export");
+        assert_eq!(ios_device.label, "Jacob iPhone");
+        assert_eq!(ios_device.platform.as_deref(), Some("ios"));
+        assert_eq!(ios_device.public_key.as_deref(), Some("x25519-public-key"));
         assert_eq!(mobile.vaults[1].kind, "shared");
         assert_eq!(mobile.known_hosts[0].endpoint, "prod.example.com:2222");
 

@@ -2361,6 +2361,33 @@ impl TermiRustApp {
                                 .child("Creates the encrypted host vault for iOS and Android import, including tmux settings and known-host pins."),
                         ),
                 )
+                .child(self.form_field(
+                    "Mobile Pairing Request",
+                    Input::new(&self.settings_inputs.mobile_pairing_request),
+                ))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Button::new("settings-import-mobile-pairing-request")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                ))
+                                .label("Approve Mobile Device")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.import_mobile_pairing_request(window, cx);
+                                })),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(theme::text_muted())
+                                .child("Paste the pairing request copied from iOS or Android, then export a fresh mobile vault."),
+                        ),
+                )
                 .child(self.settings_divider())
                 .child(self.form_field(
                     "Import Passphrase",

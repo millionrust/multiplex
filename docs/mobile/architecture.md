@@ -111,6 +111,13 @@ device, increments sync revision, and refuses revoked devices. The request
 itself must never contain SSH passwords, private keys, vault passphrases, or raw
 vault keys.
 
+Desktop TermiRust exposes the first approval step in Settings: paste the mobile
+pairing request, approve the device record, then export a new encrypted mobile
+vault. That export includes the approved device and any persisted mobile
+device-key records. Until device-specific wrapping is fully connected, the
+mobile vault still uses the passphrase-protected encrypted export as the
+production import path.
+
 ## Platform Security
 
 ### iOS
