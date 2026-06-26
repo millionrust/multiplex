@@ -23,7 +23,7 @@ use termirust_protocol::{
     MOBILE_VAULT_SCHEMA_VERSION, MobileAuthKind, MobileAuthMetadata, MobileDeviceRecord,
     MobileEnvironmentVariable, MobileGroup, MobileHost, MobileIdentityMetadata, MobileKnownHost,
     MobilePersistentSession, MobileVault, MobileVaultExport,
-    encrypt_mobile_vault_export as encrypt_mobile_vault_envelope,
+    encrypt_mobile_vault_export as encrypt_mobile_vault_envelope, mobile_secret_ref_for_host,
 };
 
 use crate::models::{
@@ -361,6 +361,12 @@ fn mobile_identity_from_saved(identity: SavedIdentity) -> MobileIdentityMetadata
 }
 
 fn mobile_host_from_profile(profile: HostProfile) -> MobileHost {
+    let auth_kind = match profile.auth_mode {
+        AuthMode::Password => MobileAuthKind::Password,
+        AuthMode::PrivateKey => MobileAuthKind::PrivateKey,
+    };
+    let secret_ref =
+        mobile_secret_ref_for_host(&profile.id, auth_kind, profile.identity_id.as_deref());
     MobileHost {
         id: profile.id,
         label: profile.label,
@@ -371,12 +377,9 @@ fn mobile_host_from_profile(profile: HostProfile) -> MobileHost {
         port: profile.port,
         username: profile.username,
         auth: MobileAuthMetadata {
-            kind: match profile.auth_mode {
-                AuthMode::Password => MobileAuthKind::Password,
-                AuthMode::PrivateKey => MobileAuthKind::PrivateKey,
-            },
+            kind: auth_kind,
             identity_id: profile.identity_id,
-            secret_ref: None,
+            secret_ref: Some(secret_ref),
         },
         jump_host_id: profile.jump_host_id,
         startup_directory: profile.startup_directory,
@@ -1531,7 +1534,10 @@ Host app-prod
         let host = &mobile.hosts[0];
         assert_eq!(host.auth.kind, MobileAuthKind::PrivateKey);
         assert_eq!(host.auth.identity_id.as_deref(), Some("identity-prod"));
-        assert_eq!(host.auth.secret_ref, None);
+        assert_eq!(
+            host.auth.secret_ref.as_deref(),
+            Some("termirust-mobile://identity/identity-prod/private-key")
+        );
         assert!(host.persistent_session.enabled);
         assert_eq!(
             host.persistent_session.session_name.as_deref(),

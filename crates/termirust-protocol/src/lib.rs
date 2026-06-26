@@ -473,6 +473,58 @@ pub enum MobileAuthKind {
     PrivateKey,
 }
 
+pub fn mobile_secret_ref_for_host(
+    host_id: &str,
+    auth_kind: MobileAuthKind,
+    identity_id: Option<&str>,
+) -> String {
+    match auth_kind {
+        MobileAuthKind::Password => {
+            format!(
+                "termirust-mobile://host/{}/password",
+                mobile_ref_slug(host_id)
+            )
+        }
+        MobileAuthKind::PrivateKey => {
+            if let Some(identity_id) = identity_id.and_then(non_empty_trimmed) {
+                format!(
+                    "termirust-mobile://identity/{}/private-key",
+                    mobile_ref_slug(identity_id)
+                )
+            } else {
+                format!(
+                    "termirust-mobile://host/{}/private-key",
+                    mobile_ref_slug(host_id)
+                )
+            }
+        }
+    }
+}
+
+fn non_empty_trimmed(value: &str) -> Option<&str> {
+    let value = value.trim();
+    if value.is_empty() { None } else { Some(value) }
+}
+
+fn mobile_ref_slug(value: &str) -> String {
+    let slug: String = value
+        .trim()
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    if slug.is_empty() {
+        "unknown".to_string()
+    } else {
+        slug
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MobileEnvironmentVariable {
     pub name: String,
@@ -648,6 +700,9 @@ struct DesktopHostProfile {
 impl DesktopHostProfile {
     fn into_mobile_host(self) -> MobileHost {
         let known_host_endpoint = Some(format!("{}:{}", self.host, self.port));
+        let auth_kind = self.auth_mode;
+        let secret_ref =
+            mobile_secret_ref_for_host(&self.id, auth_kind, self.identity_id.as_deref());
         MobileHost {
             id: self.id,
             label: self.label,
@@ -658,9 +713,9 @@ impl DesktopHostProfile {
             port: self.port,
             username: self.username,
             auth: MobileAuthMetadata {
-                kind: self.auth_mode,
+                kind: auth_kind,
                 identity_id: self.identity_id,
-                secret_ref: None,
+                secret_ref: Some(secret_ref),
             },
             jump_host_id: self.jump_host_id,
             startup_directory: self.startup_directory,
@@ -924,7 +979,10 @@ mod tests {
         let host = &mobile.hosts[0];
         assert_eq!(host.auth.kind, MobileAuthKind::PrivateKey);
         assert_eq!(host.auth.identity_id.as_deref(), Some("identity-1"));
-        assert_eq!(host.auth.secret_ref, None);
+        assert_eq!(
+            host.auth.secret_ref.as_deref(),
+            Some("termirust-mobile://identity/identity-1/private-key")
+        );
         assert!(host.persistent_session.enabled);
         assert_eq!(
             host.persistent_session.session_name.as_deref(),
@@ -936,6 +994,26 @@ mod tests {
         let identity = &mobile.identities[0];
         assert_eq!(identity.kind, "ed25519");
         assert_eq!(identity.secret_ref, None);
+    }
+
+    #[test]
+    fn mobile_secret_ref_uses_stable_non_secret_accounts() {
+        assert_eq!(
+            mobile_secret_ref_for_host("profile 1", MobileAuthKind::Password, None),
+            "termirust-mobile://host/profile-1/password"
+        );
+        assert_eq!(
+            mobile_secret_ref_for_host(
+                "profile-1",
+                MobileAuthKind::PrivateKey,
+                Some("identity/ops key")
+            ),
+            "termirust-mobile://identity/identity-ops-key/private-key"
+        );
+        assert_eq!(
+            mobile_secret_ref_for_host("", MobileAuthKind::PrivateKey, None),
+            "termirust-mobile://host/unknown/private-key"
+        );
     }
 
     #[test]
