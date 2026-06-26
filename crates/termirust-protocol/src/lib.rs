@@ -271,6 +271,8 @@ pub struct MobileVaultExport {
     pub sync: MobileSyncMetadata,
     #[serde(default)]
     pub devices: Vec<MobileDeviceRecord>,
+    #[serde(default)]
+    pub device_keys: Vec<MobileDeviceVaultKey>,
 }
 
 impl MobileVaultExport {
@@ -289,6 +291,7 @@ impl MobileVaultExport {
             known_hosts: Vec::new(),
             sync: MobileSyncMetadata::default(),
             devices: Vec::new(),
+            device_keys: Vec::new(),
         }
     }
 
@@ -305,6 +308,18 @@ impl MobileVaultExport {
         self.devices
             .iter()
             .find(|device| device.device_id == self.source_device_id)
+    }
+
+    pub fn active_devices(&self) -> impl Iterator<Item = &MobileDeviceRecord> {
+        self.devices.iter().filter(|device| !device.is_revoked())
+    }
+
+    pub fn active_device_key(&self, device_id: &str) -> Option<&MobileDeviceVaultKey> {
+        self.device_keys.iter().find(|key| {
+            key.device_id == device_id
+                && key.revoked_at_millis.is_none()
+                && !self.is_device_revoked(device_id)
+        })
     }
 
     pub fn from_desktop_portable_json(
@@ -379,6 +394,7 @@ impl MobileVaultExport {
                 .collect(),
             sync: MobileSyncMetadata::default(),
             devices: Vec::new(),
+            device_keys: Vec::new(),
         }
     }
 }
@@ -512,6 +528,10 @@ pub struct MobileDeviceRecord {
     #[serde(default)]
     pub public_key: Option<String>,
     #[serde(default)]
+    pub paired_at_millis: Option<u128>,
+    #[serde(default)]
+    pub last_seen_at_millis: Option<u128>,
+    #[serde(default)]
     pub revoked_at_millis: Option<u128>,
 }
 
@@ -522,9 +542,27 @@ impl MobileDeviceRecord {
             label: label.into(),
             platform: Some("desktop".to_string()),
             public_key: None,
+            paired_at_millis: None,
+            last_seen_at_millis: None,
             revoked_at_millis: None,
         }
     }
+
+    pub fn is_revoked(&self) -> bool {
+        self.revoked_at_millis.is_some()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MobileDeviceVaultKey {
+    pub key_id: String,
+    pub device_id: String,
+    pub wrapping_algorithm: String,
+    pub encrypted_vault_key: String,
+    #[serde(default)]
+    pub created_at_millis: Option<u128>,
+    #[serde(default)]
+    pub revoked_at_millis: Option<u128>,
 }
 
 fn default_ssh_port() -> u16 {
@@ -747,6 +785,16 @@ mod tests {
                 label: "Jacob iPhone".to_string(),
                 platform: Some("ios".to_string()),
                 public_key: None,
+                paired_at_millis: Some(100),
+                last_seen_at_millis: Some(101),
+                revoked_at_millis: None,
+            }],
+            device_keys: vec![MobileDeviceVaultKey {
+                key_id: "vault-key-ios-1".to_string(),
+                device_id: "ios-1".to_string(),
+                wrapping_algorithm: "x25519-xsalsa20poly1305".to_string(),
+                encrypted_vault_key: "base64-wrapped-key".to_string(),
+                created_at_millis: Some(100),
                 revoked_at_millis: None,
             }],
         };
@@ -762,6 +810,13 @@ mod tests {
             None
         );
         assert!(!parsed.is_device_revoked("ios-1"));
+        assert_eq!(parsed.active_devices().count(), 1);
+        assert_eq!(
+            parsed
+                .active_device_key("ios-1")
+                .map(|key| key.key_id.as_str()),
+            Some("vault-key-ios-1")
+        );
     }
 
     #[test]
@@ -774,6 +829,8 @@ mod tests {
                 label: "Jacob iPhone".to_string(),
                 platform: Some("ios".to_string()),
                 public_key: None,
+                paired_at_millis: None,
+                last_seen_at_millis: None,
                 revoked_at_millis: Some(1719356789123),
             },
         ];
@@ -787,6 +844,7 @@ mod tests {
         assert!(export.is_device_revoked("ios-1"));
         assert!(!export.is_device_revoked("desktop-1"));
         assert!(!export.is_device_revoked(""));
+        assert_eq!(export.active_devices().count(), 1);
     }
 
     #[test]
@@ -805,6 +863,8 @@ mod tests {
         assert!(parsed.hosts.is_empty());
         assert!(parsed.known_hosts.is_empty());
         assert_eq!(parsed.sync, MobileSyncMetadata::default());
+        assert!(parsed.devices.is_empty());
+        assert!(parsed.device_keys.is_empty());
     }
 
     #[test]
@@ -921,6 +981,7 @@ mod tests {
             known_hosts: Vec::new(),
             sync: MobileSyncMetadata::default(),
             devices: Vec::new(),
+            device_keys: Vec::new(),
         };
 
         let envelope =

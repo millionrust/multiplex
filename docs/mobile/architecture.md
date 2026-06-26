@@ -60,6 +60,7 @@ Minimum shared records:
 - `persistent_session`
 - `sync_metadata`
 - `device_records`
+- `device_keys`
 
 Host records must include enough information for direct SSH:
 
@@ -85,6 +86,13 @@ include the exporting desktop as an active device record with `platform:
 desktop`. Mobile clients must preserve and decode the `devices` array even when
 they do not yet expose a device-management UI. A device is considered revoked
 when its matching record has `revoked_at_millis` set.
+
+The current encrypted mobile vault is protected by a user passphrase. The
+schema also includes `device_keys` for the next pairing phase: each record maps
+one active `device_id` to an encrypted vault key using an explicit
+`wrapping_algorithm`. Mobile clients must preserve unknown or unused device-key
+records so paired-device sync can be added without replacing the vault format.
+If a device is revoked, its matching device-key record must not be used.
 
 ## Platform Security
 

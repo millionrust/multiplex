@@ -322,6 +322,7 @@ fn build_mobile_vault_export(
             source_device_id,
             "TermiRust Desktop",
         )],
+        device_keys: Vec::new(),
     })
 }
 
