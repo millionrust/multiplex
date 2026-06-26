@@ -8,9 +8,29 @@ Use this checklist before a client demo or release candidate. The goal is to pro
 - `tmux` installed on the SSH host.
 - A saved TermiRust desktop host with persistent tmux enabled.
 - A known-host pin for that SSH endpoint in desktop TermiRust.
-- A mobile vault exported from desktop TermiRust.
-- The same mobile vault imported on iOS and Android.
+- iOS and Android companion apps built from:
+  - `/Users/jacob/Projects/terminal_app/terminal_swift`
+  - `/Users/jacob/Projects/terminal_app/terminal_kotlin`
+- A mobile vault exported from desktop TermiRust after approving each test device.
+- The same current mobile vault imported on iOS and Android.
 - The host credential saved in iOS Keychain or Android Keystore-backed storage.
+
+## Verify Mobile Builds
+
+Run these before manual SSH testing:
+
+```bash
+cd /Users/jacob/Projects/terminal_app/terminal_swift
+xcodebuild test -project TermiRustMobile.xcodeproj -scheme TermiRustMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+
+cd /Users/jacob/Projects/terminal_app/terminal_kotlin
+./gradlew testDebugUnitTest
+./gradlew assembleDebug
+```
+
+Pass: all commands complete successfully.
+
+Fail: fix build or test failures before starting device verification.
 
 ## Prepare The SSH Host
 
@@ -56,10 +76,15 @@ Pass: output is `desktop-sees-this`.
 
 ## Export Mobile Vault
 
-1. In desktop TermiRust, open Settings or the export area.
-2. Choose `Export Mobile Vault`.
-3. Enter a passphrase and confirm it.
-4. Save the file as:
+1. Open the iOS app.
+2. Tap `Copy Pairing Request`.
+3. In desktop TermiRust Settings, paste that JSON into `Mobile Pairing Request`.
+4. Click `Approve Mobile Device`.
+5. Repeat the same flow from Android.
+6. Confirm both devices appear under `Approved Mobile Devices`.
+7. Choose `Export Mobile Vault`.
+8. Enter a passphrase and confirm it.
+9. Save the file as:
 
 ```text
 termirust-mobile-vault.encrypted.json
@@ -67,7 +92,10 @@ termirust-mobile-vault.encrypted.json
 
 Pass: desktop reports exported host, identity, vault, and known-host counts.
 
-Fail: if known-host count is `0`, connect to the host once from desktop so TermiRust pins the host key, then export again.
+Fail:
+
+- If known-host count is `0`, connect to the host once from desktop so TermiRust pins the host key, then export again.
+- If a phone says it is not approved, copy its pairing request, approve it on desktop, and export a fresh mobile vault.
 
 ## Verify iOS
 
@@ -171,6 +199,23 @@ Pass: connection does not authenticate and the app reports a missing credential.
 
 Fail: the app reconnects without asking for the credential.
 
+## Device Revocation Check
+
+Run this before team rollout or a client demo that includes device management.
+
+1. In desktop TermiRust Settings, find the test phone under `Approved Mobile Devices`.
+2. Click `Revoke`.
+3. Export a fresh mobile vault.
+4. Import that vault on the revoked phone.
+
+Pass: the revoked phone refuses the imported vault and shows that the local device has been revoked.
+
+Fail: the revoked phone imports the vault and can still connect.
+
+5. Confirm a non-revoked phone can still import the fresh vault.
+
+Pass: the non-revoked phone imports normally and can connect after its credential is saved.
+
 ## Result Template
 
 Record the result after every manual run:
@@ -191,5 +236,7 @@ Android vault import: pass/fail
 Android SSH tmux attach: pass/fail
 Android host-key mismatch block: pass/fail/not run
 Credential removal block: pass/fail
+Pairing approval: pass/fail
+Device revocation: pass/fail
 Notes:
 ```
