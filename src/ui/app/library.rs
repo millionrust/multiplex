@@ -1665,6 +1665,85 @@ impl TermiRustApp {
             .bg(theme::with_alpha(theme::border(), 0.6))
     }
 
+    fn render_mobile_devices_settings(&self, cx: &Context<Self>) -> Div {
+        let devices = self.saved.settings.mobile_devices.clone();
+        v_flex()
+            .gap_2()
+            .child(self.settings_subhead(
+                "Approved Mobile Devices",
+                "Revoked devices are included in the next mobile vault export so phones can block themselves.",
+            ))
+            .when(devices.is_empty(), |this| {
+                this.child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(theme::text_muted())
+                        .child("No mobile devices approved yet."),
+                )
+            })
+            .children(devices.into_iter().enumerate().map(|(index, device)| {
+                let device_id = device.device_id.clone();
+                let platform = device.platform.unwrap_or_else(|| "mobile".to_string());
+                let status = if let Some(revoked_at) = device.revoked_at_millis {
+                    format!("Revoked {}", format_relative_time(revoked_at as u64))
+                } else if let Some(last_seen_at) = device.last_seen_at_millis {
+                    format!("Last seen {}", format_relative_time(last_seen_at as u64))
+                } else {
+                    "Approved".to_string()
+                };
+                let revoked = device.revoked_at_millis.is_some();
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .gap_3()
+                    .p_3()
+                    .rounded(px(10.))
+                    .bg(theme::library_card())
+                    .border_1()
+                    .border_color(theme::soft_border())
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(13.))
+                                            .font_medium()
+                                            .text_color(theme::text_main())
+                                            .child(device.label),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(11.))
+                                            .text_color(theme::text_muted())
+                                            .child(platform),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(theme::text_muted())
+                                    .child(format!("{device_id} - {status}")),
+                            ),
+                    )
+                    .when(!revoked, |this| {
+                        let revoke_id = device_id.clone();
+                        this.child(
+                            Button::new(("settings-revoke-mobile-device", index))
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Danger, cx))
+                                .label("Revoke")
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.revoke_mobile_device(&revoke_id, cx);
+                                })),
+                        )
+                    })
+            }))
+    }
+
     fn settings_shortcut_row(&self, keys: &'static str, description: &'static str) -> Div {
         h_flex()
             .justify_between()
@@ -2388,6 +2467,7 @@ impl TermiRustApp {
                                 .child("Paste the pairing request copied from iOS or Android, then export a fresh mobile vault."),
                         ),
                 )
+                .child(self.render_mobile_devices_settings(cx))
                 .child(self.settings_divider())
                 .child(self.form_field(
                     "Import Passphrase",

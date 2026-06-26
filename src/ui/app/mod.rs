@@ -4023,6 +4023,25 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn revoke_mobile_device(&mut self, device_id: &str, cx: &mut Context<Self>) {
+        match self
+            .saved
+            .settings
+            .revoke_mobile_device(device_id, current_unix_millis() as u128)
+        {
+            Ok(()) => {
+                self.save_settings();
+                self.status_message =
+                    format!("Mobile device '{device_id}' revoked. Export a new mobile vault.");
+                self.error_message.clear();
+            }
+            Err(error) => {
+                self.error_message = format!("Failed to revoke mobile device: {error}");
+            }
+        }
+        cx.notify();
+    }
+
     fn import_portable_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(path) = Self::take_dialog_path_for_tests()
             .or_else(|| FileDialog::new().add_filter("JSON", &["json"]).pick_file())
@@ -14014,6 +14033,12 @@ mod tests {
                     );
                     app.import_mobile_pairing_request(window, cx);
                     assert_eq!(app.saved.settings.mobile_devices.len(), 1);
+                    app.revoke_mobile_device("ios-1", cx);
+                    assert!(
+                        app.saved.settings.mobile_devices[0]
+                            .revoked_at_millis
+                            .is_some()
+                    );
 
                     TermiRustApp::set_input_value(
                         &app.settings_inputs.export_backup_passphrase,
@@ -14062,6 +14087,7 @@ mod tests {
                 .iter()
                 .any(|device| device.device_id == "ios-1"
                     && device.label == "Jacob iPhone"
+                    && device.revoked_at_millis.is_some()
                     && device.public_key.as_deref() == Some("x25519-public-key"))
         );
 
