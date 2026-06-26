@@ -36,6 +36,26 @@ termirust_mobile_free_result(result);
 
 after copying the returned buffer.
 
+## Sync Helper
+
+Build and copy the shared crypto artifacts into the companion app repos with:
+
+```bash
+cd /Users/jacob/Projects/terminal
+scripts/sync-mobile-ffi-artifacts.sh all
+```
+
+Use `ios` or `android` instead of `all` to refresh one platform.
+
+The helper respects:
+
+```text
+TERMIRUST_IOS_DIR
+TERMIRUST_ANDROID_DIR
+```
+
+when the companion repos are not in their default locations.
+
 ## iOS Integration Path
 
 The Swift app has a `MobileVaultDecrypting` protocol. Implement it with a thin Swift wrapper over `termirust_mobile_decrypt_vault_json`.
@@ -54,7 +74,7 @@ dist/mobile/ios/TermiRustMobileCrypto.xcframework
 ```
 
 Copy or sync that generated framework into the companion iOS repo before
-opening Xcode:
+opening Xcode. Prefer the sync helper above, or run:
 
 ```bash
 rm -rf /Users/jacob/Projects/terminal_app/terminal_swift/Frameworks/TermiRustMobileCrypto.xcframework
@@ -89,6 +109,7 @@ dist/mobile/android/jniLibs/
 ```
 
 Copy or sync those ABI folders into `terminal_kotlin/app/src/main/jniLibs/`.
+Prefer the sync helper above, or run:
 
 ```bash
 rm -rf /Users/jacob/Projects/terminal_app/terminal_kotlin/app/src/main/jniLibs
