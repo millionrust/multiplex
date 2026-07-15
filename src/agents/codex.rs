@@ -162,7 +162,7 @@ pub fn spawn_codex_session(config: CodexSessionConfig) -> Result<CodexSessionHan
     let reader_events = event_tx.clone();
     let reader_ids = Arc::clone(&ids);
     let reader_config = config.clone();
-    thread::Builder::new()
+    let reader_thread = thread::Builder::new()
         .name("termirust-codex-reader".to_string())
         .spawn(move || {
             read_messages(
@@ -187,12 +187,15 @@ pub fn spawn_codex_session(config: CodexSessionConfig) -> Result<CodexSessionHan
         .name("termirust-codex-monitor".to_string())
         .spawn(move || {
             let result = child.wait();
+            let _ = reader_thread.join();
             monitor_child_id.store(0, Ordering::Release);
             match result {
-                Ok(status) if !status.success() => {
-                    let _ = monitor_events.send(AgentEvent::Failed {
-                        error: format!("Codex app-server exited with {status}"),
-                    });
+                Ok(status) => {
+                    if !status.success() {
+                        let _ = monitor_events.send(AgentEvent::Failed {
+                            error: format!("Codex app-server exited with {status}"),
+                        });
+                    }
                     let _ =
                         monitor_events.send(AgentEvent::StateChanged(AgentRunState::Disconnected));
                 }
@@ -200,8 +203,9 @@ pub fn spawn_codex_session(config: CodexSessionConfig) -> Result<CodexSessionHan
                     let _ = monitor_events.send(AgentEvent::Failed {
                         error: format!("Unable to wait for Codex app-server: {error}"),
                     });
+                    let _ =
+                        monitor_events.send(AgentEvent::StateChanged(AgentRunState::Disconnected));
                 }
-                _ => {}
             }
         })
         .context("Unable to start Codex process monitor")?;
@@ -702,6 +706,37 @@ sleep 1
             0,
             "process monitor must clear stale child ids before handle drop"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn app_server_exit_is_reported_after_buffered_turn_events() {
+        let (executable, working_directory) = fake_codex();
+        let session = spawn_codex_session(CodexSessionConfig {
+            executable,
+            working_directory,
+            permission_policy: AgentPermissionPolicy::ReadOnly,
+            initial_prompt: Some("finish the task".to_string()),
+        })
+        .unwrap();
+        let mut states = Vec::new();
+        loop {
+            match session
+                .event_rx
+                .recv_timeout(Duration::from_secs(3))
+                .expect("expected Codex lifecycle event")
+            {
+                AgentEvent::StateChanged(state) => {
+                    states.push(state);
+                    if state == AgentRunState::Disconnected {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(states.last(), Some(&AgentRunState::Disconnected));
+        assert!(states.contains(&AgentRunState::Succeeded));
     }
 
     #[test]

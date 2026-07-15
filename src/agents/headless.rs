@@ -193,6 +193,7 @@ fn run_job(
         let diagnostics = event_tx.clone();
         thread::spawn(move || capture_stderr(stderr, diagnostics));
     }
+    let mut saw_terminal_event = false;
     if let Some(stdout) = stdout {
         let read_result = read_bounded_lines(
             BufReader::new(stdout),
@@ -207,7 +208,9 @@ fn run_job(
                 }
                 BoundedLine::Bytes(line) if line.iter().all(u8::is_ascii_whitespace) => {}
                 BoundedLine::Bytes(line) => match serde_json::from_slice::<Value>(&line) {
-                    Ok(value) => normalize_event(config.provider, &value, &event_tx),
+                    Ok(value) => {
+                        saw_terminal_event |= normalize_event(config.provider, &value, &event_tx)
+                    }
                     Err(error) => {
                         let _ = event_tx.send(AgentEvent::Diagnostic {
                             message: format!("Ignored malformed structured event: {error}"),
@@ -229,7 +232,16 @@ fn run_job(
         return;
     }
     match status {
-        Ok(status) if status.success() => {}
+        Ok(status) if status.success() && saw_terminal_event => {}
+        Ok(status) if status.success() => {
+            let _ = event_tx.send(AgentEvent::Failed {
+                error: format!(
+                    "{} exited without a structured completion event",
+                    config.provider.label()
+                ),
+            });
+            let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Failed));
+        }
         Ok(status) => {
             let _ = event_tx.send(AgentEvent::Failed {
                 error: format!("{} exited with {status}", config.provider.label()),
@@ -274,7 +286,11 @@ fn command_arguments(config: &HeadlessSessionConfig, prompt: &str) -> Vec<String
     arguments
 }
 
-fn normalize_event(provider: AgentProvider, value: &Value, event_tx: &SyncSender<AgentEvent>) {
+fn normalize_event(
+    provider: AgentProvider,
+    value: &Value,
+    event_tx: &SyncSender<AgentEvent>,
+) -> bool {
     let kind = value
         .get("type")
         .and_then(Value::as_str)
@@ -282,11 +298,11 @@ fn normalize_event(provider: AgentProvider, value: &Value, event_tx: &SyncSender
     match provider {
         AgentProvider::ClaudeCode => normalize_claude(kind, value, event_tx),
         AgentProvider::Gemini => normalize_gemini(kind, value, event_tx),
-        _ => {}
+        _ => false,
     }
 }
 
-fn normalize_claude(kind: &str, value: &Value, event_tx: &SyncSender<AgentEvent>) {
+fn normalize_claude(kind: &str, value: &Value, event_tx: &SyncSender<AgentEvent>) -> bool {
     match kind {
         "system" if value.get("subtype").and_then(Value::as_str) == Some("init") => {
             if let Some(session_id) = value.get("session_id").and_then(Value::as_str) {
@@ -295,11 +311,13 @@ fn normalize_claude(kind: &str, value: &Value, event_tx: &SyncSender<AgentEvent>
                 });
             }
             let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Running));
+            false
         }
         "assistant" => {
             if let Some(content) = value.pointer("/message/content").and_then(Value::as_array) {
                 normalize_content_blocks(content, event_tx);
             }
+            false
         }
         "user" => {
             if let Some(content) = value.pointer("/message/content").and_then(Value::as_array) {
@@ -322,6 +340,7 @@ fn normalize_claude(kind: &str, value: &Value, event_tx: &SyncSender<AgentEvent>
                     }
                 }
             }
+            false
         }
         "result" => {
             let failed = value
@@ -345,12 +364,13 @@ fn normalize_claude(kind: &str, value: &Value, event_tx: &SyncSender<AgentEvent>
                 let _ = event_tx.send(AgentEvent::Completed { summary });
                 let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Succeeded));
             }
+            true
         }
-        _ => {}
+        _ => false,
     }
 }
 
-fn normalize_gemini(kind: &str, value: &Value, event_tx: &SyncSender<AgentEvent>) {
+fn normalize_gemini(kind: &str, value: &Value, event_tx: &SyncSender<AgentEvent>) -> bool {
     match kind {
         "init" => {
             if let Some(session_id) = value.get("session_id").and_then(Value::as_str) {
@@ -359,6 +379,7 @@ fn normalize_gemini(kind: &str, value: &Value, event_tx: &SyncSender<AgentEvent>
                 });
             }
             let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Running));
+            false
         }
         "message" if value.get("role").and_then(Value::as_str) == Some("assistant") => {
             if let Some(text) = value.get("content").and_then(Value::as_str) {
@@ -367,6 +388,7 @@ fn normalize_gemini(kind: &str, value: &Value, event_tx: &SyncSender<AgentEvent>
                     text: text.to_string(),
                 });
             }
+            false
         }
         "tool_use" => {
             let call_id = value
@@ -384,6 +406,7 @@ fn normalize_gemini(kind: &str, value: &Value, event_tx: &SyncSender<AgentEvent>
                 name,
                 summary: value.get("parameters").map(Value::to_string),
             }));
+            false
         }
         "tool_result" => {
             if let Some(call_id) = value.get("tool_id").and_then(Value::as_str) {
@@ -396,6 +419,7 @@ fn normalize_gemini(kind: &str, value: &Value, event_tx: &SyncSender<AgentEvent>
                     },
                 });
             }
+            false
         }
         "error" => {
             let _ = event_tx.send(AgentEvent::Failed {
@@ -406,12 +430,14 @@ fn normalize_gemini(kind: &str, value: &Value, event_tx: &SyncSender<AgentEvent>
                     .to_string(),
             });
             let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Failed));
+            true
         }
         "result" => {
             let _ = event_tx.send(AgentEvent::Completed { summary: None });
             let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Succeeded));
+            true
         }
-        _ => {}
+        _ => false,
     }
 }
 
@@ -668,6 +694,47 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, AgentEvent::Failed { .. }))
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn successful_exit_without_completion_is_reported_as_failed() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("termirust-headless-empty-{unique}"));
+        fs::create_dir_all(&directory).unwrap();
+        let executable = directory.join("fake claude");
+        fs::write(&executable, "#!/bin/sh\nexit 0\n").unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+        let handle = spawn_headless_session(HeadlessSessionConfig {
+            provider: AgentProvider::ClaudeCode,
+            executable,
+            working_directory: directory,
+            permission_policy: AgentPermissionPolicy::ReadOnly,
+            arguments: Vec::new(),
+            initial_prompt: Some("finish this".to_string()),
+        })
+        .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while handle.running.load(Ordering::Acquire) && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!handle.running.load(Ordering::Acquire));
+        let events: Vec<_> = handle.event_rx.try_iter().collect();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            AgentEvent::Failed { error }
+                if error.contains("exited without a structured completion event")
+        )));
+        assert!(events.contains(&AgentEvent::StateChanged(AgentRunState::Failed)));
+        assert!(!events.contains(&AgentEvent::StateChanged(AgentRunState::Succeeded)));
     }
 
     #[test]
