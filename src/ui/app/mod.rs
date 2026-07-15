@@ -17,14 +17,14 @@ pub(crate) use types::{
 
 use canvas::{
     AgentCreationState, CANVAS_NODE_HEADER_HEIGHT, CANVAS_TOOLBAR_HEIGHT, CanvasInteraction,
-    CanvasWorkspaceState,
+    CanvasWorkspaceState, StructuredAgentRuntime,
 };
 use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
     collect_autocomplete_candidates, collect_command_palette_candidates, pane_recent_output_lines,
 };
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
@@ -291,6 +291,7 @@ struct ShellInputs {
     agent_executable: Entity<InputState>,
     agent_arguments: Entity<InputState>,
     agent_initial_prompt: Entity<InputState>,
+    structured_agent_prompt: Entity<InputState>,
 }
 
 struct SnippetInputs {
@@ -434,6 +435,12 @@ impl ShellInputs {
                     .multi_line(true)
                     .auto_grow(3, 8)
                     .placeholder("Optional initial prompt")
+            }),
+            structured_agent_prompt: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .multi_line(true)
+                    .auto_grow(2, 6)
+                    .placeholder("Send a prompt or reviewed context")
             }),
         }
     }
@@ -911,6 +918,7 @@ pub struct TermiRustApp {
     canvas_interaction: Option<CanvasInteraction>,
     canvas_add_menu_open: bool,
     agent_creation: Option<AgentCreationState>,
+    structured_agents: HashMap<crate::models::CanvasNodeId, StructuredAgentRuntime>,
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
     open_workspace_tab_menu: Option<u64>,
@@ -1049,6 +1057,7 @@ impl TermiRustApp {
             canvas_interaction: None,
             canvas_add_menu_open: false,
             agent_creation: None,
+            structured_agents: HashMap::new(),
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
             open_workspace_tab_menu: None,
@@ -5611,7 +5620,7 @@ impl TermiRustApp {
     }
 
     fn process_events(&mut self, cx: &mut Context<Self>) {
-        let mut changed = false;
+        let mut changed = self.process_structured_agent_events();
         let mut panes_to_refresh = Vec::new();
         let mut sftp_directories_to_refresh = HashSet::new();
 
@@ -9708,12 +9717,12 @@ mod tests {
     };
     use crate::credentials;
     use crate::models::{
-        AgentProvider, AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID,
-        DraftProfile, HostColorTag, HostProfile, IdentitySource, JumpHostConnection,
-        LocalPortForward, LocalShellConfig, PortForwardKind, PortForwardRule, ProfileSource,
-        RestorableAuth, RestorableConnection, SavedHostGroup, SavedIdentity, SavedSnippet,
-        SavedSplitNode, SavedState, SavedWorkspace, SavedWorktreePolicy, SplitAxis, ThemePreset,
-        VaultMemberRole, WorkspaceLayoutMode,
+        AgentBackendKind, AgentProvider, AuthConfig, AuthMode, ConnectRequest, ConnectionKind,
+        DEFAULT_VAULT_ID, DraftProfile, HostColorTag, HostProfile, IdentitySource,
+        JumpHostConnection, LocalPortForward, LocalShellConfig, PortForwardKind, PortForwardRule,
+        ProfileSource, RestorableAuth, RestorableConnection, SavedHostGroup, SavedIdentity,
+        SavedSnippet, SavedSplitNode, SavedState, SavedWorkspace, SavedWorktreePolicy, SplitAxis,
+        ThemePreset, VaultMemberRole, WorkspaceLayoutMode,
     };
     use crate::sftp::RemoteFileEntry;
     use crate::storage::load_saved_state;
@@ -11368,6 +11377,105 @@ mod tests {
                         && definition.arguments[0] == "argument with spaces"
             ));
             assert!(!injection_marker.exists());
+        });
+    }
+
+    #[gpui::test]
+    #[cfg(unix)]
+    fn canvas_runs_structured_codex_and_tracks_normalized_completion(cx: &mut TestAppContext) {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let _isolation = TestIsolation::acquire();
+        let fixture_directory = std::env::temp_dir().join(format!(
+            "termirust structured codex {}",
+            crate::ui::util::current_unix_millis()
+        ));
+        fs::create_dir_all(&fixture_directory).unwrap();
+        let executable = fixture_directory.join("fake codex");
+        fs::write(
+            &executable,
+            r#"#!/bin/sh
+read initialize
+printf '%s\n' '{"id":1,"result":{"userAgent":"fake"}}'
+read initialized
+read thread_start
+printf '%s\n' '{"id":2,"result":{"thread":{"id":"thread-ui"},"model":"fake","modelProvider":"fake","cwd":"/tmp","approvalPolicy":"on-request","approvalsReviewer":"user","sandbox":{"type":"workspaceWrite","writableRoots":[],"readOnlyAccess":{"type":"fullAccess"},"networkAccess":false,"excludeTmpdirEnvVar":false,"excludeSlashTmp":false}}}'
+read turn_start
+printf '%s\n' '{"id":100,"result":{"turn":{"id":"turn-ui","items":[],"status":"inProgress","error":null}}}'
+printf '%s\n' '{"method":"turn/started","params":{"threadId":"thread-ui","turn":{"id":"turn-ui","items":[],"status":"inProgress","error":null}}}'
+printf '%s\n' '{"method":"item/agentMessage/delta","params":{"threadId":"thread-ui","turnId":"turn-ui","itemId":"message-ui","delta":"structured response"}}'
+printf '%s\n' '{"method":"turn/completed","params":{"threadId":"thread-ui","turn":{"id":"turn-ui","items":[],"status":"completed","error":null}}}'
+sleep 1
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+
+        let (app, window) = open_test_app(cx);
+        let local_request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(fixture_directory.display().to_string()),
+            },
+        );
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(local_request, window, cx)
+                        .expect("local workspace should open");
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    app.open_agent_creation(AgentProvider::Codex, window, cx);
+                    app.set_agent_backend(AgentBackendKind::Structured, cx);
+                    app.set_agent_worktree_policy(SavedWorktreePolicy::SharedDirectory, cx);
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.agent_executable,
+                        executable.display().to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.agent_working_directory,
+                        fixture_directory.display().to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.agent_initial_prompt,
+                        "perform the test",
+                        window,
+                        cx,
+                    );
+                    app.launch_agent_creation(window, cx);
+                })
+            })
+            .expect("structured launch should succeed");
+
+        let node_id = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.structured_agents.iter().find_map(|(node_id, runtime)| {
+                (runtime.state == crate::agents::AgentRunState::Succeeded
+                    && runtime.transcript.contains("structured response"))
+                .then(|| node_id.clone())
+            })
+        });
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().expect("workspace should exist");
+            let node = workspace
+                .canvas
+                .nodes
+                .iter()
+                .find(|node| node.id == node_id)
+                .expect("structured node should exist");
+            assert!(matches!(
+                &node.kind,
+                crate::ui::app::canvas::CanvasNodeKind::Agent {
+                    pane_id: None,
+                    definition,
+                } if definition.backend == AgentBackendKind::Structured
+            ));
         });
     }
 

@@ -10,6 +10,11 @@ use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
+use crate::agents::{
+    AgentApprovalRequest, AgentEvent, AgentExecutableStatus, AgentRunState, CodexSessionConfig,
+    CodexSessionHandle, build_interactive_launch_spec, build_remote_interactive_arguments,
+    create_managed_worktree, detect_agent_executable, provider_descriptor, spawn_codex_session,
+};
 use crate::models::{
     AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AuthConfig, AuthMode,
     CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CANVAS_MAX_ZOOM, CANVAS_MIN_NODE_HEIGHT,
@@ -21,14 +26,7 @@ use crate::models::{
 use crate::ui::app::{TermiRustApp, WorkspaceViewMode};
 use crate::ui::shell::shell_single_quote;
 use crate::ui::theme;
-use crate::{
-    agents::{
-        AgentExecutableStatus, build_interactive_launch_spec, build_remote_interactive_arguments,
-        create_managed_worktree, detect_agent_executable, provider_descriptor,
-    },
-    storage::managed_agent_worktree_dir,
-    ui::util::current_unix_millis,
-};
+use crate::{storage::managed_agent_worktree_dir, ui::util::current_unix_millis};
 
 pub(super) const CANVAS_TOOLBAR_HEIGHT: f32 = 44.0;
 pub(super) const CANVAS_NODE_HEADER_HEIGHT: f32 = 34.0;
@@ -41,6 +39,39 @@ const CANVAS_FIT_PADDING: f32 = 48.0;
 pub(super) struct AgentCreationState {
     definition: SavedAgentDefinition,
     executable_status: AgentExecutableStatus,
+}
+
+pub(super) struct StructuredAgentRuntime {
+    pub handle: CodexSessionHandle,
+    pub state: AgentRunState,
+    pub transcript: String,
+    pub approval: Option<AgentApprovalRequest>,
+    pub diagnostic: Option<String>,
+}
+
+impl StructuredAgentRuntime {
+    const MAX_TRANSCRIPT_BYTES: usize = 64 * 1024;
+
+    fn new(handle: CodexSessionHandle) -> Self {
+        Self {
+            handle,
+            state: AgentRunState::Starting,
+            transcript: String::new(),
+            approval: None,
+            diagnostic: None,
+        }
+    }
+
+    fn push_text(&mut self, text: &str) {
+        self.transcript.push_str(text);
+        if self.transcript.len() > Self::MAX_TRANSCRIPT_BYTES {
+            let mut start = self.transcript.len() - Self::MAX_TRANSCRIPT_BYTES;
+            while !self.transcript.is_char_boundary(start) {
+                start += 1;
+            }
+            self.transcript.drain(..start);
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -382,11 +413,16 @@ impl CanvasWorkspaceState {
 
     pub(super) fn add_agent_node(
         &mut self,
-        pane_id: u64,
+        pane_id: Option<u64>,
         definition: SavedAgentDefinition,
         viewport_center: CanvasPoint,
     ) -> CanvasNodeId {
-        let id = unique_node_id(&self.nodes, format!("agent-node-{pane_id}"));
+        let id = unique_node_id(
+            &self.nodes,
+            pane_id
+                .map(|pane_id| format!("agent-node-{pane_id}"))
+                .unwrap_or_else(|| format!("agent-node-{}", current_unix_millis())),
+        );
         let position = find_non_overlapping_position(
             &self.nodes,
             CANVAS_DEFAULT_NODE_WIDTH,
@@ -397,7 +433,7 @@ impl CanvasWorkspaceState {
         self.nodes.push(CanvasNode {
             id: id.clone(),
             kind: CanvasNodeKind::Agent {
-                pane_id: Some(pane_id),
+                pane_id,
                 definition,
             },
             rect: CanvasRect {
@@ -412,6 +448,15 @@ impl CanvasWorkspaceState {
         });
         self.next_z_index = self.next_z_index.saturating_add(1);
         id
+    }
+
+    pub(super) fn remove_node(&mut self, node_id: &CanvasNodeId) {
+        self.nodes.retain(|node| &node.id != node_id);
+        self.edges
+            .retain(|edge| &edge.source != node_id && &edge.target != node_id);
+        if self.selected_node_id.as_ref() == Some(node_id) {
+            self.selected_node_id = None;
+        }
     }
 
     pub(super) fn remove_pane(&mut self, pane_id: u64) {
@@ -965,7 +1010,7 @@ impl TermiRustApp {
             let node_id = if let Some(definition) = agent_definition {
                 workspace
                     .canvas
-                    .add_agent_node(pane_id, definition, world_center)
+                    .add_agent_node(Some(pane_id), definition, world_center)
             } else {
                 workspace.canvas.add_terminal_node(pane_id, world_center)
             };
@@ -1165,6 +1210,11 @@ impl TermiRustApp {
         state.definition.provider = provider;
         state.definition.executable_override = None;
         Self::set_input_value(&self.shell_inputs.agent_executable, "", window, cx);
+        if provider != AgentProvider::Codex
+            && state.definition.backend == AgentBackendKind::Structured
+        {
+            state.definition.backend = AgentBackendKind::InteractivePty;
+        }
         state.executable_status = detect_agent_executable(&state.definition);
         self.agent_creation = Some(state);
         cx.notify();
@@ -1173,6 +1223,32 @@ impl TermiRustApp {
     fn set_agent_creation_location(&mut self, location: AgentLocation, cx: &mut Context<Self>) {
         if let Some(state) = self.agent_creation.as_mut() {
             state.definition.location = location;
+        }
+        cx.notify();
+    }
+
+    pub(super) fn set_agent_backend(&mut self, backend: AgentBackendKind, cx: &mut Context<Self>) {
+        if let Some(state) = self.agent_creation.as_mut() {
+            if backend == AgentBackendKind::Structured
+                && state.definition.provider != AgentProvider::Codex
+            {
+                self.error_message =
+                    "Structured mode is currently available for Codex. Claude and Gemini use their interactive CLIs."
+                        .to_string();
+                cx.notify();
+                return;
+            }
+            if backend == AgentBackendKind::Structured
+                && !matches!(state.definition.location, AgentLocation::Local)
+            {
+                self.error_message =
+                    "Structured Codex currently runs locally. Use Interactive terminal for SSH hosts."
+                        .to_string();
+                cx.notify();
+                return;
+            }
+            state.definition.backend = backend;
+            self.error_message.clear();
         }
         cx.notify();
     }
@@ -1300,6 +1376,10 @@ impl TermiRustApp {
         let mut definition = state.definition.clone();
         if definition.worktree == SavedWorktreePolicy::ReadOnly {
             definition.permission_policy = AgentPermissionPolicy::ReadOnly;
+        }
+        if definition.backend == AgentBackendKind::Structured {
+            self.launch_structured_agent_creation(state, definition, initial_prompt, window, cx);
+            return;
         }
 
         let request = match &definition.location {
@@ -1482,6 +1562,250 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn launch_structured_agent_creation(
+        &mut self,
+        mut creation: AgentCreationState,
+        mut definition: SavedAgentDefinition,
+        initial_prompt: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if definition.provider != AgentProvider::Codex
+            || !matches!(definition.location, AgentLocation::Local)
+        {
+            self.agent_creation = Some(creation);
+            self.error_message = "Structured Codex currently runs locally.".to_string();
+            cx.notify();
+            return;
+        }
+        let executable = match detect_agent_executable(&definition) {
+            AgentExecutableStatus::Available { path, .. } => path,
+            missing @ AgentExecutableStatus::Missing { .. } => {
+                creation.executable_status = missing;
+                self.agent_creation = Some(creation);
+                self.error_message =
+                    "Codex CLI is not installed or could not be resolved.".to_string();
+                cx.notify();
+                return;
+            }
+        };
+        let Some(mut working_directory) = definition
+            .working_directory
+            .as_deref()
+            .filter(|path| !path.trim().is_empty())
+            .map(std::path::PathBuf::from)
+        else {
+            self.agent_creation = Some(creation);
+            self.error_message = "Choose a Git repository or working directory.".to_string();
+            cx.notify();
+            return;
+        };
+        if !working_directory.is_dir() {
+            self.agent_creation = Some(creation);
+            self.error_message = format!(
+                "Working directory does not exist: {}",
+                working_directory.display()
+            );
+            cx.notify();
+            return;
+        }
+        if definition.worktree == SavedWorktreePolicy::Isolated {
+            let managed_root = match managed_agent_worktree_dir() {
+                Ok(path) => path,
+                Err(error) => {
+                    self.agent_creation = Some(creation);
+                    self.error_message = error.to_string();
+                    cx.notify();
+                    return;
+                }
+            };
+            let managed = match create_managed_worktree(
+                &working_directory,
+                &managed_root,
+                &format!("{}", current_unix_millis()),
+                definition.provider.label(),
+            ) {
+                Ok(worktree) => worktree,
+                Err(error) => {
+                    self.agent_creation = Some(creation);
+                    self.error_message = error.to_string();
+                    cx.notify();
+                    return;
+                }
+            };
+            working_directory = std::path::PathBuf::from(&managed.path);
+            definition.working_directory = Some(managed.path.clone());
+            definition.managed_worktree = Some(managed);
+        }
+        let handle = match spawn_codex_session(CodexSessionConfig {
+            executable,
+            working_directory,
+            permission_policy: definition.permission_policy,
+            initial_prompt: (!initial_prompt.trim().is_empty()).then_some(initial_prompt),
+        }) {
+            Ok(handle) => handle,
+            Err(error) => {
+                self.agent_creation = Some(creation);
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
+        };
+        let Some(workspace_id) = self.active_workspace_id else {
+            self.agent_creation = Some(creation);
+            self.error_message = "Open a Canvas workspace before launching an agent.".to_string();
+            cx.notify();
+            return;
+        };
+        let viewport = window.viewport_size();
+        let screen_center = CanvasPoint::new(
+            f32::from(viewport.width) / 2.0,
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
+        );
+        let Some(workspace) = self.workspace_mut(workspace_id) else {
+            self.agent_creation = Some(creation);
+            return;
+        };
+        let world_center = workspace.canvas.transform.screen_to_world(screen_center);
+        let node_id = workspace
+            .canvas
+            .add_agent_node(None, definition, world_center);
+        workspace.canvas.select_and_raise(&node_id);
+        self.structured_agents
+            .insert(node_id, StructuredAgentRuntime::new(handle));
+        self.canvas_add_menu_open = false;
+        self.status_message = "Starting structured Codex session...".to_string();
+        self.error_message.clear();
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
+    pub(super) fn process_structured_agent_events(&mut self) -> bool {
+        let mut queued = Vec::new();
+        for (node_id, runtime) in &self.structured_agents {
+            while let Ok(event) = runtime.handle.event_rx.try_recv() {
+                queued.push((node_id.clone(), event));
+            }
+        }
+        let changed = !queued.is_empty();
+        for (node_id, event) in queued {
+            let Some(runtime) = self.structured_agents.get_mut(&node_id) else {
+                continue;
+            };
+            match event {
+                AgentEvent::StateChanged(state) => {
+                    runtime.state = state;
+                    if state != AgentRunState::WaitingForApproval {
+                        runtime.approval = None;
+                    }
+                }
+                AgentEvent::MessageDelta { text, .. } => runtime.push_text(&text),
+                AgentEvent::ApprovalRequested(approval) => {
+                    runtime.state = AgentRunState::WaitingForApproval;
+                    runtime.approval = Some(approval);
+                }
+                AgentEvent::Failed { error } => {
+                    runtime.state = AgentRunState::Failed;
+                    runtime.diagnostic = Some(error);
+                }
+                AgentEvent::Diagnostic { message } => runtime.diagnostic = Some(message),
+                AgentEvent::ToolStarted(call) => runtime.push_text(&format!(
+                    "\n[{}] {}\n",
+                    call.name,
+                    call.summary.unwrap_or_default()
+                )),
+                AgentEvent::ToolFinished { .. }
+                | AgentEvent::SessionReady { .. }
+                | AgentEvent::Completed { .. } => {}
+            }
+        }
+        changed
+    }
+
+    fn send_structured_agent_prompt(
+        &mut self,
+        node_id: CanvasNodeId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let prompt = self
+            .shell_inputs
+            .structured_agent_prompt
+            .read(cx)
+            .value()
+            .to_string();
+        let result = self
+            .structured_agents
+            .get(&node_id)
+            .ok_or_else(|| anyhow::anyhow!("Structured agent is not running"))
+            .and_then(|runtime| runtime.handle.send_prompt(prompt.clone()));
+        match result {
+            Ok(()) => {
+                if let Some(runtime) = self.structured_agents.get_mut(&node_id) {
+                    runtime.push_text(&format!("\nYou: {}\n", prompt.trim()));
+                    runtime.state = AgentRunState::Running;
+                }
+                Self::set_input_value(&self.shell_inputs.structured_agent_prompt, "", window, cx);
+                self.error_message.clear();
+            }
+            Err(error) => self.error_message = error.to_string(),
+        }
+        cx.notify();
+    }
+
+    fn cancel_structured_agent(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
+        if let Some(runtime) = self.structured_agents.get(&node_id) {
+            if let Err(error) = runtime.handle.cancel() {
+                self.error_message = error.to_string();
+            }
+        }
+        cx.notify();
+    }
+
+    fn respond_structured_agent_approval(
+        &mut self,
+        node_id: CanvasNodeId,
+        allow: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let result = self
+            .structured_agents
+            .get(&node_id)
+            .and_then(|runtime| {
+                runtime
+                    .approval
+                    .as_ref()
+                    .map(|approval| (runtime, approval))
+            })
+            .ok_or_else(|| anyhow::anyhow!("Approval request is no longer active"))
+            .and_then(|(runtime, approval)| {
+                runtime
+                    .handle
+                    .respond_to_approval(&approval.request_id, allow)
+            });
+        match result {
+            Ok(()) => {
+                if let Some(runtime) = self.structured_agents.get_mut(&node_id) {
+                    runtime.approval = None;
+                    runtime.state = AgentRunState::Running;
+                }
+                self.error_message.clear();
+            }
+            Err(error) => self.error_message = error.to_string(),
+        }
+        cx.notify();
+    }
+
+    fn close_structured_agent(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
+        self.structured_agents.remove(&node_id);
+        for workspace in &mut self.workspaces {
+            workspace.canvas.remove_node(&node_id);
+        }
+        self.persist_runtime_state();
+        self.status_message = "Structured agent closed. Its worktree was kept.".to_string();
+        cx.notify();
+    }
+
     fn toggle_canvas_add_menu(&mut self, cx: &mut Context<Self>) {
         self.canvas_add_menu_open = !self.canvas_add_menu_open;
         cx.notify();
@@ -1616,6 +1940,7 @@ impl TermiRustApp {
             return div().into_any_element();
         };
         let provider = state.definition.provider;
+        let backend = state.definition.backend;
         let location = state.definition.location.clone();
         let permission_policy = state.definition.permission_policy;
         let worktree_policy = state.definition.worktree;
@@ -1737,6 +2062,51 @@ impl TermiRustApp {
                                             }))
                                     }),
                                 ),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_semibold()
+                                    .text_color(theme::text_muted())
+                                    .child("Experience"),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_1()
+                                    .child(
+                                        Button::new("agent-backend-interactive")
+                                            .xsmall()
+                                            .custom(Self::segmented_button_style(
+                                                backend == AgentBackendKind::InteractivePty,
+                                                cx,
+                                            ))
+                                            .label("Interactive terminal")
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.set_agent_backend(
+                                                    AgentBackendKind::InteractivePty,
+                                                    cx,
+                                                );
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("agent-backend-structured")
+                                            .xsmall()
+                                            .custom(Self::segmented_button_style(
+                                                backend == AgentBackendKind::Structured,
+                                                cx,
+                                            ))
+                                            .label("Structured")
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.set_agent_backend(
+                                                    AgentBackendKind::Structured,
+                                                    cx,
+                                                );
+                                            })),
+                                    ),
                             ),
                     )
                     .child(
@@ -2113,13 +2483,20 @@ impl TermiRustApp {
             .clone()
             .or_else(|| pane_id.and_then(|id| self.pane(id).map(|pane| pane.title.clone())))
             .unwrap_or_else(|| "Agent".to_string());
-        let subtitle = pane_id
-            .and_then(|id| self.pane(id))
-            .map(|pane| pane.status.clone())
+        let subtitle = self
+            .structured_agents
+            .get(&node.id)
+            .map(|runtime| runtime.state.label().to_string())
+            .or_else(|| {
+                pane_id
+                    .and_then(|id| self.pane(id))
+                    .map(|pane| pane.status.clone())
+            })
             .unwrap_or_else(|| "Idle".to_string());
         let header_node_id = node_id.clone();
         let resize_node_id = node_id.clone();
         let close_pane_id = pane_id;
+        let close_structured_node_id = (pane_id.is_none()).then_some(node_id.clone());
 
         let mut body = v_flex()
             .id(SharedString::from(format!(
@@ -2216,6 +2593,24 @@ impl TermiRustApp {
                                     this.close_pane(pane_id, cx);
                                 })),
                         )
+                    })
+                    .when_some(close_structured_node_id, |header, node_id| {
+                        header.child(
+                            Button::new(SharedString::from(format!(
+                                "structured-node-close-{}",
+                                node_id.as_str()
+                            )))
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Stop and close agent")
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.close_structured_agent(node_id.clone(), cx);
+                                },
+                            )),
+                        )
                     }),
             );
 
@@ -2228,6 +2623,9 @@ impl TermiRustApp {
                         .child(self.render_terminal_pane(pane, window, cx)),
                 )
             });
+            if pane_id.is_none() {
+                body = body.child(self.render_structured_agent_body(node_id.clone(), selected, cx));
+            }
             body = body.child(
                 div()
                     .id(SharedString::from(format!(
@@ -2263,6 +2661,183 @@ impl TermiRustApp {
         }
 
         body.into_any_element()
+    }
+
+    fn render_structured_agent_body(
+        &self,
+        node_id: CanvasNodeId,
+        selected: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let Some(runtime) = self.structured_agents.get(&node_id) else {
+            return v_flex()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .text_size(px(11.0))
+                        .text_color(theme::text_muted_dark())
+                        .child("Structured session is not running"),
+                )
+                .into_any_element();
+        };
+        let transcript = if runtime.transcript.trim().is_empty() {
+            "Ready for a prompt.".to_string()
+        } else {
+            runtime.transcript.clone()
+        };
+        let diagnostic = runtime.diagnostic.clone();
+        let approval = runtime.approval.clone();
+        let send_id = node_id.clone();
+        let cancel_id = node_id.clone();
+
+        v_flex()
+            .flex_1()
+            .min_h_0()
+            .child(
+                div()
+                    .id(SharedString::from(format!(
+                        "structured-transcript-{}",
+                        node_id.as_str()
+                    )))
+                    .flex_1()
+                    .min_h_0()
+                    .p_3()
+                    .overflow_y_scroll()
+                    .text_size(px(12.0))
+                    .text_color(theme::text_on_dark())
+                    .child(transcript),
+            )
+            .when_some(diagnostic, |body, diagnostic| {
+                body.child(
+                    div()
+                        .mx_2()
+                        .mb_2()
+                        .px_2()
+                        .py_1()
+                        .rounded(px(5.0))
+                        .bg(theme::with_alpha(theme::danger(), 0.16))
+                        .text_size(px(10.0))
+                        .text_color(theme::danger())
+                        .child(diagnostic),
+                )
+            })
+            .when_some(approval, |body, approval| {
+                let allow_id = node_id.clone();
+                let deny_id = node_id.clone();
+                body.child(
+                    v_flex()
+                        .mx_2()
+                        .mb_2()
+                        .p_2()
+                        .gap_2()
+                        .rounded(px(6.0))
+                        .border_1()
+                        .border_color(theme::warning())
+                        .bg(theme::with_alpha(theme::warning(), 0.12))
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .font_semibold()
+                                .text_color(theme::text_on_dark())
+                                .child("Approval required"),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.0))
+                                .text_color(theme::text_muted_dark())
+                                .child(approval.operation),
+                        )
+                        .child(
+                            h_flex()
+                                .gap_1()
+                                .justify_end()
+                                .child(
+                                    Button::new(SharedString::from(format!(
+                                        "structured-deny-{}",
+                                        deny_id.as_str()
+                                    )))
+                                    .xsmall()
+                                    .ghost()
+                                    .label("Deny")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.respond_structured_agent_approval(
+                                            deny_id.clone(),
+                                            false,
+                                            cx,
+                                        );
+                                    })),
+                                )
+                                .child(
+                                    Button::new(SharedString::from(format!(
+                                        "structured-allow-{}",
+                                        allow_id.as_str()
+                                    )))
+                                    .xsmall()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .label("Allow once")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.respond_structured_agent_approval(
+                                            allow_id.clone(),
+                                            true,
+                                            cx,
+                                        );
+                                    })),
+                                ),
+                        ),
+                )
+            })
+            .when(selected, |body| {
+                body.child(
+                    h_flex()
+                        .p_2()
+                        .gap_2()
+                        .items_end()
+                        .border_t_1()
+                        .border_color(theme::border_dark())
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .child(Input::new(&self.shell_inputs.structured_agent_prompt)),
+                        )
+                        .child(
+                            Button::new(SharedString::from(format!(
+                                "structured-cancel-{}",
+                                cancel_id.as_str()
+                            )))
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Cancel active turn")
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    this.cancel_structured_agent(cancel_id.clone(), cx);
+                                },
+                            )),
+                        )
+                        .child(
+                            Button::new(SharedString::from(format!(
+                                "structured-send-{}",
+                                send_id.as_str()
+                            )))
+                            .xsmall()
+                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                            .icon(IconName::ArrowRight)
+                            .tooltip("Send prompt")
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.send_structured_agent_prompt(send_id.clone(), window, cx);
+                                },
+                            )),
+                        ),
+                )
+            })
+            .into_any_element()
     }
 
     pub(super) fn render_canvas_workspace(

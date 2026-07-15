@@ -217,7 +217,17 @@ pub fn spawn_codex_session(config: CodexSessionConfig) -> Result<CodexSessionHan
         command_tx,
         event_rx,
         ids,
-        next_request_id: AtomicU64::new(FIRST_USER_REQUEST_ID),
+        next_request_id: AtomicU64::new(
+            if config
+                .initial_prompt
+                .as_deref()
+                .is_some_and(|prompt| !prompt.trim().is_empty())
+            {
+                FIRST_USER_REQUEST_ID + 1
+            } else {
+                FIRST_USER_REQUEST_ID
+            },
+        ),
         child_id,
     })
 }
