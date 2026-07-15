@@ -13,11 +13,12 @@ use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Disableable as _, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::agents::{
-    AgentApprovalRequest, AgentEvent, AgentExecutableStatus, AgentRunState, CodexSessionConfig,
-    CodexSessionHandle, HeadlessSessionConfig, HeadlessSessionHandle, SchedulableAgent,
-    build_context_handoff, build_interactive_launch_spec, build_remote_interactive_arguments,
-    create_managed_worktree, detect_agent_executable, managed_worktree_status, provider_descriptor,
-    remove_managed_worktree, schedule_dependency_dag, spawn_codex_session, spawn_headless_session,
+    AgentApprovalRequest, AgentEvent, AgentExecutableStatus, AgentRole, AgentRunState,
+    CodexSessionConfig, CodexSessionHandle, HeadlessSessionConfig, HeadlessSessionHandle,
+    SchedulableAgent, build_agent_context_handoff, build_context_handoff,
+    build_interactive_launch_spec, build_remote_interactive_arguments, create_managed_worktree,
+    detect_agent_executable, managed_worktree_status, provider_descriptor, remove_managed_worktree,
+    schedule_dependency_dag, spawn_codex_session, spawn_headless_session,
 };
 use crate::models::{
     AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AuthConfig, AuthMode,
@@ -118,6 +119,7 @@ pub(super) struct StructuredAgentRuntime {
     pub handle: StructuredAgentHandle,
     pub state: AgentRunState,
     pub transcript: String,
+    pub context_messages: Vec<(AgentRole, String)>,
     pub approval: Option<AgentApprovalRequest>,
     pub diagnostic: Option<String>,
     pub queued_prompt: Option<String>,
@@ -126,14 +128,52 @@ pub(super) struct StructuredAgentRuntime {
 impl StructuredAgentRuntime {
     const MAX_TRANSCRIPT_BYTES: usize = 64 * 1024;
 
-    fn new(handle: StructuredAgentHandle) -> Self {
-        Self {
+    fn new(handle: StructuredAgentHandle, initial_prompt: Option<&str>) -> Self {
+        let mut runtime = Self {
             handle,
             state: AgentRunState::Starting,
             transcript: String::new(),
+            context_messages: Vec::new(),
             approval: None,
             diagnostic: None,
             queued_prompt: None,
+        };
+        if let Some(prompt) = initial_prompt.filter(|prompt| !prompt.trim().is_empty()) {
+            runtime.push_context_message(AgentRole::User, prompt.trim());
+        }
+        runtime
+    }
+
+    fn push_context_message(&mut self, role: AgentRole, text: &str) {
+        if let Some((last_role, last_text)) = self.context_messages.last_mut()
+            && *last_role == role
+        {
+            last_text.push_str(text);
+        } else {
+            self.context_messages.push((role, text.to_string()));
+            if self.context_messages.len() > 100 {
+                self.context_messages.remove(0);
+            }
+        }
+        let mut excess = self
+            .context_messages
+            .iter()
+            .map(|(_, text)| text.len())
+            .sum::<usize>()
+            .saturating_sub(Self::MAX_TRANSCRIPT_BYTES);
+        while excess > 0 && !self.context_messages.is_empty() {
+            let first_len = self.context_messages[0].1.len();
+            if first_len <= excess {
+                excess -= first_len;
+                self.context_messages.remove(0);
+                continue;
+            }
+            let mut drain_end = excess;
+            while !self.context_messages[0].1.is_char_boundary(drain_end) {
+                drain_end += 1;
+            }
+            self.context_messages[0].1.drain(..drain_end);
+            excess = 0;
         }
     }
 
@@ -2260,6 +2300,7 @@ impl TermiRustApp {
             definition.managed_worktree = Some(managed);
         }
         let initial_prompt = (!initial_prompt.trim().is_empty()).then_some(initial_prompt);
+        let context_initial_prompt = initial_prompt.clone();
         let handle_result = match definition.provider {
             AgentProvider::Codex => spawn_codex_session(CodexSessionConfig {
                 executable,
@@ -2313,8 +2354,10 @@ impl TermiRustApp {
             .canvas
             .add_agent_node(None, definition, world_center);
         workspace.canvas.select_and_raise(&node_id);
-        self.structured_agents
-            .insert(node_id, StructuredAgentRuntime::new(handle));
+        self.structured_agents.insert(
+            node_id,
+            StructuredAgentRuntime::new(handle, context_initial_prompt.as_deref()),
+        );
         self.canvas_add_menu_open = false;
         self.status_message = format!("Starting structured {provider_label} session...");
         self.error_message.clear();
@@ -2341,7 +2384,10 @@ impl TermiRustApp {
                         runtime.approval = None;
                     }
                 }
-                AgentEvent::MessageDelta { text, .. } => runtime.push_text(&text),
+                AgentEvent::MessageDelta { role, text } => {
+                    runtime.push_text(&text);
+                    runtime.push_context_message(role, &text);
+                }
                 AgentEvent::ApprovalRequested(approval) => {
                     runtime.state = AgentRunState::WaitingForApproval;
                     runtime.approval = Some(approval);
@@ -2388,6 +2434,7 @@ impl TermiRustApp {
             Ok(()) => {
                 if let Some(runtime) = self.structured_agents.get_mut(&node_id) {
                     runtime.push_text(&format!("\nYou: {}\n", prompt.trim()));
+                    runtime.push_context_message(AgentRole::User, prompt.trim());
                     runtime.state = AgentRunState::Running;
                 }
                 Self::set_input_value(&self.shell_inputs.structured_agent_prompt, "", window, cx);
@@ -2493,7 +2540,7 @@ impl TermiRustApp {
         match result {
             Ok(handle) => {
                 self.structured_agents
-                    .insert(node_id, StructuredAgentRuntime::new(handle));
+                    .insert(node_id, StructuredAgentRuntime::new(handle, None));
                 self.status_message = "Structured agent restarted.".to_string();
                 self.error_message.clear();
             }
@@ -2836,6 +2883,7 @@ impl TermiRustApp {
                         Ok(()) => {
                             runtime.state = AgentRunState::Starting;
                             runtime.push_text(&format!("\nQueued task: {}\n", prompt.trim()));
+                            runtime.push_context_message(AgentRole::User, prompt.trim());
                             dispatched = true;
                         }
                         Err(error) => {
@@ -2932,20 +2980,28 @@ impl TermiRustApp {
                     .and_then(|pane_id| self.pane(pane_id).map(|pane| pane.title.clone()))
             })
             .unwrap_or_else(|| "Canvas node".to_string());
-        let source_text = if let Some(runtime) = self.structured_agents.get(&source_node.id) {
-            runtime.transcript.clone()
+        let policy = edge.context_policy.clone().unwrap_or_default();
+        let preview = if let Some(runtime) = self.structured_agents.get(&source_node.id) {
+            build_agent_context_handoff(
+                &source_label,
+                &runtime.context_messages,
+                &policy,
+                current_unix_millis(),
+            )
         } else if let Some(pane) = source_node
             .kind
             .pane_id()
             .and_then(|pane_id| self.pane(pane_id))
         {
-            pane.terminal.all_rows_text().join("\n")
+            build_context_handoff(
+                &source_label,
+                &pane.terminal.all_rows_text().join("\n"),
+                &policy,
+                current_unix_millis(),
+            )
         } else {
-            String::new()
+            build_context_handoff(&source_label, "", &policy, current_unix_millis())
         };
-        let policy = edge.context_policy.clone().unwrap_or_default();
-        let preview =
-            build_context_handoff(&source_label, &source_text, &policy, current_unix_millis());
         Self::set_input_value(
             &self.shell_inputs.context_handoff_preview,
             preview.text,
