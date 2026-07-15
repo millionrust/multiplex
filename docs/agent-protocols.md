@@ -29,10 +29,32 @@ Structured jobs launch the official headless form with `-p`,
 stderr remains diagnostic. TermiRust does not install hooks or enable bypass
 permissions.
 
+The headless CLI does not expose an interactive approval-response channel to
+this Rust process. Its documented automation modes pre-allow tools or deny an
+unapproved tool. Callback-based `canUseTool` approval is provided by the
+official TypeScript and Python Agent SDKs, not by a Rust SDK. TermiRust therefore
+reports `approvals: false` for this one-shot adapter instead of pretending that
+an emitted tool event can be approved. Revisit this boundary if Anthropic ships
+a stable language-neutral protocol or a Rust SDK.
+
+Reference checked 2026-07-15:
+https://code.claude.com/docs/en/headless and
+https://code.claude.com/docs/en/agent-sdk/permissions
+
 ## Gemini CLI
 
 Structured jobs launch the official headless form with `-p` and
 `--output-format stream-json`. TermiRust does not install hooks or pass `--yolo`.
+
+Gemini's policy engine documents that `ask_user` is treated as `deny` in
+non-interactive mode. The JSONL stream exposes tool use and results, but it does
+not provide a supported approval-response request channel for a headless client.
+TermiRust therefore reports `approvals: false` for this adapter and relies on
+read-only or provider policy configuration.
+
+Reference checked 2026-07-15:
+https://geminicli.com/docs/cli/headless/ and
+https://geminicli.com/docs/reference/policy-engine/
 
 Claude and Gemini jobs are one prompt per child process. Their adapter supports
 queued prompts and cancellation through owned process handles; long-lived TUI

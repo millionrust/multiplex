@@ -66,6 +66,9 @@ so no screenshot or automated click-through is claimed.
   a hidden-session Canvas tab cannot be merged into another Split and orphan
   those sessions. Active terminal closure uses a rendered confirmation flow.
 - Local and SSH canvas nodes reuse `SessionPane` requests and persistence.
+- A real Docker SSH server shutdown leaves the disconnected SSH pane and its
+  canvas node in place, and the production host-identity guard rejects an
+  executable local-to-SSH edge.
 - Structured agents run through bounded local child-process or remote non-PTY
   SSH transports. Real SSH integration covers independent stdout/stderr,
   stdin, cancellation, exit status, and the legal EOF-before-exit-status
