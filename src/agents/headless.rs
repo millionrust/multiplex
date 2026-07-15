@@ -32,6 +32,7 @@ pub struct HeadlessSessionHandle {
     pub event_rx: Receiver<AgentEvent>,
     event_tx: SyncSender<AgentEvent>,
     running: Arc<AtomicBool>,
+    cancel_requested: Arc<AtomicBool>,
     child_id: Arc<AtomicU32>,
 }
 
@@ -44,11 +45,13 @@ impl HeadlessSessionHandle {
         if self.running.swap(true, Ordering::AcqRel) {
             bail!("The structured agent already has a running job");
         }
+        self.cancel_requested.store(false, Ordering::Release);
         let config = self.config.clone();
         let event_tx = self.event_tx.clone();
         let running = Arc::clone(&self.running);
+        let cancel_requested = Arc::clone(&self.cancel_requested);
         let child_id = Arc::clone(&self.child_id);
-        thread::Builder::new()
+        let spawn_result = thread::Builder::new()
             .name(format!(
                 "termirust-{}-structured",
                 config
@@ -57,20 +60,38 @@ impl HeadlessSessionHandle {
                     .to_ascii_lowercase()
                     .replace(' ', "-")
             ))
-            .spawn(move || run_job(config, prompt, event_tx, running, child_id))
-            .context("Unable to start structured agent job")?;
+            .spawn(move || {
+                run_job(
+                    config,
+                    prompt,
+                    event_tx,
+                    running,
+                    cancel_requested,
+                    child_id,
+                )
+            });
+        if let Err(error) = spawn_result {
+            self.running.store(false, Ordering::Release);
+            return Err(error).context("Unable to start structured agent job");
+        }
         Ok(())
     }
 
     pub fn cancel(&self) -> Result<()> {
-        let child_id = self.child_id.load(Ordering::Acquire);
-        if child_id == 0 {
+        if !self.running.load(Ordering::Acquire) {
             bail!("The structured agent has no active job");
         }
-        #[cfg(unix)]
-        unsafe {
-            if libc::kill(child_id as libc::pid_t, libc::SIGTERM) != 0 {
-                bail!("Unable to interrupt the structured agent process");
+        self.cancel_requested.store(true, Ordering::Release);
+        let child_id = self.child_id.load(Ordering::Acquire);
+        if child_id != 0 {
+            #[cfg(unix)]
+            unsafe {
+                if libc::kill(child_id as libc::pid_t, libc::SIGTERM) != 0
+                    && std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+                {
+                    self.cancel_requested.store(false, Ordering::Release);
+                    bail!("Unable to interrupt the structured agent process");
+                }
             }
         }
         let _ = self
@@ -113,6 +134,7 @@ pub fn spawn_headless_session(config: HeadlessSessionConfig) -> Result<HeadlessS
         event_rx,
         event_tx,
         running: Arc::new(AtomicBool::new(false)),
+        cancel_requested: Arc::new(AtomicBool::new(false)),
         child_id: Arc::new(AtomicU32::new(0)),
     };
     handle
@@ -130,8 +152,13 @@ fn run_job(
     prompt: String,
     event_tx: SyncSender<AgentEvent>,
     running: Arc<AtomicBool>,
+    cancel_requested: Arc<AtomicBool>,
     child_id: Arc<AtomicU32>,
 ) {
+    if cancel_requested.load(Ordering::Acquire) {
+        running.store(false, Ordering::Release);
+        return;
+    }
     let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Starting));
     let arguments = command_arguments(&config, &prompt);
     let mut child = match Command::new(&config.executable)
@@ -152,6 +179,12 @@ fn run_job(
         }
     };
     child_id.store(child.id(), Ordering::Release);
+    if cancel_requested.load(Ordering::Acquire) {
+        #[cfg(unix)]
+        unsafe {
+            libc::kill(child.id() as libc::pid_t, libc::SIGTERM);
+        }
+    }
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     if let Some(stderr) = stderr {
@@ -182,6 +215,9 @@ fn run_job(
     let status = child.wait();
     child_id.store(0, Ordering::Release);
     running.store(false, Ordering::Release);
+    if cancel_requested.load(Ordering::Acquire) {
+        return;
+    }
     match status {
         Ok(status) if status.success() => {}
         Ok(status) => {
@@ -436,6 +472,7 @@ mod tests {
     use crate::models::{AgentPermissionPolicy, AgentProvider};
     use serde_json::json;
     use std::path::PathBuf;
+    use std::sync::atomic::Ordering;
     use std::sync::mpsc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -573,6 +610,53 @@ mod tests {
     #[ignore = "requires TERMIRUST_RUN_LIVE_AGENT_TESTS=1, authenticated Gemini CLI, and network access"]
     fn live_gemini_headless_smoke() {
         run_live_headless_smoke(AgentProvider::Gemini, "gemini", "TERMIRUST_GEMINI_LIVE_OK");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn cancellation_remains_cancelled_after_the_child_exits() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("termirust-headless-cancel-{unique}"));
+        fs::create_dir_all(&directory).unwrap();
+        let executable = directory.join("fake claude");
+        fs::write(&executable, "#!/bin/sh\nexec sleep 30\n").unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+        let handle = spawn_headless_session(HeadlessSessionConfig {
+            provider: AgentProvider::ClaudeCode,
+            executable,
+            working_directory: directory,
+            permission_policy: AgentPermissionPolicy::ReadOnly,
+            arguments: Vec::new(),
+            initial_prompt: Some("cancel this".to_string()),
+        })
+        .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while handle.child_id.load(Ordering::Acquire) == 0 && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_ne!(handle.child_id.load(Ordering::Acquire), 0);
+
+        handle.cancel().unwrap();
+        while handle.running.load(Ordering::Acquire) && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!handle.running.load(Ordering::Acquire));
+        let events: Vec<_> = handle.event_rx.try_iter().collect();
+        assert!(events.contains(&AgentEvent::StateChanged(AgentRunState::Cancelled)));
+        assert!(!events.contains(&AgentEvent::StateChanged(AgentRunState::Failed)));
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, AgentEvent::Failed { .. }))
+        );
     }
 
     #[test]
