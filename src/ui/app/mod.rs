@@ -10010,6 +10010,27 @@ mod tests {
             .center()
     }
 
+    fn wait_for_selector_click_center(
+        window: WindowHandle<Root>,
+        cx: &mut TestAppContext,
+        selector: &'static str,
+        timeout: Duration,
+    ) -> gpui::Point<gpui::Pixels> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let mut visual = VisualTestContext::from_window(window.into(), cx);
+            visual.run_until_parked();
+            if let Some(bounds) = visual.debug_bounds(selector) {
+                return bounds.center();
+            }
+            assert!(
+                Instant::now() < deadline,
+                "missing debug bounds for {selector}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     fn dynamic_selector_click_center(
         window: WindowHandle<Root>,
         cx: &mut TestAppContext,
@@ -11473,17 +11494,29 @@ mod tests {
                 .then_some(())
         });
 
-        app.update(cx, |app, cx| {
-            app.request_canvas_pane_close(pane_id, cx);
-        });
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| {
+                    app.request_canvas_pane_close(pane_id, cx);
+                });
+            })
+            .expect("close request should update the window");
         app.read_with(cx, |app, _| {
             assert_eq!(
                 app.pending_canvas_pane_close.as_ref().unwrap().pane_id,
                 pane_id
             );
+            let workspace = app.workspace(workspace_id).unwrap();
+            assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Canvas);
+            assert_eq!(app.active_workspace_id, Some(workspace_id));
             assert!(app.pane(pane_id).is_some_and(|pane| pane.connected));
         });
-        let cancel = selector_click_center(window, cx, "canvas-pane-close-cancel");
+        let cancel = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-pane-close-cancel",
+            Duration::from_secs(2),
+        );
         VisualTestContext::from_window(window.into(), cx)
             .simulate_click(cancel, gpui::Modifiers::none());
         app.read_with(cx, |app, _| {
@@ -11492,10 +11525,19 @@ mod tests {
             assert!(app.pane(pane_id).is_some_and(|pane| pane.connected));
         });
 
-        app.update(cx, |app, cx| {
-            app.request_canvas_pane_close(pane_id, cx);
-        });
-        let confirm = selector_click_center(window, cx, "canvas-pane-close-confirm");
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| {
+                    app.request_canvas_pane_close(pane_id, cx);
+                });
+            })
+            .expect("close request should update the window");
+        let confirm = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-pane-close-confirm",
+            Duration::from_secs(2),
+        );
         VisualTestContext::from_window(window.into(), cx)
             .simulate_click(confirm, gpui::Modifiers::none());
         app.read_with(cx, |app, _| {

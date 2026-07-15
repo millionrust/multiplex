@@ -5090,6 +5090,7 @@ impl TermiRustApp {
         };
         v_flex()
             .id("canvas-pane-close-dialog")
+            .debug_selector(|| "canvas-pane-close-dialog".to_string())
             .absolute()
             .top(px(12.0))
             .right(px(12.0))
@@ -5145,6 +5146,7 @@ impl TermiRustApp {
                             .gap_2()
                             .child(
                                 Button::new("canvas-pane-close-cancel")
+                                    .debug_selector(|| "canvas-pane-close-cancel".to_string())
                                     .small()
                                     .ghost()
                                     .label("Cancel")
@@ -5155,6 +5157,7 @@ impl TermiRustApp {
                             )
                             .child(
                                 Button::new("canvas-pane-close-confirm")
+                                    .debug_selector(|| "canvas-pane-close-confirm".to_string())
                                     .small()
                                     .custom(Self::action_button_style(
                                         theme::ActionTone::Danger,
