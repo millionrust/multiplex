@@ -9,9 +9,15 @@ mod stream;
 mod worktree;
 
 pub use adapter::provider_descriptor;
-pub use codex::{CodexSessionConfig, CodexSessionHandle, spawn_codex_session};
+pub use codex::{
+    CodexSessionConfig, CodexSessionHandle, RemoteCodexSessionConfig, spawn_codex_session,
+    spawn_remote_codex_session,
+};
 pub use context::{build_agent_context_handoff, build_context_handoff};
-pub use headless::{HeadlessSessionConfig, HeadlessSessionHandle, spawn_headless_session};
+pub use headless::{
+    HeadlessSessionConfig, HeadlessSessionHandle, RemoteHeadlessSessionConfig,
+    RemoteHeadlessSessionHandle, spawn_headless_session, spawn_remote_headless_session,
+};
 pub use orchestrator::{SchedulableAgent, schedule_dependency_dag};
 pub use process::{
     AgentExecutableStatus, build_interactive_launch_spec, build_remote_interactive_arguments,

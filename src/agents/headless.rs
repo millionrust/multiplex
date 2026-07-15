@@ -2,6 +2,7 @@ use std::io::{BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::thread;
@@ -9,11 +10,17 @@ use std::thread;
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
+use crate::agents::process::build_remote_structured_command;
 use crate::agents::protocol::{
     AgentEvent, AgentRole, AgentRunState, NormalizedToolCall, ToolOutcome,
 };
 use crate::agents::stream::{BoundedLine, read_bounded_lines};
-use crate::models::{AgentPermissionPolicy, AgentProvider};
+use crate::models::{
+    AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, ConnectRequest,
+    SavedAgentDefinition,
+};
+use crate::ssh::{RemoteExecControl, RemoteExecExit, RemoteExecProcess, spawn_remote_exec};
+use crate::storage::KnownHostStore;
 
 const EVENT_CHANNEL_CAPACITY: usize = 512;
 const MAX_STDERR_BYTES: usize = 16 * 1024;
@@ -36,6 +43,89 @@ pub struct HeadlessSessionHandle {
     running: Arc<AtomicBool>,
     cancel_requested: Arc<AtomicBool>,
     child_id: Arc<AtomicU32>,
+}
+
+#[derive(Clone)]
+pub struct RemoteHeadlessSessionConfig {
+    pub definition: SavedAgentDefinition,
+    pub request: ConnectRequest,
+    pub known_hosts: Arc<KnownHostStore>,
+    pub keepalive_secs: u16,
+    pub initial_prompt: Option<String>,
+}
+
+pub struct RemoteHeadlessSessionHandle {
+    config: RemoteHeadlessSessionConfig,
+    pub event_rx: Receiver<AgentEvent>,
+    event_tx: SyncSender<AgentEvent>,
+    running: Arc<AtomicBool>,
+    cancel_requested: Arc<AtomicBool>,
+    control: Arc<Mutex<Option<RemoteExecControl>>>,
+}
+
+impl RemoteHeadlessSessionHandle {
+    pub fn send_prompt(&self, prompt: impl Into<String>) -> Result<()> {
+        let prompt = prompt.into();
+        if prompt.trim().is_empty() {
+            bail!("Agent prompt cannot be empty");
+        }
+        if self.running.swap(true, Ordering::AcqRel) {
+            bail!("The structured agent already has a running job");
+        }
+        self.cancel_requested.store(false, Ordering::Release);
+        let config = self.config.clone();
+        let event_tx = self.event_tx.clone();
+        let running = Arc::clone(&self.running);
+        let cancel_requested = Arc::clone(&self.cancel_requested);
+        let control = Arc::clone(&self.control);
+        let spawn_result = thread::Builder::new()
+            .name(format!(
+                "termirust-remote-{}-structured",
+                config
+                    .definition
+                    .provider
+                    .label()
+                    .to_ascii_lowercase()
+                    .replace(' ', "-")
+            ))
+            .spawn(move || {
+                run_remote_job(config, prompt, event_tx, running, cancel_requested, control)
+            });
+        if let Err(error) = spawn_result {
+            self.running.store(false, Ordering::Release);
+            return Err(error).context("Unable to start remote structured agent job");
+        }
+        Ok(())
+    }
+
+    pub fn cancel(&self) -> Result<()> {
+        if !self.running.load(Ordering::Acquire) {
+            bail!("The structured agent has no active job");
+        }
+        self.cancel_requested.store(true, Ordering::Release);
+        if let Some(control) = self
+            .control
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Remote process control is unavailable"))?
+            .as_ref()
+        {
+            control.terminate()?;
+        }
+        let _ = self
+            .event_tx
+            .try_send(AgentEvent::StateChanged(AgentRunState::Cancelled));
+        Ok(())
+    }
+}
+
+impl Drop for RemoteHeadlessSessionHandle {
+    fn drop(&mut self) {
+        if let Ok(control) = self.control.lock()
+            && let Some(control) = control.as_ref()
+        {
+            let _ = control.terminate();
+        }
+    }
 }
 
 impl HeadlessSessionHandle {
@@ -149,6 +239,42 @@ pub fn spawn_headless_session(config: HeadlessSessionConfig) -> Result<HeadlessS
     Ok(handle)
 }
 
+pub fn spawn_remote_headless_session(
+    config: RemoteHeadlessSessionConfig,
+) -> Result<RemoteHeadlessSessionHandle> {
+    if !matches!(
+        config.definition.provider,
+        AgentProvider::ClaudeCode | AgentProvider::Gemini
+    ) {
+        bail!("This provider does not support the headless JSON adapter");
+    }
+    if config.definition.backend != AgentBackendKind::Structured {
+        bail!("The remote agent backend is not structured");
+    }
+    if !matches!(config.definition.location, AgentLocation::SavedHost { .. }) {
+        bail!("Remote structured execution requires a saved SSH host");
+    }
+    validate_arguments(config.definition.provider, &config.definition.arguments)?;
+    let (event_tx, event_rx) = mpsc::sync_channel(EVENT_CHANNEL_CAPACITY);
+    let initial_prompt = config.initial_prompt.clone();
+    let handle = RemoteHeadlessSessionHandle {
+        config,
+        event_rx,
+        event_tx,
+        running: Arc::new(AtomicBool::new(false)),
+        cancel_requested: Arc::new(AtomicBool::new(false)),
+        control: Arc::new(Mutex::new(None)),
+    };
+    handle
+        .event_tx
+        .send(AgentEvent::StateChanged(AgentRunState::Idle))
+        .ok();
+    if let Some(prompt) = initial_prompt.filter(|prompt| !prompt.trim().is_empty()) {
+        handle.send_prompt(prompt)?;
+    }
+    Ok(handle)
+}
+
 fn run_job(
     config: HeadlessSessionConfig,
     prompt: String,
@@ -194,38 +320,9 @@ fn run_job(
         let diagnostics = event_tx.clone();
         thread::spawn(move || capture_stderr(stderr, diagnostics));
     }
-    let mut saw_terminal_event = false;
-    if let Some(stdout) = stdout {
-        let read_result = read_bounded_lines(
-            BufReader::new(stdout),
-            MAX_EVENT_LINE_BYTES,
-            |line| match line {
-                BoundedLine::TooLong => {
-                    let _ = event_tx.send(AgentEvent::Diagnostic {
-                        message: format!(
-                            "Ignored structured event larger than {MAX_EVENT_LINE_BYTES} bytes"
-                        ),
-                    });
-                }
-                BoundedLine::Bytes(line) if line.iter().all(u8::is_ascii_whitespace) => {}
-                BoundedLine::Bytes(line) => match serde_json::from_slice::<Value>(&line) {
-                    Ok(value) => {
-                        saw_terminal_event |= normalize_event(config.provider, &value, &event_tx)
-                    }
-                    Err(error) => {
-                        let _ = event_tx.send(AgentEvent::Diagnostic {
-                            message: format!("Ignored malformed structured event: {error}"),
-                        });
-                    }
-                },
-            },
-        );
-        if let Err(error) = read_result {
-            let _ = event_tx.send(AgentEvent::Failed {
-                error: format!("Unable to read structured output: {error}"),
-            });
-        }
-    }
+    let saw_terminal_event = stdout
+        .map(|stdout| read_structured_events(config.provider, stdout, &event_tx))
+        .unwrap_or(false);
     let status = child.wait();
     child_id.store(0, Ordering::Release);
     running.store(false, Ordering::Release);
@@ -258,8 +355,173 @@ fn run_job(
     }
 }
 
+fn run_remote_job(
+    config: RemoteHeadlessSessionConfig,
+    prompt: String,
+    event_tx: SyncSender<AgentEvent>,
+    running: Arc<AtomicBool>,
+    cancel_requested: Arc<AtomicBool>,
+    active_control: Arc<Mutex<Option<RemoteExecControl>>>,
+) {
+    if cancel_requested.load(Ordering::Acquire) {
+        let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Cancelled));
+        running.store(false, Ordering::Release);
+        return;
+    }
+    let provider = config.definition.provider;
+    let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Starting));
+    let arguments = command_arguments_for(
+        provider,
+        config.definition.permission_policy,
+        &config.definition.arguments,
+        &prompt,
+    );
+    let command = match build_remote_structured_command(
+        &config.definition,
+        &arguments,
+        &config.request.environment,
+    ) {
+        Ok(command) => command,
+        Err(error) => {
+            let _ = event_tx.send(AgentEvent::Failed {
+                error: error.to_string(),
+            });
+            running.store(false, Ordering::Release);
+            return;
+        }
+    };
+    let process = match spawn_remote_exec(
+        config.request,
+        config.known_hosts,
+        config.keepalive_secs,
+        command,
+    ) {
+        Ok(process) => process,
+        Err(error) => {
+            let _ = event_tx.send(AgentEvent::Failed {
+                error: format!("Unable to launch remote {}: {error:#}", provider.label()),
+            });
+            running.store(false, Ordering::Release);
+            return;
+        }
+    };
+    let RemoteExecProcess {
+        stdout,
+        stderr,
+        exit_rx,
+        control,
+        ..
+    } = process;
+    if let Ok(mut active) = active_control.lock() {
+        *active = Some(control.clone());
+    }
+    if cancel_requested.load(Ordering::Acquire) {
+        let _ = control.terminate();
+    }
+    let diagnostics = event_tx.clone();
+    thread::spawn(move || capture_stderr(stderr, diagnostics));
+    let saw_terminal_event = read_structured_events(provider, stdout, &event_tx);
+    let exit = exit_rx
+        .recv()
+        .unwrap_or_else(|_| Err("Remote process exit channel disconnected".to_string()));
+    if let Ok(mut active) = active_control.lock() {
+        *active = None;
+    }
+    running.store(false, Ordering::Release);
+    if cancel_requested.load(Ordering::Acquire) {
+        let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Cancelled));
+        return;
+    }
+    match exit {
+        Ok(RemoteExecExit::Status(0)) if saw_terminal_event => {}
+        Ok(RemoteExecExit::Status(0)) => {
+            let _ = event_tx.send(AgentEvent::Failed {
+                error: format!(
+                    "Remote {} exited without a structured completion event",
+                    provider.label()
+                ),
+            });
+            let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Failed));
+        }
+        Ok(RemoteExecExit::Status(status)) => {
+            let _ = event_tx.send(AgentEvent::Failed {
+                error: format!("Remote {} exited with status {status}", provider.label()),
+            });
+            let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Failed));
+        }
+        Ok(RemoteExecExit::Signal { signal, message }) => {
+            let detail = if message.trim().is_empty() {
+                signal
+            } else {
+                format!("{signal}: {message}")
+            };
+            let _ = event_tx.send(AgentEvent::Failed {
+                error: format!("Remote {} was terminated by {detail}", provider.label()),
+            });
+            let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Failed));
+        }
+        Err(error) => {
+            let _ = event_tx.send(AgentEvent::Failed {
+                error: format!("Remote {} transport failed: {error}", provider.label()),
+            });
+            let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Disconnected));
+        }
+    }
+}
+
+fn read_structured_events(
+    provider: AgentProvider,
+    stdout: impl Read,
+    event_tx: &SyncSender<AgentEvent>,
+) -> bool {
+    let mut saw_terminal_event = false;
+    let read_result =
+        read_bounded_lines(
+            BufReader::new(stdout),
+            MAX_EVENT_LINE_BYTES,
+            |line| match line {
+                BoundedLine::TooLong => {
+                    let _ = event_tx.send(AgentEvent::Diagnostic {
+                        message: format!(
+                            "Ignored structured event larger than {MAX_EVENT_LINE_BYTES} bytes"
+                        ),
+                    });
+                }
+                BoundedLine::Bytes(line) if line.iter().all(u8::is_ascii_whitespace) => {}
+                BoundedLine::Bytes(line) => match serde_json::from_slice::<Value>(&line) {
+                    Ok(value) => saw_terminal_event |= normalize_event(provider, &value, event_tx),
+                    Err(error) => {
+                        let _ = event_tx.send(AgentEvent::Diagnostic {
+                            message: format!("Ignored malformed structured event: {error}"),
+                        });
+                    }
+                },
+            },
+        );
+    if let Err(error) = read_result {
+        let _ = event_tx.send(AgentEvent::Failed {
+            error: format!("Unable to read structured output: {error}"),
+        });
+    }
+    saw_terminal_event
+}
+
 fn command_arguments(config: &HeadlessSessionConfig, prompt: &str) -> Vec<String> {
-    let mut arguments = match config.provider {
+    command_arguments_for(
+        config.provider,
+        config.permission_policy,
+        &config.arguments,
+        prompt,
+    )
+}
+
+fn command_arguments_for(
+    provider: AgentProvider,
+    permission_policy: AgentPermissionPolicy,
+    custom_arguments: &[String],
+    prompt: &str,
+) -> Vec<String> {
+    let mut arguments = match provider {
         AgentProvider::ClaudeCode => vec![
             "-p".to_string(),
             prompt.to_string(),
@@ -275,7 +537,7 @@ fn command_arguments(config: &HeadlessSessionConfig, prompt: &str) -> Vec<String
         ],
         _ => Vec::new(),
     };
-    match (config.provider, config.permission_policy) {
+    match (provider, permission_policy) {
         (AgentProvider::ClaudeCode, AgentPermissionPolicy::ReadOnly) => {
             arguments.extend(["--permission-mode".to_string(), "plan".to_string()]);
         }
@@ -284,7 +546,7 @@ fn command_arguments(config: &HeadlessSessionConfig, prompt: &str) -> Vec<String
         }
         _ => {}
     }
-    arguments.extend(config.arguments.clone());
+    arguments.extend(custom_arguments.iter().cloned());
     arguments
 }
 
@@ -504,13 +766,20 @@ fn capture_stderr(mut stderr: impl Read, event_tx: SyncSender<AgentEvent>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        HeadlessSessionConfig, HeadlessSessionHandle, MAX_EVENT_LINE_BYTES, command_arguments,
-        normalize_event, spawn_headless_session,
+        HeadlessSessionConfig, HeadlessSessionHandle, MAX_EVENT_LINE_BYTES,
+        RemoteHeadlessSessionConfig, command_arguments, normalize_event, spawn_headless_session,
+        spawn_remote_headless_session,
     };
     use crate::agents::protocol::{AgentEvent, AgentRole, AgentRunState};
-    use crate::models::{AgentPermissionPolicy, AgentProvider};
+    use crate::models::{
+        AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AuthConfig,
+        ConnectRequest, ConnectionKind, SavedAgentDefinition, SavedWorktreePolicy,
+    };
+    use crate::storage::KnownHostStore;
+    use crate::test_support::{DockerSshServer, TestIsolation};
     use serde_json::json;
     use std::path::PathBuf;
+    use std::sync::Arc;
     use std::sync::atomic::Ordering;
     use std::sync::mpsc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -523,6 +792,31 @@ mod tests {
             permission_policy: AgentPermissionPolicy::ReadOnly,
             arguments: vec!["argument with spaces".to_string()],
             initial_prompt: None,
+        }
+    }
+
+    fn docker_request(server: &DockerSshServer) -> ConnectRequest {
+        ConnectRequest {
+            session_id: 701,
+            title: "Remote structured agent".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: server.host().to_string(),
+            port: server.port,
+            username: server.username().to_string(),
+            auth: Some(AuthConfig::Password {
+                password: server.password().to_string(),
+            }),
+            jump_host: None,
+            startup_directory: None,
+            startup_command: None,
+            start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: Vec::new(),
         }
     }
 
@@ -581,6 +875,69 @@ mod tests {
                 "argument with spaces",
             ]
         );
+    }
+
+    #[test]
+    fn docker_remote_headless_session_normalizes_structured_events() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping remote headless e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let executable = "/usr/local/bin/termirust-fake-claude";
+        server
+            .exec(&format!(
+                "cat > {executable} <<'TERMIRUST_EOF'\n#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'fake-claude 1.0\\n'; exit 0; fi\nprintf '%s\\n' '{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"remote-session\"}}'\nprintf '%s\\n' '{{\"type\":\"assistant\",\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"remote-ok\"}}]}}}}'\nprintf '%s\\n' '{{\"type\":\"result\",\"is_error\":false,\"result\":\"remote-done\"}}'\nTERMIRUST_EOF\nchmod 755 {executable}"
+            ))
+            .expect("unable to install fake remote provider");
+        let definition = SavedAgentDefinition {
+            provider: AgentProvider::ClaudeCode,
+            backend: AgentBackendKind::Structured,
+            location: AgentLocation::SavedHost {
+                profile_id: "docker".to_string(),
+            },
+            working_directory: Some("/home/termirust".to_string()),
+            executable_override: Some(executable.to_string()),
+            permission_policy: AgentPermissionPolicy::ReadOnly,
+            worktree: SavedWorktreePolicy::ReadOnly,
+            ..SavedAgentDefinition::default()
+        };
+        let handle = spawn_remote_headless_session(RemoteHeadlessSessionConfig {
+            definition,
+            request: docker_request(&server),
+            known_hosts: Arc::new(KnownHostStore::load().unwrap()),
+            keepalive_secs: 0,
+            initial_prompt: Some("review remotely".to_string()),
+        })
+        .expect("unable to start remote headless session");
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        let mut saw_ready = false;
+        let mut saw_message = false;
+        let mut saw_completed = false;
+        let mut saw_succeeded = false;
+        while std::time::Instant::now() < deadline && !saw_succeeded {
+            match handle.event_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(AgentEvent::SessionReady {
+                    provider_session_id,
+                }) => saw_ready = provider_session_id == "remote-session",
+                Ok(AgentEvent::MessageDelta { text, .. }) => {
+                    saw_message |= text.contains("remote-ok")
+                }
+                Ok(AgentEvent::Completed { summary }) => {
+                    saw_completed = summary.as_deref() == Some("remote-done")
+                }
+                Ok(AgentEvent::StateChanged(AgentRunState::Succeeded)) => saw_succeeded = true,
+                Ok(AgentEvent::Failed { error }) => panic!("remote provider failed: {error}"),
+                Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(error) => panic!("remote provider event stream closed: {error}"),
+            }
+        }
+        assert!(saw_ready);
+        assert!(saw_message);
+        assert!(saw_completed);
+        assert!(saw_succeeded);
     }
 
     #[test]

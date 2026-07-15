@@ -9,12 +9,18 @@ use std::thread;
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
+use crate::agents::process::build_remote_structured_command;
 use crate::agents::protocol::{
     AgentApprovalKind, AgentApprovalRequest, AgentEvent, AgentRole, AgentRunState,
     NormalizedToolCall, ToolOutcome,
 };
 use crate::agents::stream::{BoundedLine, read_bounded_lines};
-use crate::models::AgentPermissionPolicy;
+use crate::models::{
+    AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, ConnectRequest,
+    SavedAgentDefinition,
+};
+use crate::ssh::{RemoteExecControl, RemoteExecExit, RemoteExecProcess, spawn_remote_exec};
+use crate::storage::KnownHostStore;
 
 const INITIALIZE_REQUEST_ID: u64 = 1;
 const THREAD_START_REQUEST_ID: u64 = 2;
@@ -32,6 +38,15 @@ pub struct CodexSessionConfig {
     pub initial_prompt: Option<String>,
 }
 
+#[derive(Clone)]
+pub struct RemoteCodexSessionConfig {
+    pub definition: SavedAgentDefinition,
+    pub request: ConnectRequest,
+    pub known_hosts: Arc<KnownHostStore>,
+    pub keepalive_secs: u16,
+    pub initial_prompt: Option<String>,
+}
+
 #[derive(Default)]
 struct SessionIds {
     thread_id: Option<String>,
@@ -44,6 +59,7 @@ pub struct CodexSessionHandle {
     ids: Arc<Mutex<SessionIds>>,
     next_request_id: AtomicU64,
     child_id: Arc<AtomicU32>,
+    remote_control: Option<RemoteExecControl>,
 }
 
 impl CodexSessionHandle {
@@ -113,12 +129,14 @@ impl CodexSessionHandle {
 impl Drop for CodexSessionHandle {
     fn drop(&mut self) {
         let child_id = self.child_id.load(Ordering::Acquire);
-        if child_id == 0 {
-            return;
+        if child_id != 0 {
+            #[cfg(unix)]
+            unsafe {
+                libc::kill(child_id as libc::pid_t, libc::SIGTERM);
+            }
         }
-        #[cfg(unix)]
-        unsafe {
-            libc::kill(child_id as libc::pid_t, libc::SIGTERM);
+        if let Some(control) = &self.remote_control {
+            let _ = control.terminate();
         }
     }
 }
@@ -156,6 +174,106 @@ pub fn spawn_codex_session(config: CodexSessionConfig) -> Result<CodexSessionHan
         .stderr
         .take()
         .context("Codex app-server stderr is unavailable")?;
+    start_codex_transport(
+        config,
+        stdin,
+        stdout,
+        stderr,
+        move || {
+            child
+                .wait()
+                .map(|status| (status.success(), status.to_string()))
+                .map_err(|error| format!("Unable to wait for Codex app-server: {error}"))
+        },
+        child_id,
+        None,
+    )
+}
+
+pub fn spawn_remote_codex_session(config: RemoteCodexSessionConfig) -> Result<CodexSessionHandle> {
+    if config.definition.provider != AgentProvider::Codex {
+        bail!("The remote Codex adapter requires the Codex provider");
+    }
+    if config.definition.backend != AgentBackendKind::Structured {
+        bail!("The remote Codex backend is not structured");
+    }
+    if !matches!(config.definition.location, AgentLocation::SavedHost { .. }) {
+        bail!("Remote structured execution requires a saved SSH host");
+    }
+    let working_directory = config
+        .definition
+        .working_directory
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .context("Choose a remote working directory")?;
+    let executable = config
+        .definition
+        .executable_override
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("codex");
+    let command = build_remote_structured_command(
+        &config.definition,
+        &["app-server".to_string(), "--stdio".to_string()],
+        &config.request.environment,
+    )?;
+    let protocol_config = CodexSessionConfig {
+        executable: PathBuf::from(executable),
+        working_directory: PathBuf::from(working_directory),
+        permission_policy: config.definition.permission_policy,
+        initial_prompt: config.initial_prompt,
+    };
+    let process = spawn_remote_exec(
+        config.request,
+        config.known_hosts,
+        config.keepalive_secs,
+        command,
+    )?;
+    let RemoteExecProcess {
+        stdin,
+        stdout,
+        stderr,
+        exit_rx,
+        control,
+    } = process;
+    let monitor_control = control.clone();
+    start_codex_transport(
+        protocol_config,
+        stdin,
+        stdout,
+        stderr,
+        move || match exit_rx
+            .recv()
+            .map_err(|_| "Remote Codex exit channel disconnected".to_string())??
+        {
+            RemoteExecExit::Status(status) => {
+                Ok((status == 0, format!("remote exit status {status}")))
+            }
+            RemoteExecExit::Signal { signal, message } => {
+                let detail = if message.trim().is_empty() {
+                    signal
+                } else {
+                    format!("{signal}: {message}")
+                };
+                Ok((false, format!("remote signal {detail}")))
+            }
+        },
+        Arc::new(AtomicU32::new(0)),
+        Some(monitor_control),
+    )
+}
+
+fn start_codex_transport(
+    config: CodexSessionConfig,
+    stdin: impl Write + Send + 'static,
+    stdout: impl Read + Send + 'static,
+    stderr: impl Read + Send + 'static,
+    wait_for_exit: impl FnOnce() -> Result<(bool, String), String> + Send + 'static,
+    child_id: Arc<AtomicU32>,
+    remote_control: Option<RemoteExecControl>,
+) -> Result<CodexSessionHandle> {
     let (command_tx, command_rx) = mpsc::sync_channel::<Value>(COMMAND_CHANNEL_CAPACITY);
     let (event_tx, event_rx) = mpsc::sync_channel::<AgentEvent>(EVENT_CHANNEL_CAPACITY);
     let ids = Arc::new(Mutex::new(SessionIds::default()));
@@ -193,23 +311,21 @@ pub fn spawn_codex_session(config: CodexSessionConfig) -> Result<CodexSessionHan
     thread::Builder::new()
         .name("termirust-codex-monitor".to_string())
         .spawn(move || {
-            let result = child.wait();
+            let result = wait_for_exit();
             let _ = reader_thread.join();
             monitor_child_id.store(0, Ordering::Release);
             match result {
-                Ok(status) => {
-                    if !status.success() {
+                Ok((success, description)) => {
+                    if !success {
                         let _ = monitor_events.send(AgentEvent::Failed {
-                            error: format!("Codex app-server exited with {status}"),
+                            error: format!("Codex app-server exited with {description}"),
                         });
                     }
                     let _ =
                         monitor_events.send(AgentEvent::StateChanged(AgentRunState::Disconnected));
                 }
                 Err(error) => {
-                    let _ = monitor_events.send(AgentEvent::Failed {
-                        error: format!("Unable to wait for Codex app-server: {error}"),
-                    });
+                    let _ = monitor_events.send(AgentEvent::Failed { error });
                     let _ =
                         monitor_events.send(AgentEvent::StateChanged(AgentRunState::Disconnected));
                 }
@@ -251,6 +367,7 @@ pub fn spawn_codex_session(config: CodexSessionConfig) -> Result<CodexSessionHan
             },
         ),
         child_id,
+        remote_control,
     })
 }
 
@@ -615,9 +732,17 @@ fn emit(event_tx: &SyncSender<AgentEvent>, event: AgentEvent) {
 
 #[cfg(test)]
 mod tests {
-    use super::{CodexSessionConfig, MAX_STDERR_BYTES, capture_stderr, spawn_codex_session};
+    use super::{
+        CodexSessionConfig, MAX_STDERR_BYTES, RemoteCodexSessionConfig, capture_stderr,
+        spawn_codex_session, spawn_remote_codex_session,
+    };
     use crate::agents::protocol::{AgentApprovalKind, AgentEvent, AgentRole, AgentRunState};
-    use crate::models::AgentPermissionPolicy;
+    use crate::models::{
+        AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AuthConfig,
+        ConnectRequest, ConnectionKind, SavedAgentDefinition, SavedWorktreePolicy,
+    };
+    use crate::storage::KnownHostStore;
+    use crate::test_support::{DockerSshServer, TestIsolation};
     use serde_json::{Value, json};
     use std::fs;
     use std::path::PathBuf;
@@ -647,6 +772,7 @@ mod tests {
             ids: std::sync::Arc::new(std::sync::Mutex::new(super::SessionIds::default())),
             next_request_id: std::sync::atomic::AtomicU64::new(1),
             child_id: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            remote_control: None,
         };
         assert!(
             session
@@ -719,6 +845,86 @@ sleep 1
             text: "done".to_string(),
         }));
         assert!(events.contains(&AgentEvent::StateChanged(AgentRunState::Succeeded)));
+    }
+
+    #[test]
+    fn docker_remote_codex_preserves_bidirectional_app_server_protocol() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping remote Codex e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let executable = "/usr/local/bin/termirust-fake-codex";
+        server
+            .exec(&format!(
+                "cat > {executable} <<'TERMIRUST_EOF'\n#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'fake-codex 1.0\\n'; exit 0; fi\nread initialize\nprintf '%s\\n' '{{\"id\":1,\"result\":{{\"userAgent\":\"fake\"}}}}'\nread initialized\nread thread_start\nprintf '%s\\n' '{{\"id\":2,\"result\":{{\"thread\":{{\"id\":\"remote-thread\"}},\"model\":\"fake\",\"modelProvider\":\"fake\",\"cwd\":\"/home/termirust\",\"approvalPolicy\":\"on-request\",\"approvalsReviewer\":\"user\",\"sandbox\":{{\"type\":\"readOnly\",\"networkAccess\":false}}}}}}'\nread turn_start\nprintf '%s\\n' '{{\"id\":100,\"result\":{{\"turn\":{{\"id\":\"remote-turn\",\"items\":[],\"status\":\"inProgress\",\"error\":null}}}}}}'\nprintf '%s\\n' '{{\"method\":\"turn/started\",\"params\":{{\"threadId\":\"remote-thread\",\"turn\":{{\"id\":\"remote-turn\",\"items\":[],\"status\":\"inProgress\",\"error\":null}}}}}}'\nprintf '%s\\n' '{{\"method\":\"item/agentMessage/delta\",\"params\":{{\"threadId\":\"remote-thread\",\"turnId\":\"remote-turn\",\"itemId\":\"item-1\",\"delta\":\"remote-codex-ok\"}}}}'\nprintf '%s\\n' '{{\"method\":\"turn/completed\",\"params\":{{\"threadId\":\"remote-thread\",\"turn\":{{\"id\":\"remote-turn\",\"items\":[],\"status\":\"completed\",\"error\":null}}}}}}'\nTERMIRUST_EOF\nchmod 755 {executable}"
+            ))
+            .expect("unable to install fake remote Codex");
+        let request = ConnectRequest {
+            session_id: 702,
+            title: "Remote Codex".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: server.host().to_string(),
+            port: server.port,
+            username: server.username().to_string(),
+            auth: Some(AuthConfig::Password {
+                password: server.password().to_string(),
+            }),
+            jump_host: None,
+            startup_directory: None,
+            startup_command: None,
+            start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: Vec::new(),
+        };
+        let definition = SavedAgentDefinition {
+            provider: AgentProvider::Codex,
+            backend: AgentBackendKind::Structured,
+            location: AgentLocation::SavedHost {
+                profile_id: "docker".to_string(),
+            },
+            working_directory: Some("/home/termirust".to_string()),
+            executable_override: Some(executable.to_string()),
+            permission_policy: AgentPermissionPolicy::ReadOnly,
+            worktree: SavedWorktreePolicy::ReadOnly,
+            ..SavedAgentDefinition::default()
+        };
+        let session = spawn_remote_codex_session(RemoteCodexSessionConfig {
+            definition,
+            request,
+            known_hosts: std::sync::Arc::new(KnownHostStore::load().unwrap()),
+            keepalive_secs: 0,
+            initial_prompt: Some("review remotely".to_string()),
+        })
+        .expect("unable to launch remote Codex");
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        let mut saw_ready = false;
+        let mut saw_message = false;
+        let mut saw_succeeded = false;
+        while std::time::Instant::now() < deadline && !saw_succeeded {
+            match session.event_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(AgentEvent::SessionReady {
+                    provider_session_id,
+                }) => saw_ready = provider_session_id == "remote-thread",
+                Ok(AgentEvent::MessageDelta { text, .. }) => {
+                    saw_message |= text.contains("remote-codex-ok")
+                }
+                Ok(AgentEvent::StateChanged(AgentRunState::Succeeded)) => saw_succeeded = true,
+                Ok(AgentEvent::Failed { error }) => panic!("remote Codex failed: {error}"),
+                Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(error) => panic!("remote Codex event stream closed: {error}"),
+            }
+        }
+        assert!(saw_ready);
+        assert!(saw_message);
+        assert!(saw_succeeded);
     }
 
     #[test]
