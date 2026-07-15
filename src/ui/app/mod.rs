@@ -11950,7 +11950,7 @@ sleep 1
         let executable = "/usr/local/bin/termirust-ui-remote-claude";
         server
             .exec(&format!(
-                "cat > {executable} <<'TERMIRUST_EOF'\n#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'remote-ui 1.0\\n'; exit 0; fi\nprintf '%s\\n' '{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"remote-ui\"}}'\nprintf '%s\\n' '{{\"type\":\"assistant\",\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"remote structured response\"}}]}}}}'\nprintf '%s\\n' '{{\"type\":\"result\",\"is_error\":false,\"result\":\"remote complete\"}}'\nTERMIRUST_EOF\nchmod 755 {executable}"
+                "cat > {executable} <<'TERMIRUST_EOF'\n#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'remote-ui 1.0\\n'; exit 0; fi\nprintf '%s\\n' \"$2\" >> /tmp/termirust-ui-remote-prompts\nprintf '%s\\n' '{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"remote-ui\"}}'\nprintf '%s\\n' '{{\"type\":\"assistant\",\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"remote structured response\"}}]}}}}'\nprintf '%s\\n' '{{\"type\":\"result\",\"is_error\":false,\"result\":\"remote complete\"}}'\nTERMIRUST_EOF\nchmod 755 {executable}; rm -f /tmp/termirust-ui-remote-prompts"
             ))
             .expect("unable to install remote UI provider fixture");
         let profile_id = "remote-structured-docker";
@@ -12037,6 +12037,91 @@ sleep 1
                     )
             ));
         });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_agent_creation(AgentProvider::ClaudeCode, window, cx);
+                    app.set_agent_backend(AgentBackendKind::Structured, cx);
+                    app.set_agent_creation_location(
+                        AgentLocation::SavedHost {
+                            profile_id: profile_id.to_string(),
+                        },
+                        cx,
+                    );
+                    app.set_agent_worktree_policy(SavedWorktreePolicy::ReadOnly, cx);
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.agent_executable,
+                        executable,
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.agent_working_directory,
+                        "/home/termirust",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.agent_initial_prompt,
+                        "target initial prompt",
+                        window,
+                        cx,
+                    );
+                    app.launch_agent_creation(window, cx);
+                })
+            })
+            .expect("second remote structured launch should succeed");
+        let target_id = wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            app.structured_agents
+                .iter()
+                .find(|(candidate, runtime)| {
+                    *candidate != &node_id
+                        && runtime.state == crate::agents::AgentRunState::Succeeded
+                        && runtime.transcript.contains("remote structured response")
+                })
+                .map(|(candidate, _)| candidate.clone())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    {
+                        let workspace = app
+                            .active_workspace_mut()
+                            .expect("canvas workspace should be active");
+                        workspace
+                            .canvas
+                            .add_context_edge(node_id.clone(), target_id.clone())
+                            .expect("same-host context link should be accepted");
+                        workspace.canvas.select_and_raise(&target_id);
+                    }
+                    app.open_context_review_for_selected(window, cx);
+                    let preview = app
+                        .shell_inputs
+                        .context_handoff_preview
+                        .read(cx)
+                        .value()
+                        .to_string();
+                    assert!(preview.contains("[TermiRust context handoff]"));
+                    assert!(preview.contains("remote structured response"));
+                    app.send_context_handoff(cx);
+                    assert!(app.error_message.is_empty());
+                })
+            })
+            .expect("same-host context handoff should send");
+
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while Instant::now() < deadline {
+            if server
+                .exec("grep -q '\\[TermiRust context handoff\\]' /tmp/termirust-ui-remote-prompts")
+                .is_ok()
+            {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        panic!("remote target did not receive the reviewed same-host context handoff");
     }
 
     #[gpui::test]

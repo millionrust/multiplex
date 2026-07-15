@@ -2954,7 +2954,11 @@ impl TermiRustApp {
         dispatched
     }
 
-    fn open_context_review_for_selected(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn open_context_review_for_selected(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(workspace) = self.active_workspace() else {
             return;
         };
@@ -3043,7 +3047,7 @@ impl TermiRustApp {
         cx.notify();
     }
 
-    fn send_context_handoff(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn send_context_handoff(&mut self, cx: &mut Context<Self>) {
         let Some(review) = self.context_handoff_review.clone() else {
             return;
         };
