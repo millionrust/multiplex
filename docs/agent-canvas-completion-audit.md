@@ -17,7 +17,7 @@ not been completed.
 | Split remains the default and keeps its runtime identity | Proved | GPUI layout-switch and over-capacity chooser tests retain pane IDs and hidden sessions. | Human baseline comparison remains. |
 | Canvas reuses existing terminal runtimes | Proved | `CanvasNodeKind` references pane IDs; GPUI tests verify local and SSH panes coexist and mode switching does not respawn them. | None for ownership design. |
 | Layout, stable IDs, edges, and viewport restore | Proved | Serialization, validation/repair, geometry, and explicit restored-agent restart tests pass. | Human visual restore of a populated canvas remains. |
-| Terminal interaction is correct at supported zoom | Partial | Mouse ownership, pan isolation, coordinate transforms, minimum sizing, PTY sizing, culling, paste path, keyboard reveal, and rendered node-header action isolation are automated. | Human typing, selection, copy/paste, search, scrollback, xterm mouse reporting, and resize at multiple zoom levels. |
+| Terminal interaction is correct at supported zoom | Partial | Mouse ownership, pan isolation, coordinate transforms, minimum sizing, PTY sizing, culling, keyboard reveal, rendered node-header action isolation, and an end-to-end Canvas local-shell test for typing, guarded multiline paste, cancellation, confirmation, and search are automated. | Human selection/copy, scrollback, xterm mouse reporting, and resize at multiple zoom levels. |
 | Interactive presets avoid shell concatenation | Proved | Local launches use executable plus argument arrays; the single SSH boundary is centrally quoted and injection-tested. Unsafe bypass flags are rejected. | Live interactive Claude and Gemini checks require installed, authorized CLIs. |
 | Structured state comes from documented events | Partial | Codex fake app-server coverage is comprehensive and Codex 0.144.4 passed a live smoke. Claude/Gemini JSONL fixtures and child processes are deterministic. | Successful live Claude and Gemini calls require authorized accounts/installations. |
 | Context handoff is directed, bounded, reviewed, and redacted | Proved | Context model, redaction, bounds, disabled-edge, persistence, guarded-paste, same-host remote handoff, and cross-host refusal tests pass. | Human preview editing and visual copy review remain. |
@@ -47,11 +47,19 @@ terminal prompt, or inventing an unsupported wire response.
 
 ### Native accessibility semantics
 
-The locally resolved GPUI 0.2.2 and gpui-component 0.5.1 sources contain no
-AccessKit integration or per-element semantic label API. Canvas controls use
-visible labels or tooltips and keyboard node navigation reveals off-screen
-selection. Native screen-reader labels require a framework upgrade or a scoped
-GPUI accessibility implementation and are not complete in this branch.
+The published GPUI 0.2.2 and gpui-component 0.5.1 sources resolved by this
+repository contain no AccessKit integration or per-element semantic label API.
+Canvas controls therefore use visible labels or tooltips, and keyboard node
+navigation reveals off-screen selection.
+
+Upstream GPUI `main` now documents AccessKit integration and exposes roles,
+`aria_label`, and accessible-action handlers in
+[`crates/gpui/src/_accessibility.rs`](https://github.com/zed-industries/zed/blob/main/crates/gpui/src/_accessibility.rs).
+That code is newer than the published crate while retaining the same package
+version, and the application also depends on gpui-component's published GPUI
+types. Native screen-reader labels therefore require a coordinated GPUI and
+gpui-component migration, followed by macOS VoiceOver verification; they are
+not complete in this branch.
 
 ## Completion decision
 

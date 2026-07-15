@@ -10,13 +10,14 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Pass | No formatting differences. |
 | `cargo check -q` | Pass | Existing macOS `objc` cfg and dead-code warnings remain. |
-| `cargo test -q` | Pass | 294 passed, 0 failed, 3 ignored in 62.68s with Docker-backed tests exercised. |
+| `cargo test -q` | Pass | 294 passed, 0 failed, 3 ignored in 60.60s with Docker-backed tests exercised. |
 | Agent adapter focused tests | Pass | Local and remote Codex fake app-server, Claude/Gemini stream fixtures, literal arguments, cancellation, malformed data, and remote exit-status ordering. |
 | Worktree integration tests | Pass | Real temporary Git repositories cover create, status, dirty refusal, committed refusal, and path boundaries. |
 | Canvas capacity test | Pass | 20 nodes, 40 edges, finite fit geometry and supported zoom. |
 | `cargo clippy --all-targets` | Pass with warnings | Repository reports existing warnings. |
 | `cargo clippy --all-targets -- -D warnings` | Blocked | 121 existing warnings include old `objc` cfg macros and unrelated UI lints; not changed in this feature. |
 | `git diff --check` | Pass | No whitespace errors. |
+| Development artifact storage | Pass | After `cargo clean` removed 21.6 GiB, non-incremental symbol-free development/test profiles rebuilt the full suite into a 1.5 GiB `target/`; guarded verification finished with 19 GiB free. |
 
 Docker Desktop 29.5.3 was available for the final run. All three
 `docker_ssh_persistent_tmux` tests exercised real SSH containers and passed in
@@ -66,6 +67,10 @@ so no screenshot or automated click-through is claimed.
   attention states, and keep drag handling on the title/status region. A
   rendered GPUI click test verifies the More menu opens and closes without the
   action being intercepted as a node drag.
+- The shared workspace shell renders exactly one guarded-paste banner in Canvas.
+  A rendered GPUI test clicks Cancel and Paste against a real local shell, then
+  verifies cancelled text is not sent, confirmed multiline input executes, and
+  terminal search finds the resulting output.
 - Entering Split with more than four sessions preserves hidden live sessions;
   a hidden-session Canvas tab cannot be merged into another Split and orphan
   those sessions. Active terminal closure uses a rendered confirmation flow.
@@ -139,9 +144,11 @@ hosts and were not claimed by automation:
   cross-host rejection copy;
 - visual tmux close choices; the underlying kill-session execution is covered
   against the Docker SSH fixture;
-- native screen-reader semantics cannot be validated because GPUI 0.2.2 does
-  not expose per-element accessibility labels; visible labels, tooltips, and
-  keyboard reveal behavior are covered instead.
+- native screen-reader semantics cannot be validated with the published GPUI
+  0.2.2 resolved by this branch. Upstream GPUI `main` now has AccessKit roles
+  and labels, but adopting them requires a coordinated GPUI/gpui-component
+  migration; visible labels, tooltips, and keyboard reveal behavior are covered
+  instead.
 
 Use the reviewer smoke test in [agent-canvas.md](agent-canvas.md). Do not use a
 production repository or paid provider account for the first pass.
