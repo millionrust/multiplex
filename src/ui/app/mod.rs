@@ -17,7 +17,7 @@ pub(crate) use types::{
 
 use canvas::{
     AgentCreationState, CANVAS_NODE_HEADER_HEIGHT, CANVAS_TOOLBAR_HEIGHT, CanvasInteraction,
-    CanvasWorkspaceState, StructuredAgentRuntime,
+    CanvasWorkspaceState, ContextHandoffReview, StructuredAgentRuntime,
 };
 use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
@@ -292,6 +292,7 @@ struct ShellInputs {
     agent_arguments: Entity<InputState>,
     agent_initial_prompt: Entity<InputState>,
     structured_agent_prompt: Entity<InputState>,
+    context_handoff_preview: Entity<InputState>,
 }
 
 struct SnippetInputs {
@@ -441,6 +442,12 @@ impl ShellInputs {
                     .multi_line(true)
                     .auto_grow(2, 6)
                     .placeholder("Send a prompt or reviewed context")
+            }),
+            context_handoff_preview: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .multi_line(true)
+                    .auto_grow(10, 22)
+                    .placeholder("Review context before sending")
             }),
         }
     }
@@ -919,6 +926,8 @@ pub struct TermiRustApp {
     canvas_add_menu_open: bool,
     agent_creation: Option<AgentCreationState>,
     structured_agents: HashMap<crate::models::CanvasNodeId, StructuredAgentRuntime>,
+    pending_context_source: Option<crate::models::CanvasNodeId>,
+    context_handoff_review: Option<ContextHandoffReview>,
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
     open_workspace_tab_menu: Option<u64>,
@@ -1058,6 +1067,8 @@ impl TermiRustApp {
             canvas_add_menu_open: false,
             agent_creation: None,
             structured_agents: HashMap::new(),
+            pending_context_source: None,
+            context_handoff_review: None,
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
             open_workspace_tab_menu: None,

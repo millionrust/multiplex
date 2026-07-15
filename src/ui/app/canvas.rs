@@ -12,8 +12,9 @@ use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::agents::{
     AgentApprovalRequest, AgentEvent, AgentExecutableStatus, AgentRunState, CodexSessionConfig,
-    CodexSessionHandle, build_interactive_launch_spec, build_remote_interactive_arguments,
-    create_managed_worktree, detect_agent_executable, provider_descriptor, spawn_codex_session,
+    CodexSessionHandle, build_context_handoff, build_interactive_launch_spec,
+    build_remote_interactive_arguments, create_managed_worktree, detect_agent_executable,
+    provider_descriptor, spawn_codex_session,
 };
 use crate::models::{
     AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AuthConfig, AuthMode,
@@ -39,6 +40,15 @@ const CANVAS_FIT_PADDING: f32 = 48.0;
 pub(super) struct AgentCreationState {
     definition: SavedAgentDefinition,
     executable_status: AgentExecutableStatus,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct ContextHandoffReview {
+    pub edge_id: CanvasEdgeId,
+    pub target: CanvasNodeId,
+    pub source_label: String,
+    pub redaction_count: usize,
+    pub truncated: bool,
 }
 
 pub(super) struct StructuredAgentRuntime {
@@ -457,6 +467,43 @@ impl CanvasWorkspaceState {
         if self.selected_node_id.as_ref() == Some(node_id) {
             self.selected_node_id = None;
         }
+    }
+
+    pub(super) fn add_context_edge(
+        &mut self,
+        source: CanvasNodeId,
+        target: CanvasNodeId,
+    ) -> anyhow::Result<CanvasEdgeId> {
+        if source == target {
+            anyhow::bail!("Choose a different target node");
+        }
+        if !self.nodes.iter().any(|node| node.id == source)
+            || !self.nodes.iter().any(|node| node.id == target)
+        {
+            anyhow::bail!("Both context-link nodes must exist");
+        }
+        if self.edges.iter().any(|edge| {
+            edge.source == source && edge.target == target && edge.kind == CanvasEdgeKind::Context
+        }) {
+            anyhow::bail!("That context link already exists");
+        }
+        let mut ordinal = self.edges.len() + 1;
+        let id = loop {
+            let candidate = CanvasEdgeId::new(format!("context-edge-{ordinal}"));
+            if !self.edges.iter().any(|edge| edge.id == candidate) {
+                break candidate;
+            }
+            ordinal += 1;
+        };
+        self.edges.push(CanvasEdge {
+            id: id.clone(),
+            source,
+            target,
+            kind: CanvasEdgeKind::Context,
+            enabled: true,
+            context_policy: Some(crate::models::SavedContextPolicy::default()),
+        });
+        Ok(id)
     }
 
     pub(super) fn remove_pane(&mut self, pane_id: u64) {
@@ -1806,6 +1853,166 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn link_canvas_node(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
+        let Some(source) = self.pending_context_source.take() else {
+            self.pending_context_source = Some(node_id);
+            self.status_message =
+                "Context source selected. Use the link action on a target node.".to_string();
+            self.error_message.clear();
+            cx.notify();
+            return;
+        };
+        let result = self
+            .active_workspace_mut()
+            .ok_or_else(|| anyhow::anyhow!("No active canvas workspace"))
+            .and_then(|workspace| workspace.canvas.add_context_edge(source, node_id));
+        match result {
+            Ok(_) => {
+                self.status_message =
+                    "Context link created. Select the target and choose Review context."
+                        .to_string();
+                self.error_message.clear();
+                self.persist_runtime_state();
+            }
+            Err(error) => self.error_message = error.to_string(),
+        }
+        cx.notify();
+    }
+
+    fn open_context_review_for_selected(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(workspace) = self.active_workspace() else {
+            return;
+        };
+        let Some(target) = workspace.canvas.selected_node_id.clone() else {
+            self.error_message = "Select a target node first.".to_string();
+            cx.notify();
+            return;
+        };
+        let Some(edge) = workspace
+            .canvas
+            .edges
+            .iter()
+            .find(|edge| {
+                edge.enabled && edge.kind == CanvasEdgeKind::Context && edge.target == target
+            })
+            .cloned()
+        else {
+            self.error_message =
+                "The selected node has no incoming context link. Link a source to it first."
+                    .to_string();
+            cx.notify();
+            return;
+        };
+        let Some(source_node) = workspace
+            .canvas
+            .nodes
+            .iter()
+            .find(|node| node.id == edge.source)
+            .cloned()
+        else {
+            return;
+        };
+        let source_label = source_node
+            .title
+            .clone()
+            .or_else(|| {
+                source_node
+                    .kind
+                    .pane_id()
+                    .and_then(|pane_id| self.pane(pane_id).map(|pane| pane.title.clone()))
+            })
+            .unwrap_or_else(|| "Canvas node".to_string());
+        let source_text = if let Some(runtime) = self.structured_agents.get(&source_node.id) {
+            runtime.transcript.clone()
+        } else if let Some(pane) = source_node
+            .kind
+            .pane_id()
+            .and_then(|pane_id| self.pane(pane_id))
+        {
+            pane.terminal.all_rows_text().join("\n")
+        } else {
+            String::new()
+        };
+        let policy = edge.context_policy.clone().unwrap_or_default();
+        let preview =
+            build_context_handoff(&source_label, &source_text, &policy, current_unix_millis());
+        Self::set_input_value(
+            &self.shell_inputs.context_handoff_preview,
+            preview.text,
+            window,
+            cx,
+        );
+        self.context_handoff_review = Some(ContextHandoffReview {
+            edge_id: edge.id,
+            target,
+            source_label,
+            redaction_count: preview.redaction_count,
+            truncated: preview.truncated,
+        });
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn send_context_handoff(&mut self, cx: &mut Context<Self>) {
+        let Some(review) = self.context_handoff_review.clone() else {
+            return;
+        };
+        let text = self
+            .shell_inputs
+            .context_handoff_preview
+            .read(cx)
+            .value()
+            .to_string();
+        let policy = self
+            .active_workspace()
+            .and_then(|workspace| {
+                workspace
+                    .canvas
+                    .edges
+                    .iter()
+                    .find(|edge| edge.id == review.edge_id)
+            })
+            .and_then(|edge| edge.context_policy.clone())
+            .unwrap_or_default();
+        if text.len() > policy.max_bytes {
+            self.error_message = format!(
+                "Reviewed context is {} bytes; this link allows at most {} bytes.",
+                text.len(),
+                policy.max_bytes
+            );
+            cx.notify();
+            return;
+        }
+        if let Some(runtime) = self.structured_agents.get(&review.target) {
+            if let Err(error) = runtime.handle.send_prompt(text) {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
+            self.status_message = "Reviewed context sent to the structured agent.".to_string();
+        } else {
+            let target_pane_id = self.active_workspace().and_then(|workspace| {
+                workspace
+                    .canvas
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == review.target)
+                    .and_then(|node| node.kind.pane_id())
+            });
+            let Some(pane_id) = target_pane_id else {
+                self.error_message = "The target agent is not running.".to_string();
+                cx.notify();
+                return;
+            };
+            self.pending_paste = Some(super::PendingPaste { pane_id, text });
+            self.status_message =
+                "Context is ready. Confirm the guarded paste to deliver it.".to_string();
+        }
+        self.context_handoff_review = None;
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn toggle_canvas_add_menu(&mut self, cx: &mut Context<Self>) {
         self.canvas_add_menu_open = !self.canvas_add_menu_open;
         cx.notify();
@@ -2336,17 +2543,39 @@ impl TermiRustApp {
             .border_b_1()
             .border_color(theme::border_dark())
             .child(
-                h_flex().gap_1().items_center().child(
-                    Button::new("canvas-add-terminal")
-                        .small()
-                        .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                        .icon(IconName::Plus)
-                        .label("Add")
-                        .tooltip("Add a terminal or coding agent")
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.toggle_canvas_add_menu(cx);
-                        })),
-                ),
+                h_flex()
+                    .gap_1()
+                    .items_center()
+                    .child(
+                        Button::new("canvas-add-terminal")
+                            .small()
+                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                            .icon(IconName::Plus)
+                            .label("Add")
+                            .tooltip("Add a terminal or coding agent")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_canvas_add_menu(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-review-context")
+                            .small()
+                            .ghost()
+                            .icon(IconName::ArrowRight)
+                            .label("Review context")
+                            .tooltip("Review an incoming context link before sending")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_context_review_for_selected(window, cx);
+                            })),
+                    )
+                    .when(self.pending_context_source.is_some(), |toolbar| {
+                        toolbar.child(
+                            div()
+                                .text_size(px(10.0))
+                                .text_color(theme::warning())
+                                .child("Choose link target"),
+                        )
+                    }),
             )
             .child(
                 h_flex()
@@ -2494,6 +2723,7 @@ impl TermiRustApp {
             })
             .unwrap_or_else(|| "Idle".to_string());
         let header_node_id = node_id.clone();
+        let link_node_id = node_id.clone();
         let resize_node_id = node_id.clone();
         let close_pane_id = pane_id;
         let close_structured_node_id = (pane_id.is_none()).then_some(node_id.clone());
@@ -2580,6 +2810,24 @@ impl TermiRustApp {
                                     .text_color(theme::text_muted_dark())
                                     .child(subtitle),
                             ),
+                    )
+                    .child(
+                        h_flex().gap_1().child(
+                            Button::new(SharedString::from(format!(
+                                "canvas-node-link-{}",
+                                link_node_id.as_str()
+                            )))
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::ArrowRight)
+                            .tooltip("Use as context source or target")
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.link_canvas_node(link_node_id.clone(), cx);
+                                },
+                            )),
+                        ),
                     )
                     .when_some(close_pane_id, |header, pane_id| {
                         header.child(
@@ -2840,6 +3088,101 @@ impl TermiRustApp {
             .into_any_element()
     }
 
+    fn render_context_handoff_review(&self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(review) = self.context_handoff_review.as_ref() else {
+            return div().into_any_element();
+        };
+        let details = match (review.redaction_count, review.truncated) {
+            (0, false) => "No automatic redactions; snapshot fits the link limit.".to_string(),
+            (count, false) => format!("{count} potential secret(s) redacted."),
+            (0, true) => "Snapshot truncated to the link limit.".to_string(),
+            (count, true) => {
+                format!("{count} potential secret(s) redacted; snapshot truncated.")
+            }
+        };
+        v_flex()
+            .id("context-handoff-review")
+            .absolute()
+            .top(px(12.0))
+            .right(px(12.0))
+            .w(px(560.0))
+            .max_h(px(700.0))
+            .overflow_hidden()
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(theme::border_dark())
+            .bg(theme::library_card())
+            .shadow_lg()
+            .child(
+                h_flex()
+                    .h(px(44.0))
+                    .px_3()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child(format!("Review context from {}", review.source_label)),
+                    )
+                    .child(
+                        Button::new("context-review-close")
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Cancel")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.context_handoff_review = None;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .p_3()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(theme::text_muted())
+                            .child(details),
+                    )
+                    .child(Input::new(&self.shell_inputs.context_handoff_preview))
+                    .child(
+                        h_flex()
+                            .justify_end()
+                            .gap_2()
+                            .child(
+                                Button::new("context-review-cancel")
+                                    .small()
+                                    .ghost()
+                                    .label("Cancel")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.context_handoff_review = None;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("context-review-send")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .icon(IconName::ArrowRight)
+                                    .label("Send reviewed context")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.send_context_handoff(cx);
+                                    })),
+                            ),
+                    ),
+            )
+            .into_any_element()
+    }
+
     pub(super) fn render_canvas_workspace(
         &self,
         window: &mut Window,
@@ -2920,12 +3263,18 @@ impl TermiRustApp {
         if self.agent_creation.is_some() {
             body = body.child(self.render_agent_creation_panel(cx));
         }
+        if self.context_handoff_review.is_some() {
+            body = body.child(self.render_context_handoff_review(cx));
+        }
 
         v_flex()
             .flex_1()
             .min_h_0()
             .bg(theme::terminal_bg())
             .child(self.render_canvas_toolbar(window, cx))
+            .when_some(self.render_paste_confirmation(cx), |canvas, banner| {
+                canvas.child(banner)
+            })
             .child(body)
     }
 }
@@ -3020,6 +3369,36 @@ mod tests {
         );
         assert_eq!(second_position, repeated);
         assert_ne!(second_position, first_position);
+    }
+
+    #[test]
+    fn context_edges_are_directed_unique_and_not_self_referential() {
+        let mut canvas = CanvasWorkspaceState::default();
+        canvas.nodes = vec![
+            terminal_node("source", 1, 0.0, 0.0),
+            terminal_node("target", 2, 800.0, 0.0),
+        ];
+        let edge_id = canvas
+            .add_context_edge(CanvasNodeId::new("source"), CanvasNodeId::new("target"))
+            .unwrap();
+        assert_eq!(edge_id.0, "context-edge-1");
+        assert_eq!(canvas.edges[0].source.0, "source");
+        assert_eq!(canvas.edges[0].target.0, "target");
+        assert!(canvas.edges[0].context_policy.is_some());
+        assert!(
+            canvas
+                .add_context_edge(CanvasNodeId::new("source"), CanvasNodeId::new("target"))
+                .unwrap_err()
+                .to_string()
+                .contains("already exists")
+        );
+        assert!(
+            canvas
+                .add_context_edge(CanvasNodeId::new("source"), CanvasNodeId::new("source"))
+                .unwrap_err()
+                .to_string()
+                .contains("different target")
+        );
     }
 
     #[test]
