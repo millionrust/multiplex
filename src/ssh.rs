@@ -1,11 +1,12 @@
 use anyhow::{Context, Result, bail};
-use russh::ChannelMsg;
 use russh::client;
 use russh::keys::PublicKey;
 use russh::keys::key::PrivateKeyWithHashAlg;
+use russh::{ChannelMsg, Sig};
+use std::io::{self, Read, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Receiver, Sender, SyncSender, sync_channel};
 use std::thread;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, copy_bidirectional};
 use tokio::net::{TcpListener, TcpStream};
@@ -55,6 +56,96 @@ pub enum SshEvent {
 
 pub struct SessionRuntimeHandle {
     pub command_tx: UnboundedSender<SessionCommand>,
+}
+
+const REMOTE_EXEC_STREAM_CAPACITY: usize = 64;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RemoteExecExit {
+    Status(u32),
+    Signal { signal: String, message: String },
+}
+
+enum RemoteExecCommand {
+    Input(Vec<u8>),
+    Terminate,
+}
+
+#[derive(Clone)]
+pub struct RemoteExecControl {
+    command_tx: UnboundedSender<RemoteExecCommand>,
+}
+
+impl RemoteExecControl {
+    pub fn terminate(&self) -> Result<()> {
+        self.command_tx
+            .send(RemoteExecCommand::Terminate)
+            .map_err(|_| anyhow::anyhow!("Remote process is no longer running"))
+    }
+}
+
+pub struct RemoteExecWriter {
+    command_tx: UnboundedSender<RemoteExecCommand>,
+}
+
+impl Write for RemoteExecWriter {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.command_tx
+            .send(RemoteExecCommand::Input(buffer.to_vec()))
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "remote stdin is closed"))?;
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+pub struct RemoteExecReader {
+    rx: Receiver<Vec<u8>>,
+    pending: Vec<u8>,
+    offset: usize,
+}
+
+impl RemoteExecReader {
+    fn new(rx: Receiver<Vec<u8>>) -> Self {
+        Self {
+            rx,
+            pending: Vec::new(),
+            offset: 0,
+        }
+    }
+}
+
+impl Read for RemoteExecReader {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if buffer.is_empty() {
+            return Ok(0);
+        }
+        while self.offset >= self.pending.len() {
+            match self.rx.recv() {
+                Ok(data) if data.is_empty() => continue,
+                Ok(data) => {
+                    self.pending = data;
+                    self.offset = 0;
+                }
+                Err(_) => return Ok(0),
+            }
+        }
+        let available = &self.pending[self.offset..];
+        let copied = available.len().min(buffer.len());
+        buffer[..copied].copy_from_slice(&available[..copied]);
+        self.offset += copied;
+        Ok(copied)
+    }
+}
+
+pub struct RemoteExecProcess {
+    pub stdin: RemoteExecWriter,
+    pub stdout: RemoteExecReader,
+    pub stderr: RemoteExecReader,
+    pub exit_rx: Receiver<Result<RemoteExecExit, String>>,
+    pub control: RemoteExecControl,
 }
 
 struct EstablishedSession {
@@ -132,6 +223,156 @@ pub fn spawn_session(
     }
 
     SessionRuntimeHandle { command_tx }
+}
+
+pub fn spawn_remote_exec(
+    request: ConnectRequest,
+    known_hosts: Arc<KnownHostStore>,
+    keepalive_secs: u16,
+    command: String,
+) -> Result<RemoteExecProcess> {
+    if request.is_local_shell() {
+        bail!("Remote execution requires an SSH connection request");
+    }
+    if command.trim().is_empty() {
+        bail!("Remote execution command cannot be empty");
+    }
+    let (command_tx, command_rx) = mpsc::unbounded_channel();
+    let (stdout_tx, stdout_rx) = sync_channel(REMOTE_EXEC_STREAM_CAPACITY);
+    let (stderr_tx, stderr_rx) = sync_channel(REMOTE_EXEC_STREAM_CAPACITY);
+    let (exit_tx, exit_rx) = sync_channel(1);
+    let session_id = request.session_id;
+    let fallback_exit = exit_tx.clone();
+
+    thread::Builder::new()
+        .name(format!("ssh-exec-{session_id}"))
+        .spawn(move || {
+            let runtime = match Builder::new_current_thread()
+                .enable_io()
+                .enable_time()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(error) => {
+                    let _ = exit_tx.send(Err(format!(
+                        "Unable to build remote execution runtime: {error}"
+                    )));
+                    return;
+                }
+            };
+            let result = runtime.block_on(run_remote_exec(
+                request,
+                known_hosts,
+                keepalive_secs,
+                command,
+                command_rx,
+                stdout_tx,
+                stderr_tx,
+            ));
+            let _ = exit_tx.send(result.map_err(|error| format!("{error:#}")));
+        })
+        .map_err(|error| {
+            let message = format!("Unable to start remote execution thread: {error}");
+            let _ = fallback_exit.send(Err(message.clone()));
+            anyhow::anyhow!(message)
+        })?;
+
+    Ok(RemoteExecProcess {
+        stdin: RemoteExecWriter {
+            command_tx: command_tx.clone(),
+        },
+        stdout: RemoteExecReader::new(stdout_rx),
+        stderr: RemoteExecReader::new(stderr_rx),
+        exit_rx,
+        control: RemoteExecControl { command_tx },
+    })
+}
+
+async fn run_remote_exec(
+    request: ConnectRequest,
+    known_hosts: Arc<KnownHostStore>,
+    keepalive_secs: u16,
+    command: String,
+    mut command_rx: UnboundedReceiver<RemoteExecCommand>,
+    stdout_tx: SyncSender<Vec<u8>>,
+    stderr_tx: SyncSender<Vec<u8>>,
+) -> Result<RemoteExecExit> {
+    let mut config_inner = client::Config::default();
+    if keepalive_secs > 0 {
+        config_inner.keepalive_interval =
+            Some(std::time::Duration::from_secs(u64::from(keepalive_secs)));
+    }
+    let established = establish_session(Arc::new(config_inner), request, known_hosts).await?;
+    let mut channel = {
+        let handle = established.target_handle.lock().await;
+        handle
+            .channel_open_session()
+            .await
+            .context("Unable to open remote execution channel")?
+    };
+    channel
+        .exec(true, command)
+        .await
+        .context("Unable to start remote process")?;
+
+    let mut exit = None;
+    let mut commands_open = true;
+    loop {
+        tokio::select! {
+            maybe_command = command_rx.recv(), if commands_open => {
+                match maybe_command {
+                    Some(RemoteExecCommand::Input(data)) => {
+                        channel
+                            .data(&data[..])
+                            .await
+                            .context("Unable to write remote process input")?;
+                    }
+                    Some(RemoteExecCommand::Terminate) => {
+                        channel
+                            .signal(Sig::TERM)
+                            .await
+                            .context("Unable to terminate remote process")?;
+                    }
+                    None => {
+                        commands_open = false;
+                        let _ = channel.signal(Sig::TERM).await;
+                    }
+                }
+            }
+            maybe_message = channel.wait() => {
+                match maybe_message {
+                    Some(ChannelMsg::Data { data }) => {
+                        stdout_tx
+                            .send(data.to_vec())
+                            .map_err(|_| anyhow::anyhow!("Remote stdout consumer disconnected"))?;
+                    }
+                    Some(ChannelMsg::ExtendedData { data, ext: 1 }) => {
+                        stderr_tx
+                            .send(data.to_vec())
+                            .map_err(|_| anyhow::anyhow!("Remote stderr consumer disconnected"))?;
+                    }
+                    Some(ChannelMsg::ExtendedData { .. }) => {}
+                    Some(ChannelMsg::ExitStatus { exit_status }) => {
+                        exit = Some(RemoteExecExit::Status(exit_status));
+                    }
+                    Some(ChannelMsg::ExitSignal {
+                        signal_name,
+                        error_message,
+                        ..
+                    }) => {
+                        exit = Some(RemoteExecExit::Signal {
+                            signal: format!("{signal_name:?}"),
+                            message: error_message,
+                        });
+                    }
+                    Some(ChannelMsg::Eof | ChannelMsg::Close) | None => break,
+                    Some(_) => {}
+                }
+            }
+        }
+    }
+
+    exit.context("Remote process closed without an exit status")
 }
 
 async fn run_session(
@@ -984,7 +1225,10 @@ impl client::Handler for SessionHandler {
 
 #[cfg(test)]
 mod tests {
-    use super::{SessionCommand, SshEvent, spawn_session, tmux_kill_command};
+    use super::{
+        RemoteExecExit, SessionCommand, SshEvent, spawn_remote_exec, spawn_session,
+        tmux_kill_command,
+    };
     use crate::models::{
         AuthConfig, ConnectRequest, ConnectionKind, DynamicPortForward, JumpHostConnection,
         LocalPortForward, PortForwardRule, RemotePortForward,
@@ -1022,6 +1266,18 @@ mod tests {
             local_shell: None,
             environment: Vec::new(),
         }
+    }
+
+    #[test]
+    fn remote_exec_reader_preserves_chunk_boundaries_as_a_byte_stream() {
+        let (tx, rx) = mpsc::sync_channel(2);
+        tx.send(b"first".to_vec()).unwrap();
+        tx.send(b"-second".to_vec()).unwrap();
+        drop(tx);
+        let mut reader = super::RemoteExecReader::new(rx);
+        let mut output = String::new();
+        reader.read_to_string(&mut output).unwrap();
+        assert_eq!(output, "first-second");
     }
 
     #[test]
@@ -1323,6 +1579,44 @@ mod tests {
         let saved_keys = known_hosts.entries().expect("unable to read known hosts");
         assert_eq!(saved_keys.len(), 1);
         assert_eq!(saved_keys[0].0, request.known_host_key());
+    }
+
+    #[test]
+    fn docker_remote_exec_separates_streams_accepts_input_and_reports_status() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker remote exec e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let request = docker_ssh_request(&server);
+        let mut process = spawn_remote_exec(
+            request,
+            known_hosts,
+            0,
+            "IFS= read -r value; printf 'stdout:%s' \"$value\"; printf 'stderr:%s' \"$value\" >&2; exit 7"
+                .to_string(),
+        )
+        .expect("unable to start remote exec");
+
+        process
+            .stdin
+            .write_all(b"round-trip\n")
+            .expect("unable to write remote stdin");
+        let mut stdout = String::new();
+        let mut stderr = String::new();
+        process.stdout.read_to_string(&mut stdout).unwrap();
+        process.stderr.read_to_string(&mut stderr).unwrap();
+        let exit = process
+            .exit_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("remote exec did not report an exit")
+            .expect("remote exec transport failed");
+
+        assert_eq!(stdout, "stdout:round-trip");
+        assert_eq!(stderr, "stderr:round-trip");
+        assert_eq!(exit, RemoteExecExit::Status(7));
     }
 
     #[test]
