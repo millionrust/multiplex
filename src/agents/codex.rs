@@ -14,6 +14,7 @@ use crate::agents::protocol::{
     AgentApprovalKind, AgentApprovalRequest, AgentEvent, AgentRole, AgentRunState,
     NormalizedToolCall, ToolOutcome,
 };
+use crate::agents::stream::{BoundedLine, read_bounded_lines};
 use crate::models::AgentPermissionPolicy;
 
 const INITIALIZE_REQUEST_ID: u64 = 1;
@@ -22,6 +23,7 @@ const FIRST_USER_REQUEST_ID: u64 = 100;
 const EVENT_CHANNEL_CAPACITY: usize = 512;
 const COMMAND_CHANNEL_CAPACITY: usize = 64;
 const MAX_STDERR_BYTES: usize = 16 * 1024;
+const MAX_EVENT_LINE_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, Debug)]
 pub struct CodexSessionConfig {
@@ -261,41 +263,49 @@ fn read_messages(
     config: CodexSessionConfig,
 ) {
     let mut pending_methods = HashMap::<String, String>::new();
-    for line in BufReader::new(stdout).lines() {
-        let line = match line {
-            Ok(line) => line,
-            Err(error) => {
-                emit(
+    let result = read_bounded_lines(
+        BufReader::new(stdout),
+        MAX_EVENT_LINE_BYTES,
+        |line| match line {
+            BoundedLine::TooLong => emit(
+                &event_tx,
+                AgentEvent::Diagnostic {
+                    message: format!(
+                        "Ignored Codex JSONL message larger than {MAX_EVENT_LINE_BYTES} bytes"
+                    ),
+                },
+            ),
+            BoundedLine::Bytes(line) if line.iter().all(u8::is_ascii_whitespace) => {}
+            BoundedLine::Bytes(line) => {
+                let message: Value = match serde_json::from_slice(&line) {
+                    Ok(message) => message,
+                    Err(error) => {
+                        emit(
+                            &event_tx,
+                            AgentEvent::Diagnostic {
+                                message: format!("Ignored malformed Codex JSONL message: {error}"),
+                            },
+                        );
+                        return;
+                    }
+                };
+                handle_message(
+                    message,
+                    &command_tx,
                     &event_tx,
-                    AgentEvent::Failed {
-                        error: format!("Unable to read Codex app-server output: {error}"),
-                    },
+                    &ids,
+                    &config,
+                    &mut pending_methods,
                 );
-                break;
             }
-        };
-        if line.trim().is_empty() {
-            continue;
-        }
-        let message: Value = match serde_json::from_str(&line) {
-            Ok(message) => message,
-            Err(error) => {
-                emit(
-                    &event_tx,
-                    AgentEvent::Diagnostic {
-                        message: format!("Ignored malformed Codex JSONL message: {error}"),
-                    },
-                );
-                continue;
-            }
-        };
-        handle_message(
-            message,
-            &command_tx,
+        },
+    );
+    if let Err(error) = result {
+        emit(
             &event_tx,
-            &ids,
-            &config,
-            &mut pending_methods,
+            AgentEvent::Failed {
+                error: format!("Unable to read Codex app-server output: {error}"),
+            },
         );
     }
 }

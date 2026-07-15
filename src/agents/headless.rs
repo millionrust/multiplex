@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
@@ -12,10 +12,12 @@ use serde_json::Value;
 use crate::agents::protocol::{
     AgentEvent, AgentRole, AgentRunState, NormalizedToolCall, ToolOutcome,
 };
+use crate::agents::stream::{BoundedLine, read_bounded_lines};
 use crate::models::{AgentPermissionPolicy, AgentProvider};
 
 const EVENT_CHANNEL_CAPACITY: usize = 512;
 const MAX_STDERR_BYTES: usize = 16 * 1024;
+const MAX_EVENT_LINE_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, Debug)]
 pub struct HeadlessSessionConfig {
@@ -192,9 +194,19 @@ fn run_job(
         thread::spawn(move || capture_stderr(stderr, diagnostics));
     }
     if let Some(stdout) = stdout {
-        for line in BufReader::new(stdout).lines() {
-            match line {
-                Ok(line) if !line.trim().is_empty() => match serde_json::from_str::<Value>(&line) {
+        let read_result = read_bounded_lines(
+            BufReader::new(stdout),
+            MAX_EVENT_LINE_BYTES,
+            |line| match line {
+                BoundedLine::TooLong => {
+                    let _ = event_tx.send(AgentEvent::Diagnostic {
+                        message: format!(
+                            "Ignored structured event larger than {MAX_EVENT_LINE_BYTES} bytes"
+                        ),
+                    });
+                }
+                BoundedLine::Bytes(line) if line.iter().all(u8::is_ascii_whitespace) => {}
+                BoundedLine::Bytes(line) => match serde_json::from_slice::<Value>(&line) {
                     Ok(value) => normalize_event(config.provider, &value, &event_tx),
                     Err(error) => {
                         let _ = event_tx.send(AgentEvent::Diagnostic {
@@ -202,14 +214,12 @@ fn run_job(
                         });
                     }
                 },
-                Ok(_) => {}
-                Err(error) => {
-                    let _ = event_tx.send(AgentEvent::Failed {
-                        error: format!("Unable to read structured output: {error}"),
-                    });
-                    break;
-                }
-            }
+            },
+        );
+        if let Err(error) = read_result {
+            let _ = event_tx.send(AgentEvent::Failed {
+                error: format!("Unable to read structured output: {error}"),
+            });
         }
     }
     let status = child.wait();
@@ -466,7 +476,8 @@ fn capture_stderr(mut stderr: impl Read, event_tx: SyncSender<AgentEvent>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        HeadlessSessionConfig, command_arguments, normalize_event, spawn_headless_session,
+        HeadlessSessionConfig, MAX_EVENT_LINE_BYTES, command_arguments, normalize_event,
+        spawn_headless_session,
     };
     use crate::agents::protocol::{AgentEvent, AgentRole, AgentRunState};
     use crate::models::{AgentPermissionPolicy, AgentProvider};
@@ -711,5 +722,55 @@ mod tests {
             role: AgentRole::Assistant,
             text: "finished".to_string(),
         }));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn headless_process_discards_oversized_events_and_continues() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("termirust-headless-bounded-{unique}"));
+        fs::create_dir_all(&directory).unwrap();
+        let executable = directory.join("fake gemini");
+        let script = format!(
+            "#!/bin/sh\nprintf '%s\\n' '{}'\nprintf '%s\\n' '{{\"type\":\"result\"}}'\n",
+            "x".repeat(MAX_EVENT_LINE_BYTES + 1)
+        );
+        fs::write(&executable, script).unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+        let handle = spawn_headless_session(HeadlessSessionConfig {
+            provider: AgentProvider::Gemini,
+            executable,
+            working_directory: directory,
+            permission_policy: AgentPermissionPolicy::ReadOnly,
+            arguments: Vec::new(),
+            initial_prompt: Some("bounded input".to_string()),
+        })
+        .unwrap();
+        let mut events = Vec::new();
+        while !events.contains(&AgentEvent::StateChanged(AgentRunState::Succeeded)) {
+            events.push(
+                handle
+                    .event_rx
+                    .recv_timeout(Duration::from_secs(5))
+                    .expect("expected bounded structured event"),
+            );
+        }
+        assert!(events.iter().any(|event| matches!(
+            event,
+            AgentEvent::Diagnostic { message } if message.contains("larger than")
+        )));
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, AgentEvent::Failed { .. }))
+        );
     }
 }

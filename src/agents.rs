@@ -5,6 +5,7 @@ mod headless;
 mod orchestrator;
 mod process;
 mod protocol;
+mod stream;
 mod worktree;
 
 pub use adapter::provider_descriptor;
