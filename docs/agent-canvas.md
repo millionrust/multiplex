@@ -14,6 +14,8 @@ SSH, restore, and tmux runtimes; changing layout does not reconnect a pane.
    lower-right handle to resize it.
 5. Pan empty space and use the zoom and fit buttons in the canvas toolbar.
 
+Right-click empty canvas space to open the same terminal and agent add menu.
+
 Use `Cmd+Shift+Arrow` on macOS (the platform secondary modifier elsewhere) to
 cycle node selection without consuming ordinary terminal arrow keys.
 Use `Links` to inspect every directed context/dependency edge, disable it, or

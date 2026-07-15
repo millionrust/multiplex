@@ -1217,6 +1217,30 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn activate_canvas_node(
+        &mut self,
+        workspace_id: u64,
+        node_id: CanvasNodeId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let pane_id = self
+            .workspace(workspace_id)
+            .and_then(|workspace| workspace.canvas.node(&node_id))
+            .and_then(|node| node.kind.pane_id());
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
+            workspace.canvas.select_and_raise(&node_id);
+            if let Some(pane_id) = pane_id {
+                workspace.active_pane_id = pane_id;
+            }
+        }
+        if let Some(pane) = pane_id.and_then(|pane_id| self.pane(pane_id)) {
+            pane.terminal_focus.focus(window);
+        }
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
     fn start_canvas_node_resize(
         &mut self,
         workspace_id: u64,
@@ -4048,203 +4072,218 @@ impl TermiRustApp {
         let collapse_node_id = node_id.clone();
         let resize_node_id = node_id.clone();
         let rename_node_id = node_id.clone();
+        let activate_node_id = node_id.clone();
         let renaming = self.canvas_node_rename_id.as_ref() == Some(&node_id);
         let close_pane_id = pane_id;
         let close_structured_node_id = (pane_id.is_none()).then_some(node_id.clone());
 
-        let mut body =
-            v_flex()
-                .id(SharedString::from(format!(
-                    "canvas-node-{}",
-                    node_id.as_str()
-                )))
-                .absolute()
-                .left(px(screen.x))
-                .top(px(screen.y))
-                .w(px(screen.width.max(180.0)))
-                .h(px(if node.collapsed {
-                    CANVAS_NODE_HEADER_HEIGHT
-                } else {
-                    screen.height.max(CANVAS_NODE_HEADER_HEIGHT + 80.0)
-                }))
-                .overflow_hidden()
-                .rounded(px(7.0))
-                .border_1()
-                .border_color(if selected {
-                    theme::focus_ring()
-                } else {
-                    theme::border_dark()
-                })
-                .bg(theme::terminal_panel())
-                .child(
-                    h_flex()
-                        .id(SharedString::from(format!(
-                            "canvas-node-header-{}",
-                            node_id.as_str()
-                        )))
-                        .h(px(CANVAS_NODE_HEADER_HEIGHT))
-                        .w_full()
-                        .px_2()
-                        .gap_2()
-                        .items_center()
-                        .justify_between()
-                        .cursor(CursorStyle::OpenHand)
-                        .bg(theme::terminal_panel())
-                        .border_b_1()
-                        .border_color(theme::border_dark())
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(move |this, event: &MouseDownEvent, window, cx| {
-                                cx.stop_propagation();
-                                if renaming {
-                                    return;
-                                }
-                                if event.click_count >= 2 {
-                                    this.start_canvas_node_rename(
-                                        rename_node_id.clone(),
-                                        window,
-                                        cx,
-                                    );
-                                    return;
-                                }
-                                this.start_canvas_node_move(
-                                    workspace_id,
-                                    header_node_id.clone(),
-                                    event,
-                                    window,
-                                    cx,
-                                );
-                            }),
-                        )
-                        .child(
-                            h_flex()
-                                .min_w_0()
-                                .gap_2()
-                                .items_center()
-                                .child(
-                                    Icon::new(match node.kind {
-                                        CanvasNodeKind::Terminal { .. } => IconName::SquareTerminal,
-                                        CanvasNodeKind::Agent { .. } => IconName::Bot,
-                                    })
-                                    .size(px(14.0))
-                                    .text_color(theme::accent()),
-                                )
-                                .when(renaming, |header| {
-                                    header.child(
-                                        div().w(px(180.0)).child(
-                                            Input::new(&self.canvas_node_rename_input).small(),
-                                        ),
-                                    )
+        let mut body = v_flex()
+            .id(SharedString::from(format!(
+                "canvas-node-{}",
+                node_id.as_str()
+            )))
+            .absolute()
+            .left(px(screen.x))
+            .top(px(screen.y))
+            .w(px(screen.width.max(180.0)))
+            .h(px(if node.collapsed {
+                CANVAS_NODE_HEADER_HEIGHT
+            } else {
+                screen.height.max(CANVAS_NODE_HEADER_HEIGHT + 80.0)
+            }))
+            .overflow_hidden()
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(if selected {
+                theme::focus_ring()
+            } else {
+                theme::border_dark()
+            })
+            .bg(theme::terminal_panel())
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _, window, cx| {
+                    cx.stop_propagation();
+                    this.activate_canvas_node(workspace_id, activate_node_id.clone(), window, cx);
+                }),
+            )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|_, _, _, cx| {
+                    cx.stop_propagation();
+                }),
+            )
+            .child(
+                h_flex()
+                    .id(SharedString::from(format!(
+                        "canvas-node-header-{}",
+                        node_id.as_str()
+                    )))
+                    .h(px(CANVAS_NODE_HEADER_HEIGHT))
+                    .w_full()
+                    .px_2()
+                    .gap_2()
+                    .items_center()
+                    .justify_between()
+                    .cursor(CursorStyle::OpenHand)
+                    .bg(theme::terminal_panel())
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                            cx.stop_propagation();
+                            if renaming {
+                                return;
+                            }
+                            if event.click_count >= 2 {
+                                this.start_canvas_node_rename(rename_node_id.clone(), window, cx);
+                                return;
+                            }
+                            this.start_canvas_node_move(
+                                workspace_id,
+                                header_node_id.clone(),
+                                event,
+                                window,
+                                cx,
+                            );
+                        }),
+                    )
+                    .child(
+                        h_flex()
+                            .min_w_0()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                Icon::new(match node.kind {
+                                    CanvasNodeKind::Terminal { .. } => IconName::SquareTerminal,
+                                    CanvasNodeKind::Agent { .. } => IconName::Bot,
                                 })
-                                .when(!renaming, |header| {
-                                    header.child(
-                                        div()
-                                            .min_w_0()
-                                            .overflow_hidden()
-                                            .whitespace_nowrap()
-                                            .text_ellipsis()
-                                            .text_size(px(12.0))
-                                            .font_semibold()
-                                            .text_color(theme::text_on_dark())
-                                            .child(title),
-                                    )
-                                })
-                                .child(
+                                .size(px(14.0))
+                                .text_color(theme::accent()),
+                            )
+                            .when(renaming, |header| {
+                                header.child(
                                     div()
-                                        .text_size(px(10.0))
-                                        .text_color(theme::text_muted_dark())
-                                        .child(subtitle),
-                                ),
-                        )
-                        .child(
-                            h_flex()
-                                .gap_1()
-                                .child(
-                                    Button::new(SharedString::from(format!(
-                                        "canvas-node-collapse-{}",
-                                        collapse_node_id.as_str()
-                                    )))
-                                    .xsmall()
-                                    .ghost()
-                                    .icon(if node.collapsed {
-                                        IconName::ChevronDown
-                                    } else {
-                                        IconName::ChevronUp
-                                    })
-                                    .tooltip(if node.collapsed {
-                                        "Expand node"
-                                    } else {
-                                        "Collapse node"
-                                    })
-                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        .w(px(180.0))
+                                        .child(Input::new(&self.canvas_node_rename_input).small()),
+                                )
+                            })
+                            .when(!renaming, |header| {
+                                header.child(
+                                    div()
+                                        .min_w_0()
+                                        .overflow_hidden()
+                                        .whitespace_nowrap()
+                                        .text_ellipsis()
+                                        .text_size(px(12.0))
+                                        .font_semibold()
+                                        .text_color(theme::text_on_dark())
+                                        .child(title),
+                                )
+                            })
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme::text_muted_dark())
+                                    .child(subtitle),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .child(
+                                Button::new(SharedString::from(format!(
+                                    "canvas-node-collapse-{}",
+                                    collapse_node_id.as_str()
+                                )))
+                                .xsmall()
+                                .ghost()
+                                .icon(if node.collapsed {
+                                    IconName::ChevronDown
+                                } else {
+                                    IconName::ChevronUp
+                                })
+                                .tooltip(if node.collapsed {
+                                    "Expand node"
+                                } else {
+                                    "Collapse node"
+                                })
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
                                         cx.stop_propagation();
                                         this.toggle_canvas_node_collapsed(
                                             collapse_node_id.clone(),
                                             cx,
                                         );
-                                    })),
-                                )
-                                .child(
-                                    Button::new(SharedString::from(format!(
-                                        "canvas-node-link-{}",
-                                        link_node_id.as_str()
-                                    )))
-                                    .xsmall()
-                                    .ghost()
-                                    .icon(IconName::ArrowRight)
-                                    .tooltip("Use as context source or target")
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        cx.stop_propagation();
-                                        this.link_canvas_node(link_node_id.clone(), cx);
-                                    })),
-                                )
-                                .child(
-                                    Button::new(SharedString::from(format!(
-                                        "canvas-node-dependency-{}",
-                                        dependency_node_id.as_str()
-                                    )))
-                                    .xsmall()
-                                    .ghost()
-                                    .icon(IconName::Building2)
-                                    .tooltip("Use as dependency source or target")
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        cx.stop_propagation();
-                                        this.link_canvas_dependency(dependency_node_id.clone(), cx);
-                                    })),
-                                ),
-                        )
-                        .when_some(close_pane_id, |header, pane_id| {
-                            header.child(
-                                Button::new(("canvas-node-close", pane_id))
-                                    .xsmall()
-                                    .ghost()
-                                    .icon(IconName::Close)
-                                    .tooltip("Close terminal")
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        cx.stop_propagation();
-                                        this.request_canvas_pane_close(pane_id, cx);
-                                    })),
-                            )
-                        })
-                        .when_some(close_structured_node_id, |header, node_id| {
-                            header.child(
-                                Button::new(SharedString::from(format!(
-                                    "structured-node-close-{}",
-                                    node_id.as_str()
-                                )))
-                                .xsmall()
-                                .ghost()
-                                .icon(IconName::Close)
-                                .tooltip("Stop and close agent")
-                                .on_click(cx.listener(
-                                    move |this, _, _, cx| {
-                                        cx.stop_propagation();
-                                        this.close_structured_agent(node_id.clone(), cx);
                                     },
                                 )),
                             )
-                        }),
-                );
+                            .child(
+                                Button::new(SharedString::from(format!(
+                                    "canvas-node-link-{}",
+                                    link_node_id.as_str()
+                                )))
+                                .xsmall()
+                                .ghost()
+                                .icon(IconName::ArrowRight)
+                                .tooltip("Use as context source or target")
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        this.link_canvas_node(link_node_id.clone(), cx);
+                                    },
+                                )),
+                            )
+                            .child(
+                                Button::new(SharedString::from(format!(
+                                    "canvas-node-dependency-{}",
+                                    dependency_node_id.as_str()
+                                )))
+                                .xsmall()
+                                .ghost()
+                                .icon(IconName::Building2)
+                                .tooltip("Use as dependency source or target")
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        this.link_canvas_dependency(dependency_node_id.clone(), cx);
+                                    },
+                                )),
+                            ),
+                    )
+                    .when_some(close_pane_id, |header, pane_id| {
+                        header.child(
+                            Button::new(("canvas-node-close", pane_id))
+                                .xsmall()
+                                .ghost()
+                                .icon(IconName::Close)
+                                .tooltip("Close terminal")
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.request_canvas_pane_close(pane_id, cx);
+                                })),
+                        )
+                    })
+                    .when_some(close_structured_node_id, |header, node_id| {
+                        header.child(
+                            Button::new(SharedString::from(format!(
+                                "structured-node-close-{}",
+                                node_id.as_str()
+                            )))
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Stop and close agent")
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.close_structured_agent(node_id.clone(), cx);
+                                },
+                            )),
+                        )
+                    }),
+            );
 
         if !node.collapsed {
             body = body.when_some(pane_id.and_then(|id| self.pane(id)), |body, pane| {
@@ -4788,6 +4827,17 @@ impl TermiRustApp {
                 MouseButton::Left,
                 cx.listener(|this, event: &MouseDownEvent, _, cx| {
                     this.start_canvas_pan(event, cx);
+                }),
+            )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, _, _, cx| {
+                    this.canvas_add_menu_open = true;
+                    this.canvas_links_open = false;
+                    this.worktree_manager_open = false;
+                    this.context_handoff_review = None;
+                    this.pending_tmux_close = None;
+                    cx.notify();
                 }),
             )
             .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
