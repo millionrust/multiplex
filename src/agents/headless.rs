@@ -9,7 +9,9 @@ use std::thread;
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
-use crate::agents::{AgentEvent, AgentRole, AgentRunState, NormalizedToolCall, ToolOutcome};
+use crate::agents::protocol::{
+    AgentEvent, AgentRole, AgentRunState, NormalizedToolCall, ToolOutcome,
+};
 use crate::models::{AgentPermissionPolicy, AgentProvider};
 
 const EVENT_CHANNEL_CAPACITY: usize = 512;
@@ -430,7 +432,7 @@ mod tests {
     use super::{
         HeadlessSessionConfig, command_arguments, normalize_event, spawn_headless_session,
     };
-    use crate::agents::{AgentEvent, AgentRole, AgentRunState};
+    use crate::agents::protocol::{AgentEvent, AgentRole, AgentRunState};
     use crate::models::{AgentPermissionPolicy, AgentProvider};
     use serde_json::json;
     use std::path::PathBuf;

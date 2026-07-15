@@ -71,7 +71,7 @@ pub fn create_managed_worktree(
         if worktree_path.exists() || git_branch_exists(&repository_root, &branch)? {
             continue;
         }
-        let arguments = vec![
+        let arguments = [
             OsString::from("worktree"),
             OsString::from("add"),
             OsString::from("-b"),
@@ -336,7 +336,7 @@ mod tests {
             create_managed_worktree(&repository, &managed_root, "node 123", "Codex task").unwrap();
         assert!(Path::new(&worktree.path).is_dir());
         assert!(worktree.branch.starts_with("termirust/agent/"));
-        assert_eq!(managed_worktree_status(&worktree).unwrap().dirty, false);
+        assert!(!managed_worktree_status(&worktree).unwrap().dirty);
         remove_managed_worktree(&worktree, &managed_root).unwrap();
         assert!(!Path::new(&worktree.path).exists());
     }

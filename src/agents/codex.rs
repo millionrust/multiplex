@@ -604,7 +604,7 @@ fn emit(event_tx: &SyncSender<AgentEvent>, event: AgentEvent) {
 #[cfg(test)]
 mod tests {
     use super::{CodexSessionConfig, spawn_codex_session};
-    use crate::agents::{AgentEvent, AgentRole, AgentRunState};
+    use crate::agents::protocol::{AgentEvent, AgentRole, AgentRunState};
     use crate::models::AgentPermissionPolicy;
     use std::fs;
     use std::path::PathBuf;

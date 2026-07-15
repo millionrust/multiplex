@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::agents::AgentRunState;
+use crate::agents::protocol::AgentRunState;
 use crate::models::{CanvasEdgeKind, CanvasNodeId, SavedCanvasEdge};
 
 #[derive(Clone, Debug, PartialEq, Eq)]

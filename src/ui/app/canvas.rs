@@ -34,7 +34,9 @@ use crate::{storage::managed_agent_worktree_dir, ui::util::current_unix_millis};
 pub(super) const CANVAS_TOOLBAR_HEIGHT: f32 = 44.0;
 pub(super) const CANVAS_NODE_HEADER_HEIGHT: f32 = 34.0;
 pub(super) const CANVAS_NODE_GUTTER: f32 = 28.0;
+#[cfg(test)]
 pub(super) const CANVAS_V1_SUPPORTED_NODE_COUNT: usize = 20;
+#[cfg(test)]
 pub(super) const CANVAS_V1_SUPPORTED_EDGE_COUNT: usize = 40;
 const CANVAS_PLACEMENT_STEP_X: f32 = CANVAS_DEFAULT_NODE_WIDTH + CANVAS_NODE_GUTTER;
 const CANVAS_PLACEMENT_STEP_Y: f32 = CANVAS_DEFAULT_NODE_HEIGHT + CANVAS_NODE_GUTTER;
