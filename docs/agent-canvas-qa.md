@@ -10,7 +10,7 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Pass | No formatting differences. |
 | `cargo check -q` | Pass | Existing macOS `objc` cfg and dead-code warnings remain. |
-| `cargo test -q` | Pass | 292 passed, 0 failed, 3 ignored in 59.82s with Docker-backed tests exercised. |
+| `cargo test -q` | Pass | 294 passed, 0 failed, 3 ignored in 62.68s with Docker-backed tests exercised. |
 | Agent adapter focused tests | Pass | Local and remote Codex fake app-server, Claude/Gemini stream fixtures, literal arguments, cancellation, malformed data, and remote exit-status ordering. |
 | Worktree integration tests | Pass | Real temporary Git repositories cover create, status, dirty refusal, committed refusal, and path boundaries. |
 | Canvas capacity test | Pass | 20 nodes, 40 edges, finite fit geometry and supported zoom. |
@@ -62,6 +62,10 @@ so no screenshot or automated click-through is claimed.
 - Node titles normalize predictably, link enable/delete actions preserve nodes,
   and canvas/node mouse ownership prevents terminal clicks from panning the
   background.
+- Node headers expose location and lifecycle text, classify actionable
+  attention states, and keep drag handling on the title/status region. A
+  rendered GPUI click test verifies the More menu opens and closes without the
+  action being intercepted as a node drag.
 - Entering Split with more than four sessions preserves hidden live sessions;
   a hidden-session Canvas tab cannot be merged into another Split and orphan
   those sessions. Active terminal closure uses a rendered confirmation flow.
