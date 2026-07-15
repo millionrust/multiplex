@@ -10,14 +10,14 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Pass | No formatting differences. |
 | `cargo check -q` | Pass | Existing macOS `objc` cfg and dead-code warnings remain. |
-| `cargo test -q` | Pass | 295 passed, 0 failed, 3 ignored in 58.21s with Docker-backed tests exercised. |
+| `cargo test -q` | Pass | 296 passed, 0 failed, 3 ignored in 69.93s with Docker-backed tests exercised. |
 | Agent adapter focused tests | Pass | Local and remote Codex fake app-server, Claude/Gemini stream fixtures, literal arguments, cancellation, malformed data, and remote exit-status ordering. |
 | Worktree integration tests | Pass | Real temporary Git repositories cover create, status, dirty refusal, committed refusal, and path boundaries. |
 | Canvas capacity test | Pass | 20 nodes, 40 edges, finite fit geometry and supported zoom. |
 | `cargo clippy --all-targets` | Pass with warnings | Repository reports existing warnings. |
 | `cargo clippy --all-targets -- -D warnings` | Blocked | 121 existing warnings include old `objc` cfg macros and unrelated UI lints; not changed in this feature. |
 | `git diff --check` | Pass | No whitespace errors. |
-| Development artifact storage | Pass | After `cargo clean` removed 21.6 GiB, non-incremental symbol-free development/test profiles rebuilt the full suite into a 1.5 GiB `target/`; guarded verification finished with 19 GiB free. |
+| Development artifact storage | Pass | After `cargo clean` removed 21.6 GiB, non-incremental symbol-free development/test profiles rebuilt the full suite into a 1.7 GiB `target/`; guarded verification finished with 18 GiB free. |
 
 Docker Desktop 29.5.3 was available for the final run. All three
 `docker_ssh_persistent_tmux` tests exercised real SSH containers and passed in
@@ -75,6 +75,10 @@ so no screenshot or automated click-through is claimed.
   cancellation, Shift-PageUp/PageDown scrollback, and xterm mouse-report bytes.
   A zoom test changes the Canvas from 0.5 to 2.0, verifies the computed grid
   grows, and confirms both resize commands inside the child PTY with `stty size`.
+- Rendered GPUI input tests send a wheel event through the terminal surface and
+  verify scrollback changes without moving the Canvas. A rendered resize-handle
+  drag grows the node, updates live terminal rows and columns, and persists the
+  new geometry.
 - Entering Split with more than four sessions preserves hidden live sessions;
   a hidden-session Canvas tab cannot be merged into another Split and orphan
   those sessions. Active terminal closure uses a rendered confirmation flow.
@@ -136,9 +140,9 @@ reattach, and a second SSH client attached to the same session.
 These checks require a human-visible app, provider accounts, hardware, or remote
 hosts and were not claimed by automation:
 
-- human-visible drag, resize-handle, pointer selection/copy, mouse-wheel
-  scrollback, xterm mouse application, and guarded-paste behavior at multiple
-  zoom levels;
+- human-visible pointer selection/copy, xterm mouse application, and the visual
+  feel of drag, resize, wheel scrollback, and guarded paste at multiple zoom
+  levels;
 - restart and visual restore of a populated canvas;
 - eight simultaneously active output-producing panes and Retina/multi-monitor
   responsiveness;
