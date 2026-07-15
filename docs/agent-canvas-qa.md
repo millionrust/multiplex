@@ -10,7 +10,7 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Pass | No formatting differences. |
 | `cargo check -q` | Pass | Existing macOS `objc` cfg and dead-code warnings remain. |
-| `cargo test -q` | Pass | 249 passed, 0 failed, 0 ignored in 16.53s. |
+| `cargo test -q` | Pass | 250 passed, 0 failed, 0 ignored in 18.78s. |
 | Agent adapter focused tests | Pass | Codex fake app-server, Claude/Gemini stream fixtures, literal argument child, cancellation, malformed data. |
 | Worktree integration tests | Pass | Real temporary Git repositories cover create, status, dirty refusal, committed refusal, and path boundaries. |
 | Canvas capacity test | Pass | 20 nodes, 40 edges, finite fit geometry and supported zoom. |
@@ -38,7 +38,8 @@ so no screenshot or automated click-through is claimed.
 - Invalid geometry, duplicate IDs, dangling edges, and dependency cycles repair
   or reject deterministically.
 - Pan/zoom transforms, cursor anchoring, placement, fit, minimum resize, and
-  stable restore mapping are unit tested.
+  stable restore mapping are unit tested. Keyboard node selection cycles and
+  wraps in both directions.
 - Local and SSH canvas nodes reuse `SessionPane` requests and persistence.
 - Interactive launch arguments remain literal locally and quoted at the one SSH
   shell boundary; unsafe provider bypass flags are rejected.

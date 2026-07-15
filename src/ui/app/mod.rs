@@ -9312,6 +9312,10 @@ impl TermiRustApp {
             return false;
         }
 
+        if self.handle_canvas_key(event, window, cx) {
+            return true;
+        }
+
         if event.keystroke.key.as_str() == "escape" {
             if self.tab_rename_workspace_id.is_some() {
                 self.cancel_workspace_rename(window, cx);

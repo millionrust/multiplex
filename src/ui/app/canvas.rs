@@ -3,9 +3,9 @@ use std::collections::{HashMap, HashSet};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, ClipboardItem, Context, CursorStyle, Div, InteractiveElement as _,
-    IntoElement, MouseButton, MouseDownEvent, ParentElement, PathBuilder, Point, ScrollWheelEvent,
-    SharedString, StatefulInteractiveElement as _, Styled, Window, canvas as paint_canvas, div,
-    point, px,
+    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, ParentElement, PathBuilder, Point,
+    ScrollWheelEvent, SharedString, StatefulInteractiveElement as _, Styled, Window,
+    canvas as paint_canvas, div, point, px,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
@@ -647,6 +647,22 @@ impl CanvasWorkspaceState {
         self.next_z_index = self.next_z_index.saturating_add(1);
     }
 
+    pub(super) fn select_adjacent_node(&mut self, delta: isize) -> Option<CanvasNodeId> {
+        if self.nodes.is_empty() {
+            self.selected_node_id = None;
+            return None;
+        }
+        let current = self
+            .selected_node_id
+            .as_ref()
+            .and_then(|selected| self.nodes.iter().position(|node| &node.id == selected))
+            .unwrap_or_else(|| if delta < 0 { 0 } else { self.nodes.len() - 1 });
+        let next = (current as isize + delta).rem_euclid(self.nodes.len() as isize) as usize;
+        let node_id = self.nodes[next].id.clone();
+        self.select_and_raise(&node_id);
+        Some(node_id)
+    }
+
     pub(super) fn node_at_screen(&self, point: CanvasPoint) -> Option<&CanvasNode> {
         self.nodes
             .iter()
@@ -819,6 +835,45 @@ fn point_from_pixels(position: Point<gpui::Pixels>) -> CanvasPoint {
 }
 
 impl TermiRustApp {
+    pub(super) fn handle_canvas_key(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let is_canvas = self
+            .active_workspace()
+            .is_some_and(|workspace| workspace.layout_mode == WorkspaceLayoutMode::Canvas);
+        if !is_canvas || !event.keystroke.modifiers.secondary() || !event.keystroke.modifiers.shift
+        {
+            return false;
+        }
+        let delta = match event.keystroke.key.as_str() {
+            "left" | "up" => -1,
+            "right" | "down" => 1,
+            _ => return false,
+        };
+        let selected = self
+            .active_workspace_mut()
+            .and_then(|workspace| workspace.canvas.select_adjacent_node(delta));
+        let pane_id = selected.as_ref().and_then(|node_id| {
+            self.active_workspace()
+                .and_then(|workspace| workspace.canvas.node(node_id))
+                .and_then(|node| node.kind.pane_id())
+        });
+        if let Some(pane_id) = pane_id {
+            if let Some(workspace) = self.active_workspace_mut() {
+                workspace.active_pane_id = pane_id;
+            }
+            if let Some(pane) = self.pane(pane_id) {
+                pane.terminal_focus.focus(window);
+            }
+        }
+        self.persist_runtime_state();
+        cx.notify();
+        selected.is_some()
+    }
+
     pub(super) fn set_workspace_layout_mode(
         &mut self,
         mode: WorkspaceLayoutMode,
@@ -4310,6 +4365,29 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("cycle")
+        );
+    }
+
+    #[test]
+    fn keyboard_selection_cycles_canvas_nodes_in_both_directions() {
+        let mut canvas = CanvasWorkspaceState {
+            nodes: vec![
+                terminal_node("a", 1, 0.0, 0.0),
+                terminal_node("b", 2, 800.0, 0.0),
+                terminal_node("c", 3, 1600.0, 0.0),
+            ],
+            ..CanvasWorkspaceState::default()
+        };
+
+        assert_eq!(canvas.select_adjacent_node(1), Some(CanvasNodeId::new("a")));
+        assert_eq!(canvas.select_adjacent_node(1), Some(CanvasNodeId::new("b")));
+        assert_eq!(
+            canvas.select_adjacent_node(-1),
+            Some(CanvasNodeId::new("a"))
+        );
+        assert_eq!(
+            canvas.select_adjacent_node(-1),
+            Some(CanvasNodeId::new("c"))
         );
     }
 

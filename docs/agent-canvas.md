@@ -13,6 +13,9 @@ SSH, restore, and tmux runtimes; changing layout does not reconnect a pane.
 4. Drag a node by its header. Drag its lower-right handle to resize it.
 5. Pan empty space and use the zoom and fit buttons in the canvas toolbar.
 
+Use `Cmd+Shift+Arrow` on macOS (the platform secondary modifier elsewhere) to
+cycle node selection without consuming ordinary terminal arrow keys.
+
 Node positions, sizes, collapsed state, links, and viewport are persisted with
 the workspace. A restored structured node does not silently launch a process;
 select `Restart` inside that node.
