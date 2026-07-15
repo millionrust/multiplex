@@ -1529,13 +1529,17 @@ impl TermiRustApp {
         cx.notify();
     }
 
-    fn activate_canvas_node(
+    pub(super) fn activate_canvas_node(
         &mut self,
         workspace_id: u64,
         node_id: CanvasNodeId,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let completes_dependency = self
+            .pending_dependency_source
+            .as_ref()
+            .is_some_and(|source| source != &node_id);
         let pane_id = self
             .workspace(workspace_id)
             .and_then(|workspace| workspace.canvas.node(&node_id))
@@ -1548,6 +1552,10 @@ impl TermiRustApp {
         }
         if let Some(pane) = pane_id.and_then(|pane_id| self.pane(pane_id)) {
             pane.terminal_focus.focus(window);
+        }
+        if completes_dependency {
+            self.link_canvas_dependency(node_id, cx);
+            return;
         }
         self.persist_runtime_state();
         cx.notify();
@@ -2863,6 +2871,13 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn cancel_canvas_dependency_link(&mut self, cx: &mut Context<Self>) {
+        self.pending_dependency_source = None;
+        self.status_message = "Dependency creation cancelled.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn stop_active_workspace_orchestration(&mut self) -> bool {
         let Some(workspace_id) = self.active_workspace_id else {
             return false;
@@ -3925,10 +3940,28 @@ impl TermiRustApp {
         cx.notify();
     }
 
-    fn render_canvas_node_menu(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_canvas_node_menu(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let Some(node_id) = self.canvas_node_menu_id.clone() else {
             return div().into_any_element();
         };
+        let Some(node) = self.active_workspace().and_then(|workspace| {
+            workspace
+                .canvas
+                .node(&node_id)
+                .map(|node| (workspace, node))
+        }) else {
+            return div().into_any_element();
+        };
+        let screen = canvas_node_render_rect(node.0.canvas.transform, node.1);
+        let viewport_width = f32::from(window.viewport_size().width);
+        let menu_width = 300.0;
+        let menu_gap = 8.0;
+        let menu_x = if screen.x + screen.width + menu_gap + menu_width <= viewport_width - 12.0 {
+            screen.x + screen.width + menu_gap
+        } else {
+            (screen.x - menu_width - menu_gap).max(12.0)
+        };
+        let menu_y = screen.y.max(12.0);
         let label = self.canvas_node_label(&node_id);
         let rename_id = node_id.clone();
         let dependency_id = node_id.clone();
@@ -3937,8 +3970,8 @@ impl TermiRustApp {
         v_flex()
             .id("canvas-node-menu")
             .absolute()
-            .top(px(12.0))
-            .right(px(12.0))
+            .top(px(menu_y))
+            .left(px(menu_x))
             .w(px(300.0))
             .max_w(relative(0.9))
             .overflow_hidden()
@@ -3947,6 +3980,9 @@ impl TermiRustApp {
             .border_color(theme::border_dark())
             .bg(theme::library_card())
             .shadow_lg()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                cx.stop_propagation();
+            })
             .child(
                 h_flex()
                     .h(px(40.0))
@@ -3974,6 +4010,7 @@ impl TermiRustApp {
                             .icon(IconName::Close)
                             .tooltip("Close menu")
                             .on_click(cx.listener(|this, _, _, cx| {
+                                cx.stop_propagation();
                                 this.canvas_node_menu_id = None;
                                 cx.notify();
                             })),
@@ -3990,17 +4027,20 @@ impl TermiRustApp {
                             .icon(IconName::ALargeSmall)
                             .label("Rename")
                             .on_click(cx.listener(move |this, _, window, cx| {
+                                cx.stop_propagation();
                                 this.canvas_node_menu_id = None;
                                 this.start_canvas_node_rename(rename_id.clone(), window, cx);
                             })),
                     )
                     .child(
                         Button::new("canvas-node-menu-dependency")
+                            .debug_selector(|| "canvas-node-menu-dependency".to_string())
                             .small()
                             .ghost()
                             .icon(IconName::Building2)
                             .label("Create dependency link")
                             .on_click(cx.listener(move |this, _, _, cx| {
+                                cx.stop_propagation();
                                 this.canvas_node_menu_id = None;
                                 this.link_canvas_dependency(dependency_id.clone(), cx);
                             })),
@@ -4012,6 +4052,7 @@ impl TermiRustApp {
                             .icon(IconName::Eye)
                             .label("Review incoming context")
                             .on_click(cx.listener(move |this, _, window, cx| {
+                                cx.stop_propagation();
                                 this.canvas_node_menu_id = None;
                                 if let Some(workspace) = this.active_workspace_mut() {
                                     workspace.canvas.select_and_raise(&review_id);
@@ -4026,6 +4067,7 @@ impl TermiRustApp {
                             .icon(IconName::Inspector)
                             .label("View workspace links")
                             .on_click(cx.listener(|this, _, _, cx| {
+                                cx.stop_propagation();
                                 this.canvas_node_menu_id = None;
                                 this.toggle_canvas_links(cx);
                             })),
@@ -4828,6 +4870,7 @@ impl TermiRustApp {
         };
         let screen = canvas_node_render_rect(workspace.canvas.transform, node);
         let selected = workspace.canvas.selected_node_id.as_ref() == Some(&node.id);
+        let dependency_source = self.pending_dependency_source.as_ref() == Some(&node.id);
         let node_id = node.id.clone();
         let pane_id = node.kind.pane_id();
         let title = node
@@ -4882,10 +4925,12 @@ impl TermiRustApp {
             .overflow_hidden()
             .rounded(px(7.0))
             .border_1()
-            .border_color(if selected {
+            .border_color(if dependency_source {
+                theme::warning()
+            } else if selected {
                 theme::focus_ring()
             } else {
-                theme::border_dark()
+                theme::border()
             })
             .bg(theme::terminal_panel())
             .on_mouse_down(
@@ -6004,7 +6049,60 @@ impl TermiRustApp {
             body = body.child(self.render_agent_creation_panel(cx));
         }
         if self.canvas_node_menu_id.is_some() {
-            body = body.child(self.render_canvas_node_menu(cx));
+            body = body.child(self.render_canvas_node_menu(window, cx));
+        }
+        if let Some(source) = self.pending_dependency_source.as_ref() {
+            let source_label = self.canvas_node_label(source);
+            body = body.child(
+                h_flex()
+                    .id("canvas-dependency-target-prompt")
+                    .absolute()
+                    .top(px(12.0))
+                    .left(px(12.0))
+                    .max_w(relative(0.8))
+                    .px_3()
+                    .py_2()
+                    .gap_3()
+                    .items_center()
+                    .rounded(px(7.0))
+                    .border_1()
+                    .border_color(theme::warning())
+                    .bg(theme::library_card())
+                    .shadow_lg()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                        cx.stop_propagation();
+                    })
+                    .child(
+                        v_flex()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child("Choose the next agent"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme::text_muted())
+                                    .child(format!(
+                                        "{source_label} will run first. Click the agent that should run after it."
+                                    )),
+                            ),
+                    )
+                    .child(
+                        Button::new("canvas-dependency-target-cancel")
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Cancel dependency creation")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                cx.stop_propagation();
+                                this.cancel_canvas_dependency_link(cx);
+                            })),
+                    ),
+            );
         }
         if self.context_handoff_review.is_some() {
             body = body.child(self.render_context_handoff_review(cx));

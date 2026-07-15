@@ -11718,6 +11718,86 @@ mod tests {
     }
 
     #[gpui::test]
+    fn canvas_dependency_action_selects_source_and_target_click_creates_edge(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (workspace_id, source_id, target_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let (workspace_id, _) = app
+                        .open_request_workspace(request, window, cx)
+                        .expect("local workspace should open");
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    let workspace = app
+                        .active_workspace_mut()
+                        .expect("active canvas workspace should exist");
+                    workspace.canvas.transform = crate::ui::app::canvas::CanvasTransform::default();
+                    let source_id = workspace.canvas.nodes[0].id.clone();
+                    workspace.canvas.nodes[0].rect.x = 100.0;
+                    workspace.canvas.nodes[0].rect.y = 100.0;
+                    let target_id = workspace.canvas.add_agent_node(
+                        None,
+                        crate::models::SavedAgentDefinition::default(),
+                        crate::ui::app::canvas::CanvasPoint::new(800.0, 100.0),
+                    );
+                    cx.notify();
+                    (workspace_id, source_id, target_id)
+                })
+            })
+            .expect("window update should succeed");
+
+        let more = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("canvas-node-more-{}", source_id.as_str()),
+        );
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(more, gpui::Modifiers::none());
+        let dependency = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-node-menu-dependency",
+            Duration::from_secs(2),
+        );
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(dependency, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.pending_dependency_source.as_ref(), Some(&source_id));
+            assert!(app.canvas_node_menu_id.is_none());
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_canvas_node(workspace_id, target_id.clone(), window, cx);
+                })
+            })
+            .expect("target activation should succeed");
+        app.read_with(cx, |app, _| {
+            let workspace = app
+                .active_workspace()
+                .expect("active canvas workspace should remain available");
+            assert!(app.pending_dependency_source.is_none());
+            assert!(workspace.canvas.edges.iter().any(|edge| {
+                edge.source == source_id
+                    && edge.target == target_id
+                    && edge.kind == crate::models::CanvasEdgeKind::Dependency
+            }));
+            assert_eq!(app.status_message, "Dependency created.");
+        });
+    }
+
+    #[gpui::test]
     fn e2e_canvas_resize_handle_updates_node_and_terminal_size(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
