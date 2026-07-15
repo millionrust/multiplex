@@ -2,22 +2,33 @@ use std::collections::{HashMap, HashSet};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, Context, CursorStyle, Div, InteractiveElement as _, IntoElement, MouseButton,
+    AnyElement, App, Context, CursorStyle, Div, InteractiveElement as _, IntoElement, MouseButton,
     MouseDownEvent, ParentElement, PathBuilder, Point, ScrollWheelEvent, SharedString,
     StatefulInteractiveElement as _, Styled, Window, canvas as paint_canvas, div, point, px,
 };
 use gpui_component::button::{Button, ButtonVariants};
+use gpui_component::input::Input;
 use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::models::{
-    AuthConfig, AuthMode, CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CANVAS_MAX_ZOOM,
-    CANVAS_MIN_NODE_HEIGHT, CANVAS_MIN_NODE_WIDTH, CANVAS_MIN_ZOOM, CanvasEdgeId, CanvasEdgeKind,
-    CanvasNodeId, ConnectRequest, ConnectionKind, HostProfile, SavedAgentDefinition,
+    AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AuthConfig, AuthMode,
+    CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CANVAS_MAX_ZOOM, CANVAS_MIN_NODE_HEIGHT,
+    CANVAS_MIN_NODE_WIDTH, CANVAS_MIN_ZOOM, CanvasEdgeId, CanvasEdgeKind, CanvasNodeId,
+    ConnectRequest, ConnectionKind, HostProfile, LocalShellConfig, SavedAgentDefinition,
     SavedCanvasEdge, SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState, SavedCanvasViewport,
-    WorkspaceLayoutMode, default_persistent_session_name_from_id,
+    SavedWorktreePolicy, WorkspaceLayoutMode, default_persistent_session_name_from_id,
 };
 use crate::ui::app::{TermiRustApp, WorkspaceViewMode};
+use crate::ui::shell::shell_single_quote;
 use crate::ui::theme;
+use crate::{
+    agents::{
+        AgentExecutableStatus, build_interactive_launch_spec, build_remote_interactive_arguments,
+        create_managed_worktree, detect_agent_executable, provider_descriptor,
+    },
+    storage::managed_agent_worktree_dir,
+    ui::util::current_unix_millis,
+};
 
 pub(super) const CANVAS_TOOLBAR_HEIGHT: f32 = 44.0;
 pub(super) const CANVAS_NODE_HEADER_HEIGHT: f32 = 34.0;
@@ -25,6 +36,12 @@ pub(super) const CANVAS_NODE_GUTTER: f32 = 28.0;
 const CANVAS_PLACEMENT_STEP_X: f32 = CANVAS_DEFAULT_NODE_WIDTH + CANVAS_NODE_GUTTER;
 const CANVAS_PLACEMENT_STEP_Y: f32 = CANVAS_DEFAULT_NODE_HEIGHT + CANVAS_NODE_GUTTER;
 const CANVAS_FIT_PADDING: f32 = 48.0;
+
+#[derive(Clone, Debug)]
+pub(super) struct AgentCreationState {
+    definition: SavedAgentDefinition,
+    executable_status: AgentExecutableStatus,
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(super) struct CanvasPoint {
@@ -357,6 +374,40 @@ impl CanvasWorkspaceState {
             },
             z_index: self.next_z_index,
             title: None,
+            collapsed: false,
+        });
+        self.next_z_index = self.next_z_index.saturating_add(1);
+        id
+    }
+
+    pub(super) fn add_agent_node(
+        &mut self,
+        pane_id: u64,
+        definition: SavedAgentDefinition,
+        viewport_center: CanvasPoint,
+    ) -> CanvasNodeId {
+        let id = unique_node_id(&self.nodes, format!("agent-node-{pane_id}"));
+        let position = find_non_overlapping_position(
+            &self.nodes,
+            CANVAS_DEFAULT_NODE_WIDTH,
+            CANVAS_DEFAULT_NODE_HEIGHT,
+            viewport_center,
+        );
+        let title = Some(definition.provider.label().to_string());
+        self.nodes.push(CanvasNode {
+            id: id.clone(),
+            kind: CanvasNodeKind::Agent {
+                pane_id: Some(pane_id),
+                definition,
+            },
+            rect: CanvasRect {
+                x: position.x,
+                y: position.y,
+                width: CANVAS_DEFAULT_NODE_WIDTH,
+                height: CANVAS_DEFAULT_NODE_HEIGHT,
+            },
+            z_index: self.next_z_index,
+            title,
             collapsed: false,
         });
         self.next_z_index = self.next_z_index.saturating_add(1);
@@ -886,6 +937,7 @@ impl TermiRustApp {
     fn add_request_to_canvas(
         &mut self,
         mut request: ConnectRequest,
+        agent_definition: Option<SavedAgentDefinition>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<u64> {
@@ -910,7 +962,13 @@ impl TermiRustApp {
             let world_center = workspace.canvas.transform.screen_to_world(screen_center);
             workspace.pane_ids.push(pane_id);
             workspace.active_pane_id = pane_id;
-            let node_id = workspace.canvas.add_terminal_node(pane_id, world_center);
+            let node_id = if let Some(definition) = agent_definition {
+                workspace
+                    .canvas
+                    .add_agent_node(pane_id, definition, world_center)
+            } else {
+                workspace.canvas.add_terminal_node(pane_id, world_center)
+            };
             workspace.canvas.select_and_raise(&node_id);
         }
         self.sync_terminal_layout(window, cx);
@@ -927,7 +985,10 @@ impl TermiRustApp {
             0,
             self.saved.settings.default_local_shell.clone(),
         );
-        if self.add_request_to_canvas(request, window, cx).is_none() {
+        if self
+            .add_request_to_canvas(request, None, window, cx)
+            .is_none()
+        {
             self.open_local_terminal(window, cx);
             return;
         }
@@ -1024,13 +1085,399 @@ impl TermiRustApp {
                 return;
             }
         };
-        if self.add_request_to_canvas(request, window, cx).is_none() {
+        if self
+            .add_request_to_canvas(request, None, window, cx)
+            .is_none()
+        {
             self.error_message = "Open a Canvas workspace before adding a saved host.".to_string();
             cx.notify();
             return;
         }
         self.canvas_add_menu_open = false;
         self.status_message = format!("Connecting to {} on the canvas...", profile.display_name());
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn default_agent_working_directory(&self) -> String {
+        self.active_workspace()
+            .and_then(|workspace| self.pane(workspace.active_pane_id))
+            .and_then(|pane| {
+                pane.request
+                    .local_shell
+                    .as_ref()
+                    .and_then(|shell| shell.cwd.clone())
+                    .or_else(|| pane.request.startup_directory.clone())
+            })
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .map(|path| path.display().to_string())
+            })
+            .unwrap_or_default()
+    }
+
+    pub(super) fn open_agent_creation(
+        &mut self,
+        provider: AgentProvider,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let working_directory = self.default_agent_working_directory();
+        let definition = SavedAgentDefinition {
+            provider,
+            backend: AgentBackendKind::InteractivePty,
+            location: AgentLocation::Local,
+            working_directory: (!working_directory.is_empty()).then_some(working_directory.clone()),
+            executable_override: None,
+            arguments: Vec::new(),
+            permission_policy: AgentPermissionPolicy::ProviderDefault,
+            worktree: SavedWorktreePolicy::Isolated,
+            managed_worktree: None,
+        };
+        Self::set_input_value(
+            &self.shell_inputs.agent_working_directory,
+            working_directory,
+            window,
+            cx,
+        );
+        Self::set_input_value(&self.shell_inputs.agent_executable, "", window, cx);
+        Self::set_input_value(&self.shell_inputs.agent_arguments, "", window, cx);
+        Self::set_input_value(&self.shell_inputs.agent_initial_prompt, "", window, cx);
+        let executable_status = detect_agent_executable(&definition);
+        self.agent_creation = Some(AgentCreationState {
+            definition,
+            executable_status,
+        });
+        self.canvas_add_menu_open = false;
+        cx.notify();
+    }
+
+    fn set_agent_creation_provider(
+        &mut self,
+        provider: AgentProvider,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(mut state) = self.agent_creation.take() else {
+            return;
+        };
+        state.definition.provider = provider;
+        state.definition.executable_override = None;
+        Self::set_input_value(&self.shell_inputs.agent_executable, "", window, cx);
+        state.executable_status = detect_agent_executable(&state.definition);
+        self.agent_creation = Some(state);
+        cx.notify();
+    }
+
+    fn set_agent_creation_location(&mut self, location: AgentLocation, cx: &mut Context<Self>) {
+        if let Some(state) = self.agent_creation.as_mut() {
+            state.definition.location = location;
+        }
+        cx.notify();
+    }
+
+    fn set_agent_permission_policy(
+        &mut self,
+        policy: AgentPermissionPolicy,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(state) = self.agent_creation.as_mut() {
+            state.definition.permission_policy = policy;
+        }
+        cx.notify();
+    }
+
+    pub(super) fn set_agent_worktree_policy(
+        &mut self,
+        policy: SavedWorktreePolicy,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(state) = self.agent_creation.as_mut() {
+            state.definition.worktree = policy;
+        }
+        cx.notify();
+    }
+
+    fn sync_agent_definition_from_inputs(&self, definition: &mut SavedAgentDefinition, cx: &App) {
+        let working_directory = self
+            .shell_inputs
+            .agent_working_directory
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        definition.working_directory = (!working_directory.is_empty()).then_some(working_directory);
+        let executable = self
+            .shell_inputs
+            .agent_executable
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        definition.executable_override = (!executable.is_empty()).then_some(executable);
+        definition.arguments = self
+            .shell_inputs
+            .agent_arguments
+            .read(cx)
+            .value()
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(ToString::to_string)
+            .collect();
+    }
+
+    fn check_agent_executable(&mut self, cx: &mut Context<Self>) {
+        let Some(mut state) = self.agent_creation.take() else {
+            return;
+        };
+        self.sync_agent_definition_from_inputs(&mut state.definition, cx);
+        state.executable_status = detect_agent_executable(&state.definition);
+        self.agent_creation = Some(state);
+        cx.notify();
+    }
+
+    fn append_initial_prompt(
+        provider: AgentProvider,
+        arguments: &mut Vec<String>,
+        prompt: &str,
+    ) -> anyhow::Result<()> {
+        if prompt.trim().is_empty() {
+            return Ok(());
+        }
+        match provider {
+            AgentProvider::Codex | AgentProvider::ClaudeCode => {
+                arguments.push(prompt.to_string());
+            }
+            AgentProvider::Gemini => {
+                arguments.push("--prompt-interactive".to_string());
+                arguments.push(prompt.to_string());
+            }
+            AgentProvider::CustomCli => anyhow::bail!(
+                "Launch the Custom CLI first, then send its initial prompt in the terminal. TermiRust does not guess a custom prompt flag."
+            ),
+            AgentProvider::GroqApi => anyhow::bail!("Groq API agents are not available yet"),
+        }
+        Ok(())
+    }
+
+    fn remote_agent_startup_script(
+        definition: &SavedAgentDefinition,
+        initial_prompt: &str,
+    ) -> anyhow::Result<String> {
+        let descriptor = provider_descriptor(definition.provider);
+        let executable = definition
+            .executable_override
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .or(descriptor.executable)
+            .ok_or_else(|| anyhow::anyhow!("Choose an executable for this agent"))?;
+        let mut arguments = build_remote_interactive_arguments(definition)?;
+        Self::append_initial_prompt(definition.provider, &mut arguments, initial_prompt)?;
+        let mut command = shell_single_quote(executable);
+        for argument in &arguments {
+            command.push(' ');
+            command.push_str(&shell_single_quote(argument));
+        }
+        Ok(format!(
+            "if command -v {executable} >/dev/null 2>&1; then exec {command}; else printf '%s\\n' {guidance} >&2; exec \"${{SHELL:-/bin/sh}}\"; fi",
+            executable = shell_single_quote(executable),
+            guidance = shell_single_quote(descriptor.install_guidance),
+        ))
+    }
+
+    pub(super) fn launch_agent_creation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(mut state) = self.agent_creation.take() else {
+            return;
+        };
+        self.sync_agent_definition_from_inputs(&mut state.definition, cx);
+        let initial_prompt = self
+            .shell_inputs
+            .agent_initial_prompt
+            .read(cx)
+            .value()
+            .to_string();
+        let mut definition = state.definition.clone();
+        if definition.worktree == SavedWorktreePolicy::ReadOnly {
+            definition.permission_policy = AgentPermissionPolicy::ReadOnly;
+        }
+
+        let request = match &definition.location {
+            AgentLocation::Local => {
+                let mut launch = match build_interactive_launch_spec(&definition) {
+                    Ok(launch) => launch,
+                    Err(error) => {
+                        state.executable_status = detect_agent_executable(&definition);
+                        self.agent_creation = Some(state);
+                        self.error_message = error.to_string();
+                        cx.notify();
+                        return;
+                    }
+                };
+                if definition.worktree == SavedWorktreePolicy::Isolated {
+                    let Some(source_directory) = launch.working_directory.as_deref() else {
+                        self.agent_creation = Some(state);
+                        self.error_message =
+                            "Choose a Git repository before creating an isolated worktree."
+                                .to_string();
+                        cx.notify();
+                        return;
+                    };
+                    let managed_root = match managed_agent_worktree_dir() {
+                        Ok(path) => path,
+                        Err(error) => {
+                            self.agent_creation = Some(state);
+                            self.error_message = error.to_string();
+                            cx.notify();
+                            return;
+                        }
+                    };
+                    let managed = match create_managed_worktree(
+                        source_directory,
+                        &managed_root,
+                        &format!("{}", current_unix_millis()),
+                        definition.provider.label(),
+                    ) {
+                        Ok(worktree) => worktree,
+                        Err(error) => {
+                            self.agent_creation = Some(state);
+                            self.error_message = error.to_string();
+                            cx.notify();
+                            return;
+                        }
+                    };
+                    definition.working_directory = Some(managed.path.clone());
+                    definition.managed_worktree = Some(managed);
+                    launch = match build_interactive_launch_spec(&definition) {
+                        Ok(launch) => launch,
+                        Err(error) => {
+                            self.agent_creation = Some(state);
+                            self.error_message = format!(
+                                "The isolated worktree was kept, but the agent could not launch: {error}"
+                            );
+                            cx.notify();
+                            return;
+                        }
+                    };
+                }
+                let arguments_result: anyhow::Result<Vec<String>> = launch
+                    .arguments
+                    .drain(..)
+                    .map(|argument| {
+                        argument.into_string().map_err(|_| {
+                            anyhow::anyhow!("Agent argument contains unsupported non-UTF-8 data")
+                        })
+                    })
+                    .collect();
+                let mut arguments = match arguments_result {
+                    Ok(arguments) => arguments,
+                    Err(error) => {
+                        self.agent_creation = Some(state);
+                        self.error_message = error.to_string();
+                        cx.notify();
+                        return;
+                    }
+                };
+                if let Err(error) = Self::append_initial_prompt(
+                    definition.provider,
+                    &mut arguments,
+                    &initial_prompt,
+                ) {
+                    self.agent_creation = Some(state);
+                    self.error_message = error.to_string();
+                    cx.notify();
+                    return;
+                }
+                let Some(program) = launch.executable.to_str().map(ToString::to_string) else {
+                    self.agent_creation = Some(state);
+                    self.error_message = "Agent executable path is not valid UTF-8.".to_string();
+                    cx.notify();
+                    return;
+                };
+                ConnectRequest::local_shell_with_config(
+                    0,
+                    LocalShellConfig {
+                        program,
+                        args: arguments,
+                        cwd: launch
+                            .working_directory
+                            .map(|path| path.display().to_string()),
+                    },
+                )
+            }
+            AgentLocation::SavedHost { profile_id } => {
+                if definition.worktree == SavedWorktreePolicy::Isolated {
+                    self.agent_creation = Some(state);
+                    self.error_message = "Remote worktree creation is not automatic. Choose Shared directory or Read only for this host.".to_string();
+                    cx.notify();
+                    return;
+                }
+                let Some(profile) = self
+                    .saved
+                    .profiles
+                    .iter()
+                    .find(|profile| &profile.id == profile_id)
+                    .cloned()
+                else {
+                    self.agent_creation = Some(state);
+                    self.error_message = "The selected remote host no longer exists.".to_string();
+                    cx.notify();
+                    return;
+                };
+                let mut request = match self.connect_request_for_saved_canvas_host(&profile) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        self.agent_creation = Some(state);
+                        self.error_message = error.to_string();
+                        cx.notify();
+                        return;
+                    }
+                };
+                request.title = format!(
+                    "{} on {}",
+                    definition.provider.label(),
+                    profile.display_name()
+                );
+                request.startup_directory = definition.working_directory.clone();
+                request.startup_command =
+                    match Self::remote_agent_startup_script(&definition, &initial_prompt) {
+                        Ok(command) => Some(command),
+                        Err(error) => {
+                            self.agent_creation = Some(state);
+                            self.error_message = error.to_string();
+                            cx.notify();
+                            return;
+                        }
+                    };
+                if request.persistent_session {
+                    request.persistent_session_name = Some(format!(
+                        "tr-agent-{}-{}",
+                        definition
+                            .provider
+                            .label()
+                            .to_ascii_lowercase()
+                            .replace(' ', "-"),
+                        current_unix_millis()
+                    ));
+                    request.persistent_session_detach_others = false;
+                }
+                request
+            }
+        };
+
+        let mut request = request;
+        request.title = definition.provider.label().to_string();
+        if self
+            .add_request_to_canvas(request, Some(definition.clone()), window, cx)
+            .is_none()
+        {
+            self.agent_creation = Some(state);
+            self.error_message = "Open a Canvas workspace before launching an agent.".to_string();
+            cx.notify();
+            return;
+        }
+        self.canvas_add_menu_open = false;
+        self.status_message = format!("Launching {}...", definition.provider.label());
         self.error_message.clear();
         cx.notify();
     }
@@ -1101,6 +1548,37 @@ impl TermiRustApp {
                                 this.add_local_terminal_to_canvas(window, cx);
                             })),
                     )
+                    .child(
+                        div()
+                            .px_2()
+                            .pt_2()
+                            .pb_1()
+                            .text_size(px(10.0))
+                            .font_semibold()
+                            .text_color(theme::text_muted())
+                            .child("CODING AGENTS"),
+                    )
+                    .children(
+                        [
+                            AgentProvider::Codex,
+                            AgentProvider::ClaudeCode,
+                            AgentProvider::Gemini,
+                            AgentProvider::CustomCli,
+                        ]
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, provider)| {
+                            Button::new(("canvas-add-agent", index))
+                                .small()
+                                .w_full()
+                                .justify_start()
+                                .icon(IconName::Bot)
+                                .label(provider.label())
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.open_agent_creation(provider, window, cx);
+                                }))
+                        }),
+                    )
                     .when(!profiles.is_empty(), |list| {
                         list.child(
                             div()
@@ -1129,6 +1607,345 @@ impl TermiRustApp {
                                 this.add_saved_host_to_canvas(&profile_id, window, cx);
                             }))
                     })),
+            )
+            .into_any_element()
+    }
+
+    fn render_agent_creation_panel(&self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(state) = self.agent_creation.as_ref() else {
+            return div().into_any_element();
+        };
+        let provider = state.definition.provider;
+        let location = state.definition.location.clone();
+        let permission_policy = state.definition.permission_policy;
+        let worktree_policy = state.definition.worktree;
+        let local_status = match &state.executable_status {
+            AgentExecutableStatus::Available { path, version } => format!(
+                "Available: {}{}",
+                path.display(),
+                version
+                    .as_ref()
+                    .map(|version| format!(" ({version})"))
+                    .unwrap_or_default()
+            ),
+            AgentExecutableStatus::Missing {
+                requested,
+                guidance,
+            } => {
+                if requested.is_empty() {
+                    (*guidance).to_string()
+                } else {
+                    format!("Not found: {}. {guidance}", requested.to_string_lossy())
+                }
+            }
+        };
+        let status_text = if matches!(location, AgentLocation::Local) {
+            local_status
+        } else {
+            "The executable is checked on the remote host when the SSH session opens.".to_string()
+        };
+        let profiles = self.saved.profiles.clone();
+
+        v_flex()
+            .id("agent-creation-panel")
+            .absolute()
+            .top(px(10.0))
+            .left(px(12.0))
+            .w(px(520.0))
+            .max_h(px(680.0))
+            .overflow_hidden()
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(theme::border_dark())
+            .bg(theme::library_card())
+            .shadow_lg()
+            .child(
+                h_flex()
+                    .h(px(44.0))
+                    .px_3()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                Icon::new(IconName::Bot)
+                                    .size(px(15.0))
+                                    .text_color(theme::accent()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child("New agent"),
+                            ),
+                    )
+                    .child(
+                        Button::new("agent-creation-close")
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Close")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.agent_creation = None;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .id("agent-creation-scroll")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .p_3()
+                    .gap_3()
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_semibold()
+                                    .text_color(theme::text_muted())
+                                    .child("Provider"),
+                            )
+                            .child(
+                                h_flex().gap_1().children(
+                                    [
+                                        AgentProvider::Codex,
+                                        AgentProvider::ClaudeCode,
+                                        AgentProvider::Gemini,
+                                        AgentProvider::CustomCli,
+                                    ]
+                                    .into_iter()
+                                    .enumerate()
+                                    .map(|(index, item)| {
+                                        Button::new(("agent-provider", index))
+                                            .xsmall()
+                                            .custom(Self::segmented_button_style(
+                                                provider == item,
+                                                cx,
+                                            ))
+                                            .label(item.label())
+                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                                this.set_agent_creation_provider(item, window, cx);
+                                            }))
+                                    }),
+                                ),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_semibold()
+                                    .text_color(theme::text_muted())
+                                    .child("Runs on"),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_1()
+                                    .child(
+                                        Button::new("agent-location-local")
+                                            .xsmall()
+                                            .custom(Self::segmented_button_style(
+                                                matches!(location, AgentLocation::Local),
+                                                cx,
+                                            ))
+                                            .label("Local")
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.set_agent_creation_location(
+                                                    AgentLocation::Local,
+                                                    cx,
+                                                );
+                                            })),
+                                    )
+                                    .children(profiles.iter().enumerate().map(
+                                        |(index, profile)| {
+                                            let profile_id = profile.id.clone();
+                                            let active = matches!(
+                                                &location,
+                                                AgentLocation::SavedHost { profile_id: selected }
+                                                    if selected == &profile.id
+                                            );
+                                            Button::new(("agent-location-host", index))
+                                                .xsmall()
+                                                .custom(Self::segmented_button_style(active, cx))
+                                                .label(profile.display_name())
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.set_agent_creation_location(
+                                                        AgentLocation::SavedHost {
+                                                            profile_id: profile_id.clone(),
+                                                        },
+                                                        cx,
+                                                    );
+                                                }))
+                                        },
+                                    )),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_semibold()
+                                    .text_color(theme::text_muted())
+                                    .child("Working directory"),
+                            )
+                            .child(Input::new(&self.shell_inputs.agent_working_directory).small()),
+                    )
+                    .when(provider == AgentProvider::CustomCli, |form| {
+                        form.child(
+                            v_flex()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .text_size(px(11.0))
+                                        .font_semibold()
+                                        .text_color(theme::text_muted())
+                                        .child("Executable"),
+                                )
+                                .child(Input::new(&self.shell_inputs.agent_executable).small()),
+                        )
+                    })
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_semibold()
+                                    .text_color(theme::text_muted())
+                                    .child("Arguments"),
+                            )
+                            .child(Input::new(&self.shell_inputs.agent_arguments)),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_semibold()
+                                    .text_color(theme::text_muted())
+                                    .child("Initial prompt"),
+                            )
+                            .child(Input::new(&self.shell_inputs.agent_initial_prompt)),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_semibold()
+                                    .text_color(theme::text_muted())
+                                    .child("Permission policy"),
+                            )
+                            .child(
+                                h_flex().gap_1().children(
+                                    [
+                                        (AgentPermissionPolicy::ProviderDefault, "Ask as needed"),
+                                        (AgentPermissionPolicy::ReadOnly, "Read only"),
+                                        (AgentPermissionPolicy::WorkspaceWrite, "Workspace write"),
+                                    ]
+                                    .into_iter()
+                                    .enumerate()
+                                    .map(
+                                        |(index, (policy, label))| {
+                                            Button::new(("agent-permission", index))
+                                                .xsmall()
+                                                .custom(Self::segmented_button_style(
+                                                    permission_policy == policy,
+                                                    cx,
+                                                ))
+                                                .label(label)
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.set_agent_permission_policy(policy, cx);
+                                                }))
+                                        },
+                                    ),
+                                ),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(11.0))
+                                    .font_semibold()
+                                    .text_color(theme::text_muted())
+                                    .child("Repository isolation"),
+                            )
+                            .child(
+                                h_flex().gap_1().children(
+                                    [
+                                        (SavedWorktreePolicy::Isolated, "Isolated worktree"),
+                                        (SavedWorktreePolicy::SharedDirectory, "Shared directory"),
+                                        (SavedWorktreePolicy::ReadOnly, "Read only"),
+                                    ]
+                                    .into_iter()
+                                    .enumerate()
+                                    .map(
+                                        |(index, (policy, label))| {
+                                            Button::new(("agent-worktree", index))
+                                                .xsmall()
+                                                .custom(Self::segmented_button_style(
+                                                    worktree_policy == policy,
+                                                    cx,
+                                                ))
+                                                .label(label)
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.set_agent_worktree_policy(policy, cx);
+                                                }))
+                                        },
+                                    ),
+                                ),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_size(px(10.0))
+                                    .text_color(theme::text_muted())
+                                    .child(status_text),
+                            )
+                            .child(
+                                Button::new("agent-check-executable")
+                                    .xsmall()
+                                    .ghost()
+                                    .label("Check again")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.check_agent_executable(cx);
+                                    })),
+                            ),
+                    )
+                    .child(
+                        h_flex().justify_end().child(
+                            Button::new("agent-launch")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                                .icon(IconName::ArrowRight)
+                                .label("Launch Agent")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.launch_agent_creation(window, cx);
+                                })),
+                        ),
+                    ),
             )
             .into_any_element()
     }
@@ -1524,6 +2341,9 @@ impl TermiRustApp {
 
         if self.canvas_add_menu_open {
             body = body.child(self.render_canvas_add_menu(cx));
+        }
+        if self.agent_creation.is_some() {
+            body = body.child(self.render_agent_creation_panel(cx));
         }
 
         v_flex()

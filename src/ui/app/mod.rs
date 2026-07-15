@@ -16,7 +16,8 @@ pub(crate) use types::{
 };
 
 use canvas::{
-    CANVAS_NODE_HEADER_HEIGHT, CANVAS_TOOLBAR_HEIGHT, CanvasInteraction, CanvasWorkspaceState,
+    AgentCreationState, CANVAS_NODE_HEADER_HEIGHT, CANVAS_TOOLBAR_HEIGHT, CanvasInteraction,
+    CanvasWorkspaceState,
 };
 use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
@@ -286,6 +287,10 @@ struct ShellInputs {
     bulk_group: Entity<InputState>,
     terminal_search: Entity<InputState>,
     command_palette: Entity<InputState>,
+    agent_working_directory: Entity<InputState>,
+    agent_executable: Entity<InputState>,
+    agent_arguments: Entity<InputState>,
+    agent_initial_prompt: Entity<InputState>,
 }
 
 struct SnippetInputs {
@@ -411,6 +416,24 @@ impl ShellInputs {
                 .new(|cx| InputState::new(window, cx).placeholder("Search terminal output")),
             command_palette: cx.new(|cx| {
                 InputState::new(window, cx).placeholder("Run command, snippet, or recent task")
+            }),
+            agent_working_directory: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Repository or working directory")
+            }),
+            agent_executable: cx.new(|cx| {
+                InputState::new(window, cx).placeholder("Executable path or command name")
+            }),
+            agent_arguments: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .multi_line(true)
+                    .auto_grow(2, 5)
+                    .placeholder("One argument per line")
+            }),
+            agent_initial_prompt: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .multi_line(true)
+                    .auto_grow(3, 8)
+                    .placeholder("Optional initial prompt")
             }),
         }
     }
@@ -887,6 +910,7 @@ pub struct TermiRustApp {
     divider_drag: Option<DividerDrag>,
     canvas_interaction: Option<CanvasInteraction>,
     canvas_add_menu_open: bool,
+    agent_creation: Option<AgentCreationState>,
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
     open_workspace_tab_menu: Option<u64>,
@@ -1024,6 +1048,7 @@ impl TermiRustApp {
             divider_drag: None,
             canvas_interaction: None,
             canvas_add_menu_open: false,
+            agent_creation: None,
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
             open_workspace_tab_menu: None,
@@ -9683,11 +9708,12 @@ mod tests {
     };
     use crate::credentials;
     use crate::models::{
-        AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
-        HostColorTag, HostProfile, IdentitySource, JumpHostConnection, LocalPortForward,
-        LocalShellConfig, PortForwardKind, PortForwardRule, ProfileSource, RestorableAuth,
-        RestorableConnection, SavedHostGroup, SavedIdentity, SavedSnippet, SavedSplitNode,
-        SavedState, SavedWorkspace, SplitAxis, ThemePreset, VaultMemberRole, WorkspaceLayoutMode,
+        AgentProvider, AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID,
+        DraftProfile, HostColorTag, HostProfile, IdentitySource, JumpHostConnection,
+        LocalPortForward, LocalShellConfig, PortForwardKind, PortForwardRule, ProfileSource,
+        RestorableAuth, RestorableConnection, SavedHostGroup, SavedIdentity, SavedSnippet,
+        SavedSplitNode, SavedState, SavedWorkspace, SavedWorktreePolicy, SplitAxis, ThemePreset,
+        VaultMemberRole, WorkspaceLayoutMode,
     };
     use crate::sftp::RemoteFileEntry;
     use crate::storage::load_saved_state;
@@ -9704,6 +9730,7 @@ mod tests {
         size,
     };
     use gpui_component::Root;
+    use std::fs;
     use std::path::Path;
     use std::time::{Duration, Instant};
     use vt100::MouseProtocolMode;
@@ -11232,6 +11259,115 @@ mod tests {
                 Some(AuthConfig::PrivateKey { key_path, passphrase: None })
                     if key_path == "/tmp/key with spaces"
             ));
+        });
+    }
+
+    #[gpui::test]
+    #[cfg(unix)]
+    fn canvas_launches_custom_agent_with_literal_arguments_in_existing_workspace(
+        cx: &mut TestAppContext,
+    ) {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let _isolation = TestIsolation::acquire();
+        let fixture_directory = std::env::temp_dir().join(format!(
+            "termirust custom agent {}",
+            crate::ui::util::current_unix_millis()
+        ));
+        fs::create_dir_all(&fixture_directory).unwrap();
+        let executable = fixture_directory.join("custom agent");
+        fs::write(
+            &executable,
+            "#!/bin/sh\nprintf 'agent-pwd:%s\\n' \"$PWD\"\nfor value in \"$@\"; do printf 'agent-arg:%s\\n' \"$value\"; done\nexec /bin/sh\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+        let injection_marker = fixture_directory.join("must-not-exist");
+
+        let (app, window) = open_test_app(cx);
+        let local_request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(fixture_directory.display().to_string()),
+            },
+        );
+        let (workspace_id, local_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(local_request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    app.open_agent_creation(AgentProvider::CustomCli, window, cx);
+                    app.set_agent_worktree_policy(SavedWorktreePolicy::SharedDirectory, cx);
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.agent_executable,
+                        executable.display().to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.agent_working_directory,
+                        fixture_directory.display().to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.agent_arguments,
+                        format!(
+                            "argument with spaces\n$(touch {})\nsingle'quote",
+                            injection_marker.display()
+                        ),
+                        window,
+                        cx,
+                    );
+                    app.launch_agent_creation(window, cx);
+                })
+            })
+            .expect("agent launch should succeed");
+
+        let agent_pane_id = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            let agent_pane_id = workspace
+                .pane_ids
+                .iter()
+                .copied()
+                .find(|pane_id| *pane_id != local_pane_id)?;
+            let rows = app.pane(agent_pane_id)?.terminal.all_rows_text();
+            (rows
+                .iter()
+                .any(|row| row.contains("agent-arg:argument with spaces"))
+                && rows
+                    .iter()
+                    .any(|row| row.contains("agent-arg:single'quote")))
+            .then_some(agent_pane_id)
+        });
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            let agent_node = workspace
+                .canvas
+                .nodes
+                .iter()
+                .find(|node| node.kind.pane_id() == Some(agent_pane_id))
+                .expect("agent node should exist");
+            assert!(matches!(
+                &agent_node.kind,
+                crate::ui::app::canvas::CanvasNodeKind::Agent { definition, .. }
+                    if definition.provider == AgentProvider::CustomCli
+                        && definition.arguments[0] == "argument with spaces"
+            ));
+            assert!(!injection_marker.exists());
         });
     }
 
