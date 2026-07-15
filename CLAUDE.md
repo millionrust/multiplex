@@ -32,6 +32,14 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
   - xterm mouse reporting for terminal apps that enable it
   - configurable terminal font size and font family
 - Persistent session history with timestamps and duration in the Logs view; host cards surface a relative "Last connected" badge.
+- Per-workspace Split or Agent Canvas layout. Canvas mode places existing local
+  and SSH terminals plus interactive or structured coding agents in persisted,
+  draggable, resizable nodes with reviewed context links and bounded dependency
+  orchestration.
+- Local Codex, Claude Code, and Gemini structured jobs normalize provider events;
+  interactive remote agents reuse saved SSH and tmux settings.
+- Write-capable local coding agents default to app-managed Git worktrees with
+  conservative status inspection and clean-only removal.
 - Settings view for appearance theme, terminal font, default local shell, workspace restore, history limits, and import/export.
 - TOFU known-host pinning; Known Hosts view supports deleting pinned host keys.
 - Keychain view shows imported key type, public key availability, and an "Add Key File" picker.
@@ -56,6 +64,10 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
   - [workspace.rs](src/ui/app/workspace.rs) — terminal pane rendering, split layout, SFTP files view.
   - [editor.rs](src/ui/app/editor.rs) / [hosts.rs](src/ui/app/hosts.rs) / [library.rs](src/ui/app/library.rs) — host editor and library.
   - [connect.rs](src/ui/app/connect.rs) / [sftp.rs](src/ui/app/sftp.rs) / [palette.rs](src/ui/app/palette.rs) / [overlay.rs](src/ui/app/overlay.rs) / [types.rs](src/ui/app/types.rs).
+  - [canvas.rs](src/ui/app/canvas.rs) — canvas geometry, interaction, terminal and
+    agent nodes, links, worktree controls, and orchestration UI.
+- `src/agents/` — safe process launch, normalized protocols, provider adapters,
+  context redaction, worktree ownership, and dependency scheduling.
 - [src/ui/theme.rs](src/ui/theme.rs)
   - App color system and layout constants.
 - [src/terminal.rs](src/terminal.rs)

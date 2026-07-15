@@ -21,6 +21,15 @@ The terminal itself does VT100 rendering, scrollback, in-terminal search, text s
 
 Other things worth knowing about:
 
+- Every workspace can switch between the recursive Split layout and a persisted
+  Agent Canvas containing local terminals, saved SSH hosts, and coding-agent
+  nodes. See [docs/agent-canvas.md](docs/agent-canvas.md).
+- Codex, Claude Code, Gemini CLI, and safe custom executables can run as normal
+  interactive terminal nodes. Local Codex, Claude, and Gemini also have
+  structured modes for explicit status, cancellation, approvals, reviewed
+  context handoff, and bounded dependency runs.
+- Write-capable local agents default to separate app-managed Git worktrees.
+  Cleanup refuses active, dirty, or committed worktrees.
 - Your user SSH config and key directory are imported automatically at launch, so your servers should already be there when you first open it.
 - Workspace tabs are draggable. You can reorder them.
 - Hosts can be starred, organized into groups, and surfaced in the library by priority.
