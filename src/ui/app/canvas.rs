@@ -286,6 +286,16 @@ fn canvas_reveal_delta(
     )
 }
 
+fn agent_state_needs_attention(state: AgentRunState) -> bool {
+    matches!(
+        state,
+        AgentRunState::WaitingForApproval
+            | AgentRunState::Blocked
+            | AgentRunState::Failed
+            | AgentRunState::Disconnected
+    )
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct CanvasTransform {
     pub pan_x: f32,
@@ -1023,6 +1033,7 @@ impl TermiRustApp {
         });
         self.canvas_add_menu_open = false;
         self.canvas_links_open = false;
+        self.canvas_node_menu_id = None;
         self.worktree_manager_open = false;
         self.context_handoff_review = None;
         self.pending_canvas_pane_close = None;
@@ -1423,6 +1434,7 @@ impl TermiRustApp {
         workspace.layout_mode = mode;
         workspace.view_mode = WorkspaceViewMode::Terminal;
         self.canvas_interaction = None;
+        self.canvas_node_menu_id = None;
         self.error_message.clear();
         self.persist_runtime_state();
         self.sync_terminal_layout(window, cx);
@@ -1445,13 +1457,16 @@ impl TermiRustApp {
         if workspace.canvas.node_at_screen(local).is_some() {
             return;
         }
+        let workspace_id = workspace.id;
+        let start_pan = CanvasPoint::new(
+            workspace.canvas.transform.pan_x,
+            workspace.canvas.transform.pan_y,
+        );
+        self.canvas_node_menu_id = None;
         self.canvas_interaction = Some(CanvasInteraction::Pan {
-            workspace_id: workspace.id,
+            workspace_id,
             start: point_from_pixels(event.position),
-            start_pan: CanvasPoint::new(
-                workspace.canvas.transform.pan_x,
-                workspace.canvas.transform.pan_y,
-            ),
+            start_pan,
         });
         cx.notify();
     }
@@ -3202,6 +3217,7 @@ impl TermiRustApp {
         self.canvas_add_menu_open = !self.canvas_add_menu_open;
         if self.canvas_add_menu_open {
             self.canvas_links_open = false;
+            self.canvas_node_menu_id = None;
             self.worktree_manager_open = false;
             self.context_handoff_review = None;
             self.pending_tmux_close = None;
@@ -3735,6 +3751,7 @@ impl TermiRustApp {
         if self.worktree_manager_open {
             self.canvas_add_menu_open = false;
             self.canvas_links_open = false;
+            self.canvas_node_menu_id = None;
             self.agent_creation = None;
             self.context_handoff_review = None;
             self.pending_tmux_close = None;
@@ -3748,9 +3765,31 @@ impl TermiRustApp {
         self.canvas_links_open = !self.canvas_links_open;
         if self.canvas_links_open {
             self.canvas_add_menu_open = false;
+            self.canvas_node_menu_id = None;
             self.agent_creation = None;
             self.context_handoff_review = None;
             self.worktree_manager_open = false;
+            self.pending_tmux_close = None;
+            self.pending_canvas_pane_close = None;
+            self.split_pane_chooser = None;
+        }
+        cx.notify();
+    }
+
+    pub(super) fn toggle_canvas_node_menu(
+        &mut self,
+        node_id: CanvasNodeId,
+        cx: &mut Context<Self>,
+    ) {
+        if self.canvas_node_menu_id.as_ref() == Some(&node_id) {
+            self.canvas_node_menu_id = None;
+        } else {
+            self.canvas_node_menu_id = Some(node_id);
+            self.canvas_add_menu_open = false;
+            self.canvas_links_open = false;
+            self.worktree_manager_open = false;
+            self.agent_creation = None;
+            self.context_handoff_review = None;
             self.pending_tmux_close = None;
             self.pending_canvas_pane_close = None;
             self.split_pane_chooser = None;
@@ -3854,6 +3893,115 @@ impl TermiRustApp {
         };
         self.error_message.clear();
         cx.notify();
+    }
+
+    fn render_canvas_node_menu(&self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(node_id) = self.canvas_node_menu_id.clone() else {
+            return div().into_any_element();
+        };
+        let label = self.canvas_node_label(&node_id);
+        let rename_id = node_id.clone();
+        let dependency_id = node_id.clone();
+        let review_id = node_id.clone();
+
+        v_flex()
+            .id("canvas-node-menu")
+            .absolute()
+            .top(px(12.0))
+            .right(px(12.0))
+            .w(px(300.0))
+            .max_w(relative(0.9))
+            .overflow_hidden()
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(theme::border_dark())
+            .bg(theme::library_card())
+            .shadow_lg()
+            .child(
+                h_flex()
+                    .h(px(40.0))
+                    .px_3()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        div()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_ellipsis()
+                            .text_size(px(12.0))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child(label),
+                    )
+                    .child(
+                        Button::new("canvas-node-menu-close")
+                            .debug_selector(|| "canvas-node-menu-close".to_string())
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Close menu")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.canvas_node_menu_id = None;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .p_2()
+                    .gap_1()
+                    .child(
+                        Button::new("canvas-node-menu-rename")
+                            .small()
+                            .ghost()
+                            .icon(IconName::ALargeSmall)
+                            .label("Rename")
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.canvas_node_menu_id = None;
+                                this.start_canvas_node_rename(rename_id.clone(), window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-node-menu-dependency")
+                            .small()
+                            .ghost()
+                            .icon(IconName::Building2)
+                            .label("Create dependency link")
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.canvas_node_menu_id = None;
+                                this.link_canvas_dependency(dependency_id.clone(), cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-node-menu-review-context")
+                            .small()
+                            .ghost()
+                            .icon(IconName::Eye)
+                            .label("Review incoming context")
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.canvas_node_menu_id = None;
+                                if let Some(workspace) = this.active_workspace_mut() {
+                                    workspace.canvas.select_and_raise(&review_id);
+                                }
+                                this.open_context_review_for_selected(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-node-menu-view-links")
+                            .small()
+                            .ghost()
+                            .icon(IconName::Inspector)
+                            .label("View workspace links")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.canvas_node_menu_id = None;
+                                this.toggle_canvas_links(cx);
+                            })),
+                    ),
+            )
+            .into_any_element()
     }
 
     fn render_canvas_links(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -4588,6 +4736,31 @@ impl TermiRustApp {
         .into_any_element()
     }
 
+    pub(super) fn canvas_node_location_label(&self, node: &CanvasNode) -> String {
+        match &node.kind {
+            CanvasNodeKind::Terminal { pane_id } => self
+                .pane(*pane_id)
+                .map(|pane| {
+                    if pane.request.is_local_shell() {
+                        "Local".to_string()
+                    } else {
+                        pane.request.host.clone()
+                    }
+                })
+                .unwrap_or_else(|| "Unavailable".to_string()),
+            CanvasNodeKind::Agent { definition, .. } => match &definition.location {
+                AgentLocation::Local => "Local".to_string(),
+                AgentLocation::SavedHost { profile_id } => self
+                    .saved
+                    .profiles
+                    .iter()
+                    .find(|profile| &profile.id == profile_id)
+                    .map(HostProfile::display_name)
+                    .unwrap_or_else(|| "Saved host unavailable".to_string()),
+            },
+        }
+    }
+
     fn render_canvas_node(
         &self,
         workspace_id: u64,
@@ -4607,19 +4780,31 @@ impl TermiRustApp {
             .clone()
             .or_else(|| pane_id.and_then(|id| self.pane(id).map(|pane| pane.title.clone())))
             .unwrap_or_else(|| "Agent".to_string());
-        let subtitle = self
+        let location = self.canvas_node_location_label(node);
+        let (status, needs_attention) = self
             .structured_agents
             .get(&node.id)
-            .map(|runtime| runtime.state.label().to_string())
-            .or_else(|| {
-                pane_id
-                    .and_then(|id| self.pane(id))
-                    .map(|pane| pane.status.clone())
+            .map(|runtime| {
+                (
+                    runtime.state.label().to_string(),
+                    agent_state_needs_attention(runtime.state),
+                )
             })
-            .unwrap_or_else(|| "Idle".to_string());
+            .or_else(|| {
+                pane_id.and_then(|id| self.pane(id)).map(|pane| {
+                    (
+                        pane.status.clone(),
+                        pane.status == "Error"
+                            || (!pane.connected && pane.closed && !pane.user_closed),
+                    )
+                })
+            })
+            .unwrap_or_else(|| ("Idle".to_string(), false));
+        let subtitle = format!("{location} / {status}");
         let header_node_id = node_id.clone();
         let link_node_id = node_id.clone();
-        let dependency_node_id = node_id.clone();
+        let more_node_id = node_id.clone();
+        let more_selector = format!("canvas-node-more-{}", more_node_id.as_str());
         let collapse_node_id = node_id.clone();
         let resize_node_id = node_id.clone();
         let rename_node_id = node_id.clone();
@@ -4698,6 +4883,7 @@ impl TermiRustApp {
                     )
                     .child(
                         h_flex()
+                            .flex_1()
                             .min_w_0()
                             .gap_2()
                             .items_center()
@@ -4731,10 +4917,21 @@ impl TermiRustApp {
                             })
                             .child(
                                 div()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .whitespace_nowrap()
+                                    .text_ellipsis()
                                     .text_size(px(10.0))
                                     .text_color(theme::text_muted_dark())
                                     .child(subtitle),
-                            ),
+                            )
+                            .when(needs_attention, |header| {
+                                header.child(
+                                    Icon::new(IconName::TriangleAlert)
+                                        .size(px(12.0))
+                                        .text_color(theme::warning()),
+                                )
+                            }),
                     )
                     .child(
                         h_flex()
@@ -4783,20 +4980,16 @@ impl TermiRustApp {
                                 )),
                             )
                             .child(
-                                Button::new(SharedString::from(format!(
-                                    "canvas-node-dependency-{}",
-                                    dependency_node_id.as_str()
-                                )))
-                                .xsmall()
-                                .ghost()
-                                .icon(IconName::Building2)
-                                .tooltip("Use as dependency source or target")
-                                .on_click(cx.listener(
-                                    move |this, _, _, cx| {
+                                Button::new(SharedString::from(more_selector.clone()))
+                                    .debug_selector(move || more_selector.clone())
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::Ellipsis)
+                                    .tooltip("More node actions")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
                                         cx.stop_propagation();
-                                        this.link_canvas_dependency(dependency_node_id.clone(), cx);
-                                    },
-                                )),
+                                        this.toggle_canvas_node_menu(more_node_id.clone(), cx);
+                                    })),
                             ),
                     )
                     .when_some(close_pane_id, |header, pane_id| {
@@ -5672,6 +5865,7 @@ impl TermiRustApp {
                 cx.listener(|this, _, _, cx| {
                     this.canvas_add_menu_open = true;
                     this.canvas_links_open = false;
+                    this.canvas_node_menu_id = None;
                     this.worktree_manager_open = false;
                     this.context_handoff_review = None;
                     this.pending_tmux_close = None;
@@ -5732,6 +5926,9 @@ impl TermiRustApp {
         }
         if self.agent_creation.is_some() {
             body = body.child(self.render_agent_creation_panel(cx));
+        }
+        if self.canvas_node_menu_id.is_some() {
+            body = body.child(self.render_canvas_node_menu(cx));
         }
         if self.context_handoff_review.is_some() {
             body = body.child(self.render_context_handoff_review(cx));
@@ -5807,8 +6004,9 @@ mod tests {
     use super::{
         AgentRunState, CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CanvasNode,
         CanvasNodeKind, CanvasPoint, CanvasRect, CanvasTransform, CanvasWorkspaceState,
-        TermiRustApp, agent_state_after_queue, canvas_node_render_rect, canvas_orchestration_scope,
-        canvas_rect_is_visible, canvas_reveal_delta, find_non_overlapping_position, fit_transform,
+        TermiRustApp, agent_state_after_queue, agent_state_needs_attention,
+        canvas_node_render_rect, canvas_orchestration_scope, canvas_rect_is_visible,
+        canvas_reveal_delta, find_non_overlapping_position, fit_transform,
     };
     use crate::models::{
         AgentProvider, CanvasNodeId, SavedAgentDefinition, SavedCanvasState, SavedWorktreePolicy,
@@ -5944,6 +6142,27 @@ mod tests {
             ),
             CanvasPoint::new(0.0, 0.0)
         );
+    }
+
+    #[test]
+    fn only_actionable_agent_states_request_header_attention() {
+        for state in [
+            AgentRunState::WaitingForApproval,
+            AgentRunState::Blocked,
+            AgentRunState::Failed,
+            AgentRunState::Disconnected,
+        ] {
+            assert!(agent_state_needs_attention(state));
+        }
+        for state in [
+            AgentRunState::Idle,
+            AgentRunState::Starting,
+            AgentRunState::Running,
+            AgentRunState::Succeeded,
+            AgentRunState::Cancelled,
+        ] {
+            assert!(!agent_state_needs_attention(state));
+        }
     }
 
     #[test]

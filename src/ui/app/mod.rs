@@ -922,6 +922,7 @@ pub struct TermiRustApp {
     canvas_interaction: Option<CanvasInteraction>,
     canvas_add_menu_open: bool,
     canvas_links_open: bool,
+    canvas_node_menu_id: Option<crate::models::CanvasNodeId>,
     worktree_manager_open: bool,
     agent_creation: Option<AgentCreationState>,
     structured_agents: HashMap<crate::models::CanvasNodeId, StructuredAgentRuntime>,
@@ -1072,6 +1073,7 @@ impl TermiRustApp {
             canvas_interaction: None,
             canvas_add_menu_open: false,
             canvas_links_open: false,
+            canvas_node_menu_id: None,
             worktree_manager_open: false,
             agent_creation: None,
             structured_agents: HashMap::new(),
@@ -11510,6 +11512,56 @@ mod tests {
     }
 
     #[gpui::test]
+    fn canvas_node_more_menu_opens_and_closes_from_rendered_controls(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let node_id = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open");
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    app.active_workspace()
+                        .and_then(|workspace| workspace.canvas.nodes.first())
+                        .map(|node| node.id.clone())
+                        .expect("canvas node should exist")
+                })
+            })
+            .expect("window update should succeed");
+
+        let _more = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("canvas-node-more-{}", node_id.as_str()),
+        );
+        app.update(cx, |app, cx| {
+            app.toggle_canvas_node_menu(node_id.clone(), cx);
+        });
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.canvas_node_menu_id.as_ref(), Some(&node_id));
+        });
+        let close = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-node-menu-close",
+            Duration::from_secs(2),
+        );
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(close, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            assert!(app.canvas_node_menu_id.is_none());
+        });
+    }
+
+    #[gpui::test]
     fn canvas_active_terminal_close_requires_visible_confirmation(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
@@ -11687,6 +11739,8 @@ mod tests {
                 .iter()
                 .find(|node| node.kind.pane_id() == Some(ssh_pane_id))
                 .expect("SSH canvas node should exist");
+            assert_eq!(app.canvas_node_location_label(local_node), "Local");
+            assert_eq!(app.canvas_node_location_label(ssh_node), server.host());
             let error = app
                 .ensure_same_execution_host(&local_node.id, &ssh_node.id)
                 .expect_err("cross-host canvas actions must be refused");
