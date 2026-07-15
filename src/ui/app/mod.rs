@@ -12487,6 +12487,73 @@ sleep 1
                 } if definition.backend == AgentBackendKind::Structured
             ));
         });
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| app.fit_canvas(window, cx));
+            })
+            .expect("canvas fit should succeed");
+        let long_output = (0..80)
+            .map(|line| format!("follow line {line}\n"))
+            .collect::<String>();
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| {
+                    let runtime = app
+                        .structured_agents
+                        .get_mut(&node_id)
+                        .expect("structured runtime should exist");
+                    runtime.push_text(&long_output);
+                    cx.notify();
+                });
+            })
+            .expect("transcript update should succeed");
+        wait_for_app_state(cx, &app, Duration::from_secs(5), |app| {
+            let runtime = app.structured_agents.get(&node_id)?;
+            let max_scroll: f32 = runtime.transcript_scroll.max_offset().height.into();
+            let offset: f32 = runtime.transcript_scroll.offset().y.into();
+            (max_scroll > 0.0 && (offset + max_scroll).abs() < 1.0).then_some(())
+        });
+
+        let transcript_bounds = dynamic_selector_bounds(
+            window,
+            cx,
+            format!("structured-transcript-{}", node_id.as_str()),
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_event(ScrollWheelEvent {
+            position: transcript_bounds.center(),
+            delta: gpui::ScrollDelta::Pixels(point(px(0.0), px(80.0))),
+            ..Default::default()
+        });
+        visual.run_until_parked();
+        app.read_with(cx, |app, _| {
+            assert!(!app.structured_agents[&node_id].follow_transcript);
+        });
+
+        let latest_click = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("structured-latest-{}", node_id.as_str()),
+        );
+        visual.simulate_click(latest_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+        app.read_with(cx, |app, _| {
+            assert!(app.structured_agents[&node_id].follow_transcript);
+        });
+
+        let copy_click = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("structured-copy-{}", node_id.as_str()),
+        );
+        visual.simulate_click(copy_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+        let copied = cx
+            .read_from_clipboard()
+            .and_then(|item| item.text())
+            .expect("agent output should be copied");
+        assert!(copied.contains("structured response"));
+        assert!(copied.contains("follow line 79"));
 
         let workspace_id = app.read_with(cx, |app, _| {
             app.active_workspace_id.expect("workspace should be active")
