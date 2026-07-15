@@ -15,10 +15,12 @@ use gpui_component::{Disableable as _, Icon, IconName, Sizable, StyledExt as _, 
 use crate::agents::{
     AgentApprovalRequest, AgentEvent, AgentExecutableStatus, AgentRole, AgentRunState,
     CodexSessionConfig, CodexSessionHandle, HeadlessSessionConfig, HeadlessSessionHandle,
+    RemoteCodexSessionConfig, RemoteHeadlessSessionConfig, RemoteHeadlessSessionHandle,
     SchedulableAgent, build_agent_context_handoff, build_context_handoff,
     build_interactive_launch_spec, build_remote_interactive_arguments, create_managed_worktree,
     detect_agent_executable, managed_worktree_status, provider_descriptor, remove_managed_worktree,
     schedule_dependency_dag, spawn_codex_session, spawn_headless_session,
+    spawn_remote_codex_session, spawn_remote_headless_session,
 };
 use crate::models::{
     AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AuthConfig, AuthMode,
@@ -83,6 +85,7 @@ pub(super) struct SplitPaneChooser {
 pub(super) enum StructuredAgentHandle {
     Codex(CodexSessionHandle),
     Headless(HeadlessSessionHandle),
+    RemoteHeadless(RemoteHeadlessSessionHandle),
 }
 
 impl StructuredAgentHandle {
@@ -90,6 +93,7 @@ impl StructuredAgentHandle {
         match self {
             Self::Codex(handle) => handle.event_rx.try_recv(),
             Self::Headless(handle) => handle.event_rx.try_recv(),
+            Self::RemoteHeadless(handle) => handle.event_rx.try_recv(),
         }
     }
 
@@ -97,6 +101,7 @@ impl StructuredAgentHandle {
         match self {
             Self::Codex(handle) => handle.send_prompt(prompt),
             Self::Headless(handle) => handle.send_prompt(prompt),
+            Self::RemoteHeadless(handle) => handle.send_prompt(prompt),
         }
     }
 
@@ -104,13 +109,16 @@ impl StructuredAgentHandle {
         match self {
             Self::Codex(handle) => handle.cancel(),
             Self::Headless(handle) => handle.cancel(),
+            Self::RemoteHeadless(handle) => handle.cancel(),
         }
     }
 
     fn respond_to_approval(&self, request_id: &str, allow: bool) -> anyhow::Result<()> {
         match self {
             Self::Codex(handle) => handle.respond_to_approval(request_id, allow),
-            Self::Headless(_) => anyhow::bail!("This provider did not expose an approval request"),
+            Self::Headless(_) | Self::RemoteHeadless(_) => {
+                anyhow::bail!("This provider did not expose an approval request")
+            }
         }
     }
 }
@@ -1852,9 +1860,18 @@ impl TermiRustApp {
         cx.notify();
     }
 
-    fn set_agent_creation_location(&mut self, location: AgentLocation, cx: &mut Context<Self>) {
+    pub(super) fn set_agent_creation_location(
+        &mut self,
+        location: AgentLocation,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(state) = self.agent_creation.as_mut() {
             state.definition.location = location;
+            if !matches!(state.definition.location, AgentLocation::Local)
+                && state.definition.worktree == SavedWorktreePolicy::Isolated
+            {
+                state.definition.worktree = SavedWorktreePolicy::SharedDirectory;
+            }
         }
         cx.notify();
     }
@@ -1869,15 +1886,6 @@ impl TermiRustApp {
             {
                 self.error_message =
                     "Structured mode is available for Codex, Claude Code, and Gemini CLI."
-                        .to_string();
-                cx.notify();
-                return;
-            }
-            if backend == AgentBackendKind::Structured
-                && !matches!(state.definition.location, AgentLocation::Local)
-            {
-                self.error_message =
-                    "Structured Codex currently runs locally. Use Interactive terminal for SSH hosts."
                         .to_string();
                 cx.notify();
                 return;
@@ -2215,133 +2223,78 @@ impl TermiRustApp {
 
     fn launch_structured_agent_creation(
         &mut self,
-        mut creation: AgentCreationState,
+        creation: AgentCreationState,
         mut definition: SavedAgentDefinition,
         initial_prompt: String,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !matches!(definition.location, AgentLocation::Local) {
-            self.agent_creation = Some(creation);
-            self.error_message = "Structured agents currently run locally.".to_string();
-            cx.notify();
-            return;
-        }
-        let executable = match detect_agent_executable(&definition) {
-            AgentExecutableStatus::Available { path, .. } => path,
-            AgentExecutableStatus::Missing {
-                requested,
-                guidance,
-            } => {
-                self.error_message = format!(
-                    "{} executable '{}' is unavailable. {guidance}",
-                    definition.provider.label(),
-                    requested.to_string_lossy()
-                );
-                creation.executable_status = AgentExecutableStatus::Missing {
-                    requested,
-                    guidance,
-                };
-                self.agent_creation = Some(creation);
-                cx.notify();
-                return;
-            }
-            AgentExecutableStatus::Unusable {
-                path,
-                error,
-                guidance,
-            } => {
-                self.error_message = format!(
-                    "{} was found at {}, but its version check failed: {error}. {guidance}",
-                    definition.provider.label(),
-                    path.display()
-                );
-                creation.executable_status = AgentExecutableStatus::Unusable {
-                    path,
-                    error,
-                    guidance,
-                };
-                self.agent_creation = Some(creation);
-                cx.notify();
-                return;
-            }
-        };
-        let Some(mut working_directory) = definition
-            .working_directory
-            .as_deref()
-            .filter(|path| !path.trim().is_empty())
-            .map(std::path::PathBuf::from)
-        else {
-            self.agent_creation = Some(creation);
-            self.error_message = "Choose a Git repository or working directory.".to_string();
-            cx.notify();
-            return;
-        };
-        if !working_directory.is_dir() {
-            self.agent_creation = Some(creation);
-            self.error_message = format!(
-                "Working directory does not exist: {}",
-                working_directory.display()
-            );
-            cx.notify();
-            return;
-        }
-        if definition.worktree == SavedWorktreePolicy::Isolated {
-            let managed_root = match managed_agent_worktree_dir() {
-                Ok(path) => path,
-                Err(error) => {
+        match &definition.location {
+            AgentLocation::Local => {
+                let Some(working_directory) = definition
+                    .working_directory
+                    .as_deref()
+                    .filter(|path| !path.trim().is_empty())
+                    .map(std::path::PathBuf::from)
+                else {
                     self.agent_creation = Some(creation);
-                    self.error_message = error.to_string();
+                    self.error_message =
+                        "Choose a Git repository or working directory.".to_string();
+                    cx.notify();
+                    return;
+                };
+                if !working_directory.is_dir() {
+                    self.agent_creation = Some(creation);
+                    self.error_message = format!(
+                        "Working directory does not exist: {}",
+                        working_directory.display()
+                    );
                     cx.notify();
                     return;
                 }
-            };
-            let managed = match create_managed_worktree(
-                &working_directory,
-                &managed_root,
-                &format!("{}", current_unix_millis()),
-                definition.provider.label(),
-            ) {
-                Ok(worktree) => worktree,
-                Err(error) => {
-                    self.agent_creation = Some(creation);
-                    self.error_message = error.to_string();
-                    cx.notify();
-                    return;
+                if definition.worktree == SavedWorktreePolicy::Isolated {
+                    let managed_root = match managed_agent_worktree_dir() {
+                        Ok(path) => path,
+                        Err(error) => {
+                            self.agent_creation = Some(creation);
+                            self.error_message = error.to_string();
+                            cx.notify();
+                            return;
+                        }
+                    };
+                    let managed = match create_managed_worktree(
+                        &working_directory,
+                        &managed_root,
+                        &format!("{}", current_unix_millis()),
+                        definition.provider.label(),
+                    ) {
+                        Ok(worktree) => worktree,
+                        Err(error) => {
+                            self.agent_creation = Some(creation);
+                            self.error_message = error.to_string();
+                            cx.notify();
+                            return;
+                        }
+                    };
+                    definition.working_directory = Some(managed.path.clone());
+                    self.saved.register_managed_agent_worktree(managed.clone());
+                    self.persist_runtime_state();
+                    definition.managed_worktree = Some(managed);
                 }
-            };
-            working_directory = std::path::PathBuf::from(&managed.path);
-            definition.working_directory = Some(managed.path.clone());
-            self.saved.register_managed_agent_worktree(managed.clone());
-            self.persist_runtime_state();
-            definition.managed_worktree = Some(managed);
+            }
+            AgentLocation::SavedHost { .. }
+                if definition.worktree == SavedWorktreePolicy::Isolated =>
+            {
+                self.agent_creation = Some(creation);
+                self.error_message = "Automatic isolated worktrees are local-only. Choose Shared directory or Read only for the remote host.".to_string();
+                cx.notify();
+                return;
+            }
+            AgentLocation::SavedHost { .. } => {}
         }
         let initial_prompt = (!initial_prompt.trim().is_empty()).then_some(initial_prompt);
         let context_initial_prompt = initial_prompt.clone();
-        let handle_result = match definition.provider {
-            AgentProvider::Codex => spawn_codex_session(CodexSessionConfig {
-                executable,
-                working_directory,
-                permission_policy: definition.permission_policy,
-                initial_prompt,
-            })
-            .map(StructuredAgentHandle::Codex),
-            AgentProvider::ClaudeCode | AgentProvider::Gemini => {
-                spawn_headless_session(HeadlessSessionConfig {
-                    provider: definition.provider,
-                    executable,
-                    working_directory,
-                    permission_policy: definition.permission_policy,
-                    arguments: definition.arguments.clone(),
-                    initial_prompt,
-                })
-                .map(StructuredAgentHandle::Headless)
-            }
-            AgentProvider::CustomCli | AgentProvider::GroqApi => {
-                Err(anyhow::anyhow!("This provider has no structured adapter"))
-            }
-        };
-        let handle = match handle_result {
+        let handle = match self.start_structured_agent_handle(&definition, initial_prompt) {
             Ok(handle) => handle,
             Err(error) => {
                 self.agent_creation = Some(creation);
@@ -2380,6 +2333,117 @@ impl TermiRustApp {
         self.error_message.clear();
         self.persist_runtime_state();
         cx.notify();
+    }
+
+    fn start_structured_agent_handle(
+        &mut self,
+        definition: &SavedAgentDefinition,
+        initial_prompt: Option<String>,
+    ) -> anyhow::Result<StructuredAgentHandle> {
+        match &definition.location {
+            AgentLocation::Local => {
+                let executable = match detect_agent_executable(definition) {
+                    AgentExecutableStatus::Available { path, .. } => path,
+                    AgentExecutableStatus::Missing {
+                        requested,
+                        guidance,
+                    } => anyhow::bail!(
+                        "{} executable '{}' is unavailable. {guidance}",
+                        definition.provider.label(),
+                        requested.to_string_lossy()
+                    ),
+                    AgentExecutableStatus::Unusable {
+                        path,
+                        error,
+                        guidance,
+                    } => anyhow::bail!(
+                        "{} was found at {}, but its version check failed: {error}. {guidance}",
+                        definition.provider.label(),
+                        path.display()
+                    ),
+                };
+                let working_directory = definition
+                    .working_directory
+                    .as_deref()
+                    .filter(|path| !path.trim().is_empty())
+                    .map(std::path::PathBuf::from)
+                    .ok_or_else(|| anyhow::anyhow!("Choose a working directory"))?;
+                match definition.provider {
+                    AgentProvider::Codex => spawn_codex_session(CodexSessionConfig {
+                        executable,
+                        working_directory,
+                        permission_policy: definition.permission_policy,
+                        initial_prompt,
+                    })
+                    .map(StructuredAgentHandle::Codex),
+                    AgentProvider::ClaudeCode | AgentProvider::Gemini => {
+                        spawn_headless_session(HeadlessSessionConfig {
+                            provider: definition.provider,
+                            executable,
+                            working_directory,
+                            permission_policy: definition.permission_policy,
+                            arguments: definition.arguments.clone(),
+                            initial_prompt,
+                        })
+                        .map(StructuredAgentHandle::Headless)
+                    }
+                    AgentProvider::CustomCli | AgentProvider::GroqApi => {
+                        Err(anyhow::anyhow!("This provider has no structured adapter"))
+                    }
+                }
+            }
+            AgentLocation::SavedHost { profile_id } => {
+                if definition.worktree == SavedWorktreePolicy::Isolated {
+                    anyhow::bail!(
+                        "Automatic isolated worktrees are local-only. Choose Shared directory or Read only."
+                    );
+                }
+                let profile = self
+                    .saved
+                    .profiles
+                    .iter()
+                    .find(|profile| &profile.id == profile_id)
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("The selected remote host no longer exists"))?;
+                let mut request = self.connect_request_for_saved_canvas_host(&profile)?;
+                request.session_id = self.next_session_id();
+                request.title = format!(
+                    "Structured {} on {}",
+                    definition.provider.label(),
+                    profile.display_name()
+                );
+                request.startup_directory = None;
+                request.startup_command = None;
+                request.persistent_session = false;
+                request.persistent_session_name = None;
+                request.persistent_session_detach_others = false;
+                let known_hosts = self.known_hosts.clone();
+                let keepalive_secs = self.saved.settings.ssh_keepalive_secs;
+                match definition.provider {
+                    AgentProvider::Codex => spawn_remote_codex_session(RemoteCodexSessionConfig {
+                        definition: definition.clone(),
+                        request,
+                        known_hosts,
+                        keepalive_secs,
+                        initial_prompt,
+                    })
+                    .map(StructuredAgentHandle::Codex),
+                    AgentProvider::ClaudeCode | AgentProvider::Gemini => {
+                        spawn_remote_headless_session(RemoteHeadlessSessionConfig {
+                            definition: definition.clone(),
+                            request,
+                            known_hosts,
+                            keepalive_secs,
+                            initial_prompt,
+                        })
+                        .map(StructuredAgentHandle::RemoteHeadless)
+                    }
+                    AgentProvider::CustomCli | AgentProvider::GroqApi => {
+                        Err(anyhow::anyhow!("This provider has no structured adapter"))
+                    }
+                }
+            }
+        }
     }
 
     pub(super) fn process_structured_agent_events(&mut self) -> bool {
@@ -2494,78 +2558,7 @@ impl TermiRustApp {
             cx.notify();
             return;
         };
-        if !matches!(definition.location, AgentLocation::Local) {
-            self.error_message = "Structured agents currently run locally.".to_string();
-            cx.notify();
-            return;
-        }
-        let executable = match detect_agent_executable(&definition) {
-            AgentExecutableStatus::Available { path, .. } => path,
-            AgentExecutableStatus::Missing {
-                requested,
-                guidance,
-            } => {
-                self.error_message = format!(
-                    "Agent executable '{}' is unavailable. {guidance}",
-                    requested.to_string_lossy()
-                );
-                cx.notify();
-                return;
-            }
-            AgentExecutableStatus::Unusable {
-                path,
-                error,
-                guidance,
-            } => {
-                self.error_message = format!(
-                    "Agent was found at {}, but its version check failed: {error}. {guidance}",
-                    path.display()
-                );
-                cx.notify();
-                return;
-            }
-        };
-        let Some(working_directory) = definition
-            .working_directory
-            .as_deref()
-            .filter(|path| !path.trim().is_empty())
-            .map(std::path::PathBuf::from)
-        else {
-            self.error_message = "The agent has no working directory.".to_string();
-            cx.notify();
-            return;
-        };
-        if !working_directory.is_dir() {
-            self.error_message = format!(
-                "The agent working directory no longer exists: {}",
-                working_directory.display()
-            );
-            cx.notify();
-            return;
-        }
-        let result = match definition.provider {
-            AgentProvider::Codex => spawn_codex_session(CodexSessionConfig {
-                executable,
-                working_directory,
-                permission_policy: definition.permission_policy,
-                initial_prompt: None,
-            })
-            .map(StructuredAgentHandle::Codex),
-            AgentProvider::ClaudeCode | AgentProvider::Gemini => {
-                spawn_headless_session(HeadlessSessionConfig {
-                    provider: definition.provider,
-                    executable,
-                    working_directory,
-                    permission_policy: definition.permission_policy,
-                    arguments: definition.arguments,
-                    initial_prompt: None,
-                })
-                .map(StructuredAgentHandle::Headless)
-            }
-            AgentProvider::CustomCli | AgentProvider::GroqApi => {
-                Err(anyhow::anyhow!("This provider has no structured adapter"))
-            }
-        };
+        let result = self.start_structured_agent_handle(&definition, None);
         match result {
             Ok(handle) => {
                 self.structured_agents

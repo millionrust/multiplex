@@ -9822,8 +9822,8 @@ mod tests {
     };
     use crate::credentials;
     use crate::models::{
-        AgentBackendKind, AgentProvider, AuthConfig, AuthMode, ConnectRequest, ConnectionKind,
-        DEFAULT_VAULT_ID, DraftProfile, HostColorTag, HostProfile, IdentitySource,
+        AgentBackendKind, AgentLocation, AgentProvider, AuthConfig, AuthMode, ConnectRequest,
+        ConnectionKind, DEFAULT_VAULT_ID, DraftProfile, HostColorTag, HostProfile, IdentitySource,
         JumpHostConnection, LocalPortForward, LocalShellConfig, PortForwardKind, PortForwardRule,
         ProfileSource, RestorableAuth, RestorableConnection, SavedHostGroup, SavedIdentity,
         SavedManagedWorktree, SavedManagedWorktreeDisposition, SavedSnippet, SavedSplitNode,
@@ -11936,6 +11936,106 @@ sleep 1
         app.read_with(cx, |app, _| {
             assert!(app.workspace(workspace_id).is_none());
             assert!(!app.structured_agents.contains_key(&node_id));
+        });
+    }
+
+    #[gpui::test]
+    fn canvas_runs_remote_structured_agent_on_saved_ssh_host(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping remote structured canvas e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let executable = "/usr/local/bin/termirust-ui-remote-claude";
+        server
+            .exec(&format!(
+                "cat > {executable} <<'TERMIRUST_EOF'\n#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'remote-ui 1.0\\n'; exit 0; fi\nprintf '%s\\n' '{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"remote-ui\"}}'\nprintf '%s\\n' '{{\"type\":\"assistant\",\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"remote structured response\"}}]}}}}'\nprintf '%s\\n' '{{\"type\":\"result\",\"is_error\":false,\"result\":\"remote complete\"}}'\nTERMIRUST_EOF\nchmod 755 {executable}"
+            ))
+            .expect("unable to install remote UI provider fixture");
+        let profile_id = "remote-structured-docker";
+        let mut saved = SavedState::default();
+        saved.profiles.push(HostProfile {
+            id: profile_id.to_string(),
+            label: "Remote Structured Docker".to_string(),
+            host: server.host().to_string(),
+            port: server.port,
+            username: server.username().to_string(),
+            auth_mode: AuthMode::PrivateKey,
+            key_path: docker_ssh_private_key_path(),
+            ..HostProfile::default()
+        });
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let local_request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(local_request, window, cx)
+                        .expect("local workspace should open");
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    app.open_agent_creation(AgentProvider::ClaudeCode, window, cx);
+                    app.set_agent_backend(AgentBackendKind::Structured, cx);
+                    app.set_agent_creation_location(
+                        AgentLocation::SavedHost {
+                            profile_id: profile_id.to_string(),
+                        },
+                        cx,
+                    );
+                    app.set_agent_worktree_policy(SavedWorktreePolicy::ReadOnly, cx);
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.agent_executable,
+                        executable,
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.agent_working_directory,
+                        "/home/termirust",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.shell_inputs.agent_initial_prompt,
+                        "perform remote test",
+                        window,
+                        cx,
+                    );
+                    app.launch_agent_creation(window, cx);
+                })
+            })
+            .expect("remote structured launch should succeed");
+
+        let node_id = wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            app.structured_agents.iter().find_map(|(node_id, runtime)| {
+                (runtime.state == crate::agents::AgentRunState::Succeeded
+                    && runtime.transcript.contains("remote structured response"))
+                .then(|| node_id.clone())
+            })
+        });
+        app.read_with(cx, |app, _| {
+            let node = app
+                .active_workspace()
+                .and_then(|workspace| workspace.canvas.node(&node_id))
+                .expect("remote structured node should exist");
+            assert!(matches!(
+                &node.kind,
+                crate::ui::app::canvas::CanvasNodeKind::Agent {
+                    pane_id: None,
+                    definition,
+                } if definition.backend == AgentBackendKind::Structured
+                    && matches!(
+                        &definition.location,
+                        AgentLocation::SavedHost { profile_id: saved_id }
+                            if saved_id == profile_id
+                    )
+            ));
         });
     }
 
