@@ -151,18 +151,26 @@ impl TermiRustApp {
                         .gap_2()
                         .child(
                             Button::new("paste-confirm")
+                                .debug_selector(|| "paste-confirm".to_string())
                                 .small()
                                 .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                                 .label("Paste")
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                    cx.stop_propagation();
+                                })
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.confirm_pending_paste(cx);
                                 })),
                         )
                         .child(
                             Button::new("paste-cancel")
+                                .debug_selector(|| "paste-cancel".to_string())
                                 .small()
                                 .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                                 .label("Cancel")
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                    cx.stop_propagation();
+                                })
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.cancel_pending_paste(cx);
                                 })),

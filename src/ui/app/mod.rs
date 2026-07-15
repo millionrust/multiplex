@@ -11117,7 +11117,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn e2e_local_shell_paste_confirmation_and_search(cx: &mut TestAppContext) {
+    fn e2e_canvas_local_shell_paste_confirmation_and_search(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let request = ConnectRequest::local_shell_with_config(
@@ -11143,15 +11143,27 @@ mod tests {
             (pane.connected && !pane.closed).then_some(())
         });
 
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    let workspace = app.workspace(workspace_id).expect("workspace should exist");
+                    assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Canvas);
+                    assert_eq!(workspace.canvas.nodes.len(), 1);
+                })
+            })
+            .expect("canvas switch should succeed");
+
         cx.write_to_clipboard(gpui::ClipboardItem::new_string(
             "printf 'paste-cancelled\\n'\nprintf 'paste-cancelled-2\\n'\n".to_string(),
         ));
         app.update(cx, |app, cx| assert!(app.paste_to_active_pane(cx)));
-        app.update(cx, |app, cx| {
-            assert!(app.pending_paste.is_some());
-            app.cancel_pending_paste(cx);
-            assert!(app.pending_paste.is_none());
-        });
+        app.read_with(cx, |app, _| assert!(app.pending_paste.is_some()));
+        let cancel =
+            wait_for_selector_click_center(window, cx, "paste-cancel", Duration::from_secs(2));
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(cancel, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| assert!(app.pending_paste.is_none()));
 
         wait_for_app_state(cx, &app, Duration::from_secs(1), |app| {
             let pane = app.pane(pane_id)?;
@@ -11167,7 +11179,10 @@ mod tests {
             "printf 'paste-confirmed\\n'\nprintf 'search-target\\n'\n".to_string(),
         ));
         app.update(cx, |app, cx| assert!(app.paste_to_active_pane(cx)));
-        app.update(cx, |app, cx| assert!(app.confirm_pending_paste(cx)));
+        let confirm =
+            wait_for_selector_click_center(window, cx, "paste-confirm", Duration::from_secs(2));
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(confirm, gpui::Modifiers::none());
 
         wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
             let pane = app.pane(pane_id)?;

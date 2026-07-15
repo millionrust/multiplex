@@ -5973,9 +5973,6 @@ impl TermiRustApp {
             .min_h_0()
             .bg(theme::terminal_bg())
             .child(self.render_canvas_toolbar(window, cx))
-            .when_some(self.render_paste_confirmation(cx), |canvas, banner| {
-                canvas.child(banner)
-            })
             .child(body)
     }
 }
