@@ -5,7 +5,7 @@ use gpui::{
     AnyElement, App, ClipboardItem, Context, CursorStyle, Div, Focusable as _,
     InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, ParentElement,
     PathBuilder, Point, ScrollWheelEvent, SharedString, StatefulInteractiveElement as _, Styled,
-    Window, canvas as paint_canvas, div, point, px,
+    Window, canvas as paint_canvas, div, point, px, relative,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
@@ -3151,6 +3151,7 @@ impl TermiRustApp {
             .top(px(10.0))
             .left(px(12.0))
             .w(px(300.0))
+            .max_w(relative(0.9))
             .max_h(px(480.0))
             .overflow_hidden()
             .rounded(px(7.0))
@@ -3317,6 +3318,7 @@ impl TermiRustApp {
             .top(px(10.0))
             .left(px(12.0))
             .w(px(520.0))
+            .max_w(relative(0.9))
             .max_h(px(680.0))
             .overflow_hidden()
             .rounded(px(7.0))
@@ -3797,6 +3799,7 @@ impl TermiRustApp {
             .top(px(12.0))
             .right(px(12.0))
             .w(px(500.0))
+            .max_w(relative(0.9))
             .max_h(px(620.0))
             .overflow_hidden()
             .rounded(px(7.0))
@@ -4123,6 +4126,7 @@ impl TermiRustApp {
             .top(px(10.0))
             .left(px(12.0))
             .w(px(620.0))
+            .max_w(relative(0.9))
             .max_h(px(620.0))
             .overflow_hidden()
             .rounded(px(7.0))
@@ -5055,6 +5059,7 @@ impl TermiRustApp {
             .top(px(12.0))
             .right(px(12.0))
             .w(px(560.0))
+            .max_w(relative(0.9))
             .max_h(px(700.0))
             .overflow_hidden()
             .rounded(px(7.0))
@@ -5144,6 +5149,7 @@ impl TermiRustApp {
             .top(px(12.0))
             .right(px(12.0))
             .w(px(500.0))
+            .max_w(relative(0.9))
             .rounded(px(7.0))
             .border_1()
             .border_color(if pending.confirm_kill {
@@ -5292,6 +5298,7 @@ impl TermiRustApp {
             .top(px(12.0))
             .right(px(12.0))
             .w(px(460.0))
+            .max_w(relative(0.9))
             .rounded(px(7.0))
             .border_1()
             .border_color(theme::danger())
@@ -5400,6 +5407,7 @@ impl TermiRustApp {
             .top(px(12.0))
             .right(px(12.0))
             .w(px(540.0))
+            .max_w(relative(0.9))
             .max_h(px(680.0))
             .overflow_hidden()
             .rounded(px(7.0))
