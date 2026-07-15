@@ -2,9 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, Context, CursorStyle, Div, InteractiveElement as _, IntoElement, MouseButton,
-    MouseDownEvent, ParentElement, PathBuilder, Point, ScrollWheelEvent, SharedString,
-    StatefulInteractiveElement as _, Styled, Window, canvas as paint_canvas, div, point, px,
+    AnyElement, App, ClipboardItem, Context, CursorStyle, Div, InteractiveElement as _,
+    IntoElement, MouseButton, MouseDownEvent, ParentElement, PathBuilder, Point, ScrollWheelEvent,
+    SharedString, StatefulInteractiveElement as _, Styled, Window, canvas as paint_canvas, div,
+    point, px,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
@@ -14,8 +15,8 @@ use crate::agents::{
     AgentApprovalRequest, AgentEvent, AgentExecutableStatus, AgentRunState, CodexSessionConfig,
     CodexSessionHandle, HeadlessSessionConfig, HeadlessSessionHandle, SchedulableAgent,
     build_context_handoff, build_interactive_launch_spec, build_remote_interactive_arguments,
-    create_managed_worktree, detect_agent_executable, provider_descriptor, schedule_dependency_dag,
-    spawn_codex_session, spawn_headless_session,
+    create_managed_worktree, detect_agent_executable, managed_worktree_status, provider_descriptor,
+    remove_managed_worktree, schedule_dependency_dag, spawn_codex_session, spawn_headless_session,
 };
 use crate::models::{
     AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AuthConfig, AuthMode,
@@ -1575,6 +1576,8 @@ impl TermiRustApp {
                         }
                     };
                     definition.working_directory = Some(managed.path.clone());
+                    self.saved.register_managed_agent_worktree(managed.clone());
+                    self.persist_runtime_state();
                     definition.managed_worktree = Some(managed);
                     launch = match build_interactive_launch_spec(&definition) {
                         Ok(launch) => launch,
@@ -1781,6 +1784,8 @@ impl TermiRustApp {
             };
             working_directory = std::path::PathBuf::from(&managed.path);
             definition.working_directory = Some(managed.path.clone());
+            self.saved.register_managed_agent_worktree(managed.clone());
+            self.persist_runtime_state();
             definition.managed_worktree = Some(managed);
         }
         let initial_prompt = (!initial_prompt.trim().is_empty()).then_some(initial_prompt);
@@ -1930,6 +1935,101 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn restart_structured_agent(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
+        if self.structured_agents.contains_key(&node_id) {
+            return;
+        }
+        let definition = self.workspaces.iter().find_map(|workspace| {
+            workspace.canvas.nodes.iter().find_map(|node| {
+                if node.id != node_id {
+                    return None;
+                }
+                match &node.kind {
+                    CanvasNodeKind::Agent {
+                        pane_id: None,
+                        definition,
+                    } => Some(definition.clone()),
+                    _ => None,
+                }
+            })
+        });
+        let Some(definition) = definition else {
+            self.error_message = "The structured agent definition is unavailable.".to_string();
+            cx.notify();
+            return;
+        };
+        if !matches!(definition.location, AgentLocation::Local) {
+            self.error_message = "Structured agents currently run locally.".to_string();
+            cx.notify();
+            return;
+        }
+        let executable = match detect_agent_executable(&definition) {
+            AgentExecutableStatus::Available { path, .. } => path,
+            AgentExecutableStatus::Missing {
+                requested,
+                guidance,
+            } => {
+                self.error_message = format!(
+                    "Agent executable '{}' is unavailable. {guidance}",
+                    requested.to_string_lossy()
+                );
+                cx.notify();
+                return;
+            }
+        };
+        let Some(working_directory) = definition
+            .working_directory
+            .as_deref()
+            .filter(|path| !path.trim().is_empty())
+            .map(std::path::PathBuf::from)
+        else {
+            self.error_message = "The agent has no working directory.".to_string();
+            cx.notify();
+            return;
+        };
+        if !working_directory.is_dir() {
+            self.error_message = format!(
+                "The agent working directory no longer exists: {}",
+                working_directory.display()
+            );
+            cx.notify();
+            return;
+        }
+        let result = match definition.provider {
+            AgentProvider::Codex => spawn_codex_session(CodexSessionConfig {
+                executable,
+                working_directory,
+                permission_policy: definition.permission_policy,
+                initial_prompt: None,
+            })
+            .map(StructuredAgentHandle::Codex),
+            AgentProvider::ClaudeCode | AgentProvider::Gemini => {
+                spawn_headless_session(HeadlessSessionConfig {
+                    provider: definition.provider,
+                    executable,
+                    working_directory,
+                    permission_policy: definition.permission_policy,
+                    arguments: definition.arguments,
+                    initial_prompt: None,
+                })
+                .map(StructuredAgentHandle::Headless)
+            }
+            AgentProvider::CustomCli | AgentProvider::GroqApi => {
+                Err(anyhow::anyhow!("This provider has no structured adapter"))
+            }
+        };
+        match result {
+            Ok(handle) => {
+                self.structured_agents
+                    .insert(node_id, StructuredAgentRuntime::new(handle));
+                self.status_message = "Structured agent restarted.".to_string();
+                self.error_message.clear();
+            }
+            Err(error) => self.error_message = format!("Unable to restart agent: {error:#}"),
+        }
+        cx.notify();
+    }
+
     fn respond_structured_agent_approval(
         &mut self,
         node_id: CanvasNodeId,
@@ -1974,6 +2074,73 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn toggle_canvas_node_collapsed(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
+        for workspace in &mut self.workspaces {
+            if let Some(node) = workspace
+                .canvas
+                .nodes
+                .iter_mut()
+                .find(|node| node.id == node_id)
+            {
+                node.collapsed = !node.collapsed;
+                break;
+            }
+        }
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
+    fn canvas_node_execution_host(&self, node_id: &CanvasNodeId) -> Option<String> {
+        let node = self
+            .active_workspace()?
+            .canvas
+            .nodes
+            .iter()
+            .find(|node| &node.id == node_id)?;
+        match &node.kind {
+            CanvasNodeKind::Agent { definition, .. } => match &definition.location {
+                AgentLocation::Local => Some("local".to_string()),
+                AgentLocation::SavedHost { profile_id } => self
+                    .saved
+                    .profiles
+                    .iter()
+                    .find(|profile| &profile.id == profile_id)
+                    .map(|profile| {
+                        format!("ssh:{}@{}:{}", profile.username, profile.host, profile.port)
+                    }),
+            },
+            CanvasNodeKind::Terminal { pane_id } => self.pane(*pane_id).map(|pane| {
+                if pane.request.is_local_shell() {
+                    "local".to_string()
+                } else {
+                    format!(
+                        "ssh:{}@{}:{}",
+                        pane.request.username, pane.request.host, pane.request.port
+                    )
+                }
+            }),
+        }
+    }
+
+    fn ensure_same_execution_host(
+        &self,
+        source: &CanvasNodeId,
+        target: &CanvasNodeId,
+    ) -> anyhow::Result<()> {
+        let source_host = self
+            .canvas_node_execution_host(source)
+            .ok_or_else(|| anyhow::anyhow!("The source node execution host is unavailable"))?;
+        let target_host = self
+            .canvas_node_execution_host(target)
+            .ok_or_else(|| anyhow::anyhow!("The target node execution host is unavailable"))?;
+        if source_host != target_host {
+            anyhow::bail!(
+                "Cross-host links are not executable in v1. Choose two nodes on the same local or SSH host."
+            );
+        }
+        Ok(())
+    }
+
     fn link_canvas_node(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
         let Some(source) = self.pending_context_source.take() else {
             self.pending_context_source = Some(node_id);
@@ -1984,9 +2151,12 @@ impl TermiRustApp {
             return;
         };
         let result = self
-            .active_workspace_mut()
-            .ok_or_else(|| anyhow::anyhow!("No active canvas workspace"))
-            .and_then(|workspace| workspace.canvas.add_context_edge(source, node_id));
+            .ensure_same_execution_host(&source, &node_id)
+            .and_then(|()| {
+                self.active_workspace_mut()
+                    .ok_or_else(|| anyhow::anyhow!("No active canvas workspace"))
+                    .and_then(|workspace| workspace.canvas.add_context_edge(source, node_id))
+            });
         match result {
             Ok(_) => {
                 self.status_message =
@@ -2010,9 +2180,12 @@ impl TermiRustApp {
             return;
         };
         let result = self
-            .active_workspace_mut()
-            .ok_or_else(|| anyhow::anyhow!("No active canvas workspace"))
-            .and_then(|workspace| workspace.canvas.add_dependency_edge(source, node_id));
+            .ensure_same_execution_host(&source, &node_id)
+            .and_then(|()| {
+                self.active_workspace_mut()
+                    .ok_or_else(|| anyhow::anyhow!("No active canvas workspace"))
+                    .and_then(|workspace| workspace.canvas.add_dependency_edge(source, node_id))
+            });
         match result {
             Ok(_) => {
                 self.status_message = "Dependency created.".to_string();
@@ -2055,6 +2228,27 @@ impl TermiRustApp {
     }
 
     fn start_dependency_orchestration(&mut self, cx: &mut Context<Self>) {
+        let dependency_endpoints: Vec<_> = self
+            .active_workspace()
+            .map(|workspace| {
+                workspace
+                    .canvas
+                    .edges
+                    .iter()
+                    .filter(|edge| edge.enabled && edge.kind == CanvasEdgeKind::Dependency)
+                    .map(|edge| (edge.source.clone(), edge.target.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let Some(error) = dependency_endpoints
+            .iter()
+            .find_map(|(source, target)| self.ensure_same_execution_host(source, target).err())
+        {
+            self.error_message = error.to_string();
+            self.orchestration_active = false;
+            cx.notify();
+            return;
+        }
         self.orchestration_active = true;
         if !self.dispatch_ready_agent_tasks() {
             self.status_message =
@@ -2171,6 +2365,11 @@ impl TermiRustApp {
             cx.notify();
             return;
         };
+        if let Err(error) = self.ensure_same_execution_host(&edge.source, &target) {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
+        }
         let Some(source_node) = workspace
             .canvas
             .nodes
@@ -2231,6 +2430,24 @@ impl TermiRustApp {
             .read(cx)
             .value()
             .to_string();
+        let edge_source = self.active_workspace().and_then(|workspace| {
+            workspace
+                .canvas
+                .edges
+                .iter()
+                .find(|edge| edge.id == review.edge_id)
+                .map(|edge| edge.source.clone())
+        });
+        let Some(edge_source) = edge_source else {
+            self.error_message = "The reviewed context link no longer exists.".to_string();
+            cx.notify();
+            return;
+        };
+        if let Err(error) = self.ensure_same_execution_host(&edge_source, &review.target) {
+            self.error_message = error.to_string();
+            cx.notify();
+            return;
+        }
         let policy = self
             .active_workspace()
             .and_then(|workspace| {
@@ -2795,6 +3012,281 @@ impl TermiRustApp {
             .into_any_element()
     }
 
+    fn toggle_worktree_manager(&mut self, cx: &mut Context<Self>) {
+        self.worktree_manager_open = !self.worktree_manager_open;
+        if self.worktree_manager_open {
+            self.canvas_add_menu_open = false;
+            self.agent_creation = None;
+            self.context_handoff_review = None;
+        }
+        cx.notify();
+    }
+
+    fn inspect_managed_worktree(&mut self, path: &str, cx: &mut Context<Self>) {
+        let Some(worktree) = self
+            .saved
+            .managed_agent_worktrees
+            .iter()
+            .find(|worktree| worktree.path == path)
+            .cloned()
+        else {
+            self.error_message = "That managed worktree is no longer registered.".to_string();
+            cx.notify();
+            return;
+        };
+        match managed_worktree_status(&worktree) {
+            Ok(status) => {
+                self.status_message = match (status.dirty, status.has_commits_after_base) {
+                    (false, false) => format!("{} is clean and can be removed.", worktree.branch),
+                    (true, false) => format!("{} has uncommitted changes.", worktree.branch),
+                    (false, true) => {
+                        format!("{} contains commits after its base.", worktree.branch)
+                    }
+                    (true, true) => format!(
+                        "{} has uncommitted changes and commits after its base.",
+                        worktree.branch
+                    ),
+                };
+                self.error_message.clear();
+            }
+            Err(error) => self.error_message = format!("Unable to inspect worktree: {error:#}"),
+        }
+        cx.notify();
+    }
+
+    fn copy_managed_worktree_path(&mut self, path: String, cx: &mut Context<Self>) {
+        cx.write_to_clipboard(ClipboardItem::new_string(path));
+        self.status_message = "Worktree path copied.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn open_managed_worktree_terminal(
+        &mut self,
+        path: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !std::path::Path::new(&path).is_dir() {
+            self.error_message = format!("Worktree directory does not exist: {path}");
+            cx.notify();
+            return;
+        }
+        let mut config = self.saved.settings.default_local_shell.clone();
+        config.cwd = Some(path);
+        let request = ConnectRequest::local_shell_with_config(0, config);
+        if self
+            .add_request_to_canvas(request, None, window, cx)
+            .is_some()
+        {
+            self.worktree_manager_open = false;
+            self.status_message = "Opened a terminal in the managed worktree.".to_string();
+            self.error_message.clear();
+        } else {
+            self.error_message = "Open a Canvas workspace before opening the worktree.".to_string();
+        }
+        cx.notify();
+    }
+
+    fn remove_registered_worktree(&mut self, path: &str, cx: &mut Context<Self>) {
+        let referenced_by_agent = self.workspaces.iter().any(|workspace| {
+            workspace.canvas.nodes.iter().any(|node| {
+                matches!(
+                    &node.kind,
+                    CanvasNodeKind::Agent { definition, .. }
+                        if definition
+                            .managed_worktree
+                            .as_ref()
+                            .is_some_and(|worktree| worktree.path == path)
+                )
+            })
+        });
+        let referenced_by_terminal = self.panes.iter().any(|pane| {
+            pane.request
+                .local_shell
+                .as_ref()
+                .and_then(|config| config.cwd.as_deref())
+                == Some(path)
+        });
+        if referenced_by_agent || referenced_by_terminal {
+            self.error_message =
+                "Close every agent and terminal using this worktree before removing it."
+                    .to_string();
+            cx.notify();
+            return;
+        }
+        let Some(worktree) = self
+            .saved
+            .managed_agent_worktrees
+            .iter()
+            .find(|worktree| worktree.path == path)
+            .cloned()
+        else {
+            self.error_message = "That managed worktree is no longer registered.".to_string();
+            cx.notify();
+            return;
+        };
+        let managed_root = match managed_agent_worktree_dir() {
+            Ok(path) => path,
+            Err(error) => {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
+        };
+        match remove_managed_worktree(&worktree, &managed_root) {
+            Ok(()) => {
+                self.saved.forget_managed_agent_worktree(path);
+                self.persist_runtime_state();
+                self.status_message = format!("Removed clean worktree {}.", worktree.branch);
+                self.error_message.clear();
+            }
+            Err(error) => {
+                self.error_message = format!("Worktree was not removed: {error:#}");
+            }
+        }
+        cx.notify();
+    }
+
+    fn render_worktree_manager(&self, cx: &mut Context<Self>) -> AnyElement {
+        let worktrees = self.saved.managed_agent_worktrees.clone();
+        v_flex()
+            .id("managed-worktree-panel")
+            .absolute()
+            .top(px(10.0))
+            .left(px(12.0))
+            .w(px(620.0))
+            .max_h(px(620.0))
+            .overflow_hidden()
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(theme::border_dark())
+            .bg(theme::library_card())
+            .shadow_lg()
+            .child(
+                h_flex()
+                    .h(px(42.0))
+                    .px_3()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_semibold()
+                            .text_color(theme::text_on_dark())
+                            .child("Managed worktrees"),
+                    )
+                    .child(
+                        Button::new("managed-worktree-close")
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Close worktree manager")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.worktree_manager_open = false;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .id("managed-worktree-list")
+                    .p_3()
+                    .gap_2()
+                    .overflow_y_scroll()
+                    .when(worktrees.is_empty(), |list| {
+                        list.child(
+                            div()
+                                .py_4()
+                                .text_size(px(11.0))
+                                .text_color(theme::text_muted())
+                                .child("No isolated agent worktrees have been created."),
+                        )
+                    })
+                    .children(worktrees.into_iter().enumerate().map(|(index, worktree)| {
+                        let inspect_path = worktree.path.clone();
+                        let copy_path = worktree.path.clone();
+                        let open_path = worktree.path.clone();
+                        let remove_path = worktree.path.clone();
+                        h_flex()
+                            .p_2()
+                            .gap_2()
+                            .items_center()
+                            .rounded(px(6.0))
+                            .border_1()
+                            .border_color(theme::border_dark())
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_semibold()
+                                            .text_color(theme::text_on_dark())
+                                            .child(worktree.branch),
+                                    )
+                                    .child(
+                                        div()
+                                            .overflow_hidden()
+                                            .whitespace_nowrap()
+                                            .text_ellipsis()
+                                            .text_size(px(10.0))
+                                            .text_color(theme::text_muted())
+                                            .child(worktree.path),
+                                    ),
+                            )
+                            .child(
+                                Button::new(("worktree-inspect", index))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::Inspector)
+                                    .tooltip("Inspect Git status")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.inspect_managed_worktree(&inspect_path, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new(("worktree-copy", index))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::Copy)
+                                    .tooltip("Copy worktree path")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.copy_managed_worktree_path(copy_path.clone(), cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new(("worktree-open", index))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::SquareTerminal)
+                                    .tooltip("Open terminal in worktree")
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.open_managed_worktree_terminal(
+                                            open_path.clone(),
+                                            window,
+                                            cx,
+                                        );
+                                    })),
+                            )
+                            .child(
+                                Button::new(("worktree-remove", index))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::Delete)
+                                    .tooltip("Remove clean unused worktree")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.remove_registered_worktree(&remove_path, cx);
+                                    })),
+                            )
+                    })),
+            )
+            .into_any_element()
+    }
+
     fn render_canvas_toolbar(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let zoom_percent = self
             .active_workspace()
@@ -2845,6 +3337,20 @@ impl TermiRustApp {
                             .tooltip("Run queued tasks when dependencies are satisfied")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.start_dependency_orchestration(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-worktrees")
+                            .small()
+                            .ghost()
+                            .icon(IconName::GitHub)
+                            .label(format!(
+                                "Worktrees ({})",
+                                self.saved.managed_agent_worktrees.len()
+                            ))
+                            .tooltip("Inspect and clean up isolated agent worktrees")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_worktree_manager(cx);
                             })),
                     )
                     .when(self.pending_context_source.is_some(), |toolbar| {
@@ -3012,6 +3518,7 @@ impl TermiRustApp {
         let header_node_id = node_id.clone();
         let link_node_id = node_id.clone();
         let dependency_node_id = node_id.clone();
+        let collapse_node_id = node_id.clone();
         let resize_node_id = node_id.clone();
         let close_pane_id = pane_id;
         let close_structured_node_id = (pane_id.is_none()).then_some(node_id.clone());
@@ -3103,6 +3610,31 @@ impl TermiRustApp {
                         .child(
                             h_flex()
                                 .gap_1()
+                                .child(
+                                    Button::new(SharedString::from(format!(
+                                        "canvas-node-collapse-{}",
+                                        collapse_node_id.as_str()
+                                    )))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(if node.collapsed {
+                                        IconName::ChevronDown
+                                    } else {
+                                        IconName::ChevronUp
+                                    })
+                                    .tooltip(if node.collapsed {
+                                        "Expand node"
+                                    } else {
+                                        "Collapse node"
+                                    })
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        this.toggle_canvas_node_collapsed(
+                                            collapse_node_id.clone(),
+                                            cx,
+                                        );
+                                    })),
+                                )
                                 .child(
                                     Button::new(SharedString::from(format!(
                                         "canvas-node-link-{}",
@@ -3221,15 +3753,31 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let Some(runtime) = self.structured_agents.get(&node_id) else {
+            let restart_id = node_id.clone();
             return v_flex()
                 .flex_1()
                 .items_center()
                 .justify_center()
+                .gap_2()
                 .child(
                     div()
                         .text_size(px(11.0))
                         .text_color(theme::text_muted_dark())
                         .child("Structured session is not running"),
+                )
+                .child(
+                    Button::new(SharedString::from(format!(
+                        "structured-restart-{}",
+                        node_id.as_str()
+                    )))
+                    .small()
+                    .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                    .icon(IconName::Redo2)
+                    .label("Restart")
+                    .tooltip("Start a new process from this saved agent definition")
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.restart_structured_agent(restart_id.clone(), cx);
+                    })),
                 )
                 .into_any_element();
         };
@@ -3599,6 +4147,9 @@ impl TermiRustApp {
         }
         if self.context_handoff_review.is_some() {
             body = body.child(self.render_context_handoff_review(cx));
+        }
+        if self.worktree_manager_open {
+            body = body.child(self.render_worktree_manager(cx));
         }
 
         v_flex()

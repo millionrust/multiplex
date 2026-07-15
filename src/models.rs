@@ -1059,6 +1059,8 @@ pub struct SavedState {
     pub active_workspace_index: Option<usize>,
     #[serde(default)]
     pub window_bounds: Option<SavedWindowBounds>,
+    #[serde(default)]
+    pub managed_agent_worktrees: Vec<SavedManagedWorktree>,
 }
 
 impl SavedState {
@@ -2958,6 +2960,23 @@ impl QuickConnect {
 }
 
 impl SavedState {
+    pub fn register_managed_agent_worktree(&mut self, worktree: SavedManagedWorktree) {
+        if let Some(existing) = self
+            .managed_agent_worktrees
+            .iter_mut()
+            .find(|existing| existing.path == worktree.path)
+        {
+            *existing = worktree;
+        } else {
+            self.managed_agent_worktrees.push(worktree);
+        }
+    }
+
+    pub fn forget_managed_agent_worktree(&mut self, path: &str) {
+        self.managed_agent_worktrees
+            .retain(|worktree| worktree.path != path);
+    }
+
     pub fn record_session_log(&mut self, entry: SessionLogEntry) {
         self.session_logs.push(entry);
         self.trim_session_logs_to_limit();
@@ -2980,11 +2999,11 @@ mod tests {
         MobileDevicePairingRequest, PortForwardKind, PortForwardRule, ProfileSource, QuickConnect,
         RestorableAuth, RestorableConnection, SavedAgentDefinition, SavedCanvasEdge,
         SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState, SavedCanvasViewport,
-        SavedCommandHistoryEntry, SavedContextPolicy, SavedIdentity, SavedSnippet, SavedState,
-        SavedVault, SavedVaultMember, SavedWorkspace, SavedWorktreePolicy, SessionLogEntry,
-        SessionLogStatus, ThemePreset, VaultKind, VaultMemberRole, WorkspaceLayoutMode,
-        default_persistent_session_name_for_endpoint, default_persistent_session_name_from_id,
-        identity_id_for_path,
+        SavedCommandHistoryEntry, SavedContextPolicy, SavedIdentity, SavedManagedWorktree,
+        SavedSnippet, SavedState, SavedVault, SavedVaultMember, SavedWorkspace,
+        SavedWorktreePolicy, SessionLogEntry, SessionLogStatus, ThemePreset, VaultKind,
+        VaultMemberRole, WorkspaceLayoutMode, default_persistent_session_name_for_endpoint,
+        default_persistent_session_name_from_id, identity_id_for_path,
     };
 
     #[test]
@@ -4237,6 +4256,32 @@ mod tests {
         assert!(!state.settings.default_local_shell.program.trim().is_empty());
         assert_eq!(state.settings.default_local_shell.cwd, None);
         assert!(!state.settings.copy_on_select);
+    }
+
+    #[test]
+    fn legacy_saved_state_defaults_managed_worktree_registry() {
+        let state: SavedState = serde_json::from_str("{}").expect("deserialize legacy state");
+        assert!(state.managed_agent_worktrees.is_empty());
+    }
+
+    #[test]
+    fn managed_worktree_registry_upserts_and_forgets_by_path() {
+        let first = SavedManagedWorktree {
+            repository_root: "/repo".to_string(),
+            path: "/managed/agent".to_string(),
+            branch: "termirust/agent/one".to_string(),
+            base_revision: "abc".to_string(),
+        };
+        let mut updated = first.clone();
+        updated.branch = "termirust/agent/two".to_string();
+        let mut state = SavedState::default();
+
+        state.register_managed_agent_worktree(first);
+        state.register_managed_agent_worktree(updated.clone());
+
+        assert_eq!(state.managed_agent_worktrees, vec![updated]);
+        state.forget_managed_agent_worktree("/managed/agent");
+        assert!(state.managed_agent_worktrees.is_empty());
     }
 
     #[test]
