@@ -673,4 +673,47 @@ sleep 1
         }));
         assert!(events.contains(&AgentEvent::StateChanged(AgentRunState::Succeeded)));
     }
+
+    #[test]
+    #[ignore = "requires TERMIRUST_RUN_LIVE_AGENT_TESTS=1, an authenticated Codex CLI, and network access"]
+    fn live_codex_app_server_smoke() {
+        if std::env::var("TERMIRUST_RUN_LIVE_AGENT_TESTS").as_deref() != Ok("1") {
+            eprintln!("skipping live Codex smoke; set TERMIRUST_RUN_LIVE_AGENT_TESTS=1");
+            return;
+        }
+        let working_directory = std::env::temp_dir().join("termirust-live-codex-smoke");
+        fs::create_dir_all(&working_directory).unwrap();
+        let session = spawn_codex_session(CodexSessionConfig {
+            executable: PathBuf::from("codex"),
+            working_directory,
+            permission_policy: AgentPermissionPolicy::ReadOnly,
+            initial_prompt: Some(
+                "Reply with exactly TERMIRUST_CODEX_LIVE_OK. Do not use tools.".to_string(),
+            ),
+        })
+        .expect("launch live Codex app-server");
+        let deadline = std::time::Instant::now() + Duration::from_secs(120);
+        let mut response = String::new();
+        let mut succeeded = false;
+        while std::time::Instant::now() < deadline {
+            match session.event_rx.recv_timeout(Duration::from_secs(5)) {
+                Ok(AgentEvent::MessageDelta { text, .. }) => response.push_str(&text),
+                Ok(AgentEvent::StateChanged(AgentRunState::Succeeded))
+                | Ok(AgentEvent::Completed { .. }) => succeeded = true,
+                Ok(AgentEvent::Failed { error }) => panic!("live Codex failed: {error}"),
+                Ok(_) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) if succeeded => break,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(error) => panic!("live Codex event channel failed: {error}"),
+            }
+            if succeeded && response.contains("TERMIRUST_CODEX_LIVE_OK") {
+                break;
+            }
+        }
+        assert!(succeeded, "Codex did not report a successful turn");
+        assert!(
+            response.contains("TERMIRUST_CODEX_LIVE_OK"),
+            "Codex response did not contain the expected marker: {response:?}"
+        );
+    }
 }

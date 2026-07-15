@@ -505,6 +505,76 @@ mod tests {
         assert!(events.contains(&AgentEvent::StateChanged(AgentRunState::Succeeded)));
     }
 
+    fn run_live_headless_smoke(provider: AgentProvider, executable: &str, marker: &str) {
+        if std::env::var("TERMIRUST_RUN_LIVE_AGENT_TESTS").as_deref() != Ok("1") {
+            eprintln!("skipping live provider smoke; set TERMIRUST_RUN_LIVE_AGENT_TESTS=1");
+            return;
+        }
+        let working_directory = std::env::temp_dir().join(format!(
+            "termirust-live-{}-smoke",
+            provider.label().to_ascii_lowercase().replace(' ', "-")
+        ));
+        std::fs::create_dir_all(&working_directory).unwrap();
+        let session = spawn_headless_session(HeadlessSessionConfig {
+            provider,
+            executable: PathBuf::from(executable),
+            working_directory,
+            permission_policy: AgentPermissionPolicy::ReadOnly,
+            arguments: Vec::new(),
+            initial_prompt: Some(format!(
+                "Reply with exactly {marker}. Do not use tools or modify files."
+            )),
+        })
+        .expect("launch live headless provider");
+        let deadline = std::time::Instant::now() + Duration::from_secs(120);
+        let mut response = String::new();
+        let mut succeeded = false;
+        while std::time::Instant::now() < deadline {
+            match session.event_rx.recv_timeout(Duration::from_secs(5)) {
+                Ok(AgentEvent::MessageDelta { text, .. }) => response.push_str(&text),
+                Ok(AgentEvent::Completed { summary }) => {
+                    if let Some(summary) = summary {
+                        response.push_str(&summary);
+                    }
+                    succeeded = true;
+                }
+                Ok(AgentEvent::StateChanged(AgentRunState::Succeeded)) => succeeded = true,
+                Ok(AgentEvent::Failed { error }) => {
+                    panic!("live {} failed: {error}", provider.label())
+                }
+                Ok(_) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) if succeeded => break,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(error) => panic!("live {} event channel failed: {error}", provider.label()),
+            }
+            if succeeded && response.contains(marker) {
+                break;
+            }
+        }
+        assert!(succeeded, "{} did not report success", provider.label());
+        assert!(
+            response.contains(marker),
+            "{} response did not contain {marker}: {response:?}",
+            provider.label()
+        );
+    }
+
+    #[test]
+    #[ignore = "requires TERMIRUST_RUN_LIVE_AGENT_TESTS=1, authenticated Claude Code, and network access"]
+    fn live_claude_headless_smoke() {
+        run_live_headless_smoke(
+            AgentProvider::ClaudeCode,
+            "claude",
+            "TERMIRUST_CLAUDE_LIVE_OK",
+        );
+    }
+
+    #[test]
+    #[ignore = "requires TERMIRUST_RUN_LIVE_AGENT_TESTS=1, authenticated Gemini CLI, and network access"]
+    fn live_gemini_headless_smoke() {
+        run_live_headless_smoke(AgentProvider::Gemini, "gemini", "TERMIRUST_GEMINI_LIVE_OK");
+    }
+
     #[test]
     #[cfg(unix)]
     fn headless_process_streams_events_without_shell_parsing_arguments() {
