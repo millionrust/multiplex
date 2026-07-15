@@ -98,8 +98,15 @@ impl CodexSessionHandle {
 
     fn send_wire(&self, value: Value) -> Result<()> {
         self.command_tx
-            .send(value)
-            .context("Codex app-server is no longer accepting commands")
+            .try_send(value)
+            .map_err(|error| match error {
+                std::sync::mpsc::TrySendError::Full(_) => {
+                    anyhow::anyhow!("Codex command queue is full; wait for the current request")
+                }
+                std::sync::mpsc::TrySendError::Disconnected(_) => {
+                    anyhow::anyhow!("Codex app-server is no longer accepting commands")
+                }
+            })
     }
 }
 
@@ -627,6 +634,27 @@ mod tests {
             panic!("expected bounded diagnostic event");
         };
         assert_eq!(message.len(), MAX_STDERR_BYTES);
+    }
+
+    #[test]
+    fn user_commands_do_not_block_when_the_writer_queue_is_full() {
+        let (command_tx, _command_rx) = std::sync::mpsc::sync_channel(1);
+        command_tx.send(json!({"fill": true})).unwrap();
+        let (_event_tx, event_rx) = std::sync::mpsc::sync_channel(1);
+        let session = super::CodexSessionHandle {
+            command_tx,
+            event_rx,
+            ids: std::sync::Arc::new(std::sync::Mutex::new(super::SessionIds::default())),
+            next_request_id: std::sync::atomic::AtomicU64::new(1),
+            child_id: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        };
+        assert!(
+            session
+                .send_wire(json!({"next": true}))
+                .unwrap_err()
+                .to_string()
+                .contains("queue is full")
+        );
     }
 
     #[cfg(unix)]

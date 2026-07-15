@@ -98,7 +98,7 @@ impl HeadlessSessionHandle {
         }
         let _ = self
             .event_tx
-            .send(AgentEvent::StateChanged(AgentRunState::Cancelled));
+            .try_send(AgentEvent::StateChanged(AgentRunState::Cancelled));
         Ok(())
     }
 }
@@ -158,6 +158,7 @@ fn run_job(
     child_id: Arc<AtomicU32>,
 ) {
     if cancel_requested.load(Ordering::Acquire) {
+        let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Cancelled));
         running.store(false, Ordering::Release);
         return;
     }
@@ -229,6 +230,7 @@ fn run_job(
     child_id.store(0, Ordering::Release);
     running.store(false, Ordering::Release);
     if cancel_requested.load(Ordering::Acquire) {
+        let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Cancelled));
         return;
     }
     match status {
@@ -502,8 +504,8 @@ fn capture_stderr(mut stderr: impl Read, event_tx: SyncSender<AgentEvent>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        HeadlessSessionConfig, MAX_EVENT_LINE_BYTES, command_arguments, normalize_event,
-        spawn_headless_session,
+        HeadlessSessionConfig, HeadlessSessionHandle, MAX_EVENT_LINE_BYTES, command_arguments,
+        normalize_event, spawn_headless_session,
     };
     use crate::agents::protocol::{AgentEvent, AgentRole, AgentRunState};
     use crate::models::{AgentPermissionPolicy, AgentProvider};
@@ -522,6 +524,34 @@ mod tests {
             arguments: vec!["argument with spaces".to_string()],
             initial_prompt: None,
         }
+    }
+
+    #[test]
+    fn cancellation_does_not_block_when_the_event_queue_is_full() {
+        let (event_tx, event_rx) = mpsc::sync_channel(1);
+        event_tx
+            .send(AgentEvent::Diagnostic {
+                message: "fill queue".to_string(),
+            })
+            .unwrap();
+        let handle = HeadlessSessionHandle {
+            config: config(AgentProvider::ClaudeCode),
+            event_rx,
+            event_tx,
+            running: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            cancel_requested: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            child_id: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        };
+        let (done_tx, done_rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = done_tx.send(handle.cancel());
+        });
+        assert!(
+            done_rx
+                .recv_timeout(Duration::from_secs(1))
+                .expect("cancel should not wait for event queue capacity")
+                .is_ok()
+        );
     }
 
     #[test]
