@@ -15,7 +15,9 @@ pub(crate) use types::{
     ToolbarMenu, WorkspaceRuntimeTone, WorkspaceViewMode,
 };
 
-use canvas::CanvasWorkspaceState;
+use canvas::{
+    CANVAS_NODE_HEADER_HEIGHT, CANVAS_TOOLBAR_HEIGHT, CanvasInteraction, CanvasWorkspaceState,
+};
 use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
     collect_autocomplete_candidates, collect_command_palette_candidates, pane_recent_output_lines,
@@ -883,6 +885,7 @@ pub struct TermiRustApp {
     sftp_local_filter_visible: bool,
     split_drop_target: Option<(u64, DropZone)>,
     divider_drag: Option<DividerDrag>,
+    canvas_interaction: Option<CanvasInteraction>,
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
     open_workspace_tab_menu: Option<u64>,
@@ -1018,6 +1021,7 @@ impl TermiRustApp {
             sftp_local_filter_visible: false,
             split_drop_target: None,
             divider_drag: None,
+            canvas_interaction: None,
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
             open_workspace_tab_menu: None,
@@ -4379,6 +4383,11 @@ impl TermiRustApp {
             .find(|item| item.id == workspace_id)
     }
 
+    fn active_workspace_mut(&mut self) -> Option<&mut WorkspaceTab> {
+        let workspace_id = self.active_workspace_id?;
+        self.workspace_mut(workspace_id)
+    }
+
     fn reset_workspace_activity(&mut self, workspace_id: u64) {
         if let Some(workspace) = self.workspace_mut(workspace_id) {
             workspace.unread_events = 0;
@@ -5931,6 +5940,38 @@ impl TermiRustApp {
         };
         let body_origin_y = theme::CHROME_HEIGHT + search_height;
         let (char_width, line_height) = self.terminal_metrics(window, cx);
+        if workspace.layout_mode == WorkspaceLayoutMode::Canvas {
+            return workspace
+                .canvas
+                .nodes
+                .iter()
+                .filter_map(|node| {
+                    let pane_id = node.kind.pane_id()?;
+                    let rect = workspace.canvas.transform.screen_rect(node.rect);
+                    let cell_width = (rect.width - TERMINAL_INNER_PADDING_X * 2.0).max(32.0);
+                    let cell_height =
+                        (rect.height - CANVAS_NODE_HEADER_HEIGHT - TERMINAL_INNER_PADDING_Y * 2.0)
+                            .max(24.0);
+                    let cols = (cell_width / char_width).floor().max(1.0) as u16;
+                    let rows = (cell_height / line_height).floor().max(1.0) as u16;
+                    Some(PaneLayout {
+                        pane_id,
+                        cell_x: rect.x + TERMINAL_INNER_PADDING_X,
+                        cell_y: rect.y
+                            + theme::CHROME_HEIGHT
+                            + CANVAS_TOOLBAR_HEIGHT
+                            + CANVAS_NODE_HEADER_HEIGHT
+                            + TERMINAL_INNER_PADDING_Y,
+                        cell_width,
+                        cell_height,
+                        cols,
+                        rows,
+                        char_width,
+                        line_height,
+                    })
+                })
+                .collect();
+        }
         let (panes, _) = self.workspace_split_rects(window);
 
         panes
@@ -9138,7 +9179,10 @@ impl Render for TermiRustApp {
                     cx.stop_propagation();
                 }
             }))
-            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, _, cx| {
+            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, cx| {
+                if this.handle_canvas_interaction_move(event.position, window, cx) {
+                    return;
+                }
                 if this.divider_drag.is_some() {
                     this.handle_divider_drag_move(event.position, cx);
                 }
@@ -9146,6 +9190,9 @@ impl Render for TermiRustApp {
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|this, _: &MouseUpEvent, window, cx| {
+                    if this.finish_canvas_interaction(window, cx) {
+                        return;
+                    }
                     if this.divider_drag.is_some() {
                         this.handle_divider_drag_end(window, cx);
                     }
@@ -9638,7 +9685,7 @@ mod tests {
         HostColorTag, HostProfile, IdentitySource, JumpHostConnection, LocalPortForward,
         LocalShellConfig, PortForwardKind, PortForwardRule, ProfileSource, RestorableAuth,
         RestorableConnection, SavedHostGroup, SavedIdentity, SavedSnippet, SavedSplitNode,
-        SavedState, SavedWorkspace, SplitAxis, ThemePreset, VaultMemberRole,
+        SavedState, SavedWorkspace, SplitAxis, ThemePreset, VaultMemberRole, WorkspaceLayoutMode,
     };
     use crate::sftp::RemoteFileEntry;
     use crate::storage::load_saved_state;
@@ -10969,6 +11016,86 @@ mod tests {
             assert!(!workspace.search_results.is_empty());
             assert_eq!(workspace.active_search_index, Some(0));
         });
+    }
+
+    #[gpui::test]
+    fn canvas_layout_switch_preserves_live_terminal_and_persists_state(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected && !pane.closed)
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    let workspace = app.workspace(workspace_id).expect("workspace should exist");
+                    assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Canvas);
+                    assert_eq!(workspace.pane_ids, vec![pane_id]);
+                    assert_eq!(workspace.canvas.nodes.len(), 1);
+                    assert_eq!(workspace.canvas.nodes[0].kind.pane_id(), Some(pane_id));
+                    assert!(app.pane(pane_id).is_some_and(|pane| pane.connected));
+                    window.focus(
+                        &app.pane(pane_id)
+                            .expect("pane should remain available")
+                            .terminal_focus,
+                    );
+                })
+            })
+            .expect("canvas switch should succeed");
+
+        cx.simulate_keystrokes(*window, "e c h o space c a n v a s - a l i v e enter");
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)?
+                .terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("canvas-alive"))
+                .then_some(())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Split, window, cx);
+                    let workspace = app.workspace(workspace_id).expect("workspace should exist");
+                    assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Split);
+                    assert_eq!(workspace.pane_ids, vec![pane_id]);
+                    assert_eq!(workspace.layout.as_ref().unwrap().leaf_ids(), vec![pane_id]);
+                    assert!(app.pane(pane_id).is_some_and(|pane| pane.connected));
+
+                    let saved = app
+                        .saved
+                        .restored_workspaces
+                        .first()
+                        .expect("workspace should be persisted");
+                    assert_eq!(saved.layout_mode, WorkspaceLayoutMode::Split);
+                    assert_eq!(saved.panes.len(), 1);
+                    assert_eq!(saved.canvas.as_ref().unwrap().nodes.len(), 1);
+                })
+            })
+            .expect("split switch should succeed");
     }
 
     #[gpui::test]

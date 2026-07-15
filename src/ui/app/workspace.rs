@@ -515,7 +515,7 @@ impl TermiRustApp {
             .into_any_element()
     }
 
-    fn render_terminal_pane(
+    pub(super) fn render_terminal_pane(
         &self,
         pane: &SessionPane,
         _window: &mut Window,
@@ -731,6 +731,10 @@ impl TermiRustApp {
                         .render_choose_protocol_dialog(wid, &pending, protocol, cx)
                         .into_any_element(),
                 });
+        }
+
+        if workspace.layout_mode == crate::models::WorkspaceLayoutMode::Canvas {
+            return self.render_canvas_workspace(window, cx);
         }
 
         let workspace_id = workspace.id;
