@@ -3,17 +3,18 @@ use std::collections::{HashMap, HashSet};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, Context, CursorStyle, Div, InteractiveElement as _, IntoElement, MouseButton,
-    MouseDownEvent, ParentElement, PathBuilder, Point, ScrollWheelEvent, SharedString, Styled,
-    Window, canvas as paint_canvas, div, point, px,
+    MouseDownEvent, ParentElement, PathBuilder, Point, ScrollWheelEvent, SharedString,
+    StatefulInteractiveElement as _, Styled, Window, canvas as paint_canvas, div, point, px,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::models::{
-    CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CANVAS_MAX_ZOOM, CANVAS_MIN_NODE_HEIGHT,
-    CANVAS_MIN_NODE_WIDTH, CANVAS_MIN_ZOOM, CanvasEdgeId, CanvasEdgeKind, CanvasNodeId,
-    SavedAgentDefinition, SavedCanvasEdge, SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState,
-    SavedCanvasViewport, WorkspaceLayoutMode,
+    AuthConfig, AuthMode, CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CANVAS_MAX_ZOOM,
+    CANVAS_MIN_NODE_HEIGHT, CANVAS_MIN_NODE_WIDTH, CANVAS_MIN_ZOOM, CanvasEdgeId, CanvasEdgeKind,
+    CanvasNodeId, ConnectRequest, ConnectionKind, HostProfile, SavedAgentDefinition,
+    SavedCanvasEdge, SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState, SavedCanvasViewport,
+    WorkspaceLayoutMode, default_persistent_session_name_from_id,
 };
 use crate::ui::app::{TermiRustApp, WorkspaceViewMode};
 use crate::ui::theme;
@@ -882,23 +883,22 @@ impl TermiRustApp {
         cx.notify();
     }
 
-    fn add_local_terminal_to_canvas(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn add_request_to_canvas(
+        &mut self,
+        mut request: ConnectRequest,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<u64> {
         let Some(workspace_id) = self.active_workspace_id else {
-            self.open_local_terminal(window, cx);
-            return;
+            return None;
         };
         let is_canvas = self
             .workspace(workspace_id)
             .is_some_and(|workspace| workspace.layout_mode == WorkspaceLayoutMode::Canvas);
         if !is_canvas {
-            self.open_local_terminal(window, cx);
-            return;
+            return None;
         }
 
-        let mut request = crate::models::ConnectRequest::local_shell_with_config(
-            0,
-            self.saved.settings.default_local_shell.clone(),
-        );
         request.session_id = self.next_session_id();
         let pane_id = self.spawn_pane(request, window, cx);
         let viewport = window.viewport_size();
@@ -913,14 +913,224 @@ impl TermiRustApp {
             let node_id = workspace.canvas.add_terminal_node(pane_id, world_center);
             workspace.canvas.select_and_raise(&node_id);
         }
-        self.status_message = "Opened a local terminal on the canvas.".to_string();
-        self.error_message.clear();
         self.sync_terminal_layout(window, cx);
         if let Some(pane) = self.pane(pane_id) {
             pane.terminal_focus.focus(window);
         }
         self.persist_runtime_state();
         cx.notify();
+        Some(pane_id)
+    }
+
+    fn add_local_terminal_to_canvas(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            self.saved.settings.default_local_shell.clone(),
+        );
+        if self.add_request_to_canvas(request, window, cx).is_none() {
+            self.open_local_terminal(window, cx);
+            return;
+        }
+        self.canvas_add_menu_open = false;
+        self.status_message = "Opened a local terminal on the canvas.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    pub(super) fn connect_request_for_saved_canvas_host(
+        &self,
+        profile: &HostProfile,
+    ) -> anyhow::Result<ConnectRequest> {
+        let auth = match profile.auth_mode {
+            AuthMode::Password => {
+                let Some(credential_id) = profile.password_credential_id.clone() else {
+                    anyhow::bail!(
+                        "{} needs a saved password. Open the host, enter its password, and save it first.",
+                        profile.display_name()
+                    );
+                };
+                AuthConfig::PasswordRef { credential_id }
+            }
+            AuthMode::PrivateKey => {
+                if profile.key_path.trim().is_empty() {
+                    anyhow::bail!(
+                        "{} needs a private key file before it can be added.",
+                        profile.display_name()
+                    );
+                }
+                AuthConfig::PrivateKey {
+                    key_path: profile.key_path.clone(),
+                    passphrase: None,
+                }
+            }
+        };
+        let jump_host = profile
+            .jump_host_id
+            .as_deref()
+            .map(|jump_host_id| {
+                let mut visited = HashSet::from([profile.id.clone()]);
+                self.resolve_jump_host_connection_recursive(jump_host_id, &mut visited)
+            })
+            .transpose()?;
+
+        Ok(ConnectRequest {
+            session_id: 0,
+            title: profile.display_name(),
+            kind: ConnectionKind::Ssh,
+            host: profile.host.clone(),
+            port: profile.port,
+            username: profile.username.clone(),
+            auth: Some(auth),
+            jump_host,
+            startup_directory: profile.startup_directory.clone(),
+            startup_command: profile.startup_command.clone(),
+            start_in_files: false,
+            persistent_session: profile.persistent_session,
+            persistent_session_name: profile.persistent_session_name.clone().or_else(|| {
+                profile
+                    .persistent_session
+                    .then(|| default_persistent_session_name_from_id(&profile.id))
+            }),
+            persistent_session_detach_others: profile.persistent_session_detach_others,
+            terminal_scrollback_rows: profile.terminal_scrollback_rows.unwrap_or(10_000) as usize,
+            port_forward_rules: profile.effective_port_forward_rules(),
+            local_shell: None,
+            environment: profile.environment.clone(),
+        })
+    }
+
+    pub(super) fn add_saved_host_to_canvas(
+        &mut self,
+        profile_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(profile) = self
+            .saved
+            .profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .cloned()
+        else {
+            self.error_message = "That saved host no longer exists.".to_string();
+            cx.notify();
+            return;
+        };
+        let request = match self.connect_request_for_saved_canvas_host(&profile) {
+            Ok(request) => request,
+            Err(error) => {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
+        };
+        if self.add_request_to_canvas(request, window, cx).is_none() {
+            self.error_message = "Open a Canvas workspace before adding a saved host.".to_string();
+            cx.notify();
+            return;
+        }
+        self.canvas_add_menu_open = false;
+        self.status_message = format!("Connecting to {} on the canvas...", profile.display_name());
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn toggle_canvas_add_menu(&mut self, cx: &mut Context<Self>) {
+        self.canvas_add_menu_open = !self.canvas_add_menu_open;
+        cx.notify();
+    }
+
+    fn render_canvas_add_menu(&self, cx: &mut Context<Self>) -> AnyElement {
+        let profiles = self.saved.profiles.clone();
+        v_flex()
+            .id("canvas-add-menu")
+            .absolute()
+            .top(px(10.0))
+            .left(px(12.0))
+            .w(px(300.0))
+            .max_h(px(480.0))
+            .overflow_hidden()
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(theme::border_dark())
+            .bg(theme::library_card())
+            .shadow_lg()
+            .child(
+                h_flex()
+                    .h(px(40.0))
+                    .px_3()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        div()
+                            .text_size(px(12.0))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child("Add to canvas"),
+                    )
+                    .child(
+                        Button::new("canvas-add-close")
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Close")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.canvas_add_menu_open = false;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .id("canvas-add-list")
+                    .flex_1()
+                    .min_h_0()
+                    .p_2()
+                    .gap_1()
+                    .overflow_y_scroll()
+                    .child(
+                        Button::new("canvas-add-local")
+                            .small()
+                            .w_full()
+                            .justify_start()
+                            .icon(IconName::SquareTerminal)
+                            .label("Local Terminal")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.add_local_terminal_to_canvas(window, cx);
+                            })),
+                    )
+                    .when(!profiles.is_empty(), |list| {
+                        list.child(
+                            div()
+                                .px_2()
+                                .pt_2()
+                                .pb_1()
+                                .text_size(px(10.0))
+                                .font_semibold()
+                                .text_color(theme::text_muted())
+                                .child("SAVED HOSTS"),
+                        )
+                    })
+                    .children(profiles.into_iter().enumerate().map(|(index, profile)| {
+                        let profile_id = profile.id.clone();
+                        Button::new(("canvas-add-host", index))
+                            .small()
+                            .w_full()
+                            .justify_start()
+                            .icon(IconName::Globe)
+                            .label(profile.display_name())
+                            .tooltip(format!(
+                                "{}@{}:{}",
+                                profile.username, profile.host, profile.port
+                            ))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.add_saved_host_to_canvas(&profile_id, window, cx);
+                            }))
+                    })),
+            )
+            .into_any_element()
     }
 
     fn render_canvas_toolbar(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
@@ -945,9 +1155,9 @@ impl TermiRustApp {
                         .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                         .icon(IconName::Plus)
                         .label("Add")
-                        .tooltip("Add local terminal")
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.add_local_terminal_to_canvas(window, cx);
+                        .tooltip("Add a terminal or coding agent")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.toggle_canvas_add_menu(cx);
                         })),
                 ),
             )
@@ -1304,12 +1514,16 @@ impl TermiRustApp {
                             .small()
                             .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                             .icon(IconName::Plus)
-                            .label("Local Terminal")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.add_local_terminal_to_canvas(window, cx);
+                            .label("Add to Canvas")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_canvas_add_menu(cx);
                             })),
                     ),
             );
+        }
+
+        if self.canvas_add_menu_open {
+            body = body.child(self.render_canvas_add_menu(cx));
         }
 
         v_flex()

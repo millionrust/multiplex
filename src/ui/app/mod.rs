@@ -886,6 +886,7 @@ pub struct TermiRustApp {
     split_drop_target: Option<(u64, DropZone)>,
     divider_drag: Option<DividerDrag>,
     canvas_interaction: Option<CanvasInteraction>,
+    canvas_add_menu_open: bool,
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
     open_workspace_tab_menu: Option<u64>,
@@ -1022,6 +1023,7 @@ impl TermiRustApp {
             split_drop_target: None,
             divider_drag: None,
             canvas_interaction: None,
+            canvas_add_menu_open: false,
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
             open_workspace_tab_menu: None,
@@ -11096,6 +11098,141 @@ mod tests {
                 })
             })
             .expect("split switch should succeed");
+    }
+
+    #[gpui::test]
+    fn canvas_adds_saved_ssh_host_without_replacing_existing_terminal(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping canvas saved-host e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh fixture");
+        let mut saved = SavedState::default();
+        saved.profiles.push(HostProfile {
+            id: "canvas-docker-host".to_string(),
+            label: "Canvas Docker".to_string(),
+            host: server.host().to_string(),
+            port: server.port,
+            username: server.username().to_string(),
+            auth_mode: AuthMode::PrivateKey,
+            key_path: docker_ssh_private_key_path(),
+            startup_command: Some("printf 'canvas-host-ready\\n'".to_string()),
+            ..HostProfile::default()
+        });
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let local_request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (workspace_id, local_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(local_request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    app.add_saved_host_to_canvas("canvas-docker-host", window, cx);
+                })
+            })
+            .expect("saved host should be added");
+
+        let ssh_pane_id = wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            let ssh_pane_id = workspace
+                .pane_ids
+                .iter()
+                .copied()
+                .find(|pane_id| *pane_id != local_pane_id)?;
+            let pane = app.pane(ssh_pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("canvas-host-ready"))
+                .then_some(ssh_pane_id)
+        });
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).expect("workspace should exist");
+            assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Canvas);
+            assert_eq!(workspace.pane_ids.len(), 2);
+            assert_eq!(workspace.canvas.nodes.len(), 2);
+            assert!(app.pane(local_pane_id).is_some());
+            assert!(app.pane(ssh_pane_id).is_some_and(|pane| pane.connected));
+            assert_ne!(
+                (
+                    workspace.canvas.nodes[0].rect.x,
+                    workspace.canvas.nodes[0].rect.y
+                ),
+                (
+                    workspace.canvas.nodes[1].rect.x,
+                    workspace.canvas.nodes[1].rect.y
+                )
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn canvas_saved_host_request_preserves_ssh_and_tmux_configuration(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.profiles.push(HostProfile {
+            id: "profile-canvas-prod".to_string(),
+            label: "Canvas Prod".to_string(),
+            host: "prod.example.com".to_string(),
+            port: 2222,
+            username: "deploy".to_string(),
+            auth_mode: AuthMode::PrivateKey,
+            key_path: "/tmp/key with spaces".to_string(),
+            startup_directory: Some("/srv/app".to_string()),
+            startup_command: Some("git status --short".to_string()),
+            persistent_session: true,
+            terminal_scrollback_rows: Some(32_000),
+            environment: vec![("TERMIRUST_ENV".to_string(), "canvas".to_string())],
+            ..HostProfile::default()
+        });
+        let (app, _window) = open_test_app_with_state(cx, saved);
+
+        app.read_with(cx, |app, _| {
+            let profile = app.saved.profiles.first().expect("profile should exist");
+            let request = app
+                .connect_request_for_saved_canvas_host(profile)
+                .expect("saved host should produce a request");
+            assert_eq!(request.kind, ConnectionKind::Ssh);
+            assert_eq!(request.host, "prod.example.com");
+            assert_eq!(request.port, 2222);
+            assert_eq!(request.username, "deploy");
+            assert_eq!(request.startup_directory.as_deref(), Some("/srv/app"));
+            assert_eq!(
+                request.startup_command.as_deref(),
+                Some("git status --short")
+            );
+            assert!(request.persistent_session);
+            assert_eq!(
+                request.persistent_session_name.as_deref(),
+                Some("tr-profile-canvas-prod")
+            );
+            assert_eq!(request.terminal_scrollback_rows, 32_000);
+            assert_eq!(
+                request.environment,
+                vec![("TERMIRUST_ENV".to_string(), "canvas".to_string())]
+            );
+            assert!(matches!(
+                request.auth,
+                Some(AuthConfig::PrivateKey { key_path, passphrase: None })
+                    if key_path == "/tmp/key with spaces"
+            ));
+        });
     }
 
     #[gpui::test]
