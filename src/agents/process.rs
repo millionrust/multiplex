@@ -2,7 +2,7 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 
 use crate::agents::adapter::provider_descriptor;
 use crate::models::{AgentBackendKind, AgentPermissionPolicy, AgentProvider, SavedAgentDefinition};
@@ -138,6 +138,92 @@ pub fn build_remote_interactive_arguments(
         .collect::<Result<Vec<_>>>()?;
     arguments.extend(definition.arguments.clone());
     Ok(arguments)
+}
+
+pub fn build_remote_structured_command(
+    definition: &SavedAgentDefinition,
+    arguments: &[String],
+    environment: &[(String, String)],
+) -> Result<String> {
+    if definition.backend != AgentBackendKind::Structured {
+        bail!("The selected agent backend is not structured");
+    }
+    let descriptor = provider_descriptor(definition.provider);
+    if !descriptor.capabilities.structured_events || !descriptor.capabilities.remote {
+        bail!(
+            "{} does not support remote structured sessions",
+            definition.provider.label()
+        );
+    }
+    validate_safe_arguments(definition.provider, &definition.arguments)?;
+    let executable = definition
+        .executable_override
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or(descriptor.executable)
+        .context("Choose an executable for this provider")?;
+    let working_directory = definition
+        .working_directory
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .context("Choose a remote working directory")?;
+
+    let executable_arg = shell_single_quote(executable);
+    let directory_arg = shell_single_quote(working_directory);
+    let guidance = shell_single_quote(descriptor.install_guidance);
+    let version_error = shell_single_quote(&format!(
+        "TermiRust found {executable}, but its version check failed. Update or repair the CLI and select Check again."
+    ));
+    let directory_error = shell_single_quote(&format!(
+        "TermiRust cannot access remote working directory: {working_directory}"
+    ));
+    let mut lines = Vec::new();
+    for (key, value) in environment {
+        let key = key.trim();
+        if key.is_empty() {
+            continue;
+        }
+        if !is_shell_environment_name(key) {
+            bail!("Remote environment variable name is invalid: {key:?}");
+        }
+        lines.push(format!("export {key}={}", shell_single_quote(value)));
+    }
+    lines.extend([
+        format!(
+            "if ! command -v {executable_arg} >/dev/null 2>&1; then printf '%s\\n' {guidance} >&2; exit 127; fi"
+        ),
+        format!(
+            "if ! {executable_arg} {} >/dev/null 2>&1; then printf '%s\\n' {version_error} >&2; exit 126; fi",
+            shell_single_quote(descriptor.version_argument)
+        ),
+        format!(
+            "if [ ! -d {directory_arg} ] || [ ! -r {directory_arg} ] || [ ! -x {directory_arg} ]; then printf '%s\\n' {directory_error} >&2; exit 125; fi"
+        ),
+        format!(
+            "if ! cd -- {directory_arg}; then printf '%s\\n' {directory_error} >&2; exit 125; fi"
+        ),
+    ]);
+    let mut command = format!("exec {executable_arg}");
+    for argument in arguments {
+        command.push(' ');
+        command.push_str(&shell_single_quote(argument));
+    }
+    lines.push(command);
+    Ok(lines.join("\n"))
+}
+
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn is_shell_environment_name(value: &str) -> bool {
+    let mut chars = value.chars();
+    chars
+        .next()
+        .is_some_and(|first| first == '_' || first.is_ascii_alphabetic())
+        && chars.all(|character| character == '_' || character.is_ascii_alphanumeric())
 }
 
 fn permission_arguments(definition: &SavedAgentDefinition) -> Result<Vec<OsString>> {
@@ -282,7 +368,7 @@ fn read_version(executable: &Path, version_argument: &str) -> Result<Option<Stri
 mod tests {
     use super::{
         AgentExecutableStatus, build_interactive_launch_spec, build_remote_interactive_arguments,
-        detect_agent_executable,
+        build_remote_structured_command, detect_agent_executable,
     };
     use crate::models::{
         AgentBackendKind, AgentPermissionPolicy, AgentProvider, SavedAgentDefinition,
@@ -394,6 +480,48 @@ mod tests {
                 .to_string()
                 .contains("not an interactive terminal")
         );
+    }
+
+    #[test]
+    fn remote_structured_command_quotes_every_shell_boundary() {
+        let definition = SavedAgentDefinition {
+            provider: AgentProvider::Codex,
+            backend: AgentBackendKind::Structured,
+            executable_override: Some("/opt/agent's bin/codex".to_string()),
+            working_directory: Some("/srv/repo's; touch /tmp/nope".to_string()),
+            arguments: vec!["--feature".to_string()],
+            worktree: SavedWorktreePolicy::SharedDirectory,
+            ..SavedAgentDefinition::default()
+        };
+        let command = build_remote_structured_command(
+            &definition,
+            &["app-server".to_string(), "value; $(false)".to_string()],
+            &[("TERMIRUST_VALUE".to_string(), "token's value".to_string())],
+        )
+        .unwrap();
+
+        assert!(command.contains("export TERMIRUST_VALUE='token'\"'\"'s value'"));
+        assert!(command.contains("'/opt/agent'\"'\"'s bin/codex'"));
+        assert!(command.contains("'/srv/repo'\"'\"'s; touch /tmp/nope'"));
+        assert!(command.ends_with("'app-server' 'value; $(false)'"));
+    }
+
+    #[test]
+    fn remote_structured_command_rejects_invalid_environment_names() {
+        let definition = SavedAgentDefinition {
+            provider: AgentProvider::Gemini,
+            backend: AgentBackendKind::Structured,
+            working_directory: Some("/tmp".to_string()),
+            worktree: SavedWorktreePolicy::SharedDirectory,
+            ..SavedAgentDefinition::default()
+        };
+        let error = build_remote_structured_command(
+            &definition,
+            &["--output-format".to_string(), "stream-json".to_string()],
+            &[("BAD-NAME".to_string(), "value".to_string())],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("variable name is invalid"));
     }
 
     #[test]
