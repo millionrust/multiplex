@@ -10,7 +10,7 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Pass | No formatting differences. |
 | `cargo check -q` | Pass | Existing macOS `objc` cfg and dead-code warnings remain. |
-| `cargo test -q` | Pass | 261 passed, 0 failed, 0 ignored in 14.68s. |
+| `cargo test -q` | Pass | 261 passed, 0 failed, 3 ignored in 50.76s with Docker-backed tests exercised. |
 | Agent adapter focused tests | Pass | Codex fake app-server, Claude/Gemini stream fixtures, literal argument child, cancellation, malformed data. |
 | Worktree integration tests | Pass | Real temporary Git repositories cover create, status, dirty refusal, committed refusal, and path boundaries. |
 | Canvas capacity test | Pass | 20 nodes, 40 edges, finite fit geometry and supported zoom. |
@@ -18,12 +18,31 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | `cargo clippy --all-targets -- -D warnings` | Blocked | 121 existing warnings include old `objc` cfg macros and unrelated UI lints; not changed in this feature. |
 | `git diff --check` | Pass | No whitespace errors. |
 
-The three `docker_ssh_persistent_tmux` tests are self-skipping in this run because
-`docker info` returned exit status 1. Cargo reports their early-return path as
-three passing tests, but this record treats them as **not exercised**. The
-repository owner previously ran the reconnect and missing-tmux cases
-successfully on 2026-06-24. The new remote kill-session case has deterministic
-command-quoting coverage but still requires a Docker or real-SSH run.
+Docker Desktop 29.5.3 was available for the final run. All three
+`docker_ssh_persistent_tmux` tests exercised real SSH containers and passed in
+40.87s: reconnect preserved the session without replaying startup, missing tmux
+fell back with guidance, and the remote kill control path removed the session.
+The full suite also exercised the other Docker-backed SSH, SFTP, forwarding,
+jump-host, restore, and application integration tests instead of their
+Docker-unavailable early returns.
+
+## Live provider checks
+
+Live checks are ignored during normal tests because they require installed,
+authenticated CLIs, network access, and may consume provider quota. Run one at a
+time with the explicit opt-in flag:
+
+```bash
+TERMIRUST_RUN_LIVE_AGENT_TESTS=1 cargo test live_codex_app_server_smoke -- --ignored --nocapture
+TERMIRUST_RUN_LIVE_AGENT_TESTS=1 cargo test live_claude_headless_smoke -- --ignored --nocapture
+TERMIRUST_RUN_LIVE_AGENT_TESTS=1 cargo test live_gemini_headless_smoke -- --ignored --nocapture
+```
+
+| Provider | Result | Notes |
+| --- | --- | --- |
+| Codex CLI 0.144.4 | Pass | Authenticated app-server completed a read-only, no-tools marker request in 5.27s. |
+| Claude Code 2.1.126 | Account blocked | The adapter launched and normalized the provider error, but the organization disables subscription access to Claude Code. An API key or administrator change is required. |
+| Gemini CLI | Not exercised | The executable is not installed on this machine; TermiRust's missing-provider guidance remains covered deterministically. |
 
 ## Native launch smoke
 
@@ -81,13 +100,14 @@ hosts and were not claimed by automation:
 - restart and visual restore of a populated canvas;
 - eight simultaneously active output-producing panes and Retina/multi-monitor
   responsiveness;
-- live authenticated Codex, Claude Code, and Gemini structured calls;
+- live successful Claude Code and Gemini structured calls with authorized test
+  accounts;
 - password SSH, jump-host, forwarding, disconnect/reconnect, and remote missing
   provider guidance in Canvas mode;
 - visual approval cards, worktree manager actions, context preview editing, and
   cross-host rejection copy;
-- visual tmux close choices and successful kill-session execution against a
-  Docker or real SSH host;
+- visual tmux close choices; the underlying kill-session execution is covered
+  against the Docker SSH fixture;
 
 Use the reviewer smoke test in [agent-canvas.md](agent-canvas.md). Do not use a
 production repository or paid provider account for the first pass.

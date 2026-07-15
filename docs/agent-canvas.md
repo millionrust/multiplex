@@ -150,3 +150,8 @@ for ownership decisions. Recorded automated and manual release coverage is in
    processes remain stopped until `Restart` is selected.
 
 Do not use a production repository for the first manual worktree test.
+
+Live provider adapter smokes are opt-in and ignored by the normal suite. Their
+exact commands, prerequisites, and latest results are recorded in
+[agent-canvas-qa.md](agent-canvas-qa.md). Run them only with disposable prompts
+and an account whose quota and organization policy permit CLI use.
