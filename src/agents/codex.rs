@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -262,7 +261,6 @@ fn read_messages(
     ids: Arc<Mutex<SessionIds>>,
     config: CodexSessionConfig,
 ) {
-    let mut pending_methods = HashMap::<String, String>::new();
     let result = read_bounded_lines(
         BufReader::new(stdout),
         MAX_EVENT_LINE_BYTES,
@@ -289,14 +287,7 @@ fn read_messages(
                         return;
                     }
                 };
-                handle_message(
-                    message,
-                    &command_tx,
-                    &event_tx,
-                    &ids,
-                    &config,
-                    &mut pending_methods,
-                );
+                handle_message(message, &command_tx, &event_tx, &ids, &config);
             }
         },
     );
@@ -316,10 +307,9 @@ fn handle_message(
     event_tx: &SyncSender<AgentEvent>,
     ids: &Arc<Mutex<SessionIds>>,
     config: &CodexSessionConfig,
-    pending_methods: &mut HashMap<String, String>,
 ) {
     if message.get("method").is_some() && message.get("id").is_some() {
-        handle_server_request(&message, event_tx, pending_methods);
+        handle_server_request(&message, event_tx);
         return;
     }
     if let Some(id) = message.get("id").and_then(Value::as_u64) {
@@ -506,11 +496,7 @@ fn send_turn(
         .context("Codex app-server is no longer accepting commands")
 }
 
-fn handle_server_request(
-    message: &Value,
-    event_tx: &SyncSender<AgentEvent>,
-    pending_methods: &mut HashMap<String, String>,
-) {
+fn handle_server_request(message: &Value, event_tx: &SyncSender<AgentEvent>) {
     let Some(method) = message.get("method").and_then(Value::as_str) else {
         return;
     };
@@ -534,7 +520,6 @@ fn handle_server_request(
         .or_else(|| params.get("grantRoot").and_then(Value::as_str))
         .unwrap_or(method)
         .to_string();
-    pending_methods.insert(request_id.clone(), method.to_string());
     emit(
         event_tx,
         AgentEvent::StateChanged(AgentRunState::WaitingForApproval),
@@ -624,8 +609,9 @@ fn emit(event_tx: &SyncSender<AgentEvent>, event: AgentEvent) {
 #[cfg(test)]
 mod tests {
     use super::{CodexSessionConfig, spawn_codex_session};
-    use crate::agents::protocol::{AgentEvent, AgentRole, AgentRunState};
+    use crate::agents::protocol::{AgentApprovalKind, AgentEvent, AgentRole, AgentRunState};
     use crate::models::AgentPermissionPolicy;
+    use serde_json::{Value, json};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -741,6 +727,74 @@ sleep 1
         assert!(
             !process_exists(child_id),
             "Codex child process remained alive"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn surfaces_and_responds_to_server_approval_requests() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("termirust-codex-approval-{unique}"));
+        fs::create_dir_all(&directory).unwrap();
+        let executable = directory.join("fake codex approval");
+        fs::write(
+            &executable,
+            r#"#!/bin/sh
+read initialize
+printf '%s\n' '{"id":1,"result":{"userAgent":"fake"}}'
+read initialized
+read thread_start
+printf '%s\n' '{"id":2,"result":{"thread":{"id":"thread-approval"}}}'
+printf '%s\n' '{"id":77,"method":"item/commandExecution/requestApproval","params":{"command":"cargo test","cwd":"/tmp/project","reason":"run tests"}}'
+read approval
+printf '%s\n' "$approval" > "$0.response"
+sleep 1
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+        let response_path = PathBuf::from(format!("{}.response", executable.display()));
+        let session = spawn_codex_session(CodexSessionConfig {
+            executable,
+            working_directory: directory,
+            permission_policy: AgentPermissionPolicy::WorkspaceWrite,
+            initial_prompt: None,
+        })
+        .unwrap();
+        let approval = loop {
+            match session
+                .event_rx
+                .recv_timeout(Duration::from_secs(3))
+                .unwrap()
+            {
+                AgentEvent::ApprovalRequested(approval) => break approval,
+                _ => continue,
+            }
+        };
+        assert_eq!(approval.request_id, "77");
+        assert_eq!(approval.kind, AgentApprovalKind::Command);
+        assert_eq!(approval.operation, "cargo test");
+        assert_eq!(approval.working_directory.as_deref(), Some("/tmp/project"));
+        assert_eq!(approval.reason.as_deref(), Some("run tests"));
+
+        session
+            .respond_to_approval(&approval.request_id, false)
+            .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while !response_path.exists() && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let response: Value = serde_json::from_slice(&fs::read(response_path).unwrap()).unwrap();
+        assert_eq!(
+            response,
+            json!({"id": 77, "result": {"decision": "decline"}})
         );
     }
 
