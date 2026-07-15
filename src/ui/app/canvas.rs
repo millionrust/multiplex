@@ -66,6 +66,12 @@ pub(super) struct PendingTmuxClose {
     pub confirm_kill: bool,
 }
 
+#[derive(Clone, Debug)]
+pub(super) struct SplitPaneChooser {
+    pub workspace_id: u64,
+    pub selected_pane_ids: Vec<u64>,
+}
+
 pub(super) enum StructuredAgentHandle {
     Codex(CodexSessionHandle),
     Headless(HeadlessSessionHandle),
@@ -1080,6 +1086,119 @@ impl TermiRustApp {
         selected.is_some()
     }
 
+    fn open_split_pane_chooser(&mut self, workspace_id: u64, cx: &mut Context<Self>) {
+        let Some(workspace) = self.workspace(workspace_id) else {
+            return;
+        };
+        let pane_ids = workspace.pane_ids.clone();
+        let active_pane_id = workspace.active_pane_id;
+        let mut selected_pane_ids = workspace
+            .layout
+            .as_ref()
+            .map(|layout| layout.leaf_ids())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|pane_id| pane_ids.contains(pane_id))
+            .take(super::MAX_SPLIT_PANES)
+            .collect::<Vec<_>>();
+        if selected_pane_ids.is_empty() && pane_ids.contains(&active_pane_id) {
+            selected_pane_ids.push(active_pane_id);
+        }
+        for pane_id in pane_ids {
+            if selected_pane_ids.len() >= super::MAX_SPLIT_PANES {
+                break;
+            }
+            if !selected_pane_ids.contains(&pane_id) {
+                selected_pane_ids.push(pane_id);
+            }
+        }
+        self.split_pane_chooser = Some(SplitPaneChooser {
+            workspace_id,
+            selected_pane_ids,
+        });
+        self.canvas_add_menu_open = false;
+        self.canvas_links_open = false;
+        self.worktree_manager_open = false;
+        self.context_handoff_review = None;
+        self.pending_tmux_close = None;
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    pub(super) fn toggle_split_pane_choice(&mut self, pane_id: u64, cx: &mut Context<Self>) {
+        let Some(chooser) = self.split_pane_chooser.as_mut() else {
+            return;
+        };
+        if let Some(index) = chooser
+            .selected_pane_ids
+            .iter()
+            .position(|selected| *selected == pane_id)
+        {
+            chooser.selected_pane_ids.remove(index);
+            self.error_message.clear();
+        } else if chooser.selected_pane_ids.len() >= super::MAX_SPLIT_PANES {
+            self.error_message = format!(
+                "Split view can show at most {} sessions. Deselect one first.",
+                super::MAX_SPLIT_PANES
+            );
+        } else {
+            chooser.selected_pane_ids.push(pane_id);
+            self.error_message.clear();
+        }
+        cx.notify();
+    }
+
+    pub(super) fn confirm_split_pane_choice(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(chooser) = self.split_pane_chooser.take() else {
+            return;
+        };
+        if chooser.selected_pane_ids.is_empty() {
+            self.error_message = "Choose at least one session for Split view.".to_string();
+            self.split_pane_chooser = Some(chooser);
+            cx.notify();
+            return;
+        }
+        let Some((selected_count, total_count)) = self
+            .workspace_mut(chooser.workspace_id)
+            .and_then(|workspace| {
+                let selected_pane_ids = chooser
+                    .selected_pane_ids
+                    .into_iter()
+                    .filter(|pane_id| workspace.pane_ids.contains(pane_id))
+                    .take(super::MAX_SPLIT_PANES)
+                    .collect::<Vec<_>>();
+                if selected_pane_ids.is_empty() {
+                    return None;
+                }
+                workspace.layout =
+                    super::flat_split(&selected_pane_ids, crate::models::SplitAxis::Horizontal);
+                workspace.layout_mode = WorkspaceLayoutMode::Split;
+                workspace.view_mode = WorkspaceViewMode::Terminal;
+                if !selected_pane_ids.contains(&workspace.active_pane_id) {
+                    workspace.active_pane_id = selected_pane_ids[0];
+                }
+                Some((selected_pane_ids.len(), workspace.pane_ids.len()))
+            })
+        else {
+            self.error_message = "The selected sessions are no longer available.".to_string();
+            cx.notify();
+            return;
+        };
+        self.canvas_interaction = None;
+        self.status_message = format!(
+            "Showing {} of {} sessions in Split. All sessions remain available in Canvas.",
+            selected_count, total_count
+        );
+        self.error_message.clear();
+        self.persist_runtime_state();
+        self.sync_terminal_layout(window, cx);
+        cx.notify();
+    }
+
     pub(super) fn set_workspace_layout_mode(
         &mut self,
         mode: WorkspaceLayoutMode,
@@ -1089,6 +1208,19 @@ impl TermiRustApp {
         let Some(workspace_id) = self.active_workspace_id else {
             return;
         };
+        let Some((current_mode, pane_count)) = self
+            .workspace(workspace_id)
+            .map(|workspace| (workspace.layout_mode, workspace.pane_ids.len()))
+        else {
+            return;
+        };
+        if current_mode == mode {
+            return;
+        }
+        if mode == WorkspaceLayoutMode::Split && pane_count > super::MAX_SPLIT_PANES {
+            self.open_split_pane_chooser(workspace_id, cx);
+            return;
+        }
         let viewport = window.viewport_size();
         let viewport_width: f32 = viewport.width.into();
         let viewport_height: f32 = viewport.height.into();
@@ -1100,18 +1232,6 @@ impl TermiRustApp {
         let Some(workspace) = self.workspace_mut(workspace_id) else {
             return;
         };
-        if workspace.layout_mode == mode {
-            return;
-        }
-        if mode == WorkspaceLayoutMode::Split && workspace.pane_ids.len() > super::MAX_SPLIT_PANES {
-            self.error_message = format!(
-                "Split view supports up to {} panes. Close or detach extra canvas nodes first.",
-                super::MAX_SPLIT_PANES
-            );
-            cx.notify();
-            return;
-        }
-
         if mode == WorkspaceLayoutMode::Canvas {
             let world_center = workspace.canvas.transform.screen_to_world(screen_center);
             let pane_ids = workspace.pane_ids.clone();
@@ -1414,7 +1534,7 @@ impl TermiRustApp {
         cx.notify();
     }
 
-    fn add_request_to_canvas(
+    pub(super) fn add_request_to_canvas(
         &mut self,
         mut request: ConnectRequest,
         agent_definition: Option<SavedAgentDefinition>,
@@ -4802,6 +4922,187 @@ impl TermiRustApp {
             .into_any_element()
     }
 
+    fn render_split_pane_chooser(&self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(chooser) = self.split_pane_chooser.as_ref() else {
+            return div().into_any_element();
+        };
+        let selected = chooser.selected_pane_ids.clone();
+        let panes = self
+            .workspace(chooser.workspace_id)
+            .map(|workspace| workspace.pane_ids.clone())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|pane_id| {
+                self.pane(pane_id).map(|pane| {
+                    (
+                        pane_id,
+                        pane.title.clone(),
+                        if pane.request.is_local_shell() {
+                            "Local".to_string()
+                        } else {
+                            pane.endpoint.clone()
+                        },
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        v_flex()
+            .id("canvas-split-pane-chooser")
+            .absolute()
+            .top(px(12.0))
+            .right(px(12.0))
+            .w(px(540.0))
+            .max_h(px(680.0))
+            .overflow_hidden()
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(theme::border_dark())
+            .bg(theme::library_card())
+            .shadow_lg()
+            .child(
+                h_flex()
+                    .h(px(44.0))
+                    .px_3()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child("Choose Sessions for Split"),
+                    )
+                    .child(
+                        Button::new("canvas-split-pane-chooser-close")
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Stay in Canvas")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.split_pane_chooser = None;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .p_3()
+                    .gap_2()
+                    .min_h_0()
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme::text_muted())
+                            .child(format!(
+                                "Choose 1-{} sessions. Unselected sessions keep running and remain on the Canvas.",
+                                super::MAX_SPLIT_PANES
+                            )),
+                    )
+                    .child(
+                        v_flex()
+                            .max_h(px(500.0))
+                            .overflow_y_scrollbar()
+                            .children(panes.into_iter().map(|(pane_id, title, endpoint)| {
+                                let is_selected = selected.contains(&pane_id);
+                                h_flex()
+                                    .id(("canvas-split-pane-choice", pane_id))
+                                    .min_h(px(48.0))
+                                    .px_2()
+                                    .gap_2()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .border_b_1()
+                                    .border_color(theme::with_alpha(theme::border_dark(), 0.5))
+                                    .bg(if is_selected {
+                                        theme::with_alpha(theme::accent(), 0.12)
+                                    } else {
+                                        theme::library_card()
+                                    })
+                                    .child(
+                                        Icon::new(if is_selected {
+                                            IconName::Check
+                                        } else {
+                                            IconName::SquareTerminal
+                                        })
+                                        .size(px(14.0))
+                                        .text_color(if is_selected {
+                                            theme::accent()
+                                        } else {
+                                            theme::text_muted()
+                                        }),
+                                    )
+                                    .child(
+                                        v_flex()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .child(
+                                                div()
+                                                    .text_size(px(11.0))
+                                                    .font_semibold()
+                                                    .text_color(theme::text_main())
+                                                    .child(title),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(10.0))
+                                                    .text_color(theme::text_muted())
+                                                    .child(endpoint),
+                                            ),
+                                    )
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.toggle_split_pane_choice(pane_id, cx);
+                                    }))
+                            })),
+                    )
+                    .child(
+                        h_flex()
+                            .items_center()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme::text_muted())
+                                    .child(format!(
+                                        "{} of {} selected",
+                                        selected.len(),
+                                        super::MAX_SPLIT_PANES
+                                    )),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        Button::new("canvas-split-pane-chooser-cancel")
+                                            .small()
+                                            .ghost()
+                                            .label("Cancel")
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                this.split_pane_chooser = None;
+                                                cx.notify();
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("canvas-split-pane-chooser-confirm")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Accent,
+                                                cx,
+                                            ))
+                                            .icon(IconName::Check)
+                                            .label("Open Split")
+                                            .disabled(selected.is_empty())
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.confirm_split_pane_choice(window, cx);
+                                            })),
+                                    ),
+                            ),
+                    ),
+            )
+            .into_any_element()
+    }
+
     pub(super) fn render_canvas_workspace(
         &self,
         window: &mut Window,
@@ -4898,6 +5199,9 @@ impl TermiRustApp {
         }
         if self.pending_tmux_close.is_some() {
             body = body.child(self.render_tmux_close_dialog(cx));
+        }
+        if self.split_pane_chooser.is_some() {
+            body = body.child(self.render_split_pane_chooser(cx));
         }
         if self.canvas_links_open {
             body = body.child(self.render_canvas_links(cx));

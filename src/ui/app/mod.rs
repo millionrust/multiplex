@@ -17,7 +17,8 @@ pub(crate) use types::{
 
 use canvas::{
     AgentCreationState, CANVAS_NODE_HEADER_HEIGHT, CANVAS_TOOLBAR_HEIGHT, CanvasInteraction,
-    CanvasWorkspaceState, ContextHandoffReview, PendingTmuxClose, StructuredAgentRuntime,
+    CanvasWorkspaceState, ContextHandoffReview, PendingTmuxClose, SplitPaneChooser,
+    StructuredAgentRuntime,
 };
 use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
@@ -515,20 +516,16 @@ struct WorkspaceTab {
 }
 
 impl WorkspaceTab {
-    /// Rebuild the flat `pane_ids` cache from the `layout` tree.
+    /// Add panes present in the Split tree without discarding hidden Canvas panes.
     fn sync_pane_ids(&mut self) {
         let split_pane_ids = self
             .layout
             .as_ref()
             .map(|layout| layout.leaf_ids())
             .unwrap_or_default();
-        if self.layout_mode == WorkspaceLayoutMode::Split {
-            self.pane_ids = split_pane_ids;
-        } else {
-            for pane_id in split_pane_ids {
-                if !self.pane_ids.contains(&pane_id) {
-                    self.pane_ids.push(pane_id);
-                }
+        for pane_id in split_pane_ids {
+            if !self.pane_ids.contains(&pane_id) {
+                self.pane_ids.push(pane_id);
             }
         }
         if !self.pane_ids.contains(&self.active_pane_id) {
@@ -931,6 +928,7 @@ pub struct TermiRustApp {
     pending_context_source: Option<crate::models::CanvasNodeId>,
     context_handoff_review: Option<ContextHandoffReview>,
     pending_tmux_close: Option<PendingTmuxClose>,
+    split_pane_chooser: Option<SplitPaneChooser>,
     pending_dependency_source: Option<crate::models::CanvasNodeId>,
     orchestration_active: bool,
     canvas_node_rename_id: Option<crate::models::CanvasNodeId>,
@@ -1079,6 +1077,7 @@ impl TermiRustApp {
             pending_context_source: None,
             context_handoff_review: None,
             pending_tmux_close: None,
+            split_pane_chooser: None,
             pending_dependency_source: None,
             orchestration_active: false,
             canvas_node_rename_id: None,
@@ -9337,6 +9336,11 @@ impl TermiRustApp {
         }
 
         if event.keystroke.key.as_str() == "escape" {
+            if self.split_pane_chooser.is_some() {
+                self.split_pane_chooser = None;
+                cx.notify();
+                return true;
+            }
             if self.canvas_node_rename_id.is_some() {
                 self.cancel_canvas_node_rename(window, cx);
                 return true;
@@ -11183,6 +11187,112 @@ mod tests {
                 })
             })
             .expect("split switch should succeed");
+    }
+
+    #[gpui::test]
+    fn canvas_split_chooser_keeps_unselected_sessions_running_and_persisted(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let local_request = || {
+            ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+        let workspace_id = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let (workspace_id, _) = app
+                        .open_request_workspace(local_request(), window, cx)
+                        .expect("local workspace should open");
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    for _ in 0..4 {
+                        app.add_request_to_canvas(local_request(), None, window, cx)
+                            .expect("canvas terminal should open");
+                    }
+                    workspace_id
+                })
+            })
+            .expect("window update should succeed");
+
+        let pane_ids = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.workspace(workspace_id)?;
+            (workspace.pane_ids.len() == 5
+                && workspace
+                    .pane_ids
+                    .iter()
+                    .all(|pane_id| app.pane(*pane_id).is_some_and(|pane| pane.connected)))
+            .then(|| workspace.pane_ids.clone())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Split, window, cx);
+                    let chooser = app
+                        .split_pane_chooser
+                        .as_ref()
+                        .expect("five sessions should open the split chooser");
+                    assert_eq!(chooser.workspace_id, workspace_id);
+                    assert_eq!(chooser.selected_pane_ids.len(), MAX_SPLIT_PANES);
+                    assert_eq!(
+                        app.workspace(workspace_id).unwrap().layout_mode,
+                        WorkspaceLayoutMode::Canvas
+                    );
+
+                    let previously_selected = chooser.selected_pane_ids[0];
+                    let hidden = *pane_ids
+                        .iter()
+                        .find(|pane_id| !chooser.selected_pane_ids.contains(pane_id))
+                        .expect("one pane should initially be unselected");
+                    app.toggle_split_pane_choice(previously_selected, cx);
+                    app.toggle_split_pane_choice(hidden, cx);
+                    app.confirm_split_pane_choice(window, cx);
+
+                    let workspace = app.workspace(workspace_id).unwrap();
+                    assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Split);
+                    assert_eq!(workspace.pane_ids, pane_ids);
+                    assert_eq!(workspace.layout.as_ref().unwrap().leaf_ids().len(), 4);
+                    assert!(
+                        !workspace
+                            .layout
+                            .as_ref()
+                            .unwrap()
+                            .leaf_ids()
+                            .contains(&previously_selected)
+                    );
+                    assert_eq!(workspace.canvas.nodes.len(), 5);
+                    assert!(
+                        app.pane(previously_selected)
+                            .is_some_and(|pane| pane.connected)
+                    );
+
+                    let saved = app.saved.restored_workspaces.first().unwrap();
+                    assert_eq!(saved.panes.len(), 5);
+                    fn saved_leaf_count(node: &SavedSplitNode) -> usize {
+                        match node {
+                            SavedSplitNode::Leaf(_) => 1,
+                            SavedSplitNode::Split { a, b, .. } => {
+                                saved_leaf_count(a) + saved_leaf_count(b)
+                            }
+                        }
+                    }
+                    assert_eq!(saved_leaf_count(saved.layout.as_ref().unwrap()), 4);
+
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    let workspace = app.workspace(workspace_id).unwrap();
+                    assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Canvas);
+                    assert_eq!(workspace.pane_ids.len(), 5);
+                    assert_eq!(workspace.canvas.nodes.len(), 5);
+                })
+            })
+            .expect("split chooser flow should succeed");
     }
 
     #[gpui::test]

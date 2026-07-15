@@ -29,6 +29,10 @@ Node positions, sizes, collapsed state, links, and viewport are persisted with
 the workspace. A restored structured node does not silently launch a process;
 select `Restart` inside that node.
 
+When more than four sessions exist, switching to Split opens a chooser. Pick up
+to four sessions to display; every unselected session keeps running and remains
+available when you return to Canvas.
+
 ## Agent modes
 
 `Interactive terminal` launches the provider's normal TUI in an existing local
