@@ -5122,6 +5122,18 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn open_agent_canvas(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_local_terminal(window, cx);
+        if self.active_workspace_id.is_none() {
+            return;
+        }
+
+        self.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+        self.status_message = "Agent Canvas ready.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn open_request_workspace(
         &mut self,
         mut request: ConnectRequest,
@@ -9064,13 +9076,28 @@ impl TermiRustApp {
                                 })),
                         )
                         .child(
-                            Button::new("hosts-onboarding-local")
-                                .debug_selector(|| "hosts-onboarding-local".to_string())
+                            Button::new("hosts-onboarding-canvas")
+                                .debug_selector(|| "hosts-onboarding-canvas".to_string())
                                 .small()
                                 .custom(Self::action_button_style(
                                     theme::ActionTone::AccentSoft,
                                     cx,
                                 ))
+                                .icon(IconName::Map)
+                                .label("Agent Canvas")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.open_agent_canvas(window, cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("hosts-onboarding-local")
+                                .debug_selector(|| "hosts-onboarding-local".to_string())
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                ))
+                                .icon(IconName::SquareTerminal)
                                 .label("Local Terminal")
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.open_local_terminal(window, cx);
@@ -20556,6 +20583,113 @@ sleep 1
             );
             assert!(app.error_message.is_empty());
         });
+    }
+
+    #[gpui::test]
+    fn e2e_onboarding_agent_canvas_opens_ready_canvas_workspace(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let click_point = selector_click_center(window, cx, "hosts-onboarding-canvas");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+
+        visual.simulate_click(click_point, gpui::Modifiers::none());
+
+        let pane_id = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (workspace.layout_mode == WorkspaceLayoutMode::Canvas
+                && pane.request.kind == ConnectionKind::LocalShell
+                && pane.connected)
+                .then_some(pane.id)
+        });
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().expect("workspace should exist");
+            assert_eq!(workspace.pane_ids, vec![pane_id]);
+            assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Canvas);
+            assert!(
+                workspace
+                    .canvas
+                    .nodes
+                    .iter()
+                    .any(|node| node.kind.pane_id() == Some(pane_id))
+            );
+            assert!(app.saved.settings.onboarding_dismissed);
+            assert!(!app.should_show_onboarding());
+            assert!(app.error_message.is_empty());
+        });
+        let _add_button = selector_click_center(window, cx, "canvas-add-terminal");
+    }
+
+    #[gpui::test]
+    fn e2e_hosts_toolbar_agent_canvas_opens_ready_canvas_workspace(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        cx.simulate_window_resize(*window, size(px(1120.), px(720.)));
+        cx.run_until_parked();
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        let canvas_bounds = visual
+            .debug_bounds("library-agent-canvas")
+            .expect("agent canvas button should render at minimum size");
+        let terminal_bounds = visual
+            .debug_bounds("library-new-terminal")
+            .expect("terminal button should render at minimum size");
+        assert!(canvas_bounds.origin.x >= px(0.));
+        assert!(canvas_bounds.origin.x + canvas_bounds.size.width <= terminal_bounds.origin.x);
+        assert!(terminal_bounds.origin.x + terminal_bounds.size.width <= px(1120.));
+
+        visual.simulate_click(canvas_bounds.center(), gpui::Modifiers::none());
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (workspace.layout_mode == WorkspaceLayoutMode::Canvas
+                && pane.request.kind == ConnectionKind::LocalShell
+                && pane.connected)
+                .then_some(())
+        });
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().expect("workspace should exist");
+            assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Canvas);
+            assert_eq!(workspace.canvas.nodes.len(), 1);
+            assert!(app.error_message.is_empty());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_canvas_add_codex_opens_workflow_agent_setup(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_agent_canvas(window, cx);
+                })
+            })
+            .expect("agent canvas should open");
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            (workspace.layout_mode == WorkspaceLayoutMode::Canvas && pane.connected).then_some(())
+        });
+
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        let add_click = selector_click_center(window, cx, "canvas-add-terminal");
+        visual.simulate_click(add_click, gpui::Modifiers::none());
+        let codex_click = selector_click_center(window, cx, "canvas-add-agent-0");
+        visual.simulate_click(codex_click, gpui::Modifiers::none());
+
+        app.read_with(cx, |app, _| {
+            assert!(app.agent_creation.is_some());
+            assert!(!app.canvas_add_menu_open);
+            assert!(app.error_message.is_empty());
+        });
+        let _structured_option = selector_click_center(window, cx, "agent-backend-structured");
+        let _launch_button = selector_click_center(window, cx, "agent-launch");
     }
 
     #[gpui::test]

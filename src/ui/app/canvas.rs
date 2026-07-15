@@ -56,6 +56,25 @@ pub(super) struct AgentCreationState {
     executable_status: AgentExecutableStatus,
 }
 
+fn default_agent_backend(provider: AgentProvider) -> AgentBackendKind {
+    if matches!(
+        provider,
+        AgentProvider::Codex | AgentProvider::ClaudeCode | AgentProvider::Gemini
+    ) {
+        AgentBackendKind::Structured
+    } else {
+        AgentBackendKind::InteractivePty
+    }
+}
+
+fn agent_creation_can_launch(
+    location: &AgentLocation,
+    executable_status: &AgentExecutableStatus,
+) -> bool {
+    !matches!(location, AgentLocation::Local)
+        || matches!(executable_status, AgentExecutableStatus::Available { .. })
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct ContextHandoffReview {
     pub edge_id: CanvasEdgeId,
@@ -1895,9 +1914,10 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) {
         let working_directory = self.default_agent_working_directory();
+        let backend = default_agent_backend(provider);
         let definition = SavedAgentDefinition {
             provider,
-            backend: AgentBackendKind::InteractivePty,
+            backend,
             location: AgentLocation::Local,
             working_directory: (!working_directory.is_empty()).then_some(working_directory.clone()),
             executable_override: None,
@@ -3310,6 +3330,7 @@ impl TermiRustApp {
                         .enumerate()
                         .map(|(index, provider)| {
                             Button::new(("canvas-add-agent", index))
+                                .debug_selector(move || format!("canvas-add-agent-{index}"))
                                 .small()
                                 .w_full()
                                 .justify_start()
@@ -3389,11 +3410,12 @@ impl TermiRustApp {
                 path.display()
             ),
         };
-        let status_text = if matches!(location, AgentLocation::Local) {
+        let status_text = if matches!(&location, AgentLocation::Local) {
             local_status
         } else {
             "The executable is checked on the remote host when the SSH session opens.".to_string()
         };
+        let can_launch = agent_creation_can_launch(&location, &state.executable_status);
         let profiles = self.saved.profiles.clone();
 
         v_flex()
@@ -3505,6 +3527,9 @@ impl TermiRustApp {
                                     .gap_1()
                                     .child(
                                         Button::new("agent-backend-interactive")
+                                            .debug_selector(|| {
+                                                "agent-backend-interactive".to_string()
+                                            })
                                             .xsmall()
                                             .custom(Self::segmented_button_style(
                                                 backend == AgentBackendKind::InteractivePty,
@@ -3520,6 +3545,9 @@ impl TermiRustApp {
                                     )
                                     .child(
                                         Button::new("agent-backend-structured")
+                                            .debug_selector(|| {
+                                                "agent-backend-structured".to_string()
+                                            })
                                             .xsmall()
                                             .custom(Self::segmented_button_style(
                                                 backend == AgentBackendKind::Structured,
@@ -3733,10 +3761,12 @@ impl TermiRustApp {
                     .child(
                         h_flex().justify_end().child(
                             Button::new("agent-launch")
+                                .debug_selector(|| "agent-launch".to_string())
                                 .small()
                                 .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                                 .icon(IconName::ArrowRight)
                                 .label("Launch Agent")
+                                .disabled(!can_launch)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.launch_agent_creation(window, cx);
                                 })),
@@ -4526,6 +4556,26 @@ impl TermiRustApp {
             .active_workspace()
             .map(|workspace| (workspace.canvas.transform.zoom * 100.0).round() as i32)
             .unwrap_or(100);
+        let can_review_context = self.active_workspace().is_some_and(|workspace| {
+            workspace
+                .canvas
+                .selected_node_id
+                .as_ref()
+                .is_some_and(|target| {
+                    workspace.canvas.edges.iter().any(|edge| {
+                        edge.enabled
+                            && edge.kind == CanvasEdgeKind::Context
+                            && &edge.target == target
+                    })
+                })
+        });
+        let can_run_workflow = self.active_workspace().is_some_and(|workspace| {
+            workspace.canvas.nodes.iter().any(|node| {
+                self.structured_agents
+                    .get(&node.id)
+                    .is_some_and(|runtime| runtime.queued_prompt.is_some())
+            })
+        });
         h_flex()
             .h(px(CANVAS_TOOLBAR_HEIGHT))
             .w_full()
@@ -4542,6 +4592,7 @@ impl TermiRustApp {
                     .items_center()
                     .child(
                         Button::new("canvas-add-terminal")
+                            .debug_selector(|| "canvas-add-terminal".to_string())
                             .small()
                             .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                             .icon(IconName::Plus)
@@ -4553,22 +4604,26 @@ impl TermiRustApp {
                     )
                     .child(
                         Button::new("canvas-review-context")
+                            .debug_selector(|| "canvas-review-context".to_string())
                             .small()
                             .ghost()
                             .icon(IconName::ArrowRight)
                             .label("Review context")
                             .tooltip("Review an incoming context link before sending")
+                            .disabled(!can_review_context)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.open_context_review_for_selected(window, cx);
                             })),
                     )
                     .child(
-                        Button::new("canvas-run-dependencies")
+                        Button::new("canvas-run-workflow")
+                            .debug_selector(|| "canvas-run-workflow".to_string())
                             .small()
                             .ghost()
                             .icon(IconName::Building2)
-                            .label("Run DAG")
+                            .label("Run workflow")
                             .tooltip("Run queued tasks when dependencies are satisfied")
+                            .disabled(!can_run_workflow)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.start_dependency_orchestration(cx);
                             })),
@@ -6020,15 +6075,56 @@ fn agent_state_after_queue(state: AgentRunState) -> Option<AgentRunState> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AgentRunState, CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CanvasNode,
-        CanvasNodeKind, CanvasPoint, CanvasRect, CanvasTransform, CanvasWorkspaceState,
-        TermiRustApp, agent_state_after_queue, agent_state_needs_attention,
-        canvas_node_render_rect, canvas_orchestration_scope, canvas_rect_is_visible,
-        canvas_reveal_delta, find_non_overlapping_position, fit_transform,
+        AgentExecutableStatus, AgentRunState, CANVAS_DEFAULT_NODE_HEIGHT,
+        CANVAS_DEFAULT_NODE_WIDTH, CanvasNode, CanvasNodeKind, CanvasPoint, CanvasRect,
+        CanvasTransform, CanvasWorkspaceState, TermiRustApp, agent_creation_can_launch,
+        agent_state_after_queue, agent_state_needs_attention, canvas_node_render_rect,
+        canvas_orchestration_scope, canvas_rect_is_visible, canvas_reveal_delta,
+        default_agent_backend, find_non_overlapping_position, fit_transform,
     };
     use crate::models::{
-        AgentProvider, CanvasNodeId, SavedAgentDefinition, SavedCanvasState, SavedWorktreePolicy,
+        AgentBackendKind, AgentLocation, AgentProvider, CanvasNodeId, SavedAgentDefinition,
+        SavedCanvasState, SavedWorktreePolicy,
     };
+
+    #[test]
+    fn supported_agents_default_to_workflow_mode() {
+        for provider in [
+            AgentProvider::Codex,
+            AgentProvider::ClaudeCode,
+            AgentProvider::Gemini,
+        ] {
+            assert_eq!(
+                default_agent_backend(provider),
+                AgentBackendKind::Structured
+            );
+        }
+        assert_eq!(
+            default_agent_backend(AgentProvider::CustomCli),
+            AgentBackendKind::InteractivePty
+        );
+    }
+
+    #[test]
+    fn local_agent_launch_requires_an_available_executable() {
+        let available = AgentExecutableStatus::Available {
+            path: "/tmp/codex".into(),
+            version: None,
+        };
+        let missing = AgentExecutableStatus::Missing {
+            requested: "codex".into(),
+            guidance: "Install Codex.",
+        };
+
+        assert!(agent_creation_can_launch(&AgentLocation::Local, &available));
+        assert!(!agent_creation_can_launch(&AgentLocation::Local, &missing));
+        assert!(agent_creation_can_launch(
+            &AgentLocation::SavedHost {
+                profile_id: "remote".to_string(),
+            },
+            &missing,
+        ));
+    }
 
     fn terminal_node(id: &str, pane_id: u64, x: f32, y: f32) -> CanvasNode {
         CanvasNode {

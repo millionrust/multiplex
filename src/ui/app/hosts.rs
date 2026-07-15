@@ -1497,6 +1497,20 @@ impl TermiRustApp {
                             .items_center()
                             .child(self.render_new_host_split_button(cx))
                             .child(
+                                Button::new("library-agent-canvas")
+                                    .debug_selector(|| "library-agent-canvas".to_string())
+                                    .xsmall()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::AccentSoft,
+                                        cx,
+                                    ))
+                                    .icon(IconName::Map)
+                                    .label("AGENT CANVAS")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_agent_canvas(window, cx);
+                                    })),
+                            )
+                            .child(
                                 Button::new("library-new-terminal")
                                     .debug_selector(|| "library-new-terminal".to_string())
                                     .xsmall()
