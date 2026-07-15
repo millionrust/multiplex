@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -565,19 +565,15 @@ fn tool_call(params: &Value) -> Option<NormalizedToolCall> {
     })
 }
 
-fn capture_stderr(stderr: impl std::io::Read, event_tx: SyncSender<AgentEvent>) {
-    let mut captured = String::new();
-    for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-        if captured.len() >= MAX_STDERR_BYTES {
-            break;
-        }
-        if !captured.is_empty() {
-            captured.push('\n');
-        }
-        captured.push_str(&line);
-    }
-    if !captured.trim().is_empty() {
-        emit(&event_tx, AgentEvent::Diagnostic { message: captured });
+fn capture_stderr(mut stderr: impl Read, event_tx: SyncSender<AgentEvent>) {
+    let mut bytes = Vec::new();
+    let _ = stderr
+        .by_ref()
+        .take(MAX_STDERR_BYTES as u64)
+        .read_to_end(&mut bytes);
+    let message = String::from_utf8_lossy(&bytes).trim().to_string();
+    if !message.is_empty() {
+        emit(&event_tx, AgentEvent::Diagnostic { message });
     }
 }
 
@@ -612,13 +608,26 @@ fn emit(event_tx: &SyncSender<AgentEvent>, event: AgentEvent) {
 
 #[cfg(test)]
 mod tests {
-    use super::{CodexSessionConfig, spawn_codex_session};
+    use super::{CodexSessionConfig, MAX_STDERR_BYTES, capture_stderr, spawn_codex_session};
     use crate::agents::protocol::{AgentApprovalKind, AgentEvent, AgentRole, AgentRunState};
     use crate::models::AgentPermissionPolicy;
     use serde_json::{Value, json};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn stderr_capture_enforces_its_byte_limit_without_newlines() {
+        let (event_tx, event_rx) = std::sync::mpsc::sync_channel(1);
+        capture_stderr(
+            std::io::Cursor::new(vec![b'x'; MAX_STDERR_BYTES * 4]),
+            event_tx,
+        );
+        let AgentEvent::Diagnostic { message } = event_rx.recv().unwrap() else {
+            panic!("expected bounded diagnostic event");
+        };
+        assert_eq!(message.len(), MAX_STDERR_BYTES);
+    }
 
     #[cfg(unix)]
     fn fake_codex() -> (PathBuf, PathBuf) {
