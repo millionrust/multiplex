@@ -10,7 +10,7 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Pass | No formatting differences. |
 | `cargo check -q` | Pass | Existing macOS `objc` cfg and dead-code warnings remain. |
-| `cargo test -q` | Pass | 254 passed, 0 failed, 0 ignored in 15.39s. |
+| `cargo test -q` | Pass | 261 passed, 0 failed, 0 ignored in 14.68s. |
 | Agent adapter focused tests | Pass | Codex fake app-server, Claude/Gemini stream fixtures, literal argument child, cancellation, malformed data. |
 | Worktree integration tests | Pass | Real temporary Git repositories cover create, status, dirty refusal, committed refusal, and path boundaries. |
 | Canvas capacity test | Pass | 20 nodes, 40 edges, finite fit geometry and supported zoom. |
@@ -43,9 +43,15 @@ so no screenshot or automated click-through is claimed.
 - Node titles normalize predictably, link enable/delete actions preserve nodes,
   and canvas/node mouse ownership prevents terminal clicks from panning the
   background.
+- Entering Split with more than four sessions preserves hidden live sessions;
+  a hidden-session Canvas tab cannot be merged into another Split and orphan
+  those sessions. Active terminal closure uses a rendered confirmation flow.
 - Local and SSH canvas nodes reuse `SessionPane` requests and persistence.
 - Interactive launch arguments remain literal locally and quoted at the one SSH
   shell boundary; unsafe provider bypass flags are rejected.
+- Remote interactive bootstrap generation checks executable presence, version
+  command success, and working-directory access before launch. Spaces, quotes,
+  and shell metacharacters remain single-quoted at the SSH boundary.
 - Structured Codex handshake, request correlation, streaming, approval,
   cancellation, malformed JSON, unknown fields, and abrupt process behavior use
   a deterministic fake server.
@@ -54,8 +60,9 @@ so no screenshot or automated click-through is claimed.
 - Context is bounded, redacted, marked untrusted, reviewable, and not persisted.
 - Dependency scheduling covers cycle rejection, topological readiness,
   concurrency two, and blocked dependants.
-- Managed worktrees persist independently of nodes and refuse active, dirty,
-  committed, unregistered, or out-of-root cleanup.
+- Managed worktrees persist ownership and active/complete/kept lifecycle state,
+  report changed paths and a diff summary, and refuse active, dirty, committed,
+  unregistered, or out-of-root cleanup.
 
 ## Manual results available
 

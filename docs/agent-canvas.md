@@ -63,9 +63,11 @@ directory. `Shared directory` and `Read only` require an explicit selection.
 The `Worktrees` toolbar action lists every app-managed worktree, including one
 whose agent node has been closed. Its actions can:
 
-- inspect whether the worktree is dirty or contains commits after its base;
+- inspect dirty/committed state, changed-path count, and a Git diff summary;
 - copy its path;
 - open a terminal in it;
+- mark its task complete while keeping the branch and files;
+- explicitly mark the worktree and branch to keep;
 - remove it only when it is unused, clean, and has no later commits.
 
 TermiRust does not force-remove dirty worktrees, delete useful branches, or
@@ -93,7 +95,9 @@ SSH host. Automatic cross-host context transport is not implemented.
 Remote interactive agents use saved SSH host settings, including credentials,
 jump hosts, forwarding, keepalive, TOFU host keys, startup directory, and tmux
 persistence. On connection, the remote startup command checks for the selected
-provider executable and prints installation guidance if it is missing. Nothing
+provider executable, verifies that its version command succeeds, and validates
+the selected working directory exists with read and execute access. A failed
+check prints a specific message and leaves the user in a normal shell. Nothing
 is installed or uploaded automatically.
 
 tmux is owned by the existing SSH persistence feature, not by the canvas. A
@@ -140,7 +144,8 @@ for ownership decisions. Recorded automated and manual release coverage is in
    authenticated; queue tasks and create one dependency.
 6. Create a context link, review the redactions, edit it, and confirm delivery.
 7. In a disposable Git repository, launch two isolated agents and verify their
-   branch and path differ. Close them, then inspect and remove only a clean one.
+   branch and path differ. Mark one complete, mark the other to keep, then
+   inspect and remove only a clean unused one.
 8. Restart TermiRust and verify geometry and links restore while structured
    processes remain stopped until `Restart` is selected.
 
