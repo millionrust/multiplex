@@ -1952,9 +1952,23 @@ impl TermiRustApp {
             command.push(' ');
             command.push_str(&shell_single_quote(argument));
         }
+        let working_directory = definition
+            .working_directory
+            .as_deref()
+            .map(str::trim)
+            .filter(|directory| !directory.is_empty())
+            .unwrap_or(".");
+        let directory = shell_single_quote(working_directory);
+        let directory_error = shell_single_quote(&format!(
+            "TermiRust could not use remote working directory: {working_directory}"
+        ));
+        let version_error = shell_single_quote(&format!(
+            "TermiRust found {executable}, but its version check failed. Update or repair the CLI before reconnecting."
+        ));
         Ok(format!(
-            "if command -v {executable} >/dev/null 2>&1; then exec {command}; else printf '%s\\n' {guidance} >&2; exec \"${{SHELL:-/bin/sh}}\"; fi",
+            "if ! command -v {executable} >/dev/null 2>&1; then printf '%s\\n' {guidance} >&2; exec \"${{SHELL:-/bin/sh}}\"; fi\nif ! {executable} {version_argument} >/dev/null 2>&1; then printf '%s\\n' {version_error} >&2; exec \"${{SHELL:-/bin/sh}}\"; fi\nif [ ! -d {directory} ] || [ ! -r {directory} ] || [ ! -x {directory} ]; then printf '%s\\n' {directory_error} >&2; exec \"${{SHELL:-/bin/sh}}\"; fi\nif ! cd -- {directory}; then printf '%s\\n' {directory_error} >&2; exec \"${{SHELL:-/bin/sh}}\"; fi\nexec {command}",
             executable = shell_single_quote(executable),
+            version_argument = shell_single_quote(descriptor.version_argument),
             guidance = shell_single_quote(descriptor.install_guidance),
         ))
     }
@@ -2117,7 +2131,7 @@ impl TermiRustApp {
                     definition.provider.label(),
                     profile.display_name()
                 );
-                request.startup_directory = definition.working_directory.clone();
+                request.startup_directory = None;
                 request.startup_command =
                     match Self::remote_agent_startup_script(&definition, &initial_prompt) {
                         Ok(command) => Some(command),
@@ -5465,10 +5479,12 @@ impl TermiRustApp {
 mod tests {
     use super::{
         CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CanvasNode, CanvasNodeKind,
-        CanvasPoint, CanvasRect, CanvasTransform, CanvasWorkspaceState,
+        CanvasPoint, CanvasRect, CanvasTransform, CanvasWorkspaceState, TermiRustApp,
         find_non_overlapping_position, fit_transform,
     };
-    use crate::models::{CanvasNodeId, SavedCanvasState};
+    use crate::models::{
+        AgentProvider, CanvasNodeId, SavedAgentDefinition, SavedCanvasState, SavedWorktreePolicy,
+    };
 
     fn terminal_node(id: &str, pane_id: u64, x: f32, y: f32) -> CanvasNode {
         CanvasNode {
@@ -5750,5 +5766,48 @@ mod tests {
         let state = CanvasWorkspaceState::from_saved(Some(&SavedCanvasState::default()), &[]);
         assert!(state.nodes.is_empty());
         assert_eq!(state.transform, CanvasTransform::default());
+    }
+
+    #[test]
+    fn remote_agent_bootstrap_checks_version_and_working_directory_before_launch() {
+        let definition = SavedAgentDefinition {
+            provider: AgentProvider::Codex,
+            working_directory: Some("/srv/project with space".to_string()),
+            worktree: SavedWorktreePolicy::SharedDirectory,
+            ..SavedAgentDefinition::default()
+        };
+        let script = TermiRustApp::remote_agent_startup_script(&definition, "review this")
+            .expect("remote bootstrap should be generated");
+
+        let executable_check = script.find("command -v 'codex'").unwrap();
+        let version_check = script.find("'codex' '--version'").unwrap();
+        let directory_check = script.find("[ ! -d '/srv/project with space' ]").unwrap();
+        let directory_change = script.find("cd -- '/srv/project with space'").unwrap();
+        let launch = script.rfind("exec 'codex'").unwrap();
+        assert!(executable_check < version_check);
+        assert!(version_check < directory_check);
+        assert!(directory_check < directory_change);
+        assert!(directory_change < launch);
+        assert!(script.contains("'review this'"));
+        assert!(script.contains("exec \"${SHELL:-/bin/sh}\""));
+    }
+
+    #[test]
+    fn remote_agent_bootstrap_shell_quotes_untrusted_values() {
+        let definition = SavedAgentDefinition {
+            provider: AgentProvider::CustomCli,
+            executable_override: Some("custom agent; touch /tmp/no".to_string()),
+            working_directory: Some("/tmp/it's here; touch no".to_string()),
+            arguments: vec!["argument; touch no".to_string()],
+            worktree: SavedWorktreePolicy::SharedDirectory,
+            ..SavedAgentDefinition::default()
+        };
+        let script = TermiRustApp::remote_agent_startup_script(&definition, "")
+            .expect("custom remote bootstrap should be generated");
+
+        assert!(script.contains("'custom agent; touch /tmp/no'"));
+        assert!(script.contains("'/tmp/it'\"'\"'s here; touch no'"));
+        assert!(script.contains("'argument; touch no'"));
+        assert!(!script.lines().any(|line| line.starts_with("touch ")));
     }
 }
