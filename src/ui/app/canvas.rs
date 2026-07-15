@@ -2,10 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, ClipboardItem, Context, CursorStyle, Div, InteractiveElement as _,
-    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, ParentElement, PathBuilder, Point,
-    ScrollWheelEvent, SharedString, StatefulInteractiveElement as _, Styled, Window,
-    canvas as paint_canvas, div, point, px,
+    AnyElement, App, ClipboardItem, Context, CursorStyle, Div, Focusable as _,
+    InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, ParentElement,
+    PathBuilder, Point, ScrollWheelEvent, SharedString, StatefulInteractiveElement as _, Styled,
+    Window, canvas as paint_canvas, div, point, px,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
@@ -512,6 +512,22 @@ impl CanvasWorkspaceState {
         }
     }
 
+    pub(super) fn set_node_title(
+        &mut self,
+        node_id: &CanvasNodeId,
+        title: impl Into<String>,
+    ) -> bool {
+        let Some(node) = self.node_mut(node_id) else {
+            return false;
+        };
+        let title = title.into();
+        node.title = match title.trim() {
+            "" => None,
+            trimmed => Some(trimmed.to_string()),
+        };
+        true
+    }
+
     pub(super) fn add_context_edge(
         &mut self,
         source: CanvasNodeId,
@@ -835,6 +851,79 @@ fn point_from_pixels(position: Point<gpui::Pixels>) -> CanvasPoint {
 }
 
 impl TermiRustApp {
+    fn start_canvas_node_rename(
+        &mut self,
+        node_id: CanvasNodeId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(title) = self.active_workspace().and_then(|workspace| {
+            workspace.canvas.node(&node_id).map(|node| {
+                node.title
+                    .clone()
+                    .or_else(|| {
+                        node.kind
+                            .pane_id()
+                            .and_then(|pane_id| self.pane(pane_id))
+                            .map(|pane| pane.title.clone())
+                    })
+                    .unwrap_or_else(|| "Agent".to_string())
+            })
+        }) else {
+            return;
+        };
+        self.canvas_node_rename_id = Some(node_id);
+        Self::set_input_value(&self.canvas_node_rename_input, title, window, cx);
+        self.canvas_node_rename_input
+            .read(cx)
+            .focus_handle(cx)
+            .focus(window);
+        cx.notify();
+    }
+
+    pub(super) fn commit_canvas_node_rename(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(node_id) = self.canvas_node_rename_id.take() else {
+            return;
+        };
+        let title = self.canvas_node_rename_input.read(cx).value().to_string();
+        let renamed = self
+            .active_workspace_mut()
+            .is_some_and(|workspace| workspace.canvas.set_node_title(&node_id, title));
+        if renamed {
+            self.persist_runtime_state();
+            self.status_message = "Canvas node title updated.".to_string();
+            self.error_message.clear();
+        }
+        self.focus_canvas_node_terminal(&node_id, window);
+        cx.notify();
+    }
+
+    pub(super) fn cancel_canvas_node_rename(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let node_id = self.canvas_node_rename_id.take();
+        if let Some(node_id) = node_id {
+            self.focus_canvas_node_terminal(&node_id, window);
+        }
+        cx.notify();
+    }
+
+    fn focus_canvas_node_terminal(&self, node_id: &CanvasNodeId, window: &mut Window) {
+        let pane_id = self
+            .active_workspace()
+            .and_then(|workspace| workspace.canvas.node(node_id))
+            .and_then(|node| node.kind.pane_id());
+        if let Some(pane) = pane_id.and_then(|pane_id| self.pane(pane_id)) {
+            pane.terminal_focus.focus(window);
+        }
+    }
+
     pub(super) fn handle_canvas_key(
         &mut self,
         event: &KeyDownEvent,
@@ -3579,6 +3668,8 @@ impl TermiRustApp {
         let dependency_node_id = node_id.clone();
         let collapse_node_id = node_id.clone();
         let resize_node_id = node_id.clone();
+        let rename_node_id = node_id.clone();
+        let renaming = self.canvas_node_rename_id.as_ref() == Some(&node_id);
         let close_pane_id = pane_id;
         let close_structured_node_id = (pane_id.is_none()).then_some(node_id.clone());
 
@@ -3626,6 +3717,17 @@ impl TermiRustApp {
                             MouseButton::Left,
                             cx.listener(move |this, event: &MouseDownEvent, window, cx| {
                                 cx.stop_propagation();
+                                if renaming {
+                                    return;
+                                }
+                                if event.click_count >= 2 {
+                                    this.start_canvas_node_rename(
+                                        rename_node_id.clone(),
+                                        window,
+                                        cx,
+                                    );
+                                    return;
+                                }
                                 this.start_canvas_node_move(
                                     workspace_id,
                                     header_node_id.clone(),
@@ -3648,17 +3750,26 @@ impl TermiRustApp {
                                     .size(px(14.0))
                                     .text_color(theme::accent()),
                                 )
-                                .child(
-                                    div()
-                                        .min_w_0()
-                                        .overflow_hidden()
-                                        .whitespace_nowrap()
-                                        .text_ellipsis()
-                                        .text_size(px(12.0))
-                                        .font_semibold()
-                                        .text_color(theme::text_on_dark())
-                                        .child(title),
-                                )
+                                .when(renaming, |header| {
+                                    header.child(
+                                        div().w(px(180.0)).child(
+                                            Input::new(&self.canvas_node_rename_input).small(),
+                                        ),
+                                    )
+                                })
+                                .when(!renaming, |header| {
+                                    header.child(
+                                        div()
+                                            .min_w_0()
+                                            .overflow_hidden()
+                                            .whitespace_nowrap()
+                                            .text_ellipsis()
+                                            .text_size(px(12.0))
+                                            .font_semibold()
+                                            .text_color(theme::text_on_dark())
+                                            .child(title),
+                                    )
+                                })
                                 .child(
                                     div()
                                         .text_size(px(10.0))
@@ -4389,6 +4500,27 @@ mod tests {
             canvas.select_adjacent_node(-1),
             Some(CanvasNodeId::new("c"))
         );
+    }
+
+    #[test]
+    fn node_titles_are_trimmed_and_can_return_to_the_default() {
+        let mut canvas = CanvasWorkspaceState {
+            nodes: vec![terminal_node("a", 1, 0.0, 0.0)],
+            ..CanvasWorkspaceState::default()
+        };
+        let node_id = CanvasNodeId::new("a");
+
+        assert!(canvas.set_node_title(&node_id, "  API worker  "));
+        assert_eq!(
+            canvas.node(&node_id).and_then(|node| node.title.as_deref()),
+            Some("API worker")
+        );
+        assert!(canvas.set_node_title(&node_id, "   "));
+        assert_eq!(
+            canvas.node(&node_id).and_then(|node| node.title.as_deref()),
+            None
+        );
+        assert!(!canvas.set_node_title(&CanvasNodeId::new("missing"), "ignored"));
     }
 
     #[test]

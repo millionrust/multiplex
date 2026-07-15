@@ -10,7 +10,8 @@ SSH, restore, and tmux runtimes; changing layout does not reconnect a pane.
 2. In the workspace header, choose `Canvas` instead of `Split`.
 3. Select `Add` to add a local terminal, saved SSH host, Codex, Claude Code,
    Gemini CLI, or a custom executable.
-4. Drag a node by its header. Drag its lower-right handle to resize it.
+4. Drag a node by its header. Double-click the header to rename it. Drag its
+   lower-right handle to resize it.
 5. Pan empty space and use the zoom and fit buttons in the canvas toolbar.
 
 Use `Cmd+Shift+Arrow` on macOS (the platform secondary modifier elsewhere) to

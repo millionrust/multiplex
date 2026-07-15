@@ -931,6 +931,7 @@ pub struct TermiRustApp {
     context_handoff_review: Option<ContextHandoffReview>,
     pending_dependency_source: Option<crate::models::CanvasNodeId>,
     orchestration_active: bool,
+    canvas_node_rename_id: Option<crate::models::CanvasNodeId>,
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
     open_workspace_tab_menu: Option<u64>,
@@ -939,6 +940,7 @@ pub struct TermiRustApp {
     tab_rename_input: Entity<InputState>,
     pane_rename_id: Option<u64>,
     pane_rename_input: Entity<InputState>,
+    canvas_node_rename_input: Entity<InputState>,
     pending_paste: Option<PendingPaste>,
     pending_snippet_prompts: Option<PendingSnippetPrompts>,
     sync_pull_force: bool,
@@ -1075,6 +1077,7 @@ impl TermiRustApp {
             context_handoff_review: None,
             pending_dependency_source: None,
             orchestration_active: false,
+            canvas_node_rename_id: None,
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
             open_workspace_tab_menu: None,
@@ -1083,6 +1086,8 @@ impl TermiRustApp {
                 .new(|cx| InputState::new(window, cx).placeholder("Workspace name")),
             pane_rename_id: None,
             pane_rename_input: cx.new(|cx| InputState::new(window, cx).placeholder("Pane name")),
+            canvas_node_rename_input: cx
+                .new(|cx| InputState::new(window, cx).placeholder("Node title")),
             pending_paste: None,
             pending_snippet_prompts: None,
             sync_pull_force: false,
@@ -9317,6 +9322,10 @@ impl TermiRustApp {
         }
 
         if event.keystroke.key.as_str() == "escape" {
+            if self.canvas_node_rename_id.is_some() {
+                self.cancel_canvas_node_rename(window, cx);
+                return true;
+            }
             if self.tab_rename_workspace_id.is_some() {
                 self.cancel_workspace_rename(window, cx);
                 return true;
@@ -9346,6 +9355,10 @@ impl TermiRustApp {
             }
         }
         if event.keystroke.key.as_str() == "enter" && !event.keystroke.modifiers.secondary() {
+            if self.canvas_node_rename_id.is_some() {
+                self.commit_canvas_node_rename(window, cx);
+                return true;
+            }
             if self.tab_rename_workspace_id.is_some() {
                 self.commit_workspace_rename(window, cx);
                 return true;
