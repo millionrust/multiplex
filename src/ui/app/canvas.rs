@@ -34,6 +34,8 @@ use crate::{storage::managed_agent_worktree_dir, ui::util::current_unix_millis};
 pub(super) const CANVAS_TOOLBAR_HEIGHT: f32 = 44.0;
 pub(super) const CANVAS_NODE_HEADER_HEIGHT: f32 = 34.0;
 pub(super) const CANVAS_NODE_GUTTER: f32 = 28.0;
+pub(super) const CANVAS_V1_SUPPORTED_NODE_COUNT: usize = 20;
+pub(super) const CANVAS_V1_SUPPORTED_EDGE_COUNT: usize = 40;
 const CANVAS_PLACEMENT_STEP_X: f32 = CANVAS_DEFAULT_NODE_WIDTH + CANVAS_NODE_GUTTER;
 const CANVAS_PLACEMENT_STEP_Y: f32 = CANVAS_DEFAULT_NODE_HEIGHT + CANVAS_NODE_GUTTER;
 const CANVAS_FIT_PADDING: f32 = 48.0;
@@ -4328,6 +4330,39 @@ mod tests {
         let second = terminal_node("b", 2, 1200.0, 900.0);
         let many = fit_transform(&[first, second], 1200.0, 800.0, 48.0);
         assert!((0.35..=2.0).contains(&many.zoom));
+    }
+
+    #[test]
+    fn v1_capacity_geometry_handles_twenty_nodes_and_forty_edges() {
+        let mut canvas = CanvasWorkspaceState::default();
+        for index in 0..super::CANVAS_V1_SUPPORTED_NODE_COUNT {
+            let column = (index % 5) as f32;
+            let row = (index / 5) as f32;
+            canvas.nodes.push(terminal_node(
+                &format!("node-{index}"),
+                index as u64 + 1,
+                column * 760.0,
+                row * 500.0,
+            ));
+        }
+        for offset in [1, 2] {
+            for source in 0..super::CANVAS_V1_SUPPORTED_NODE_COUNT {
+                let target = (source + offset) % super::CANVAS_V1_SUPPORTED_NODE_COUNT;
+                canvas
+                    .add_context_edge(
+                        CanvasNodeId::new(format!("node-{source}")),
+                        CanvasNodeId::new(format!("node-{target}")),
+                    )
+                    .unwrap();
+            }
+        }
+
+        assert_eq!(canvas.nodes.len(), super::CANVAS_V1_SUPPORTED_NODE_COUNT);
+        assert_eq!(canvas.edges.len(), super::CANVAS_V1_SUPPORTED_EDGE_COUNT);
+        let fitted = fit_transform(&canvas.nodes, 1440.0, 900.0, 48.0);
+        assert!(fitted.pan_x.is_finite());
+        assert!(fitted.pan_y.is_finite());
+        assert!((0.35..=2.0).contains(&fitted.zoom));
     }
 
     #[test]
