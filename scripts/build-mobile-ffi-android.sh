@@ -19,9 +19,15 @@ fi
 
 HOST_TAG="darwin-x86_64"
 TOOLCHAIN="$ANDROID_NDK/toolchains/llvm/prebuilt/$HOST_TAG/bin"
+LLVM_READELF="$TOOLCHAIN/llvm-readelf"
 
 if [[ ! -d "$TOOLCHAIN" ]]; then
   printf 'Android NDK LLVM toolchain not found at %s.\n' "$TOOLCHAIN" >&2
+  exit 1
+fi
+
+if [[ ! -x "$LLVM_READELF" ]]; then
+  printf 'Android NDK llvm-readelf not found at %s.\n' "$LLVM_READELF" >&2
   exit 1
 fi
 
@@ -44,8 +50,26 @@ export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$TOOLCHAIN/x86_64-linux-android
 DIST_DIR="$ROOT_DIR/dist/mobile/android/jniLibs"
 rm -rf "$DIST_DIR"
 
+# Android 15+ devices may use 16 KiB memory pages. Keep Rust's ELF LOAD
+# segments compatible even when the locally installed NDK predates r28.
+ANDROID_PAGE_SIZE_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384"
+
+verify_elf_alignment() {
+  local library="$1"
+  local alignment
+
+  while read -r alignment; do
+    if (( alignment < 0x4000 )); then
+      printf '%s has an ELF LOAD segment aligned to %s; expected at least 0x4000.\n' \
+        "$library" "$alignment" >&2
+      exit 1
+    fi
+  done < <("$LLVM_READELF" -lW "$library" | awk '$1 == "LOAD" { print $NF }')
+}
+
 for target in "${TARGETS[@]}"; do
-  cargo build -p termirust-mobile-ffi --release --target "$target"
+  RUSTFLAGS="${RUSTFLAGS:-} $ANDROID_PAGE_SIZE_RUSTFLAGS" \
+    cargo build -p termirust-mobile-ffi --release --target "$target"
 
   case "$target" in
     aarch64-linux-android) abi="arm64-v8a" ;;
@@ -60,6 +84,7 @@ for target in "${TARGETS[@]}"; do
 
   mkdir -p "$DIST_DIR/$abi"
   cp "$ROOT_DIR/target/$target/release/libtermirust_mobile_ffi.so" "$DIST_DIR/$abi/"
+  verify_elf_alignment "$DIST_DIR/$abi/libtermirust_mobile_ffi.so"
 done
 
 printf 'Built Android JNI libraries in %s\n' "$DIST_DIR"
