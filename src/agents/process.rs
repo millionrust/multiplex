@@ -2,7 +2,7 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 
 use crate::agents::adapter::provider_descriptor;
 use crate::models::{AgentBackendKind, AgentPermissionPolicy, AgentProvider, SavedAgentDefinition};
@@ -17,6 +17,11 @@ pub enum AgentExecutableStatus {
     },
     Missing {
         requested: OsString,
+        guidance: &'static str,
+    },
+    Unusable {
+        path: PathBuf,
+        error: String,
         guidance: &'static str,
     },
 }
@@ -49,8 +54,20 @@ pub fn detect_agent_executable(definition: &SavedAgentDefinition) -> AgentExecut
             guidance: descriptor.install_guidance,
         };
     };
-    let version = read_version(&path, descriptor.version_argument);
-    AgentExecutableStatus::Available { path, version }
+    match read_version(&path, descriptor.version_argument) {
+        Ok(version) => AgentExecutableStatus::Available { path, version },
+        Err(_error) if definition.provider == AgentProvider::CustomCli => {
+            AgentExecutableStatus::Available {
+                path,
+                version: None,
+            }
+        }
+        Err(error) => AgentExecutableStatus::Unusable {
+            path,
+            error,
+            guidance: descriptor.install_guidance,
+        },
+    }
 }
 
 pub fn build_interactive_launch_spec(definition: &SavedAgentDefinition) -> Result<AgentLaunchSpec> {
@@ -64,11 +81,17 @@ pub fn build_interactive_launch_spec(definition: &SavedAgentDefinition) -> Resul
             definition.provider.label()
         );
     }
-    let AgentExecutableStatus::Available { path, .. } = detect_agent_executable(definition) else {
-        bail!(
+    let path = match detect_agent_executable(definition) {
+        AgentExecutableStatus::Available { path, .. } => path,
+        AgentExecutableStatus::Missing { .. } => bail!(
             "{} is not installed or could not be resolved",
             definition.provider.label()
-        );
+        ),
+        AgentExecutableStatus::Unusable { path, error, .. } => bail!(
+            "{} was found at {}, but its version check failed: {error}",
+            definition.provider.label(),
+            path.display()
+        ),
     };
     let working_directory = definition
         .working_directory
@@ -229,23 +252,30 @@ fn windows_executable_extensions() -> Vec<OsString> {
         .unwrap_or_else(|| vec![OsString::from(".exe"), OsString::from(".cmd")])
 }
 
-fn read_version(executable: &Path, version_argument: &str) -> Option<String> {
+fn read_version(executable: &Path, version_argument: &str) -> Result<Option<String>, String> {
     let output = Command::new(executable)
         .arg(version_argument)
         .stdin(Stdio::null())
         .stderr(Stdio::piped())
         .stdout(Stdio::piped())
         .output()
-        .with_context(|| format!("unable to run {}", executable.display()))
-        .ok()?;
+        .map_err(|error| format!("unable to run {}: {error}", executable.display()))?;
     let bytes = if output.stdout.is_empty() {
-        output.stderr
+        &output.stderr
     } else {
-        output.stdout
+        &output.stdout
     };
     let truncated = &bytes[..bytes.len().min(MAX_VERSION_OUTPUT_BYTES)];
     let version = String::from_utf8_lossy(truncated).trim().to_string();
-    (!version.is_empty()).then_some(version)
+    if !output.status.success() {
+        let detail = if version.is_empty() {
+            output.status.to_string()
+        } else {
+            format!("{}: {version}", output.status)
+        };
+        return Err(detail);
+    }
+    Ok((!version.is_empty()).then_some(version))
 }
 
 #[cfg(test)]
@@ -323,6 +353,32 @@ mod tests {
         if let AgentExecutableStatus::Missing { guidance, .. } = status {
             assert!(guidance.contains("will not install"));
         }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn failed_provider_version_check_is_not_reported_as_available() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let executable = executable_fixture("broken-claude");
+        fs::write(
+            &executable,
+            "#!/bin/sh\nprintf 'broken install\\n' >&2\nexit 7\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+        let definition = SavedAgentDefinition {
+            provider: AgentProvider::ClaudeCode,
+            executable_override: Some(executable.display().to_string()),
+            ..SavedAgentDefinition::default()
+        };
+        assert!(matches!(
+            detect_agent_executable(&definition),
+            AgentExecutableStatus::Unusable { error, .. }
+                if error.contains("broken install")
+        ));
     }
 
     #[test]

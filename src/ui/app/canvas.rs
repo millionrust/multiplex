@@ -2248,6 +2248,25 @@ impl TermiRustApp {
                 cx.notify();
                 return;
             }
+            AgentExecutableStatus::Unusable {
+                path,
+                error,
+                guidance,
+            } => {
+                self.error_message = format!(
+                    "{} was found at {}, but its version check failed: {error}. {guidance}",
+                    definition.provider.label(),
+                    path.display()
+                );
+                creation.executable_status = AgentExecutableStatus::Unusable {
+                    path,
+                    error,
+                    guidance,
+                };
+                self.agent_creation = Some(creation);
+                cx.notify();
+                return;
+            }
         };
         let Some(mut working_directory) = definition
             .working_directory
@@ -2491,6 +2510,18 @@ impl TermiRustApp {
                 self.error_message = format!(
                     "Agent executable '{}' is unavailable. {guidance}",
                     requested.to_string_lossy()
+                );
+                cx.notify();
+                return;
+            }
+            AgentExecutableStatus::Unusable {
+                path,
+                error,
+                guidance,
+            } => {
+                self.error_message = format!(
+                    "Agent was found at {}, but its version check failed: {error}. {guidance}",
+                    path.display()
                 );
                 cx.notify();
                 return;
@@ -3264,6 +3295,14 @@ impl TermiRustApp {
                     format!("Not found: {}. {guidance}", requested.to_string_lossy())
                 }
             }
+            AgentExecutableStatus::Unusable {
+                path,
+                error,
+                guidance,
+            } => format!(
+                "Found {}, but its version check failed: {error}. {guidance}",
+                path.display()
+            ),
         };
         let status_text = if matches!(location, AgentLocation::Local) {
             local_status
