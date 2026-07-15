@@ -11,10 +11,10 @@ use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::{Input, InputState};
 use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
-use crate::models::HostProfile;
+use crate::models::{HostProfile, WorkspaceLayoutMode};
 use crate::ui::app::{
-    ConnectDialogMode, ConnectFailure, ConnectProtocol, NavSection, SplitNode, TermiRustApp,
-    WorkspaceTab, WorkspaceViewMode,
+    CanvasWorkspaceState, ConnectDialogMode, ConnectFailure, ConnectProtocol, NavSection,
+    SplitNode, TermiRustApp, WorkspaceTab, WorkspaceViewMode,
 };
 use crate::ui::theme;
 
@@ -92,6 +92,8 @@ impl TermiRustApp {
             active_pane_id: 0,
             unread_events: 0,
             layout: None,
+            layout_mode: WorkspaceLayoutMode::Split,
+            canvas: CanvasWorkspaceState::default(),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
             search_visible: false,
@@ -164,6 +166,8 @@ impl TermiRustApp {
             active_pane_id: 0,
             unread_events: 0,
             layout: None,
+            layout_mode: WorkspaceLayoutMode::Split,
+            canvas: CanvasWorkspaceState::default(),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
             search_visible: false,

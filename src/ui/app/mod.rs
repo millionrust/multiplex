@@ -1,3 +1,4 @@
+mod canvas;
 mod chrome;
 mod connect;
 mod editor;
@@ -14,6 +15,7 @@ pub(crate) use types::{
     ToolbarMenu, WorkspaceRuntimeTone, WorkspaceViewMode,
 };
 
+use canvas::CanvasWorkspaceState;
 use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
     collect_autocomplete_candidates, collect_command_palette_candidates, pane_recent_output_lines,
@@ -45,7 +47,8 @@ use crate::models::{
     HostColorTag, HostProfile, JumpHostConnection, PortForwardKind, PortForwardRule, ProfileSource,
     QuickConnect, SavedHostGroup, SavedIdentity, SavedSnippet, SavedSplitNode, SavedState,
     SavedVault, SavedVaultMember, SavedWindowBounds, SavedWorkspace, SessionLogEntry, SplitAxis,
-    ThemePreset, VaultKind, VaultMemberRole, default_persistent_session_name_from_id,
+    ThemePreset, VaultKind, VaultMemberRole, WorkspaceLayoutMode,
+    default_persistent_session_name_from_id,
 };
 use crate::sftp::{
     RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
@@ -457,6 +460,8 @@ struct WorkspaceTab {
     unread_events: u32,
     /// Recursive split layout. `None` while the workspace has no panes yet.
     layout: Option<SplitNode>,
+    layout_mode: WorkspaceLayoutMode,
+    canvas: CanvasWorkspaceState,
     view_mode: WorkspaceViewMode,
     sftp: Option<WorkspaceSftpState>,
     search_visible: bool,
@@ -473,11 +478,20 @@ struct WorkspaceTab {
 impl WorkspaceTab {
     /// Rebuild the flat `pane_ids` cache from the `layout` tree.
     fn sync_pane_ids(&mut self) {
-        self.pane_ids = self
+        let split_pane_ids = self
             .layout
             .as_ref()
             .map(|layout| layout.leaf_ids())
             .unwrap_or_default();
+        if self.layout_mode == WorkspaceLayoutMode::Split {
+            self.pane_ids = split_pane_ids;
+        } else {
+            for pane_id in split_pane_ids {
+                if !self.pane_ids.contains(&pane_id) {
+                    self.pane_ids.push(pane_id);
+                }
+            }
+        }
         if !self.pane_ids.contains(&self.active_pane_id) {
             if let Some(first) = self.pane_ids.first().copied() {
                 self.active_pane_id = first;
@@ -4189,10 +4203,11 @@ impl TermiRustApp {
 
             let mut saved_workspace = SavedWorkspace {
                 title: workspace.title.clone(),
+                layout_mode: workspace.layout_mode,
                 layout,
+                canvas: Some(workspace.canvas.to_saved(&saved_index)),
                 active_pane_index,
                 panes,
-                ..SavedWorkspace::default()
             };
             saved_workspace.normalize();
 
@@ -4293,6 +4308,8 @@ impl TermiRustApp {
                 .as_ref()
                 .and_then(|node| saved_to_split_node(node, &pane_ids))
                 .or_else(|| flat_split(&pane_ids, SplitAxis::Horizontal));
+            let canvas =
+                CanvasWorkspaceState::from_saved(saved_workspace.canvas.as_ref(), &pane_ids);
 
             self.workspaces.push(WorkspaceTab {
                 id: workspace_id,
@@ -4301,6 +4318,8 @@ impl TermiRustApp {
                 active_pane_id,
                 unread_events: 0,
                 layout,
+                layout_mode: saved_workspace.layout_mode,
+                canvas,
                 view_mode: WorkspaceViewMode::Terminal,
                 sftp: None,
                 search_visible: false,
@@ -5046,6 +5065,8 @@ impl TermiRustApp {
             active_pane_id: pane_id,
             unread_events: 0,
             layout: Some(SplitNode::Leaf(pane_id)),
+            layout_mode: WorkspaceLayoutMode::Split,
+            canvas: CanvasWorkspaceState::from_saved(None, &[pane_id]),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
             search_visible: false,
@@ -5090,6 +5111,8 @@ impl TermiRustApp {
                     active_pane_id: pane_id,
                     unread_events: 0,
                     layout: Some(SplitNode::Leaf(pane_id)),
+                    layout_mode: WorkspaceLayoutMode::Split,
+                    canvas: CanvasWorkspaceState::from_saved(None, &[pane_id]),
                     view_mode: WorkspaceViewMode::Terminal,
                     sftp: None,
                     search_visible: false,
@@ -5347,6 +5370,8 @@ impl TermiRustApp {
             active_pane_id: pane_id,
             unread_events: 0,
             layout: Some(SplitNode::Leaf(pane_id)),
+            layout_mode: WorkspaceLayoutMode::Split,
+            canvas: CanvasWorkspaceState::from_saved(None, &[pane_id]),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
             search_visible: false,
@@ -5494,6 +5519,8 @@ impl TermiRustApp {
                 .layout
                 .take()
                 .and_then(|layout| layout.without_pane(pane_id));
+            workspace.pane_ids.retain(|id| *id != pane_id);
+            workspace.canvas.remove_pane(pane_id);
             workspace.sync_pane_ids();
             if workspace
                 .sftp
@@ -6192,6 +6219,8 @@ impl TermiRustApp {
                 .layout
                 .take()
                 .and_then(|layout| layout.without_pane(pane_id));
+            workspace.pane_ids.retain(|id| *id != pane_id);
+            workspace.canvas.remove_pane(pane_id);
             workspace.sync_pane_ids();
             if workspace
                 .sftp
@@ -6211,6 +6240,8 @@ impl TermiRustApp {
             active_pane_id: pane_id,
             unread_events: 0,
             layout: Some(SplitNode::Leaf(pane_id)),
+            layout_mode: WorkspaceLayoutMode::Split,
+            canvas: CanvasWorkspaceState::from_saved(None, &[pane_id]),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
             search_visible: false,
