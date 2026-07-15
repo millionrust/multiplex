@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use termirust_protocol::{
     MobileDevicePairingError, MobileDevicePairingRequest, MobileDeviceRecord, MobileDeviceVaultKey,
@@ -2272,11 +2273,484 @@ pub enum SavedSplitNode {
     },
 }
 
+pub const CANVAS_SCHEMA_VERSION: u32 = 1;
+pub const CANVAS_MIN_ZOOM: f32 = 0.35;
+pub const CANVAS_MAX_ZOOM: f32 = 2.0;
+pub const CANVAS_DEFAULT_NODE_WIDTH: f32 = 720.0;
+pub const CANVAS_DEFAULT_NODE_HEIGHT: f32 = 460.0;
+pub const CANVAS_MIN_NODE_WIDTH: f32 = 320.0;
+pub const CANVAS_MIN_NODE_HEIGHT: f32 = 220.0;
+
+fn current_canvas_schema_version() -> u32 {
+    CANVAS_SCHEMA_VERSION
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_context_max_bytes() -> usize {
+    8 * 1024
+}
+
+fn default_context_max_lines() -> usize {
+    80
+}
+
+fn default_context_max_messages() -> usize {
+    20
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceLayoutMode {
+    #[default]
+    Split,
+    Canvas,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CanvasNodeId(pub String);
+
+impl CanvasNodeId {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CanvasEdgeId(pub String);
+
+impl CanvasEdgeId {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SavedCanvasViewport {
+    pub pan_x: f32,
+    pub pan_y: f32,
+    pub zoom: f32,
+}
+
+impl Default for SavedCanvasViewport {
+    fn default() -> Self {
+        Self {
+            pan_x: 0.0,
+            pan_y: 0.0,
+            zoom: 1.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentProvider {
+    #[default]
+    Codex,
+    ClaudeCode,
+    Gemini,
+    CustomCli,
+    GroqApi,
+}
+
+impl AgentProvider {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Codex => "Codex",
+            Self::ClaudeCode => "Claude Code",
+            Self::Gemini => "Gemini CLI",
+            Self::CustomCli => "Custom CLI",
+            Self::GroqApi => "Groq API",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentBackendKind {
+    #[default]
+    InteractivePty,
+    Structured,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AgentLocation {
+    #[default]
+    Local,
+    SavedHost {
+        profile_id: String,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentPermissionPolicy {
+    #[default]
+    ProviderDefault,
+    ReadOnly,
+    WorkspaceWrite,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SavedWorktreePolicy {
+    #[default]
+    Isolated,
+    SharedDirectory,
+    ReadOnly,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedAgentDefinition {
+    #[serde(default)]
+    pub provider: AgentProvider,
+    #[serde(default)]
+    pub backend: AgentBackendKind,
+    #[serde(default)]
+    pub location: AgentLocation,
+    #[serde(default)]
+    pub working_directory: Option<String>,
+    #[serde(default)]
+    pub executable_override: Option<String>,
+    #[serde(default)]
+    pub arguments: Vec<String>,
+    #[serde(default)]
+    pub permission_policy: AgentPermissionPolicy,
+    #[serde(default)]
+    pub worktree: SavedWorktreePolicy,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SavedCanvasNodeKind {
+    Terminal {
+        pane_index: usize,
+    },
+    Agent {
+        #[serde(default)]
+        pane_index: Option<usize>,
+        #[serde(default)]
+        definition: SavedAgentDefinition,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SavedCanvasNode {
+    pub id: CanvasNodeId,
+    pub kind: SavedCanvasNodeKind,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    #[serde(default)]
+    pub z_index: i32,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub collapsed: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CanvasEdgeKind {
+    #[default]
+    Context,
+    Dependency,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedContextPolicy {
+    #[serde(default = "default_context_max_bytes")]
+    pub max_bytes: usize,
+    #[serde(default = "default_context_max_lines")]
+    pub max_terminal_lines: usize,
+    #[serde(default = "default_context_max_messages")]
+    pub max_agent_messages: usize,
+    #[serde(default = "default_true")]
+    pub redact_secrets: bool,
+}
+
+impl Default for SavedContextPolicy {
+    fn default() -> Self {
+        Self {
+            max_bytes: default_context_max_bytes(),
+            max_terminal_lines: default_context_max_lines(),
+            max_agent_messages: default_context_max_messages(),
+            redact_secrets: true,
+        }
+    }
+}
+
+impl SavedContextPolicy {
+    fn normalize(&mut self) -> bool {
+        let before = self.clone();
+        self.max_bytes = self.max_bytes.clamp(256, 64 * 1024);
+        self.max_terminal_lines = self.max_terminal_lines.clamp(1, 500);
+        self.max_agent_messages = self.max_agent_messages.clamp(1, 100);
+        *self != before
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SavedCanvasEdge {
+    pub id: CanvasEdgeId,
+    pub source: CanvasNodeId,
+    pub target: CanvasNodeId,
+    #[serde(default)]
+    pub kind: CanvasEdgeKind,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub context_policy: Option<SavedContextPolicy>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SavedCanvasState {
+    #[serde(default = "current_canvas_schema_version")]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub viewport: SavedCanvasViewport,
+    #[serde(default)]
+    pub nodes: Vec<SavedCanvasNode>,
+    #[serde(default)]
+    pub edges: Vec<SavedCanvasEdge>,
+}
+
+impl Default for SavedCanvasState {
+    fn default() -> Self {
+        Self {
+            schema_version: CANVAS_SCHEMA_VERSION,
+            viewport: SavedCanvasViewport::default(),
+            nodes: Vec::new(),
+            edges: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CanvasRepairReport {
+    pub unsupported_schema: bool,
+    pub viewport_repairs: usize,
+    pub node_repairs: usize,
+    pub removed_nodes: usize,
+    pub edge_repairs: usize,
+    pub removed_edges: usize,
+}
+
+impl CanvasRepairReport {
+    pub fn changed(self) -> bool {
+        self.viewport_repairs > 0
+            || self.node_repairs > 0
+            || self.removed_nodes > 0
+            || self.edge_repairs > 0
+            || self.removed_edges > 0
+    }
+}
+
+impl SavedCanvasState {
+    pub fn normalize(&mut self, pane_count: usize) -> CanvasRepairReport {
+        let mut report = CanvasRepairReport::default();
+        if self.schema_version > CANVAS_SCHEMA_VERSION {
+            report.unsupported_schema = true;
+            return report;
+        }
+        if self.schema_version == 0 {
+            self.schema_version = CANVAS_SCHEMA_VERSION;
+        }
+
+        if !self.viewport.pan_x.is_finite() {
+            self.viewport.pan_x = 0.0;
+            report.viewport_repairs += 1;
+        }
+        if !self.viewport.pan_y.is_finite() {
+            self.viewport.pan_y = 0.0;
+            report.viewport_repairs += 1;
+        }
+        let repaired_zoom = if self.viewport.zoom.is_finite() {
+            self.viewport.zoom.clamp(CANVAS_MIN_ZOOM, CANVAS_MAX_ZOOM)
+        } else {
+            1.0
+        };
+        if self.viewport.zoom != repaired_zoom {
+            self.viewport.zoom = repaired_zoom;
+            report.viewport_repairs += 1;
+        }
+
+        let original_node_count = self.nodes.len();
+        self.nodes.retain_mut(|node| {
+            let keep = match &mut node.kind {
+                SavedCanvasNodeKind::Terminal { pane_index } => *pane_index < pane_count,
+                SavedCanvasNodeKind::Agent { pane_index, .. } => {
+                    if pane_index.is_some_and(|index| index >= pane_count) {
+                        *pane_index = None;
+                        report.node_repairs += 1;
+                    }
+                    true
+                }
+            };
+            if !keep {
+                return false;
+            }
+
+            let ordinal = report.node_repairs + 1;
+            if !node.x.is_finite() {
+                node.x = ((ordinal - 1) % 4) as f32 * 760.0;
+                report.node_repairs += 1;
+            }
+            if !node.y.is_finite() {
+                node.y = ((ordinal - 1) / 4) as f32 * 500.0;
+                report.node_repairs += 1;
+            }
+            let width = if node.width.is_finite() {
+                node.width.max(CANVAS_MIN_NODE_WIDTH)
+            } else {
+                CANVAS_DEFAULT_NODE_WIDTH
+            };
+            let height = if node.height.is_finite() {
+                node.height.max(CANVAS_MIN_NODE_HEIGHT)
+            } else {
+                CANVAS_DEFAULT_NODE_HEIGHT
+            };
+            if node.width != width {
+                node.width = width;
+                report.node_repairs += 1;
+            }
+            if node.height != height {
+                node.height = height;
+                report.node_repairs += 1;
+            }
+            true
+        });
+        report.removed_nodes = original_node_count - self.nodes.len();
+
+        let mut node_ids = HashSet::new();
+        for (index, node) in self.nodes.iter_mut().enumerate() {
+            let original = node.id.0.trim().to_string();
+            let mut candidate = if original.is_empty() {
+                format!("canvas-node-{}", index + 1)
+            } else {
+                original
+            };
+            let base = candidate.clone();
+            let mut suffix = 2;
+            while node_ids.contains(&CanvasNodeId::new(candidate.clone())) {
+                candidate = format!("{base}-{suffix}");
+                suffix += 1;
+            }
+            if node.id.0 != candidate {
+                node.id = CanvasNodeId::new(candidate.clone());
+                report.node_repairs += 1;
+            }
+            node_ids.insert(CanvasNodeId::new(candidate));
+        }
+
+        let mut edge_ids = HashSet::new();
+        let mut semantic_edges = HashSet::new();
+        let mut dependency_adjacency: HashMap<CanvasNodeId, Vec<CanvasNodeId>> = HashMap::new();
+        let original_edge_count = self.edges.len();
+        self.edges.retain_mut(|edge| {
+            if !node_ids.contains(&edge.source)
+                || !node_ids.contains(&edge.target)
+                || edge.source == edge.target
+            {
+                return false;
+            }
+
+            let semantic_key = (edge.source.clone(), edge.target.clone(), edge.kind);
+            if !semantic_edges.insert(semantic_key) {
+                return false;
+            }
+
+            if edge.kind == CanvasEdgeKind::Dependency
+                && graph_has_path(&dependency_adjacency, &edge.target, &edge.source)
+            {
+                return false;
+            }
+            if edge.kind == CanvasEdgeKind::Dependency {
+                dependency_adjacency
+                    .entry(edge.source.clone())
+                    .or_default()
+                    .push(edge.target.clone());
+            }
+
+            let original = edge.id.0.trim().to_string();
+            let mut candidate = if original.is_empty() {
+                format!("canvas-edge-{}", edge_ids.len() + 1)
+            } else {
+                original
+            };
+            let base = candidate.clone();
+            let mut suffix = 2;
+            while edge_ids.contains(&CanvasEdgeId::new(candidate.clone())) {
+                candidate = format!("{base}-{suffix}");
+                suffix += 1;
+            }
+            if edge.id.0 != candidate {
+                edge.id = CanvasEdgeId::new(candidate.clone());
+                report.edge_repairs += 1;
+            }
+            edge_ids.insert(CanvasEdgeId::new(candidate));
+
+            if edge.kind == CanvasEdgeKind::Context {
+                let policy = edge
+                    .context_policy
+                    .get_or_insert_with(SavedContextPolicy::default);
+                if policy.normalize() {
+                    report.edge_repairs += 1;
+                }
+            } else if edge.context_policy.take().is_some() {
+                report.edge_repairs += 1;
+            }
+            true
+        });
+        report.removed_edges = original_edge_count - self.edges.len();
+        report
+    }
+}
+
+fn graph_has_path(
+    adjacency: &HashMap<CanvasNodeId, Vec<CanvasNodeId>>,
+    start: &CanvasNodeId,
+    target: &CanvasNodeId,
+) -> bool {
+    let mut pending = vec![start.clone()];
+    let mut visited = HashSet::new();
+    while let Some(node) = pending.pop() {
+        if &node == target {
+            return true;
+        }
+        if !visited.insert(node.clone()) {
+            continue;
+        }
+        if let Some(next) = adjacency.get(&node) {
+            pending.extend(next.iter().cloned());
+        }
+    }
+    false
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SavedWorkspace {
     pub title: String,
     #[serde(default)]
+    pub layout_mode: WorkspaceLayoutMode,
+    #[serde(default)]
     pub layout: Option<SavedSplitNode>,
+    #[serde(default)]
+    pub canvas: Option<SavedCanvasState>,
     #[serde(default)]
     pub active_pane_index: usize,
     #[serde(default)]
@@ -2289,6 +2763,12 @@ impl SavedWorkspace {
             self.active_pane_index = 0;
         } else {
             self.active_pane_index = self.active_pane_index.min(self.panes.len() - 1);
+        }
+        if let Some(canvas) = self.canvas.as_mut() {
+            let report = canvas.normalize(self.panes.len());
+            if report.unsupported_schema {
+                self.layout_mode = WorkspaceLayoutMode::Split;
+            }
         }
     }
 }
@@ -2483,14 +2963,18 @@ impl SavedState {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppSettings, AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID,
-        DraftProfile, HostColorTag, HostProfile, IdentitySource, ImportedIdentity,
-        JumpHostConnection, LocalPortForward, LocalShellConfig, MobileDevicePairingRequest,
-        PortForwardKind, PortForwardRule, ProfileSource, QuickConnect, RestorableAuth,
-        RestorableConnection, SavedCommandHistoryEntry, SavedIdentity, SavedSnippet, SavedState,
-        SavedVault, SavedVaultMember, SavedWorkspace, SessionLogEntry, SessionLogStatus,
-        ThemePreset, VaultKind, VaultMemberRole, default_persistent_session_name_for_endpoint,
-        default_persistent_session_name_from_id, identity_id_for_path,
+        AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AppSettings,
+        AuthConfig, AuthMode, CanvasEdgeId, CanvasEdgeKind, CanvasNodeId, ConnectRequest,
+        ConnectionKind, DEFAULT_VAULT_ID, DraftProfile, HostColorTag, HostProfile, IdentitySource,
+        ImportedIdentity, JumpHostConnection, LocalPortForward, LocalShellConfig,
+        MobileDevicePairingRequest, PortForwardKind, PortForwardRule, ProfileSource, QuickConnect,
+        RestorableAuth, RestorableConnection, SavedAgentDefinition, SavedCanvasEdge,
+        SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState, SavedCanvasViewport,
+        SavedCommandHistoryEntry, SavedContextPolicy, SavedIdentity, SavedSnippet, SavedState,
+        SavedVault, SavedVaultMember, SavedWorkspace, SavedWorktreePolicy, SessionLogEntry,
+        SessionLogStatus, ThemePreset, VaultKind, VaultMemberRole, WorkspaceLayoutMode,
+        default_persistent_session_name_for_endpoint, default_persistent_session_name_from_id,
+        identity_id_for_path,
     };
 
     #[test]
@@ -2792,7 +3276,9 @@ mod tests {
     fn saved_workspace_normalizes_active_pane() {
         let mut workspace = SavedWorkspace {
             title: "prod".to_string(),
+            layout_mode: WorkspaceLayoutMode::Split,
             layout: None,
+            canvas: None,
             active_pane_index: 5,
             panes: vec![RestorableConnection {
                 title: "prod".to_string(),
@@ -2828,7 +3314,9 @@ mod tests {
         state.settings.restore_workspaces_on_launch = true;
         state.restored_workspaces.push(SavedWorkspace {
             title: "docker-e2e".to_string(),
+            layout_mode: WorkspaceLayoutMode::Split,
             layout: None,
+            canvas: None,
             active_pane_index: 0,
             panes: vec![RestorableConnection {
                 title: "docker-e2e".to_string(),
@@ -2866,6 +3354,215 @@ mod tests {
             "profile:real-app-docker-e2e"
         );
         assert_eq!(value["active_workspace_index"], 0);
+    }
+
+    fn canvas_terminal_node(id: &str, pane_index: usize) -> SavedCanvasNode {
+        SavedCanvasNode {
+            id: CanvasNodeId::new(id),
+            kind: SavedCanvasNodeKind::Terminal { pane_index },
+            x: 10.0,
+            y: 20.0,
+            width: 720.0,
+            height: 460.0,
+            z_index: 0,
+            title: None,
+            collapsed: false,
+        }
+    }
+
+    #[test]
+    fn legacy_saved_workspace_defaults_to_split_without_canvas() {
+        let workspace: SavedWorkspace = serde_json::from_str(
+            r#"{
+                "title": "legacy",
+                "active_pane_index": 0,
+                "panes": []
+            }"#,
+        )
+        .expect("legacy workspace should deserialize");
+
+        assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Split);
+        assert_eq!(workspace.canvas, None);
+    }
+
+    #[test]
+    fn canvas_workspace_round_trips_agent_definition_and_edges() {
+        let mut workspace = SavedWorkspace {
+            title: "agents".to_string(),
+            layout_mode: WorkspaceLayoutMode::Canvas,
+            layout: None,
+            canvas: Some(SavedCanvasState {
+                schema_version: 1,
+                viewport: SavedCanvasViewport {
+                    pan_x: 42.0,
+                    pan_y: -18.0,
+                    zoom: 1.25,
+                },
+                nodes: vec![SavedCanvasNode {
+                    id: CanvasNodeId::new("agent-a"),
+                    kind: SavedCanvasNodeKind::Agent {
+                        pane_index: None,
+                        definition: SavedAgentDefinition {
+                            provider: AgentProvider::ClaudeCode,
+                            backend: AgentBackendKind::Structured,
+                            location: AgentLocation::SavedHost {
+                                profile_id: "prod".to_string(),
+                            },
+                            working_directory: Some("/srv/app".to_string()),
+                            executable_override: None,
+                            arguments: vec!["--verbose".to_string()],
+                            permission_policy: AgentPermissionPolicy::ReadOnly,
+                            worktree: SavedWorktreePolicy::ReadOnly,
+                        },
+                    },
+                    x: 10.0,
+                    y: 20.0,
+                    width: 720.0,
+                    height: 460.0,
+                    z_index: 2,
+                    title: Some("Review".to_string()),
+                    collapsed: false,
+                }],
+                edges: Vec::new(),
+            }),
+            active_pane_index: 0,
+            panes: Vec::new(),
+        };
+        workspace.normalize();
+
+        let value = serde_json::to_string(&workspace).expect("canvas should serialize");
+        let decoded: SavedWorkspace =
+            serde_json::from_str(&value).expect("canvas should deserialize");
+        assert_eq!(decoded.layout_mode, WorkspaceLayoutMode::Canvas);
+        assert_eq!(decoded.canvas, workspace.canvas);
+    }
+
+    #[test]
+    fn canvas_normalize_repairs_geometry_ids_and_dangling_edges() {
+        let mut canvas = SavedCanvasState {
+            schema_version: 0,
+            viewport: SavedCanvasViewport {
+                pan_x: f32::NAN,
+                pan_y: f32::INFINITY,
+                zoom: 50.0,
+            },
+            nodes: vec![
+                SavedCanvasNode {
+                    id: CanvasNodeId::new("same"),
+                    x: f32::NAN,
+                    width: 1.0,
+                    height: f32::NAN,
+                    ..canvas_terminal_node("same", 0)
+                },
+                canvas_terminal_node("same", 1),
+                canvas_terminal_node("missing-pane", 5),
+            ],
+            edges: vec![SavedCanvasEdge {
+                id: CanvasEdgeId::new("dangling"),
+                source: CanvasNodeId::new("same"),
+                target: CanvasNodeId::new("missing"),
+                kind: CanvasEdgeKind::Context,
+                enabled: true,
+                context_policy: None,
+            }],
+        };
+
+        let report = canvas.normalize(2);
+
+        assert!(report.changed());
+        assert_eq!(canvas.schema_version, 1);
+        assert_eq!(canvas.viewport.pan_x, 0.0);
+        assert_eq!(canvas.viewport.pan_y, 0.0);
+        assert_eq!(canvas.viewport.zoom, 2.0);
+        assert_eq!(canvas.nodes.len(), 2);
+        assert_eq!(canvas.nodes[0].id.as_str(), "same");
+        assert_eq!(canvas.nodes[1].id.as_str(), "same-2");
+        assert_eq!(canvas.nodes[0].width, 320.0);
+        assert_eq!(canvas.nodes[0].height, 460.0);
+        assert!(canvas.edges.is_empty());
+    }
+
+    #[test]
+    fn canvas_normalize_rejects_dependency_cycles_and_duplicate_edges() {
+        let mut canvas = SavedCanvasState {
+            nodes: vec![
+                canvas_terminal_node("a", 0),
+                canvas_terminal_node("b", 1),
+                canvas_terminal_node("c", 2),
+            ],
+            edges: vec![
+                SavedCanvasEdge {
+                    id: CanvasEdgeId::new("ab"),
+                    source: CanvasNodeId::new("a"),
+                    target: CanvasNodeId::new("b"),
+                    kind: CanvasEdgeKind::Dependency,
+                    enabled: true,
+                    context_policy: Some(SavedContextPolicy::default()),
+                },
+                SavedCanvasEdge {
+                    id: CanvasEdgeId::new("bc"),
+                    source: CanvasNodeId::new("b"),
+                    target: CanvasNodeId::new("c"),
+                    kind: CanvasEdgeKind::Dependency,
+                    enabled: true,
+                    context_policy: None,
+                },
+                SavedCanvasEdge {
+                    id: CanvasEdgeId::new("ca"),
+                    source: CanvasNodeId::new("c"),
+                    target: CanvasNodeId::new("a"),
+                    kind: CanvasEdgeKind::Dependency,
+                    enabled: true,
+                    context_policy: None,
+                },
+                SavedCanvasEdge {
+                    id: CanvasEdgeId::new("ab-copy"),
+                    source: CanvasNodeId::new("a"),
+                    target: CanvasNodeId::new("b"),
+                    kind: CanvasEdgeKind::Dependency,
+                    enabled: true,
+                    context_policy: None,
+                },
+            ],
+            ..SavedCanvasState::default()
+        };
+
+        let report = canvas.normalize(3);
+
+        assert_eq!(report.removed_edges, 2);
+        assert_eq!(canvas.edges.len(), 2);
+        assert!(
+            canvas
+                .edges
+                .iter()
+                .all(|edge| edge.context_policy.is_none())
+        );
+    }
+
+    #[test]
+    fn canvas_future_schema_falls_back_to_split_without_mutation() {
+        let mut workspace = SavedWorkspace {
+            title: "future".to_string(),
+            layout_mode: WorkspaceLayoutMode::Canvas,
+            canvas: Some(SavedCanvasState {
+                schema_version: 99,
+                viewport: SavedCanvasViewport {
+                    pan_x: f32::NAN,
+                    pan_y: 0.0,
+                    zoom: 1.0,
+                },
+                ..SavedCanvasState::default()
+            }),
+            ..SavedWorkspace::default()
+        };
+
+        workspace.normalize();
+
+        assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Split);
+        assert!(workspace
+            .canvas
+            .as_ref()
+            .is_some_and(|canvas| canvas.schema_version == 99 && canvas.viewport.pan_x.is_nan()));
     }
 
     #[test]

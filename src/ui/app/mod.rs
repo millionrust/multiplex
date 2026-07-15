@@ -4192,6 +4192,7 @@ impl TermiRustApp {
                 layout,
                 active_pane_index,
                 panes,
+                ..SavedWorkspace::default()
             };
             saved_workspace.normalize();
 
@@ -9742,6 +9743,7 @@ mod tests {
                 local_forward: None,
                 local_shell: None,
             }],
+            ..SavedWorkspace::default()
         });
         saved.active_workspace_index = Some(0);
         saved
@@ -9780,6 +9782,7 @@ mod tests {
                 local_forward: None,
                 local_shell: None,
             }],
+            ..SavedWorkspace::default()
         });
         saved.active_workspace_index = Some(0);
         saved
@@ -17655,6 +17658,7 @@ mod tests {
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 }),
             }],
+            ..SavedWorkspace::default()
         });
         saved.active_workspace_index = Some(0);
 
