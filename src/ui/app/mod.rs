@@ -11212,6 +11212,95 @@ mod tests {
     }
 
     #[gpui::test]
+    fn e2e_canvas_zoom_resizes_live_pty(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        let low_size = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    app.workspace_mut(workspace_id)
+                        .unwrap()
+                        .canvas
+                        .transform
+                        .zoom = 0.5;
+                    app.sync_terminal_layout(window, cx);
+                    let size = app.pane(pane_id).unwrap().last_size.unwrap();
+                    assert!(app.run_command_in_active_pane(
+                        "printf 'zoom-low-size='; stty size",
+                        "Low zoom PTY probe started.",
+                        cx,
+                    ));
+                    size
+                })
+            })
+            .expect("low zoom update should succeed");
+        let low_marker = format!("zoom-low-size={} {}", low_size.rows, low_size.cols);
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)?
+                .terminal
+                .all_rows_text()
+                .join("\n")
+                .contains(&low_marker)
+                .then_some(())
+        });
+
+        let high_size = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.workspace_mut(workspace_id)
+                        .unwrap()
+                        .canvas
+                        .transform
+                        .zoom = 2.0;
+                    app.sync_terminal_layout(window, cx);
+                    let size = app.pane(pane_id).unwrap().last_size.unwrap();
+                    assert!(app.run_command_in_active_pane(
+                        "printf 'zoom-high-size='; stty size",
+                        "High zoom PTY probe started.",
+                        cx,
+                    ));
+                    size
+                })
+            })
+            .expect("high zoom update should succeed");
+        assert!(high_size.cols > low_size.cols);
+        assert!(high_size.rows > low_size.rows);
+        let high_marker = format!("zoom-high-size={} {}", high_size.rows, high_size.cols);
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)?
+                .terminal
+                .all_rows_text()
+                .join("\n")
+                .contains(&high_marker)
+                .then_some(())
+        });
+    }
+
+    #[gpui::test]
     fn canvas_layout_switch_preserves_live_terminal_and_persists_state(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
@@ -17357,7 +17446,7 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_mouse_reporting_sends_bytes_to_terminal_app(cx: &mut TestAppContext) {
+    fn e2e_canvas_mouse_reporting_sends_bytes_to_terminal_app(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let request = ConnectRequest::local_shell_with_config(
@@ -17369,7 +17458,7 @@ sleep 1
             },
         );
 
-        let (_workspace_id, pane_id) = window
+        let (workspace_id, pane_id) = window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.open_request_workspace(request, window, cx)
@@ -17383,6 +17472,18 @@ sleep 1
                 .is_some_and(|pane| pane.connected)
                 .then_some(())
         });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    assert_eq!(
+                        app.workspace(workspace_id).unwrap().layout_mode,
+                        WorkspaceLayoutMode::Canvas
+                    );
+                })
+            })
+            .expect("canvas switch should succeed");
 
         app.update(cx, |app, cx| {
             assert!(app.run_command_in_active_pane(
@@ -18117,7 +18218,7 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_terminal_paging_shortcuts_adjust_scrollback(cx: &mut TestAppContext) {
+    fn e2e_canvas_terminal_paging_shortcuts_adjust_scrollback(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let request = ConnectRequest::local_shell_with_config(
@@ -18129,7 +18230,7 @@ sleep 1
             },
         );
 
-        let (_workspace_id, pane_id) = window
+        let (workspace_id, pane_id) = window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.open_request_workspace(request, window, cx)
@@ -18143,6 +18244,18 @@ sleep 1
                 .is_some_and(|pane| pane.connected)
                 .then_some(())
         });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    assert_eq!(
+                        app.workspace(workspace_id).unwrap().layout_mode,
+                        WorkspaceLayoutMode::Canvas
+                    );
+                })
+            })
+            .expect("canvas switch should succeed");
 
         app.update(cx, |app, cx| {
             assert!(app.run_command_in_active_pane(
@@ -18197,7 +18310,9 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_terminal_clipboard_shortcuts_copy_and_cancel_multiline_paste(cx: &mut TestAppContext) {
+    fn e2e_canvas_terminal_clipboard_shortcuts_copy_and_cancel_multiline_paste(
+        cx: &mut TestAppContext,
+    ) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let request = ConnectRequest::local_shell_with_config(
@@ -18209,7 +18324,7 @@ sleep 1
             },
         );
 
-        let (_workspace_id, pane_id) = window
+        let (workspace_id, pane_id) = window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.open_request_workspace(request, window, cx)
@@ -18223,6 +18338,18 @@ sleep 1
                 .is_some_and(|pane| pane.connected)
                 .then_some(())
         });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    assert_eq!(
+                        app.workspace(workspace_id).unwrap().layout_mode,
+                        WorkspaceLayoutMode::Canvas
+                    );
+                })
+            })
+            .expect("canvas switch should succeed");
 
         window
             .update(cx, |_, window, cx| {
