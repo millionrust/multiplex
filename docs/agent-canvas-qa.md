@@ -10,7 +10,7 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Pass | No formatting differences. |
 | `cargo check -q` | Pass | Existing macOS `objc` cfg and dead-code warnings remain. |
-| `cargo test -q` | Pass | 250 passed, 0 failed, 0 ignored in 18.78s. |
+| `cargo test -q` | Pass | 254 passed, 0 failed, 0 ignored in 15.39s. |
 | Agent adapter focused tests | Pass | Codex fake app-server, Claude/Gemini stream fixtures, literal argument child, cancellation, malformed data. |
 | Worktree integration tests | Pass | Real temporary Git repositories cover create, status, dirty refusal, committed refusal, and path boundaries. |
 | Canvas capacity test | Pass | 20 nodes, 40 edges, finite fit geometry and supported zoom. |
@@ -18,12 +18,12 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | `cargo clippy --all-targets -- -D warnings` | Blocked | 121 existing warnings include old `objc` cfg macros and unrelated UI lints; not changed in this feature. |
 | `git diff --check` | Pass | No whitespace errors. |
 
-The two `docker_ssh_persistent_tmux` tests are self-skipping in this run because
+The three `docker_ssh_persistent_tmux` tests are self-skipping in this run because
 `docker info` returned exit status 1. Cargo reports their early-return path as
-two passing tests, but this record treats them as **not exercised**. They were
-previously run successfully by the repository owner on 2026-06-24: two passed,
-including reconnect without startup-command re-execution and missing-tmux
-fallback.
+three passing tests, but this record treats them as **not exercised**. The
+repository owner previously ran the reconnect and missing-tmux cases
+successfully on 2026-06-24. The new remote kill-session case has deterministic
+command-quoting coverage but still requires a Docker or real-SSH run.
 
 ## Native launch smoke
 
@@ -40,6 +40,9 @@ so no screenshot or automated click-through is claimed.
 - Pan/zoom transforms, cursor anchoring, placement, fit, minimum resize, and
   stable restore mapping are unit tested. Keyboard node selection cycles and
   wraps in both directions.
+- Node titles normalize predictably, link enable/delete actions preserve nodes,
+  and canvas/node mouse ownership prevents terminal clicks from panning the
+  background.
 - Local and SSH canvas nodes reuse `SessionPane` requests and persistence.
 - Interactive launch arguments remain literal locally and quoted at the one SSH
   shell boundary; unsafe provider bypass flags are rejected.
@@ -76,7 +79,8 @@ hosts and were not claimed by automation:
   provider guidance in Canvas mode;
 - visual approval cards, worktree manager actions, context preview editing, and
   cross-host rejection copy;
-- destructive tmux kill choice, which remains outside the Canvas-specific UI.
+- visual tmux close choices and successful kill-session execution against a
+  Docker or real SSH host;
 
 Use the reviewer smoke test in [agent-canvas.md](agent-canvas.md). Do not use a
 production repository or paid provider account for the first pass.
