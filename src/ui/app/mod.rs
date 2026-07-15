@@ -6260,7 +6260,16 @@ impl TermiRustApp {
         let Some(source_layout) = self.workspaces[source_index].layout.clone() else {
             return;
         };
-        let source_count = source_layout.leaf_ids().len();
+        let source_layout_count = source_layout.leaf_ids().len();
+        let source_count = self.workspaces[source_index].pane_ids.len();
+        if source_count != source_layout_count {
+            self.error_message =
+                "This tab has Canvas sessions that are not selected for Split. Open the tab and choose which sessions to move before merging it."
+                    .to_string();
+            self.split_drop_target = None;
+            cx.notify();
+            return;
+        }
         let target_count = self
             .workspace(target_workspace_id)
             .map(|workspace| workspace.pane_ids.len())
@@ -11300,6 +11309,83 @@ mod tests {
                 })
             })
             .expect("split chooser flow should succeed");
+    }
+
+    #[gpui::test]
+    fn canvas_tab_with_hidden_split_sessions_cannot_be_merged(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let local_request = || {
+            ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+        let (target_workspace_id, target_pane_id, source_workspace_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let (target_workspace_id, target_pane_id) = app
+                        .open_request_workspace(local_request(), window, cx)
+                        .expect("target workspace should open");
+                    let (source_workspace_id, _) = app
+                        .open_request_workspace(local_request(), window, cx)
+                        .expect("source workspace should open");
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    for _ in 0..4 {
+                        app.add_request_to_canvas(local_request(), None, window, cx)
+                            .expect("source canvas terminal should open");
+                    }
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Split, window, cx);
+                    app.confirm_split_pane_choice(window, cx);
+                    (target_workspace_id, target_pane_id, source_workspace_id)
+                })
+            })
+            .expect("window update should succeed");
+
+        let source_pane_ids = wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let source = app.workspace(source_workspace_id)?;
+            (source.pane_ids.len() == 5
+                && source.layout.as_ref()?.leaf_ids().len() == MAX_SPLIT_PANES
+                && source
+                    .pane_ids
+                    .iter()
+                    .all(|pane_id| app.pane(*pane_id).is_some_and(|pane| pane.connected)))
+            .then(|| source.pane_ids.clone())
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.merge_tab_as_split(
+                        source_workspace_id,
+                        target_pane_id,
+                        DropZone::Right,
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("merge attempt should complete");
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.workspaces.len(), 2);
+            assert!(app.workspace(target_workspace_id).is_some());
+            let source = app
+                .workspace(source_workspace_id)
+                .expect("source workspace must remain");
+            assert_eq!(source.pane_ids, source_pane_ids);
+            assert!(source_pane_ids
+                .iter()
+                .all(|pane_id| app.pane(*pane_id).is_some()));
+            assert_eq!(
+                app.error_message,
+                "This tab has Canvas sessions that are not selected for Split. Open the tab and choose which sessions to move before merging it."
+            );
+        });
     }
 
     #[gpui::test]
