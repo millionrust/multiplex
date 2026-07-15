@@ -45,9 +45,9 @@ pub fn provider_descriptor(provider: AgentProvider) -> AgentProviderDescriptor {
             capabilities: AgentCapabilities {
                 interactive_pty: true,
                 structured_events: true,
-                approvals: true,
+                approvals: false,
                 cancellation: true,
-                resume: true,
+                resume: false,
                 context_handoff: true,
                 remote: true,
             },
@@ -60,9 +60,9 @@ pub fn provider_descriptor(provider: AgentProvider) -> AgentProviderDescriptor {
             capabilities: AgentCapabilities {
                 interactive_pty: true,
                 structured_events: true,
-                approvals: true,
+                approvals: false,
                 cancellation: true,
-                resume: true,
+                resume: false,
                 context_handoff: true,
                 remote: true,
             },
@@ -118,5 +118,17 @@ mod tests {
             assert!(descriptor.capabilities.structured_events);
             assert!(descriptor.capabilities.cancellation);
         }
+    }
+
+    #[test]
+    fn headless_adapters_do_not_claim_interactive_approval_or_resume() {
+        for provider in [AgentProvider::ClaudeCode, AgentProvider::Gemini] {
+            let descriptor = provider_descriptor(provider);
+            assert!(!descriptor.capabilities.approvals);
+            assert!(!descriptor.capabilities.resume);
+        }
+        let codex = provider_descriptor(AgentProvider::Codex);
+        assert!(codex.capabilities.approvals);
+        assert!(codex.capabilities.resume);
     }
 }

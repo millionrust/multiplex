@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -42,7 +42,7 @@ pub struct CodexSessionHandle {
     pub event_rx: Receiver<AgentEvent>,
     ids: Arc<Mutex<SessionIds>>,
     next_request_id: AtomicU64,
-    child_id: u32,
+    child_id: Arc<AtomicU32>,
 }
 
 impl CodexSessionHandle {
@@ -104,9 +104,13 @@ impl CodexSessionHandle {
 
 impl Drop for CodexSessionHandle {
     fn drop(&mut self) {
+        let child_id = self.child_id.load(Ordering::Acquire);
+        if child_id == 0 {
+            return;
+        }
         #[cfg(unix)]
         unsafe {
-            libc::kill(self.child_id as libc::pid_t, libc::SIGTERM);
+            libc::kill(child_id as libc::pid_t, libc::SIGTERM);
         }
     }
 }
@@ -131,7 +135,7 @@ pub fn spawn_codex_session(config: CodexSessionConfig) -> Result<CodexSessionHan
                 config.executable.display()
             )
         })?;
-    let child_id = child.id();
+    let child_id = Arc::new(AtomicU32::new(child.id()));
     let stdin = child
         .stdin
         .take()
@@ -177,21 +181,27 @@ pub fn spawn_codex_session(config: CodexSessionConfig) -> Result<CodexSessionHan
         .context("Unable to start Codex diagnostic reader")?;
 
     let monitor_events = event_tx.clone();
+    let monitor_child_id = Arc::clone(&child_id);
     thread::Builder::new()
         .name("termirust-codex-monitor".to_string())
-        .spawn(move || match child.wait() {
-            Ok(status) if !status.success() => {
-                let _ = monitor_events.send(AgentEvent::Failed {
-                    error: format!("Codex app-server exited with {status}"),
-                });
-                let _ = monitor_events.send(AgentEvent::StateChanged(AgentRunState::Disconnected));
+        .spawn(move || {
+            let result = child.wait();
+            monitor_child_id.store(0, Ordering::Release);
+            match result {
+                Ok(status) if !status.success() => {
+                    let _ = monitor_events.send(AgentEvent::Failed {
+                        error: format!("Codex app-server exited with {status}"),
+                    });
+                    let _ =
+                        monitor_events.send(AgentEvent::StateChanged(AgentRunState::Disconnected));
+                }
+                Err(error) => {
+                    let _ = monitor_events.send(AgentEvent::Failed {
+                        error: format!("Unable to wait for Codex app-server: {error}"),
+                    });
+                }
+                _ => {}
             }
-            Err(error) => {
-                let _ = monitor_events.send(AgentEvent::Failed {
-                    error: format!("Unable to wait for Codex app-server: {error}"),
-                });
-            }
-            _ => {}
         })
         .context("Unable to start Codex process monitor")?;
 
@@ -672,6 +682,62 @@ sleep 1
             text: "done".to_string(),
         }));
         assert!(events.contains(&AgentEvent::StateChanged(AgentRunState::Succeeded)));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn clears_the_process_id_after_the_app_server_exits() {
+        let (executable, working_directory) = fake_codex();
+        let session = spawn_codex_session(CodexSessionConfig {
+            executable,
+            working_directory,
+            permission_policy: AgentPermissionPolicy::ReadOnly,
+            initial_prompt: Some("finish the task".to_string()),
+        })
+        .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while session.child_id.load(std::sync::atomic::Ordering::Acquire) != 0
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(
+            session.child_id.load(std::sync::atomic::Ordering::Acquire),
+            0,
+            "process monitor must clear stale child ids before handle drop"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn dropping_a_session_stops_an_active_app_server() {
+        let (executable, working_directory) = fake_codex();
+        let session = spawn_codex_session(CodexSessionConfig {
+            executable,
+            working_directory,
+            permission_policy: AgentPermissionPolicy::ReadOnly,
+            initial_prompt: None,
+        })
+        .unwrap();
+        let child_id = session.child_id.load(std::sync::atomic::Ordering::Acquire);
+        assert_ne!(child_id, 0);
+
+        drop(session);
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while process_exists(child_id) && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            !process_exists(child_id),
+            "Codex child process remained alive"
+        );
+    }
+
+    #[cfg(unix)]
+    fn process_exists(process_id: u32) -> bool {
+        let result = unsafe { libc::kill(process_id as libc::pid_t, 0) };
+        result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
     }
 
     #[test]

@@ -931,7 +931,7 @@ pub struct TermiRustApp {
     pending_canvas_pane_close: Option<PendingCanvasPaneClose>,
     split_pane_chooser: Option<SplitPaneChooser>,
     pending_dependency_source: Option<crate::models::CanvasNodeId>,
-    orchestration_active: bool,
+    orchestration_workspace_id: Option<u64>,
     canvas_node_rename_id: Option<crate::models::CanvasNodeId>,
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
@@ -1081,7 +1081,7 @@ impl TermiRustApp {
             pending_canvas_pane_close: None,
             split_pane_chooser: None,
             pending_dependency_source: None,
-            orchestration_active: false,
+            orchestration_workspace_id: None,
             canvas_node_rename_id: None,
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
@@ -5584,6 +5584,9 @@ impl TermiRustApp {
         let Some(workspace_id) = self.pane_workspace_id(pane_id) else {
             return;
         };
+        if self.orchestration_workspace_id == Some(workspace_id) {
+            self.orchestration_workspace_id = None;
+        }
 
         let mut remove_workspace = false;
         if let Some(workspace) = self.workspace_mut(workspace_id) {
@@ -5622,6 +5625,12 @@ impl TermiRustApp {
             return;
         };
         let pane_ids = workspace.pane_ids.clone();
+        let canvas_node_ids: Vec<_> = workspace
+            .canvas
+            .nodes
+            .iter()
+            .map(|node| node.id.clone())
+            .collect();
 
         for pane_id in &pane_ids {
             if let Some(pane) = self.pane(*pane_id) {
@@ -5631,6 +5640,33 @@ impl TermiRustApp {
 
         self.workspaces.retain(|item| item.id != workspace_id);
         self.panes.retain(|pane| !pane_ids.contains(&pane.id));
+        for node_id in &canvas_node_ids {
+            self.structured_agents.remove(node_id);
+        }
+        if self.orchestration_workspace_id == Some(workspace_id) {
+            self.orchestration_workspace_id = None;
+        }
+        if self
+            .pending_context_source
+            .as_ref()
+            .is_some_and(|node_id| canvas_node_ids.contains(node_id))
+        {
+            self.pending_context_source = None;
+        }
+        if self
+            .pending_dependency_source
+            .as_ref()
+            .is_some_and(|node_id| canvas_node_ids.contains(node_id))
+        {
+            self.pending_dependency_source = None;
+        }
+        if self
+            .context_handoff_review
+            .as_ref()
+            .is_some_and(|review| canvas_node_ids.contains(&review.target))
+        {
+            self.context_handoff_review = None;
+        }
 
         if self.active_workspace_id == Some(workspace_id) {
             self.active_workspace_id = self.workspaces.last().map(|item| item.id);
@@ -11887,6 +11923,19 @@ sleep 1
                     definition,
                 } if definition.backend == AgentBackendKind::Structured
             ));
+        });
+
+        let workspace_id = app.read_with(cx, |app, _| {
+            app.active_workspace_id.expect("workspace should be active")
+        });
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| app.close_workspace(workspace_id, cx))
+            })
+            .expect("workspace close should succeed");
+        app.read_with(cx, |app, _| {
+            assert!(app.workspace(workspace_id).is_none());
+            assert!(!app.structured_agents.contains_key(&node_id));
         });
     }
 

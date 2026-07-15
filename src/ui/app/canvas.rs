@@ -2191,11 +2191,20 @@ impl TermiRustApp {
         }
         let executable = match detect_agent_executable(&definition) {
             AgentExecutableStatus::Available { path, .. } => path,
-            missing @ AgentExecutableStatus::Missing { .. } => {
-                creation.executable_status = missing;
+            AgentExecutableStatus::Missing {
+                requested,
+                guidance,
+            } => {
+                self.error_message = format!(
+                    "{} executable '{}' is unavailable. {guidance}",
+                    definition.provider.label(),
+                    requested.to_string_lossy()
+                );
+                creation.executable_status = AgentExecutableStatus::Missing {
+                    requested,
+                    guidance,
+                };
                 self.agent_creation = Some(creation);
-                self.error_message =
-                    "Codex CLI is not installed or could not be resolved.".to_string();
                 cx.notify();
                 return;
             }
@@ -2299,6 +2308,7 @@ impl TermiRustApp {
             return;
         };
         let world_center = workspace.canvas.transform.screen_to_world(screen_center);
+        let provider_label = definition.provider.label();
         let node_id = workspace
             .canvas
             .add_agent_node(None, definition, world_center);
@@ -2306,7 +2316,7 @@ impl TermiRustApp {
         self.structured_agents
             .insert(node_id, StructuredAgentRuntime::new(handle));
         self.canvas_add_menu_open = false;
-        self.status_message = "Starting structured Codex session...".to_string();
+        self.status_message = format!("Starting structured {provider_label} session...");
         self.error_message.clear();
         self.persist_runtime_state();
         cx.notify();
@@ -2351,8 +2361,8 @@ impl TermiRustApp {
                 | AgentEvent::Completed { .. } => {}
             }
         }
-        if changed && self.orchestration_active {
-            self.dispatch_ready_agent_tasks();
+        if changed && let Some(workspace_id) = self.orchestration_workspace_id {
+            self.dispatch_ready_agent_tasks(workspace_id);
         }
         changed
     }
@@ -2527,12 +2537,24 @@ impl TermiRustApp {
     }
 
     fn close_structured_agent(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
+        let orchestration_workspace_closed = self.orchestration_workspace_id.is_some_and(|id| {
+            self.workspace(id)
+                .is_some_and(|workspace| workspace.canvas.node(&node_id).is_some())
+        });
         self.structured_agents.remove(&node_id);
         for workspace in &mut self.workspaces {
             workspace.canvas.remove_node(&node_id);
         }
+        if orchestration_workspace_closed {
+            self.orchestration_workspace_id = None;
+        }
         self.persist_runtime_state();
-        self.status_message = "Structured agent closed. Its worktree was kept.".to_string();
+        self.status_message = if orchestration_workspace_closed {
+            "Structured agent closed and its dependency run stopped. Its worktree was kept."
+                .to_string()
+        } else {
+            "Structured agent closed. Its worktree was kept.".to_string()
+        };
         cx.notify();
     }
 
@@ -2650,13 +2672,29 @@ impl TermiRustApp {
             });
         match result {
             Ok(_) => {
-                self.status_message = "Dependency created.".to_string();
+                self.status_message = if self.stop_active_workspace_orchestration() {
+                    "Dependency created. Dependency scheduling stopped; active agent turns continue."
+                        .to_string()
+                } else {
+                    "Dependency created.".to_string()
+                };
                 self.error_message.clear();
                 self.persist_runtime_state();
             }
             Err(error) => self.error_message = error.to_string(),
         }
         cx.notify();
+    }
+
+    fn stop_active_workspace_orchestration(&mut self) -> bool {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return false;
+        };
+        if self.orchestration_workspace_id != Some(workspace_id) {
+            return false;
+        }
+        self.orchestration_workspace_id = None;
+        true
     }
 
     fn queue_structured_agent_task(
@@ -2677,11 +2715,22 @@ impl TermiRustApp {
             cx.notify();
             return;
         }
+        let Some(next_state) = self
+            .structured_agents
+            .get(&node_id)
+            .and_then(|runtime| agent_state_after_queue(runtime.state))
+        else {
+            self.error_message =
+                "Wait for the active turn to finish or restart the disconnected agent before queuing a task."
+                    .to_string();
+            cx.notify();
+            return;
+        };
         if let Some(runtime) = self.structured_agents.get_mut(&node_id) {
             runtime.queued_prompt = Some(prompt);
-            if runtime.state == AgentRunState::Blocked {
-                runtime.state = AgentRunState::Idle;
-            }
+            runtime.state = next_state;
+            runtime.diagnostic = None;
+            runtime.approval = None;
             Self::set_input_value(&self.shell_inputs.structured_agent_prompt, "", window, cx);
             self.status_message = "Task queued for dependency orchestration.".to_string();
             self.error_message.clear();
@@ -2690,8 +2739,22 @@ impl TermiRustApp {
     }
 
     fn start_dependency_orchestration(&mut self, cx: &mut Context<Self>) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            self.error_message = "Open a Canvas workspace before running dependencies.".to_string();
+            cx.notify();
+            return;
+        };
+        if self
+            .orchestration_workspace_id
+            .is_some_and(|running_workspace_id| running_workspace_id != workspace_id)
+        {
+            self.error_message =
+                "Another workspace already has an active dependency run.".to_string();
+            cx.notify();
+            return;
+        }
         let dependency_endpoints: Vec<_> = self
-            .active_workspace()
+            .workspace(workspace_id)
             .map(|workspace| {
                 workspace
                     .canvas
@@ -2707,96 +2770,114 @@ impl TermiRustApp {
             .find_map(|(source, target)| self.ensure_same_execution_host(source, target).err())
         {
             self.error_message = error.to_string();
-            self.orchestration_active = false;
+            self.orchestration_workspace_id = None;
             cx.notify();
             return;
         }
-        self.orchestration_active = true;
-        if !self.dispatch_ready_agent_tasks() {
+        self.orchestration_workspace_id = Some(workspace_id);
+        if !self.dispatch_ready_agent_tasks(workspace_id)
+            && self.orchestration_workspace_id == Some(workspace_id)
+        {
             self.status_message =
                 "No queued task is ready. Check dependency states and queued prompts.".to_string();
         }
         cx.notify();
     }
 
-    fn dispatch_ready_agent_tasks(&mut self) -> bool {
-        let agents: Vec<_> = self
-            .structured_agents
-            .iter()
-            .map(|(node_id, runtime)| SchedulableAgent {
-                node_id: node_id.clone(),
-                state: runtime.state,
-                has_queued_task: runtime.queued_prompt.is_some(),
-            })
-            .collect();
-        let edges: Vec<_> = self
-            .workspaces
-            .iter()
-            .flat_map(|workspace| workspace.canvas.edges.iter())
-            .filter(|edge| edge.kind == CanvasEdgeKind::Dependency)
-            .map(|edge| SavedCanvasEdge {
-                id: edge.id.clone(),
-                source: edge.source.clone(),
-                target: edge.target.clone(),
-                kind: edge.kind,
-                enabled: edge.enabled,
-                context_policy: None,
-            })
-            .collect();
-        let schedule = schedule_dependency_dag(&agents, &edges, 2);
-        if schedule.cycle_detected {
-            self.error_message = "Dependency graph contains a cycle and cannot run.".to_string();
-            self.orchestration_active = false;
+    fn dispatch_ready_agent_tasks(&mut self, workspace_id: u64) -> bool {
+        let Some(workspace) = self.workspace(workspace_id) else {
+            self.orchestration_workspace_id = None;
             return false;
-        }
-        for node_id in schedule.blocked {
-            if let Some(runtime) = self.structured_agents.get_mut(&node_id) {
-                runtime.state = AgentRunState::Blocked;
-                runtime.diagnostic = Some("A prerequisite failed or was cancelled.".to_string());
-            }
-        }
+        };
+        let (node_ids, edges) = canvas_orchestration_scope(&workspace.canvas);
         let mut dispatched = false;
-        for node_id in schedule.ready {
-            let prompt = self
+        loop {
+            let agents: Vec<_> = self
                 .structured_agents
-                .get_mut(&node_id)
-                .and_then(|runtime| runtime.queued_prompt.take());
-            let Some(prompt) = prompt else {
-                continue;
-            };
-            let result = self
-                .structured_agents
-                .get(&node_id)
-                .expect("scheduled agent should exist")
-                .handle
-                .send_prompt(prompt.clone());
-            if let Some(runtime) = self.structured_agents.get_mut(&node_id) {
-                match result {
-                    Ok(()) => {
-                        runtime.state = AgentRunState::Starting;
-                        runtime.push_text(&format!("\nQueued task: {}\n", prompt.trim()));
-                        dispatched = true;
-                    }
-                    Err(error) => {
-                        runtime.state = AgentRunState::Failed;
-                        runtime.diagnostic = Some(error.to_string());
+                .iter()
+                .filter(|(node_id, _)| node_ids.contains(*node_id))
+                .map(|(node_id, runtime)| SchedulableAgent {
+                    node_id: node_id.clone(),
+                    state: runtime.state,
+                    has_queued_task: runtime.queued_prompt.is_some(),
+                })
+                .collect();
+            let schedule = schedule_dependency_dag(&agents, &edges, 2);
+            if schedule.cycle_detected {
+                self.error_message =
+                    "Dependency graph contains a cycle and cannot run.".to_string();
+                self.orchestration_workspace_id = None;
+                return false;
+            }
+            for node_id in schedule.blocked {
+                if let Some(runtime) = self.structured_agents.get_mut(&node_id) {
+                    runtime.state = AgentRunState::Blocked;
+                    runtime.diagnostic =
+                        Some("A prerequisite failed or was cancelled.".to_string());
+                }
+            }
+            let mut send_failed = false;
+            for node_id in schedule.ready {
+                let prompt = self
+                    .structured_agents
+                    .get_mut(&node_id)
+                    .and_then(|runtime| runtime.queued_prompt.take());
+                let Some(prompt) = prompt else {
+                    continue;
+                };
+                let result = self
+                    .structured_agents
+                    .get(&node_id)
+                    .expect("scheduled agent should exist")
+                    .handle
+                    .send_prompt(prompt.clone());
+                if let Some(runtime) = self.structured_agents.get_mut(&node_id) {
+                    match result {
+                        Ok(()) => {
+                            runtime.state = AgentRunState::Starting;
+                            runtime.push_text(&format!("\nQueued task: {}\n", prompt.trim()));
+                            dispatched = true;
+                        }
+                        Err(error) => {
+                            runtime.state = AgentRunState::Failed;
+                            runtime.diagnostic = Some(error.to_string());
+                            send_failed = true;
+                        }
                     }
                 }
             }
+            if !send_failed {
+                break;
+            }
         }
-        let pending = self
+        let pending = self.structured_agents.iter().any(|(node_id, runtime)| {
+            node_ids.contains(node_id)
+                && runtime.queued_prompt.is_some()
+                && runtime.state != AgentRunState::Blocked
+        });
+        let blocked_count = self
             .structured_agents
-            .values()
-            .any(|runtime| runtime.queued_prompt.is_some());
-        let running = self.structured_agents.values().any(|runtime| {
-            matches!(
-                runtime.state,
-                AgentRunState::Starting | AgentRunState::Running
-            )
+            .iter()
+            .filter(|(node_id, runtime)| {
+                node_ids.contains(*node_id)
+                    && runtime.queued_prompt.is_some()
+                    && runtime.state == AgentRunState::Blocked
+            })
+            .count();
+        let running = self.structured_agents.iter().any(|(node_id, runtime)| {
+            node_ids.contains(node_id)
+                && matches!(
+                    runtime.state,
+                    AgentRunState::Starting | AgentRunState::Running
+                )
         });
         if !pending && !running {
-            self.orchestration_active = false;
-            self.status_message = "Dependency run finished.".to_string();
+            self.orchestration_workspace_id = None;
+            self.status_message = if blocked_count == 0 {
+                "Dependency run finished.".to_string()
+            } else {
+                format!("Dependency run finished with {blocked_count} blocked task(s).")
+            };
         } else if dispatched {
             self.status_message = "Dependency run started ready tasks.".to_string();
         }
@@ -3540,6 +3621,13 @@ impl TermiRustApp {
         enabled: bool,
         cx: &mut Context<Self>,
     ) {
+        let dependency_changed = self.active_workspace().is_some_and(|workspace| {
+            workspace
+                .canvas
+                .edges
+                .iter()
+                .any(|edge| edge.id == edge_id && edge.kind == CanvasEdgeKind::Dependency)
+        });
         let changed = self
             .active_workspace_mut()
             .is_some_and(|workspace| workspace.canvas.set_edge_enabled(&edge_id, enabled));
@@ -3557,7 +3645,10 @@ impl TermiRustApp {
             self.context_handoff_review = None;
         }
         self.persist_runtime_state();
-        self.status_message = if enabled {
+        let scheduling_stopped = dependency_changed && self.stop_active_workspace_orchestration();
+        self.status_message = if scheduling_stopped {
+            "Dependency changed. Dependency scheduling stopped; active agent turns continue."
+        } else if enabled {
             "Canvas link enabled."
         } else {
             "Canvas link disabled."
@@ -3568,6 +3659,13 @@ impl TermiRustApp {
     }
 
     fn remove_canvas_edge(&mut self, edge_id: CanvasEdgeId, cx: &mut Context<Self>) {
+        let dependency_removed = self.active_workspace().is_some_and(|workspace| {
+            workspace
+                .canvas
+                .edges
+                .iter()
+                .any(|edge| edge.id == edge_id && edge.kind == CanvasEdgeKind::Dependency)
+        });
         let removed = self
             .active_workspace_mut()
             .is_some_and(|workspace| workspace.canvas.remove_edge(&edge_id));
@@ -3584,7 +3682,11 @@ impl TermiRustApp {
             self.context_handoff_review = None;
         }
         self.persist_runtime_state();
-        self.status_message = "Canvas link deleted; nodes and sessions were kept.".to_string();
+        self.status_message = if dependency_removed && self.stop_active_workspace_orchestration() {
+            "Dependency deleted and scheduling stopped; active agent turns continue.".to_string()
+        } else {
+            "Canvas link deleted; nodes and sessions were kept.".to_string()
+        };
         self.error_message.clear();
         cx.notify();
     }
@@ -5478,11 +5580,50 @@ impl TermiRustApp {
     }
 }
 
+fn canvas_orchestration_scope(
+    canvas: &CanvasWorkspaceState,
+) -> (HashSet<CanvasNodeId>, Vec<SavedCanvasEdge>) {
+    let node_ids = canvas
+        .nodes
+        .iter()
+        .map(|node| node.id.clone())
+        .collect::<HashSet<_>>();
+    let edges = canvas
+        .edges
+        .iter()
+        .filter(|edge| edge.kind == CanvasEdgeKind::Dependency)
+        .map(|edge| SavedCanvasEdge {
+            id: edge.id.clone(),
+            source: edge.source.clone(),
+            target: edge.target.clone(),
+            kind: edge.kind,
+            enabled: edge.enabled,
+            context_policy: None,
+        })
+        .collect();
+    (node_ids, edges)
+}
+
+fn agent_state_after_queue(state: AgentRunState) -> Option<AgentRunState> {
+    match state {
+        AgentRunState::Idle
+        | AgentRunState::Succeeded
+        | AgentRunState::Failed
+        | AgentRunState::Cancelled
+        | AgentRunState::Blocked => Some(AgentRunState::Idle),
+        AgentRunState::Starting
+        | AgentRunState::Running
+        | AgentRunState::WaitingForApproval
+        | AgentRunState::Disconnected => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CanvasNode, CanvasNodeKind,
-        CanvasPoint, CanvasRect, CanvasTransform, CanvasWorkspaceState, TermiRustApp,
+        AgentRunState, CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CanvasNode,
+        CanvasNodeKind, CanvasPoint, CanvasRect, CanvasTransform, CanvasWorkspaceState,
+        TermiRustApp, agent_state_after_queue, canvas_orchestration_scope,
         find_non_overlapping_position, fit_transform,
     };
     use crate::models::{
@@ -5623,6 +5764,45 @@ mod tests {
                 .to_string()
                 .contains("cycle")
         );
+    }
+
+    #[test]
+    fn orchestration_scope_contains_only_the_workspace_nodes_and_edges() {
+        let mut canvas = CanvasWorkspaceState::default();
+        canvas.nodes = vec![
+            terminal_node("workspace-a", 1, 0.0, 0.0),
+            terminal_node("workspace-b", 2, 800.0, 0.0),
+        ];
+        canvas
+            .add_dependency_edge(
+                CanvasNodeId::new("workspace-a"),
+                CanvasNodeId::new("workspace-b"),
+            )
+            .unwrap();
+
+        let (node_ids, edges) = canvas_orchestration_scope(&canvas);
+
+        assert_eq!(node_ids.len(), 2);
+        assert!(node_ids.contains(&CanvasNodeId::new("workspace-a")));
+        assert!(node_ids.contains(&CanvasNodeId::new("workspace-b")));
+        assert!(!node_ids.contains(&CanvasNodeId::new("other-workspace")));
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].source, CanvasNodeId::new("workspace-a"));
+        assert_eq!(edges[0].target, CanvasNodeId::new("workspace-b"));
+    }
+
+    #[test]
+    fn queuing_a_completed_task_resets_it_without_reviving_disconnected_agents() {
+        for state in [
+            AgentRunState::Succeeded,
+            AgentRunState::Failed,
+            AgentRunState::Cancelled,
+            AgentRunState::Blocked,
+        ] {
+            assert_eq!(agent_state_after_queue(state), Some(AgentRunState::Idle));
+        }
+        assert_eq!(agent_state_after_queue(AgentRunState::Disconnected), None);
+        assert_eq!(agent_state_after_queue(AgentRunState::Running), None);
     }
 
     #[test]

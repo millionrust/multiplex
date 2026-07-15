@@ -42,6 +42,32 @@ pub fn schedule_dependency_dag(
             ..DagSchedule::default()
         };
     }
+    let mut failed_or_blocked: HashSet<_> = states
+        .iter()
+        .filter_map(|(node_id, state)| {
+            matches!(
+                state,
+                AgentRunState::Failed
+                    | AgentRunState::Cancelled
+                    | AgentRunState::Disconnected
+                    | AgentRunState::Blocked
+            )
+            .then(|| node_id.clone())
+        })
+        .collect();
+    loop {
+        let mut changed = false;
+        for edge in &dependencies {
+            if failed_or_blocked.contains(&edge.source)
+                && failed_or_blocked.insert(edge.target.clone())
+            {
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
     let running = agents
         .iter()
         .filter(|agent| {
@@ -57,22 +83,16 @@ pub fn schedule_dependency_dag(
     for agent in agents.iter().filter(|agent| {
         agent.has_queued_task && matches!(agent.state, AgentRunState::Idle | AgentRunState::Blocked)
     }) {
+        if failed_or_blocked.contains(&agent.node_id) {
+            blocked.push(agent.node_id.clone());
+            continue;
+        }
         let prerequisites: Vec<_> = dependencies
             .iter()
             .filter(|edge| edge.target == agent.node_id)
             .filter_map(|edge| states.get(&edge.source).copied())
             .collect();
-        if prerequisites.iter().any(|state| {
-            matches!(
-                state,
-                AgentRunState::Failed
-                    | AgentRunState::Cancelled
-                    | AgentRunState::Disconnected
-                    | AgentRunState::Blocked
-            )
-        }) {
-            blocked.push(agent.node_id.clone());
-        } else if prerequisites
+        if prerequisites
             .iter()
             .all(|state| *state == AgentRunState::Succeeded)
             && ready.len() < available
@@ -186,6 +206,24 @@ mod tests {
             2,
         );
         assert_eq!(failed.blocked, vec![CanvasNodeId::new("b")]);
+    }
+
+    #[test]
+    fn failure_blocks_all_transitive_queued_dependants() {
+        let schedule = schedule_dependency_dag(
+            &[
+                agent("a", AgentRunState::Failed, false),
+                agent("b", AgentRunState::Idle, true),
+                agent("c", AgentRunState::Idle, true),
+            ],
+            &[edge("a", "b"), edge("b", "c")],
+            2,
+        );
+        assert_eq!(
+            schedule.blocked,
+            vec![CanvasNodeId::new("b"), CanvasNodeId::new("c")]
+        );
+        assert!(schedule.ready.is_empty());
     }
 
     #[test]
