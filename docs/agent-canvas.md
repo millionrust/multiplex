@@ -24,6 +24,8 @@ delete it without closing either connected node.
 Closing a persistent SSH node asks whether to detach it from the canvas, keep a
 disconnected node for later reconnection, or permanently kill its tmux session.
 Killing requires a second confirmation and uses a separate SSH control channel.
+Closing any other connected terminal asks for confirmation before ending its
+active local process or SSH connection.
 
 Node positions, sizes, collapsed state, links, and viewport are persisted with
 the workspace. A restored structured node does not silently launch a process;

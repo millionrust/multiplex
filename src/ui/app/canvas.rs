@@ -67,6 +67,12 @@ pub(super) struct PendingTmuxClose {
 }
 
 #[derive(Clone, Debug)]
+pub(super) struct PendingCanvasPaneClose {
+    pub pane_id: u64,
+    pub title: String,
+}
+
+#[derive(Clone, Debug)]
 pub(super) struct SplitPaneChooser {
     pub workspace_id: u64,
     pub selected_pane_ids: Vec<u64>,
@@ -880,17 +886,34 @@ fn point_from_pixels(position: Point<gpui::Pixels>) -> CanvasPoint {
 }
 
 impl TermiRustApp {
-    fn request_canvas_pane_close(&mut self, pane_id: u64, cx: &mut Context<Self>) {
-        let persistent_session = self
-            .pane(pane_id)
-            .is_some_and(|pane| pane.request.persistent_session);
+    pub(super) fn request_canvas_pane_close(&mut self, pane_id: u64, cx: &mut Context<Self>) {
+        let Some((persistent_session, session_name, connected, title)) =
+            self.pane(pane_id).map(|pane| {
+                (
+                    pane.request.persistent_session,
+                    pane.request.persistent_session_name.clone(),
+                    pane.connected && !pane.closed,
+                    pane.title.clone(),
+                )
+            })
+        else {
+            return;
+        };
         if !persistent_session {
-            self.close_pane(pane_id, cx);
+            if connected {
+                self.pending_canvas_pane_close = Some(PendingCanvasPaneClose { pane_id, title });
+                self.canvas_add_menu_open = false;
+                self.canvas_links_open = false;
+                self.worktree_manager_open = false;
+                self.context_handoff_review = None;
+                self.pending_tmux_close = None;
+                self.split_pane_chooser = None;
+                cx.notify();
+            } else {
+                self.close_pane(pane_id, cx);
+            }
             return;
         }
-        let session_name = self
-            .pane(pane_id)
-            .and_then(|pane| pane.request.persistent_session_name.clone());
         self.pending_tmux_close = Some(PendingTmuxClose {
             pane_id,
             session_name,
@@ -900,6 +923,8 @@ impl TermiRustApp {
         self.canvas_links_open = false;
         self.worktree_manager_open = false;
         self.context_handoff_review = None;
+        self.pending_canvas_pane_close = None;
+        self.split_pane_chooser = None;
         cx.notify();
     }
 
@@ -1121,6 +1146,17 @@ impl TermiRustApp {
         self.worktree_manager_open = false;
         self.context_handoff_review = None;
         self.pending_tmux_close = None;
+        self.pending_canvas_pane_close = None;
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    pub(super) fn confirm_canvas_pane_close(&mut self, cx: &mut Context<Self>) {
+        let Some(pending) = self.pending_canvas_pane_close.take() else {
+            return;
+        };
+        self.close_pane(pending.pane_id, cx);
+        self.status_message = format!("Closed active terminal {}.", pending.title);
         self.error_message.clear();
         cx.notify();
     }
@@ -2917,6 +2953,9 @@ impl TermiRustApp {
             self.canvas_links_open = false;
             self.worktree_manager_open = false;
             self.context_handoff_review = None;
+            self.pending_tmux_close = None;
+            self.pending_canvas_pane_close = None;
+            self.split_pane_chooser = None;
         }
         cx.notify();
     }
@@ -3437,6 +3476,9 @@ impl TermiRustApp {
             self.canvas_links_open = false;
             self.agent_creation = None;
             self.context_handoff_review = None;
+            self.pending_tmux_close = None;
+            self.pending_canvas_pane_close = None;
+            self.split_pane_chooser = None;
         }
         cx.notify();
     }
@@ -3448,6 +3490,9 @@ impl TermiRustApp {
             self.agent_creation = None;
             self.context_handoff_review = None;
             self.worktree_manager_open = false;
+            self.pending_tmux_close = None;
+            self.pending_canvas_pane_close = None;
+            self.split_pane_chooser = None;
         }
         cx.notify();
     }
@@ -4922,6 +4967,92 @@ impl TermiRustApp {
             .into_any_element()
     }
 
+    fn render_canvas_pane_close_dialog(&self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(pending) = self.pending_canvas_pane_close.as_ref() else {
+            return div().into_any_element();
+        };
+        v_flex()
+            .id("canvas-pane-close-dialog")
+            .absolute()
+            .top(px(12.0))
+            .right(px(12.0))
+            .w(px(460.0))
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(theme::danger())
+            .bg(theme::library_card())
+            .shadow_lg()
+            .child(
+                h_flex()
+                    .h(px(44.0))
+                    .px_3()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child("Close active terminal?"),
+                    )
+                    .child(
+                        Button::new("canvas-pane-close-cancel-icon")
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Cancel")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.pending_canvas_pane_close = None;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .p_3()
+                    .gap_3()
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme::text_muted())
+                            .child(format!(
+                                "Closing {} ends its active local process or SSH connection.",
+                                pending.title
+                            )),
+                    )
+                    .child(
+                        h_flex()
+                            .justify_end()
+                            .gap_2()
+                            .child(
+                                Button::new("canvas-pane-close-cancel")
+                                    .small()
+                                    .ghost()
+                                    .label("Cancel")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.pending_canvas_pane_close = None;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("canvas-pane-close-confirm")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Danger,
+                                        cx,
+                                    ))
+                                    .label("Close Terminal")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.confirm_canvas_pane_close(cx);
+                                    })),
+                            ),
+                    ),
+            )
+            .into_any_element()
+    }
+
     fn render_split_pane_chooser(&self, cx: &mut Context<Self>) -> AnyElement {
         let Some(chooser) = self.split_pane_chooser.as_ref() else {
             return div().into_any_element();
@@ -5138,6 +5269,8 @@ impl TermiRustApp {
                     this.worktree_manager_open = false;
                     this.context_handoff_review = None;
                     this.pending_tmux_close = None;
+                    this.pending_canvas_pane_close = None;
+                    this.split_pane_chooser = None;
                     cx.notify();
                 }),
             )
@@ -5199,6 +5332,9 @@ impl TermiRustApp {
         }
         if self.pending_tmux_close.is_some() {
             body = body.child(self.render_tmux_close_dialog(cx));
+        }
+        if self.pending_canvas_pane_close.is_some() {
+            body = body.child(self.render_canvas_pane_close_dialog(cx));
         }
         if self.split_pane_chooser.is_some() {
             body = body.child(self.render_split_pane_chooser(cx));

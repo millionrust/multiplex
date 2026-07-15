@@ -17,8 +17,8 @@ pub(crate) use types::{
 
 use canvas::{
     AgentCreationState, CANVAS_NODE_HEADER_HEIGHT, CANVAS_TOOLBAR_HEIGHT, CanvasInteraction,
-    CanvasWorkspaceState, ContextHandoffReview, PendingTmuxClose, SplitPaneChooser,
-    StructuredAgentRuntime,
+    CanvasWorkspaceState, ContextHandoffReview, PendingCanvasPaneClose, PendingTmuxClose,
+    SplitPaneChooser, StructuredAgentRuntime,
 };
 use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
@@ -928,6 +928,7 @@ pub struct TermiRustApp {
     pending_context_source: Option<crate::models::CanvasNodeId>,
     context_handoff_review: Option<ContextHandoffReview>,
     pending_tmux_close: Option<PendingTmuxClose>,
+    pending_canvas_pane_close: Option<PendingCanvasPaneClose>,
     split_pane_chooser: Option<SplitPaneChooser>,
     pending_dependency_source: Option<crate::models::CanvasNodeId>,
     orchestration_active: bool,
@@ -1077,6 +1078,7 @@ impl TermiRustApp {
             pending_context_source: None,
             context_handoff_review: None,
             pending_tmux_close: None,
+            pending_canvas_pane_close: None,
             split_pane_chooser: None,
             pending_dependency_source: None,
             orchestration_active: false,
@@ -9336,6 +9338,11 @@ impl TermiRustApp {
         }
 
         if event.keystroke.key.as_str() == "escape" {
+            if self.pending_canvas_pane_close.is_some() {
+                self.pending_canvas_pane_close = None;
+                cx.notify();
+                return true;
+            }
             if self.split_pane_chooser.is_some() {
                 self.split_pane_chooser = None;
                 cx.notify();
@@ -11293,6 +11300,70 @@ mod tests {
                 })
             })
             .expect("split chooser flow should succeed");
+    }
+
+    #[gpui::test]
+    fn canvas_active_terminal_close_requires_visible_confirmation(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest {
+            title: "Active Canvas Shell".to_string(),
+            ..ConnectRequest::local_shell_with_config(
+                0,
+                LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(std::env::temp_dir().display().to_string()),
+                },
+            )
+        };
+        let (workspace_id, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let opened = app
+                        .open_request_workspace(request, window, cx)
+                        .expect("local workspace should open");
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    opened
+                })
+            })
+            .expect("window update should succeed");
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected && !pane.closed)
+                .then_some(())
+        });
+
+        app.update(cx, |app, cx| {
+            app.request_canvas_pane_close(pane_id, cx);
+        });
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.pending_canvas_pane_close.as_ref().unwrap().pane_id,
+                pane_id
+            );
+            assert!(app.pane(pane_id).is_some_and(|pane| pane.connected));
+        });
+        let cancel = selector_click_center(window, cx, "canvas-pane-close-cancel");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(cancel, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            assert!(app.pending_canvas_pane_close.is_none());
+            assert!(app.workspace(workspace_id).is_some());
+            assert!(app.pane(pane_id).is_some_and(|pane| pane.connected));
+        });
+
+        app.update(cx, |app, cx| {
+            app.request_canvas_pane_close(pane_id, cx);
+        });
+        let confirm = selector_click_center(window, cx, "canvas-pane-close-confirm");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(confirm, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            assert!(app.pending_canvas_pane_close.is_none());
+            assert!(app.pane(pane_id).is_none());
+            assert!(app.workspace(workspace_id).is_none());
+        });
     }
 
     #[gpui::test]
