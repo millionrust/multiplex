@@ -1,6 +1,7 @@
 mod adapter;
 mod codex;
 mod context;
+mod headless;
 mod process;
 mod protocol;
 mod worktree;
@@ -8,6 +9,7 @@ mod worktree;
 pub use adapter::{AgentCapabilities, AgentProviderDescriptor, provider_descriptor};
 pub use codex::{CodexSessionConfig, CodexSessionHandle, spawn_codex_session};
 pub use context::{ContextHandoffPreview, build_context_handoff};
+pub use headless::{HeadlessSessionConfig, HeadlessSessionHandle, spawn_headless_session};
 pub use process::{
     AgentExecutableStatus, AgentLaunchSpec, build_interactive_launch_spec,
     build_remote_interactive_arguments, detect_agent_executable,

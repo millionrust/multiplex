@@ -12,9 +12,9 @@ use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::agents::{
     AgentApprovalRequest, AgentEvent, AgentExecutableStatus, AgentRunState, CodexSessionConfig,
-    CodexSessionHandle, build_context_handoff, build_interactive_launch_spec,
-    build_remote_interactive_arguments, create_managed_worktree, detect_agent_executable,
-    provider_descriptor, spawn_codex_session,
+    CodexSessionHandle, HeadlessSessionConfig, HeadlessSessionHandle, build_context_handoff,
+    build_interactive_launch_spec, build_remote_interactive_arguments, create_managed_worktree,
+    detect_agent_executable, provider_descriptor, spawn_codex_session, spawn_headless_session,
 };
 use crate::models::{
     AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AuthConfig, AuthMode,
@@ -51,8 +51,43 @@ pub(super) struct ContextHandoffReview {
     pub truncated: bool,
 }
 
+pub(super) enum StructuredAgentHandle {
+    Codex(CodexSessionHandle),
+    Headless(HeadlessSessionHandle),
+}
+
+impl StructuredAgentHandle {
+    fn try_recv(&self) -> Result<AgentEvent, std::sync::mpsc::TryRecvError> {
+        match self {
+            Self::Codex(handle) => handle.event_rx.try_recv(),
+            Self::Headless(handle) => handle.event_rx.try_recv(),
+        }
+    }
+
+    fn send_prompt(&self, prompt: String) -> anyhow::Result<()> {
+        match self {
+            Self::Codex(handle) => handle.send_prompt(prompt),
+            Self::Headless(handle) => handle.send_prompt(prompt),
+        }
+    }
+
+    fn cancel(&self) -> anyhow::Result<()> {
+        match self {
+            Self::Codex(handle) => handle.cancel(),
+            Self::Headless(handle) => handle.cancel(),
+        }
+    }
+
+    fn respond_to_approval(&self, request_id: &str, allow: bool) -> anyhow::Result<()> {
+        match self {
+            Self::Codex(handle) => handle.respond_to_approval(request_id, allow),
+            Self::Headless(_) => anyhow::bail!("This provider did not expose an approval request"),
+        }
+    }
+}
+
 pub(super) struct StructuredAgentRuntime {
-    pub handle: CodexSessionHandle,
+    pub handle: StructuredAgentHandle,
     pub state: AgentRunState,
     pub transcript: String,
     pub approval: Option<AgentApprovalRequest>,
@@ -62,7 +97,7 @@ pub(super) struct StructuredAgentRuntime {
 impl StructuredAgentRuntime {
     const MAX_TRANSCRIPT_BYTES: usize = 64 * 1024;
 
-    fn new(handle: CodexSessionHandle) -> Self {
+    fn new(handle: StructuredAgentHandle) -> Self {
         Self {
             handle,
             state: AgentRunState::Starting,
@@ -1257,7 +1292,7 @@ impl TermiRustApp {
         state.definition.provider = provider;
         state.definition.executable_override = None;
         Self::set_input_value(&self.shell_inputs.agent_executable, "", window, cx);
-        if provider != AgentProvider::Codex
+        if matches!(provider, AgentProvider::CustomCli | AgentProvider::GroqApi)
             && state.definition.backend == AgentBackendKind::Structured
         {
             state.definition.backend = AgentBackendKind::InteractivePty;
@@ -1277,10 +1312,13 @@ impl TermiRustApp {
     pub(super) fn set_agent_backend(&mut self, backend: AgentBackendKind, cx: &mut Context<Self>) {
         if let Some(state) = self.agent_creation.as_mut() {
             if backend == AgentBackendKind::Structured
-                && state.definition.provider != AgentProvider::Codex
+                && matches!(
+                    state.definition.provider,
+                    AgentProvider::CustomCli | AgentProvider::GroqApi
+                )
             {
                 self.error_message =
-                    "Structured mode is currently available for Codex. Claude and Gemini use their interactive CLIs."
+                    "Structured mode is available for Codex, Claude Code, and Gemini CLI."
                         .to_string();
                 cx.notify();
                 return;
@@ -1617,11 +1655,9 @@ impl TermiRustApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if definition.provider != AgentProvider::Codex
-            || !matches!(definition.location, AgentLocation::Local)
-        {
+        if !matches!(definition.location, AgentLocation::Local) {
             self.agent_creation = Some(creation);
-            self.error_message = "Structured Codex currently runs locally.".to_string();
+            self.error_message = "Structured agents currently run locally.".to_string();
             cx.notify();
             return;
         }
@@ -1684,12 +1720,31 @@ impl TermiRustApp {
             definition.working_directory = Some(managed.path.clone());
             definition.managed_worktree = Some(managed);
         }
-        let handle = match spawn_codex_session(CodexSessionConfig {
-            executable,
-            working_directory,
-            permission_policy: definition.permission_policy,
-            initial_prompt: (!initial_prompt.trim().is_empty()).then_some(initial_prompt),
-        }) {
+        let initial_prompt = (!initial_prompt.trim().is_empty()).then_some(initial_prompt);
+        let handle_result = match definition.provider {
+            AgentProvider::Codex => spawn_codex_session(CodexSessionConfig {
+                executable,
+                working_directory,
+                permission_policy: definition.permission_policy,
+                initial_prompt,
+            })
+            .map(StructuredAgentHandle::Codex),
+            AgentProvider::ClaudeCode | AgentProvider::Gemini => {
+                spawn_headless_session(HeadlessSessionConfig {
+                    provider: definition.provider,
+                    executable,
+                    working_directory,
+                    permission_policy: definition.permission_policy,
+                    arguments: definition.arguments.clone(),
+                    initial_prompt,
+                })
+                .map(StructuredAgentHandle::Headless)
+            }
+            AgentProvider::CustomCli | AgentProvider::GroqApi => {
+                Err(anyhow::anyhow!("This provider has no structured adapter"))
+            }
+        };
+        let handle = match handle_result {
             Ok(handle) => handle,
             Err(error) => {
                 self.agent_creation = Some(creation);
@@ -1730,7 +1785,7 @@ impl TermiRustApp {
     pub(super) fn process_structured_agent_events(&mut self) -> bool {
         let mut queued = Vec::new();
         for (node_id, runtime) in &self.structured_agents {
-            while let Ok(event) = runtime.handle.event_rx.try_recv() {
+            while let Ok(event) = runtime.handle.try_recv() {
                 queued.push((node_id.clone(), event));
             }
         }
