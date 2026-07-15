@@ -330,8 +330,10 @@ fn run_job(
         let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Cancelled));
         return;
     }
+    if saw_terminal_event {
+        return;
+    }
     match status {
-        Ok(status) if status.success() && saw_terminal_event => {}
         Ok(status) if status.success() => {
             let _ = event_tx.send(AgentEvent::Failed {
                 error: format!(
@@ -432,8 +434,10 @@ fn run_remote_job(
         let _ = event_tx.send(AgentEvent::StateChanged(AgentRunState::Cancelled));
         return;
     }
+    if saw_terminal_event {
+        return;
+    }
     match exit {
-        Ok(RemoteExecExit::Status(0)) if saw_terminal_event => {}
         Ok(RemoteExecExit::Status(0)) => {
             let _ = event_tx.send(AgentEvent::Failed {
                 error: format!(
@@ -1248,6 +1252,51 @@ mod tests {
         )));
         assert!(events.contains(&AgentEvent::StateChanged(AgentRunState::Failed)));
         assert!(!events.contains(&AgentEvent::StateChanged(AgentRunState::Succeeded)));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn structured_provider_failure_is_not_overwritten_by_exit_status() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("termirust-headless-failure-{unique}"));
+        fs::create_dir_all(&directory).unwrap();
+        let executable = directory.join("fake claude");
+        fs::write(
+            &executable,
+            "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"result\",\"is_error\":true,\"result\":\"Account access is disabled\"}'\nexit 1\n",
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+        let handle = spawn_headless_session(HeadlessSessionConfig {
+            provider: AgentProvider::ClaudeCode,
+            executable,
+            working_directory: directory,
+            permission_policy: AgentPermissionPolicy::ReadOnly,
+            arguments: Vec::new(),
+            initial_prompt: Some("fail clearly".to_string()),
+        })
+        .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while handle.running.load(Ordering::Acquire) && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        let events: Vec<_> = handle.event_rx.try_iter().collect();
+        assert!(events.contains(&AgentEvent::Failed {
+            error: "Account access is disabled".to_string(),
+        }));
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            AgentEvent::Failed { error } if error.contains("exited with")
+        )));
     }
 
     #[test]
