@@ -11529,22 +11529,34 @@ mod tests {
                     app.open_request_workspace(request, window, cx)
                         .expect("local workspace should open");
                     app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
-                    app.active_workspace()
+                    let node_id = app
+                        .active_workspace()
                         .and_then(|workspace| workspace.canvas.nodes.first())
                         .map(|node| node.id.clone())
-                        .expect("canvas node should exist")
+                        .expect("canvas node should exist");
+                    let workspace = app
+                        .active_workspace_mut()
+                        .expect("active workspace should exist");
+                    workspace.canvas.transform = crate::ui::app::canvas::CanvasTransform::default();
+                    let node = workspace
+                        .canvas
+                        .node_mut(&node_id)
+                        .expect("canvas node should remain available");
+                    node.rect.x = 100.0;
+                    node.rect.y = 100.0;
+                    cx.notify();
+                    node_id
                 })
             })
             .expect("window update should succeed");
 
-        let _more = dynamic_selector_click_center(
+        let more = dynamic_selector_click_center(
             window,
             cx,
             format!("canvas-node-more-{}", node_id.as_str()),
         );
-        app.update(cx, |app, cx| {
-            app.toggle_canvas_node_menu(node_id.clone(), cx);
-        });
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(more, gpui::Modifiers::none());
         app.read_with(cx, |app, _| {
             assert_eq!(app.canvas_node_menu_id.as_ref(), Some(&node_id));
         });

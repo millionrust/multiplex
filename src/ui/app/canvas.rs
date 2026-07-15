@@ -4857,36 +4857,40 @@ impl TermiRustApp {
                     .gap_2()
                     .items_center()
                     .justify_between()
-                    .cursor(CursorStyle::OpenHand)
                     .bg(theme::terminal_panel())
                     .border_b_1()
                     .border_color(theme::border_dark())
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |this, event: &MouseDownEvent, window, cx| {
-                            cx.stop_propagation();
-                            if renaming {
-                                return;
-                            }
-                            if event.click_count >= 2 {
-                                this.start_canvas_node_rename(rename_node_id.clone(), window, cx);
-                                return;
-                            }
-                            this.start_canvas_node_move(
-                                workspace_id,
-                                header_node_id.clone(),
-                                event,
-                                window,
-                                cx,
-                            );
-                        }),
-                    )
                     .child(
                         h_flex()
                             .flex_1()
                             .min_w_0()
                             .gap_2()
                             .items_center()
+                            .cursor(CursorStyle::OpenHand)
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                                    cx.stop_propagation();
+                                    if renaming {
+                                        return;
+                                    }
+                                    if event.click_count >= 2 {
+                                        this.start_canvas_node_rename(
+                                            rename_node_id.clone(),
+                                            window,
+                                            cx,
+                                        );
+                                        return;
+                                    }
+                                    this.start_canvas_node_move(
+                                        workspace_id,
+                                        header_node_id.clone(),
+                                        event,
+                                        window,
+                                        cx,
+                                    );
+                                }),
+                            )
                             .child(
                                 Icon::new(match node.kind {
                                     CanvasNodeKind::Terminal { .. } => IconName::SquareTerminal,
@@ -4953,6 +4957,9 @@ impl TermiRustApp {
                                 } else {
                                     "Collapse node"
                                 })
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                    cx.stop_propagation();
+                                })
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         cx.stop_propagation();
@@ -4972,6 +4979,9 @@ impl TermiRustApp {
                                 .ghost()
                                 .icon(IconName::ArrowRight)
                                 .tooltip("Use as context source or target")
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                    cx.stop_propagation();
+                                })
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         cx.stop_propagation();
@@ -4986,6 +4996,9 @@ impl TermiRustApp {
                                     .ghost()
                                     .icon(IconName::Ellipsis)
                                     .tooltip("More node actions")
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                        cx.stop_propagation();
+                                    })
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         cx.stop_propagation();
                                         this.toggle_canvas_node_menu(more_node_id.clone(), cx);
@@ -4999,6 +5012,9 @@ impl TermiRustApp {
                                 .ghost()
                                 .icon(IconName::Close)
                                 .tooltip("Close terminal")
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                    cx.stop_propagation();
+                                })
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     cx.stop_propagation();
                                     this.request_canvas_pane_close(pane_id, cx);
@@ -5015,6 +5031,9 @@ impl TermiRustApp {
                             .ghost()
                             .icon(IconName::Close)
                             .tooltip("Stop and close agent")
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                cx.stop_propagation();
+                            })
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
                                     cx.stop_propagation();
