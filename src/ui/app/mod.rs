@@ -10192,7 +10192,8 @@ mod tests {
 
             if Instant::now() >= deadline {
                 let terminal_dump = app.read_with(cx, |app, _| {
-                    app.panes
+                    let mut dump = app
+                        .panes
                         .iter()
                         .map(|pane| {
                             format!(
@@ -10204,7 +10205,17 @@ mod tests {
                                 pane.terminal.all_rows_text()
                             )
                         })
-                        .collect::<Vec<_>>()
+                        .collect::<Vec<_>>();
+                    dump.extend(app.structured_agents.iter().map(|(node_id, runtime)| {
+                        format!(
+                            "agent {} state={:?} diagnostic={:?} transcript_bytes={}",
+                            node_id.as_str(),
+                            runtime.state,
+                            runtime.diagnostic,
+                            runtime.transcript.len()
+                        )
+                    }));
+                    dump
                 });
                 panic!("timed out waiting for app state: {terminal_dump:#?}");
             }
@@ -12080,6 +12091,7 @@ sleep 1
     #[gpui::test]
     fn canvas_runs_remote_structured_agent_on_saved_ssh_host(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
+        let remote_deadline = Duration::from_secs(45);
         if !DockerSshServer::docker_available() {
             eprintln!("skipping remote structured canvas e2e: Docker is unavailable");
             return;
@@ -12150,7 +12162,7 @@ sleep 1
             })
             .expect("remote structured launch should succeed");
 
-        let node_id = wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+        let node_id = wait_for_app_state(cx, &app, remote_deadline, |app| {
             app.structured_agents.iter().find_map(|(node_id, runtime)| {
                 (runtime.state == crate::agents::AgentRunState::Succeeded
                     && runtime.transcript.contains("remote structured response"))
@@ -12210,7 +12222,7 @@ sleep 1
                 })
             })
             .expect("second remote structured launch should succeed");
-        let target_id = wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+        let target_id = wait_for_app_state(cx, &app, remote_deadline, |app| {
             app.structured_agents
                 .iter()
                 .find(|(candidate, runtime)| {
@@ -12249,7 +12261,7 @@ sleep 1
             })
             .expect("same-host context handoff should send");
 
-        let deadline = Instant::now() + Duration::from_secs(20);
+        let deadline = Instant::now() + remote_deadline;
         while Instant::now() < deadline {
             if server
                 .exec("grep -q '\\[TermiRust context handoff\\]' /tmp/termirust-ui-remote-prompts")

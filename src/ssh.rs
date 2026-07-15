@@ -297,12 +297,16 @@ async fn run_remote_exec(
     stdout_tx: SyncSender<Vec<u8>>,
     stderr_tx: SyncSender<Vec<u8>>,
 ) -> Result<RemoteExecExit> {
+    let session_id = request.session_id;
+    let endpoint = request.address();
+    eprintln!("[ssh][{session_id}] remote exec connecting to {endpoint}...");
     let mut config_inner = client::Config::default();
     if keepalive_secs > 0 {
         config_inner.keepalive_interval =
             Some(std::time::Duration::from_secs(u64::from(keepalive_secs)));
     }
     let established = establish_session(Arc::new(config_inner), request, known_hosts).await?;
+    eprintln!("[ssh][{session_id}] remote exec authenticated");
     let mut channel = {
         let handle = established.target_handle.lock().await;
         handle
@@ -310,10 +314,12 @@ async fn run_remote_exec(
             .await
             .context("Unable to open remote execution channel")?
     };
+    eprintln!("[ssh][{session_id}] remote exec channel open");
     channel
         .exec(true, command)
         .await
         .context("Unable to start remote process")?;
+    eprintln!("[ssh][{session_id}] remote process started");
 
     let mut exit = None;
     let mut commands_open = true;
@@ -353,6 +359,7 @@ async fn run_remote_exec(
                     }
                     Some(ChannelMsg::ExtendedData { .. }) => {}
                     Some(ChannelMsg::ExitStatus { exit_status }) => {
+                        eprintln!("[ssh][{session_id}] remote process exited with status {exit_status}");
                         exit = Some(RemoteExecExit::Status(exit_status));
                     }
                     Some(ChannelMsg::ExitSignal {
@@ -360,18 +367,21 @@ async fn run_remote_exec(
                         error_message,
                         ..
                     }) => {
+                        eprintln!("[ssh][{session_id}] remote process exited by signal {signal_name:?}");
                         exit = Some(RemoteExecExit::Signal {
                             signal: format!("{signal_name:?}"),
                             message: error_message,
                         });
                     }
-                    Some(ChannelMsg::Eof | ChannelMsg::Close) | None => break,
+                    Some(ChannelMsg::Eof) => {}
+                    Some(ChannelMsg::Close) | None => break,
                     Some(_) => {}
                 }
             }
         }
     }
 
+    eprintln!("[ssh][{session_id}] remote exec channel closed");
     exit.context("Remote process closed without an exit status")
 }
 
