@@ -16,6 +16,8 @@ SSH, restore, and tmux runtimes; changing layout does not reconnect a pane.
 
 Use `Cmd+Shift+Arrow` on macOS (the platform secondary modifier elsewhere) to
 cycle node selection without consuming ordinary terminal arrow keys.
+Use `Links` to inspect every directed context/dependency edge, disable it, or
+delete it without closing either connected node.
 
 Node positions, sizes, collapsed state, links, and viewport are persisted with
 the workspace. A restored structured node does not silently launch a process;

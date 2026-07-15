@@ -9,6 +9,7 @@ use gpui::{
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
+use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::agents::{
@@ -526,6 +527,20 @@ impl CanvasWorkspaceState {
             trimmed => Some(trimmed.to_string()),
         };
         true
+    }
+
+    pub(super) fn set_edge_enabled(&mut self, edge_id: &CanvasEdgeId, enabled: bool) -> bool {
+        let Some(edge) = self.edges.iter_mut().find(|edge| &edge.id == edge_id) else {
+            return false;
+        };
+        edge.enabled = enabled;
+        true
+    }
+
+    pub(super) fn remove_edge(&mut self, edge_id: &CanvasEdgeId) -> bool {
+        let previous_len = self.edges.len();
+        self.edges.retain(|edge| &edge.id != edge_id);
+        self.edges.len() != previous_len
     }
 
     pub(super) fn add_context_edge(
@@ -1489,6 +1504,8 @@ impl TermiRustApp {
             executable_status,
         });
         self.canvas_add_menu_open = false;
+        self.canvas_links_open = false;
+        self.worktree_manager_open = false;
         cx.notify();
     }
 
@@ -2564,6 +2581,8 @@ impl TermiRustApp {
             redaction_count: preview.redaction_count,
             truncated: preview.truncated,
         });
+        self.canvas_links_open = false;
+        self.worktree_manager_open = false;
         self.error_message.clear();
         cx.notify();
     }
@@ -2648,6 +2667,11 @@ impl TermiRustApp {
 
     fn toggle_canvas_add_menu(&mut self, cx: &mut Context<Self>) {
         self.canvas_add_menu_open = !self.canvas_add_menu_open;
+        if self.canvas_add_menu_open {
+            self.canvas_links_open = false;
+            self.worktree_manager_open = false;
+            self.context_handoff_review = None;
+        }
         cx.notify();
     }
 
@@ -3164,10 +3188,247 @@ impl TermiRustApp {
         self.worktree_manager_open = !self.worktree_manager_open;
         if self.worktree_manager_open {
             self.canvas_add_menu_open = false;
+            self.canvas_links_open = false;
             self.agent_creation = None;
             self.context_handoff_review = None;
         }
         cx.notify();
+    }
+
+    fn toggle_canvas_links(&mut self, cx: &mut Context<Self>) {
+        self.canvas_links_open = !self.canvas_links_open;
+        if self.canvas_links_open {
+            self.canvas_add_menu_open = false;
+            self.agent_creation = None;
+            self.context_handoff_review = None;
+            self.worktree_manager_open = false;
+        }
+        cx.notify();
+    }
+
+    fn canvas_node_label(&self, node_id: &CanvasNodeId) -> String {
+        self.active_workspace()
+            .and_then(|workspace| workspace.canvas.node(node_id))
+            .map(|node| {
+                node.title
+                    .clone()
+                    .or_else(|| {
+                        node.kind
+                            .pane_id()
+                            .and_then(|pane_id| self.pane(pane_id))
+                            .map(|pane| pane.title.clone())
+                    })
+                    .unwrap_or_else(|| match &node.kind {
+                        CanvasNodeKind::Terminal { .. } => "Terminal".to_string(),
+                        CanvasNodeKind::Agent { definition, .. } => {
+                            definition.provider.label().to_string()
+                        }
+                    })
+            })
+            .unwrap_or_else(|| "Unknown node".to_string())
+    }
+
+    fn set_canvas_edge_enabled(
+        &mut self,
+        edge_id: CanvasEdgeId,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let changed = self
+            .active_workspace_mut()
+            .is_some_and(|workspace| workspace.canvas.set_edge_enabled(&edge_id, enabled));
+        if !changed {
+            self.error_message = "That canvas link no longer exists.".to_string();
+            cx.notify();
+            return;
+        }
+        if !enabled
+            && self
+                .context_handoff_review
+                .as_ref()
+                .is_some_and(|review| review.edge_id == edge_id)
+        {
+            self.context_handoff_review = None;
+        }
+        self.persist_runtime_state();
+        self.status_message = if enabled {
+            "Canvas link enabled."
+        } else {
+            "Canvas link disabled."
+        }
+        .to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn remove_canvas_edge(&mut self, edge_id: CanvasEdgeId, cx: &mut Context<Self>) {
+        let removed = self
+            .active_workspace_mut()
+            .is_some_and(|workspace| workspace.canvas.remove_edge(&edge_id));
+        if !removed {
+            self.error_message = "That canvas link no longer exists.".to_string();
+            cx.notify();
+            return;
+        }
+        if self
+            .context_handoff_review
+            .as_ref()
+            .is_some_and(|review| review.edge_id == edge_id)
+        {
+            self.context_handoff_review = None;
+        }
+        self.persist_runtime_state();
+        self.status_message = "Canvas link deleted; nodes and sessions were kept.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn render_canvas_links(&self, cx: &mut Context<Self>) -> AnyElement {
+        let edges = self
+            .active_workspace()
+            .map(|workspace| workspace.canvas.edges.clone())
+            .unwrap_or_default();
+        v_flex()
+            .id("canvas-links-panel")
+            .absolute()
+            .top(px(12.0))
+            .right(px(12.0))
+            .w(px(500.0))
+            .max_h(px(620.0))
+            .overflow_hidden()
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(theme::border_dark())
+            .bg(theme::library_card())
+            .shadow_lg()
+            .child(
+                h_flex()
+                    .h(px(44.0))
+                    .px_3()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child(format!("Canvas Links ({})", edges.len())),
+                    )
+                    .child(
+                        Button::new("canvas-links-close")
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Close links")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.canvas_links_open = false;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .p_3()
+                    .gap_2()
+                    .overflow_y_scrollbar()
+                    .when(edges.is_empty(), |list| {
+                        list.child(
+                            div()
+                                .py_4()
+                                .text_size(px(11.0))
+                                .text_color(theme::text_muted())
+                                .child("No context or dependency links in this workspace."),
+                        )
+                    })
+                    .children(edges.into_iter().map(|edge| {
+                        let source = self.canvas_node_label(&edge.source);
+                        let target = self.canvas_node_label(&edge.target);
+                        let toggle_id = edge.id.clone();
+                        let delete_id = edge.id.clone();
+                        let kind_label = match edge.kind {
+                            CanvasEdgeKind::Context => "Context",
+                            CanvasEdgeKind::Dependency => "Dependency",
+                        };
+                        h_flex()
+                            .id(SharedString::from(format!(
+                                "canvas-link-row-{}",
+                                edge.id.as_str()
+                            )))
+                            .min_h(px(46.0))
+                            .px_2()
+                            .gap_2()
+                            .items_center()
+                            .border_b_1()
+                            .border_color(theme::with_alpha(theme::border_dark(), 0.5))
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .text_size(px(11.0))
+                                            .font_semibold()
+                                            .text_color(theme::text_main())
+                                            .child(format!("{source} -> {target}")),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.0))
+                                            .text_color(if edge.enabled {
+                                                theme::success()
+                                            } else {
+                                                theme::text_muted()
+                                            })
+                                            .child(format!(
+                                                "{kind_label} / {}",
+                                                if edge.enabled { "Enabled" } else { "Disabled" }
+                                            )),
+                                    ),
+                            )
+                            .child(
+                                Button::new(SharedString::from(format!(
+                                    "canvas-link-toggle-{}",
+                                    edge.id.as_str()
+                                )))
+                                .xsmall()
+                                .ghost()
+                                .label(if edge.enabled { "Disable" } else { "Enable" })
+                                .tooltip(if edge.enabled {
+                                    "Disable this link"
+                                } else {
+                                    "Enable this link"
+                                })
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        this.set_canvas_edge_enabled(
+                                            toggle_id.clone(),
+                                            !edge.enabled,
+                                            cx,
+                                        );
+                                    },
+                                )),
+                            )
+                            .child(
+                                Button::new(SharedString::from(format!(
+                                    "canvas-link-delete-{}",
+                                    edge.id.as_str()
+                                )))
+                                .xsmall()
+                                .ghost()
+                                .icon(IconName::Delete)
+                                .tooltip("Delete link; keep both nodes")
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        this.remove_canvas_edge(delete_id.clone(), cx);
+                                    },
+                                )),
+                            )
+                    })),
+            )
+            .into_any_element()
     }
 
     fn inspect_managed_worktree(&mut self, path: &str, cx: &mut Context<Self>) {
@@ -3485,6 +3746,22 @@ impl TermiRustApp {
                             .tooltip("Run queued tasks when dependencies are satisfied")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.start_dependency_orchestration(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-links")
+                            .small()
+                            .ghost()
+                            .icon(IconName::ArrowRight)
+                            .label(format!(
+                                "Links ({})",
+                                self.active_workspace()
+                                    .map(|workspace| workspace.canvas.edges.len())
+                                    .unwrap_or_default()
+                            ))
+                            .tooltip("Inspect, enable, disable, or delete canvas links")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_canvas_links(cx);
                             })),
                     )
                     .child(
@@ -4318,6 +4595,9 @@ impl TermiRustApp {
         if self.context_handoff_review.is_some() {
             body = body.child(self.render_context_handoff_review(cx));
         }
+        if self.canvas_links_open {
+            body = body.child(self.render_canvas_links(cx));
+        }
         if self.worktree_manager_open {
             body = body.child(self.render_worktree_manager(cx));
         }
@@ -4521,6 +4801,27 @@ mod tests {
             None
         );
         assert!(!canvas.set_node_title(&CanvasNodeId::new("missing"), "ignored"));
+    }
+
+    #[test]
+    fn edge_controls_do_not_remove_connected_nodes() {
+        let mut canvas = CanvasWorkspaceState {
+            nodes: vec![
+                terminal_node("a", 1, 0.0, 0.0),
+                terminal_node("b", 2, 800.0, 0.0),
+            ],
+            ..CanvasWorkspaceState::default()
+        };
+        let edge_id = canvas
+            .add_context_edge(CanvasNodeId::new("a"), CanvasNodeId::new("b"))
+            .expect("edge should be created");
+
+        assert!(canvas.set_edge_enabled(&edge_id, false));
+        assert!(!canvas.edges[0].enabled);
+        assert!(canvas.remove_edge(&edge_id));
+        assert!(canvas.edges.is_empty());
+        assert_eq!(canvas.nodes.len(), 2);
+        assert!(!canvas.remove_edge(&edge_id));
     }
 
     #[test]
