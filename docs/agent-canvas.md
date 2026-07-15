@@ -45,6 +45,9 @@ from provider output.
 `Structured` uses machine-readable provider output and normalized lifecycle
 events. Codex uses `codex app-server`. Claude Code and Gemini CLI use their
 official streaming headless modes. Structured mode currently runs locally.
+Codex supports in-session approvals and thread continuity. The one-shot Claude
+and Gemini headless adapters support cancellation but do not claim interactive
+approval responses or session resume.
 
 TermiRust never installs a provider CLI. The creation panel reports the resolved
 executable or gives provider-specific installation guidance. Use `Check again`
@@ -112,7 +115,8 @@ The existing `detach_others` option remains opt-in.
 - Context previews and provider transcripts are not stored in `state.json`.
 - Credentials remain in the existing credential store and saved host model.
 - Structured approval cards provide one-time allow or deny; approvals are not
-  remembered automatically.
+  remembered automatically. They appear only when the provider protocol exposes
+  an approval request; v1 currently exercises this through Codex app-server.
 - Worktree cleanup canonicalizes paths and refuses targets outside the managed
   app directory.
 - Structured channels and displayed transcripts are bounded.

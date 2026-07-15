@@ -10,7 +10,7 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Pass | No formatting differences. |
 | `cargo check -q` | Pass | Existing macOS `objc` cfg and dead-code warnings remain. |
-| `cargo test -q` | Pass | 261 passed, 0 failed, 3 ignored in 50.76s with Docker-backed tests exercised. |
+| `cargo test -q` | Pass | 267 passed, 0 failed, 3 ignored in 55.05s with Docker-backed tests exercised. |
 | Agent adapter focused tests | Pass | Codex fake app-server, Claude/Gemini stream fixtures, literal argument child, cancellation, malformed data. |
 | Worktree integration tests | Pass | Real temporary Git repositories cover create, status, dirty refusal, committed refusal, and path boundaries. |
 | Canvas capacity test | Pass | 20 nodes, 40 edges, finite fit geometry and supported zoom. |
@@ -78,7 +78,11 @@ so no screenshot or automated click-through is claimed.
   fixtures and a real local child fixture without provider/API use.
 - Context is bounded, redacted, marked untrusted, reviewable, and not persisted.
 - Dependency scheduling covers cycle rejection, topological readiness,
-  concurrency two, and blocked dependants.
+  concurrency two, transitive blocked dependants, repeat runs, and strict
+  workspace isolation. Closing a workspace drops its structured runtimes and
+  stops only that workspace's scheduler.
+- Codex process ownership clears exited child IDs and terminates an active
+  app-server when its session handle is dropped.
 - Managed worktrees persist ownership and active/complete/kept lifecycle state,
   report changed paths and a diff summary, and refuse active, dirty, committed,
   unregistered, or out-of-root cleanup.
