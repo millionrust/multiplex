@@ -17,7 +17,7 @@ pub(crate) use types::{
 
 use canvas::{
     AgentCreationState, CANVAS_NODE_HEADER_HEIGHT, CANVAS_TOOLBAR_HEIGHT, CanvasInteraction,
-    CanvasWorkspaceState, ContextHandoffReview, StructuredAgentRuntime,
+    CanvasWorkspaceState, ContextHandoffReview, PendingTmuxClose, StructuredAgentRuntime,
 };
 use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
@@ -930,6 +930,7 @@ pub struct TermiRustApp {
     structured_agents: HashMap<crate::models::CanvasNodeId, StructuredAgentRuntime>,
     pending_context_source: Option<crate::models::CanvasNodeId>,
     context_handoff_review: Option<ContextHandoffReview>,
+    pending_tmux_close: Option<PendingTmuxClose>,
     pending_dependency_source: Option<crate::models::CanvasNodeId>,
     orchestration_active: bool,
     canvas_node_rename_id: Option<crate::models::CanvasNodeId>,
@@ -1077,6 +1078,7 @@ impl TermiRustApp {
             structured_agents: HashMap::new(),
             pending_context_source: None,
             context_handoff_review: None,
+            pending_tmux_close: None,
             pending_dependency_source: None,
             orchestration_active: false,
             canvas_node_rename_id: None,
@@ -5753,6 +5755,17 @@ impl TermiRustApp {
                             .map(|pane| pane.status.clone())
                             .unwrap_or_default();
                     }
+                }
+                SshEvent::TmuxSessionKilled {
+                    session_id,
+                    session_name,
+                } => {
+                    eprintln!(
+                        "[app] event: TmuxSessionKilled session_id={session_id} session_name={session_name}"
+                    );
+                    self.close_pane(session_id, cx);
+                    self.status_message = format!("Deleted tmux session {session_name}.");
+                    self.error_message.clear();
                 }
                 SshEvent::Disconnected {
                     session_id,

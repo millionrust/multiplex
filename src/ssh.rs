@@ -25,6 +25,7 @@ use crate::terminal::TerminalSize;
 pub enum SessionCommand {
     Input(Vec<u8>),
     Resize(TerminalSize),
+    KillTmuxSession { session_name: String },
     Disconnect,
 }
 
@@ -41,6 +42,10 @@ pub enum SshEvent {
     Error {
         session_id: u64,
         message: String,
+    },
+    TmuxSessionKilled {
+        session_id: u64,
+        session_name: String,
     },
     Disconnected {
         session_id: u64,
@@ -221,6 +226,15 @@ async fn run_session(
                             .await
                             .context("Unable to resize the remote PTY")?;
                     }
+                    Some(SessionCommand::KillTmuxSession { session_name }) => {
+                        kill_tmux_session(established.target_handle.clone(), &session_name)
+                            .await
+                            .with_context(|| format!("Unable to kill tmux session {session_name:?}"))?;
+                        let _ = event_tx.send(SshEvent::TmuxSessionKilled {
+                            session_id,
+                            session_name,
+                        });
+                    }
                     Some(SessionCommand::Disconnect) | None => {
                         eprintln!("[ssh][{session_id}] disconnect command received");
                         let _ = writer.shutdown().await;
@@ -250,6 +264,51 @@ async fn run_session(
     });
 
     Ok(())
+}
+
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn tmux_kill_command(session_name: &str) -> String {
+    format!("tmux kill-session -t {}", shell_single_quote(session_name))
+}
+
+async fn kill_tmux_session(
+    handle: Arc<Mutex<client::Handle<SessionHandler>>>,
+    session_name: &str,
+) -> Result<()> {
+    let mut channel = {
+        let handle = handle.lock().await;
+        handle
+            .channel_open_session()
+            .await
+            .context("Unable to open tmux control channel")?
+    };
+    channel
+        .exec(true, tmux_kill_command(session_name))
+        .await
+        .context("Unable to execute tmux kill-session")?;
+
+    let mut exit_status = None;
+    while let Some(message) = channel.wait().await {
+        match message {
+            ChannelMsg::ExitStatus {
+                exit_status: status,
+            } => exit_status = Some(status),
+            ChannelMsg::ExitSignal {
+                signal_name,
+                error_message,
+                ..
+            } => anyhow::bail!("tmux kill-session terminated by {signal_name:?}: {error_message}"),
+            _ => {}
+        }
+    }
+    match exit_status {
+        Some(0) => Ok(()),
+        Some(status) => anyhow::bail!("tmux kill-session exited with status {status}"),
+        None => anyhow::bail!("tmux kill-session returned no exit status"),
+    }
 }
 
 async fn authenticate(
@@ -925,7 +984,7 @@ impl client::Handler for SessionHandler {
 
 #[cfg(test)]
 mod tests {
-    use super::{SessionCommand, SshEvent, spawn_session};
+    use super::{SessionCommand, SshEvent, spawn_session, tmux_kill_command};
     use crate::models::{
         AuthConfig, ConnectRequest, ConnectionKind, DynamicPortForward, JumpHostConnection,
         LocalPortForward, PortForwardRule, RemotePortForward,
@@ -963,6 +1022,14 @@ mod tests {
             local_shell: None,
             environment: Vec::new(),
         }
+    }
+
+    #[test]
+    fn tmux_kill_command_quotes_the_session_name_once() {
+        assert_eq!(
+            tmux_kill_command("client's session; touch /tmp/nope"),
+            "tmux kill-session -t 'client'\\''s session; touch /tmp/nope'"
+        );
     }
 
     fn docker_private_key_path() -> String {
@@ -1022,6 +1089,9 @@ mod tests {
                     return;
                 }
                 Ok(SshEvent::Output { .. }) => {}
+                Ok(SshEvent::TmuxSessionKilled { .. }) => {
+                    panic!("{label} killed tmux before connect")
+                }
                 Ok(SshEvent::Error {
                     session_id,
                     message,
@@ -1060,7 +1130,11 @@ mod tests {
         let disconnected = loop {
             match event_rx.recv_timeout(Duration::from_secs(5)) {
                 Ok(SshEvent::Disconnected { session_id, .. }) => break session_id,
-                Ok(SshEvent::Output { .. } | SshEvent::Connected { .. }) => continue,
+                Ok(
+                    SshEvent::Output { .. }
+                    | SshEvent::Connected { .. }
+                    | SshEvent::TmuxSessionKilled { .. },
+                ) => continue,
                 Ok(SshEvent::Error {
                     session_id,
                     message,
@@ -1131,6 +1205,9 @@ mod tests {
                     }
                 }
                 Ok(SshEvent::Connected { .. }) => {}
+                Ok(SshEvent::TmuxSessionKilled { .. }) => {
+                    panic!("{label} unexpectedly killed a tmux session")
+                }
                 Ok(SshEvent::Error {
                     session_id,
                     message,
@@ -1197,6 +1274,9 @@ mod tests {
                 }) => {
                     panic!("ssh runtime emitted error for session {session_id}: {message}");
                 }
+                Ok(SshEvent::TmuxSessionKilled { .. }) => {
+                    panic!("ordinary SSH test unexpectedly killed a tmux session")
+                }
                 Ok(SshEvent::Disconnected {
                     session_id,
                     message,
@@ -1226,7 +1306,11 @@ mod tests {
         let disconnected = loop {
             match event_rx.recv_timeout(Duration::from_secs(5)) {
                 Ok(SshEvent::Disconnected { session_id, .. }) => break session_id,
-                Ok(SshEvent::Output { .. } | SshEvent::Connected { .. }) => continue,
+                Ok(
+                    SshEvent::Output { .. }
+                    | SshEvent::Connected { .. }
+                    | SshEvent::TmuxSessionKilled { .. },
+                ) => continue,
                 Ok(SshEvent::Error {
                     session_id,
                     message,
@@ -1346,6 +1430,83 @@ mod tests {
     }
 
     #[test]
+    fn docker_ssh_persistent_tmux_kill_command_removes_session() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker tmux kill e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let session_name = format!("tr-kill-e2e-{}", server.port);
+        let mut request = docker_ssh_request(&server);
+        request.session_id = 504;
+        request.persistent_session = true;
+        request.persistent_session_name = Some(session_name.clone());
+
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        wait_for_connected(&request, &event_rx, "tmux kill connect");
+        send_startup_payload(&request, &runtime);
+        wait_for_remote_success(
+            &server,
+            &docker_fixture_user_command(&format!(
+                "tmux has-session -t {}",
+                shell_single_quote(&session_name)
+            )),
+            "tmux kill fixture creation",
+        );
+
+        runtime
+            .command_tx
+            .send(SessionCommand::KillTmuxSession {
+                session_name: session_name.clone(),
+            })
+            .expect("unable to request tmux session kill");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut saw_killed = false;
+        loop {
+            assert!(
+                Instant::now() < deadline,
+                "tmux kill did not disconnect the attached shell"
+            );
+            match event_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(SshEvent::Disconnected { session_id, .. }) => {
+                    assert_eq!(session_id, request.session_id);
+                    break;
+                }
+                Ok(SshEvent::Output { .. } | SshEvent::Connected { .. }) => {}
+                Ok(SshEvent::TmuxSessionKilled {
+                    session_id,
+                    session_name: killed_name,
+                }) => {
+                    assert_eq!(session_id, request.session_id);
+                    assert_eq!(killed_name, session_name);
+                    saw_killed = true;
+                }
+                Ok(SshEvent::Error {
+                    session_id,
+                    message,
+                }) => panic!("tmux kill failed for session {session_id}: {message}"),
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(error) => panic!("tmux kill event channel failed: {error}"),
+            }
+        }
+        assert!(
+            saw_killed,
+            "runtime did not report successful tmux deletion"
+        );
+        wait_for_remote_success(
+            &server,
+            &docker_fixture_user_command(&format!(
+                "! tmux has-session -t {} 2>/dev/null",
+                shell_single_quote(&session_name)
+            )),
+            "tmux session deletion",
+        );
+    }
+
+    #[test]
     fn docker_ssh_persistent_tmux_missing_binary_prints_fallback_message() {
         let _isolation = TestIsolation::acquire();
         if !DockerSshServer::docker_available() {
@@ -1420,6 +1581,9 @@ mod tests {
                         "jump-host ssh runtime emitted error for session {session_id}: {message}"
                     );
                 }
+                Ok(SshEvent::TmuxSessionKilled { .. }) => {
+                    panic!("jump-host test unexpectedly killed a tmux session")
+                }
                 Ok(SshEvent::Disconnected {
                     session_id,
                     message,
@@ -1452,7 +1616,11 @@ mod tests {
         let disconnected = loop {
             match event_rx.recv_timeout(Duration::from_secs(5)) {
                 Ok(SshEvent::Disconnected { session_id, .. }) => break session_id,
-                Ok(SshEvent::Output { .. } | SshEvent::Connected { .. }) => continue,
+                Ok(
+                    SshEvent::Output { .. }
+                    | SshEvent::Connected { .. }
+                    | SshEvent::TmuxSessionKilled { .. },
+                ) => continue,
                 Ok(SshEvent::Error {
                     session_id,
                     message,

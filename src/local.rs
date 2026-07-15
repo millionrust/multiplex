@@ -131,6 +131,13 @@ fn run_local_session(
                         })
                         .context("Unable to resize the local PTY")?;
                 }
+                Ok(SessionCommand::KillTmuxSession { .. }) => {
+                    let _ = event_tx.send(SshEvent::Error {
+                        session_id,
+                        message: "tmux session control is available only for SSH terminals"
+                            .to_string(),
+                    });
+                }
                 Ok(SessionCommand::Disconnect) => {
                     let _ = child.kill();
                     let _ = event_tx.send(SshEvent::Disconnected {

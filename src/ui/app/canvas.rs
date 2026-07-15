@@ -10,7 +10,7 @@ use gpui::{
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
+use gpui_component::{Disableable as _, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::agents::{
     AgentApprovalRequest, AgentEvent, AgentExecutableStatus, AgentRunState, CodexSessionConfig,
@@ -27,6 +27,7 @@ use crate::models::{
     SavedCanvasEdge, SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState, SavedCanvasViewport,
     SavedWorktreePolicy, WorkspaceLayoutMode, default_persistent_session_name_from_id,
 };
+use crate::ssh::SessionCommand;
 use crate::ui::app::{TermiRustApp, WorkspaceViewMode};
 use crate::ui::shell::shell_single_quote;
 use crate::ui::theme;
@@ -56,6 +57,13 @@ pub(super) struct ContextHandoffReview {
     pub source_label: String,
     pub redaction_count: usize,
     pub truncated: bool,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct PendingTmuxClose {
+    pub pane_id: u64,
+    pub session_name: Option<String>,
+    pub confirm_kill: bool,
 }
 
 pub(super) enum StructuredAgentHandle {
@@ -866,6 +874,100 @@ fn point_from_pixels(position: Point<gpui::Pixels>) -> CanvasPoint {
 }
 
 impl TermiRustApp {
+    fn request_canvas_pane_close(&mut self, pane_id: u64, cx: &mut Context<Self>) {
+        let persistent_session = self
+            .pane(pane_id)
+            .is_some_and(|pane| pane.request.persistent_session);
+        if !persistent_session {
+            self.close_pane(pane_id, cx);
+            return;
+        }
+        let session_name = self
+            .pane(pane_id)
+            .and_then(|pane| pane.request.persistent_session_name.clone());
+        self.pending_tmux_close = Some(PendingTmuxClose {
+            pane_id,
+            session_name,
+            confirm_kill: false,
+        });
+        self.canvas_add_menu_open = false;
+        self.canvas_links_open = false;
+        self.worktree_manager_open = false;
+        self.context_handoff_review = None;
+        cx.notify();
+    }
+
+    fn detach_tmux_node_from_canvas(&mut self, cx: &mut Context<Self>) {
+        let Some(pending) = self.pending_tmux_close.take() else {
+            return;
+        };
+        self.close_pane(pending.pane_id, cx);
+        self.status_message =
+            "Detached from canvas; the tmux session is still running.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn disconnect_tmux_client(&mut self, cx: &mut Context<Self>) {
+        let Some(pending) = self.pending_tmux_close.take() else {
+            return;
+        };
+        if let Some(pane) = self.pane_mut(pending.pane_id) {
+            pane.user_closed = true;
+            pane.auto_reconnect_at = None;
+            let _ = pane.runtime.command_tx.send(SessionCommand::Disconnect);
+            pane.connected = false;
+            pane.closed = true;
+            pane.status = "Disconnected".to_string();
+        }
+        self.persist_runtime_state();
+        self.status_message =
+            "Disconnected the client; use Reconnect to attach this node again.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn request_tmux_kill_confirmation(&mut self, cx: &mut Context<Self>) {
+        if let Some(pending) = self.pending_tmux_close.as_mut() {
+            pending.confirm_kill = true;
+        }
+        cx.notify();
+    }
+
+    fn confirm_tmux_session_kill(&mut self, cx: &mut Context<Self>) {
+        let Some(pending) = self.pending_tmux_close.take() else {
+            return;
+        };
+        let Some(session_name) = pending.session_name else {
+            self.error_message =
+                "This connection has no tmux session name, so TermiRust cannot kill it safely."
+                    .to_string();
+            cx.notify();
+            return;
+        };
+        let sent = self.pane(pending.pane_id).is_some_and(|pane| {
+            pane.runtime
+                .command_tx
+                .send(SessionCommand::KillTmuxSession {
+                    session_name: session_name.clone(),
+                })
+                .is_ok()
+        });
+        if !sent {
+            self.error_message = "The SSH session is no longer available.".to_string();
+            cx.notify();
+            return;
+        }
+        if let Some(pane) = self.pane_mut(pending.pane_id) {
+            pane.user_closed = true;
+            pane.auto_reconnect_at = None;
+            pane.status = "Killing tmux".to_string();
+        }
+        self.status_message = format!("Requested deletion of tmux session {session_name}.");
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn start_canvas_node_rename(
         &mut self,
         node_id: CanvasNodeId,
@@ -4120,7 +4222,7 @@ impl TermiRustApp {
                                     .tooltip("Close terminal")
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         cx.stop_propagation();
-                                        this.close_pane(pane_id, cx);
+                                        this.request_canvas_pane_close(pane_id, cx);
                                     })),
                             )
                         })
@@ -4512,6 +4614,155 @@ impl TermiRustApp {
             .into_any_element()
     }
 
+    fn render_tmux_close_dialog(&self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(pending) = self.pending_tmux_close.as_ref() else {
+            return div().into_any_element();
+        };
+        let session_label = pending.session_name.as_deref().unwrap_or("unknown session");
+        let can_kill = pending.session_name.is_some();
+        v_flex()
+            .id("canvas-tmux-close-dialog")
+            .absolute()
+            .top(px(12.0))
+            .right(px(12.0))
+            .w(px(500.0))
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(if pending.confirm_kill {
+                theme::danger()
+            } else {
+                theme::border_dark()
+            })
+            .bg(theme::library_card())
+            .shadow_lg()
+            .child(
+                h_flex()
+                    .h(px(44.0))
+                    .px_3()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child(if pending.confirm_kill {
+                                "Confirm tmux session deletion"
+                            } else {
+                                "Close persistent terminal"
+                            }),
+                    )
+                    .child(
+                        Button::new("canvas-tmux-close-cancel")
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Cancel")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.pending_tmux_close = None;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .p_3()
+                    .gap_3()
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(if pending.confirm_kill {
+                                theme::danger()
+                            } else {
+                                theme::text_muted()
+                            })
+                            .child(if pending.confirm_kill {
+                                format!(
+                                    "This permanently ends tmux session {session_label} and every process running inside it."
+                                )
+                            } else {
+                                format!(
+                                    "Session {session_label} can keep running on the SSH host after TermiRust disconnects."
+                                )
+                            }),
+                    )
+                    .when(!pending.confirm_kill, |content| {
+                        content
+                            .child(
+                                Button::new("canvas-tmux-detach-node")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .label("Detach from Canvas")
+                                    .tooltip("Close this node and leave tmux running")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.detach_tmux_node_from_canvas(cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("canvas-tmux-disconnect-client")
+                                    .small()
+                                    .ghost()
+                                    .label("Disconnect Client")
+                                    .tooltip("Keep the node so it can reconnect later")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.disconnect_tmux_client(cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("canvas-tmux-kill-request")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Danger,
+                                        cx,
+                                    ))
+                                    .label("Kill tmux Session...")
+                                    .tooltip("Permanently stop this tmux session")
+                                    .disabled(!can_kill)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.request_tmux_kill_confirmation(cx);
+                                    })),
+                            )
+                    })
+                    .when(pending.confirm_kill, |content| {
+                        content.child(
+                            h_flex()
+                                .justify_end()
+                                .gap_2()
+                                .child(
+                                    Button::new("canvas-tmux-kill-back")
+                                        .small()
+                                        .ghost()
+                                        .label("Back")
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            if let Some(pending) = this.pending_tmux_close.as_mut() {
+                                                pending.confirm_kill = false;
+                                            }
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(
+                                    Button::new("canvas-tmux-kill-confirm")
+                                        .small()
+                                        .custom(Self::action_button_style(
+                                            theme::ActionTone::Danger,
+                                            cx,
+                                        ))
+                                        .label("Confirm Kill")
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.confirm_tmux_session_kill(cx);
+                                        })),
+                                ),
+                        )
+                    }),
+            )
+            .into_any_element()
+    }
+
     pub(super) fn render_canvas_workspace(
         &self,
         window: &mut Window,
@@ -4594,6 +4845,9 @@ impl TermiRustApp {
         }
         if self.context_handoff_review.is_some() {
             body = body.child(self.render_context_handoff_review(cx));
+        }
+        if self.pending_tmux_close.is_some() {
+            body = body.child(self.render_tmux_close_dialog(cx));
         }
         if self.canvas_links_open {
             body = body.child(self.render_canvas_links(cx));
