@@ -9790,8 +9790,9 @@ mod tests {
         DEFAULT_VAULT_ID, DraftProfile, HostColorTag, HostProfile, IdentitySource,
         JumpHostConnection, LocalPortForward, LocalShellConfig, PortForwardKind, PortForwardRule,
         ProfileSource, RestorableAuth, RestorableConnection, SavedHostGroup, SavedIdentity,
-        SavedSnippet, SavedSplitNode, SavedState, SavedWorkspace, SavedWorktreePolicy, SplitAxis,
-        ThemePreset, VaultMemberRole, WorkspaceLayoutMode,
+        SavedManagedWorktree, SavedManagedWorktreeDisposition, SavedSnippet, SavedSplitNode,
+        SavedState, SavedWorkspace, SavedWorktreePolicy, SplitAxis, ThemePreset, VaultMemberRole,
+        WorkspaceLayoutMode,
     };
     use crate::sftp::RemoteFileEntry;
     use crate::storage::load_saved_state;
@@ -11385,6 +11386,58 @@ mod tests {
                 app.error_message,
                 "This tab has Canvas sessions that are not selected for Split. Open the tab and choose which sessions to move before merging it."
             );
+        });
+    }
+
+    #[gpui::test]
+    fn canvas_worktree_lifecycle_marks_complete_and_kept(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let worktree_path = "/tmp/termirust-managed-worktree-ui-test".to_string();
+        let mut saved = SavedState::default();
+        saved.managed_agent_worktrees.push(SavedManagedWorktree {
+            repository_root: "/tmp/repository".to_string(),
+            path: worktree_path.clone(),
+            branch: "termirust/agent/ui-test".to_string(),
+            base_revision: "abc".to_string(),
+            owner_id: Some("node-ui-test".to_string()),
+            disposition: SavedManagedWorktreeDisposition::Active,
+        });
+        let (app, _window) = open_test_app_with_state(cx, saved);
+        app.update(cx, |app, cx| {
+            app.set_managed_worktree_disposition(
+                &worktree_path,
+                SavedManagedWorktreeDisposition::Complete,
+                cx,
+            );
+        });
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.saved.managed_agent_worktrees[0].disposition,
+                SavedManagedWorktreeDisposition::Complete
+            );
+            assert_eq!(
+                app.status_message,
+                "Task marked complete. The worktree and branch were kept."
+            );
+        });
+
+        app.update(cx, |app, cx| {
+            app.set_managed_worktree_disposition(
+                &worktree_path,
+                SavedManagedWorktreeDisposition::Kept,
+                cx,
+            );
+        });
+        app.read_with(cx, |app, _| {
+            assert_eq!(
+                app.saved.managed_agent_worktrees[0].disposition,
+                SavedManagedWorktreeDisposition::Kept
+            );
+            assert_eq!(
+                app.status_message,
+                "Worktree and branch marked to keep. Nothing was deleted."
+            );
+            assert!(app.saved.managed_agent_worktrees[0].path == worktree_path);
         });
     }
 

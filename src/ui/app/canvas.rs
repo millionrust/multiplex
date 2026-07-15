@@ -25,7 +25,8 @@ use crate::models::{
     CANVAS_MIN_NODE_WIDTH, CANVAS_MIN_ZOOM, CanvasEdgeId, CanvasEdgeKind, CanvasNodeId,
     ConnectRequest, ConnectionKind, HostProfile, LocalShellConfig, SavedAgentDefinition,
     SavedCanvasEdge, SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState, SavedCanvasViewport,
-    SavedWorktreePolicy, WorkspaceLayoutMode, default_persistent_session_name_from_id,
+    SavedManagedWorktreeDisposition, SavedWorktreePolicy, WorkspaceLayoutMode,
+    default_persistent_session_name_from_id,
 };
 use crate::ssh::SessionCommand;
 use crate::ui::app::{TermiRustApp, WorkspaceViewMode};
@@ -3736,7 +3737,7 @@ impl TermiRustApp {
         };
         match managed_worktree_status(&worktree) {
             Ok(status) => {
-                self.status_message = match (status.dirty, status.has_commits_after_base) {
+                let state = match (status.dirty, status.has_commits_after_base) {
                     (false, false) => format!("{} is clean and can be removed.", worktree.branch),
                     (true, false) => format!("{} has uncommitted changes.", worktree.branch),
                     (false, true) => {
@@ -3746,6 +3747,16 @@ impl TermiRustApp {
                         "{} has uncommitted changes and commits after its base.",
                         worktree.branch
                     ),
+                };
+                let path_summary = format!(
+                    "{} changed path{}",
+                    status.changed_paths,
+                    if status.changed_paths == 1 { "" } else { "s" }
+                );
+                self.status_message = if status.diff_summary.is_empty() {
+                    format!("{state} {path_summary}.")
+                } else {
+                    format!("{state} {path_summary}; {}.", status.diff_summary)
                 };
                 self.error_message.clear();
             }
@@ -3757,6 +3768,51 @@ impl TermiRustApp {
     fn copy_managed_worktree_path(&mut self, path: String, cx: &mut Context<Self>) {
         cx.write_to_clipboard(ClipboardItem::new_string(path));
         self.status_message = "Worktree path copied.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    pub(super) fn set_managed_worktree_disposition(
+        &mut self,
+        path: &str,
+        disposition: SavedManagedWorktreeDisposition,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(worktree) = self
+            .saved
+            .managed_agent_worktrees
+            .iter_mut()
+            .find(|worktree| worktree.path == path)
+        else {
+            self.error_message = "That managed worktree is no longer registered.".to_string();
+            cx.notify();
+            return;
+        };
+        worktree.disposition = disposition;
+        for workspace in &mut self.workspaces {
+            for node in &mut workspace.canvas.nodes {
+                let CanvasNodeKind::Agent { definition, .. } = &mut node.kind else {
+                    continue;
+                };
+                if let Some(managed) = definition
+                    .managed_worktree
+                    .as_mut()
+                    .filter(|managed| managed.path == path)
+                {
+                    managed.disposition = disposition;
+                }
+            }
+        }
+        self.persist_runtime_state();
+        self.status_message = match disposition {
+            SavedManagedWorktreeDisposition::Active => "Worktree marked active.".to_string(),
+            SavedManagedWorktreeDisposition::Complete => {
+                "Task marked complete. The worktree and branch were kept.".to_string()
+            }
+            SavedManagedWorktreeDisposition::Kept => {
+                "Worktree and branch marked to keep. Nothing was deleted.".to_string()
+            }
+        };
         self.error_message.clear();
         cx.notify();
     }
@@ -3909,7 +3965,15 @@ impl TermiRustApp {
                         let inspect_path = worktree.path.clone();
                         let copy_path = worktree.path.clone();
                         let open_path = worktree.path.clone();
+                        let complete_path = worktree.path.clone();
+                        let keep_path = worktree.path.clone();
                         let remove_path = worktree.path.clone();
+                        let disposition = worktree.disposition;
+                        let disposition_label = match disposition {
+                            SavedManagedWorktreeDisposition::Active => "Active",
+                            SavedManagedWorktreeDisposition::Complete => "Complete",
+                            SavedManagedWorktreeDisposition::Kept => "Kept",
+                        };
                         h_flex()
                             .p_2()
                             .gap_2()
@@ -3926,7 +3990,10 @@ impl TermiRustApp {
                                             .text_size(px(11.0))
                                             .font_semibold()
                                             .text_color(theme::text_on_dark())
-                                            .child(worktree.branch),
+                                            .child(format!(
+                                                "{} [{}]",
+                                                worktree.branch, disposition_label
+                                            )),
                                     )
                                     .child(
                                         div()
@@ -3968,6 +4035,42 @@ impl TermiRustApp {
                                         this.open_managed_worktree_terminal(
                                             open_path.clone(),
                                             window,
+                                            cx,
+                                        );
+                                    })),
+                            )
+                            .child(
+                                Button::new(("worktree-complete", index))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::Check)
+                                    .tooltip("Mark task complete and keep its worktree")
+                                    .disabled(matches!(
+                                        disposition,
+                                        SavedManagedWorktreeDisposition::Complete
+                                    ))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.set_managed_worktree_disposition(
+                                            &complete_path,
+                                            SavedManagedWorktreeDisposition::Complete,
+                                            cx,
+                                        );
+                                    })),
+                            )
+                            .child(
+                                Button::new(("worktree-keep", index))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::GitHub)
+                                    .tooltip("Keep worktree and branch")
+                                    .disabled(matches!(
+                                        disposition,
+                                        SavedManagedWorktreeDisposition::Kept
+                                    ))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.set_managed_worktree_disposition(
+                                            &keep_path,
+                                            SavedManagedWorktreeDisposition::Kept,
                                             cx,
                                         );
                                     })),

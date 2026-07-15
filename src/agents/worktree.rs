@@ -5,12 +5,14 @@ use std::process::{Command, Output, Stdio};
 
 use anyhow::{Context, Result, bail};
 
-use crate::models::SavedManagedWorktree;
+use crate::models::{SavedManagedWorktree, SavedManagedWorktreeDisposition};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ManagedWorktreeStatus {
     pub dirty: bool,
     pub has_commits_after_base: bool,
+    pub changed_paths: usize,
+    pub diff_summary: String,
 }
 
 pub fn create_managed_worktree(
@@ -91,6 +93,8 @@ pub fn create_managed_worktree(
             path: canonical_path.display().to_string(),
             branch,
             base_revision,
+            owner_id: Some(node_hint.to_string()),
+            disposition: SavedManagedWorktreeDisposition::Active,
         });
     }
     bail!("Unable to allocate a unique managed worktree name")
@@ -107,9 +111,25 @@ pub fn managed_worktree_status(worktree: &SavedManagedWorktree) -> Result<Manage
         ],
     )?;
     let head = git_stdout(path, [OsStr::new("rev-parse"), OsStr::new("HEAD")])?;
+    let diff = run_git(
+        path,
+        [
+            OsStr::new("diff"),
+            OsStr::new("--shortstat"),
+            OsStr::new(&worktree.base_revision),
+            OsStr::new("--"),
+        ],
+    )?;
+    let changed_paths = status
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|record| matches!(record.first(), Some(b'1' | b'2' | b'u' | b'?' | b'!')))
+        .count();
     Ok(ManagedWorktreeStatus {
         dirty: !status.stdout.is_empty(),
         has_commits_after_base: head != worktree.base_revision,
+        changed_paths,
+        diff_summary: String::from_utf8_lossy(&diff.stdout).trim().to_string(),
     })
 }
 
@@ -347,7 +367,9 @@ mod tests {
         let managed_root = temp_directory("managed-dirty");
         let dirty = create_managed_worktree(&repository, &managed_root, "dirty", "task").unwrap();
         fs::write(Path::new(&dirty.path).join("untracked.txt"), "keep\n").unwrap();
-        assert!(managed_worktree_status(&dirty).unwrap().dirty);
+        let dirty_status = managed_worktree_status(&dirty).unwrap();
+        assert!(dirty_status.dirty);
+        assert_eq!(dirty_status.changed_paths, 1);
         assert!(
             remove_managed_worktree(&dirty, &managed_root)
                 .unwrap_err()
@@ -368,6 +390,12 @@ mod tests {
                 .has_commits_after_base
         );
         assert!(
+            managed_worktree_status(&dirty)
+                .unwrap()
+                .diff_summary
+                .contains("1 file changed")
+        );
+        assert!(
             remove_managed_worktree(&dirty, &managed_root)
                 .unwrap_err()
                 .to_string()
@@ -384,6 +412,8 @@ mod tests {
             path: repository.display().to_string(),
             branch: "main".to_string(),
             base_revision: "unknown".to_string(),
+            owner_id: None,
+            disposition: crate::models::SavedManagedWorktreeDisposition::Active,
         };
         assert!(
             remove_managed_worktree(&fake, &managed_root)

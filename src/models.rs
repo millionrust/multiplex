@@ -2443,6 +2443,19 @@ pub struct SavedManagedWorktree {
     pub path: String,
     pub branch: String,
     pub base_revision: String,
+    #[serde(default)]
+    pub owner_id: Option<String>,
+    #[serde(default)]
+    pub disposition: SavedManagedWorktreeDisposition,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SavedManagedWorktreeDisposition {
+    #[default]
+    Active,
+    Complete,
+    Kept,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -3000,10 +3013,11 @@ mod tests {
         RestorableAuth, RestorableConnection, SavedAgentDefinition, SavedCanvasEdge,
         SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState, SavedCanvasViewport,
         SavedCommandHistoryEntry, SavedContextPolicy, SavedIdentity, SavedManagedWorktree,
-        SavedSnippet, SavedState, SavedVault, SavedVaultMember, SavedWorkspace,
-        SavedWorktreePolicy, SessionLogEntry, SessionLogStatus, ThemePreset, VaultKind,
-        VaultMemberRole, WorkspaceLayoutMode, default_persistent_session_name_for_endpoint,
-        default_persistent_session_name_from_id, identity_id_for_path,
+        SavedManagedWorktreeDisposition, SavedSnippet, SavedState, SavedVault, SavedVaultMember,
+        SavedWorkspace, SavedWorktreePolicy, SessionLogEntry, SessionLogStatus, ThemePreset,
+        VaultKind, VaultMemberRole, WorkspaceLayoutMode,
+        default_persistent_session_name_for_endpoint, default_persistent_session_name_from_id,
+        identity_id_for_path,
     };
 
     #[test]
@@ -4271,6 +4285,8 @@ mod tests {
             path: "/managed/agent".to_string(),
             branch: "termirust/agent/one".to_string(),
             base_revision: "abc".to_string(),
+            owner_id: Some("node-1".to_string()),
+            disposition: SavedManagedWorktreeDisposition::Active,
         };
         let mut updated = first.clone();
         updated.branch = "termirust/agent/two".to_string();
@@ -4282,6 +4298,25 @@ mod tests {
         assert_eq!(state.managed_agent_worktrees, vec![updated]);
         state.forget_managed_agent_worktree("/managed/agent");
         assert!(state.managed_agent_worktrees.is_empty());
+    }
+
+    #[test]
+    fn legacy_managed_worktree_defaults_lifecycle_metadata() {
+        let worktree: SavedManagedWorktree = serde_json::from_str(
+            r#"{
+                "repository_root": "/repo",
+                "path": "/managed/agent",
+                "branch": "termirust/agent/one",
+                "base_revision": "abc"
+            }"#,
+        )
+        .expect("deserialize legacy managed worktree");
+
+        assert_eq!(worktree.owner_id, None);
+        assert_eq!(
+            worktree.disposition,
+            SavedManagedWorktreeDisposition::Active
+        );
     }
 
     #[test]
