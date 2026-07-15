@@ -2431,6 +2431,16 @@ pub struct SavedAgentDefinition {
     pub permission_policy: AgentPermissionPolicy,
     #[serde(default)]
     pub worktree: SavedWorktreePolicy,
+    #[serde(default)]
+    pub managed_worktree: Option<SavedManagedWorktree>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedManagedWorktree {
+    pub repository_root: String,
+    pub path: String,
+    pub branch: String,
+    pub base_revision: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -3413,6 +3423,7 @@ mod tests {
                             arguments: vec!["--verbose".to_string()],
                             permission_policy: AgentPermissionPolicy::ReadOnly,
                             worktree: SavedWorktreePolicy::ReadOnly,
+                            managed_worktree: None,
                         },
                     },
                     x: 10.0,

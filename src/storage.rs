@@ -111,6 +111,10 @@ fn app_dir() -> Result<PathBuf> {
     Ok(path)
 }
 
+pub(crate) fn managed_agent_worktree_dir() -> Result<PathBuf> {
+    Ok(app_dir()?.join("agent-worktrees"))
+}
+
 #[cfg(test)]
 pub(crate) fn set_test_app_dir_override(path: Option<PathBuf>) -> Option<PathBuf> {
     TEST_APP_DIR_OVERRIDE.with(|override_path| override_path.replace(path))

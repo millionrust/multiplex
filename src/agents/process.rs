@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 use anyhow::{Context, Result, bail};
 
 use crate::agents::adapter::provider_descriptor;
-use crate::models::{AgentBackendKind, AgentProvider, SavedAgentDefinition};
+use crate::models::{AgentBackendKind, AgentPermissionPolicy, AgentProvider, SavedAgentDefinition};
 
 const MAX_VERSION_OUTPUT_BYTES: usize = 4096;
 
@@ -80,12 +80,91 @@ pub fn build_interactive_launch_spec(definition: &SavedAgentDefinition) -> Resul
             bail!("Working directory does not exist: {}", directory.display());
         }
     }
+    let mut arguments = permission_arguments(definition)?;
+    validate_safe_arguments(definition.provider, &definition.arguments)?;
+    arguments.extend(definition.arguments.iter().map(OsString::from));
     Ok(AgentLaunchSpec {
         provider: definition.provider,
         executable: path,
-        arguments: definition.arguments.iter().map(OsString::from).collect(),
+        arguments,
         working_directory,
     })
+}
+
+pub fn build_remote_interactive_arguments(
+    definition: &SavedAgentDefinition,
+) -> Result<Vec<String>> {
+    if definition.backend != AgentBackendKind::InteractivePty {
+        bail!("The selected agent backend is not an interactive terminal");
+    }
+    let descriptor = provider_descriptor(definition.provider);
+    if !descriptor.capabilities.interactive_pty {
+        bail!(
+            "{} does not provide an interactive CLI backend",
+            definition.provider.label()
+        );
+    }
+    validate_safe_arguments(definition.provider, &definition.arguments)?;
+    let mut arguments = permission_arguments(definition)?
+        .into_iter()
+        .map(|argument| {
+            argument
+                .into_string()
+                .map_err(|_| anyhow::anyhow!("Provider argument is not valid UTF-8"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    arguments.extend(definition.arguments.clone());
+    Ok(arguments)
+}
+
+fn permission_arguments(definition: &SavedAgentDefinition) -> Result<Vec<OsString>> {
+    let values: &[&str] = match (definition.provider, definition.permission_policy) {
+        (_, AgentPermissionPolicy::ProviderDefault) => &[],
+        (AgentProvider::Codex, AgentPermissionPolicy::ReadOnly) => &["--sandbox", "read-only"],
+        (AgentProvider::Codex, AgentPermissionPolicy::WorkspaceWrite) => {
+            &["--sandbox", "workspace-write"]
+        }
+        (AgentProvider::ClaudeCode, AgentPermissionPolicy::ReadOnly) => {
+            &["--permission-mode", "plan"]
+        }
+        (AgentProvider::ClaudeCode, AgentPermissionPolicy::WorkspaceWrite) => &[],
+        (AgentProvider::Gemini, AgentPermissionPolicy::ReadOnly) => &["--approval-mode", "plan"],
+        (AgentProvider::Gemini, AgentPermissionPolicy::WorkspaceWrite) => &[],
+        (AgentProvider::CustomCli, _) => {
+            bail!(
+                "Custom CLI permission policies cannot be enforced. Choose Ask as needed and configure the CLI itself."
+            )
+        }
+        (AgentProvider::GroqApi, _) => bail!("Groq API agents are not available"),
+    };
+    Ok(values.iter().map(OsString::from).collect())
+}
+
+fn validate_safe_arguments(provider: AgentProvider, arguments: &[String]) -> Result<()> {
+    let lowered: Vec<_> = arguments
+        .iter()
+        .map(|argument| argument.to_ascii_lowercase())
+        .collect();
+    let forbidden = match provider {
+        AgentProvider::Codex => [
+            "--dangerously-bypass-approvals-and-sandbox",
+            "danger-full-access",
+        ]
+        .as_slice(),
+        AgentProvider::ClaudeCode => ["--dangerously-skip-permissions"].as_slice(),
+        AgentProvider::Gemini => ["--yolo", "yolo"].as_slice(),
+        AgentProvider::CustomCli | AgentProvider::GroqApi => [].as_slice(),
+    };
+    if let Some(argument) = lowered
+        .iter()
+        .find(|argument| forbidden.iter().any(|value| argument.contains(value)))
+    {
+        bail!(
+            "Unsafe permission-bypass argument is not allowed for {}: {argument}",
+            provider.label()
+        );
+    }
+    Ok(())
 }
 
 fn resolve_executable(requested: &OsStr) -> Option<PathBuf> {
@@ -171,9 +250,13 @@ fn read_version(executable: &Path, version_argument: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{AgentExecutableStatus, build_interactive_launch_spec, detect_agent_executable};
+    use super::{
+        AgentExecutableStatus, build_interactive_launch_spec, build_remote_interactive_arguments,
+        detect_agent_executable,
+    };
     use crate::models::{
-        AgentBackendKind, AgentProvider, SavedAgentDefinition, SavedWorktreePolicy,
+        AgentBackendKind, AgentPermissionPolicy, AgentProvider, SavedAgentDefinition,
+        SavedWorktreePolicy,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -254,6 +337,73 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("not an interactive terminal")
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn provider_bypass_flags_are_rejected() {
+        let executable = executable_fixture("claude");
+        let definition = SavedAgentDefinition {
+            provider: AgentProvider::ClaudeCode,
+            executable_override: Some(executable.display().to_string()),
+            arguments: vec!["--dangerously-skip-permissions".to_string()],
+            ..SavedAgentDefinition::default()
+        };
+        assert!(
+            build_interactive_launch_spec(&definition)
+                .unwrap_err()
+                .to_string()
+                .contains("Unsafe permission-bypass")
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn read_only_policy_maps_to_provider_arguments() {
+        let executable = executable_fixture("codex");
+        let definition = SavedAgentDefinition {
+            provider: AgentProvider::Codex,
+            executable_override: Some(executable.display().to_string()),
+            permission_policy: AgentPermissionPolicy::ReadOnly,
+            ..SavedAgentDefinition::default()
+        };
+        let spec = build_interactive_launch_spec(&definition).unwrap();
+        assert_eq!(spec.arguments, vec!["--sandbox", "read-only"]);
+    }
+
+    #[test]
+    fn remote_arguments_preserve_values_and_reject_bypass_flags() {
+        let definition = SavedAgentDefinition {
+            provider: AgentProvider::Codex,
+            permission_policy: AgentPermissionPolicy::WorkspaceWrite,
+            arguments: vec![
+                "argument with spaces".to_string(),
+                "$(touch must-not-run)".to_string(),
+                "single'quote".to_string(),
+            ],
+            ..SavedAgentDefinition::default()
+        };
+        assert_eq!(
+            build_remote_interactive_arguments(&definition).unwrap(),
+            vec![
+                "--sandbox",
+                "workspace-write",
+                "argument with spaces",
+                "$(touch must-not-run)",
+                "single'quote",
+            ]
+        );
+
+        let unsafe_definition = SavedAgentDefinition {
+            arguments: vec!["--dangerously-bypass-approvals-and-sandbox".to_string()],
+            ..definition
+        };
+        assert!(
+            build_remote_interactive_arguments(&unsafe_definition)
+                .unwrap_err()
+                .to_string()
+                .contains("Unsafe permission-bypass")
         );
     }
 }
