@@ -44,7 +44,7 @@ pub fn schedule_dependency_dag(
     }
     let mut failed_or_blocked: HashSet<_> = states
         .iter()
-        .filter_map(|(node_id, state)| {
+        .filter(|(_, state)| {
             matches!(
                 state,
                 AgentRunState::Failed
@@ -52,8 +52,8 @@ pub fn schedule_dependency_dag(
                     | AgentRunState::Disconnected
                     | AgentRunState::Blocked
             )
-            .then(|| node_id.clone())
         })
+        .map(|(node_id, _)| node_id.clone())
         .collect();
     loop {
         let mut changed = false;

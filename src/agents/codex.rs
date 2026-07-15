@@ -369,10 +369,10 @@ fn handle_message(
             {
                 let _ = send_turn(command_tx, ids, FIRST_USER_REQUEST_ID, prompt);
             }
-        } else if let Some(turn_id) = message.pointer("/result/turn/id").and_then(Value::as_str) {
-            if let Ok(mut current) = ids.lock() {
-                current.turn_id = Some(turn_id.to_string());
-            }
+        } else if let Some(turn_id) = message.pointer("/result/turn/id").and_then(Value::as_str)
+            && let Ok(mut current) = ids.lock()
+        {
+            current.turn_id = Some(turn_id.to_string());
         }
         return;
     }
@@ -383,10 +383,10 @@ fn handle_message(
     let params = message.get("params").unwrap_or(&Value::Null);
     match method {
         "turn/started" => {
-            if let Some(turn_id) = params.pointer("/turn/id").and_then(Value::as_str) {
-                if let Ok(mut current) = ids.lock() {
-                    current.turn_id = Some(turn_id.to_string());
-                }
+            if let Some(turn_id) = params.pointer("/turn/id").and_then(Value::as_str)
+                && let Ok(mut current) = ids.lock()
+            {
+                current.turn_id = Some(turn_id.to_string());
             }
             emit(event_tx, AgentEvent::StateChanged(AgentRunState::Running));
         }
@@ -758,18 +758,15 @@ sleep 1
         .unwrap();
         let mut states = Vec::new();
         loop {
-            match session
+            if let AgentEvent::StateChanged(state) = session
                 .event_rx
                 .recv_timeout(Duration::from_secs(3))
                 .expect("expected Codex lifecycle event")
             {
-                AgentEvent::StateChanged(state) => {
-                    states.push(state);
-                    if state == AgentRunState::Disconnected {
-                        break;
-                    }
+                states.push(state);
+                if state == AgentRunState::Disconnected {
+                    break;
                 }
-                _ => {}
             }
         }
         assert_eq!(states.last(), Some(&AgentRunState::Disconnected));

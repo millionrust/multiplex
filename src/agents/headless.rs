@@ -324,21 +324,21 @@ fn normalize_claude(kind: &str, value: &Value, event_tx: &SyncSender<AgentEvent>
         "user" => {
             if let Some(content) = value.pointer("/message/content").and_then(Value::as_array) {
                 for block in content {
-                    if block.get("type").and_then(Value::as_str) == Some("tool_result") {
-                        if let Some(call_id) = block.get("tool_use_id").and_then(Value::as_str) {
-                            let _ = event_tx.send(AgentEvent::ToolFinished {
-                                call_id: call_id.to_string(),
-                                outcome: if block
-                                    .get("is_error")
-                                    .and_then(Value::as_bool)
-                                    .unwrap_or(false)
-                                {
-                                    ToolOutcome::Failed
-                                } else {
-                                    ToolOutcome::Succeeded
-                                },
-                            });
-                        }
+                    if block.get("type").and_then(Value::as_str) == Some("tool_result")
+                        && let Some(call_id) = block.get("tool_use_id").and_then(Value::as_str)
+                    {
+                        let _ = event_tx.send(AgentEvent::ToolFinished {
+                            call_id: call_id.to_string(),
+                            outcome: if block
+                                .get("is_error")
+                                .and_then(Value::as_bool)
+                                .unwrap_or(false)
+                            {
+                                ToolOutcome::Failed
+                            } else {
+                                ToolOutcome::Succeeded
+                            },
+                        });
                     }
                 }
             }

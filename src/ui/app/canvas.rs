@@ -1406,10 +1406,10 @@ impl TermiRustApp {
             start: point_from_pixels(event.position),
             start_rect,
         });
-        if let Some(pane_id) = pane_id {
-            if let Some(pane) = self.pane(pane_id) {
-                pane.terminal_focus.focus(window);
-            }
+        if let Some(pane_id) = pane_id
+            && let Some(pane) = self.pane(pane_id)
+        {
+            pane.terminal_focus.focus(window);
         }
         cx.notify();
     }
@@ -1618,9 +1618,7 @@ impl TermiRustApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<u64> {
-        let Some(workspace_id) = self.active_workspace_id else {
-            return None;
-        };
+        let workspace_id = self.active_workspace_id?;
         let is_canvas = self
             .workspace(workspace_id)
             .is_some_and(|workspace| workspace.layout_mode == WorkspaceLayoutMode::Canvas);
@@ -2465,10 +2463,10 @@ impl TermiRustApp {
     }
 
     fn cancel_structured_agent(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
-        if let Some(runtime) = self.structured_agents.get(&node_id) {
-            if let Err(error) = runtime.handle.cancel() {
-                self.error_message = error.to_string();
-            }
+        if let Some(runtime) = self.structured_agents.get(&node_id)
+            && let Err(error) = runtime.handle.cancel()
+        {
+            self.error_message = error.to_string();
         }
         cx.notify();
     }
@@ -5818,11 +5816,13 @@ mod tests {
 
     #[test]
     fn context_edges_are_directed_unique_and_not_self_referential() {
-        let mut canvas = CanvasWorkspaceState::default();
-        canvas.nodes = vec![
-            terminal_node("source", 1, 0.0, 0.0),
-            terminal_node("target", 2, 800.0, 0.0),
-        ];
+        let mut canvas = CanvasWorkspaceState {
+            nodes: vec![
+                terminal_node("source", 1, 0.0, 0.0),
+                terminal_node("target", 2, 800.0, 0.0),
+            ],
+            ..CanvasWorkspaceState::default()
+        };
         let edge_id = canvas
             .add_context_edge(CanvasNodeId::new("source"), CanvasNodeId::new("target"))
             .unwrap();
@@ -5848,12 +5848,14 @@ mod tests {
 
     #[test]
     fn dependency_edges_reject_cycles() {
-        let mut canvas = CanvasWorkspaceState::default();
-        canvas.nodes = vec![
-            terminal_node("a", 1, 0.0, 0.0),
-            terminal_node("b", 2, 800.0, 0.0),
-            terminal_node("c", 3, 1600.0, 0.0),
-        ];
+        let mut canvas = CanvasWorkspaceState {
+            nodes: vec![
+                terminal_node("a", 1, 0.0, 0.0),
+                terminal_node("b", 2, 800.0, 0.0),
+                terminal_node("c", 3, 1600.0, 0.0),
+            ],
+            ..CanvasWorkspaceState::default()
+        };
         canvas
             .add_dependency_edge(CanvasNodeId::new("a"), CanvasNodeId::new("b"))
             .unwrap();
@@ -5871,11 +5873,13 @@ mod tests {
 
     #[test]
     fn orchestration_scope_contains_only_the_workspace_nodes_and_edges() {
-        let mut canvas = CanvasWorkspaceState::default();
-        canvas.nodes = vec![
-            terminal_node("workspace-a", 1, 0.0, 0.0),
-            terminal_node("workspace-b", 2, 800.0, 0.0),
-        ];
+        let mut canvas = CanvasWorkspaceState {
+            nodes: vec![
+                terminal_node("workspace-a", 1, 0.0, 0.0),
+                terminal_node("workspace-b", 2, 800.0, 0.0),
+            ],
+            ..CanvasWorkspaceState::default()
+        };
         canvas
             .add_dependency_edge(
                 CanvasNodeId::new("workspace-a"),

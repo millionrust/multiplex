@@ -98,10 +98,10 @@ pub fn build_interactive_launch_spec(definition: &SavedAgentDefinition) -> Resul
         .as_deref()
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from);
-    if let Some(directory) = &working_directory {
-        if !directory.is_dir() {
-            bail!("Working directory does not exist: {}", directory.display());
-        }
+    if let Some(directory) = &working_directory
+        && !directory.is_dir()
+    {
+        bail!("Working directory does not exist: {}", directory.display());
     }
     let mut arguments = permission_arguments(definition)?;
     validate_safe_arguments(definition.provider, &definition.arguments)?;
