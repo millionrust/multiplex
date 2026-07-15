@@ -11614,6 +11614,7 @@ mod tests {
             startup_command: Some("printf 'canvas-host-ready\\n'".to_string()),
             ..HostProfile::default()
         });
+        saved.settings.auto_reconnect_attempts = 0;
         let (app, window) = open_test_app_with_state(cx, saved);
         let local_request = ConnectRequest::local_shell_with_config(
             0,
@@ -11673,6 +11674,49 @@ mod tests {
                     workspace.canvas.nodes[1].rect.y
                 )
             );
+
+            let local_node = workspace
+                .canvas
+                .nodes
+                .iter()
+                .find(|node| node.kind.pane_id() == Some(local_pane_id))
+                .expect("local canvas node should exist");
+            let ssh_node = workspace
+                .canvas
+                .nodes
+                .iter()
+                .find(|node| node.kind.pane_id() == Some(ssh_pane_id))
+                .expect("SSH canvas node should exist");
+            let error = app
+                .ensure_same_execution_host(&local_node.id, &ssh_node.id)
+                .expect_err("cross-host canvas actions must be refused");
+            assert!(
+                error
+                    .to_string()
+                    .contains("Cross-host links are not executable")
+            );
+        });
+
+        server.stop();
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            app.pane(ssh_pane_id)
+                .is_some_and(|pane| pane.closed && !pane.connected)
+                .then_some(())
+        });
+        app.read_with(cx, |app, _| {
+            let workspace = app
+                .workspace(workspace_id)
+                .expect("workspace should remain");
+            assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Canvas);
+            assert!(
+                workspace
+                    .canvas
+                    .nodes
+                    .iter()
+                    .any(|node| { node.kind.pane_id() == Some(ssh_pane_id) })
+            );
+            assert!(app.pane(local_pane_id).is_some());
+            assert!(app.pane(ssh_pane_id).is_some_and(|pane| pane.closed));
         });
     }
 

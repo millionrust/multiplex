@@ -2748,7 +2748,7 @@ impl TermiRustApp {
         }
     }
 
-    fn ensure_same_execution_host(
+    pub(super) fn ensure_same_execution_host(
         &self,
         source: &CanvasNodeId,
         target: &CanvasNodeId,
