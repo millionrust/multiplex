@@ -4840,6 +4840,7 @@ impl TermiRustApp {
     ) -> AnyElement {
         let Some(runtime) = self.structured_agents.get(&node_id) else {
             let restart_id = node_id.clone();
+            let restart_selector = format!("structured-restart-{}", node_id.as_str());
             return v_flex()
                 .flex_1()
                 .items_center()
@@ -4856,6 +4857,7 @@ impl TermiRustApp {
                         "structured-restart-{}",
                         node_id.as_str()
                     )))
+                    .debug_selector(move || restart_selector.clone())
                     .small()
                     .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                     .icon(IconName::Redo2)

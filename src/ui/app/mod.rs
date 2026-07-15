@@ -9822,13 +9822,13 @@ mod tests {
     };
     use crate::credentials;
     use crate::models::{
-        AgentBackendKind, AgentLocation, AgentProvider, AuthConfig, AuthMode, ConnectRequest,
-        ConnectionKind, DEFAULT_VAULT_ID, DraftProfile, HostColorTag, HostProfile, IdentitySource,
-        JumpHostConnection, LocalPortForward, LocalShellConfig, PortForwardKind, PortForwardRule,
-        ProfileSource, RestorableAuth, RestorableConnection, SavedHostGroup, SavedIdentity,
-        SavedManagedWorktree, SavedManagedWorktreeDisposition, SavedSnippet, SavedSplitNode,
-        SavedState, SavedWorkspace, SavedWorktreePolicy, SplitAxis, ThemePreset, VaultMemberRole,
-        WorkspaceLayoutMode,
+        AgentBackendKind, AgentLocation, AgentProvider, AuthConfig, AuthMode, CanvasNodeId,
+        ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile, HostColorTag, HostProfile,
+        IdentitySource, JumpHostConnection, LocalPortForward, LocalShellConfig, PortForwardKind,
+        PortForwardRule, ProfileSource, RestorableAuth, RestorableConnection, SavedCanvasNode,
+        SavedCanvasNodeKind, SavedCanvasState, SavedHostGroup, SavedIdentity, SavedManagedWorktree,
+        SavedManagedWorktreeDisposition, SavedSnippet, SavedSplitNode, SavedState, SavedWorkspace,
+        SavedWorktreePolicy, SplitAxis, ThemePreset, VaultMemberRole, WorkspaceLayoutMode,
     };
     use crate::sftp::RemoteFileEntry;
     use crate::storage::load_saved_state;
@@ -11824,6 +11824,144 @@ mod tests {
                         && definition.arguments[0] == "argument with spaces"
             ));
             assert!(!injection_marker.exists());
+        });
+    }
+
+    #[gpui::test]
+    #[cfg(unix)]
+    fn restored_structured_agent_waits_for_visible_restart_action(cx: &mut TestAppContext) {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let _isolation = TestIsolation::acquire();
+        let fixture_directory = std::env::temp_dir().join(format!(
+            "termirust restored codex {}",
+            crate::ui::util::current_unix_millis()
+        ));
+        fs::create_dir_all(&fixture_directory).unwrap();
+        let executable = fixture_directory.join("restored codex");
+        let launch_marker = fixture_directory.join("provider-started");
+        fs::write(
+            &executable,
+            format!(
+                r#"#!/bin/sh
+if [ "$1" = "--version" ]; then printf 'restored-codex 1.0\n'; exit 0; fi
+printf started > '{}'
+read initialize
+printf '%s\n' '{{"id":1,"result":{{"userAgent":"restored-test"}}}}'
+read initialized
+read thread_start
+printf '%s\n' '{{"id":2,"result":{{"thread":{{"id":"restored-thread"}},"model":"fake","modelProvider":"fake","cwd":"/tmp","approvalPolicy":"on-request","approvalsReviewer":"user","sandbox":{{"type":"workspaceWrite","writableRoots":[],"readOnlyAccess":{{"type":"fullAccess"}},"networkAccess":false,"excludeTmpdirEnvVar":false,"excludeSlashTmp":false}}}}}}'
+sleep 30
+"#,
+                launch_marker.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&executable).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&executable, permissions).unwrap();
+
+        let definition = crate::models::SavedAgentDefinition {
+            provider: AgentProvider::Codex,
+            backend: AgentBackendKind::Structured,
+            location: AgentLocation::Local,
+            working_directory: Some(fixture_directory.display().to_string()),
+            executable_override: Some(executable.display().to_string()),
+            permission_policy: crate::models::AgentPermissionPolicy::ReadOnly,
+            worktree: SavedWorktreePolicy::ReadOnly,
+            ..crate::models::SavedAgentDefinition::default()
+        };
+        let node_id = CanvasNodeId::new("restored-structured-agent");
+        let mut saved = SavedState::default();
+        saved.settings.restore_workspaces_on_launch = true;
+        saved.restored_workspaces.push(SavedWorkspace {
+            title: "Restored structured agent".to_string(),
+            layout_mode: WorkspaceLayoutMode::Canvas,
+            layout: Some(SavedSplitNode::Leaf(0)),
+            canvas: Some(SavedCanvasState {
+                nodes: vec![
+                    SavedCanvasNode {
+                        id: CanvasNodeId::new("restored-terminal"),
+                        kind: SavedCanvasNodeKind::Terminal { pane_index: 0 },
+                        x: 30.0,
+                        y: 30.0,
+                        width: 520.0,
+                        height: 360.0,
+                        z_index: 0,
+                        title: None,
+                        collapsed: false,
+                    },
+                    SavedCanvasNode {
+                        id: node_id.clone(),
+                        kind: SavedCanvasNodeKind::Agent {
+                            pane_index: None,
+                            definition,
+                        },
+                        x: 580.0,
+                        y: 30.0,
+                        width: 520.0,
+                        height: 360.0,
+                        z_index: 1,
+                        title: Some("Restored Codex".to_string()),
+                        collapsed: false,
+                    },
+                ],
+                ..SavedCanvasState::default()
+            }),
+            active_pane_index: 0,
+            panes: vec![RestorableConnection {
+                title: "Restore anchor".to_string(),
+                kind: ConnectionKind::LocalShell,
+                host: String::new(),
+                port: 0,
+                username: String::new(),
+                auth: None,
+                jump_host: None,
+                startup_directory: None,
+                startup_command: None,
+                start_in_files: false,
+                persistent_session: false,
+                persistent_session_name: None,
+                persistent_session_detach_others: false,
+                terminal_scrollback_rows: Some(10_000),
+                port_forward_rules: Vec::new(),
+                local_forwards: Vec::new(),
+                local_forward: None,
+                local_shell: Some(LocalShellConfig {
+                    program: "/bin/sh".to_string(),
+                    args: Vec::new(),
+                    cwd: Some(fixture_directory.display().to_string()),
+                }),
+            }],
+        });
+        saved.active_workspace_index = Some(0);
+
+        let (app, window) = open_test_app_with_state(cx, saved);
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            let workspace = app.active_workspace()?;
+            (workspace.layout_mode == WorkspaceLayoutMode::Canvas
+                && workspace.canvas.node(&node_id).is_some())
+            .then_some(())
+        });
+        app.read_with(cx, |app, _| {
+            assert!(app.structured_agents.is_empty());
+            assert!(!launch_marker.exists());
+        });
+
+        let restart = wait_for_selector_click_center(
+            window,
+            cx,
+            "structured-restart-restored-structured-agent",
+            Duration::from_secs(2),
+        );
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(restart, gpui::Modifiers::none());
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            (app.structured_agents.contains_key(&node_id) && launch_marker.exists()).then_some(())
+        });
+        app.read_with(cx, |app, _| {
+            assert!(app.error_message.is_empty());
+            assert_eq!(app.status_message, "Structured agent restarted.");
         });
     }
 
