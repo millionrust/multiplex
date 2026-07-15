@@ -12,9 +12,10 @@ use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::agents::{
     AgentApprovalRequest, AgentEvent, AgentExecutableStatus, AgentRunState, CodexSessionConfig,
-    CodexSessionHandle, HeadlessSessionConfig, HeadlessSessionHandle, build_context_handoff,
-    build_interactive_launch_spec, build_remote_interactive_arguments, create_managed_worktree,
-    detect_agent_executable, provider_descriptor, spawn_codex_session, spawn_headless_session,
+    CodexSessionHandle, HeadlessSessionConfig, HeadlessSessionHandle, SchedulableAgent,
+    build_context_handoff, build_interactive_launch_spec, build_remote_interactive_arguments,
+    create_managed_worktree, detect_agent_executable, provider_descriptor, schedule_dependency_dag,
+    spawn_codex_session, spawn_headless_session,
 };
 use crate::models::{
     AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AuthConfig, AuthMode,
@@ -92,6 +93,7 @@ pub(super) struct StructuredAgentRuntime {
     pub transcript: String,
     pub approval: Option<AgentApprovalRequest>,
     pub diagnostic: Option<String>,
+    pub queued_prompt: Option<String>,
 }
 
 impl StructuredAgentRuntime {
@@ -104,6 +106,7 @@ impl StructuredAgentRuntime {
             transcript: String::new(),
             approval: None,
             diagnostic: None,
+            queued_prompt: None,
         }
     }
 
@@ -537,6 +540,66 @@ impl CanvasWorkspaceState {
             kind: CanvasEdgeKind::Context,
             enabled: true,
             context_policy: Some(crate::models::SavedContextPolicy::default()),
+        });
+        Ok(id)
+    }
+
+    pub(super) fn add_dependency_edge(
+        &mut self,
+        source: CanvasNodeId,
+        target: CanvasNodeId,
+    ) -> anyhow::Result<CanvasEdgeId> {
+        if source == target {
+            anyhow::bail!("Choose a different dependency target");
+        }
+        if !self.nodes.iter().any(|node| node.id == source)
+            || !self.nodes.iter().any(|node| node.id == target)
+        {
+            anyhow::bail!("Both dependency nodes must exist");
+        }
+        if self.edges.iter().any(|edge| {
+            edge.source == source
+                && edge.target == target
+                && edge.kind == CanvasEdgeKind::Dependency
+        }) {
+            anyhow::bail!("That dependency already exists");
+        }
+        let mut adjacency: HashMap<CanvasNodeId, Vec<CanvasNodeId>> = HashMap::new();
+        for edge in self
+            .edges
+            .iter()
+            .filter(|edge| edge.enabled && edge.kind == CanvasEdgeKind::Dependency)
+        {
+            adjacency
+                .entry(edge.source.clone())
+                .or_default()
+                .push(edge.target.clone());
+        }
+        let mut pending = vec![target.clone()];
+        let mut visited = HashSet::new();
+        while let Some(node) = pending.pop() {
+            if node == source {
+                anyhow::bail!("That dependency would create a cycle");
+            }
+            if visited.insert(node.clone()) {
+                pending.extend(adjacency.get(&node).into_iter().flatten().cloned());
+            }
+        }
+        let mut ordinal = self.edges.len() + 1;
+        let id = loop {
+            let candidate = CanvasEdgeId::new(format!("dependency-edge-{ordinal}"));
+            if !self.edges.iter().any(|edge| edge.id == candidate) {
+                break candidate;
+            }
+            ordinal += 1;
+        };
+        self.edges.push(CanvasEdge {
+            id: id.clone(),
+            source,
+            target,
+            kind: CanvasEdgeKind::Dependency,
+            enabled: true,
+            context_policy: None,
         });
         Ok(id)
     }
@@ -1821,6 +1884,9 @@ impl TermiRustApp {
                 | AgentEvent::Completed { .. } => {}
             }
         }
+        if changed && self.orchestration_active {
+            self.dispatch_ready_agent_tasks();
+        }
         changed
     }
 
@@ -1932,6 +1998,153 @@ impl TermiRustApp {
             Err(error) => self.error_message = error.to_string(),
         }
         cx.notify();
+    }
+
+    fn link_canvas_dependency(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
+        let Some(source) = self.pending_dependency_source.take() else {
+            self.pending_dependency_source = Some(node_id);
+            self.status_message =
+                "Dependency source selected. Choose the node that must run after it.".to_string();
+            self.error_message.clear();
+            cx.notify();
+            return;
+        };
+        let result = self
+            .active_workspace_mut()
+            .ok_or_else(|| anyhow::anyhow!("No active canvas workspace"))
+            .and_then(|workspace| workspace.canvas.add_dependency_edge(source, node_id));
+        match result {
+            Ok(_) => {
+                self.status_message = "Dependency created.".to_string();
+                self.error_message.clear();
+                self.persist_runtime_state();
+            }
+            Err(error) => self.error_message = error.to_string(),
+        }
+        cx.notify();
+    }
+
+    fn queue_structured_agent_task(
+        &mut self,
+        node_id: CanvasNodeId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let prompt = self
+            .shell_inputs
+            .structured_agent_prompt
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        if prompt.is_empty() {
+            self.error_message = "Enter a task before queuing it.".to_string();
+            cx.notify();
+            return;
+        }
+        if let Some(runtime) = self.structured_agents.get_mut(&node_id) {
+            runtime.queued_prompt = Some(prompt);
+            if runtime.state == AgentRunState::Blocked {
+                runtime.state = AgentRunState::Idle;
+            }
+            Self::set_input_value(&self.shell_inputs.structured_agent_prompt, "", window, cx);
+            self.status_message = "Task queued for dependency orchestration.".to_string();
+            self.error_message.clear();
+        }
+        cx.notify();
+    }
+
+    fn start_dependency_orchestration(&mut self, cx: &mut Context<Self>) {
+        self.orchestration_active = true;
+        if !self.dispatch_ready_agent_tasks() {
+            self.status_message =
+                "No queued task is ready. Check dependency states and queued prompts.".to_string();
+        }
+        cx.notify();
+    }
+
+    fn dispatch_ready_agent_tasks(&mut self) -> bool {
+        let agents: Vec<_> = self
+            .structured_agents
+            .iter()
+            .map(|(node_id, runtime)| SchedulableAgent {
+                node_id: node_id.clone(),
+                state: runtime.state,
+                has_queued_task: runtime.queued_prompt.is_some(),
+            })
+            .collect();
+        let edges: Vec<_> = self
+            .workspaces
+            .iter()
+            .flat_map(|workspace| workspace.canvas.edges.iter())
+            .filter(|edge| edge.kind == CanvasEdgeKind::Dependency)
+            .map(|edge| SavedCanvasEdge {
+                id: edge.id.clone(),
+                source: edge.source.clone(),
+                target: edge.target.clone(),
+                kind: edge.kind,
+                enabled: edge.enabled,
+                context_policy: None,
+            })
+            .collect();
+        let schedule = schedule_dependency_dag(&agents, &edges, 2);
+        if schedule.cycle_detected {
+            self.error_message = "Dependency graph contains a cycle and cannot run.".to_string();
+            self.orchestration_active = false;
+            return false;
+        }
+        for node_id in schedule.blocked {
+            if let Some(runtime) = self.structured_agents.get_mut(&node_id) {
+                runtime.state = AgentRunState::Blocked;
+                runtime.diagnostic = Some("A prerequisite failed or was cancelled.".to_string());
+            }
+        }
+        let mut dispatched = false;
+        for node_id in schedule.ready {
+            let prompt = self
+                .structured_agents
+                .get_mut(&node_id)
+                .and_then(|runtime| runtime.queued_prompt.take());
+            let Some(prompt) = prompt else {
+                continue;
+            };
+            let result = self
+                .structured_agents
+                .get(&node_id)
+                .expect("scheduled agent should exist")
+                .handle
+                .send_prompt(prompt.clone());
+            if let Some(runtime) = self.structured_agents.get_mut(&node_id) {
+                match result {
+                    Ok(()) => {
+                        runtime.state = AgentRunState::Starting;
+                        runtime.push_text(&format!("\nQueued task: {}\n", prompt.trim()));
+                        dispatched = true;
+                    }
+                    Err(error) => {
+                        runtime.state = AgentRunState::Failed;
+                        runtime.diagnostic = Some(error.to_string());
+                    }
+                }
+            }
+        }
+        let pending = self
+            .structured_agents
+            .values()
+            .any(|runtime| runtime.queued_prompt.is_some());
+        let running = self.structured_agents.values().any(|runtime| {
+            matches!(
+                runtime.state,
+                AgentRunState::Starting | AgentRunState::Running
+            )
+        });
+        if !pending && !running {
+            self.orchestration_active = false;
+            self.status_message = "Dependency run finished.".to_string();
+        } else if dispatched {
+            self.status_message = "Dependency run started ready tasks.".to_string();
+        }
+        dispatched
     }
 
     fn open_context_review_for_selected(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -2623,12 +2836,31 @@ impl TermiRustApp {
                                 this.open_context_review_for_selected(window, cx);
                             })),
                     )
+                    .child(
+                        Button::new("canvas-run-dependencies")
+                            .small()
+                            .ghost()
+                            .icon(IconName::Building2)
+                            .label("Run DAG")
+                            .tooltip("Run queued tasks when dependencies are satisfied")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.start_dependency_orchestration(cx);
+                            })),
+                    )
                     .when(self.pending_context_source.is_some(), |toolbar| {
                         toolbar.child(
                             div()
                                 .text_size(px(10.0))
                                 .text_color(theme::warning())
                                 .child("Choose link target"),
+                        )
+                    })
+                    .when(self.pending_dependency_source.is_some(), |toolbar| {
+                        toolbar.child(
+                            div()
+                                .text_size(px(10.0))
+                                .text_color(theme::warning())
+                                .child("Choose dependency target"),
                         )
                     }),
             )
@@ -2779,143 +3011,159 @@ impl TermiRustApp {
             .unwrap_or_else(|| "Idle".to_string());
         let header_node_id = node_id.clone();
         let link_node_id = node_id.clone();
+        let dependency_node_id = node_id.clone();
         let resize_node_id = node_id.clone();
         let close_pane_id = pane_id;
         let close_structured_node_id = (pane_id.is_none()).then_some(node_id.clone());
 
-        let mut body = v_flex()
-            .id(SharedString::from(format!(
-                "canvas-node-{}",
-                node_id.as_str()
-            )))
-            .absolute()
-            .left(px(screen.x))
-            .top(px(screen.y))
-            .w(px(screen.width.max(180.0)))
-            .h(px(if node.collapsed {
-                CANVAS_NODE_HEADER_HEIGHT
-            } else {
-                screen.height.max(CANVAS_NODE_HEADER_HEIGHT + 80.0)
-            }))
-            .overflow_hidden()
-            .rounded(px(7.0))
-            .border_1()
-            .border_color(if selected {
-                theme::focus_ring()
-            } else {
-                theme::border_dark()
-            })
-            .bg(theme::terminal_panel())
-            .child(
-                h_flex()
-                    .id(SharedString::from(format!(
-                        "canvas-node-header-{}",
-                        node_id.as_str()
-                    )))
-                    .h(px(CANVAS_NODE_HEADER_HEIGHT))
-                    .w_full()
-                    .px_2()
-                    .gap_2()
-                    .items_center()
-                    .justify_between()
-                    .cursor(CursorStyle::OpenHand)
-                    .bg(theme::terminal_panel())
-                    .border_b_1()
-                    .border_color(theme::border_dark())
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |this, event: &MouseDownEvent, window, cx| {
-                            cx.stop_propagation();
-                            this.start_canvas_node_move(
-                                workspace_id,
-                                header_node_id.clone(),
-                                event,
-                                window,
-                                cx,
-                            );
-                        }),
-                    )
-                    .child(
-                        h_flex()
-                            .min_w_0()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                Icon::new(match node.kind {
-                                    CanvasNodeKind::Terminal { .. } => IconName::SquareTerminal,
-                                    CanvasNodeKind::Agent { .. } => IconName::Bot,
-                                })
-                                .size(px(14.0))
-                                .text_color(theme::accent()),
+        let mut body =
+            v_flex()
+                .id(SharedString::from(format!(
+                    "canvas-node-{}",
+                    node_id.as_str()
+                )))
+                .absolute()
+                .left(px(screen.x))
+                .top(px(screen.y))
+                .w(px(screen.width.max(180.0)))
+                .h(px(if node.collapsed {
+                    CANVAS_NODE_HEADER_HEIGHT
+                } else {
+                    screen.height.max(CANVAS_NODE_HEADER_HEIGHT + 80.0)
+                }))
+                .overflow_hidden()
+                .rounded(px(7.0))
+                .border_1()
+                .border_color(if selected {
+                    theme::focus_ring()
+                } else {
+                    theme::border_dark()
+                })
+                .bg(theme::terminal_panel())
+                .child(
+                    h_flex()
+                        .id(SharedString::from(format!(
+                            "canvas-node-header-{}",
+                            node_id.as_str()
+                        )))
+                        .h(px(CANVAS_NODE_HEADER_HEIGHT))
+                        .w_full()
+                        .px_2()
+                        .gap_2()
+                        .items_center()
+                        .justify_between()
+                        .cursor(CursorStyle::OpenHand)
+                        .bg(theme::terminal_panel())
+                        .border_b_1()
+                        .border_color(theme::border_dark())
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                                cx.stop_propagation();
+                                this.start_canvas_node_move(
+                                    workspace_id,
+                                    header_node_id.clone(),
+                                    event,
+                                    window,
+                                    cx,
+                                );
+                            }),
+                        )
+                        .child(
+                            h_flex()
+                                .min_w_0()
+                                .gap_2()
+                                .items_center()
+                                .child(
+                                    Icon::new(match node.kind {
+                                        CanvasNodeKind::Terminal { .. } => IconName::SquareTerminal,
+                                        CanvasNodeKind::Agent { .. } => IconName::Bot,
+                                    })
+                                    .size(px(14.0))
+                                    .text_color(theme::accent()),
+                                )
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .overflow_hidden()
+                                        .whitespace_nowrap()
+                                        .text_ellipsis()
+                                        .text_size(px(12.0))
+                                        .font_semibold()
+                                        .text_color(theme::text_on_dark())
+                                        .child(title),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(10.0))
+                                        .text_color(theme::text_muted_dark())
+                                        .child(subtitle),
+                                ),
+                        )
+                        .child(
+                            h_flex()
+                                .gap_1()
+                                .child(
+                                    Button::new(SharedString::from(format!(
+                                        "canvas-node-link-{}",
+                                        link_node_id.as_str()
+                                    )))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::ArrowRight)
+                                    .tooltip("Use as context source or target")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        this.link_canvas_node(link_node_id.clone(), cx);
+                                    })),
+                                )
+                                .child(
+                                    Button::new(SharedString::from(format!(
+                                        "canvas-node-dependency-{}",
+                                        dependency_node_id.as_str()
+                                    )))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::Building2)
+                                    .tooltip("Use as dependency source or target")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        this.link_canvas_dependency(dependency_node_id.clone(), cx);
+                                    })),
+                                ),
+                        )
+                        .when_some(close_pane_id, |header, pane_id| {
+                            header.child(
+                                Button::new(("canvas-node-close", pane_id))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::Close)
+                                    .tooltip("Close terminal")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        this.close_pane(pane_id, cx);
+                                    })),
                             )
-                            .child(
-                                div()
-                                    .min_w_0()
-                                    .overflow_hidden()
-                                    .whitespace_nowrap()
-                                    .text_ellipsis()
-                                    .text_size(px(12.0))
-                                    .font_semibold()
-                                    .text_color(theme::text_on_dark())
-                                    .child(title),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(10.0))
-                                    .text_color(theme::text_muted_dark())
-                                    .child(subtitle),
-                            ),
-                    )
-                    .child(
-                        h_flex().gap_1().child(
-                            Button::new(SharedString::from(format!(
-                                "canvas-node-link-{}",
-                                link_node_id.as_str()
-                            )))
-                            .xsmall()
-                            .ghost()
-                            .icon(IconName::ArrowRight)
-                            .tooltip("Use as context source or target")
-                            .on_click(cx.listener(
-                                move |this, _, _, cx| {
-                                    cx.stop_propagation();
-                                    this.link_canvas_node(link_node_id.clone(), cx);
-                                },
-                            )),
-                        ),
-                    )
-                    .when_some(close_pane_id, |header, pane_id| {
-                        header.child(
-                            Button::new(("canvas-node-close", pane_id))
+                        })
+                        .when_some(close_structured_node_id, |header, node_id| {
+                            header.child(
+                                Button::new(SharedString::from(format!(
+                                    "structured-node-close-{}",
+                                    node_id.as_str()
+                                )))
                                 .xsmall()
                                 .ghost()
                                 .icon(IconName::Close)
-                                .tooltip("Close terminal")
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    cx.stop_propagation();
-                                    this.close_pane(pane_id, cx);
-                                })),
-                        )
-                    })
-                    .when_some(close_structured_node_id, |header, node_id| {
-                        header.child(
-                            Button::new(SharedString::from(format!(
-                                "structured-node-close-{}",
-                                node_id.as_str()
-                            )))
-                            .xsmall()
-                            .ghost()
-                            .icon(IconName::Close)
-                            .tooltip("Stop and close agent")
-                            .on_click(cx.listener(
-                                move |this, _, _, cx| {
-                                    cx.stop_propagation();
-                                    this.close_structured_agent(node_id.clone(), cx);
-                                },
-                            )),
-                        )
-                    }),
-            );
+                                .tooltip("Stop and close agent")
+                                .on_click(cx.listener(
+                                    move |this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        this.close_structured_agent(node_id.clone(), cx);
+                                    },
+                                )),
+                            )
+                        }),
+                );
 
         if !node.collapsed {
             body = body.when_some(pane_id.and_then(|id| self.pane(id)), |body, pane| {
@@ -2992,8 +3240,10 @@ impl TermiRustApp {
         };
         let diagnostic = runtime.diagnostic.clone();
         let approval = runtime.approval.clone();
+        let task_queued = runtime.queued_prompt.is_some();
         let send_id = node_id.clone();
         let cancel_id = node_id.clone();
+        let queue_id = node_id.clone();
 
         v_flex()
             .flex_1()
@@ -3024,6 +3274,20 @@ impl TermiRustApp {
                         .text_size(px(10.0))
                         .text_color(theme::danger())
                         .child(diagnostic),
+                )
+            })
+            .when(task_queued, |body| {
+                body.child(
+                    div()
+                        .mx_2()
+                        .mb_2()
+                        .px_2()
+                        .py_1()
+                        .rounded(px(5.0))
+                        .bg(theme::with_alpha(theme::accent(), 0.14))
+                        .text_size(px(10.0))
+                        .text_color(theme::accent())
+                        .child("Task queued for dependency run"),
                 )
             })
             .when_some(approval, |body, approval| {
@@ -3107,6 +3371,21 @@ impl TermiRustApp {
                                 .flex_1()
                                 .min_w_0()
                                 .child(Input::new(&self.shell_inputs.structured_agent_prompt)),
+                        )
+                        .child(
+                            Button::new(SharedString::from(format!(
+                                "structured-queue-{}",
+                                queue_id.as_str()
+                            )))
+                            .xsmall()
+                            .ghost()
+                            .label("Queue")
+                            .tooltip("Queue task for dependency orchestration")
+                            .on_click(cx.listener(
+                                move |this, _, window, cx| {
+                                    this.queue_structured_agent_task(queue_id.clone(), window, cx);
+                                },
+                            )),
                         )
                         .child(
                             Button::new(SharedString::from(format!(
@@ -3453,6 +3732,29 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("different target")
+        );
+    }
+
+    #[test]
+    fn dependency_edges_reject_cycles() {
+        let mut canvas = CanvasWorkspaceState::default();
+        canvas.nodes = vec![
+            terminal_node("a", 1, 0.0, 0.0),
+            terminal_node("b", 2, 800.0, 0.0),
+            terminal_node("c", 3, 1600.0, 0.0),
+        ];
+        canvas
+            .add_dependency_edge(CanvasNodeId::new("a"), CanvasNodeId::new("b"))
+            .unwrap();
+        canvas
+            .add_dependency_edge(CanvasNodeId::new("b"), CanvasNodeId::new("c"))
+            .unwrap();
+        assert!(
+            canvas
+                .add_dependency_edge(CanvasNodeId::new("c"), CanvasNodeId::new("a"))
+                .unwrap_err()
+                .to_string()
+                .contains("cycle")
         );
     }
 
