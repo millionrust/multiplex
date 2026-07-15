@@ -25,10 +25,10 @@ use crate::agents::{
 use crate::models::{
     AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AuthConfig, AuthMode,
     CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CANVAS_MAX_ZOOM, CANVAS_MIN_NODE_HEIGHT,
-    CANVAS_MIN_NODE_WIDTH, CANVAS_MIN_ZOOM, CanvasEdgeId, CanvasEdgeKind, CanvasNodeId,
-    ConnectRequest, ConnectionKind, HostProfile, LocalShellConfig, SavedAgentDefinition,
-    SavedCanvasEdge, SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState, SavedCanvasViewport,
-    SavedManagedWorktreeDisposition, SavedWorktreePolicy, WorkspaceLayoutMode,
+    CANVAS_MIN_NODE_WIDTH, CANVAS_MIN_TERMINAL_NODE_WIDTH, CANVAS_MIN_ZOOM, CanvasEdgeId,
+    CanvasEdgeKind, CanvasNodeId, ConnectRequest, ConnectionKind, HostProfile, LocalShellConfig,
+    SavedAgentDefinition, SavedCanvasEdge, SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState,
+    SavedCanvasViewport, SavedManagedWorktreeDisposition, SavedWorktreePolicy, WorkspaceLayoutMode,
     default_persistent_session_name_from_id,
 };
 use crate::ssh::SessionCommand;
@@ -961,7 +961,7 @@ pub(super) fn fit_transform(
     }
 }
 
-pub(super) fn clamp_node_rect(mut rect: CanvasRect) -> CanvasRect {
+pub(super) fn clamp_node_rect(mut rect: CanvasRect, min_width: f32) -> CanvasRect {
     if !rect.x.is_finite() {
         rect.x = 0.0;
     }
@@ -969,7 +969,7 @@ pub(super) fn clamp_node_rect(mut rect: CanvasRect) -> CanvasRect {
         rect.y = 0.0;
     }
     rect.width = if rect.width.is_finite() {
-        rect.width.max(CANVAS_MIN_NODE_WIDTH)
+        rect.width.max(min_width)
     } else {
         CANVAS_DEFAULT_NODE_WIDTH
     };
@@ -1618,7 +1618,12 @@ impl TermiRustApp {
                 if let Some(node) = workspace.canvas.node_mut(&node_id) {
                     node.rect.x = start_rect.x + (current.x - start.x) / zoom;
                     node.rect.y = start_rect.y + (current.y - start.y) / zoom;
-                    node.rect = clamp_node_rect(node.rect);
+                    let min_width = if node.kind.pane_id().is_some() {
+                        CANVAS_MIN_TERMINAL_NODE_WIDTH
+                    } else {
+                        CANVAS_MIN_NODE_WIDTH
+                    };
+                    node.rect = clamp_node_rect(node.rect, min_width);
                 }
             }
             CanvasInteraction::ResizeNode {
@@ -1630,7 +1635,12 @@ impl TermiRustApp {
                 if let Some(node) = workspace.canvas.node_mut(&node_id) {
                     node.rect.width = start_rect.width + (current.x - start.x) / zoom;
                     node.rect.height = start_rect.height + (current.y - start.y) / zoom;
-                    node.rect = clamp_node_rect(node.rect);
+                    let min_width = if node.kind.pane_id().is_some() {
+                        CANVAS_MIN_TERMINAL_NODE_WIDTH
+                    } else {
+                        CANVAS_MIN_NODE_WIDTH
+                    };
+                    node.rect = clamp_node_rect(node.rect, min_width);
                 }
             }
         }

@@ -2281,6 +2281,7 @@ pub const CANVAS_MAX_ZOOM: f32 = 2.0;
 pub const CANVAS_DEFAULT_NODE_WIDTH: f32 = 720.0;
 pub const CANVAS_DEFAULT_NODE_HEIGHT: f32 = 460.0;
 pub const CANVAS_MIN_NODE_WIDTH: f32 = 320.0;
+pub const CANVAS_MIN_TERMINAL_NODE_WIDTH: f32 = 640.0;
 pub const CANVAS_MIN_NODE_HEIGHT: f32 = 220.0;
 
 fn current_canvas_schema_version() -> u32 {
@@ -2616,14 +2617,14 @@ impl SavedCanvasState {
 
         let original_node_count = self.nodes.len();
         self.nodes.retain_mut(|node| {
-            let keep = match &mut node.kind {
-                SavedCanvasNodeKind::Terminal { pane_index } => *pane_index < pane_count,
+            let (keep, terminal_backed) = match &mut node.kind {
+                SavedCanvasNodeKind::Terminal { pane_index } => (*pane_index < pane_count, true),
                 SavedCanvasNodeKind::Agent { pane_index, .. } => {
                     if pane_index.is_some_and(|index| index >= pane_count) {
                         *pane_index = None;
                         report.node_repairs += 1;
                     }
-                    true
+                    (true, pane_index.is_some())
                 }
             };
             if !keep {
@@ -2639,8 +2640,13 @@ impl SavedCanvasState {
                 node.y = ((ordinal - 1) / 4) as f32 * 500.0;
                 report.node_repairs += 1;
             }
+            let min_width = if terminal_backed {
+                CANVAS_MIN_TERMINAL_NODE_WIDTH
+            } else {
+                CANVAS_MIN_NODE_WIDTH
+            };
             let width = if node.width.is_finite() {
-                node.width.max(CANVAS_MIN_NODE_WIDTH)
+                node.width.max(min_width)
             } else {
                 CANVAS_DEFAULT_NODE_WIDTH
             };
@@ -3006,18 +3012,18 @@ impl SavedState {
 mod tests {
     use super::{
         AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AppSettings,
-        AuthConfig, AuthMode, CanvasEdgeId, CanvasEdgeKind, CanvasNodeId, ConnectRequest,
-        ConnectionKind, DEFAULT_VAULT_ID, DraftProfile, HostColorTag, HostProfile, IdentitySource,
-        ImportedIdentity, JumpHostConnection, LocalPortForward, LocalShellConfig,
-        MobileDevicePairingRequest, PortForwardKind, PortForwardRule, ProfileSource, QuickConnect,
-        RestorableAuth, RestorableConnection, SavedAgentDefinition, SavedCanvasEdge,
-        SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState, SavedCanvasViewport,
-        SavedCommandHistoryEntry, SavedContextPolicy, SavedIdentity, SavedManagedWorktree,
-        SavedManagedWorktreeDisposition, SavedSnippet, SavedState, SavedVault, SavedVaultMember,
-        SavedWorkspace, SavedWorktreePolicy, SessionLogEntry, SessionLogStatus, ThemePreset,
-        VaultKind, VaultMemberRole, WorkspaceLayoutMode,
-        default_persistent_session_name_for_endpoint, default_persistent_session_name_from_id,
-        identity_id_for_path,
+        AuthConfig, AuthMode, CANVAS_MIN_NODE_WIDTH, CANVAS_MIN_TERMINAL_NODE_WIDTH, CanvasEdgeId,
+        CanvasEdgeKind, CanvasNodeId, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID,
+        DraftProfile, HostColorTag, HostProfile, IdentitySource, ImportedIdentity,
+        JumpHostConnection, LocalPortForward, LocalShellConfig, MobileDevicePairingRequest,
+        PortForwardKind, PortForwardRule, ProfileSource, QuickConnect, RestorableAuth,
+        RestorableConnection, SavedAgentDefinition, SavedCanvasEdge, SavedCanvasNode,
+        SavedCanvasNodeKind, SavedCanvasState, SavedCanvasViewport, SavedCommandHistoryEntry,
+        SavedContextPolicy, SavedIdentity, SavedManagedWorktree, SavedManagedWorktreeDisposition,
+        SavedSnippet, SavedState, SavedVault, SavedVaultMember, SavedWorkspace,
+        SavedWorktreePolicy, SessionLogEntry, SessionLogStatus, ThemePreset, VaultKind,
+        VaultMemberRole, WorkspaceLayoutMode, default_persistent_session_name_for_endpoint,
+        default_persistent_session_name_from_id, identity_id_for_path,
     };
 
     #[test]
@@ -3521,9 +3527,41 @@ mod tests {
         assert_eq!(canvas.nodes.len(), 2);
         assert_eq!(canvas.nodes[0].id.as_str(), "same");
         assert_eq!(canvas.nodes[1].id.as_str(), "same-2");
-        assert_eq!(canvas.nodes[0].width, 320.0);
+        assert_eq!(canvas.nodes[0].width, CANVAS_MIN_TERMINAL_NODE_WIDTH);
         assert_eq!(canvas.nodes[0].height, 460.0);
         assert!(canvas.edges.is_empty());
+    }
+
+    #[test]
+    fn canvas_normalize_uses_terminal_specific_minimum_width() {
+        let mut canvas = SavedCanvasState {
+            nodes: vec![
+                SavedCanvasNode {
+                    width: 1.0,
+                    ..canvas_terminal_node("terminal", 0)
+                },
+                SavedCanvasNode {
+                    id: CanvasNodeId::new("agent"),
+                    kind: SavedCanvasNodeKind::Agent {
+                        pane_index: None,
+                        definition: SavedAgentDefinition::default(),
+                    },
+                    x: 10.0,
+                    y: 20.0,
+                    width: 1.0,
+                    height: 460.0,
+                    z_index: 1,
+                    title: None,
+                    collapsed: false,
+                },
+            ],
+            ..SavedCanvasState::default()
+        };
+
+        canvas.normalize(1);
+
+        assert_eq!(canvas.nodes[0].width, CANVAS_MIN_TERMINAL_NODE_WIDTH);
+        assert_eq!(canvas.nodes[1].width, CANVAS_MIN_NODE_WIDTH);
     }
 
     #[test]
