@@ -39,6 +39,7 @@ use crate::{storage::managed_agent_worktree_dir, ui::util::current_unix_millis};
 
 pub(super) const CANVAS_TOOLBAR_HEIGHT: f32 = 44.0;
 const CANVAS_RENDER_OVERSCAN: f32 = 96.0;
+const CANVAS_KEYBOARD_REVEAL_PADDING: f32 = 24.0;
 pub(super) const CANVAS_NODE_HEADER_HEIGHT: f32 = 34.0;
 pub(super) const CANVAS_NODE_GUTTER: f32 = 28.0;
 #[cfg(test)]
@@ -255,6 +256,34 @@ fn canvas_rect_is_visible(
         && rect.y + rect.height >= -overscan
         && rect.x <= viewport_width + overscan
         && rect.y <= viewport_height + overscan
+}
+
+fn canvas_reveal_delta(
+    rect: CanvasRect,
+    viewport_width: f32,
+    viewport_height: f32,
+    padding: f32,
+) -> CanvasPoint {
+    fn axis_delta(start: f32, extent: f32, viewport_extent: f32, padding: f32) -> f32 {
+        let available = (viewport_extent - padding * 2.0).max(1.0);
+        if extent > available {
+            return viewport_extent / 2.0 - (start + extent / 2.0);
+        }
+        if start < padding {
+            return padding - start;
+        }
+        let end = start + extent;
+        let maximum = viewport_extent - padding;
+        if end > maximum {
+            return maximum - end;
+        }
+        0.0
+    }
+
+    CanvasPoint::new(
+        axis_delta(rect.x, rect.width, viewport_width, padding),
+        axis_delta(rect.y, rect.height, viewport_height, padding),
+    )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1166,6 +1195,26 @@ impl TermiRustApp {
         let selected = self
             .active_workspace_mut()
             .and_then(|workspace| workspace.canvas.select_adjacent_node(delta));
+        if let Some(selected) = selected.as_ref() {
+            let viewport = window.viewport_size();
+            let viewport_width = f32::from(viewport.width);
+            let viewport_height =
+                (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT)
+                    .max(1.0);
+            if let Some(workspace) = self.active_workspace_mut()
+                && let Some(node) = workspace.canvas.node(selected)
+            {
+                let screen = canvas_node_render_rect(workspace.canvas.transform, node);
+                let reveal = canvas_reveal_delta(
+                    screen,
+                    viewport_width,
+                    viewport_height,
+                    CANVAS_KEYBOARD_REVEAL_PADDING,
+                );
+                workspace.canvas.transform.pan_x += reveal.x;
+                workspace.canvas.transform.pan_y += reveal.y;
+            }
+        }
         let pane_id = selected.as_ref().and_then(|node_id| {
             self.active_workspace()
                 .and_then(|workspace| workspace.canvas.node(node_id))
@@ -5759,7 +5808,7 @@ mod tests {
         AgentRunState, CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CanvasNode,
         CanvasNodeKind, CanvasPoint, CanvasRect, CanvasTransform, CanvasWorkspaceState,
         TermiRustApp, agent_state_after_queue, canvas_node_render_rect, canvas_orchestration_scope,
-        canvas_rect_is_visible, find_non_overlapping_position, fit_transform,
+        canvas_rect_is_visible, canvas_reveal_delta, find_non_overlapping_position, fit_transform,
     };
     use crate::models::{
         AgentProvider, CanvasNodeId, SavedAgentDefinition, SavedCanvasState, SavedWorktreePolicy,
@@ -5863,6 +5912,38 @@ mod tests {
 
         assert_eq!(rendered.width, 180.0);
         assert!(canvas_rect_is_visible(rendered, 1000.0, 700.0, 8.0));
+    }
+
+    #[test]
+    fn keyboard_reveal_moves_only_the_axes_outside_the_viewport() {
+        assert_eq!(
+            canvas_reveal_delta(
+                CanvasRect {
+                    x: 120.0,
+                    y: 650.0,
+                    width: 300.0,
+                    height: 200.0,
+                },
+                1000.0,
+                700.0,
+                24.0,
+            ),
+            CanvasPoint::new(0.0, -174.0)
+        );
+        assert_eq!(
+            canvas_reveal_delta(
+                CanvasRect {
+                    x: -100.0,
+                    y: 50.0,
+                    width: 1200.0,
+                    height: 200.0,
+                },
+                1000.0,
+                700.0,
+                24.0,
+            ),
+            CanvasPoint::new(0.0, 0.0)
+        );
     }
 
     #[test]
