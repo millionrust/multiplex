@@ -38,6 +38,7 @@ use crate::ui::theme;
 use crate::{storage::managed_agent_worktree_dir, ui::util::current_unix_millis};
 
 pub(super) const CANVAS_TOOLBAR_HEIGHT: f32 = 44.0;
+const CANVAS_RENDER_OVERSCAN: f32 = 96.0;
 pub(super) const CANVAS_NODE_HEADER_HEIGHT: f32 = 34.0;
 pub(super) const CANVAS_NODE_GUTTER: f32 = 28.0;
 #[cfg(test)]
@@ -231,6 +232,29 @@ impl CanvasRect {
             && self.y < other.y + other.height + gutter
             && self.y + self.height + gutter > other.y
     }
+}
+
+fn canvas_node_render_rect(transform: CanvasTransform, node: &CanvasNode) -> CanvasRect {
+    let mut screen = transform.screen_rect(node.rect);
+    screen.width = screen.width.max(180.0);
+    screen.height = if node.collapsed {
+        CANVAS_NODE_HEADER_HEIGHT
+    } else {
+        screen.height.max(CANVAS_NODE_HEADER_HEIGHT + 80.0)
+    };
+    screen
+}
+
+fn canvas_rect_is_visible(
+    rect: CanvasRect,
+    viewport_width: f32,
+    viewport_height: f32,
+    overscan: f32,
+) -> bool {
+    rect.x + rect.width >= -overscan
+        && rect.y + rect.height >= -overscan
+        && rect.x <= viewport_width + overscan
+        && rect.y <= viewport_height + overscan
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -4525,7 +4549,7 @@ impl TermiRustApp {
         let Some(workspace) = self.workspace(workspace_id) else {
             return div().into_any_element();
         };
-        let screen = workspace.canvas.transform.screen_rect(node.rect);
+        let screen = canvas_node_render_rect(workspace.canvas.transform, node);
         let selected = workspace.canvas.selected_node_id.as_ref() == Some(&node.id);
         let node_id = node.id.clone();
         let pane_id = node.kind.pane_id();
@@ -4563,12 +4587,8 @@ impl TermiRustApp {
             .absolute()
             .left(px(screen.x))
             .top(px(screen.y))
-            .w(px(screen.width.max(180.0)))
-            .h(px(if node.collapsed {
-                CANVAS_NODE_HEADER_HEIGHT
-            } else {
-                screen.height.max(CANVAS_NODE_HEADER_HEIGHT + 80.0)
-            }))
+            .w(px(screen.width))
+            .h(px(screen.height))
             .overflow_hidden()
             .rounded(px(7.0))
             .border_1()
@@ -5563,8 +5583,23 @@ impl TermiRustApp {
             return v_flex().flex_1();
         };
         let workspace_id = workspace.id;
+        let viewport = window.viewport_size();
+        let viewport_width = f32::from(viewport.width);
+        let viewport_height =
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
         let mut node_indices: Vec<_> = (0..workspace.canvas.nodes.len()).collect();
         node_indices.sort_by_key(|index| workspace.canvas.nodes[*index].z_index);
+        node_indices.retain(|index| {
+            canvas_rect_is_visible(
+                canvas_node_render_rect(
+                    workspace.canvas.transform,
+                    &workspace.canvas.nodes[*index],
+                ),
+                viewport_width,
+                viewport_height,
+                CANVAS_RENDER_OVERSCAN,
+            )
+        });
 
         let mut body = div()
             .id("agent-canvas-body")
@@ -5721,8 +5756,8 @@ mod tests {
     use super::{
         AgentRunState, CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CanvasNode,
         CanvasNodeKind, CanvasPoint, CanvasRect, CanvasTransform, CanvasWorkspaceState,
-        TermiRustApp, agent_state_after_queue, canvas_orchestration_scope,
-        find_non_overlapping_position, fit_transform,
+        TermiRustApp, agent_state_after_queue, canvas_node_render_rect, canvas_orchestration_scope,
+        canvas_rect_is_visible, find_non_overlapping_position, fit_transform,
     };
     use crate::models::{
         AgentProvider, CanvasNodeId, SavedAgentDefinition, SavedCanvasState, SavedWorktreePolicy,
@@ -5783,6 +5818,49 @@ mod tests {
             transform.zoom_around(CanvasPoint::default(), 20.0).zoom,
             2.0
         );
+    }
+
+    #[test]
+    fn render_visibility_culls_distant_nodes_with_conservative_overscan() {
+        let transform = CanvasTransform::default();
+        let visible = terminal_node("visible", 1, 950.0, 650.0);
+        let overscan = terminal_node("overscan", 2, 1050.0, 750.0);
+        let distant = terminal_node("distant", 3, 1400.0, 1100.0);
+
+        assert!(canvas_rect_is_visible(
+            canvas_node_render_rect(transform, &visible),
+            1000.0,
+            700.0,
+            0.0,
+        ));
+        assert!(canvas_rect_is_visible(
+            canvas_node_render_rect(transform, &overscan),
+            1000.0,
+            700.0,
+            96.0,
+        ));
+        assert!(!canvas_rect_is_visible(
+            canvas_node_render_rect(transform, &distant),
+            1000.0,
+            700.0,
+            96.0,
+        ));
+    }
+
+    #[test]
+    fn low_zoom_visibility_uses_the_same_minimum_bounds_as_rendering() {
+        let mut node = terminal_node("low-zoom", 1, -520.0, 0.0);
+        node.rect.width = 300.0;
+        let rendered = canvas_node_render_rect(
+            CanvasTransform {
+                zoom: 0.35,
+                ..CanvasTransform::default()
+            },
+            &node,
+        );
+
+        assert_eq!(rendered.width, 180.0);
+        assert!(canvas_rect_is_visible(rendered, 1000.0, 700.0, 8.0));
     }
 
     #[test]
