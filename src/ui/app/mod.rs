@@ -10078,6 +10078,19 @@ mod tests {
         selector_click_center(window, cx, leaked)
     }
 
+    fn dynamic_selector_bounds(
+        window: WindowHandle<Root>,
+        cx: &mut TestAppContext,
+        selector: String,
+    ) -> gpui::Bounds<gpui::Pixels> {
+        let leaked: &'static str = Box::leak(selector.into_boxed_str());
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        visual
+            .debug_bounds(leaked)
+            .unwrap_or_else(|| panic!("missing debug bounds for {leaked}"))
+    }
+
     fn drag_between_points(
         window: WindowHandle<Root>,
         cx: &mut TestAppContext,
@@ -11674,6 +11687,86 @@ mod tests {
             .simulate_click(close, gpui::Modifiers::none());
         app.read_with(cx, |app, _| {
             assert!(app.canvas_node_menu_id.is_none());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_canvas_resize_handle_updates_node_and_terminal_size(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (workspace_id, pane_id, node_id, start_rect) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let (workspace_id, pane_id) = app
+                        .open_request_workspace(request, window, cx)
+                        .expect("local workspace should open");
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    let workspace = app.workspace_mut(workspace_id).unwrap();
+                    workspace.canvas.transform = crate::ui::app::canvas::CanvasTransform::default();
+                    let node = workspace
+                        .canvas
+                        .nodes
+                        .first_mut()
+                        .expect("canvas node should exist");
+                    node.rect.x = 100.0;
+                    node.rect.y = 100.0;
+                    let node_id = node.id.clone();
+                    let start_rect = node.rect;
+                    cx.notify();
+                    (workspace_id, pane_id, node_id, start_rect)
+                })
+            })
+            .expect("canvas setup should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected && pane.last_size.is_some())
+                .then_some(())
+        });
+        let start_size = app.read_with(cx, |app, _| app.pane(pane_id).unwrap().last_size.unwrap());
+        let handle = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("canvas-node-resize-{}", node_id.as_str()),
+        );
+        drag_between_points(
+            window,
+            cx,
+            handle,
+            point(handle.x + px(96.0), handle.y + px(72.0)),
+        );
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.workspace(workspace_id).unwrap();
+            let node = workspace.canvas.node(&node_id).unwrap();
+            assert!(node.rect.width >= start_rect.width + 95.0);
+            assert!(node.rect.height >= start_rect.height + 71.0);
+            assert!(app.canvas_interaction.is_none());
+
+            let end_size = app.pane(pane_id).unwrap().last_size.unwrap();
+            assert!(end_size.cols > start_size.cols);
+            assert!(end_size.rows > start_size.rows);
+
+            let saved_node = app.saved.restored_workspaces[0]
+                .canvas
+                .as_ref()
+                .unwrap()
+                .nodes
+                .iter()
+                .find(|saved| saved.id == node_id)
+                .expect("resized node should be persisted");
+            assert_eq!(saved_node.x, node.rect.x);
+            assert_eq!(saved_node.y, node.rect.y);
+            assert_eq!(saved_node.width, node.rect.width);
+            assert_eq!(saved_node.height, node.rect.height);
         });
     }
 
@@ -18306,6 +18399,36 @@ sleep 1
         app.read_with(cx, |app, _| {
             let pane = app.pane(pane_id).expect("pane should exist");
             assert_eq!(pane.terminal.scrollback(), 0);
+        });
+
+        let terminal_bounds =
+            dynamic_selector_bounds(window, cx, format!("terminal-surface-{pane_id}"));
+        let terminal_point = terminal_bounds.center();
+        let canvas_transform = window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, _| {
+                    let workspace = app.workspace(workspace_id).unwrap();
+                    workspace.canvas.transform
+                })
+            })
+            .expect("terminal layout lookup should succeed");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        visual.simulate_event(ScrollWheelEvent {
+            position: terminal_point,
+            delta: gpui::ScrollDelta::Pixels(point(px(0.0), px(240.0))),
+            ..Default::default()
+        });
+        visual.run_until_parked();
+
+        app.read_with(cx, |app, _| {
+            let pane = app.pane(pane_id).expect("pane should exist");
+            assert!(pane.terminal.scrollback() > 0);
+            assert_eq!(
+                app.workspace(workspace_id).unwrap().canvas.transform,
+                canvas_transform,
+                "terminal wheel input must not bubble into Canvas navigation"
+            );
         });
     }
 

@@ -522,6 +522,7 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let pane_id = pane.id;
+        let terminal_selector = format!("terminal-surface-{pane_id}");
         let snapshot = pane.terminal.snapshot();
         let selection = pane.selection;
         let visible_matches = self
@@ -562,6 +563,7 @@ impl TermiRustApp {
             .child(
                 div()
                     .id(("terminal-surface", pane.id))
+                    .debug_selector(move || terminal_selector.clone())
                     .size_full()
                     .track_focus(&pane.terminal_focus)
                     .focusable()
@@ -601,6 +603,7 @@ impl TermiRustApp {
                     .on_scroll_wheel(cx.listener(
                         move |this, event: &ScrollWheelEvent, window, cx| {
                             this.handle_pane_scroll(pane_id, event, window, cx);
+                            cx.stop_propagation();
                         },
                     ))
                     .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {

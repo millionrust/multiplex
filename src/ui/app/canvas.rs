@@ -4807,6 +4807,7 @@ impl TermiRustApp {
         let more_selector = format!("canvas-node-more-{}", more_node_id.as_str());
         let collapse_node_id = node_id.clone();
         let resize_node_id = node_id.clone();
+        let resize_selector = format!("canvas-node-resize-{}", resize_node_id.as_str());
         let rename_node_id = node_id.clone();
         let activate_node_id = node_id.clone();
         let renaming = self.canvas_node_rename_id.as_ref() == Some(&node_id);
@@ -5062,6 +5063,7 @@ impl TermiRustApp {
                         "canvas-node-resize-{}",
                         node_id.as_str()
                     )))
+                    .debug_selector(move || resize_selector.clone())
                     .absolute()
                     .right(px(0.0))
                     .bottom(px(0.0))
