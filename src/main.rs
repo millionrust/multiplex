@@ -1,3 +1,4 @@
+mod agents;
 mod assets;
 mod credentials;
 mod local;
