@@ -941,6 +941,132 @@ mod tests {
     }
 
     #[test]
+    fn docker_remote_headless_missing_provider_reports_install_guidance() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping remote missing-provider e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let definition = SavedAgentDefinition {
+            provider: AgentProvider::ClaudeCode,
+            backend: AgentBackendKind::Structured,
+            location: AgentLocation::SavedHost {
+                profile_id: "docker".to_string(),
+            },
+            working_directory: Some("/home/termirust".to_string()),
+            executable_override: Some("/opt/termirust-missing-claude".to_string()),
+            permission_policy: AgentPermissionPolicy::ReadOnly,
+            worktree: SavedWorktreePolicy::ReadOnly,
+            ..SavedAgentDefinition::default()
+        };
+        let handle = spawn_remote_headless_session(RemoteHeadlessSessionConfig {
+            definition,
+            request: docker_request(&server),
+            known_hosts: Arc::new(KnownHostStore::load().unwrap()),
+            keepalive_secs: 0,
+            initial_prompt: Some("this must not run".to_string()),
+        })
+        .expect("unable to start remote missing-provider check");
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        let mut diagnostic = String::new();
+        let mut saw_failed = false;
+        while std::time::Instant::now() < deadline
+            && (!saw_failed || !diagnostic.contains("code.claude.com/docs/en/setup"))
+        {
+            match handle.event_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(AgentEvent::Diagnostic { message }) => diagnostic.push_str(&message),
+                Ok(AgentEvent::StateChanged(AgentRunState::Failed)) => saw_failed = true,
+                Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(error) => panic!("remote provider event stream closed: {error}"),
+            }
+        }
+
+        assert!(saw_failed, "missing remote provider did not fail");
+        assert!(
+            diagnostic.contains("Install Claude Code")
+                && diagnostic.contains("code.claude.com/docs/en/setup")
+                && diagnostic.contains("Check again"),
+            "missing remote provider guidance was not actionable: {diagnostic:?}"
+        );
+    }
+
+    #[test]
+    fn docker_remote_headless_cancellation_terminates_the_active_job() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping remote cancellation e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let executable = "/usr/local/bin/termirust-cancellable-claude";
+        server
+            .exec(&format!(
+                "cat > {executable} <<'TERMIRUST_EOF'\n#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'fake-claude 1.0\\n'; exit 0; fi\ntrap 'printf cancelled > /tmp/termirust-remote-cancelled; exit 143' TERM\nprintf '%s\\n' '{{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"remote-cancel\"}}'\nwhile :; do sleep 1; done\nTERMIRUST_EOF\nchmod 755 {executable}; rm -f /tmp/termirust-remote-cancelled"
+            ))
+            .expect("unable to install cancellable remote provider");
+        let definition = SavedAgentDefinition {
+            provider: AgentProvider::ClaudeCode,
+            backend: AgentBackendKind::Structured,
+            location: AgentLocation::SavedHost {
+                profile_id: "docker".to_string(),
+            },
+            working_directory: Some("/home/termirust".to_string()),
+            executable_override: Some(executable.to_string()),
+            permission_policy: AgentPermissionPolicy::ReadOnly,
+            worktree: SavedWorktreePolicy::ReadOnly,
+            ..SavedAgentDefinition::default()
+        };
+        let handle = spawn_remote_headless_session(RemoteHeadlessSessionConfig {
+            definition,
+            request: docker_request(&server),
+            known_hosts: Arc::new(KnownHostStore::load().unwrap()),
+            keepalive_secs: 0,
+            initial_prompt: Some("wait until cancelled".to_string()),
+        })
+        .expect("unable to start cancellable remote provider");
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        let mut saw_running = false;
+        while std::time::Instant::now() < deadline && !saw_running {
+            match handle.event_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(AgentEvent::StateChanged(AgentRunState::Running)) => saw_running = true,
+                Ok(AgentEvent::Failed { error }) => panic!("remote provider failed: {error}"),
+                Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(error) => panic!("remote provider event stream closed: {error}"),
+            }
+        }
+        assert!(saw_running, "remote provider did not become running");
+        handle
+            .cancel()
+            .expect("remote cancellation should send TERM");
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        let mut saw_cancelled = false;
+        while std::time::Instant::now() < deadline && !saw_cancelled {
+            match handle.event_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(AgentEvent::StateChanged(AgentRunState::Cancelled)) => saw_cancelled = true,
+                Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(error) => panic!("remote provider event stream closed: {error}"),
+            }
+        }
+        assert!(saw_cancelled, "remote provider did not report cancellation");
+
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while std::time::Instant::now() < deadline {
+            if server
+                .exec("test \"$(cat /tmp/termirust-remote-cancelled 2>/dev/null)\" = cancelled")
+                .is_ok()
+            {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        panic!("remote provider did not receive the cancellation signal");
+    }
+
+    #[test]
     fn normalizes_claude_and_gemini_stream_events() {
         let (tx, rx) = mpsc::sync_channel(32);
         normalize_event(
