@@ -50,8 +50,10 @@ and Gemini headless adapters support cancellation but do not claim interactive
 approval responses or session resume.
 
 TermiRust never installs a provider CLI. The creation panel reports the resolved
-executable or gives provider-specific installation guidance. Use `Check again`
-after installing it outside the app.
+executable or gives provider-specific installation guidance. An official
+provider executable whose version check fails is shown as unusable with the
+captured diagnostic. Use `Check again` after installing or repairing it outside
+the app.
 
 Supported defaults intentionally exclude Codex danger/full-access options,
 Claude permission bypass, Gemini `--yolo`, and shell evaluation of custom CLI
@@ -111,7 +113,8 @@ The existing `detach_others` option remains opt-in.
 ## Security boundaries
 
 - Provider output and handed-off context are untrusted data.
-- Context is byte- and line-bounded and common credential patterns are redacted.
+- Context is byte-, line-, and message-bounded and common credential patterns
+  are redacted. Source labels are normalized before entering the handoff.
 - Context previews and provider transcripts are not stored in `state.json`.
 - Credentials remain in the existing credential store and saved host model.
 - Structured approval cards provide one-time allow or deny; approvals are not
