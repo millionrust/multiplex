@@ -10,7 +10,7 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Pass | No formatting differences. |
 | `cargo check -q` | Pass | Existing macOS `objc` cfg and dead-code warnings remain. |
-| `cargo test -q` | Pass | 294 passed, 0 failed, 3 ignored in 60.60s with Docker-backed tests exercised. |
+| `cargo test -q` | Pass | 295 passed, 0 failed, 3 ignored in 58.21s with Docker-backed tests exercised. |
 | Agent adapter focused tests | Pass | Local and remote Codex fake app-server, Claude/Gemini stream fixtures, literal arguments, cancellation, malformed data, and remote exit-status ordering. |
 | Worktree integration tests | Pass | Real temporary Git repositories cover create, status, dirty refusal, committed refusal, and path boundaries. |
 | Canvas capacity test | Pass | 20 nodes, 40 edges, finite fit geometry and supported zoom. |
@@ -71,6 +71,10 @@ so no screenshot or automated click-through is claimed.
   A rendered GPUI test clicks Cancel and Paste against a real local shell, then
   verifies cancelled text is not sent, confirmed multiline input executes, and
   terminal search finds the resulting output.
+- Live Canvas local-shell tests verify Cmd-C selection copy, Cmd-V guarded-paste
+  cancellation, Shift-PageUp/PageDown scrollback, and xterm mouse-report bytes.
+  A zoom test changes the Canvas from 0.5 to 2.0, verifies the computed grid
+  grows, and confirms both resize commands inside the child PTY with `stty size`.
 - Entering Split with more than four sessions preserves hidden live sessions;
   a hidden-session Canvas tab cannot be merged into another Split and orphan
   those sessions. Active terminal closure uses a rendered confirmation flow.
@@ -132,8 +136,9 @@ reattach, and a second SSH client attached to the same session.
 These checks require a human-visible app, provider accounts, hardware, or remote
 hosts and were not claimed by automation:
 
-- drag, resize, selection, terminal text input, search, xterm mouse reporting,
-  and guarded paste at multiple zoom levels;
+- human-visible drag, resize-handle, pointer selection/copy, mouse-wheel
+  scrollback, xterm mouse application, and guarded-paste behavior at multiple
+  zoom levels;
 - restart and visual restore of a populated canvas;
 - eight simultaneously active output-producing panes and Retina/multi-monitor
   responsiveness;
