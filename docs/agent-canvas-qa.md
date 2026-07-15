@@ -10,8 +10,8 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Pass | No formatting differences. |
 | `cargo check -q` | Pass | Existing macOS `objc` cfg and dead-code warnings remain. |
-| `cargo test -q` | Pass | 279 passed, 0 failed, 3 ignored in 54.75s with Docker-backed tests exercised. |
-| Agent adapter focused tests | Pass | Codex fake app-server, Claude/Gemini stream fixtures, literal argument child, cancellation, malformed data. |
+| `cargo test -q` | Pass | 292 passed, 0 failed, 3 ignored in 59.82s with Docker-backed tests exercised. |
+| Agent adapter focused tests | Pass | Local and remote Codex fake app-server, Claude/Gemini stream fixtures, literal arguments, cancellation, malformed data, and remote exit-status ordering. |
 | Worktree integration tests | Pass | Real temporary Git repositories cover create, status, dirty refusal, committed refusal, and path boundaries. |
 | Canvas capacity test | Pass | 20 nodes, 40 edges, finite fit geometry and supported zoom. |
 | `cargo clippy --all-targets` | Pass with warnings | Repository reports existing warnings. |
@@ -66,6 +66,10 @@ so no screenshot or automated click-through is claimed.
   a hidden-session Canvas tab cannot be merged into another Split and orphan
   those sessions. Active terminal closure uses a rendered confirmation flow.
 - Local and SSH canvas nodes reuse `SessionPane` requests and persistence.
+- Structured agents run through bounded local child-process or remote non-PTY
+  SSH transports. Real SSH integration covers independent stdout/stderr,
+  stdin, cancellation, exit status, and the legal EOF-before-exit-status
+  ordering used by OpenSSH.
 - Interactive launch arguments remain literal locally and quoted at the one SSH
   shell boundary; unsafe provider bypass flags are rejected.
 - Remote interactive bootstrap generation checks executable presence, version
@@ -76,6 +80,9 @@ so no screenshot or automated click-through is claimed.
   a deterministic fake server.
 - Claude and Gemini documented stream shapes normalize through deterministic
   fixtures and a real local child fixture without provider/API use.
+- Remote structured integration covers headless output normalization, Codex's
+  bidirectional app-server protocol, provider installation guidance, TERM
+  cancellation, and reviewed same-host context delivery.
 - Structured process exits report a final failed, cancelled, or disconnected
   lifecycle event in deterministic order instead of leaving a node running.
 - Structured input lines, diagnostics, command queues, and displayed transcripts
@@ -96,6 +103,10 @@ so no screenshot or automated click-through is claimed.
   unregistered, or out-of-root cleanup.
 - Canvas menus and confirmation overlays are constrained to 90% of the viewport
   width so their fixed content cannot overflow narrow windows.
+- Off-screen node culling avoids terminal snapshot work without stopping
+  runtimes. Keyboard node selection pans the selected node into view.
+- Restored structured nodes remain inert until the rendered `Restart` action is
+  invoked; the restart path is covered with a real fake provider process.
 
 ## Manual results available
 
@@ -116,12 +127,14 @@ hosts and were not claimed by automation:
   responsiveness;
 - live successful Claude Code and Gemini structured calls with authorized test
   accounts;
-- password SSH, jump-host, forwarding, disconnect/reconnect, and remote missing
-  provider guidance in Canvas mode;
+- password SSH, jump-host, forwarding, and disconnect/reconnect in Canvas mode;
 - visual approval cards, worktree manager actions, context preview editing, and
   cross-host rejection copy;
 - visual tmux close choices; the underlying kill-session execution is covered
   against the Docker SSH fixture;
+- native screen-reader semantics cannot be validated because GPUI 0.2.2 does
+  not expose per-element accessibility labels; visible labels, tooltips, and
+  keyboard reveal behavior are covered instead.
 
 Use the reviewer smoke test in [agent-canvas.md](agent-canvas.md). Do not use a
 production repository or paid provider account for the first pass.

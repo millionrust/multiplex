@@ -42,6 +42,12 @@ Graph edges use GPUI's low-level `canvas`, `PathBuilder`, and
 `Window::paint_path` APIs and render behind nodes. Geometry and viewport
 transforms remain pure functions with unit tests.
 
+Node containers scale spatially with Canvas zoom while terminal glyphs retain
+the configured font size. PTY rows and columns are derived from the effective
+screen-space body. Far off-screen nodes are culled with overscan before their
+GPUI terminal body is built; this avoids terminal snapshot work without
+stopping the underlying pane or agent runtime.
+
 ### Agent boundaries
 
 Agents support two explicit backends:
@@ -82,6 +88,22 @@ Remote interactive nodes reuse `ConnectRequest`, `SessionPane`, workspace
 restore, TOFU host keys, jump hosts, forwarding, keepalive, and existing tmux
 persistence. Canvas placement never controls tmux directly. Closing a
 persistent node distinguishes detaching the view from killing the session.
+
+Structured agents use a separate non-PTY SSH exec transport over the same
+authentication, jump-host, TOFU, and keepalive boundaries. stdout and stderr
+remain distinct bounded streams, stdin remains available for Codex JSON-RPC,
+and remote exit status or signal is normalized. The one required remote shell
+boundary is generated centrally with strict quoting and capability checks.
+Structured SSH execution does not enter tmux or replay interactive startup
+actions. Remote worktree creation is not automatic in v1.
+
+### Accessibility boundary
+
+Canvas controls have visible text or descriptive tooltips and nodes can be
+cycled with the platform secondary modifier plus `Shift+Arrow`; keyboard
+selection pans an off-screen target into view. GPUI 0.2.2 has no AccessKit or
+native per-element semantic-label API, so native screen-reader labels cannot be
+emitted by this release without replacing or patching the UI framework.
 
 ### Security
 

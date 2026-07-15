@@ -44,10 +44,10 @@ from provider output.
 
 `Structured` uses machine-readable provider output and normalized lifecycle
 events. Codex uses `codex app-server`. Claude Code and Gemini CLI use their
-official streaming headless modes. Structured mode currently runs locally.
-Codex supports in-session approvals and thread continuity. The one-shot Claude
-and Gemini headless adapters support cancellation but do not claim interactive
-approval responses or session resume.
+official streaming headless modes. Structured sessions run either locally or
+on a selected saved SSH host. Codex supports in-session approvals and thread
+continuity. The one-shot Claude and Gemini headless adapters support
+cancellation but do not claim interactive approval responses or session resume.
 
 TermiRust never installs a provider CLI. The creation panel reports the resolved
 executable or gives provider-specific installation guidance. An official
@@ -110,6 +110,20 @@ canvas move or layout switch cannot restart tmux. Closing the SSH client leaves
 a persistent remote tmux session running so a later connection can reattach.
 The existing `detach_others` option remains opt-in.
 
+Remote structured Codex, Claude Code, and Gemini sessions use a non-PTY SSH exec
+channel and the saved profile's authentication, jump-host chain, TOFU pinning,
+keepalive, and explicit environment entries. Before every process launch,
+TermiRust checks the provider executable and version and verifies the working
+directory is readable and searchable. Failures remain in the node with the
+provider's installation or repair guidance. TermiRust does not install or
+upload anything.
+
+tmux startup actions are deliberately disabled for structured SSH processes;
+their lifecycle is owned by the structured adapter. Automatic isolated Git
+worktrees are local-only, so a remote structured agent must use `Read only` or
+`Shared directory`. Context and dependencies work between agents mapped to the
+same saved host and are refused across different hosts.
+
 ## Security boundaries
 
 - Provider output and handed-off context are untrusted data.
@@ -123,6 +137,8 @@ The existing `detach_others` option remains opt-in.
 - Worktree cleanup canonicalizes paths and refuses targets outside the managed
   app directory.
 - Structured channels and displayed transcripts are bounded.
+- Distant off-screen nodes are not rendered, so they do not create terminal
+  snapshots; their processes, canvas geometry, and links remain alive.
 
 See [agent-canvas-threat-model.md](agent-canvas-threat-model.md) for the abuse
 cases and mitigations and [agent-canvas-architecture.md](agent-canvas-architecture.md)
@@ -134,7 +150,14 @@ for ownership decisions. Recorded automated and manual release coverage is in
 - The validated v1 geometry target is 20 visible nodes and 40 edges. The pure
   layout path is automated; eight simultaneous live-output panes still require
   manual profiling on the release machine.
-- Structured agents are local. Remote agents use interactive terminal mode.
+- Automatic isolated worktree creation is local-only. Remote structured agents
+  operate in a user-selected existing remote directory.
+- Node position and dimensions scale with Canvas zoom, while terminal text keeps
+  the configured readable font size. PTY rows and columns follow the effective
+  on-screen node body. Nodes retain minimum interactive dimensions at low zoom.
+- GPUI 0.2.2 does not expose native per-element accessibility semantics.
+  Canvas controls therefore provide visible labels or tooltips and keyboard
+  node navigation, but native screen-reader labels require framework support.
 - Cross-host links are visible only if present in imported state and are refused
   at review/run time.
 - Groq API agents, ACP, mobile canvas editing, live team canvases, arbitrary
@@ -155,6 +178,9 @@ for ownership decisions. Recorded automated and manual release coverage is in
    inspect and remove only a clean unused one.
 8. Restart TermiRust and verify geometry and links restore while structured
    processes remain stopped until `Restart` is selected.
+9. On a disposable saved SSH host, choose `Structured`, `Read only`, and an
+   installed provider. Verify completion, cancellation, missing-provider
+   guidance, and same-host context delivery.
 
 Do not use a production repository for the first manual worktree test.
 

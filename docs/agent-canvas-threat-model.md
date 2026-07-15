@@ -23,7 +23,9 @@ untrusted.
 Local agent processes use executable paths and argument arrays. Custom CLIs are
 never launched through `sh -c`. The single remote shell boundary quotes the
 executable and every argument with the established shell-quote helper. Node
-titles are display-only. Tests cover spaces, quotes, and shell metacharacters.
+titles are display-only. Remote environment names are validated and values are
+quoted. Tests cover spaces, quotes, shell metacharacters, and invalid variable
+names.
 
 ### Malicious paths and destructive Git cleanup
 
@@ -71,10 +73,12 @@ host identities and refuses cross-host use.
 
 ### Remote compromise and persistence confusion
 
-Remote interactive agents reuse the existing SSH and TOFU boundaries. TermiRust
-does not install a remote helper or provider executable. tmux persistence and
-agent orchestration remain separate; canvas state cannot silently kill a tmux
-server session.
+Remote interactive and structured agents reuse the existing SSH and TOFU
+boundaries. TermiRust does not install a remote helper or provider executable.
+Structured jobs run over owned non-PTY exec channels, keep stdout and stderr
+separate, and terminate through that exact channel rather than a supplied PID.
+tmux persistence and agent orchestration remain separate; canvas state cannot
+silently kill a tmux server session.
 
 ## Residual risks
 

@@ -37,3 +37,13 @@ Structured jobs launch the official headless form with `-p` and
 Claude and Gemini jobs are one prompt per child process. Their adapter supports
 queued prompts and cancellation through owned process handles; long-lived TUI
 use remains the separate interactive terminal backend.
+
+## Remote transport
+
+The same adapters can run on a saved SSH host. Codex keeps its bidirectional
+JSON-RPC stdin/stdout transport over a non-PTY exec channel; Claude and Gemini
+stream documented JSONL over stdout. stderr remains diagnostic and remote exit
+status or signal becomes a normalized terminal state. A centrally generated,
+strictly quoted shell prelude checks the executable, version, and working
+directory before `exec`. TermiRust never uploads a helper and never wraps a
+structured job in tmux.
