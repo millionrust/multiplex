@@ -244,6 +244,23 @@ fn structured_transcript_height(transcript: &str, available_width: f32) -> f32 {
     visual_lines as f32 * LINE_HEIGHT + VERTICAL_PADDING
 }
 
+fn structured_transcript_html(transcript: &str) -> String {
+    let mut html = String::with_capacity(transcript.len() + 16);
+    html.push_str("<p>");
+    for character in transcript.chars() {
+        match character {
+            '&' => html.push_str("&amp;"),
+            '<' => html.push_str("&lt;"),
+            '>' => html.push_str("&gt;"),
+            '\n' => html.push_str("<br>"),
+            '\r' => {}
+            _ => html.push(character),
+        }
+    }
+    html.push_str("</p>");
+    html
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(super) struct CanvasPoint {
     pub x: f32,
@@ -5409,11 +5426,14 @@ impl TermiRustApp {
         let text_view_id =
             SharedString::from(format!("structured-transcript-text-{}", node_id.as_str()));
         let transcript_height = structured_transcript_height(&transcript, node_width - 24.0);
-        let transcript_view = TextView::markdown(text_view_id, transcript, window, cx)
+        let transcript_html = structured_transcript_html(&transcript);
+        let transcript_view = TextView::html(text_view_id, transcript_html, window, cx)
             .selectable(true)
             .w_full()
             .h(px(transcript_height))
+            .font_family(self.terminal_font_family(cx))
             .text_size(px(12.0))
+            .line_height(px(20.0))
             .text_color(theme::text_on_dark());
 
         v_flex()
@@ -6357,6 +6377,7 @@ mod tests {
         agent_state_after_queue, agent_state_needs_attention, canvas_node_render_rect,
         canvas_orchestration_scope, canvas_rect_is_visible, canvas_reveal_delta,
         default_agent_backend, find_non_overlapping_position, fit_transform,
+        structured_transcript_height, structured_transcript_html,
     };
     use crate::models::{
         AgentBackendKind, AgentLocation, AgentProvider, CanvasNodeId, SavedAgentDefinition,
@@ -6379,6 +6400,17 @@ mod tests {
             default_agent_backend(AgentProvider::CustomCli),
             AgentBackendKind::InteractivePty
         );
+    }
+
+    #[test]
+    fn structured_transcript_preserves_lines_and_escapes_html() {
+        let transcript = "first <step>\nsecond & final\n";
+
+        assert_eq!(
+            structured_transcript_html(transcript),
+            "<p>first &lt;step&gt;<br>second &amp; final<br></p>"
+        );
+        assert_eq!(structured_transcript_height(transcript, 720.0), 68.0);
     }
 
     #[test]
