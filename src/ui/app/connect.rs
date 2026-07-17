@@ -88,6 +88,7 @@ impl TermiRustApp {
         self.workspaces.push(WorkspaceTab {
             id: workspace_id,
             title,
+            project_directory: None,
             pane_ids: Vec::new(),
             active_pane_id: 0,
             unread_events: 0,
@@ -162,6 +163,7 @@ impl TermiRustApp {
         self.workspaces.push(WorkspaceTab {
             id: workspace_id,
             title,
+            project_directory: None,
             pane_ids: Vec::new(),
             active_pane_id: 0,
             unread_events: 0,

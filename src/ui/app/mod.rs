@@ -495,6 +495,7 @@ struct PendingSnippetPrompts {
 struct WorkspaceTab {
     id: u64,
     title: String,
+    project_directory: Option<String>,
     pane_ids: Vec<u64>,
     active_pane_id: u64,
     unread_events: u32,
@@ -4272,6 +4273,7 @@ impl TermiRustApp {
 
             let mut saved_workspace = SavedWorkspace {
                 title: workspace.title.clone(),
+                project_directory: workspace.project_directory.clone(),
                 layout_mode: workspace.layout_mode,
                 layout,
                 canvas: Some(workspace.canvas.to_saved(&saved_index)),
@@ -4383,6 +4385,7 @@ impl TermiRustApp {
             self.workspaces.push(WorkspaceTab {
                 id: workspace_id,
                 title,
+                project_directory: saved_workspace.project_directory.clone(),
                 pane_ids,
                 active_pane_id,
                 unread_events: 0,
@@ -5147,6 +5150,10 @@ impl TermiRustApp {
         self.workspaces.push(WorkspaceTab {
             id: workspace_id,
             title: request.title.clone(),
+            project_directory: request
+                .local_shell
+                .as_ref()
+                .and_then(|shell| shell.cwd.clone()),
             pane_ids: vec![pane_id],
             active_pane_id: pane_id,
             unread_events: 0,
@@ -5193,6 +5200,10 @@ impl TermiRustApp {
                 self.workspaces.push(WorkspaceTab {
                     id: workspace_id,
                     title: request.title.clone(),
+                    project_directory: request
+                        .local_shell
+                        .as_ref()
+                        .and_then(|shell| shell.cwd.clone()),
                     pane_ids: vec![pane_id],
                     active_pane_id: pane_id,
                     unread_events: 0,
@@ -5452,6 +5463,7 @@ impl TermiRustApp {
         self.workspaces.push(WorkspaceTab {
             id: workspace_id,
             title: request.title.clone(),
+            project_directory: None,
             pane_ids: vec![pane_id],
             active_pane_id: pane_id,
             unread_events: 0,
@@ -6387,6 +6399,14 @@ impl TermiRustApp {
             .pane(pane_id)
             .map(|pane| pane.title.clone())
             .unwrap_or_default();
+        let project_directory = self
+            .workspace(workspace_id)
+            .and_then(|workspace| workspace.project_directory.clone())
+            .or_else(|| {
+                self.pane(pane_id)
+                    .and_then(|pane| pane.request.local_shell.as_ref())
+                    .and_then(|shell| shell.cwd.clone())
+            });
 
         if let Some(workspace) = self.workspace_mut(workspace_id) {
             workspace.layout = workspace
@@ -6410,6 +6430,7 @@ impl TermiRustApp {
         self.workspaces.push(WorkspaceTab {
             id: new_workspace_id,
             title,
+            project_directory,
             pane_ids: vec![pane_id],
             active_pane_id: pane_id,
             unread_events: 0,
@@ -12144,6 +12165,101 @@ mod tests {
     }
 
     #[gpui::test]
+    fn canvas_project_folder_drives_new_terminals_agents_and_restore(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let fixture_root = std::env::temp_dir().join(format!(
+            "termirust-project-folder-{}",
+            crate::ui::util::current_unix_millis()
+        ));
+        let initial_directory = fixture_root.join("initial");
+        let selected_directory = fixture_root.join("selected-project");
+        fs::create_dir_all(&initial_directory).unwrap();
+        fs::create_dir_all(&selected_directory).unwrap();
+
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(initial_directory.display().to_string()),
+            },
+        );
+        let (workspace_id, initial_pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    queue_dialog_path(Some(selected_directory.clone()));
+                })
+            })
+            .expect("canvas should open");
+        let folder_button = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-project-directory",
+            Duration::from_secs(2),
+        );
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(folder_button, gpui::Modifiers::none());
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.add_local_terminal_to_canvas(window, cx);
+                    app.open_agent_creation(AgentProvider::Codex, window, cx);
+                })
+            })
+            .expect("project terminal and agent form should open");
+
+        app.read_with(cx, |app, cx| {
+            let selected = selected_directory.display().to_string();
+            let workspace = app
+                .workspace(workspace_id)
+                .expect("workspace should remain");
+            assert_eq!(
+                workspace.project_directory.as_deref(),
+                Some(selected.as_str())
+            );
+            assert_eq!(workspace.title, "selected-project");
+
+            let added_pane_id = workspace
+                .pane_ids
+                .iter()
+                .copied()
+                .find(|pane_id| *pane_id != initial_pane_id)
+                .expect("a project terminal should be added");
+            assert_eq!(
+                app.pane(added_pane_id)
+                    .and_then(|pane| pane.request.local_shell.as_ref())
+                    .and_then(|shell| shell.cwd.as_deref()),
+                Some(selected.as_str())
+            );
+            assert_eq!(
+                app.shell_inputs.agent_working_directory.read(cx).value(),
+                selected.as_str()
+            );
+            assert_eq!(
+                app.saved
+                    .restored_workspaces
+                    .iter()
+                    .find(|saved| saved.title == "selected-project")
+                    .and_then(|saved| saved.project_directory.as_deref()),
+                Some(selected.as_str())
+            );
+        });
+
+        let _ = fs::remove_dir_all(fixture_root);
+    }
+
+    #[gpui::test]
     #[cfg(unix)]
     fn canvas_launches_custom_agent_with_literal_arguments_in_existing_workspace(
         cx: &mut TestAppContext,
@@ -12301,6 +12417,7 @@ sleep 30
         saved.settings.restore_workspaces_on_launch = true;
         saved.restored_workspaces.push(SavedWorkspace {
             title: "Restored structured agent".to_string(),
+            project_directory: Some(fixture_directory.display().to_string()),
             layout_mode: WorkspaceLayoutMode::Canvas,
             layout: Some(SavedSplitNode::Leaf(0)),
             canvas: Some(SavedCanvasState {

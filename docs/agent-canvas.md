@@ -10,9 +10,12 @@ SSH, restore, and tmux runtimes; changing layout does not reconnect a pane.
 2. In the workspace header, choose `Canvas` instead of `Split`.
 3. Select `Add` to add a local terminal, saved SSH host, Codex, Claude Code,
    Gemini CLI, or a custom executable.
-4. Drag a node by its header. Double-click the header to rename it. Drag its
+4. Select `Project: <folder>` to choose the working directory for new local
+   terminals and coding agents. Existing running terminals are not restarted or
+   moved when the project folder changes.
+5. Drag a node by its header. Double-click the header to rename it. Drag its
    lower-right handle to resize it.
-5. Pan empty space and use the zoom and fit buttons in the canvas toolbar.
+6. Pan empty space and use the zoom and fit buttons in the canvas toolbar.
 
 Right-click empty canvas space to open the same terminal and agent add menu.
 
@@ -28,8 +31,9 @@ Closing any other connected terminal asks for confirmation before ending its
 active local process or SSH connection.
 
 Node positions, sizes, collapsed state, links, and viewport are persisted with
-the workspace. A restored structured node does not silently launch a process;
-select `Restart` inside that node.
+the workspace. The selected project folder is persisted too, and restored local
+terminals and newly created agents continue to use it. A restored structured node
+does not silently launch a process; select `Restart` inside that node.
 
 When more than four sessions exist, switching to Split opens a chooser. Pick up
 to four sessions to display; every unselected session keeps running and remains

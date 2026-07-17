@@ -2777,6 +2777,8 @@ fn graph_has_path(
 pub struct SavedWorkspace {
     pub title: String,
     #[serde(default)]
+    pub project_directory: Option<String>,
+    #[serde(default)]
     pub layout_mode: WorkspaceLayoutMode,
     #[serde(default)]
     pub layout: Option<SavedSplitNode>,
@@ -2790,6 +2792,11 @@ pub struct SavedWorkspace {
 
 impl SavedWorkspace {
     pub fn normalize(&mut self) {
+        self.project_directory = self
+            .project_directory
+            .take()
+            .map(|directory| directory.trim().to_string())
+            .filter(|directory| !directory.is_empty());
         if self.panes.is_empty() {
             self.active_pane_index = 0;
         } else {
@@ -3325,6 +3332,7 @@ mod tests {
     fn saved_workspace_normalizes_active_pane() {
         let mut workspace = SavedWorkspace {
             title: "prod".to_string(),
+            project_directory: None,
             layout_mode: WorkspaceLayoutMode::Split,
             layout: None,
             canvas: None,
@@ -3363,6 +3371,7 @@ mod tests {
         state.settings.restore_workspaces_on_launch = true;
         state.restored_workspaces.push(SavedWorkspace {
             title: "docker-e2e".to_string(),
+            project_directory: None,
             layout_mode: WorkspaceLayoutMode::Split,
             layout: None,
             canvas: None,
@@ -3432,12 +3441,14 @@ mod tests {
 
         assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Split);
         assert_eq!(workspace.canvas, None);
+        assert_eq!(workspace.project_directory, None);
     }
 
     #[test]
     fn canvas_workspace_round_trips_agent_definition_and_edges() {
         let mut workspace = SavedWorkspace {
             title: "agents".to_string(),
+            project_directory: Some(" /srv/project ".to_string()),
             layout_mode: WorkspaceLayoutMode::Canvas,
             layout: None,
             canvas: Some(SavedCanvasState {
@@ -3479,11 +3490,13 @@ mod tests {
             panes: Vec::new(),
         };
         workspace.normalize();
+        assert_eq!(workspace.project_directory.as_deref(), Some("/srv/project"));
 
         let value = serde_json::to_string(&workspace).expect("canvas should serialize");
         let decoded: SavedWorkspace =
             serde_json::from_str(&value).expect("canvas should deserialize");
         assert_eq!(decoded.layout_mode, WorkspaceLayoutMode::Canvas);
+        assert_eq!(decoded.project_directory, workspace.project_directory);
         assert_eq!(decoded.canvas, workspace.canvas);
     }
 

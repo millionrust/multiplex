@@ -58,6 +58,24 @@ const STRUCTURED_TRANSCRIPT_FONT_SIZE: f32 = 12.0;
 const STRUCTURED_TRANSCRIPT_LINE_HEIGHT: f32 = 20.0;
 const STRUCTURED_TRANSCRIPT_PADDING: f32 = 12.0;
 
+fn canvas_project_directory_label(directory: Option<&str>) -> String {
+    let Some(directory) = directory else {
+        return "Choose Project Folder".to_string();
+    };
+    let name = std::path::Path::new(directory)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or(directory);
+    let mut characters = name.chars();
+    let shortened = characters.by_ref().take(22).collect::<String>();
+    if characters.next().is_some() {
+        format!("Project: {shortened}...")
+    } else {
+        format!("Project: {shortened}")
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct AgentCreationState {
     definition: SavedAgentDefinition,
@@ -1875,11 +1893,19 @@ impl TermiRustApp {
         Some(pane_id)
     }
 
-    fn add_local_terminal_to_canvas(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let request = ConnectRequest::local_shell_with_config(
-            0,
-            self.saved.settings.default_local_shell.clone(),
-        );
+    pub(super) fn add_local_terminal_to_canvas(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut config = self.saved.settings.default_local_shell.clone();
+        if let Some(project_directory) = self
+            .active_workspace()
+            .and_then(|workspace| workspace.project_directory.clone())
+        {
+            config.cwd = Some(project_directory);
+        }
+        let request = ConnectRequest::local_shell_with_config(0, config);
         if self
             .add_request_to_canvas(request, None, window, cx)
             .is_none()
@@ -1996,13 +2022,17 @@ impl TermiRustApp {
 
     fn default_agent_working_directory(&self) -> String {
         self.active_workspace()
-            .and_then(|workspace| self.pane(workspace.active_pane_id))
-            .and_then(|pane| {
-                pane.request
-                    .local_shell
-                    .as_ref()
-                    .and_then(|shell| shell.cwd.clone())
-                    .or_else(|| pane.request.startup_directory.clone())
+            .and_then(|workspace| workspace.project_directory.clone())
+            .or_else(|| {
+                self.active_workspace()
+                    .and_then(|workspace| self.pane(workspace.active_pane_id))
+                    .and_then(|pane| {
+                        pane.request
+                            .local_shell
+                            .as_ref()
+                            .and_then(|shell| shell.cwd.clone())
+                            .or_else(|| pane.request.startup_directory.clone())
+                    })
             })
             .or_else(|| {
                 std::env::current_dir()
@@ -2010,6 +2040,62 @@ impl TermiRustApp {
                     .map(|path| path.display().to_string())
             })
             .unwrap_or_default()
+    }
+
+    pub(super) fn pick_canvas_project_directory(&mut self, cx: &mut Context<Self>) {
+        let Some(path) =
+            Self::take_dialog_path_for_tests().or_else(|| rfd::FileDialog::new().pick_folder())
+        else {
+            return;
+        };
+        if !path.is_dir() {
+            self.error_message = format!("Project folder does not exist: {}", path.display());
+            cx.notify();
+            return;
+        }
+
+        let directory = path.display().to_string();
+        if let Some(workspace) = self.active_workspace_mut() {
+            workspace.project_directory = Some(directory.clone());
+            if workspace.title == "Local Terminal" || workspace.title == "Agent Canvas" {
+                if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
+                    workspace.title = name.to_string();
+                }
+            }
+        }
+        self.persist_runtime_state();
+        self.status_message = format!(
+            "Project folder set to {directory}. New local terminals and agents will open there."
+        );
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn pick_agent_working_directory(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(path) =
+            Self::take_dialog_path_for_tests().or_else(|| rfd::FileDialog::new().pick_folder())
+        else {
+            return;
+        };
+        if !path.is_dir() {
+            self.error_message = format!("Working directory does not exist: {}", path.display());
+            cx.notify();
+            return;
+        }
+
+        let directory = path.display().to_string();
+        Self::set_input_value(
+            &self.shell_inputs.agent_working_directory,
+            directory.clone(),
+            window,
+            cx,
+        );
+        if let Some(creation) = self.agent_creation.as_mut() {
+            creation.definition.working_directory = Some(directory);
+            creation.executable_status = detect_agent_executable(&creation.definition);
+        }
+        self.error_message.clear();
+        cx.notify();
     }
 
     pub(super) fn open_agent_creation(
@@ -3920,7 +4006,28 @@ impl TermiRustApp {
                                     .text_color(theme::text_muted())
                                     .child("Working directory"),
                             )
-                            .child(Input::new(&self.shell_inputs.agent_working_directory).small()),
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .child(
+                                        div().flex_1().min_w_0().child(
+                                            Input::new(&self.shell_inputs.agent_working_directory)
+                                                .small()
+                                                .flex_1(),
+                                        ),
+                                    )
+                                    .child(
+                                        Button::new("agent-working-directory-picker")
+                                            .small()
+                                            .ghost()
+                                            .icon(IconName::FolderOpen)
+                                            .label("Browse")
+                                            .tooltip("Choose the agent working directory")
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.pick_agent_working_directory(window, cx);
+                                            })),
+                                    ),
+                            ),
                     )
                     .when(provider == AgentProvider::CustomCli, |form| {
                         form.child(
@@ -4878,6 +4985,18 @@ impl TermiRustApp {
             .active_workspace()
             .map(|workspace| (workspace.canvas.transform.zoom * 100.0).round() as i32)
             .unwrap_or(100);
+        let project_directory = self
+            .active_workspace()
+            .and_then(|workspace| workspace.project_directory.clone());
+        let project_directory_label = canvas_project_directory_label(project_directory.as_deref());
+        let project_directory_tooltip = project_directory
+            .as_deref()
+            .map(|directory| {
+                format!("Project folder: {directory}. New local terminals and agents open here.")
+            })
+            .unwrap_or_else(|| {
+                "Choose where new local terminals and coding agents should open.".to_string()
+            });
         let can_review_context = self.active_workspace().is_some_and(|workspace| {
             workspace
                 .canvas
@@ -4922,6 +5041,18 @@ impl TermiRustApp {
                             .tooltip("Add a terminal or coding agent")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_canvas_add_menu(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-project-directory")
+                            .debug_selector(|| "canvas-project-directory".to_string())
+                            .small()
+                            .ghost()
+                            .icon(IconName::FolderOpen)
+                            .label(project_directory_label)
+                            .tooltip(project_directory_tooltip)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.pick_canvas_project_directory(cx);
                             })),
                     )
                     .child(
