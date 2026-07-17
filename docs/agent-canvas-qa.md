@@ -1,6 +1,6 @@
 # Agent Canvas v1 QA Record
 
-Date: 2026-07-15
+Date: 2026-07-17
 
 Environment: macOS development machine, branch `test`, Rust test profile.
 
@@ -10,7 +10,7 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Pass | No formatting differences. |
 | `cargo check -q` | Pass | Existing macOS `objc` cfg and dead-code warnings remain. |
-| `cargo test -q` | Pass | 296 passed, 0 failed, 3 ignored in 69.93s with Docker-backed tests exercised. |
+| `cargo test -q` | Pass | 315 passed, 0 failed, 3 ignored; Docker-backed and local tmux integration tests exercised. |
 | Agent adapter focused tests | Pass | Local and remote Codex fake app-server, Claude/Gemini stream fixtures, literal arguments, cancellation, malformed data, and remote exit-status ordering. |
 | Worktree integration tests | Pass | Real temporary Git repositories cover create, status, dirty refusal, committed refusal, and path boundaries. |
 | Canvas capacity test | Pass | 20 nodes, 40 edges, finite fit geometry and supported zoom. |
@@ -59,12 +59,24 @@ so no screenshot or automated click-through is claimed.
   or reject deterministically.
 - Pan/zoom transforms, cursor anchoring, placement, fit, minimum resize, and
   stable restore mapping are unit tested. Keyboard node selection cycles and
-  wraps in both directions.
+  wraps in both directions. Layout-only undo/redo preserves newly created
+  runtimes, and the clickable minimap maps back to world coordinates.
+- Project-folder selection persists with the workspace and drives new local
+  terminal and agent working directories. The rendered workflow opens Files,
+  edits and saves a UTF-8 file, refuses a stale overwrite after an external
+  agent change, and restores the project path.
+- Project file access is canonical-root bounded, rejects escaping symlinks,
+  binary data, and files over 1 MB. Git status and selected-file diff use direct
+  argument arrays, bounded output, and inspect/copy-only controls.
 - Node titles normalize predictably, link enable/delete actions preserve nodes,
   and canvas/node mouse ownership prevents terminal clicks from panning the
   background.
 - Node headers expose location and lifecycle text, classify actionable
-  attention states, and keep drag handling on the title/status region. A
+  attention states, mark unread output, and keep drag handling on the
+  title/status region. Agent Activity summarizes running, queued, attention,
+  and unread counts with context/dependency visibility. A rendered test opens
+  Activity for an off-screen failed agent, focuses and reveals it, and clears
+  its unread marker. A
   rendered GPUI click test verifies the More menu opens and closes without the
   action being intercepted as a node drag.
 - The shared workspace shell renders exactly one guarded-paste banner in Canvas.
@@ -83,6 +95,12 @@ so no screenshot or automated click-through is claimed.
   a hidden-session Canvas tab cannot be merged into another Split and orphan
   those sessions. Active terminal closure uses a rendered confirmation flow.
 - Local and SSH canvas nodes reuse `SessionPane` requests and persistence.
+- Persistent local terminal requests round-trip through workspace restore.
+  A live local tmux test records the inner shell PID, disconnects the first PTY,
+  confirms the session remains, reattaches through a second PTY with the same
+  PID, and kills the named session through the runtime control path. A rendered
+  Add-menu test covers the same creation and cleanup path; missing installations
+  receive platform-specific guidance without creating a broken pane.
 - A real Docker SSH server shutdown leaves the disconnected SSH pane and its
   canvas node in place, and the production host-identity guard rejects an
   executable local-to-SSH edge.
@@ -152,7 +170,7 @@ hosts and were not claimed by automation:
 - visual approval cards, worktree manager actions, context preview editing, and
   cross-host rejection copy;
 - visual tmux close choices; the underlying kill-session execution is covered
-  against the Docker SSH fixture;
+  against both the Docker SSH fixture and a real local tmux server;
 - native screen-reader semantics cannot be validated with the published GPUI
   0.2.2 resolved by this branch. Upstream GPUI `main` now has AccessKit roles
   and labels, but adopting them requires a coordinated GPUI/gpui-component

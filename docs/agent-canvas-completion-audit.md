@@ -1,6 +1,6 @@
 # Agent Canvas Completion Audit
 
-Date: 2026-07-15
+Date: 2026-07-17
 
 This audit compares the current `test` branch with the Definition of Done in
 `goal.md`. It is intentionally stricter than a test summary. `Proved` means the
@@ -12,17 +12,19 @@ not been completed.
 
 | Requirement | Status | Current evidence | Remaining evidence |
 | --- | --- | --- | --- |
-| Existing TermiRust behavior and tests pass | Proved | `cargo test -q`: 296 passed, 0 failed, 3 opt-in live checks ignored; Docker SSH, SFTP, forwarding, jump-host, restore, and tmux tests ran. | None for automated regression scope. |
+| Existing TermiRust behavior and tests pass | Proved | `cargo test -q`: 315 passed, 0 failed, 3 opt-in live checks ignored; Docker SSH, SFTP, forwarding, jump-host, restore, remote tmux, and live local tmux tests ran. | None for automated regression scope. |
 | Old state loads without action and defaults to Split | Proved | Model migration tests cover legacy defaults, round trips, repair, and future-schema fallback. | Human opening a real pre-feature state file remains in the release matrix. |
 | Split remains the default and keeps its runtime identity | Proved | GPUI layout-switch and over-capacity chooser tests retain pane IDs and hidden sessions. | Human baseline comparison remains. |
 | Canvas reuses existing terminal runtimes | Proved | `CanvasNodeKind` references pane IDs; GPUI tests verify local and SSH panes coexist and mode switching does not respawn them. | None for ownership design. |
-| Layout, stable IDs, edges, and viewport restore | Proved | Serialization, validation/repair, geometry, and explicit restored-agent restart tests pass. | Human visual restore of a populated canvas remains. |
+| Layout, stable IDs, edges, and viewport restore | Proved | Serialization, validation/repair, geometry, layout-only undo/redo, clickable minimap mapping, project-folder restore, and explicit restored-agent restart tests pass. | Human visual restore of a populated canvas remains. |
 | Terminal interaction is correct at supported zoom | Partial | End-to-end Canvas local-shell tests cover typing, deterministic selection copy, clipboard shortcuts, guarded multiline paste, search, keyboard and rendered wheel scrollback, xterm mouse-report bytes, rendered resize-handle dragging with persisted PTY dimensions, and live PTY resize confirmed by `stty size` at zoom 0.5 and 2.0. Mouse ownership, transforms, culling, keyboard reveal, and node-header action isolation are also automated. | Human pointer selection/copy, xterm mouse application, and visual behavior at multiple zoom levels. |
 | Interactive presets avoid shell concatenation | Proved | Local launches use executable plus argument arrays; the single SSH boundary is centrally quoted and injection-tested. Unsafe bypass flags are rejected. | Live interactive Claude and Gemini checks require installed, authorized CLIs. |
 | Structured state comes from documented events | Partial | Codex fake app-server coverage is comprehensive and Codex 0.144.4 passed a live smoke. Claude/Gemini JSONL fixtures and child processes are deterministic. | Successful live Claude and Gemini calls require authorized accounts/installations. |
 | Context handoff is directed, bounded, reviewed, and redacted | Proved | Context model, redaction, bounds, disabled-edge, persistence, guarded-paste, same-host remote handoff, and cross-host refusal tests pass. | Human preview editing and visual copy review remain. |
+| Project tools protect concurrent agent work | Proved | Canonical-root, symlink, binary, size, Git-output, explicit-save, and stale-write tests pass; rendered interaction proves an external edit is not overwritten. | Human editor and diff readability review remains. |
+| Agent state is visible at workspace scale | Proved | Activity summary tests distinguish running, queued, attention, unread, and unique actionable agents; rendered interaction focuses an off-screen failed agent and clears unread output. | Human review with several simultaneous live providers remains. |
 | Concurrent writers default to isolated worktrees | Proved | Creation defaults local agents to `Isolated`; real Git tests cover creation, branch/path uniqueness, status, committed/dirty refusal, and root boundaries. | Human two-agent workflow and restart rediscovery remain. |
-| Destructive actions and approvals are explicit | Partial | tmux kill uses a two-stage confirmation; worktree removal refuses unsafe targets; Codex approval allow/deny is rendered and protocol-tested. | Human dialog review remains. Claude/Gemini one-shot headless protocols do not expose an approval callback; see `agent-protocols.md`. |
+| Destructive actions and approvals are explicit | Partial | Remote and local tmux kill use a two-stage confirmation; live runtime tests prove both kill controls. Worktree removal refuses unsafe targets; Codex approval allow/deny is rendered and protocol-tested. | Human dialog review remains. Claude/Gemini one-shot headless protocols do not expose an approval callback; see `agent-protocols.md`. |
 | Secrets do not enter canvas persistence or handoff output | Proved for modeled paths | Agent definitions contain no credential material; host locations reference saved profiles; password sessions use credential IDs; context redaction and bounded diagnostics are tested. | Release security review should still inspect logs while using real provider credentials. |
 | Automated and manual matrix results are recorded | Partial | Automated results and the manually completed tmux scenario are in `agent-canvas-qa.md`. | The manual release checklist is not complete. |
 | Setup, missing CLI, tmux, worktree, security, and limits are documented | Proved | `agent-canvas.md`, architecture, threat model, protocol notes, and QA record cover these topics. | Keep provider-version notes current before release. |
