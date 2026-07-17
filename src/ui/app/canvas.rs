@@ -57,6 +57,11 @@ const CANVAS_FIT_PADDING: f32 = 48.0;
 const STRUCTURED_TRANSCRIPT_FONT_SIZE: f32 = 12.0;
 const STRUCTURED_TRANSCRIPT_LINE_HEIGHT: f32 = 20.0;
 const STRUCTURED_TRANSCRIPT_PADDING: f32 = 12.0;
+const CANVAS_LAYOUT_HISTORY_LIMIT: usize = 50;
+const CANVAS_MINIMAP_WIDTH: f32 = 184.0;
+const CANVAS_MINIMAP_HEIGHT: f32 = 116.0;
+const CANVAS_MINIMAP_PADDING: f32 = 8.0;
+const CANVAS_MINIMAP_MARGIN: f32 = 12.0;
 
 fn canvas_project_directory_label(directory: Option<&str>) -> String {
     let Some(directory) = directory else {
@@ -400,6 +405,84 @@ fn canvas_reveal_delta(
     )
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct CanvasMinimapGeometry {
+    world_bounds: CanvasRect,
+    scale: f32,
+    offset: CanvasPoint,
+}
+
+impl CanvasMinimapGeometry {
+    fn world_to_map(self, point: CanvasPoint) -> CanvasPoint {
+        CanvasPoint::new(
+            self.offset.x + (point.x - self.world_bounds.x) * self.scale,
+            self.offset.y + (point.y - self.world_bounds.y) * self.scale,
+        )
+    }
+
+    fn world_rect_to_map(self, rect: CanvasRect) -> CanvasRect {
+        let origin = self.world_to_map(CanvasPoint::new(rect.x, rect.y));
+        CanvasRect {
+            x: origin.x,
+            y: origin.y,
+            width: (rect.width * self.scale).max(2.0),
+            height: (rect.height * self.scale).max(2.0),
+        }
+    }
+
+    fn map_to_world(self, point: CanvasPoint) -> CanvasPoint {
+        CanvasPoint::new(
+            self.world_bounds.x + (point.x - self.offset.x) / self.scale,
+            self.world_bounds.y + (point.y - self.offset.y) / self.scale,
+        )
+    }
+}
+
+fn canvas_minimap_geometry(
+    nodes: &[CanvasNode],
+    transform: CanvasTransform,
+    viewport_width: f32,
+    viewport_height: f32,
+) -> Option<CanvasMinimapGeometry> {
+    if nodes.is_empty() {
+        return None;
+    }
+
+    let viewport_origin = transform.screen_to_world(CanvasPoint::default());
+    let viewport_end = transform.screen_to_world(CanvasPoint::new(viewport_width, viewport_height));
+    let mut min_x = viewport_origin.x.min(viewport_end.x);
+    let mut min_y = viewport_origin.y.min(viewport_end.y);
+    let mut max_x = viewport_origin.x.max(viewport_end.x);
+    let mut max_y = viewport_origin.y.max(viewport_end.y);
+    for node in nodes {
+        min_x = min_x.min(node.rect.x);
+        min_y = min_y.min(node.rect.y);
+        max_x = max_x.max(node.rect.x + node.rect.width);
+        max_y = max_y.max(node.rect.y + node.rect.height);
+    }
+
+    let world_bounds = CanvasRect {
+        x: min_x,
+        y: min_y,
+        width: (max_x - min_x).max(1.0),
+        height: (max_y - min_y).max(1.0),
+    };
+    let inner_width = CANVAS_MINIMAP_WIDTH - CANVAS_MINIMAP_PADDING * 2.0;
+    let inner_height = CANVAS_MINIMAP_HEIGHT - CANVAS_MINIMAP_PADDING * 2.0;
+    let scale = (inner_width / world_bounds.width)
+        .min(inner_height / world_bounds.height)
+        .max(f32::EPSILON);
+    let offset = CanvasPoint::new(
+        CANVAS_MINIMAP_PADDING + (inner_width - world_bounds.width * scale) / 2.0,
+        CANVAS_MINIMAP_PADDING + (inner_height - world_bounds.height * scale) / 2.0,
+    );
+    Some(CanvasMinimapGeometry {
+        world_bounds,
+        scale,
+        offset,
+    })
+}
+
 fn agent_state_needs_attention(state: AgentRunState) -> bool {
     matches!(
         state,
@@ -528,6 +611,24 @@ pub(super) struct CanvasWorkspaceState {
     pub edges: Vec<CanvasEdge>,
     pub selected_node_id: Option<CanvasNodeId>,
     next_z_index: i32,
+    undo_layout: Vec<CanvasLayoutSnapshot>,
+    redo_layout: Vec<CanvasLayoutSnapshot>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct CanvasNodeLayout {
+    id: CanvasNodeId,
+    rect: CanvasRect,
+    z_index: i32,
+    title: Option<String>,
+    collapsed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct CanvasLayoutSnapshot {
+    nodes: Vec<CanvasNodeLayout>,
+    selected_node_id: Option<CanvasNodeId>,
+    next_z_index: i32,
 }
 
 impl Default for CanvasWorkspaceState {
@@ -538,11 +639,104 @@ impl Default for CanvasWorkspaceState {
             edges: Vec::new(),
             selected_node_id: None,
             next_z_index: 1,
+            undo_layout: Vec::new(),
+            redo_layout: Vec::new(),
         }
     }
 }
 
 impl CanvasWorkspaceState {
+    fn layout_snapshot(&self) -> CanvasLayoutSnapshot {
+        CanvasLayoutSnapshot {
+            nodes: self
+                .nodes
+                .iter()
+                .map(|node| CanvasNodeLayout {
+                    id: node.id.clone(),
+                    rect: node.rect,
+                    z_index: node.z_index,
+                    title: node.title.clone(),
+                    collapsed: node.collapsed,
+                })
+                .collect(),
+            selected_node_id: self.selected_node_id.clone(),
+            next_z_index: self.next_z_index,
+        }
+    }
+
+    fn apply_layout_snapshot(&mut self, snapshot: CanvasLayoutSnapshot) {
+        let layouts = snapshot
+            .nodes
+            .into_iter()
+            .map(|layout| (layout.id.clone(), layout))
+            .collect::<HashMap<_, _>>();
+        for node in &mut self.nodes {
+            let Some(layout) = layouts.get(&node.id) else {
+                continue;
+            };
+            node.rect = layout.rect;
+            node.z_index = layout.z_index;
+            node.title = layout.title.clone();
+            node.collapsed = layout.collapsed;
+        }
+        self.selected_node_id = snapshot
+            .selected_node_id
+            .filter(|selected| self.nodes.iter().any(|node| &node.id == selected));
+        self.next_z_index = snapshot.next_z_index.max(
+            self.nodes
+                .iter()
+                .map(|node| node.z_index)
+                .max()
+                .unwrap_or(0)
+                .saturating_add(1),
+        );
+    }
+
+    pub(super) fn record_layout_history(&mut self) {
+        let snapshot = self.layout_snapshot();
+        if self.undo_layout.last() == Some(&snapshot) {
+            return;
+        }
+        self.undo_layout.push(snapshot);
+        if self.undo_layout.len() > CANVAS_LAYOUT_HISTORY_LIMIT {
+            self.undo_layout.remove(0);
+        }
+        self.redo_layout.clear();
+    }
+
+    fn discard_unchanged_layout_history(&mut self) {
+        let current = self.layout_snapshot();
+        if self.undo_layout.last() == Some(&current) {
+            self.undo_layout.pop();
+        }
+    }
+
+    pub(super) fn can_undo_layout(&self) -> bool {
+        !self.undo_layout.is_empty()
+    }
+
+    pub(super) fn can_redo_layout(&self) -> bool {
+        !self.redo_layout.is_empty()
+    }
+
+    pub(super) fn undo_layout(&mut self) -> bool {
+        let Some(snapshot) = self.undo_layout.pop() else {
+            return false;
+        };
+        self.redo_layout.push(self.layout_snapshot());
+        self.apply_layout_snapshot(snapshot);
+        true
+    }
+
+    pub(super) fn redo_layout(&mut self) -> bool {
+        let Some(snapshot) = self.redo_layout.pop() else {
+            return false;
+        };
+        self.undo_layout.push(self.layout_snapshot());
+        self.apply_layout_snapshot(snapshot);
+        true
+    }
+
     pub(super) fn from_saved(saved: Option<&SavedCanvasState>, pane_ids: &[u64]) -> Self {
         let Some(saved) = saved else {
             let mut state = Self::default();
@@ -608,6 +802,8 @@ impl CanvasWorkspaceState {
             edges,
             selected_node_id: None,
             next_z_index,
+            undo_layout: Vec::new(),
+            redo_layout: Vec::new(),
         };
         state.ensure_terminal_nodes(pane_ids, CanvasPoint::default());
         state
@@ -1265,9 +1461,10 @@ impl TermiRustApp {
             return;
         };
         let title = self.canvas_node_rename_input.read(cx).value().to_string();
-        let renamed = self
-            .active_workspace_mut()
-            .is_some_and(|workspace| workspace.canvas.set_node_title(&node_id, title));
+        let renamed = self.active_workspace_mut().is_some_and(|workspace| {
+            workspace.canvas.record_layout_history();
+            workspace.canvas.set_node_title(&node_id, title)
+        });
         if renamed {
             self.persist_runtime_state();
             self.status_message = "Canvas node title updated.".to_string();
@@ -1616,6 +1813,7 @@ impl TermiRustApp {
             .and_then(|node| node.kind.pane_id());
         if let Some(workspace) = self.workspace_mut(workspace_id) {
             workspace.canvas.select_and_raise(&node_id);
+            workspace.canvas.record_layout_history();
             if let Some(pane_id) = pane_id {
                 workspace.active_pane_id = pane_id;
             }
@@ -1682,6 +1880,7 @@ impl TermiRustApp {
         };
         if let Some(workspace) = self.workspace_mut(workspace_id) {
             workspace.canvas.select_and_raise(&node_id);
+            workspace.canvas.record_layout_history();
         }
         self.canvas_interaction = Some(CanvasInteraction::ResizeNode {
             workspace_id,
@@ -1754,13 +1953,50 @@ impl TermiRustApp {
         true
     }
 
+    fn undo_canvas_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let changed = self
+            .active_workspace_mut()
+            .is_some_and(|workspace| workspace.canvas.undo_layout());
+        if !changed {
+            return;
+        }
+        self.canvas_interaction = None;
+        self.status_message = "Canvas layout change undone.".to_string();
+        self.error_message.clear();
+        self.persist_runtime_state();
+        self.sync_terminal_layout(window, cx);
+        cx.notify();
+    }
+
+    fn redo_canvas_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let changed = self
+            .active_workspace_mut()
+            .is_some_and(|workspace| workspace.canvas.redo_layout());
+        if !changed {
+            return;
+        }
+        self.canvas_interaction = None;
+        self.status_message = "Canvas layout change redone.".to_string();
+        self.error_message.clear();
+        self.persist_runtime_state();
+        self.sync_terminal_layout(window, cx);
+        cx.notify();
+    }
+
     pub(super) fn finish_canvas_interaction(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.canvas_interaction.take().is_none() {
+        let Some(interaction) = self.canvas_interaction.take() else {
             return false;
+        };
+        if matches!(
+            interaction,
+            CanvasInteraction::MoveNode { .. } | CanvasInteraction::ResizeNode { .. }
+        ) && let Some(workspace) = self.workspace_mut(interaction.workspace_id())
+        {
+            workspace.canvas.discard_unchanged_layout_history();
         }
         self.persist_runtime_state();
         self.sync_terminal_layout(window, cx);
@@ -3111,6 +3347,9 @@ impl TermiRustApp {
 
     fn toggle_canvas_node_collapsed(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
         for workspace in &mut self.workspaces {
+            if workspace.canvas.node(&node_id).is_some() {
+                workspace.canvas.record_layout_history();
+            }
             if let Some(node) = workspace
                 .canvas
                 .nodes
@@ -3178,6 +3417,7 @@ impl TermiRustApp {
 
     fn link_canvas_node(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
         let Some(source) = self.pending_context_source.take() else {
+            self.pending_dependency_source = None;
             self.pending_context_source = Some(node_id);
             self.status_message =
                 "Context source selected. Use the link action on a target node.".to_string();
@@ -3207,6 +3447,7 @@ impl TermiRustApp {
 
     fn link_canvas_dependency(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
         let Some(source) = self.pending_dependency_source.take() else {
+            self.pending_context_source = None;
             self.pending_dependency_source = Some(node_id);
             self.status_message =
                 "Dependency source selected. Choose the node that must run after it.".to_string();
@@ -3240,6 +3481,13 @@ impl TermiRustApp {
     fn cancel_canvas_dependency_link(&mut self, cx: &mut Context<Self>) {
         self.pending_dependency_source = None;
         self.status_message = "Dependency creation cancelled.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn cancel_canvas_context_link(&mut self, cx: &mut Context<Self>) {
+        self.pending_context_source = None;
+        self.status_message = "Context link creation cancelled.".to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -5017,6 +5265,12 @@ impl TermiRustApp {
                     .is_some_and(|runtime| runtime.queued_prompt.is_some())
             })
         });
+        let can_undo_layout = self
+            .active_workspace()
+            .is_some_and(|workspace| workspace.canvas.can_undo_layout());
+        let can_redo_layout = self
+            .active_workspace()
+            .is_some_and(|workspace| workspace.canvas.can_redo_layout());
         h_flex()
             .h(px(CANVAS_TOOLBAR_HEIGHT))
             .w_full()
@@ -5133,6 +5387,31 @@ impl TermiRustApp {
                     .gap_1()
                     .items_center()
                     .child(
+                        Button::new("canvas-layout-undo")
+                            .debug_selector(|| "canvas-layout-undo".to_string())
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Undo2)
+                            .tooltip("Undo the last move, resize, rename, or collapse")
+                            .disabled(!can_undo_layout)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.undo_canvas_layout(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-layout-redo")
+                            .debug_selector(|| "canvas-layout-redo".to_string())
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Redo2)
+                            .tooltip("Redo the last canvas layout change")
+                            .disabled(!can_redo_layout)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.redo_canvas_layout(window, cx);
+                            })),
+                    )
+                    .child(div().h(px(18.0)).w(px(1.0)).mx_1().bg(theme::border_dark()))
+                    .child(
                         Button::new("canvas-zoom-out")
                             .xsmall()
                             .ghost()
@@ -5177,6 +5456,150 @@ impl TermiRustApp {
                 let _ = window;
                 toolbar
             })
+    }
+
+    fn jump_canvas_from_minimap(
+        &mut self,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let viewport = window.viewport_size();
+        let viewport_width = f32::from(viewport.width);
+        let viewport_height =
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
+        let local = self.canvas_local_point(event.position);
+        let map_point = CanvasPoint::new(
+            local.x - (viewport_width - CANVAS_MINIMAP_WIDTH - CANVAS_MINIMAP_MARGIN),
+            local.y - (viewport_height - CANVAS_MINIMAP_HEIGHT - CANVAS_MINIMAP_MARGIN),
+        );
+        let Some((geometry, zoom)) = self.active_workspace().and_then(|workspace| {
+            canvas_minimap_geometry(
+                &workspace.canvas.nodes,
+                workspace.canvas.transform,
+                viewport_width,
+                viewport_height,
+            )
+            .map(|geometry| (geometry, workspace.canvas.transform.zoom))
+        }) else {
+            return;
+        };
+        let world = geometry.map_to_world(CanvasPoint::new(
+            map_point.x.clamp(
+                geometry.offset.x,
+                geometry.offset.x + geometry.world_bounds.width * geometry.scale,
+            ),
+            map_point.y.clamp(
+                geometry.offset.y,
+                geometry.offset.y + geometry.world_bounds.height * geometry.scale,
+            ),
+        ));
+        if let Some(workspace) = self.active_workspace_mut() {
+            workspace.canvas.transform.pan_x = viewport_width / 2.0 - world.x * zoom;
+            workspace.canvas.transform.pan_y = viewport_height / 2.0 - world.y * zoom;
+        }
+        self.persist_runtime_state();
+        self.sync_terminal_layout(window, cx);
+        cx.notify();
+    }
+
+    fn render_canvas_minimap(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let Some(workspace) = self.active_workspace() else {
+            return div().into_any_element();
+        };
+        let viewport = window.viewport_size();
+        let viewport_width = f32::from(viewport.width);
+        let viewport_height =
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
+        let Some(geometry) = canvas_minimap_geometry(
+            &workspace.canvas.nodes,
+            workspace.canvas.transform,
+            viewport_width,
+            viewport_height,
+        ) else {
+            return div().into_any_element();
+        };
+
+        let world_viewport_origin = workspace
+            .canvas
+            .transform
+            .screen_to_world(CanvasPoint::default());
+        let viewport_rect = geometry.world_rect_to_map(CanvasRect {
+            x: world_viewport_origin.x,
+            y: world_viewport_origin.y,
+            width: viewport_width / workspace.canvas.transform.zoom,
+            height: viewport_height / workspace.canvas.transform.zoom,
+        });
+        let selected_node_id = workspace.canvas.selected_node_id.clone();
+        let mut minimap = div()
+            .id("canvas-minimap")
+            .debug_selector(|| "canvas-minimap".to_string())
+            .absolute()
+            .right(px(CANVAS_MINIMAP_MARGIN))
+            .bottom(px(CANVAS_MINIMAP_MARGIN))
+            .w(px(CANVAS_MINIMAP_WIDTH))
+            .h(px(CANVAS_MINIMAP_HEIGHT))
+            .overflow_hidden()
+            .rounded(px(6.0))
+            .border_1()
+            .border_color(theme::with_alpha(theme::border(), 0.9))
+            .bg(theme::with_alpha(theme::terminal_panel(), 0.94))
+            .shadow_lg()
+            .cursor_pointer()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    cx.stop_propagation();
+                    this.jump_canvas_from_minimap(event, window, cx);
+                }),
+            );
+        for node in &workspace.canvas.nodes {
+            let rect = geometry.world_rect_to_map(node.rect);
+            let selected = selected_node_id.as_ref() == Some(&node.id);
+            let color = if selected {
+                theme::accent()
+            } else if matches!(node.kind, CanvasNodeKind::Agent { .. }) {
+                theme::with_alpha(theme::warning(), 0.76)
+            } else {
+                theme::with_alpha(theme::text_muted(), 0.74)
+            };
+            minimap = minimap.child(
+                div()
+                    .absolute()
+                    .left(px(rect.x))
+                    .top(px(rect.y))
+                    .w(px(rect.width))
+                    .h(px(rect.height))
+                    .rounded(px(2.0))
+                    .bg(color),
+            );
+        }
+        minimap
+            .child(
+                div()
+                    .absolute()
+                    .left(px(viewport_rect.x))
+                    .top(px(viewport_rect.y))
+                    .w(px(viewport_rect.width))
+                    .h(px(viewport_rect.height))
+                    .rounded(px(2.0))
+                    .border_2()
+                    .border_color(theme::with_alpha(theme::focus_ring(), 0.9)),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .left(px(7.0))
+                    .top(px(5.0))
+                    .px_1()
+                    .rounded(px(3.0))
+                    .bg(theme::with_alpha(theme::terminal_panel(), 0.88))
+                    .text_size(px(9.0))
+                    .font_semibold()
+                    .text_color(theme::text_muted())
+                    .child("OVERVIEW"),
+            )
+            .into_any_element()
     }
 
     fn render_canvas_edges(&self) -> AnyElement {
@@ -5282,6 +5705,7 @@ impl TermiRustApp {
         let screen = canvas_node_render_rect(workspace.canvas.transform, node);
         let selected = workspace.canvas.selected_node_id.as_ref() == Some(&node.id);
         let dependency_source = self.pending_dependency_source.as_ref() == Some(&node.id);
+        let context_source = self.pending_context_source.as_ref() == Some(&node.id);
         let node_id = node.id.clone();
         let pane_id = node.kind.pane_id();
         let title = node
@@ -5345,8 +5769,13 @@ impl TermiRustApp {
             .overflow_hidden()
             .rounded(px(7.0))
             .border_1()
+            .when(selected || dependency_source || context_source, |node| {
+                node.border_2()
+            })
             .border_color(if dependency_source {
                 theme::warning()
+            } else if context_source {
+                theme::accent()
             } else if selected {
                 theme::focus_ring()
             } else {
@@ -5378,7 +5807,15 @@ impl TermiRustApp {
                     .gap_2()
                     .items_center()
                     .justify_between()
-                    .bg(theme::terminal_panel())
+                    .bg(if selected {
+                        theme::with_alpha(theme::accent(), 0.14)
+                    } else if dependency_source {
+                        theme::with_alpha(theme::warning(), 0.12)
+                    } else if context_source {
+                        theme::with_alpha(theme::accent(), 0.12)
+                    } else {
+                        theme::terminal_panel()
+                    })
                     .border_b_1()
                     .border_color(theme::border_dark())
                     .child(
@@ -5567,7 +6004,11 @@ impl TermiRustApp {
                                 .xsmall()
                                 .ghost()
                                 .icon(IconName::ArrowRight)
-                                .tooltip("Use as context source or target")
+                                .tooltip(if context_source {
+                                    "Context source selected; choose this action on the target node"
+                                } else {
+                                    "Create a reviewed context link from this node"
+                                })
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                     cx.stop_propagation();
                                 })
@@ -6667,6 +7108,8 @@ impl TermiRustApp {
             ));
         }
 
+        body = body.child(self.render_canvas_minimap(window, cx));
+
         if workspace.canvas.nodes.is_empty() {
             body = body.child(
                 v_flex()
@@ -6708,6 +7151,59 @@ impl TermiRustApp {
         }
         if self.canvas_node_menu_id.is_some() {
             body = body.child(self.render_canvas_node_menu(window, cx));
+        }
+        if let Some(source) = self.pending_context_source.as_ref() {
+            let source_label = self.canvas_node_label(source);
+            body = body.child(
+                h_flex()
+                    .id("canvas-context-target-prompt")
+                    .absolute()
+                    .top(px(12.0))
+                    .left(px(12.0))
+                    .max_w(relative(0.8))
+                    .px_3()
+                    .py_2()
+                    .gap_3()
+                    .items_center()
+                    .rounded(px(7.0))
+                    .border_1()
+                    .border_color(theme::accent())
+                    .bg(theme::library_card())
+                    .shadow_lg()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                        cx.stop_propagation();
+                    })
+                    .child(
+                        v_flex()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child("Choose a context target"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme::text_muted())
+                                    .child(format!(
+                                        "{source_label} is the source. Click the arrow action on the node that should receive its reviewed context."
+                                    )),
+                            ),
+                    )
+                    .child(
+                        Button::new("canvas-context-target-cancel")
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Cancel context link creation")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                cx.stop_propagation();
+                                this.cancel_canvas_context_link(cx);
+                            })),
+                    ),
+            );
         }
         if let Some(source) = self.pending_dependency_source.as_ref() {
             let source_label = self.canvas_node_label(source);
@@ -6834,9 +7330,9 @@ mod tests {
         AgentExecutableStatus, AgentRunState, CANVAS_DEFAULT_NODE_HEIGHT,
         CANVAS_DEFAULT_NODE_WIDTH, CanvasNode, CanvasNodeKind, CanvasPoint, CanvasRect,
         CanvasTransform, CanvasWorkspaceState, TermiRustApp, agent_creation_can_launch,
-        agent_state_after_queue, agent_state_needs_attention, canvas_node_render_rect,
-        canvas_orchestration_scope, canvas_rect_is_visible, canvas_reveal_delta,
-        default_agent_backend, find_non_overlapping_position, fit_transform,
+        agent_state_after_queue, agent_state_needs_attention, canvas_minimap_geometry,
+        canvas_node_render_rect, canvas_orchestration_scope, canvas_rect_is_visible,
+        canvas_reveal_delta, default_agent_backend, find_non_overlapping_position, fit_transform,
         structured_transcript_lines, structured_transcript_selected_text,
     };
     use crate::models::{
@@ -6943,6 +7439,50 @@ mod tests {
         let decoded = transform.screen_to_world(transform.world_to_screen(world));
         assert!((decoded.x - world.x).abs() < 0.001);
         assert!((decoded.y - world.y).abs() < 0.001);
+    }
+
+    #[test]
+    fn minimap_maps_world_points_reversibly_across_pan_and_zoom() {
+        let nodes = vec![
+            terminal_node("a", 1, -600.0, 80.0),
+            terminal_node("b", 2, 1400.0, 900.0),
+        ];
+        let geometry = canvas_minimap_geometry(
+            &nodes,
+            CanvasTransform {
+                pan_x: -220.0,
+                pan_y: 140.0,
+                zoom: 0.7,
+            },
+            1200.0,
+            760.0,
+        )
+        .expect("nodes should produce minimap geometry");
+        let world = CanvasPoint::new(850.0, 540.0);
+        let decoded = geometry.map_to_world(geometry.world_to_map(world));
+
+        assert!((decoded.x - world.x).abs() < 0.001);
+        assert!((decoded.y - world.y).abs() < 0.001);
+    }
+
+    #[test]
+    fn layout_undo_redo_preserves_nodes_created_after_the_snapshot() {
+        let mut canvas = CanvasWorkspaceState {
+            nodes: vec![terminal_node("a", 1, 10.0, 20.0)],
+            selected_node_id: Some(CanvasNodeId::new("a")),
+            ..CanvasWorkspaceState::default()
+        };
+        canvas.record_layout_history();
+        canvas.node_mut(&CanvasNodeId::new("a")).unwrap().rect.x = 410.0;
+        canvas.nodes.push(terminal_node("new", 2, 900.0, 500.0));
+
+        assert!(canvas.undo_layout());
+        assert_eq!(canvas.node(&CanvasNodeId::new("a")).unwrap().rect.x, 10.0);
+        assert!(canvas.node(&CanvasNodeId::new("new")).is_some());
+
+        assert!(canvas.redo_layout());
+        assert_eq!(canvas.node(&CanvasNodeId::new("a")).unwrap().rect.x, 410.0);
+        assert!(canvas.node(&CanvasNodeId::new("new")).is_some());
     }
 
     #[test]

@@ -15,7 +15,12 @@ SSH, restore, and tmux runtimes; changing layout does not reconnect a pane.
    moved when the project folder changes.
 5. Drag a node by its header. Double-click the header to rename it. Drag its
    lower-right handle to resize it.
-6. Pan empty space and use the zoom and fit buttons in the canvas toolbar.
+6. Pan empty space and use the zoom and fit buttons in the canvas toolbar. The
+   bottom-right overview shows every node and the visible viewport; select a
+   point in it to jump there.
+7. Use the toolbar undo and redo actions for node moves, resizes, renames, and
+   collapse changes. These actions only restore layout metadata; they never
+   close running terminals, remove nodes, or roll back agent work.
 
 Right-click empty canvas space to open the same terminal and agent add menu.
 
@@ -171,7 +176,8 @@ for ownership decisions. Recorded automated and manual release coverage is in
 
 1. Run `cargo test -q` and `cargo run`.
 2. Open a local terminal, switch to Canvas, and add another local terminal.
-3. Drag, resize, collapse, zoom, fit, switch to Split, and return to Canvas.
+3. Drag, resize, collapse, undo, redo, zoom, fit, use the overview to jump, then
+   switch to Split and return to Canvas.
 4. Add an interactive Custom CLI using `/bin/echo` with arguments containing
    spaces and quotes; verify the text is literal.
 5. Add two structured provider nodes only when those CLIs are installed and
