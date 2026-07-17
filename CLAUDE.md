@@ -36,6 +36,9 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
   and SSH terminals, interactive or structured coding agents, sticky notes, and
   group frames in persisted, draggable, resizable nodes with reviewed context
   links and bounded dependency orchestration.
+- Saved host groups can open directly as SSH Fleet canvases. The fleet panel
+  summarizes connection and tmux state and provides guarded reconnect,
+  broadcast-input, and disconnect controls without removing canvas nodes.
 - Local Codex, Claude Code, and Gemini structured jobs normalize provider events;
   interactive remote agents reuse saved SSH and tmux settings.
 - Write-capable local coding agents default to app-managed Git worktrees with

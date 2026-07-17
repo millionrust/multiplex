@@ -10,7 +10,7 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Pass | No formatting differences. |
 | `cargo check -q` | Pass | Existing macOS `objc` cfg and dead-code warnings remain. |
-| `cargo test -q` | Pass | 320 passed, 0 failed, 3 ignored; sticky-note, group-frame, rendered compact-window, local tmux, and the repository's environment-gated integration paths were included. |
+| `cargo test -q` | Pass | 324 passed, 0 failed, 3 ignored; SSH fleet, sticky-note, group-frame, rendered compact-window, local tmux, and the repository's environment-gated integration paths were included. |
 | Agent adapter focused tests | Pass | Local and remote Codex fake app-server, Claude/Gemini stream fixtures, literal arguments, cancellation, malformed data, and remote exit-status ordering. |
 | Worktree integration tests | Pass | Real temporary Git repositories cover create, status, dirty refusal, committed refusal, and path boundaries. |
 | Canvas capacity test | Pass | 20 nodes, 40 edges, finite fit geometry and supported zoom. |
@@ -104,6 +104,14 @@ so no screenshot or automated click-through is claimed.
   a hidden-session Canvas tab cannot be merged into another Split and orphan
   those sessions. Active terminal closure uses a rendered confirmation flow.
 - Local and SSH canvas nodes reuse `SessionPane` requests and persistence.
+- Saved host groups open as persisted SSH Fleet canvases while preserving each
+  profile's authentication and tmux settings. Rendered coverage verifies the
+  group action, status rows, compact-window panel bounds, Broadcast Input,
+  confirmed bulk disconnect without node removal, and adding a group to an
+  existing canvas without duplicate endpoints. Fleet creation validates every
+  host before opening a workspace, so a missing credential cannot leave a
+  partially created fleet. Fleet overlays and pending bulk actions are bound to
+  their workspace and cannot affect SSH clients after switching tabs.
 - Persistent local terminal requests round-trip through workspace restore.
   A live local tmux test records the inner shell PID, disconnects the first PTY,
   confirms the session remains, reattaches through a second PTY with the same

@@ -24,6 +24,37 @@ SSH, restore, and tmux runtimes; changing layout does not reconnect a pane.
 
 Right-click empty canvas space to open the same terminal and agent add menu.
 
+## SSH fleets
+
+For a team that primarily works over SSH, organize related saved hosts into a
+host group such as `Production`, `Staging`, or `Customers`. A group with at
+least two visible hosts has an `Open Fleet` action in the host library. It
+validates every host first, then opens all of them as independent SSH terminal
+nodes in one persisted Canvas workspace. Existing credentials, jump hosts,
+port forwards, environment, startup settings, and persistent tmux settings are
+reused; the fleet path does not create a second connection configuration.
+
+To add a fleet to an existing Canvas, select `Add` and choose the group under
+`Host Groups`. Hosts already present with the same username, address, and port
+are skipped so repeating the action does not create duplicates.
+
+The `Fleet connected/total` toolbar action opens the fleet panel. It shows each
+SSH endpoint, live connection state, and persistent tmux session name. From the
+panel the user can:
+
+- reconnect every offline or failed host without restarting clients already
+  connected or connecting;
+- reconnect or disconnect one host while keeping its canvas node;
+- enable the workspace's existing Broadcast Input mode; and
+- disconnect all active SSH clients after an explicit confirmation.
+
+Broadcast Input sends typed and pasted bytes to every connected terminal pane
+in the workspace, so review the target list before enabling it. `Disconnect
+All` closes TermiRust's SSH clients and disables automatic reconnect for those
+panes. It does not kill persistent tmux sessions on the remote hosts; reconnect
+reattaches through each saved host's normal tmux bootstrap. Closing the fleet
+panel has no effect on any connection.
+
 Sticky notes keep project instructions beside the work they describe. Select
 `Edit` to change a note and use its menu to cycle the note color. A note can be
 the source of a reviewed context link, so its bounded, redacted text can be sent
@@ -216,23 +247,31 @@ for ownership decisions. Recorded automated and manual release coverage is in
 ## Reviewer smoke test
 
 1. Run `cargo test -q` and `cargo run`.
-2. Open a local terminal, switch to Canvas, and add another local terminal.
-3. Drag, resize, collapse, undo, redo, zoom, fit, use the overview to jump, then
+2. Create two disposable saved SSH hosts in one group. Enable persistent tmux
+   on one, select `Open Fleet`, and verify both terminal nodes and the Fleet
+   panel appear. Disconnect and reconnect the tmux host and verify its remote
+   process continues.
+3. Enable Broadcast Input only on disposable shells, send a harmless marker,
+   verify both receive it, then use the confirmed Disconnect All action and
+   reconnect the fleet.
+4. Open a local terminal, switch to Canvas, and add another local terminal.
+5. Drag, resize, collapse, undo, redo, zoom, fit, use the overview to jump, then
    switch to Split and return to Canvas.
-4. Add a sticky note, edit and recolor it, wrap it in a group, move the group,
+6. Add a sticky note, edit and recolor it, wrap it in a group, move the group,
    and link the note as reviewed context to a terminal. Remove the group and
    verify the note remains.
-5. Add an interactive Custom CLI using `/bin/echo` with arguments containing
+7. Add an interactive Custom CLI using `/bin/echo` with arguments containing
    spaces and quotes; verify the text is literal.
-6. Add two structured provider nodes only when those CLIs are installed and
+8. Add two structured provider nodes only when those CLIs are installed and
    authenticated; queue tasks and create one dependency.
-7. Create a context link, review the redactions, edit it, and confirm delivery.
-8. In a disposable Git repository, launch two isolated agents and verify their
+9. Create a context link, review the redactions, edit it, and confirm delivery.
+10. In a disposable Git repository, launch two isolated agents and verify their
    branch and path differ. Mark one complete, mark the other to keep, then
    inspect and remove only a clean unused one.
-9. Restart TermiRust and verify geometry, groups, notes, and links restore while
-   structured processes remain stopped until `Restart` is selected.
-10. On a disposable saved SSH host, choose `Structured`, `Read only`, and an
+11. Restart TermiRust and verify geometry, groups, notes, links, and fleet nodes
+   restore while structured processes remain stopped until `Restart` is
+   selected.
+12. On a disposable saved SSH host, choose `Structured`, `Read only`, and an
    installed provider. Verify completion, cancellation, missing-provider
    guidance, and same-host context delivery.
 
