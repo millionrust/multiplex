@@ -3,15 +3,14 @@ use std::collections::{HashMap, HashSet};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, ClipboardItem, Context, CursorStyle, Div, Focusable as _,
-    InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, ParentElement,
-    PathBuilder, Point, ScrollHandle, ScrollWheelEvent, SharedString,
-    StatefulInteractiveElement as _, Styled, Window, canvas as paint_canvas, div, point, px,
-    relative,
+    InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, ParentElement, PathBuilder, Point, ScrollHandle,
+    ScrollWheelEvent, SharedString, StatefulInteractiveElement as _, Styled, Window,
+    canvas as paint_canvas, div, point, px, relative,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::text::TextView;
 use gpui_component::{Disableable as _, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::agents::{
@@ -35,6 +34,10 @@ use crate::models::{
 };
 use crate::ssh::SessionCommand;
 use crate::ui::app::{TermiRustApp, WorkspaceViewMode};
+use crate::ui::keys::TerminalCellPos;
+use crate::ui::render_terminal::{
+    SelectionRange, display_terminal_text, normalized_selection, selection_contains,
+};
 use crate::ui::shell::shell_single_quote;
 use crate::ui::theme;
 use crate::{storage::managed_agent_worktree_dir, ui::util::current_unix_millis};
@@ -51,6 +54,9 @@ pub(super) const CANVAS_V1_SUPPORTED_EDGE_COUNT: usize = 40;
 const CANVAS_PLACEMENT_STEP_X: f32 = CANVAS_DEFAULT_NODE_WIDTH + CANVAS_NODE_GUTTER;
 const CANVAS_PLACEMENT_STEP_Y: f32 = CANVAS_DEFAULT_NODE_HEIGHT + CANVAS_NODE_GUTTER;
 const CANVAS_FIT_PADDING: f32 = 48.0;
+const STRUCTURED_TRANSCRIPT_FONT_SIZE: f32 = 12.0;
+const STRUCTURED_TRANSCRIPT_LINE_HEIGHT: f32 = 20.0;
+const STRUCTURED_TRANSCRIPT_PADDING: f32 = 12.0;
 
 #[derive(Clone, Debug)]
 pub(super) struct AgentCreationState {
@@ -156,6 +162,8 @@ pub(super) struct StructuredAgentRuntime {
     pub queued_prompt: Option<String>,
     pub transcript_scroll: ScrollHandle,
     pub follow_transcript: bool,
+    pub selection: Option<SelectionRange>,
+    pub dragging_selection: bool,
 }
 
 impl StructuredAgentRuntime {
@@ -172,6 +180,8 @@ impl StructuredAgentRuntime {
             queued_prompt: None,
             transcript_scroll: ScrollHandle::new(),
             follow_transcript: true,
+            selection: None,
+            dragging_selection: false,
         };
         if let Some(prompt) = initial_prompt.filter(|prompt| !prompt.trim().is_empty()) {
             runtime.push_context_message(AgentRole::User, prompt.trim());
@@ -220,6 +230,8 @@ impl StructuredAgentRuntime {
                 start += 1;
             }
             self.transcript.drain(..start);
+            self.selection = None;
+            self.dragging_selection = false;
         }
         if self.follow_transcript {
             self.transcript_scroll.scroll_to_bottom();
@@ -227,35 +239,54 @@ impl StructuredAgentRuntime {
     }
 }
 
-fn structured_transcript_line_height(line: &str, available_width: f32) -> f32 {
-    const APPROXIMATE_CHARACTER_WIDTH: f32 = 7.2;
-    const LINE_HEIGHT: f32 = 20.0;
-
-    let characters_per_line = (available_width / APPROXIMATE_CHARACTER_WIDTH)
-        .floor()
-        .max(20.0) as usize;
-    let visual_lines = line.chars().count().max(1).div_ceil(characters_per_line);
-
-    visual_lines as f32 * LINE_HEIGHT
+fn structured_transcript_lines(transcript: &str) -> Vec<&str> {
+    let visible = transcript.trim_end_matches(['\r', '\n']);
+    if visible.is_empty() {
+        vec![""]
+    } else {
+        visible
+            .split('\n')
+            .map(|line| line.trim_end_matches('\r'))
+            .collect()
+    }
 }
 
-fn structured_transcript_line_html(line: &str) -> String {
-    let mut html = String::with_capacity(line.len() + 16);
-    html.push_str("<p><code>");
-    for character in line.chars() {
-        match character {
-            '&' => html.push_str("&amp;"),
-            '<' => html.push_str("&lt;"),
-            '>' => html.push_str("&gt;"),
-            '\r' => {}
-            _ => html.push(character),
+fn structured_transcript_selected_text(
+    transcript: &str,
+    selection: SelectionRange,
+) -> Option<String> {
+    let selection = normalized_selection(selection)?;
+    let lines = structured_transcript_lines(transcript);
+    let start_row = usize::from(selection.anchor.row);
+    let end_row = usize::from(selection.head.row);
+    if start_row >= lines.len() || end_row >= lines.len() {
+        return None;
+    }
+
+    let mut selected = String::new();
+    for row in start_row..=end_row {
+        if row > start_row {
+            selected.push('\n');
         }
+        let line = lines[row];
+        let start_col = if row == start_row {
+            usize::from(selection.anchor.col)
+        } else {
+            0
+        };
+        let end_col = if row == end_row {
+            usize::from(selection.head.col)
+        } else {
+            line.chars().count()
+        };
+        selected.extend(
+            line.chars()
+                .skip(start_col)
+                .take(end_col.saturating_sub(start_col)),
+        );
     }
-    if line.is_empty() {
-        html.push_str("&nbsp;");
-    }
-    html.push_str("</code></p>");
-    html
+
+    (!selected.is_empty()).then_some(selected)
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -1253,8 +1284,18 @@ impl TermiRustApp {
         let is_canvas = self
             .active_workspace()
             .is_some_and(|workspace| workspace.layout_mode == WorkspaceLayoutMode::Canvas);
-        if !is_canvas || !event.keystroke.modifiers.secondary() || !event.keystroke.modifiers.shift
-        {
+        if !is_canvas || !event.keystroke.modifiers.secondary() {
+            return false;
+        }
+        if !event.keystroke.modifiers.shift && event.keystroke.key.as_str() == "c" {
+            let selected_node_id = self
+                .active_workspace()
+                .and_then(|workspace| workspace.canvas.selected_node_id.clone());
+            return selected_node_id
+                .as_ref()
+                .is_some_and(|node_id| self.copy_structured_agent_transcript(node_id, cx));
+        }
+        if !event.keystroke.modifiers.shift {
             return false;
         }
         let delta = match event.keystroke.key.as_str() {
@@ -2721,24 +2762,158 @@ impl TermiRustApp {
     ) {
         if let Some(runtime) = self.structured_agents.get_mut(node_id) {
             runtime.follow_transcript = true;
+            runtime.selection = None;
+            runtime.dragging_selection = false;
             runtime.transcript_scroll.scroll_to_bottom();
             cx.notify();
         }
     }
 
-    fn copy_structured_agent_transcript(&mut self, node_id: &CanvasNodeId, cx: &mut Context<Self>) {
-        let Some(transcript) = self
-            .structured_agents
-            .get(node_id)
-            .map(|runtime| runtime.transcript.trim())
-            .filter(|transcript| !transcript.is_empty())
+    fn structured_transcript_cell_position(
+        &self,
+        node_id: &CanvasNodeId,
+        position: Point<gpui::Pixels>,
+        window: &Window,
+        cx: &Context<Self>,
+    ) -> Option<TerminalCellPos> {
+        let runtime = self.structured_agents.get(node_id)?;
+        let lines = structured_transcript_lines(&runtime.transcript);
+        let bounds = runtime.transcript_scroll.bounds();
+        let offset = runtime.transcript_scroll.offset();
+        let font_id = window
+            .text_system()
+            .resolve_font(&gpui::font(self.terminal_font_family(cx)));
+        let char_width = window
+            .text_system()
+            .ch_advance(font_id, px(STRUCTURED_TRANSCRIPT_FONT_SIZE))
+            .map(f32::from)
+            .unwrap_or(7.2)
+            .max(1.0);
+        let position_x = f32::from(position.x);
+        let position_y = f32::from(position.y);
+        let content_x = position_x
+            - f32::from(bounds.left())
+            - STRUCTURED_TRANSCRIPT_PADDING
+            - f32::from(offset.x);
+        let content_y = position_y
+            - f32::from(bounds.top())
+            - STRUCTURED_TRANSCRIPT_PADDING
+            - f32::from(offset.y);
+        let row = (content_y / STRUCTURED_TRANSCRIPT_LINE_HEIGHT)
+            .floor()
+            .max(0.0) as usize;
+        let row = row.min(lines.len().saturating_sub(1));
+        let line_len = lines[row].chars().count();
+        let col = (content_x / char_width).floor().max(0.0) as usize;
+        let col = col.min(line_len.saturating_sub(1));
+
+        Some(TerminalCellPos {
+            row: row.min(usize::from(u16::MAX)) as u16,
+            col: col.min(usize::from(u16::MAX)) as u16,
+        })
+    }
+
+    fn start_structured_transcript_selection(
+        &mut self,
+        node_id: &CanvasNodeId,
+        event: &MouseDownEvent,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        if event.button != MouseButton::Left {
+            return;
+        }
+        let Some(position) =
+            self.structured_transcript_cell_position(node_id, event.position, window, cx)
         else {
             return;
         };
-        cx.write_to_clipboard(ClipboardItem::new_string(transcript.to_string()));
-        self.status_message = "Agent output copied.".to_string();
+        if let Some(runtime) = self.structured_agents.get_mut(node_id) {
+            runtime.selection = Some(SelectionRange {
+                anchor: position,
+                head: position,
+            });
+            runtime.dragging_selection = true;
+            runtime.follow_transcript = false;
+        }
+        cx.notify();
+    }
+
+    fn update_structured_transcript_selection(
+        &mut self,
+        node_id: &CanvasNodeId,
+        event: &MouseMoveEvent,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !event.dragging()
+            || !self
+                .structured_agents
+                .get(node_id)
+                .is_some_and(|runtime| runtime.dragging_selection)
+        {
+            return;
+        }
+        let Some(position) =
+            self.structured_transcript_cell_position(node_id, event.position, window, cx)
+        else {
+            return;
+        };
+        if let Some(runtime) = self.structured_agents.get_mut(node_id)
+            && let Some(selection) = runtime.selection.as_mut()
+        {
+            selection.head = position;
+            cx.notify();
+        }
+    }
+
+    fn finish_structured_transcript_selection(
+        &mut self,
+        node_id: &CanvasNodeId,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(runtime) = self.structured_agents.get_mut(node_id) {
+            runtime.dragging_selection = false;
+            if runtime
+                .selection
+                .is_some_and(|selection| selection.anchor == selection.head)
+            {
+                runtime.selection = None;
+            }
+        }
+        cx.notify();
+    }
+
+    fn copy_structured_agent_transcript(
+        &mut self,
+        node_id: &CanvasNodeId,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(runtime) = self.structured_agents.get(node_id) else {
+            return false;
+        };
+        let (text, copied_selection) = if let Some(selection) = runtime.selection {
+            let Some(text) = structured_transcript_selected_text(&runtime.transcript, selection)
+            else {
+                return false;
+            };
+            (text, true)
+        } else {
+            let transcript = runtime.transcript.trim();
+            if transcript.is_empty() {
+                return false;
+            }
+            (transcript.to_string(), false)
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        self.status_message = if copied_selection {
+            "Agent selection copied.".to_string()
+        } else {
+            "Agent output copied.".to_string()
+        };
         self.error_message.clear();
         cx.notify();
+        true
     }
 
     fn restart_structured_agent(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
@@ -5005,6 +5180,7 @@ impl TermiRustApp {
             (
                 !runtime.transcript.trim().is_empty(),
                 runtime.follow_transcript,
+                runtime.selection.is_some(),
             )
         });
         let header_latest_id = node_id.clone();
@@ -5141,7 +5317,7 @@ impl TermiRustApp {
                             .gap_1()
                             .when_some(
                                 structured_output_state,
-                                |actions, (has_output, follow_transcript)| {
+                                |actions, (has_output, follow_transcript, has_selection)| {
                                     actions
                                         .when(!follow_transcript, |actions| {
                                             actions.child(
@@ -5188,7 +5364,11 @@ impl TermiRustApp {
                                             .xsmall()
                                             .ghost()
                                             .icon(IconName::Copy)
-                                            .tooltip("Copy all agent output")
+                                            .tooltip(if has_selection {
+                                                "Copy selected agent output"
+                                            } else {
+                                                "Copy all agent output"
+                                            })
                                             .disabled(!has_output)
                                             .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                                 cx.stop_propagation();
@@ -5317,13 +5497,7 @@ impl TermiRustApp {
                 )
             });
             if pane_id.is_none() {
-                body = body.child(self.render_structured_agent_body(
-                    node_id.clone(),
-                    selected,
-                    screen.width,
-                    window,
-                    cx,
-                ));
+                body = body.child(self.render_structured_agent_body(node_id.clone(), selected, cx));
             }
             body = body.child(
                 div()
@@ -5363,12 +5537,83 @@ impl TermiRustApp {
         body.into_any_element()
     }
 
+    fn render_structured_transcript_group(
+        &self,
+        text: String,
+        selected: bool,
+        font_family: SharedString,
+    ) -> AnyElement {
+        div()
+            .whitespace_nowrap()
+            .font_family(font_family)
+            .text_size(px(STRUCTURED_TRANSCRIPT_FONT_SIZE))
+            .line_height(px(STRUCTURED_TRANSCRIPT_LINE_HEIGHT))
+            .text_color(if selected {
+                theme::terminal_selection_fg()
+            } else {
+                theme::text_on_dark()
+            })
+            .when(selected, |group| group.bg(theme::terminal_selection_bg()))
+            .child(display_terminal_text(&text))
+            .into_any_element()
+    }
+
+    fn render_structured_transcript_row(
+        &self,
+        row_index: usize,
+        line: &str,
+        selection: Option<SelectionRange>,
+        font_family: SharedString,
+    ) -> AnyElement {
+        let mut groups = Vec::new();
+        let mut pending_text = String::new();
+        let mut pending_selected = None;
+        for (column, character) in line.chars().enumerate() {
+            let selected = selection_contains(selection, row_index, column);
+            match pending_selected {
+                Some(current) if current == selected => pending_text.push(character),
+                Some(current) => {
+                    groups.push(self.render_structured_transcript_group(
+                        std::mem::take(&mut pending_text),
+                        current,
+                        font_family.clone(),
+                    ));
+                    pending_text.push(character);
+                    pending_selected = Some(selected);
+                }
+                None => {
+                    pending_text.push(character);
+                    pending_selected = Some(selected);
+                }
+            }
+        }
+        if let Some(selected) = pending_selected {
+            groups.push(self.render_structured_transcript_group(
+                pending_text,
+                selected,
+                font_family,
+            ));
+        } else {
+            groups.push(self.render_structured_transcript_group(
+                " ".to_string(),
+                false,
+                font_family,
+            ));
+        }
+
+        h_flex()
+            .flex_none()
+            .h(px(STRUCTURED_TRANSCRIPT_LINE_HEIGHT))
+            .w_full()
+            .whitespace_nowrap()
+            .children(groups)
+            .into_any_element()
+    }
+
     fn render_structured_agent_body(
         &self,
         node_id: CanvasNodeId,
         selected: bool,
-        node_width: f32,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let Some(runtime) = self.structured_agents.get(&node_id) else {
@@ -5412,6 +5657,7 @@ impl TermiRustApp {
         let task_queued = runtime.queued_prompt.is_some();
         let transcript_scroll = runtime.transcript_scroll.clone();
         let follow_transcript = runtime.follow_transcript;
+        let selection = runtime.selection;
         if follow_transcript {
             transcript_scroll.scroll_to_bottom();
         }
@@ -5419,24 +5665,16 @@ impl TermiRustApp {
         let cancel_id = node_id.clone();
         let queue_id = node_id.clone();
         let scroll_id = node_id.clone();
+        let selection_start_id = node_id.clone();
+        let selection_move_id = node_id.clone();
+        let selection_end_id = node_id.clone();
+        let selection_out_id = node_id.clone();
         let transcript_selector_id = node_id.clone();
         let font_family = self.terminal_font_family(cx);
-        let visible_transcript = transcript.trim_end_matches(['\r', '\n']);
-        let transcript_lines = if visible_transcript.is_empty() {
-            vec![""]
-        } else {
-            visible_transcript.split('\n').collect::<Vec<_>>()
-        };
+        let transcript_lines = structured_transcript_lines(&transcript);
         let last_line_index = transcript_lines.len().saturating_sub(1);
         let mut transcript_rows = Vec::with_capacity(transcript_lines.len());
         for (line_index, line) in transcript_lines.into_iter().enumerate() {
-            let line = line.trim_end_matches('\r');
-            let line_height = structured_transcript_line_height(line, node_width - 24.0);
-            let line_html = structured_transcript_line_html(line);
-            let text_view_id = SharedString::from(format!(
-                "structured-transcript-text-{}-{line_index}",
-                node_id.as_str()
-            ));
             let row_selector_id = node_id.clone();
             transcript_rows.push(
                 div()
@@ -5454,16 +5692,13 @@ impl TermiRustApp {
                     })
                     .flex_none()
                     .w_full()
-                    .h(px(line_height))
-                    .child(
-                        TextView::html(text_view_id, line_html, window, cx)
-                            .selectable(true)
-                            .size_full()
-                            .font_family(font_family.clone())
-                            .text_size(px(12.0))
-                            .line_height(px(20.0))
-                            .text_color(theme::text_on_dark()),
-                    )
+                    .h(px(STRUCTURED_TRANSCRIPT_LINE_HEIGHT))
+                    .child(self.render_structured_transcript_row(
+                        line_index,
+                        line,
+                        selection,
+                        font_family.clone(),
+                    ))
                     .into_any_element(),
             );
         }
@@ -5485,11 +5720,45 @@ impl TermiRustApp {
                     .min_h_0()
                     .relative()
                     .p_3()
-                    .overflow_y_scroll()
+                    .overflow_scroll()
+                    .cursor(CursorStyle::IBeam)
                     .track_scroll(&transcript_scroll)
                     .on_scroll_wheel(cx.listener(move |this, _: &ScrollWheelEvent, _, cx| {
                         this.pause_structured_transcript_follow(&scroll_id, cx);
                     }))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, event: &MouseDownEvent, window, cx| {
+                            this.start_structured_transcript_selection(
+                                &selection_start_id,
+                                event,
+                                window,
+                                cx,
+                            );
+                        }),
+                    )
+                    .on_mouse_move(
+                        cx.listener(move |this, event: &MouseMoveEvent, window, cx| {
+                            this.update_structured_transcript_selection(
+                                &selection_move_id,
+                                event,
+                                window,
+                                cx,
+                            );
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(move |this, _: &MouseUpEvent, _, cx| {
+                            this.finish_structured_transcript_selection(&selection_end_id, cx);
+                        }),
+                    )
+                    .on_mouse_up_out(
+                        MouseButton::Left,
+                        cx.listener(move |this, _: &MouseUpEvent, _, cx| {
+                            this.finish_structured_transcript_selection(&selection_out_id, cx);
+                        }),
+                    )
                     .child(transcript_view),
             )
             .when_some(diagnostic, |body, diagnostic| {
@@ -6410,12 +6679,14 @@ mod tests {
         agent_state_after_queue, agent_state_needs_attention, canvas_node_render_rect,
         canvas_orchestration_scope, canvas_rect_is_visible, canvas_reveal_delta,
         default_agent_backend, find_non_overlapping_position, fit_transform,
-        structured_transcript_line_height, structured_transcript_line_html,
+        structured_transcript_lines, structured_transcript_selected_text,
     };
     use crate::models::{
         AgentBackendKind, AgentLocation, AgentProvider, CanvasNodeId, SavedAgentDefinition,
         SavedCanvasState, SavedWorktreePolicy,
     };
+    use crate::ui::keys::TerminalCellPos;
+    use crate::ui::render_terminal::SelectionRange;
 
     #[test]
     fn supported_agents_default_to_workflow_mode() {
@@ -6436,19 +6707,33 @@ mod tests {
     }
 
     #[test]
-    fn structured_transcript_preserves_lines_and_escapes_html() {
+    fn structured_transcript_preserves_lines_and_extracts_arbitrary_selection() {
+        let transcript = "alpha beta\nsecond line\nthird\n";
         assert_eq!(
-            structured_transcript_line_html("first <step> & final"),
-            "<p><code>first &lt;step&gt; &amp; final</code></p>"
+            structured_transcript_lines(transcript),
+            vec!["alpha beta", "second line", "third"]
         );
         assert_eq!(
-            structured_transcript_line_html(""),
-            "<p><code>&nbsp;</code></p>"
+            structured_transcript_selected_text(
+                transcript,
+                SelectionRange {
+                    anchor: TerminalCellPos { row: 0, col: 6 },
+                    head: TerminalCellPos { row: 1, col: 5 },
+                },
+            )
+            .as_deref(),
+            Some("beta\nsecond")
         );
-        assert_eq!(structured_transcript_line_height("short", 720.0), 20.0);
         assert_eq!(
-            structured_transcript_line_height(&"x".repeat(101), 360.0),
-            60.0
+            structured_transcript_selected_text(
+                transcript,
+                SelectionRange {
+                    anchor: TerminalCellPos { row: 1, col: 5 },
+                    head: TerminalCellPos { row: 0, col: 6 },
+                },
+            )
+            .as_deref(),
+            Some("beta\nsecond")
         );
     }
 

@@ -12562,6 +12562,43 @@ sleep 1
         assert!(copied.contains("structured response"));
         assert!(copied.contains("follow line 79"));
 
+        let selection_start = point(
+            last_row_bounds.left() + px(7.2 * 7.0 + 1.0),
+            last_row_bounds.center().y,
+        );
+        let selection_end = point(
+            last_row_bounds.left() + px(7.2 * 13.0 + 1.0),
+            last_row_bounds.center().y,
+        );
+        visual.simulate_mouse_down(selection_start, MouseButton::Left, gpui::Modifiers::none());
+        visual.simulate_mouse_move(
+            selection_end,
+            Some(MouseButton::Left),
+            gpui::Modifiers::none(),
+        );
+        visual.simulate_mouse_up(selection_end, MouseButton::Left, gpui::Modifiers::none());
+        visual.run_until_parked();
+        app.read_with(cx, |app, _| {
+            assert!(app.structured_agents[&node_id].selection.is_some());
+        });
+
+        let copy_selection = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-c").expect("copy shortcut should parse"),
+            is_held: false,
+        };
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_canvas_key(&copy_selection, window, cx));
+                })
+            })
+            .expect("selection copy should succeed");
+        let copied = cx
+            .read_from_clipboard()
+            .and_then(|item| item.text())
+            .expect("selected agent output should be copied");
+        assert_eq!(copied, "line 79");
+
         let workspace_id = app.read_with(cx, |app, _| {
             app.active_workspace_id.expect("workspace should be active")
         });
