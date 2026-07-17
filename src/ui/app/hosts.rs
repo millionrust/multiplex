@@ -411,8 +411,13 @@ impl TermiRustApp {
 
         let mut sections = Vec::new();
         let mut card_ix = 0usize;
-        for (group_name, profiles) in &groups {
+        for (group_index, (group_name, profiles)) in groups.iter().enumerate() {
             let visible_count = profiles.len();
+            let fleet_group_name = group_name.clone();
+            let fleet_profile_ids = profiles
+                .iter()
+                .map(|profile| profile.id.clone())
+                .collect::<Vec<_>>();
             let total_count = self
                 .saved
                 .profiles
@@ -454,28 +459,59 @@ impl TermiRustApp {
             if !is_only_ungrouped {
                 section = section.child(
                     h_flex()
-                        .h(px(24.))
-                        .items_end()
-                        .gap(px(8.))
+                        .min_h(px(28.))
+                        .items_center()
+                        .justify_between()
                         .pl(px(2.))
                         .child(
-                            div()
-                                .text_size(px(12.))
-                                .font_semibold()
-                                .text_color(theme::text_main())
-                                .child(group_name.clone()),
+                            h_flex()
+                                .items_end()
+                                .gap(px(8.))
+                                .child(
+                                    div()
+                                        .text_size(px(12.))
+                                        .font_semibold()
+                                        .text_color(theme::text_main())
+                                        .child(group_name.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .text_color(theme::text_muted())
+                                        .pb(px(1.))
+                                        .child(format!(
+                                            "{} {}",
+                                            visible_count,
+                                            if visible_count == 1 { "host" } else { "hosts" }
+                                        )),
+                                ),
                         )
-                        .child(
-                            div()
-                                .text_size(px(11.))
-                                .text_color(theme::text_muted())
-                                .pb(px(1.))
-                                .child(format!(
-                                    "{} {}",
-                                    visible_count,
-                                    if visible_count == 1 { "host" } else { "hosts" }
-                                )),
-                        ),
+                        .when(visible_count > 1, |header| {
+                            header.child(
+                                Button::new(("hosts-open-fleet", group_index))
+                                    .debug_selector(move || {
+                                        format!("hosts-open-fleet-{group_index}")
+                                    })
+                                    .xsmall()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::AccentSoft,
+                                        cx,
+                                    ))
+                                    .icon(IconName::Globe)
+                                    .label("OPEN FLEET")
+                                    .tooltip(format!(
+                                        "Open all {visible_count} visible hosts in one SSH Fleet Canvas"
+                                    ))
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.open_saved_host_fleet_canvas(
+                                            &fleet_group_name,
+                                            fleet_profile_ids.clone(),
+                                            window,
+                                            cx,
+                                        );
+                                    })),
+                            )
+                        }),
                 );
             }
             section = section.child(cards);

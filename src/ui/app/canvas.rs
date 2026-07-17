@@ -169,6 +169,27 @@ pub(super) struct PendingCanvasNodeDelete {
     pub is_note: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct CanvasFleetSummary {
+    total: usize,
+    connected: usize,
+    connecting: usize,
+    offline: usize,
+    errors: usize,
+    persistent: usize,
+}
+
+#[derive(Clone, Debug)]
+struct CanvasFleetPane {
+    pane_id: u64,
+    title: String,
+    endpoint: String,
+    status: String,
+    connected: bool,
+    persistent: bool,
+    session_name: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct SplitPaneChooser {
     pub workspace_id: u64,
@@ -2792,6 +2813,151 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn saved_canvas_host_requests(
+        &self,
+        profile_ids: &[String],
+    ) -> anyhow::Result<Vec<(HostProfile, ConnectRequest)>> {
+        let mut seen = HashSet::new();
+        let mut requests = Vec::new();
+        for profile_id in profile_ids {
+            if !seen.insert(profile_id.as_str()) {
+                continue;
+            }
+            let profile = self
+                .saved
+                .profiles
+                .iter()
+                .find(|profile| &profile.id == profile_id)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("A selected saved host no longer exists."))?;
+            let request = self.connect_request_for_saved_canvas_host(&profile)?;
+            requests.push((profile, request));
+        }
+        if requests.is_empty() {
+            anyhow::bail!("Choose at least one saved host for the fleet canvas.");
+        }
+        Ok(requests)
+    }
+
+    fn active_canvas_contains_host(&self, profile: &HostProfile) -> bool {
+        self.active_workspace().is_some_and(|workspace| {
+            workspace.pane_ids.iter().any(|pane_id| {
+                self.pane(*pane_id).is_some_and(|pane| {
+                    pane.request.kind == ConnectionKind::Ssh
+                        && pane.request.host.eq_ignore_ascii_case(&profile.host)
+                        && pane.request.port == profile.port
+                        && pane.request.username == profile.username
+                })
+            })
+        })
+    }
+
+    pub(super) fn open_saved_host_fleet_canvas(
+        &mut self,
+        group_label: &str,
+        profile_ids: Vec<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let requests = match self.saved_canvas_host_requests(&profile_ids) {
+            Ok(requests) => requests,
+            Err(error) => {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
+        };
+        let fleet_size = requests.len();
+        let mut requests = requests.into_iter();
+        let Some((_, first_request)) = requests.next() else {
+            return;
+        };
+        let Some((workspace_id, _)) = self.open_request_workspace(first_request, window, cx) else {
+            return;
+        };
+        self.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+        if let Some(workspace) = self.workspace_mut(workspace_id) {
+            workspace.title = format!("{} Fleet", group_label.trim());
+        }
+        for (_, request) in requests {
+            let _ = self.add_request_to_canvas(request, None, window, cx);
+        }
+        self.fit_canvas(window, cx);
+        self.show_editor_panel = false;
+        self.canvas_add_menu_open = false;
+        self.canvas_fleet_open = true;
+        self.canvas_fleet_workspace_id = Some(workspace_id);
+        self.pending_canvas_fleet_disconnect = false;
+        self.mark_onboarding_complete();
+        self.status_message = format!(
+            "Opening {fleet_size} SSH host{} in the {} fleet canvas...",
+            if fleet_size == 1 { "" } else { "s" },
+            group_label.trim()
+        );
+        self.error_message.clear();
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
+    fn add_saved_host_group_to_canvas(
+        &mut self,
+        group_label: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let profiles = self
+            .saved
+            .profiles
+            .iter()
+            .filter(|profile| {
+                profile
+                    .group
+                    .trim()
+                    .eq_ignore_ascii_case(group_label.trim())
+            })
+            .filter(|profile| !self.active_canvas_contains_host(profile))
+            .cloned()
+            .collect::<Vec<_>>();
+        if profiles.is_empty() {
+            self.canvas_add_menu_open = false;
+            self.status_message = format!(
+                "Every host in {} is already on this canvas.",
+                group_label.trim()
+            );
+            self.error_message.clear();
+            cx.notify();
+            return;
+        }
+        let profile_ids = profiles
+            .iter()
+            .map(|profile| profile.id.clone())
+            .collect::<Vec<_>>();
+        let requests = match self.saved_canvas_host_requests(&profile_ids) {
+            Ok(requests) => requests,
+            Err(error) => {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
+        };
+        let added = requests.len();
+        for (_, request) in requests {
+            let _ = self.add_request_to_canvas(request, None, window, cx);
+        }
+        self.fit_canvas(window, cx);
+        self.canvas_add_menu_open = false;
+        self.canvas_fleet_open = true;
+        self.canvas_fleet_workspace_id = self.active_workspace_id;
+        self.pending_canvas_fleet_disconnect = false;
+        self.status_message = format!(
+            "Added {added} host{} from {} to this canvas.",
+            if added == 1 { "" } else { "s" },
+            group_label.trim()
+        );
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn default_agent_working_directory(&self) -> String {
         self.active_workspace()
             .and_then(|workspace| workspace.project_directory.clone())
@@ -2912,6 +3078,8 @@ impl TermiRustApp {
             git_diff,
         });
         self.canvas_activity_open = false;
+        self.canvas_fleet_open = false;
+        self.pending_canvas_fleet_disconnect = false;
         self.canvas_links_open = false;
         self.worktree_manager_open = false;
         self.error_message.clear();
@@ -4739,6 +4907,8 @@ impl TermiRustApp {
         if self.canvas_add_menu_open {
             self.canvas_links_open = false;
             self.canvas_activity_open = false;
+            self.canvas_fleet_open = false;
+            self.pending_canvas_fleet_disconnect = false;
             self.canvas_node_menu_id = None;
             self.worktree_manager_open = false;
             self.context_handoff_review = None;
@@ -4751,6 +4921,25 @@ impl TermiRustApp {
 
     fn render_canvas_add_menu(&self, cx: &mut Context<Self>) -> AnyElement {
         let profiles = self.saved.profiles.clone();
+        let mut host_groups = Vec::<(String, usize)>::new();
+        for profile in &profiles {
+            let label = profile.group.trim();
+            if label.is_empty() {
+                continue;
+            }
+            if let Some((_, count)) = host_groups
+                .iter_mut()
+                .find(|(existing, _)| existing.eq_ignore_ascii_case(label))
+            {
+                *count += 1;
+            } else {
+                host_groups.push((label.to_string(), 1));
+            }
+        }
+        host_groups.retain(|(_, count)| *count > 1);
+        host_groups.sort_by(|(left, _), (right, _)| {
+            left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase())
+        });
         v_flex()
             .id("canvas-add-menu")
             .debug_selector(|| "canvas-add-menu".to_string())
@@ -4833,6 +5022,42 @@ impl TermiRustApp {
                                 this.add_persistent_local_terminal_to_canvas(window, cx);
                             })),
                     )
+                    .when(!host_groups.is_empty(), |list| {
+                        list.child(
+                            div()
+                                .px_2()
+                                .pt_2()
+                                .pb_1()
+                                .text_size(px(10.0))
+                                .font_semibold()
+                                .text_color(theme::text_muted())
+                                .child("HOST GROUPS"),
+                        )
+                    })
+                    .children(host_groups.into_iter().enumerate().map(
+                        |(index, (group_label, host_count))| {
+                            let add_group_label = group_label.clone();
+                            Button::new(("canvas-add-host-group", index))
+                                .debug_selector(move || {
+                                    format!("canvas-add-host-group-{index}")
+                                })
+                                .small()
+                                .w_full()
+                                .justify_start()
+                                .icon(IconName::Globe)
+                                .label(format!("{group_label} ({host_count})"))
+                                .tooltip(format!(
+                                    "Connect every host in {group_label} that is not already on this canvas"
+                                ))
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.add_saved_host_group_to_canvas(
+                                        &add_group_label,
+                                        window,
+                                        cx,
+                                    );
+                                }))
+                        },
+                    ))
                     .child(
                         div()
                             .px_2()
@@ -5363,6 +5588,8 @@ impl TermiRustApp {
             self.canvas_add_menu_open = false;
             self.canvas_links_open = false;
             self.canvas_activity_open = false;
+            self.canvas_fleet_open = false;
+            self.pending_canvas_fleet_disconnect = false;
             self.canvas_node_menu_id = None;
             self.agent_creation = None;
             self.context_handoff_review = None;
@@ -5378,6 +5605,8 @@ impl TermiRustApp {
         if self.canvas_links_open {
             self.canvas_add_menu_open = false;
             self.canvas_activity_open = false;
+            self.canvas_fleet_open = false;
+            self.pending_canvas_fleet_disconnect = false;
             self.canvas_node_menu_id = None;
             self.agent_creation = None;
             self.context_handoff_review = None;
@@ -5404,6 +5633,8 @@ impl TermiRustApp {
             self.canvas_project_panel = None;
             self.canvas_add_menu_open = false;
             self.canvas_links_open = false;
+            self.canvas_fleet_open = false;
+            self.pending_canvas_fleet_disconnect = false;
             self.canvas_node_menu_id = None;
             self.agent_creation = None;
             self.context_handoff_review = None;
@@ -5412,6 +5643,179 @@ impl TermiRustApp {
             self.pending_canvas_pane_close = None;
             self.split_pane_chooser = None;
         }
+        cx.notify();
+    }
+
+    fn active_canvas_fleet_panes(&self) -> Vec<CanvasFleetPane> {
+        let Some(workspace) = self.active_workspace() else {
+            return Vec::new();
+        };
+        workspace
+            .pane_ids
+            .iter()
+            .filter_map(|pane_id| self.pane(*pane_id))
+            .filter(|pane| pane.request.kind == ConnectionKind::Ssh)
+            .map(|pane| CanvasFleetPane {
+                pane_id: pane.id,
+                title: pane.title.clone(),
+                endpoint: format!(
+                    "{}@{}:{}",
+                    pane.request.username, pane.request.host, pane.request.port
+                ),
+                status: pane.status.clone(),
+                connected: pane.connected,
+                persistent: pane.request.persistent_session,
+                session_name: pane.request.persistent_session_name.clone(),
+            })
+            .collect()
+    }
+
+    fn active_canvas_fleet_summary(&self) -> CanvasFleetSummary {
+        let panes = self.active_canvas_fleet_panes();
+        let mut summary = CanvasFleetSummary {
+            total: panes.len(),
+            ..CanvasFleetSummary::default()
+        };
+        for pane in panes {
+            if pane.connected {
+                summary.connected += 1;
+            } else {
+                let status = pane.status.to_ascii_lowercase();
+                if status.contains("error") || status.contains("failed") {
+                    summary.errors += 1;
+                } else if status.contains("connect")
+                    && !status.contains("disconnect")
+                    && !status.contains("closed")
+                {
+                    summary.connecting += 1;
+                } else {
+                    summary.offline += 1;
+                }
+            }
+            if pane.persistent {
+                summary.persistent += 1;
+            }
+        }
+        summary
+    }
+
+    fn toggle_canvas_fleet(&mut self, cx: &mut Context<Self>) {
+        let active_workspace_id = self.active_workspace_id;
+        let closing_current =
+            self.canvas_fleet_open && self.canvas_fleet_workspace_id == active_workspace_id;
+        self.canvas_fleet_open = !closing_current;
+        self.canvas_fleet_workspace_id = if closing_current {
+            None
+        } else {
+            active_workspace_id
+        };
+        self.pending_canvas_fleet_disconnect = false;
+        if self.canvas_fleet_open {
+            self.canvas_project_panel = None;
+            self.canvas_add_menu_open = false;
+            self.canvas_links_open = false;
+            self.canvas_activity_open = false;
+            self.canvas_node_menu_id = None;
+            self.agent_creation = None;
+            self.context_handoff_review = None;
+            self.worktree_manager_open = false;
+            self.pending_tmux_close = None;
+            self.pending_canvas_pane_close = None;
+            self.split_pane_chooser = None;
+        }
+        cx.notify();
+    }
+
+    fn reconnect_canvas_fleet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let pane_ids = self
+            .active_canvas_fleet_panes()
+            .into_iter()
+            .filter(|pane| {
+                if pane.connected {
+                    return false;
+                }
+                let status = pane.status.to_ascii_lowercase();
+                !status.contains("connect")
+                    || status.contains("disconnect")
+                    || status.contains("closed")
+                    || status.contains("error")
+                    || status.contains("failed")
+            })
+            .map(|pane| pane.pane_id)
+            .collect::<Vec<_>>();
+        if pane_ids.is_empty() {
+            self.status_message = "Every fleet host is already connected.".to_string();
+            self.error_message.clear();
+            cx.notify();
+            return;
+        }
+        let count = pane_ids.len();
+        for pane_id in pane_ids {
+            self.reconnect_pane(pane_id, window, cx);
+        }
+        self.status_message = format!(
+            "Reconnecting {count} fleet host{}...",
+            if count == 1 { "" } else { "s" }
+        );
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn disconnect_canvas_fleet_pane(&mut self, pane_id: u64) -> bool {
+        let Some(pane) = self.pane_mut(pane_id) else {
+            return false;
+        };
+        if pane.request.kind != ConnectionKind::Ssh || (!pane.connected && pane.closed) {
+            return false;
+        }
+        pane.user_closed = true;
+        pane.auto_reconnect_at = None;
+        let _ = pane.runtime.command_tx.send(SessionCommand::Disconnect);
+        pane.connected = false;
+        pane.closed = true;
+        pane.status = "Disconnected".to_string();
+        true
+    }
+
+    fn disconnect_one_canvas_fleet_pane(&mut self, pane_id: u64, cx: &mut Context<Self>) {
+        if self.disconnect_canvas_fleet_pane(pane_id) {
+            self.persist_runtime_state();
+            self.status_message =
+                "Disconnected the SSH client; its canvas node was kept.".to_string();
+            self.error_message.clear();
+        } else {
+            self.status_message = "That fleet host is already disconnected.".to_string();
+        }
+        cx.notify();
+    }
+
+    pub(super) fn confirm_disconnect_canvas_fleet(&mut self, cx: &mut Context<Self>) {
+        if self.canvas_fleet_workspace_id != self.active_workspace_id {
+            self.pending_canvas_fleet_disconnect = false;
+            cx.notify();
+            return;
+        }
+        let pane_ids = self
+            .active_canvas_fleet_panes()
+            .into_iter()
+            .filter(|pane| pane.connected)
+            .map(|pane| pane.pane_id)
+            .collect::<Vec<_>>();
+        let mut disconnected = 0;
+        for pane_id in pane_ids {
+            disconnected += usize::from(self.disconnect_canvas_fleet_pane(pane_id));
+        }
+        self.pending_canvas_fleet_disconnect = false;
+        self.persist_runtime_state();
+        self.status_message = if disconnected == 0 {
+            "Every fleet host is already disconnected.".to_string()
+        } else {
+            format!(
+                "Disconnected {disconnected} fleet host{}. Persistent tmux sessions remain on their hosts.",
+                if disconnected == 1 { "" } else { "s" }
+            )
+        };
+        self.error_message.clear();
         cx.notify();
     }
 
@@ -5721,6 +6125,346 @@ impl TermiRustApp {
                                 })),
                         )
                     }),
+            )
+            .into_any_element()
+    }
+
+    fn render_canvas_fleet(&self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(workspace) = self.active_workspace() else {
+            return div().into_any_element();
+        };
+        if self.canvas_fleet_workspace_id != Some(workspace.id) {
+            return div().into_any_element();
+        }
+        let panes = self.active_canvas_fleet_panes();
+        let summary = self.active_canvas_fleet_summary();
+        let workspace_id = workspace.id;
+        let broadcast_input = workspace.broadcast_input;
+        let confirm_disconnect = self.pending_canvas_fleet_disconnect;
+
+        v_flex()
+            .id("canvas-fleet-panel")
+            .debug_selector(|| "canvas-fleet-panel".to_string())
+            .absolute()
+            .top(px(12.0))
+            .left(px(12.0))
+            .w(px(560.0))
+            .max_w(relative(0.92))
+            .max_h(relative(0.92))
+            .overflow_hidden()
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(theme::border_dark())
+            .bg(theme::library_card())
+            .shadow_lg()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                cx.stop_propagation();
+            })
+            .on_mouse_down(MouseButton::Right, |_, _, cx| {
+                cx.stop_propagation();
+            })
+            .child(
+                h_flex()
+                    .min_h(px(48.0))
+                    .px_3()
+                    .gap_3()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        v_flex()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child("SSH Fleet"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme::text_muted())
+                                    .child(format!(
+                                        "{} connected / {} total / {} persistent tmux",
+                                        summary.connected, summary.total, summary.persistent
+                                    )),
+                            ),
+                    )
+                    .child(
+                        Button::new("canvas-fleet-close")
+                            .debug_selector(|| "canvas-fleet-close".to_string())
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Close fleet panel")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.canvas_fleet_open = false;
+                                this.pending_canvas_fleet_disconnect = false;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .px_3()
+                    .py_2()
+                    .gap_2()
+                    .flex_wrap()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(self.status_badge(
+                        format!("{} online", summary.connected),
+                        theme::library_bg(),
+                        theme::success(),
+                    ))
+                    .when(summary.connecting > 0, |row| {
+                        row.child(self.status_badge(
+                            format!("{} connecting", summary.connecting),
+                            theme::library_bg(),
+                            theme::warning(),
+                        ))
+                    })
+                    .when(summary.offline > 0, |row| {
+                        row.child(self.status_badge(
+                            format!("{} offline", summary.offline),
+                            theme::library_bg(),
+                            theme::text_muted(),
+                        ))
+                    })
+                    .when(summary.errors > 0, |row| {
+                        row.child(self.status_badge(
+                            format!("{} errors", summary.errors),
+                            theme::library_bg(),
+                            theme::danger(),
+                        ))
+                    }),
+            )
+            .child(
+                h_flex()
+                    .px_3()
+                    .py_2()
+                    .gap_2()
+                    .flex_wrap()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        Button::new("canvas-fleet-reconnect-all")
+                            .debug_selector(|| "canvas-fleet-reconnect-all".to_string())
+                            .small()
+                            .ghost()
+                            .icon(IconName::Redo2)
+                            .label("Reconnect Offline")
+                            .disabled(summary.offline + summary.errors == 0)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.reconnect_canvas_fleet(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-fleet-broadcast")
+                            .debug_selector(|| "canvas-fleet-broadcast".to_string())
+                            .small()
+                            .custom(Self::action_button_style(
+                                if broadcast_input {
+                                    theme::ActionTone::AccentSoft
+                                } else {
+                                    theme::ActionTone::Neutral
+                                },
+                                cx,
+                            ))
+                            .icon(IconName::ArrowRight)
+                            .label(if broadcast_input {
+                                "Broadcast On"
+                            } else {
+                                "Broadcast Input"
+                            })
+                            .tooltip("Send keyboard input to every connected pane in this workspace")
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.toggle_workspace_broadcast(workspace_id, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-fleet-disconnect-all")
+                            .debug_selector(|| "canvas-fleet-disconnect-all".to_string())
+                            .small()
+                            .ghost()
+                            .icon(IconName::Delete)
+                            .label("Disconnect All")
+                            .disabled(summary.connected == 0)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.pending_canvas_fleet_disconnect = true;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .when(confirm_disconnect, |panel| {
+                panel.child(
+                    h_flex()
+                        .px_3()
+                        .py_2()
+                        .gap_2()
+                        .items_start()
+                        .flex_wrap()
+                        .border_b_1()
+                        .border_color(theme::danger())
+                        .bg(theme::with_alpha(theme::danger(), 0.08))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(240.0))
+                                .text_size(px(10.0))
+                                .text_color(theme::text_main())
+                                .child("Disconnect every active SSH client? Persistent tmux sessions stay on their hosts."),
+                        )
+                        .child(
+                            h_flex()
+                                .ml_auto()
+                                .gap_1()
+                                .child(
+                                    Button::new("canvas-fleet-disconnect-cancel")
+                                        .xsmall()
+                                        .ghost()
+                                        .label("Cancel")
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.pending_canvas_fleet_disconnect = false;
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(
+                                    Button::new("canvas-fleet-disconnect-confirm")
+                                        .debug_selector(|| {
+                                            "canvas-fleet-disconnect-confirm".to_string()
+                                        })
+                                        .xsmall()
+                                        .custom(Self::action_button_style(
+                                            theme::ActionTone::Danger,
+                                            cx,
+                                        ))
+                                        .label("Disconnect")
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.confirm_disconnect_canvas_fleet(cx);
+                                        })),
+                                ),
+                        ),
+                )
+            })
+            .child(
+                v_flex()
+                    .id("canvas-fleet-list")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .children(panes.into_iter().map(|pane| {
+                        let pane_id = pane.pane_id;
+                        let action_pane_id = pane.pane_id;
+                        let status_lower = pane.status.to_ascii_lowercase();
+                        let status_color = if pane.connected {
+                            theme::success()
+                        } else if status_lower.contains("error")
+                            || status_lower.contains("failed")
+                        {
+                            theme::danger()
+                        } else if status_lower.contains("connect")
+                            && !status_lower.contains("disconnect")
+                        {
+                            theme::warning()
+                        } else {
+                            theme::text_muted()
+                        };
+                        let reconnectable = !pane.connected
+                            && (!status_lower.contains("connect")
+                                || status_lower.contains("disconnect")
+                                || status_lower.contains("closed")
+                                || status_lower.contains("error")
+                                || status_lower.contains("failed"));
+                        let tmux_label = pane.session_name.as_deref().map_or_else(
+                            || "Persistent tmux".to_string(),
+                            |name| format!("tmux: {name}"),
+                        );
+                        h_flex()
+                            .id(SharedString::from(format!("canvas-fleet-row-{pane_id}")))
+                            .debug_selector(move || format!("canvas-fleet-row-{pane_id}"))
+                            .min_h(px(54.0))
+                            .px_3()
+                            .py_2()
+                            .gap_3()
+                            .items_center()
+                            .justify_between()
+                            .border_b_1()
+                            .border_color(theme::border_dark())
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(
+                                        h_flex()
+                                            .gap_2()
+                                            .items_center()
+                                            .child(
+                                                div()
+                                                    .min_w_0()
+                                                    .overflow_hidden()
+                                                    .whitespace_nowrap()
+                                                    .text_ellipsis()
+                                                    .text_size(px(11.0))
+                                                    .font_semibold()
+                                                    .text_color(theme::text_main())
+                                                    .child(pane.title),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_size(px(9.0))
+                                                    .text_color(status_color)
+                                                    .child(pane.status),
+                                            ),
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .gap_2()
+                                            .child(
+                                                div()
+                                                    .text_size(px(9.0))
+                                                    .text_color(theme::text_muted())
+                                                    .child(pane.endpoint),
+                                            )
+                                            .when(pane.persistent, |details| {
+                                                details.child(
+                                                    div()
+                                                        .text_size(px(9.0))
+                                                        .text_color(theme::accent())
+                                                        .child(tmux_label),
+                                                )
+                                            }),
+                                    ),
+                            )
+                            .child(if pane.connected {
+                                Button::new(("canvas-fleet-disconnect", action_pane_id))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::Close)
+                                    .tooltip("Disconnect this SSH client and keep its node")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.disconnect_one_canvas_fleet_pane(action_pane_id, cx);
+                                    }))
+                                    .into_any_element()
+                            } else {
+                                Button::new(("canvas-fleet-reconnect", action_pane_id))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::Redo2)
+                                    .disabled(!reconnectable)
+                                    .tooltip(if reconnectable {
+                                        "Reconnect this host"
+                                    } else {
+                                        "Connection is already in progress"
+                                    })
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.reconnect_pane(action_pane_id, window, cx);
+                                    }))
+                                    .into_any_element()
+                            })
+                    })),
             )
             .into_any_element()
     }
@@ -6626,6 +7370,21 @@ impl TermiRustApp {
             activity_summary.attention,
             activity_summary.unread,
         );
+        let fleet_summary = self.active_canvas_fleet_summary();
+        let fleet_label = if compact_toolbar {
+            format!("{}/{}", fleet_summary.connected, fleet_summary.total)
+        } else {
+            format!("Fleet {}/{}", fleet_summary.connected, fleet_summary.total)
+        };
+        let fleet_tooltip = format!(
+            "{} SSH hosts: {} connected, {} connecting, {} offline, {} errors, {} persistent tmux",
+            fleet_summary.total,
+            fleet_summary.connected,
+            fleet_summary.connecting,
+            fleet_summary.offline,
+            fleet_summary.errors,
+            fleet_summary.persistent,
+        );
         let project_panel_open = self
             .canvas_project_panel
             .as_ref()
@@ -6656,6 +7415,29 @@ impl TermiRustApp {
                                 this.toggle_canvas_add_menu(cx);
                             })),
                     )
+                    .when(fleet_summary.total > 1, |toolbar| {
+                        toolbar.child(
+                            Button::new("canvas-fleet")
+                                .debug_selector(|| "canvas-fleet".to_string())
+                                .small()
+                                .custom(Self::action_button_style(
+                                    if fleet_summary.errors > 0 {
+                                        theme::ActionTone::Danger
+                                    } else if fleet_summary.connected == fleet_summary.total {
+                                        theme::ActionTone::AccentSoft
+                                    } else {
+                                        theme::ActionTone::Neutral
+                                    },
+                                    cx,
+                                ))
+                                .icon(IconName::Globe)
+                                .label(fleet_label)
+                                .tooltip(fleet_tooltip)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.toggle_canvas_fleet(cx);
+                                })),
+                        )
+                    })
                     .child(
                         Button::new("canvas-project-directory")
                             .debug_selector(|| "canvas-project-directory".to_string())
@@ -7532,7 +8314,14 @@ impl TermiRustApp {
                 };
                 (status.to_string(), false, false)
             });
-        let subtitle = format!("{location} / {status}");
+        let persistent_session = pane_id
+            .and_then(|pane_id| self.pane(pane_id))
+            .is_some_and(|pane| pane.request.persistent_session);
+        let subtitle = if persistent_session {
+            format!("{location} / {status} / tmux")
+        } else {
+            format!("{location} / {status}")
+        };
         let header_node_id = node_id.clone();
         let link_node_id = node_id.clone();
         let more_node_id = node_id.clone();
@@ -9177,6 +9966,8 @@ impl TermiRustApp {
                     this.canvas_add_menu_open = true;
                     this.canvas_links_open = false;
                     this.canvas_activity_open = false;
+                    this.canvas_fleet_open = false;
+                    this.pending_canvas_fleet_disconnect = false;
                     this.canvas_node_menu_id = None;
                     this.worktree_manager_open = false;
                     this.context_handoff_review = None;
@@ -9249,6 +10040,9 @@ impl TermiRustApp {
         }
         if self.canvas_activity_open {
             body = body.child(self.render_canvas_activity(cx));
+        }
+        if self.canvas_fleet_open {
+            body = body.child(self.render_canvas_fleet(cx));
         }
         if let Some(source) = self.pending_context_source.as_ref() {
             let source_label = self.canvas_node_label(source);

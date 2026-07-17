@@ -926,6 +926,9 @@ pub struct TermiRustApp {
     canvas_add_menu_open: bool,
     canvas_links_open: bool,
     canvas_activity_open: bool,
+    canvas_fleet_open: bool,
+    canvas_fleet_workspace_id: Option<u64>,
+    pending_canvas_fleet_disconnect: bool,
     canvas_project_panel: Option<CanvasProjectPanelState>,
     canvas_node_menu_id: Option<crate::models::CanvasNodeId>,
     worktree_manager_open: bool,
@@ -1111,6 +1114,9 @@ impl TermiRustApp {
             canvas_add_menu_open: false,
             canvas_links_open: false,
             canvas_activity_open: false,
+            canvas_fleet_open: false,
+            canvas_fleet_workspace_id: None,
+            pending_canvas_fleet_disconnect: false,
             canvas_project_panel: None,
             canvas_node_menu_id: None,
             worktree_manager_open: false,
@@ -4731,6 +4737,7 @@ impl TermiRustApp {
         let active_pane_id = workspace.active_pane_id;
 
         self.active_workspace_id = Some(workspace_id);
+        self.pending_canvas_fleet_disconnect = false;
         self.reset_workspace_activity(workspace_id);
         self.nav_section = NavSection::Hosts;
         self.set_terminal_search_input(search_query, window, cx);
@@ -9477,6 +9484,16 @@ impl TermiRustApp {
         }
 
         if event.keystroke.key.as_str() == "escape" {
+            if self.pending_canvas_fleet_disconnect {
+                self.pending_canvas_fleet_disconnect = false;
+                cx.notify();
+                return true;
+            }
+            if self.canvas_fleet_open {
+                self.canvas_fleet_open = false;
+                cx.notify();
+                return true;
+            }
             if self.pending_canvas_node_delete.is_some() {
                 self.pending_canvas_node_delete = None;
                 cx.notify();
@@ -9996,6 +10013,28 @@ mod tests {
             .join("tests/fixtures/ssh-server/id_ed25519")
             .display()
             .to_string()
+    }
+
+    fn fleet_host_profile(
+        id: &str,
+        label: &str,
+        group: &str,
+        port: u16,
+        persistent_session: bool,
+    ) -> HostProfile {
+        HostProfile {
+            id: id.to_string(),
+            label: label.to_string(),
+            group: group.to_string(),
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "fleet-user".to_string(),
+            auth_mode: AuthMode::PrivateKey,
+            key_path: docker_ssh_private_key_path(),
+            persistent_session,
+            persistent_session_name: persistent_session.then(|| format!("fleet-{id}")),
+            ..HostProfile::default()
+        }
     }
 
     fn docker_jump_request(server: &DockerSshServer) -> ConnectRequest {
@@ -12227,6 +12266,310 @@ mod tests {
             assert!(bounds.origin.y >= px(0.0));
             assert!(bounds.origin.x + bounds.size.width <= px(640.0));
             assert!(bounds.origin.y + bounds.size.height <= px(520.0));
+        }
+    }
+
+    #[gpui::test]
+    fn ssh_fleet_opens_from_host_group_and_controls_clients_from_rendered_panel(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let saved = SavedState {
+            profiles: vec![
+                fleet_host_profile("ops-a", "Ops A", "Operations", 65001, true),
+                fleet_host_profile("ops-b", "Ops B", "Operations", 65002, false),
+                fleet_host_profile("dev-a", "Dev A", "Development", 65003, false),
+            ],
+            ..SavedState::default()
+        };
+        let (app, window) = open_test_app_with_state(cx, saved);
+        cx.simulate_window_resize(*window, size(px(1400.0), px(900.0)));
+        cx.run_until_parked();
+
+        let open_fleet = wait_for_selector_click_center(
+            window,
+            cx,
+            "hosts-open-fleet-1",
+            Duration::from_secs(2),
+        );
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(open_fleet, gpui::Modifiers::none());
+        cx.run_until_parked();
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().expect("fleet workspace should open");
+            assert_eq!(workspace.title, "Operations Fleet");
+            assert_eq!(workspace.layout_mode, WorkspaceLayoutMode::Canvas);
+            assert_eq!(workspace.pane_ids.len(), 2);
+            assert_eq!(workspace.canvas.nodes.len(), 2);
+            assert!(app.canvas_fleet_open);
+            assert_eq!(
+                workspace
+                    .pane_ids
+                    .iter()
+                    .filter_map(|pane_id| app.pane(*pane_id))
+                    .filter(|pane| pane.request.persistent_session)
+                    .count(),
+                1
+            );
+            let restored = app
+                .saved
+                .restored_workspaces
+                .first()
+                .expect("fleet should persist as a workspace");
+            assert_eq!(restored.panes.len(), 2);
+            assert_eq!(restored.layout_mode, WorkspaceLayoutMode::Canvas);
+        });
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        assert!(visual.debug_bounds("canvas-fleet-panel").is_some());
+        assert!(visual.debug_bounds("canvas-fleet").is_some());
+        assert!(visual.debug_bounds("canvas-fleet-row-1").is_some());
+        assert!(visual.debug_bounds("canvas-fleet-row-2").is_some());
+
+        cx.simulate_window_resize(*window, size(px(640.0), px(520.0)));
+        visual.run_until_parked();
+        let compact_panel = visual
+            .debug_bounds("canvas-fleet-panel")
+            .expect("fleet panel should remain visible in a compact window");
+        assert!(compact_panel.origin.x >= px(0.0));
+        assert!(compact_panel.origin.y >= px(0.0));
+        assert!(compact_panel.origin.x + compact_panel.size.width <= px(640.0));
+        assert!(compact_panel.origin.y + compact_panel.size.height <= px(520.0));
+        cx.simulate_window_resize(*window, size(px(1400.0), px(900.0)));
+        visual.run_until_parked();
+
+        let broadcast = selector_click_center(window, cx, "canvas-fleet-broadcast");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(broadcast, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            assert!(app.active_workspace().unwrap().broadcast_input);
+        });
+
+        app.update(cx, |app, cx| {
+            let pane_ids = app.active_workspace().unwrap().pane_ids.clone();
+            for pane_id in pane_ids {
+                let pane = app.pane_mut(pane_id).unwrap();
+                pane.connected = true;
+                pane.closed = false;
+                pane.status = "Connected".to_string();
+            }
+            cx.notify();
+        });
+        cx.run_until_parked();
+        let disconnect_all = selector_click_center(window, cx, "canvas-fleet-disconnect-all");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(disconnect_all, gpui::Modifiers::none());
+        let mut confirm_visual = VisualTestContext::from_window(window.into(), cx);
+        confirm_visual.run_until_parked();
+        let confirm = confirm_visual
+            .debug_bounds("canvas-fleet-disconnect-confirm")
+            .expect("fleet disconnect confirmation should be visible")
+            .center();
+        confirm_visual.simulate_click(confirm, gpui::Modifiers::none());
+        confirm_visual.run_until_parked();
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().unwrap();
+            assert_eq!(workspace.canvas.nodes.len(), 2);
+            assert!(!app.pending_canvas_fleet_disconnect);
+            let states = workspace
+                .pane_ids
+                .iter()
+                .filter_map(|pane_id| app.pane(*pane_id))
+                .map(|pane| (pane.connected, pane.closed, pane.user_closed))
+                .collect::<Vec<_>>();
+            assert_eq!(states, vec![(false, true, true), (false, true, true)]);
+            assert!(
+                app.status_message
+                    .contains("Persistent tmux sessions remain")
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn ssh_fleet_group_adds_to_existing_canvas_without_duplicate_hosts(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let saved = SavedState {
+            profiles: vec![
+                fleet_host_profile("prod-a", "Prod A", "Production", 65101, true),
+                fleet_host_profile("prod-b", "Prod B", "Production", 65102, true),
+            ],
+            ..SavedState::default()
+        };
+        let (app, window) = open_test_app_with_state(cx, saved);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_agent_canvas(window, cx);
+                })
+            })
+            .expect("canvas should open");
+        cx.run_until_parked();
+
+        let add = selector_click_center(window, cx, "canvas-add-terminal");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(add, gpui::Modifiers::none());
+        let add_group = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-add-host-group-0",
+            Duration::from_secs(2),
+        );
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(add_group, gpui::Modifiers::none());
+        cx.run_until_parked();
+
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().unwrap();
+            assert_eq!(workspace.pane_ids.len(), 3);
+            assert_eq!(workspace.canvas.nodes.len(), 3);
+            assert_eq!(
+                workspace
+                    .pane_ids
+                    .iter()
+                    .filter_map(|pane_id| app.pane(*pane_id))
+                    .filter(|pane| pane.request.kind == ConnectionKind::Ssh)
+                    .count(),
+                2
+            );
+        });
+
+        let add = selector_click_center(window, cx, "canvas-add-terminal");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(add, gpui::Modifiers::none());
+        let add_group = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-add-host-group-0",
+            Duration::from_secs(2),
+        );
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(add_group, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().unwrap();
+            assert_eq!(workspace.pane_ids.len(), 3);
+            assert_eq!(workspace.canvas.nodes.len(), 3);
+            assert!(app.status_message.contains("already on this canvas"));
+        });
+
+        let workspace_id = app.read_with(cx, |app, _| app.active_workspace_id.unwrap());
+        app.update(cx, |app, cx| app.disconnect_workspace(workspace_id, cx));
+    }
+
+    #[gpui::test]
+    fn ssh_fleet_validates_every_host_before_opening_a_workspace(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut invalid = fleet_host_profile("ops-b", "Ops B", "Operations", 65202, false);
+        invalid.auth_mode = AuthMode::Password;
+        invalid.password_credential_id = None;
+        let saved = SavedState {
+            profiles: vec![
+                fleet_host_profile("ops-a", "Ops A", "Operations", 65201, true),
+                invalid,
+            ],
+            ..SavedState::default()
+        };
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_saved_host_fleet_canvas(
+                        "Operations",
+                        vec!["ops-a".to_string(), "ops-b".to_string()],
+                        window,
+                        cx,
+                    );
+                });
+            })
+            .expect("fleet validation should update the window");
+
+        app.read_with(cx, |app, _| {
+            assert!(app.workspaces.is_empty());
+            assert!(app.panes.is_empty());
+            assert!(app.saved.restored_workspaces.is_empty());
+            assert!(app.error_message.contains("Ops B needs a saved password"));
+        });
+    }
+
+    #[gpui::test]
+    fn ssh_fleet_disconnect_confirmation_cannot_cross_workspaces(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let saved = SavedState {
+            profiles: vec![
+                fleet_host_profile("ops-a", "Ops A", "Operations", 65301, true),
+                fleet_host_profile("ops-b", "Ops B", "Operations", 65302, false),
+            ],
+            ..SavedState::default()
+        };
+        let (app, window) = open_test_app_with_state(cx, saved);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_saved_host_fleet_canvas(
+                        "Operations",
+                        vec!["ops-a".to_string(), "ops-b".to_string()],
+                        window,
+                        cx,
+                    );
+                });
+            })
+            .expect("fleet should open");
+        let (fleet_workspace_id, fleet_pane_ids) = app.update(cx, |app, cx| {
+            let workspace = app.active_workspace().unwrap();
+            let workspace_id = workspace.id;
+            let pane_ids = workspace.pane_ids.clone();
+            for pane_id in &pane_ids {
+                let pane = app.pane_mut(*pane_id).unwrap();
+                pane.connected = true;
+                pane.closed = false;
+                pane.status = "Connected".to_string();
+            }
+            cx.notify();
+            (workspace_id, pane_ids)
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(
+                        ConnectRequest::local_shell_with_config(
+                            0,
+                            LocalShellConfig {
+                                program: "/bin/sh".to_string(),
+                                args: Vec::new(),
+                                cwd: Some(std::env::temp_dir().display().to_string()),
+                            },
+                        ),
+                        window,
+                        cx,
+                    )
+                    .expect("second workspace should open");
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    app.pending_canvas_fleet_disconnect = true;
+                    app.confirm_disconnect_canvas_fleet(cx);
+                });
+            })
+            .expect("workspace switch should succeed");
+
+        app.read_with(cx, |app, _| {
+            assert_ne!(app.active_workspace_id, Some(fleet_workspace_id));
+            assert_eq!(app.canvas_fleet_workspace_id, Some(fleet_workspace_id));
+            assert!(!app.pending_canvas_fleet_disconnect);
+            assert!(fleet_pane_ids.iter().all(|pane_id| {
+                app.pane(*pane_id)
+                    .is_some_and(|pane| pane.connected && !pane.closed && !pane.user_closed)
+            }));
+        });
+
+        for workspace_id in app.read_with(cx, |app, _| {
+            app.workspaces
+                .iter()
+                .map(|workspace| workspace.id)
+                .collect::<Vec<_>>()
+        }) {
+            app.update(cx, |app, cx| app.disconnect_workspace(workspace_id, cx));
         }
     }
 
