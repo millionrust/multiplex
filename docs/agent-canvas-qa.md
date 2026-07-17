@@ -10,7 +10,7 @@ Environment: macOS development machine, branch `test`, Rust test profile.
 | --- | --- | --- |
 | `cargo fmt --all -- --check` | Pass | No formatting differences. |
 | `cargo check -q` | Pass | Existing macOS `objc` cfg and dead-code warnings remain. |
-| `cargo test -q` | Pass | 315 passed, 0 failed, 3 ignored; Docker-backed and local tmux integration tests exercised. |
+| `cargo test -q` | Pass | 320 passed, 0 failed, 3 ignored; sticky-note, group-frame, rendered compact-window, local tmux, and the repository's environment-gated integration paths were included. |
 | Agent adapter focused tests | Pass | Local and remote Codex fake app-server, Claude/Gemini stream fixtures, literal arguments, cancellation, malformed data, and remote exit-status ordering. |
 | Worktree integration tests | Pass | Real temporary Git repositories cover create, status, dirty refusal, committed refusal, and path boundaries. |
 | Canvas capacity test | Pass | 20 nodes, 40 edges, finite fit geometry and supported zoom. |
@@ -55,6 +55,10 @@ so no screenshot or automated click-through is claimed.
 ## Covered behavior
 
 - Legacy state defaults to Split and new canvas state round-trips.
+- Sticky notes and group frames round-trip through saved state. Normalization
+  bounds note text, removes invalid or duplicate group membership, prevents a
+  node from belonging to multiple groups, and rejects links whose endpoint
+  kinds cannot participate.
 - Invalid geometry, duplicate IDs, dangling edges, and dependency cycles repair
   or reject deterministically.
 - Pan/zoom transforms, cursor anchoring, placement, fit, minimum resize, and
@@ -71,6 +75,11 @@ so no screenshot or automated click-through is claimed.
 - Node titles normalize predictably, link enable/delete actions preserve nodes,
   and canvas/node mouse ownership prevents terminal clicks from panning the
   background.
+- A rendered user flow creates, edits, and recolors a sticky note, groups and
+  moves it, uses the note as reviewed context, then removes the group with
+  confirmation while preserving the note. It also verifies cancel and confirm
+  paths for note deletion and automatic link cleanup. Unit coverage verifies
+  drag-in/drag-out membership, group movement, restore, and link restrictions.
 - Node headers expose location and lifecycle text, classify actionable
   attention states, mark unread output, and keep drag handling on the
   title/status region. Agent Activity summarizes running, queued, attention,
@@ -141,6 +150,11 @@ so no screenshot or automated click-through is claimed.
   unregistered, or out-of-root cleanup.
 - Canvas menus and confirmation overlays are constrained to 90% of the viewport
   width so their fixed content cannot overflow narrow windows.
+- A compact `640x520` rendered viewport keeps the Add menu and its Sticky Note
+  and Group Frame actions fully inside the visible window.
+- Node action menus clamp to the viewport and scroll their action list. The
+  rendered note flow exercises an action on a node placed below the initial
+  viewport, covering the off-screen-menu regression found during user testing.
 - Off-screen node culling avoids terminal snapshot work without stopping
   runtimes. Keyboard node selection pans the selected node into view.
 - Restored structured nodes remain inert until the rendered `Restart` action is

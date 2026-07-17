@@ -9,7 +9,7 @@ SSH, restore, and tmux runtimes; changing layout does not reconnect a pane.
 1. Open a local terminal or connect to a saved host.
 2. In the workspace header, choose `Canvas` instead of `Split`.
 3. Select `Add` to add a local terminal, saved SSH host, Codex, Claude Code,
-   Gemini CLI, or a custom executable.
+   Gemini CLI, a custom executable, a sticky note, or a group frame.
 4. Select `Project: <folder>` to choose the working directory for new local
    terminals and coding agents. Existing running terminals are not restarted or
    moved when the project folder changes.
@@ -23,6 +23,17 @@ SSH, restore, and tmux runtimes; changing layout does not reconnect a pane.
    close running terminals, remove nodes, or roll back agent work.
 
 Right-click empty canvas space to open the same terminal and agent add menu.
+
+Sticky notes keep project instructions beside the work they describe. Select
+`Edit` to change a note and use its menu to cycle the note color. A note can be
+the source of a reviewed context link, so its bounded, redacted text can be sent
+to a terminal or agent; notes cannot run or become dependency targets.
+
+`Group Frame` creates a visual work area. If a non-group node is selected, the
+new frame wraps it immediately. Drag any node into or out of a frame to update
+membership, and drag the frame header to move all members together. Removing a
+frame asks for confirmation and keeps its member nodes. Groups do not execute,
+receive context, or participate in dependency runs.
 
 `Persistent Local Terminal` attaches to an app-named local tmux session with
 tmux's attach-or-create behavior. The session and its processes survive closing
@@ -208,17 +219,20 @@ for ownership decisions. Recorded automated and manual release coverage is in
 2. Open a local terminal, switch to Canvas, and add another local terminal.
 3. Drag, resize, collapse, undo, redo, zoom, fit, use the overview to jump, then
    switch to Split and return to Canvas.
-4. Add an interactive Custom CLI using `/bin/echo` with arguments containing
+4. Add a sticky note, edit and recolor it, wrap it in a group, move the group,
+   and link the note as reviewed context to a terminal. Remove the group and
+   verify the note remains.
+5. Add an interactive Custom CLI using `/bin/echo` with arguments containing
    spaces and quotes; verify the text is literal.
-5. Add two structured provider nodes only when those CLIs are installed and
+6. Add two structured provider nodes only when those CLIs are installed and
    authenticated; queue tasks and create one dependency.
-6. Create a context link, review the redactions, edit it, and confirm delivery.
-7. In a disposable Git repository, launch two isolated agents and verify their
+7. Create a context link, review the redactions, edit it, and confirm delivery.
+8. In a disposable Git repository, launch two isolated agents and verify their
    branch and path differ. Mark one complete, mark the other to keep, then
    inspect and remove only a clean unused one.
-8. Restart TermiRust and verify geometry and links restore while structured
-   processes remain stopped until `Restart` is selected.
-9. On a disposable saved SSH host, choose `Structured`, `Read only`, and an
+9. Restart TermiRust and verify geometry, groups, notes, and links restore while
+   structured processes remain stopped until `Restart` is selected.
+10. On a disposable saved SSH host, choose `Structured`, `Read only`, and an
    installed provider. Verify completion, cancellation, missing-provider
    guidance, and same-host context delivery.
 

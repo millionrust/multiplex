@@ -33,9 +33,9 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
   - configurable terminal font size and font family
 - Persistent session history with timestamps and duration in the Logs view; host cards surface a relative "Last connected" badge.
 - Per-workspace Split or Agent Canvas layout. Canvas mode places existing local
-  and SSH terminals plus interactive or structured coding agents in persisted,
-  draggable, resizable nodes with reviewed context links and bounded dependency
-  orchestration.
+  and SSH terminals, interactive or structured coding agents, sticky notes, and
+  group frames in persisted, draggable, resizable nodes with reviewed context
+  links and bounded dependency orchestration.
 - Local Codex, Claude Code, and Gemini structured jobs normalize provider events;
   interactive remote agents reuse saved SSH and tmux settings.
 - Write-capable local coding agents default to app-managed Git worktrees with
