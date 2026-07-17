@@ -12519,6 +12519,13 @@ sleep 1
             cx,
             format!("structured-transcript-{}", node_id.as_str()),
         );
+        let last_row_bounds = dynamic_selector_bounds(
+            window,
+            cx,
+            format!("structured-transcript-last-row-{}", node_id.as_str()),
+        );
+        assert!(last_row_bounds.bottom() <= transcript_bounds.bottom());
+        assert!(last_row_bounds.bottom() >= transcript_bounds.bottom() - px(32.0));
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         visual.simulate_event(ScrollWheelEvent {
             position: transcript_bounds.center(),

@@ -227,37 +227,34 @@ impl StructuredAgentRuntime {
     }
 }
 
-fn structured_transcript_height(transcript: &str, available_width: f32) -> f32 {
+fn structured_transcript_line_height(line: &str, available_width: f32) -> f32 {
     const APPROXIMATE_CHARACTER_WIDTH: f32 = 7.2;
     const LINE_HEIGHT: f32 = 20.0;
-    const VERTICAL_PADDING: f32 = 8.0;
 
     let characters_per_line = (available_width / APPROXIMATE_CHARACTER_WIDTH)
         .floor()
         .max(20.0) as usize;
-    let visual_lines = transcript
-        .split('\n')
-        .map(|line| line.chars().count().max(1).div_ceil(characters_per_line))
-        .sum::<usize>()
-        .max(1);
+    let visual_lines = line.chars().count().max(1).div_ceil(characters_per_line);
 
-    visual_lines as f32 * LINE_HEIGHT + VERTICAL_PADDING
+    visual_lines as f32 * LINE_HEIGHT
 }
 
-fn structured_transcript_html(transcript: &str) -> String {
-    let mut html = String::with_capacity(transcript.len() + 16);
-    html.push_str("<p>");
-    for character in transcript.chars() {
+fn structured_transcript_line_html(line: &str) -> String {
+    let mut html = String::with_capacity(line.len() + 16);
+    html.push_str("<p><code>");
+    for character in line.chars() {
         match character {
             '&' => html.push_str("&amp;"),
             '<' => html.push_str("&lt;"),
             '>' => html.push_str("&gt;"),
-            '\n' => html.push_str("<br>"),
             '\r' => {}
             _ => html.push(character),
         }
     }
-    html.push_str("</p>");
+    if line.is_empty() {
+        html.push_str("&nbsp;");
+    }
+    html.push_str("</code></p>");
     html
 }
 
@@ -5423,18 +5420,54 @@ impl TermiRustApp {
         let queue_id = node_id.clone();
         let scroll_id = node_id.clone();
         let transcript_selector_id = node_id.clone();
-        let text_view_id =
-            SharedString::from(format!("structured-transcript-text-{}", node_id.as_str()));
-        let transcript_height = structured_transcript_height(&transcript, node_width - 24.0);
-        let transcript_html = structured_transcript_html(&transcript);
-        let transcript_view = TextView::html(text_view_id, transcript_html, window, cx)
-            .selectable(true)
-            .w_full()
-            .h(px(transcript_height))
-            .font_family(self.terminal_font_family(cx))
-            .text_size(px(12.0))
-            .line_height(px(20.0))
-            .text_color(theme::text_on_dark());
+        let font_family = self.terminal_font_family(cx);
+        let visible_transcript = transcript.trim_end_matches(['\r', '\n']);
+        let transcript_lines = if visible_transcript.is_empty() {
+            vec![""]
+        } else {
+            visible_transcript.split('\n').collect::<Vec<_>>()
+        };
+        let last_line_index = transcript_lines.len().saturating_sub(1);
+        let mut transcript_rows = Vec::with_capacity(transcript_lines.len());
+        for (line_index, line) in transcript_lines.into_iter().enumerate() {
+            let line = line.trim_end_matches('\r');
+            let line_height = structured_transcript_line_height(line, node_width - 24.0);
+            let line_html = structured_transcript_line_html(line);
+            let text_view_id = SharedString::from(format!(
+                "structured-transcript-text-{}-{line_index}",
+                node_id.as_str()
+            ));
+            let row_selector_id = node_id.clone();
+            transcript_rows.push(
+                div()
+                    .id(SharedString::from(format!(
+                        "structured-transcript-row-{}-{line_index}",
+                        node_id.as_str()
+                    )))
+                    .when(line_index == last_line_index, |row| {
+                        row.debug_selector(move || {
+                            format!(
+                                "structured-transcript-last-row-{}",
+                                row_selector_id.as_str()
+                            )
+                        })
+                    })
+                    .flex_none()
+                    .w_full()
+                    .h(px(line_height))
+                    .child(
+                        TextView::html(text_view_id, line_html, window, cx)
+                            .selectable(true)
+                            .size_full()
+                            .font_family(font_family.clone())
+                            .text_size(px(12.0))
+                            .line_height(px(20.0))
+                            .text_color(theme::text_on_dark()),
+                    )
+                    .into_any_element(),
+            );
+        }
+        let transcript_view = v_flex().w_full().children(transcript_rows);
 
         v_flex()
             .flex_1()
@@ -6377,7 +6410,7 @@ mod tests {
         agent_state_after_queue, agent_state_needs_attention, canvas_node_render_rect,
         canvas_orchestration_scope, canvas_rect_is_visible, canvas_reveal_delta,
         default_agent_backend, find_non_overlapping_position, fit_transform,
-        structured_transcript_height, structured_transcript_html,
+        structured_transcript_line_height, structured_transcript_line_html,
     };
     use crate::models::{
         AgentBackendKind, AgentLocation, AgentProvider, CanvasNodeId, SavedAgentDefinition,
@@ -6404,13 +6437,19 @@ mod tests {
 
     #[test]
     fn structured_transcript_preserves_lines_and_escapes_html() {
-        let transcript = "first <step>\nsecond & final\n";
-
         assert_eq!(
-            structured_transcript_html(transcript),
-            "<p>first &lt;step&gt;<br>second &amp; final<br></p>"
+            structured_transcript_line_html("first <step> & final"),
+            "<p><code>first &lt;step&gt; &amp; final</code></p>"
         );
-        assert_eq!(structured_transcript_height(transcript, 720.0), 68.0);
+        assert_eq!(
+            structured_transcript_line_html(""),
+            "<p><code>&nbsp;</code></p>"
+        );
+        assert_eq!(structured_transcript_line_height("short", 720.0), 20.0);
+        assert_eq!(
+            structured_transcript_line_height(&"x".repeat(101), 360.0),
+            60.0
+        );
     }
 
     #[test]
