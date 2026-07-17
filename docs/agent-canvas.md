@@ -33,6 +33,13 @@ on disk after it was opened, which protects concurrent agent edits. Git controls
 are inspect/copy-only; they never stage, discard, commit, or execute a shell
 command.
 
+`Activity` summarizes every structured agent in the active canvas: running,
+queued, attention, and unread-output counts. Agents that need approval, are
+blocked, failed, or disconnected are listed first. Each row also shows its
+enabled incoming context and dependency links; selecting a row pans to that
+node, focuses it, and clears its unread marker. Agent node headers keep a
+warning icon for actionable states and a bell for unseen output.
+
 Use `Cmd+Shift+Arrow` on macOS (the platform secondary modifier elsewhere) to
 cycle node selection without consuming ordinary terminal arrow keys.
 Use `Links` to inspect every directed context/dependency edge, disable it, or

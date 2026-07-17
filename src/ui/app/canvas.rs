@@ -191,6 +191,7 @@ pub(super) struct StructuredAgentRuntime {
     pub approval: Option<AgentApprovalRequest>,
     pub diagnostic: Option<String>,
     pub queued_prompt: Option<String>,
+    pub unread_output: bool,
     pub transcript_scroll: ScrollHandle,
     pub follow_transcript: bool,
     pub selection: Option<SelectionRange>,
@@ -214,6 +215,7 @@ impl StructuredAgentRuntime {
             approval: None,
             diagnostic: None,
             queued_prompt: None,
+            unread_output: false,
             transcript_scroll: ScrollHandle::new(),
             follow_transcript: true,
             selection: None,
@@ -499,6 +501,45 @@ fn agent_state_needs_attention(state: AgentRunState) -> bool {
             | AgentRunState::Failed
             | AgentRunState::Disconnected
     )
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct CanvasActivitySummary {
+    total: usize,
+    running: usize,
+    queued: usize,
+    attention: usize,
+    unread: usize,
+    actionable: usize,
+}
+
+fn summarize_agent_activity(
+    agents: impl IntoIterator<Item = (AgentRunState, bool, bool)>,
+) -> CanvasActivitySummary {
+    let mut summary = CanvasActivitySummary::default();
+    for (state, queued, unread) in agents {
+        summary.total += 1;
+        summary.running += usize::from(matches!(
+            state,
+            AgentRunState::Starting | AgentRunState::Running
+        ));
+        summary.queued += usize::from(queued);
+        summary.attention += usize::from(agent_state_needs_attention(state));
+        summary.unread += usize::from(unread);
+        summary.actionable += usize::from(agent_state_needs_attention(state) || unread);
+    }
+    summary
+}
+
+fn compact_activity_detail(value: &str, max_chars: usize) -> String {
+    let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut characters = normalized.chars();
+    let compact = characters.by_ref().take(max_chars).collect::<String>();
+    if characters.next().is_some() {
+        format!("{compact}...")
+    } else {
+        compact
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1334,6 +1375,7 @@ impl TermiRustApp {
                 self.pending_canvas_pane_close = Some(PendingCanvasPaneClose { pane_id, title });
                 self.canvas_add_menu_open = false;
                 self.canvas_links_open = false;
+                self.canvas_activity_open = false;
                 self.worktree_manager_open = false;
                 self.context_handoff_review = None;
                 self.pending_tmux_close = None;
@@ -1351,6 +1393,7 @@ impl TermiRustApp {
         });
         self.canvas_add_menu_open = false;
         self.canvas_links_open = false;
+        self.canvas_activity_open = false;
         self.canvas_node_menu_id = None;
         self.worktree_manager_open = false;
         self.context_handoff_review = None;
@@ -1605,6 +1648,7 @@ impl TermiRustApp {
         });
         self.canvas_add_menu_open = false;
         self.canvas_links_open = false;
+        self.canvas_activity_open = false;
         self.worktree_manager_open = false;
         self.context_handoff_review = None;
         self.pending_tmux_close = None;
@@ -1861,6 +1905,9 @@ impl TermiRustApp {
                 workspace.active_pane_id = pane_id;
             }
         }
+        if let Some(runtime) = self.structured_agents.get_mut(&node_id) {
+            runtime.unread_output = false;
+        }
         if let Some(pane) = pane_id.and_then(|pane_id| self.pane(pane_id)) {
             pane.terminal_focus.focus(window);
         }
@@ -1869,6 +1916,66 @@ impl TermiRustApp {
             return;
         }
         self.persist_runtime_state();
+        cx.notify();
+    }
+
+    fn focus_canvas_activity_node(
+        &mut self,
+        node_id: CanvasNodeId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return;
+        };
+        let viewport = window.viewport_size();
+        let viewport_width = f32::from(viewport.width);
+        let viewport_height =
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
+        let pane_id = self
+            .workspace(workspace_id)
+            .and_then(|workspace| workspace.canvas.node(&node_id))
+            .and_then(|node| node.kind.pane_id());
+        let mut found = false;
+        if let Some(workspace) = self.workspace_mut(workspace_id)
+            && workspace.canvas.node(&node_id).is_some()
+        {
+            workspace.canvas.select_and_raise(&node_id);
+            if let Some(node) = workspace.canvas.node(&node_id) {
+                let screen = canvas_node_render_rect(workspace.canvas.transform, node);
+                let reveal = canvas_reveal_delta(
+                    screen,
+                    viewport_width,
+                    viewport_height,
+                    CANVAS_KEYBOARD_REVEAL_PADDING,
+                );
+                workspace.canvas.transform.pan_x += reveal.x;
+                workspace.canvas.transform.pan_y += reveal.y;
+            }
+            if let Some(pane_id) = pane_id {
+                workspace.active_pane_id = pane_id;
+            }
+            found = true;
+        }
+        if !found {
+            self.error_message = "That canvas node is no longer available.".to_string();
+            cx.notify();
+            return;
+        }
+        let transcript_focus = self.structured_agents.get_mut(&node_id).map(|runtime| {
+            runtime.unread_output = false;
+            runtime.transcript_focus.clone()
+        });
+        if let Some(pane) = pane_id.and_then(|pane_id| self.pane(pane_id)) {
+            pane.terminal_focus.focus(window);
+        } else if let Some(focus) = transcript_focus {
+            focus.focus(window);
+        }
+        self.canvas_activity_open = false;
+        self.status_message = format!("Focused {}.", self.canvas_node_label(&node_id));
+        self.error_message.clear();
+        self.persist_runtime_state();
+        self.sync_terminal_layout(window, cx);
         cx.notify();
     }
 
@@ -2383,6 +2490,9 @@ impl TermiRustApp {
             git_status,
             git_diff,
         });
+        self.canvas_activity_open = false;
+        self.canvas_links_open = false;
+        self.worktree_manager_open = false;
         self.error_message.clear();
         self.status_message = "Opened local project files.".to_string();
         cx.notify();
@@ -2602,6 +2712,7 @@ impl TermiRustApp {
         });
         self.canvas_add_menu_open = false;
         self.canvas_links_open = false;
+        self.canvas_activity_open = false;
         self.worktree_manager_open = false;
         cx.notify();
     }
@@ -3228,12 +3339,20 @@ impl TermiRustApp {
         }
         let changed = !queued.is_empty();
         for (node_id, event) in queued {
+            let is_selected = self.active_workspace().is_some_and(|workspace| {
+                workspace.canvas.selected_node_id.as_ref() == Some(&node_id)
+            });
             let Some(runtime) = self.structured_agents.get_mut(&node_id) else {
                 continue;
             };
             match event {
                 AgentEvent::StateChanged(state) => {
                     runtime.state = state;
+                    if !is_selected
+                        && (state == AgentRunState::Succeeded || agent_state_needs_attention(state))
+                    {
+                        runtime.unread_output = true;
+                    }
                     if state != AgentRunState::WaitingForApproval {
                         runtime.approval = None;
                     }
@@ -3241,21 +3360,40 @@ impl TermiRustApp {
                 AgentEvent::MessageDelta { role, text } => {
                     runtime.push_text(&text);
                     runtime.push_context_message(role, &text);
+                    if !is_selected {
+                        runtime.unread_output = true;
+                    }
                 }
                 AgentEvent::ApprovalRequested(approval) => {
                     runtime.state = AgentRunState::WaitingForApproval;
                     runtime.approval = Some(approval);
+                    if !is_selected {
+                        runtime.unread_output = true;
+                    }
                 }
                 AgentEvent::Failed { error } => {
                     runtime.state = AgentRunState::Failed;
                     runtime.diagnostic = Some(error);
+                    if !is_selected {
+                        runtime.unread_output = true;
+                    }
                 }
-                AgentEvent::Diagnostic { message } => runtime.diagnostic = Some(message),
-                AgentEvent::ToolStarted(call) => runtime.push_text(&format!(
-                    "\n[{}] {}\n",
-                    call.name,
-                    call.summary.unwrap_or_default()
-                )),
+                AgentEvent::Diagnostic { message } => {
+                    runtime.diagnostic = Some(message);
+                    if !is_selected {
+                        runtime.unread_output = true;
+                    }
+                }
+                AgentEvent::ToolStarted(call) => {
+                    runtime.push_text(&format!(
+                        "\n[{}] {}\n",
+                        call.name,
+                        call.summary.unwrap_or_default()
+                    ));
+                    if !is_selected {
+                        runtime.unread_output = true;
+                    }
+                }
                 AgentEvent::ToolFinished { .. }
                 | AgentEvent::SessionReady { .. }
                 | AgentEvent::Completed { .. } => {}
@@ -4012,6 +4150,7 @@ impl TermiRustApp {
             truncated: preview.truncated,
         });
         self.canvas_links_open = false;
+        self.canvas_activity_open = false;
         self.worktree_manager_open = false;
         self.error_message.clear();
         cx.notify();
@@ -4099,6 +4238,7 @@ impl TermiRustApp {
         self.canvas_add_menu_open = !self.canvas_add_menu_open;
         if self.canvas_add_menu_open {
             self.canvas_links_open = false;
+            self.canvas_activity_open = false;
             self.canvas_node_menu_id = None;
             self.worktree_manager_open = false;
             self.context_handoff_review = None;
@@ -4664,6 +4804,7 @@ impl TermiRustApp {
         if self.worktree_manager_open {
             self.canvas_add_menu_open = false;
             self.canvas_links_open = false;
+            self.canvas_activity_open = false;
             self.canvas_node_menu_id = None;
             self.agent_creation = None;
             self.context_handoff_review = None;
@@ -4678,6 +4819,33 @@ impl TermiRustApp {
         self.canvas_links_open = !self.canvas_links_open;
         if self.canvas_links_open {
             self.canvas_add_menu_open = false;
+            self.canvas_activity_open = false;
+            self.canvas_node_menu_id = None;
+            self.agent_creation = None;
+            self.context_handoff_review = None;
+            self.worktree_manager_open = false;
+            self.pending_tmux_close = None;
+            self.pending_canvas_pane_close = None;
+            self.split_pane_chooser = None;
+        }
+        cx.notify();
+    }
+
+    fn toggle_canvas_activity(&mut self, cx: &mut Context<Self>) {
+        if !self.canvas_activity_open
+            && self.canvas_project_panel.is_some()
+            && self.canvas_project_editor_is_dirty(cx)
+        {
+            self.error_message =
+                "Save or revert the open project file before opening Agent Activity.".to_string();
+            cx.notify();
+            return;
+        }
+        self.canvas_activity_open = !self.canvas_activity_open;
+        if self.canvas_activity_open {
+            self.canvas_project_panel = None;
+            self.canvas_add_menu_open = false;
+            self.canvas_links_open = false;
             self.canvas_node_menu_id = None;
             self.agent_creation = None;
             self.context_handoff_review = None;
@@ -4700,6 +4868,7 @@ impl TermiRustApp {
             self.canvas_node_menu_id = Some(node_id);
             self.canvas_add_menu_open = false;
             self.canvas_links_open = false;
+            self.canvas_activity_open = false;
             self.worktree_manager_open = false;
             self.agent_creation = None;
             self.context_handoff_review = None;
@@ -4940,6 +5109,311 @@ impl TermiRustApp {
                                 this.toggle_canvas_links(cx);
                             })),
                     ),
+            )
+            .into_any_element()
+    }
+
+    fn render_canvas_activity(&self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(workspace) = self.active_workspace() else {
+            return div().into_any_element();
+        };
+        let summary = summarize_agent_activity(workspace.canvas.nodes.iter().filter_map(|node| {
+            self.structured_agents.get(&node.id).map(|runtime| {
+                (
+                    runtime.state,
+                    runtime.queued_prompt.is_some(),
+                    runtime.unread_output,
+                )
+            })
+        }));
+        let mut rows = workspace
+            .canvas
+            .nodes
+            .iter()
+            .filter_map(|node| {
+                let runtime = self.structured_agents.get(&node.id)?;
+                let title = self.canvas_node_label(&node.id);
+                let location = self.canvas_node_location_label(node);
+                let queued = runtime.queued_prompt.is_some();
+                let needs_attention = agent_state_needs_attention(runtime.state);
+                let priority = if needs_attention {
+                    0
+                } else if runtime.unread_output {
+                    1
+                } else if matches!(
+                    runtime.state,
+                    AgentRunState::Starting | AgentRunState::Running
+                ) {
+                    2
+                } else if queued {
+                    3
+                } else {
+                    4
+                };
+                let detail = runtime
+                    .diagnostic
+                    .as_deref()
+                    .map(|message| compact_activity_detail(message, 140))
+                    .filter(|message| !message.is_empty())
+                    .or_else(|| {
+                        runtime.queued_prompt.as_deref().map(|prompt| {
+                            format!("Queued: {}", compact_activity_detail(prompt, 120))
+                        })
+                    });
+                let incoming_context = workspace
+                    .canvas
+                    .edges
+                    .iter()
+                    .filter(|edge| {
+                        edge.enabled
+                            && edge.kind == CanvasEdgeKind::Context
+                            && edge.target == node.id
+                    })
+                    .count();
+                let incoming_dependencies = workspace
+                    .canvas
+                    .edges
+                    .iter()
+                    .filter(|edge| {
+                        edge.enabled
+                            && edge.kind == CanvasEdgeKind::Dependency
+                            && edge.target == node.id
+                    })
+                    .count();
+                let outgoing_dependencies = workspace
+                    .canvas
+                    .edges
+                    .iter()
+                    .filter(|edge| {
+                        edge.enabled
+                            && edge.kind == CanvasEdgeKind::Dependency
+                            && edge.source == node.id
+                    })
+                    .count();
+                Some((
+                    priority,
+                    title,
+                    node.id.clone(),
+                    location,
+                    runtime.state,
+                    queued,
+                    runtime.unread_output,
+                    needs_attention,
+                    detail,
+                    incoming_context,
+                    incoming_dependencies,
+                    outgoing_dependencies,
+                ))
+            })
+            .collect::<Vec<_>>();
+        rows.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+
+        v_flex()
+            .id("canvas-activity-panel")
+            .debug_selector(|| "canvas-activity-panel".to_string())
+            .absolute()
+            .top(px(12.0))
+            .right(px(12.0))
+            .w(px(440.0))
+            .max_w(relative(0.9))
+            .max_h(px(640.0))
+            .overflow_hidden()
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(theme::border_dark())
+            .bg(theme::library_card())
+            .shadow_lg()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                cx.stop_propagation();
+            })
+            .child(
+                h_flex()
+                    .h(px(48.0))
+                    .px_3()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        v_flex()
+                            .child(
+                                div()
+                                    .text_size(px(13.0))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child("Agent Activity"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.0))
+                                    .text_color(theme::text_muted())
+                                    .child(format!(
+                                        "{} running / {} queued / {} attention / {} unread",
+                                        summary.running,
+                                        summary.queued,
+                                        summary.attention,
+                                        summary.unread
+                                    )),
+                            ),
+                    )
+                    .child(
+                        Button::new("canvas-activity-close")
+                            .debug_selector(|| "canvas-activity-close".to_string())
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Close activity")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.canvas_activity_open = false;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .p_2()
+                    .gap_1()
+                    .overflow_y_scrollbar()
+                    .when(rows.is_empty(), |list| {
+                        list.child(
+                            v_flex()
+                                .py_6()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    Icon::new(IconName::Inbox)
+                                        .size(px(18.0))
+                                        .text_color(theme::text_muted()),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(11.0))
+                                        .text_color(theme::text_muted())
+                                        .child("No structured agents are running in this canvas."),
+                                ),
+                        )
+                    })
+                    .children(rows.into_iter().map(
+                        |(
+                            _,
+                            title,
+                            node_id,
+                            location,
+                            state,
+                            queued,
+                            unread,
+                            needs_attention,
+                            detail,
+                            incoming_context,
+                            incoming_dependencies,
+                            outgoing_dependencies,
+                        )| {
+                            let selector = format!("canvas-activity-node-{}", node_id.as_str());
+                            let row_node_id = node_id.clone();
+                            let state_color = match state {
+                                AgentRunState::Failed | AgentRunState::Disconnected => {
+                                    theme::danger()
+                                }
+                                AgentRunState::WaitingForApproval | AgentRunState::Blocked => {
+                                    theme::warning()
+                                }
+                                AgentRunState::Starting | AgentRunState::Running => theme::accent(),
+                                AgentRunState::Succeeded => theme::success(),
+                                AgentRunState::Idle | AgentRunState::Cancelled => {
+                                    theme::text_muted()
+                                }
+                            };
+                            v_flex()
+                                .id(SharedString::from(selector.clone()))
+                                .debug_selector(move || selector.clone())
+                                .p_2()
+                                .gap_1()
+                                .rounded(px(5.0))
+                                .border_l_2()
+                                .border_color(if needs_attention {
+                                    theme::warning()
+                                } else if unread {
+                                    theme::accent()
+                                } else {
+                                    theme::border_dark()
+                                })
+                                .bg(theme::with_alpha(theme::terminal_panel(), 0.7))
+                                .cursor_pointer()
+                                .hover(|row| row.bg(theme::with_alpha(theme::accent(), 0.1)))
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.focus_canvas_activity_node(
+                                        row_node_id.clone(),
+                                        window,
+                                        cx,
+                                    );
+                                }))
+                                .child(
+                                    h_flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .flex_1()
+                                                .min_w_0()
+                                                .overflow_hidden()
+                                                .whitespace_nowrap()
+                                                .text_ellipsis()
+                                                .text_size(px(11.0))
+                                                .font_semibold()
+                                                .text_color(theme::text_main())
+                                                .child(title),
+                                        )
+                                        .child(
+                                            h_flex()
+                                                .gap_1()
+                                                .items_center()
+                                                .when(unread, |status| {
+                                                    status.child(
+                                                        Icon::new(IconName::Bell)
+                                                            .size(px(11.0))
+                                                            .text_color(theme::accent()),
+                                                    )
+                                                })
+                                                .when(needs_attention, |status| {
+                                                    status.child(
+                                                        Icon::new(IconName::TriangleAlert)
+                                                            .size(px(11.0))
+                                                            .text_color(theme::warning()),
+                                                    )
+                                                })
+                                                .child(
+                                                    div()
+                                                        .text_size(px(10.0))
+                                                        .font_semibold()
+                                                        .text_color(state_color)
+                                                        .child(state.label()),
+                                                ),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(10.0))
+                                        .text_color(theme::text_muted())
+                                        .child(format!(
+                                            "{location} / Context {incoming_context} in / Dependencies {incoming_dependencies} in, {outgoing_dependencies} out{}",
+                                            if queued { " / Task queued" } else { "" }
+                                        )),
+                                )
+                                .when_some(detail, |row, detail| {
+                                    row.child(
+                                        div()
+                                            .text_size(px(10.0))
+                                            .text_color(if needs_attention {
+                                                theme::warning()
+                                            } else {
+                                                theme::text_muted_dark()
+                                            })
+                                            .child(detail),
+                                    )
+                                })
+                        },
+                    )),
             )
             .into_any_element()
     }
@@ -5462,6 +5936,7 @@ impl TermiRustApp {
     }
 
     fn render_canvas_toolbar(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let compact_toolbar = f32::from(window.viewport_size().width) < 1280.0;
         let zoom_percent = self
             .active_workspace()
             .map(|workspace| (workspace.canvas.transform.zoom * 100.0).round() as i32)
@@ -5469,7 +5944,15 @@ impl TermiRustApp {
         let project_directory = self
             .active_workspace()
             .and_then(|workspace| workspace.project_directory.clone());
-        let project_directory_label = canvas_project_directory_label(project_directory.as_deref());
+        let project_directory_label = if compact_toolbar {
+            if project_directory.is_some() {
+                "Project".to_string()
+            } else {
+                "Choose Project".to_string()
+            }
+        } else {
+            canvas_project_directory_label(project_directory.as_deref())
+        };
         let project_directory_tooltip = project_directory
             .as_deref()
             .map(|directory| {
@@ -5504,6 +5987,33 @@ impl TermiRustApp {
         let can_redo_layout = self
             .active_workspace()
             .is_some_and(|workspace| workspace.canvas.can_redo_layout());
+        let activity_summary = self
+            .active_workspace()
+            .map(|workspace| {
+                summarize_agent_activity(workspace.canvas.nodes.iter().filter_map(|node| {
+                    self.structured_agents.get(&node.id).map(|runtime| {
+                        (
+                            runtime.state,
+                            runtime.queued_prompt.is_some(),
+                            runtime.unread_output,
+                        )
+                    })
+                }))
+            })
+            .unwrap_or_default();
+        let activity_label = if activity_summary.actionable > 0 {
+            format!("Activity ({})", activity_summary.actionable)
+        } else {
+            "Activity".to_string()
+        };
+        let activity_tooltip = format!(
+            "{} agent(s): {} running, {} queued, {} need attention, {} with unread output",
+            activity_summary.total,
+            activity_summary.running,
+            activity_summary.queued,
+            activity_summary.attention,
+            activity_summary.unread,
+        );
         let project_panel_open = self
             .canvas_project_panel
             .as_ref()
@@ -5568,7 +6078,7 @@ impl TermiRustApp {
                             .small()
                             .ghost()
                             .icon(IconName::ArrowRight)
-                            .label("Review context")
+                            .when(!compact_toolbar, |button| button.label("Review context"))
                             .tooltip("Review an incoming context link before sending")
                             .disabled(!can_review_context)
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -5581,7 +6091,7 @@ impl TermiRustApp {
                             .small()
                             .ghost()
                             .icon(IconName::Building2)
-                            .label("Run workflow")
+                            .when(!compact_toolbar, |button| button.label("Run workflow"))
                             .tooltip("Run queued tasks when dependencies are satisfied")
                             .disabled(!can_run_workflow)
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -5589,16 +6099,38 @@ impl TermiRustApp {
                             })),
                     )
                     .child(
+                        Button::new("canvas-activity")
+                            .debug_selector(|| "canvas-activity".to_string())
+                            .small()
+                            .ghost()
+                            .icon(if activity_summary.actionable > 0 {
+                                IconName::Bell
+                            } else {
+                                IconName::Inbox
+                            })
+                            .when(!compact_toolbar, |button| button.label(activity_label))
+                            .when(
+                                compact_toolbar && activity_summary.actionable > 0,
+                                |button| button.label(activity_summary.actionable.to_string()),
+                            )
+                            .tooltip(activity_tooltip)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.toggle_canvas_activity(cx);
+                            })),
+                    )
+                    .child(
                         Button::new("canvas-links")
                             .small()
                             .ghost()
                             .icon(IconName::ArrowRight)
-                            .label(format!(
-                                "Links ({})",
-                                self.active_workspace()
-                                    .map(|workspace| workspace.canvas.edges.len())
-                                    .unwrap_or_default()
-                            ))
+                            .when(!compact_toolbar, |button| {
+                                button.label(format!(
+                                    "Links ({})",
+                                    self.active_workspace()
+                                        .map(|workspace| workspace.canvas.edges.len())
+                                        .unwrap_or_default()
+                                ))
+                            })
                             .tooltip("Inspect, enable, disable, or delete canvas links")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_canvas_links(cx);
@@ -5609,10 +6141,12 @@ impl TermiRustApp {
                             .small()
                             .ghost()
                             .icon(IconName::GitHub)
-                            .label(format!(
-                                "Worktrees ({})",
-                                self.saved.managed_agent_worktrees.len()
-                            ))
+                            .when(!compact_toolbar, |button| {
+                                button.label(format!(
+                                    "Worktrees ({})",
+                                    self.saved.managed_agent_worktrees.len()
+                                ))
+                            })
                             .tooltip("Inspect and clean up isolated agent worktrees")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_worktree_manager(cx);
@@ -6334,13 +6868,14 @@ impl TermiRustApp {
             .or_else(|| pane_id.and_then(|id| self.pane(id).map(|pane| pane.title.clone())))
             .unwrap_or_else(|| "Agent".to_string());
         let location = self.canvas_node_location_label(node);
-        let (status, needs_attention) = self
+        let (status, needs_attention, unread_output) = self
             .structured_agents
             .get(&node.id)
             .map(|runtime| {
                 (
                     runtime.state.label().to_string(),
                     agent_state_needs_attention(runtime.state),
+                    runtime.unread_output,
                 )
             })
             .or_else(|| {
@@ -6349,10 +6884,11 @@ impl TermiRustApp {
                         pane.status.clone(),
                         pane.status == "Error"
                             || (!pane.connected && pane.closed && !pane.user_closed),
+                        false,
                     )
                 })
             })
-            .unwrap_or_else(|| ("Idle".to_string(), false));
+            .unwrap_or_else(|| ("Idle".to_string(), false, false));
         let subtitle = format!("{location} / {status}");
         let header_node_id = node_id.clone();
         let link_node_id = node_id.clone();
@@ -6512,6 +7048,13 @@ impl TermiRustApp {
                                     Icon::new(IconName::TriangleAlert)
                                         .size(px(12.0))
                                         .text_color(theme::warning()),
+                                )
+                            })
+                            .when(unread_output, |header| {
+                                header.child(
+                                    Icon::new(IconName::Bell)
+                                        .size(px(12.0))
+                                        .text_color(theme::accent()),
                                 )
                             }),
                     )
@@ -7705,6 +8248,7 @@ impl TermiRustApp {
                 cx.listener(|this, _, _, cx| {
                     this.canvas_add_menu_open = true;
                     this.canvas_links_open = false;
+                    this.canvas_activity_open = false;
                     this.canvas_node_menu_id = None;
                     this.worktree_manager_open = false;
                     this.context_handoff_review = None;
@@ -7774,6 +8318,9 @@ impl TermiRustApp {
         }
         if self.canvas_project_panel.is_some() {
             body = body.child(self.render_canvas_project_panel(window, cx));
+        }
+        if self.canvas_activity_open {
+            body = body.child(self.render_canvas_activity(cx));
         }
         if let Some(source) = self.pending_context_source.as_ref() {
             let source_label = self.canvas_node_label(source);
@@ -7955,8 +8502,9 @@ mod tests {
         CanvasTransform, CanvasWorkspaceState, TermiRustApp, agent_creation_can_launch,
         agent_state_after_queue, agent_state_needs_attention, canvas_minimap_geometry,
         canvas_node_render_rect, canvas_orchestration_scope, canvas_rect_is_visible,
-        canvas_reveal_delta, default_agent_backend, find_non_overlapping_position, fit_transform,
-        structured_transcript_lines, structured_transcript_selected_text,
+        canvas_reveal_delta, compact_activity_detail, default_agent_backend,
+        find_non_overlapping_position, fit_transform, structured_transcript_lines,
+        structured_transcript_selected_text, summarize_agent_activity,
     };
     use crate::models::{
         AgentBackendKind, AgentLocation, AgentProvider, CanvasNodeId, SavedAgentDefinition,
@@ -8230,6 +8778,27 @@ mod tests {
         ] {
             assert!(!agent_state_needs_attention(state));
         }
+    }
+
+    #[test]
+    fn activity_summary_separates_running_queued_attention_and_unread_agents() {
+        let summary = summarize_agent_activity([
+            (AgentRunState::Running, false, false),
+            (AgentRunState::Idle, true, false),
+            (AgentRunState::Failed, true, true),
+            (AgentRunState::Succeeded, false, true),
+        ]);
+
+        assert_eq!(summary.total, 4);
+        assert_eq!(summary.running, 1);
+        assert_eq!(summary.queued, 2);
+        assert_eq!(summary.attention, 1);
+        assert_eq!(summary.unread, 2);
+        assert_eq!(summary.actionable, 2);
+        assert_eq!(
+            compact_activity_detail("one\n  two   three four", 13),
+            "one two three..."
+        );
     }
 
     #[test]

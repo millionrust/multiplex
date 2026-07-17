@@ -925,6 +925,7 @@ pub struct TermiRustApp {
     canvas_interaction: Option<CanvasInteraction>,
     canvas_add_menu_open: bool,
     canvas_links_open: bool,
+    canvas_activity_open: bool,
     canvas_project_panel: Option<CanvasProjectPanelState>,
     canvas_node_menu_id: Option<crate::models::CanvasNodeId>,
     worktree_manager_open: bool,
@@ -1092,6 +1093,7 @@ impl TermiRustApp {
             canvas_interaction: None,
             canvas_add_menu_open: false,
             canvas_links_open: false,
+            canvas_activity_open: false,
             canvas_project_panel: None,
             canvas_node_menu_id: None,
             worktree_manager_open: false,
@@ -12833,6 +12835,58 @@ sleep 1
             .and_then(|item| item.text())
             .expect("selected agent output should be copied");
         assert_eq!(copied, "line 79");
+
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| {
+                    let runtime = app
+                        .structured_agents
+                        .get_mut(&node_id)
+                        .expect("structured runtime should exist");
+                    runtime.state = crate::agents::AgentRunState::Failed;
+                    runtime.unread_output = true;
+                    runtime.diagnostic = Some("Agent command exited with status 1".to_string());
+                    let workspace = app
+                        .active_workspace_mut()
+                        .expect("workspace should remain active");
+                    workspace.canvas.selected_node_id = workspace
+                        .canvas
+                        .nodes
+                        .iter()
+                        .find(|node| node.id != node_id)
+                        .map(|node| node.id.clone());
+                    workspace
+                        .canvas
+                        .node_mut(&node_id)
+                        .expect("structured node should remain")
+                        .rect
+                        .x = 5000.0;
+                    cx.notify();
+                });
+            })
+            .expect("off-screen agent state should update");
+        let activity_click =
+            wait_for_selector_click_center(window, cx, "canvas-activity", Duration::from_secs(2));
+        visual.simulate_click(activity_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+        let _activity_bounds =
+            dynamic_selector_bounds(window, cx, "canvas-activity-panel".to_string());
+        let activity_row = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("canvas-activity-node-{}", node_id.as_str()),
+        );
+        visual.simulate_click(activity_row, gpui::Modifiers::none());
+        visual.run_until_parked();
+        app.read_with(cx, |app, _| {
+            let workspace = app
+                .active_workspace()
+                .expect("workspace should remain active");
+            assert_eq!(workspace.canvas.selected_node_id.as_ref(), Some(&node_id));
+            assert!(!app.structured_agents[&node_id].unread_output);
+            assert!(!app.canvas_activity_open);
+            assert!(workspace.canvas.transform.pan_x < -1000.0);
+        });
 
         let workspace_id = app.read_with(cx, |app, _| {
             app.active_workspace_id.expect("workspace should be active")
