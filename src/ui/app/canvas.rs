@@ -24,6 +24,7 @@ use crate::agents::{
     schedule_dependency_dag, spawn_codex_session, spawn_headless_session,
     spawn_remote_codex_session, spawn_remote_headless_session,
 };
+use crate::local::{local_tmux_install_guidance, local_tmux_version};
 use crate::models::{
     AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AuthConfig, AuthMode,
     CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CANVAS_MAX_ZOOM, CANVAS_MIN_NODE_HEIGHT,
@@ -2270,6 +2271,58 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    pub(super) fn add_persistent_local_terminal_to_canvas(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let version = match local_tmux_version() {
+            Ok(version) => version,
+            Err(error) => {
+                self.error_message = format!(
+                    "Persistent Local Terminal needs tmux. {error:#}. {}",
+                    local_tmux_install_guidance()
+                );
+                cx.notify();
+                return;
+            }
+        };
+        let Some(workspace_id) = self.active_workspace_id else {
+            self.error_message =
+                "Open a Canvas workspace before adding a persistent terminal.".to_string();
+            cx.notify();
+            return;
+        };
+        let mut config = self.saved.settings.default_local_shell.clone();
+        if let Some(project_directory) = self
+            .active_workspace()
+            .and_then(|workspace| workspace.project_directory.clone())
+        {
+            config.cwd = Some(project_directory);
+        }
+        let session_name = format!("tr-local-{workspace_id}-{}", current_unix_millis());
+        let request = ConnectRequest::persistent_local_shell_with_config(
+            0,
+            config,
+            session_name.clone(),
+            false,
+        );
+        if self
+            .add_request_to_canvas(request, None, window, cx)
+            .is_none()
+        {
+            self.error_message =
+                "Unable to add the persistent terminal to this canvas.".to_string();
+            cx.notify();
+            return;
+        }
+        self.canvas_add_menu_open = false;
+        self.status_message =
+            format!("Attached persistent local tmux session {session_name} using {version}.");
+        self.error_message.clear();
+        cx.notify();
+    }
+
     pub(super) fn connect_request_for_saved_canvas_host(
         &self,
         profile: &HostProfile,
@@ -4309,6 +4362,21 @@ impl TermiRustApp {
                             .label("Local Terminal")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.add_local_terminal_to_canvas(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-add-local-persistent")
+                            .debug_selector(|| "canvas-add-local-persistent".to_string())
+                            .small()
+                            .w_full()
+                            .justify_start()
+                            .icon(IconName::Redo2)
+                            .label("Persistent Local Terminal")
+                            .tooltip(
+                                "Attach or create a local tmux session that survives closing TermiRust",
+                            )
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.add_persistent_local_terminal_to_canvas(window, cx);
                             })),
                     )
                     .child(

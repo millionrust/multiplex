@@ -2027,9 +2027,9 @@ impl ConnectRequest {
                 startup_directory: None,
                 startup_command: None,
                 start_in_files: false,
-                persistent_session: false,
-                persistent_session_name: None,
-                persistent_session_detach_others: false,
+                persistent_session: self.persistent_session,
+                persistent_session_name: self.persistent_session_name.clone(),
+                persistent_session_detach_others: self.persistent_session_detach_others,
                 terminal_scrollback_rows: None,
                 port_forward_rules: Vec::new(),
                 local_forwards: Vec::new(),
@@ -2066,6 +2066,20 @@ impl ConnectRequest {
             local_shell: Some(shell),
             environment: Vec::new(),
         }
+    }
+
+    pub fn persistent_local_shell_with_config(
+        session_id: u64,
+        shell: LocalShellConfig,
+        session_name: String,
+        detach_others: bool,
+    ) -> Self {
+        let mut request = Self::local_shell_with_config(session_id, shell);
+        request.title = "Persistent Local Terminal".to_string();
+        request.persistent_session = true;
+        request.persistent_session_name = Some(session_name);
+        request.persistent_session_detach_others = detach_others;
+        request
     }
 }
 
@@ -2207,9 +2221,9 @@ impl RestorableConnection {
                 startup_directory: None,
                 startup_command: None,
                 start_in_files: false,
-                persistent_session: false,
-                persistent_session_name: None,
-                persistent_session_detach_others: false,
+                persistent_session: self.persistent_session,
+                persistent_session_name: self.persistent_session_name.clone(),
+                persistent_session_detach_others: self.persistent_session_detach_others,
                 terminal_scrollback_rows: default_terminal_scrollback_rows() as usize,
                 port_forward_rules: Vec::new(),
                 local_shell: self
@@ -3326,6 +3340,33 @@ mod tests {
             Some("tr-prod")
         );
         assert!(round_trip.persistent_session_detach_others);
+    }
+
+    #[test]
+    fn persistent_local_tmux_round_trips_through_workspace_restore() {
+        let request = ConnectRequest::persistent_local_shell_with_config(
+            11,
+            LocalShellConfig {
+                program: "/bin/zsh".to_string(),
+                args: vec!["-l".to_string()],
+                cwd: Some("/tmp/project with spaces".to_string()),
+            },
+            "tr-local-project-11".to_string(),
+            true,
+        );
+
+        let restored = request
+            .to_restorable()
+            .expect("local request should restore");
+        let round_trip = restored.to_connect_request(12);
+        assert!(round_trip.is_local_shell());
+        assert!(round_trip.persistent_session);
+        assert_eq!(
+            round_trip.persistent_session_name.as_deref(),
+            Some("tr-local-project-11")
+        );
+        assert!(round_trip.persistent_session_detach_others);
+        assert_eq!(round_trip.local_shell, request.local_shell);
     }
 
     #[test]

@@ -1,6 +1,8 @@
 use anyhow::{Context, Result, bail};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use std::io::{Read, Write};
+use std::path::PathBuf;
+use std::process::Command as ProcessCommand;
 use std::sync::mpsc::{self, TryRecvError as StdTryRecvError};
 use std::thread;
 use std::time::Duration;
@@ -64,7 +66,7 @@ fn run_local_session(
         .openpty(default_pty_size())
         .context("Unable to create a local PTY")?;
 
-    let command = build_command(&shell)?;
+    let command = build_command(&request, &shell)?;
     let mut child = pair
         .slave
         .spawn_command(command)
@@ -131,12 +133,21 @@ fn run_local_session(
                         })
                         .context("Unable to resize the local PTY")?;
                 }
-                Ok(SessionCommand::KillTmuxSession { .. }) => {
-                    let _ = event_tx.send(SshEvent::Error {
-                        session_id,
-                        message: "tmux session control is available only for SSH terminals"
-                            .to_string(),
-                    });
+                Ok(SessionCommand::KillTmuxSession { session_name }) => {
+                    match kill_local_tmux_session(&session_name) {
+                        Ok(()) => {
+                            let _ = event_tx.send(SshEvent::TmuxSessionKilled {
+                                session_id,
+                                session_name,
+                            });
+                        }
+                        Err(error) => {
+                            let _ = event_tx.send(SshEvent::Error {
+                                session_id,
+                                message: format!("Unable to kill local tmux session: {error:#}"),
+                            });
+                        }
+                    }
                 }
                 Ok(SessionCommand::Disconnect) => {
                     let _ = child.kill();
@@ -182,7 +193,25 @@ fn run_local_session(
     }
 }
 
-fn build_command(shell: &LocalShellConfig) -> Result<CommandBuilder> {
+fn build_command(request: &ConnectRequest, shell: &LocalShellConfig) -> Result<CommandBuilder> {
+    if request.persistent_session {
+        let session_name = request
+            .persistent_session_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("Local tmux session name is empty"))?;
+        let (tmux, _) = local_tmux_probe()?;
+        let mut command = CommandBuilder::new(tmux);
+        for argument in persistent_tmux_arguments(
+            session_name,
+            request.persistent_session_detach_others,
+            shell.cwd.as_deref(),
+        ) {
+            command.arg(argument);
+        }
+        return Ok(command);
+    }
     if shell.program.trim().is_empty() {
         bail!("Local shell program is empty");
     }
@@ -201,11 +230,287 @@ fn build_command(shell: &LocalShellConfig) -> Result<CommandBuilder> {
     Ok(command)
 }
 
+fn persistent_tmux_arguments(
+    session_name: &str,
+    detach_others: bool,
+    cwd: Option<&str>,
+) -> Vec<String> {
+    let mut arguments = vec!["new-session".to_string(), "-A".to_string()];
+    if detach_others {
+        arguments.push("-D".to_string());
+    }
+    arguments.extend(["-s".to_string(), session_name.to_string()]);
+    if let Some(cwd) = cwd.map(str::trim).filter(|cwd| !cwd.is_empty()) {
+        arguments.extend(["-c".to_string(), cwd.to_string()]);
+    }
+    arguments
+}
+
+pub fn local_tmux_version() -> Result<String> {
+    local_tmux_probe().map(|(_, version)| version)
+}
+
+fn local_tmux_probe() -> Result<(PathBuf, String)> {
+    let mut candidates = Vec::new();
+    if let Some(path) = std::env::var_os("TERMIRUST_TMUX_PATH") {
+        candidates.push(PathBuf::from(path));
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        candidates.extend(std::env::split_paths(&path).map(|directory| directory.join("tmux")));
+    }
+    candidates.extend(
+        [
+            "/opt/homebrew/bin/tmux",
+            "/usr/local/bin/tmux",
+            "/usr/bin/tmux",
+        ]
+        .into_iter()
+        .map(PathBuf::from),
+    );
+    candidates.dedup();
+    let tmux = candidates
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| {
+            anyhow::anyhow!("tmux is not installed or is not available in the app's PATH")
+        })?;
+    let output = ProcessCommand::new(&tmux)
+        .arg("-V")
+        .output()
+        .with_context(|| format!("Unable to run {}", tmux.display()))?;
+    if !output.status.success() {
+        bail!("tmux -V exited with {}", output.status);
+    }
+    Ok((
+        tmux,
+        String::from_utf8_lossy(&output.stdout).trim().to_string(),
+    ))
+}
+
+pub fn local_tmux_install_guidance() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "Install tmux with Homebrew (`brew install tmux`), then restart TermiRust."
+    } else if cfg!(target_os = "linux") {
+        "Install tmux with your system package manager, then restart TermiRust."
+    } else {
+        "Install tmux and make sure it is available in PATH, then restart TermiRust."
+    }
+}
+
+fn kill_local_tmux_session(session_name: &str) -> Result<()> {
+    let (tmux, _) = local_tmux_probe()?;
+    let output = ProcessCommand::new(tmux)
+        .args(["kill-session", "-t", session_name])
+        .output()
+        .context("Unable to start tmux kill-session")?;
+    if !output.status.success() {
+        let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        bail!(if message.is_empty() {
+            format!("tmux kill-session exited with {}", output.status)
+        } else {
+            message
+        });
+    }
+    Ok(())
+}
+
 fn default_pty_size() -> PtySize {
     PtySize {
         rows: 48,
         cols: 160,
         pixel_width: 0,
         pixel_height: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        local_tmux_install_guidance, local_tmux_probe, local_tmux_version,
+        persistent_tmux_arguments, spawn_local_session,
+    };
+    use crate::models::{ConnectRequest, LocalShellConfig};
+    use crate::ssh::{SessionCommand, SshEvent};
+    use std::process::Command as ProcessCommand;
+    use std::sync::mpsc::Receiver;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn persistent_tmux_arguments_keep_names_and_paths_as_literal_arguments() {
+        assert_eq!(
+            persistent_tmux_arguments(
+                "project; touch /tmp/not-run",
+                true,
+                Some("/tmp/project with spaces")
+            ),
+            vec![
+                "new-session",
+                "-A",
+                "-D",
+                "-s",
+                "project; touch /tmp/not-run",
+                "-c",
+                "/tmp/project with spaces",
+            ]
+        );
+        assert!(!local_tmux_install_guidance().is_empty());
+    }
+
+    fn wait_for_event(
+        events: &Receiver<SshEvent>,
+        deadline: Instant,
+        predicate: impl Fn(&SshEvent) -> bool,
+    ) {
+        while Instant::now() < deadline {
+            if let Ok(event) = events.recv_timeout(Duration::from_millis(50))
+                && predicate(&event)
+            {
+                return;
+            }
+        }
+        panic!("expected local session event did not arrive before timeout");
+    }
+
+    fn wait_for_file(path: &std::path::Path, deadline: Instant) -> String {
+        while Instant::now() < deadline {
+            if let Ok(contents) = std::fs::read_to_string(path)
+                && !contents.trim().is_empty()
+            {
+                return contents.trim().to_string();
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        panic!("{} was not written before timeout", path.display());
+    }
+
+    #[test]
+    fn local_tmux_session_survives_disconnect_and_reattaches() {
+        let Ok((tmux, _)) = local_tmux_probe() else {
+            eprintln!("skipping local tmux integration test: tmux is unavailable");
+            return;
+        };
+        let suffix = crate::ui::util::current_unix_millis();
+        let session_name = format!("tr-local-test-{suffix}");
+        let fixture = std::env::temp_dir().join(format!("termirust-local-tmux-{suffix}"));
+        std::fs::create_dir_all(&fixture).unwrap();
+        let first_pid = fixture.join("first-pid");
+        let second_pid = fixture.join("second-pid");
+        let shell = LocalShellConfig {
+            program: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string()),
+            args: Vec::new(),
+            cwd: Some(fixture.display().to_string()),
+        };
+
+        let (first_tx, first_rx) = std::sync::mpsc::channel();
+        let first = spawn_local_session(
+            ConnectRequest::persistent_local_shell_with_config(
+                901,
+                shell.clone(),
+                session_name.clone(),
+                false,
+            ),
+            first_tx,
+        );
+        wait_for_event(
+            &first_rx,
+            Instant::now() + Duration::from_secs(5),
+            |event| {
+                matches!(
+                    event,
+                    SshEvent::Connected {
+                        session_id: 901,
+                        ..
+                    }
+                )
+            },
+        );
+        first
+            .command_tx
+            .send(SessionCommand::Input(
+                format!("printf '%s\\n' \"$$\" > {}\n", first_pid.display()).into_bytes(),
+            ))
+            .unwrap();
+        let original_pid = wait_for_file(&first_pid, Instant::now() + Duration::from_secs(5));
+        first.command_tx.send(SessionCommand::Disconnect).unwrap();
+        wait_for_event(
+            &first_rx,
+            Instant::now() + Duration::from_secs(5),
+            |event| {
+                matches!(
+                    event,
+                    SshEvent::Disconnected {
+                        session_id: 901,
+                        ..
+                    }
+                )
+            },
+        );
+        assert!(
+            ProcessCommand::new(&tmux)
+                .args(["has-session", "-t", &session_name])
+                .status()
+                .unwrap()
+                .success()
+        );
+
+        let (second_tx, second_rx) = std::sync::mpsc::channel();
+        let second = spawn_local_session(
+            ConnectRequest::persistent_local_shell_with_config(
+                902,
+                shell,
+                session_name.clone(),
+                false,
+            ),
+            second_tx,
+        );
+        wait_for_event(
+            &second_rx,
+            Instant::now() + Duration::from_secs(5),
+            |event| {
+                matches!(
+                    event,
+                    SshEvent::Connected {
+                        session_id: 902,
+                        ..
+                    }
+                )
+            },
+        );
+        second
+            .command_tx
+            .send(SessionCommand::Input(
+                format!("printf '%s\\n' \"$$\" > {}\n", second_pid.display()).into_bytes(),
+            ))
+            .unwrap();
+        let reattached_pid = wait_for_file(&second_pid, Instant::now() + Duration::from_secs(5));
+        assert_eq!(reattached_pid, original_pid);
+
+        second
+            .command_tx
+            .send(SessionCommand::KillTmuxSession {
+                session_name: session_name.clone(),
+            })
+            .unwrap();
+        wait_for_event(
+            &second_rx,
+            Instant::now() + Duration::from_secs(5),
+            |event| {
+                matches!(
+                    event,
+                    SshEvent::TmuxSessionKilled {
+                        session_id: 902,
+                        session_name: killed,
+                    } if killed == &session_name
+                )
+            },
+        );
+        assert!(
+            !ProcessCommand::new(tmux)
+                .args(["has-session", "-t", &session_name])
+                .status()
+                .unwrap()
+                .success()
+        );
+        let _ = std::fs::remove_dir_all(fixture);
     }
 }

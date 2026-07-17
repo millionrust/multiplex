@@ -9904,6 +9904,7 @@ mod tests {
         SavedWorktreePolicy, SplitAxis, ThemePreset, VaultMemberRole, WorkspaceLayoutMode,
     };
     use crate::sftp::RemoteFileEntry;
+    use crate::ssh::SessionCommand;
     use crate::storage::load_saved_state;
     use crate::test_support::{
         DockerSshServer, TestIsolation, allocate_local_port, queue_dialog_path,
@@ -21099,6 +21100,84 @@ sleep 1
             assert!(app.error_message.is_empty());
         });
         let _add_button = selector_click_center(window, cx, "canvas-add-terminal");
+    }
+
+    #[gpui::test]
+    fn canvas_persistent_local_terminal_opens_or_explains_missing_tmux(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let tmux_available = crate::local::local_tmux_version().is_ok();
+        let (app, window) = open_test_app(cx);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_local_terminal(window, cx);
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                })
+            })
+            .expect("canvas workspace should open");
+        let initial_pane_count = app.read_with(cx, |app, _| app.panes.len());
+        let add = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-add-terminal",
+            Duration::from_secs(2),
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(add, gpui::Modifiers::none());
+        visual.run_until_parked();
+        let persistent = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-add-local-persistent",
+            Duration::from_secs(2),
+        );
+        visual.simulate_click(persistent, gpui::Modifiers::none());
+        visual.run_until_parked();
+
+        if !tmux_available {
+            app.read_with(cx, |app, _| {
+                assert_eq!(app.panes.len(), initial_pane_count);
+                assert!(app.error_message.contains("needs tmux"));
+                assert!(
+                    app.error_message
+                        .contains(crate::local::local_tmux_install_guidance())
+                );
+            });
+            return;
+        }
+
+        let (pane_id, session_name) = wait_for_app_state(cx, &app, Duration::from_secs(5), |app| {
+            app.panes
+                .iter()
+                .find(|pane| pane.request.persistent_session && pane.connected)
+                .and_then(|pane| {
+                    pane.request
+                        .persistent_session_name
+                        .clone()
+                        .map(|session_name| (pane.id, session_name))
+                })
+        });
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.panes.len(), initial_pane_count + 1);
+            assert!(app.error_message.is_empty());
+            assert_eq!(
+                app.pane(pane_id).unwrap().title,
+                "Persistent Local Terminal"
+            );
+        });
+        app.update(cx, |app, _| {
+            app.pane(pane_id)
+                .unwrap()
+                .runtime
+                .command_tx
+                .send(SessionCommand::KillTmuxSession {
+                    session_name: session_name.clone(),
+                })
+                .unwrap();
+        });
+        wait_for_app_state(cx, &app, Duration::from_secs(5), |app| {
+            app.pane(pane_id).is_none().then_some(())
+        });
     }
 
     #[gpui::test]

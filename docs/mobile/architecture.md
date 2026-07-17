@@ -17,6 +17,14 @@ added later for private networks, enterprise policy, audit, and device
 management, but it must be explicit infrastructure rather than a hidden desktop
 server.
 
+The direct-SSH mobile release is terminal continuity, not remote desktop or
+canvas synchronization. A phone can access a saved remote host and the same
+named tmux session, including work started from a desktop SSH node. It cannot
+see or control desktop-local PTYs, local tmux sessions, canvas geometry, project
+files, context links, or dependency orchestration. Those capabilities require
+an authenticated shared canvas protocol and gateway with explicit authorization,
+conflict handling, and audit semantics.
+
 The current companion mobile app roots are:
 
 - `/Users/jacob/Projects/terminal_app/terminal_swift`

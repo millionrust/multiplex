@@ -24,6 +24,15 @@ SSH, restore, and tmux runtimes; changing layout does not reconnect a pane.
 
 Right-click empty canvas space to open the same terminal and agent add menu.
 
+`Persistent Local Terminal` attaches to an app-named local tmux session with
+tmux's attach-or-create behavior. The session and its processes survive closing
+the node or TermiRust, and workspace restore reattaches to the same name.
+Closing one of these nodes uses the same explicit Detach, Disconnect, or
+confirmed Kill choices as a persistent SSH node. If local tmux is unavailable,
+TermiRust does not open a broken node; it shows platform-specific installation
+guidance instead. Ordinary `Local Terminal` remains the default and does not
+require tmux.
+
 `Files` opens a local project panel for the selected project folder. It provides
 folder navigation, UTF-8 text viewing and editing, explicit Save/Revert actions,
 Git status, and the unstaged diff for the selected file. The panel refuses files
@@ -187,6 +196,11 @@ for ownership decisions. Recorded automated and manual release coverage is in
   at review/run time.
 - Groq API agents, ACP, mobile canvas editing, live team canvases, arbitrary
   autonomous loops, and automatic merge/rebase are deferred.
+- iOS and Android currently provide direct SSH terminal access to saved remote
+  hosts and can reattach those hosts' named tmux sessions. They do not expose or
+  control desktop-local canvas nodes, project files, links, or dependency runs.
+  That requires an authenticated shared canvas protocol or gateway and is not
+  implied by terminal continuity.
 
 ## Reviewer smoke test
 
