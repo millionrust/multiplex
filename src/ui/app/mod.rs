@@ -18,8 +18,8 @@ pub(crate) use types::{
 
 use canvas::{
     AgentCreationState, CANVAS_NODE_HEADER_HEIGHT, CANVAS_TOOLBAR_HEIGHT, CanvasInteraction,
-    CanvasWorkspaceState, ContextHandoffReview, PendingCanvasPaneClose, PendingTmuxClose,
-    SplitPaneChooser, StructuredAgentRuntime,
+    CanvasWorkspaceState, ContextHandoffReview, PendingCanvasNodeDelete, PendingCanvasPaneClose,
+    PendingTmuxClose, SplitPaneChooser, StructuredAgentRuntime,
 };
 use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
@@ -935,10 +935,12 @@ pub struct TermiRustApp {
     context_handoff_review: Option<ContextHandoffReview>,
     pending_tmux_close: Option<PendingTmuxClose>,
     pending_canvas_pane_close: Option<PendingCanvasPaneClose>,
+    pending_canvas_node_delete: Option<PendingCanvasNodeDelete>,
     split_pane_chooser: Option<SplitPaneChooser>,
     pending_dependency_source: Option<crate::models::CanvasNodeId>,
     orchestration_workspace_id: Option<u64>,
     canvas_node_rename_id: Option<crate::models::CanvasNodeId>,
+    canvas_note_edit_id: Option<crate::models::CanvasNodeId>,
     selected_command_palette_index: usize,
     tab_rename_workspace_id: Option<u64>,
     open_workspace_tab_menu: Option<u64>,
@@ -948,6 +950,7 @@ pub struct TermiRustApp {
     pane_rename_id: Option<u64>,
     pane_rename_input: Entity<InputState>,
     canvas_node_rename_input: Entity<InputState>,
+    canvas_note_editor_input: Entity<InputState>,
     canvas_project_editor_input: Entity<InputState>,
     pending_paste: Option<PendingPaste>,
     pending_snippet_prompts: Option<PendingSnippetPrompts>,
@@ -960,6 +963,7 @@ pub struct TermiRustApp {
     tab_strip_scrolled_to: Option<u64>,
     launched_at: Instant,
     _canvas_project_editor_subscription: Subscription,
+    _canvas_note_editor_subscription: Subscription,
     _window_bounds_subscription: Option<Subscription>,
     _window_bounds_save_task: Option<Task<()>>,
 }
@@ -995,6 +999,19 @@ impl TermiRustApp {
             |_, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
                     cx.notify();
+                }
+            },
+        );
+        let canvas_note_editor_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line(true)
+                .placeholder("Write context, decisions, commands, or a task brief")
+        });
+        let canvas_note_editor_subscription = cx.subscribe(
+            &canvas_note_editor_input,
+            |this, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    this.sync_canvas_note_editor(cx);
                 }
             },
         );
@@ -1103,10 +1120,12 @@ impl TermiRustApp {
             context_handoff_review: None,
             pending_tmux_close: None,
             pending_canvas_pane_close: None,
+            pending_canvas_node_delete: None,
             split_pane_chooser: None,
             pending_dependency_source: None,
             orchestration_workspace_id: None,
             canvas_node_rename_id: None,
+            canvas_note_edit_id: None,
             selected_command_palette_index: 0,
             tab_rename_workspace_id: None,
             open_workspace_tab_menu: None,
@@ -1117,6 +1136,7 @@ impl TermiRustApp {
             pane_rename_input: cx.new(|cx| InputState::new(window, cx).placeholder("Pane name")),
             canvas_node_rename_input: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Node title")),
+            canvas_note_editor_input,
             canvas_project_editor_input,
             pending_paste: None,
             pending_snippet_prompts: None,
@@ -1129,6 +1149,7 @@ impl TermiRustApp {
             tab_strip_scrolled_to: None,
             launched_at: Instant::now(),
             _canvas_project_editor_subscription: canvas_project_editor_subscription,
+            _canvas_note_editor_subscription: canvas_note_editor_subscription,
             _window_bounds_subscription: None,
             _window_bounds_save_task: None,
         };
@@ -9456,6 +9477,15 @@ impl TermiRustApp {
         }
 
         if event.keystroke.key.as_str() == "escape" {
+            if self.pending_canvas_node_delete.is_some() {
+                self.pending_canvas_node_delete = None;
+                cx.notify();
+                return true;
+            }
+            if self.canvas_note_edit_id.is_some() {
+                self.finish_canvas_note_edit(window, cx);
+                return true;
+            }
             if self.pending_canvas_pane_close.is_some() {
                 self.pending_canvas_pane_close = None;
                 cx.notify();
@@ -11840,6 +11870,364 @@ mod tests {
             }));
             assert_eq!(app.status_message, "Dependency created.");
         });
+    }
+
+    #[gpui::test]
+    fn canvas_notes_groups_context_and_delete_flow_work_from_rendered_controls(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        cx.simulate_window_resize(*window, size(px(1400.0), px(900.0)));
+        cx.run_until_parked();
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let terminal_id = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open");
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                    let workspace = app.active_workspace_mut().unwrap();
+                    workspace.canvas.transform = crate::ui::app::canvas::CanvasTransform::default();
+                    workspace.canvas.nodes[0].rect.x = 40.0;
+                    workspace.canvas.nodes[0].rect.y = 80.0;
+                    let terminal_id = workspace.canvas.nodes[0].id.clone();
+                    cx.notify();
+                    terminal_id
+                })
+            })
+            .expect("canvas setup should succeed");
+
+        let add = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-add-terminal",
+            Duration::from_secs(2),
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(add, gpui::Modifiers::none());
+        let add_note =
+            wait_for_selector_click_center(window, cx, "canvas-add-note", Duration::from_secs(2));
+        visual.simulate_click(add_note, gpui::Modifiers::none());
+        visual.run_until_parked();
+        let note_id = app.read_with(cx, |app, _| {
+            app.active_workspace()
+                .unwrap()
+                .canvas
+                .nodes
+                .iter()
+                .find(|node| {
+                    matches!(
+                        node.kind,
+                        crate::ui::app::canvas::CanvasNodeKind::Note { .. }
+                    )
+                })
+                .unwrap()
+                .id
+                .clone()
+        });
+        let _editor = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("canvas-note-editor-{}", note_id.as_str()),
+        );
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.canvas_note_editor_input,
+                        "Release checklist\nRun tests before deploy",
+                        window,
+                        cx,
+                    );
+                });
+            })
+            .expect("note input should update");
+        visual.run_until_parked();
+        let save_note = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("canvas-note-edit-{}", note_id.as_str()),
+        );
+        visual.simulate_click(save_note, gpui::Modifiers::none());
+        visual.run_until_parked();
+
+        let note_more = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("canvas-node-more-{}", note_id.as_str()),
+        );
+        visual.simulate_click(note_more, gpui::Modifiers::none());
+        visual.run_until_parked();
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.canvas_node_menu_id.as_ref(), Some(&note_id));
+        });
+        let change_color = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-node-menu-note-color",
+            Duration::from_secs(2),
+        );
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(change_color, gpui::Modifiers::none());
+        cx.run_until_parked();
+        app.read_with(cx, |app, _| {
+            let note = app
+                .active_workspace()
+                .unwrap()
+                .canvas
+                .node(&note_id)
+                .unwrap();
+            let crate::ui::app::canvas::CanvasNodeKind::Note { color, .. } = &note.kind else {
+                panic!("created note changed kind");
+            };
+            assert_eq!(*color, crate::models::CanvasNoteColor::Blue);
+        });
+
+        let add = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-add-terminal",
+            Duration::from_secs(2),
+        );
+        visual.simulate_click(add, gpui::Modifiers::none());
+        let add_group =
+            wait_for_selector_click_center(window, cx, "canvas-add-group", Duration::from_secs(2));
+        visual.simulate_click(add_group, gpui::Modifiers::none());
+        visual.run_until_parked();
+        let (group_id, note_before, group_before) = app.update(cx, |app, _| {
+            let workspace = app.active_workspace_mut().unwrap();
+            let group_id = workspace
+                .canvas
+                .nodes
+                .iter()
+                .find(|node| {
+                    matches!(
+                        node.kind,
+                        crate::ui::app::canvas::CanvasNodeKind::Group { .. }
+                    )
+                })
+                .unwrap()
+                .id
+                .clone();
+            let grouped_note_ids = match &workspace.canvas.node(&group_id).unwrap().kind {
+                crate::ui::app::canvas::CanvasNodeKind::Group { member_ids } => member_ids,
+                _ => unreachable!("new organize node should be a group"),
+            };
+            assert_eq!(grouped_note_ids, std::slice::from_ref(&note_id));
+            let note = workspace.canvas.node_mut(&note_id).unwrap();
+            note.rect.x = 850.0;
+            note.rect.y = 180.0;
+            let note_rect = note.rect;
+            workspace.canvas.node_mut(&group_id).unwrap().rect =
+                crate::ui::app::canvas::CanvasRect {
+                    x: note_rect.x - 60.0,
+                    y: note_rect.y - 60.0,
+                    width: note_rect.width + 120.0,
+                    height: note_rect.height + 120.0,
+                };
+            workspace.canvas.refresh_group_membership_for_node(&note_id);
+            (
+                group_id.clone(),
+                workspace.canvas.node(&note_id).unwrap().rect,
+                workspace.canvas.node(&group_id).unwrap().rect,
+            )
+        });
+        app.update(cx, |_, cx| cx.notify());
+        visual.run_until_parked();
+        let group_header = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("canvas-node-header-{}", group_id.as_str()),
+        );
+        drag_between_points(
+            window,
+            cx,
+            group_header,
+            point(group_header.x + px(48.0), group_header.y + px(32.0)),
+        );
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().unwrap();
+            let note_after = workspace.canvas.node(&note_id).unwrap().rect;
+            let group_after = workspace.canvas.node(&group_id).unwrap().rect;
+            assert!((note_after.x - note_before.x - 48.0).abs() < 1.0);
+            assert!((note_after.y - note_before.y - 32.0).abs() < 1.0);
+            assert!((group_after.x - group_before.x - 48.0).abs() < 1.0);
+            assert!((group_after.y - group_before.y - 32.0).abs() < 1.0);
+        });
+
+        let note_link = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("canvas-node-link-{}", note_id.as_str()),
+        );
+        visual.simulate_click(note_link, gpui::Modifiers::none());
+        let terminal_link = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("canvas-node-link-{}", terminal_id.as_str()),
+        );
+        visual.simulate_click(terminal_link, gpui::Modifiers::none());
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.active_workspace_mut()
+                        .unwrap()
+                        .canvas
+                        .select_and_raise(&terminal_id);
+                    app.open_context_review_for_selected(window, cx);
+                });
+            })
+            .expect("context review should open");
+        app.read_with(cx, |app, cx| {
+            assert!(
+                app.shell_inputs
+                    .context_handoff_preview
+                    .read(cx)
+                    .value()
+                    .contains("Run tests before deploy")
+            );
+        });
+        app.update(cx, |app, cx| {
+            app.context_handoff_review = None;
+            cx.notify();
+        });
+        visual.run_until_parked();
+
+        let close_group = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("canvas-content-node-close-{}", group_id.as_str()),
+        );
+        visual.simulate_click(close_group, gpui::Modifiers::none());
+        let confirm = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-content-node-delete-confirm",
+            Duration::from_secs(2),
+        );
+        visual.simulate_click(confirm, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().unwrap();
+            assert!(workspace.canvas.node(&group_id).is_none());
+            assert!(workspace.canvas.node(&note_id).is_some());
+            let saved = app.saved.restored_workspaces[0].canvas.as_ref().unwrap();
+            assert!(saved.nodes.iter().any(|node| {
+                matches!(node.kind, SavedCanvasNodeKind::Note { .. }) && node.id == note_id
+            }));
+        });
+
+        let close_note = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("canvas-content-node-close-{}", note_id.as_str()),
+        );
+        visual.simulate_click(close_note, gpui::Modifiers::none());
+        let cancel = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-content-node-delete-cancel",
+            Duration::from_secs(2),
+        );
+        visual.run_until_parked();
+        visual.simulate_click(cancel, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().unwrap();
+            assert!(workspace.canvas.node(&note_id).is_some());
+            assert!(
+                workspace
+                    .canvas
+                    .edges
+                    .iter()
+                    .any(|edge| edge.source == note_id)
+            );
+        });
+
+        let close_note = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("canvas-content-node-close-{}", note_id.as_str()),
+        );
+        visual.simulate_click(close_note, gpui::Modifiers::none());
+        let confirm = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-content-node-delete-confirm",
+            Duration::from_secs(2),
+        );
+        visual.run_until_parked();
+        visual.simulate_click(confirm, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            let workspace = app.active_workspace().unwrap();
+            assert!(workspace.canvas.node(&note_id).is_none());
+            assert!(
+                workspace
+                    .canvas
+                    .edges
+                    .iter()
+                    .all(|edge| edge.source != note_id && edge.target != note_id)
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn canvas_organize_menu_stays_usable_on_compact_windows(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(
+                        ConnectRequest::local_shell_with_config(
+                            0,
+                            LocalShellConfig {
+                                program: "/bin/sh".to_string(),
+                                args: Vec::new(),
+                                cwd: Some(std::env::temp_dir().display().to_string()),
+                            },
+                        ),
+                        window,
+                        cx,
+                    )
+                    .expect("local workspace should open");
+                    app.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
+                })
+            })
+            .expect("canvas setup should succeed");
+        cx.simulate_window_resize(*window, size(px(640.0), px(520.0)));
+        cx.run_until_parked();
+        let add = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-add-terminal",
+            Duration::from_secs(2),
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(add, gpui::Modifiers::none());
+        visual.run_until_parked();
+
+        let menu = visual
+            .debug_bounds("canvas-add-menu")
+            .expect("add menu should render");
+        let note = visual
+            .debug_bounds("canvas-add-note")
+            .expect("sticky note action should remain visible");
+        let group = visual
+            .debug_bounds("canvas-add-group")
+            .expect("group action should remain visible");
+        for bounds in [menu, note, group] {
+            assert!(bounds.origin.x >= px(0.0));
+            assert!(bounds.origin.y >= px(0.0));
+            assert!(bounds.origin.x + bounds.size.width <= px(640.0));
+            assert!(bounds.origin.y + bounds.size.height <= px(520.0));
+        }
     }
 
     #[gpui::test]

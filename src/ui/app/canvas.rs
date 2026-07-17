@@ -29,10 +29,10 @@ use crate::models::{
     AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AuthConfig, AuthMode,
     CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CANVAS_MAX_ZOOM, CANVAS_MIN_NODE_HEIGHT,
     CANVAS_MIN_NODE_WIDTH, CANVAS_MIN_TERMINAL_NODE_WIDTH, CANVAS_MIN_ZOOM, CanvasEdgeId,
-    CanvasEdgeKind, CanvasNodeId, ConnectRequest, ConnectionKind, HostProfile, LocalShellConfig,
-    SavedAgentDefinition, SavedCanvasEdge, SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState,
-    SavedCanvasViewport, SavedManagedWorktreeDisposition, SavedWorktreePolicy, WorkspaceLayoutMode,
-    default_persistent_session_name_from_id,
+    CanvasEdgeKind, CanvasNodeId, CanvasNoteColor, ConnectRequest, ConnectionKind, HostProfile,
+    LocalShellConfig, SavedAgentDefinition, SavedCanvasEdge, SavedCanvasNode, SavedCanvasNodeKind,
+    SavedCanvasState, SavedCanvasViewport, SavedManagedWorktreeDisposition, SavedWorktreePolicy,
+    WorkspaceLayoutMode, default_persistent_session_name_from_id,
 };
 use crate::ssh::SessionCommand;
 use crate::ui::app::{TermiRustApp, WorkspaceViewMode};
@@ -71,6 +71,10 @@ const CANVAS_MINIMAP_HEIGHT: f32 = 116.0;
 const CANVAS_MINIMAP_PADDING: f32 = 8.0;
 const CANVAS_MINIMAP_MARGIN: f32 = 12.0;
 const CANVAS_PROJECT_PANEL_WIDTH: f32 = 520.0;
+const CANVAS_NOTE_WIDTH: f32 = 420.0;
+const CANVAS_NOTE_HEIGHT: f32 = 300.0;
+const CANVAS_GROUP_WIDTH: f32 = 900.0;
+const CANVAS_GROUP_HEIGHT: f32 = 600.0;
 
 fn canvas_project_directory_label(directory: Option<&str>) -> String {
     let Some(directory) = directory else {
@@ -88,6 +92,27 @@ fn canvas_project_directory_label(directory: Option<&str>) -> String {
     } else {
         format!("Project: {shortened}")
     }
+}
+
+fn truncate_string_at_utf8_boundary(value: &mut String, max_bytes: usize) {
+    if value.len() <= max_bytes {
+        return;
+    }
+    let mut boundary = max_bytes;
+    while !value.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    value.truncate(boundary);
+}
+
+fn canvas_note_background(color: CanvasNoteColor) -> gpui::Hsla {
+    let base = match color {
+        CanvasNoteColor::Yellow => theme::warning(),
+        CanvasNoteColor::Blue => theme::accent(),
+        CanvasNoteColor::Green => theme::success(),
+        CanvasNoteColor::Rose => theme::danger(),
+    };
+    theme::with_alpha(base, 0.12)
 }
 
 #[derive(Clone, Debug)]
@@ -135,6 +160,13 @@ pub(super) struct PendingTmuxClose {
 pub(super) struct PendingCanvasPaneClose {
     pub pane_id: u64,
     pub title: String,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct PendingCanvasNodeDelete {
+    pub node_id: CanvasNodeId,
+    pub title: String,
+    pub is_note: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -623,6 +655,13 @@ pub(super) enum CanvasNodeKind {
         pane_id: Option<u64>,
         definition: SavedAgentDefinition,
     },
+    Note {
+        text: String,
+        color: CanvasNoteColor,
+    },
+    Group {
+        member_ids: Vec<CanvasNodeId>,
+    },
 }
 
 impl CanvasNodeKind {
@@ -630,7 +669,20 @@ impl CanvasNodeKind {
         match self {
             Self::Terminal { pane_id } => Some(*pane_id),
             Self::Agent { pane_id, .. } => *pane_id,
+            Self::Note { .. } | Self::Group { .. } => None,
         }
+    }
+
+    fn is_executable(&self) -> bool {
+        matches!(self, Self::Terminal { .. } | Self::Agent { .. })
+    }
+
+    fn can_source_context(&self) -> bool {
+        !matches!(self, Self::Group { .. })
+    }
+
+    fn is_group(&self) -> bool {
+        matches!(self, Self::Group { .. })
     }
 }
 
@@ -672,6 +724,7 @@ struct CanvasNodeLayout {
     z_index: i32,
     title: Option<String>,
     collapsed: bool,
+    group_member_ids: Option<Vec<CanvasNodeId>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -707,6 +760,10 @@ impl CanvasWorkspaceState {
                     z_index: node.z_index,
                     title: node.title.clone(),
                     collapsed: node.collapsed,
+                    group_member_ids: match &node.kind {
+                        CanvasNodeKind::Group { member_ids } => Some(member_ids.clone()),
+                        _ => None,
+                    },
                 })
                 .collect(),
             selected_node_id: self.selected_node_id.clone(),
@@ -728,6 +785,11 @@ impl CanvasWorkspaceState {
             node.z_index = layout.z_index;
             node.title = layout.title.clone();
             node.collapsed = layout.collapsed;
+            if let (CanvasNodeKind::Group { member_ids }, Some(saved_member_ids)) =
+                (&mut node.kind, &layout.group_member_ids)
+            {
+                *member_ids = saved_member_ids.clone();
+            }
         }
         self.selected_node_id = snapshot
             .selected_node_id
@@ -810,6 +872,13 @@ impl CanvasWorkspaceState {
                     pane_id: pane_index.and_then(|index| pane_ids.get(index).copied()),
                     definition: definition.clone(),
                 },
+                SavedCanvasNodeKind::Note { text, color } => CanvasNodeKind::Note {
+                    text: text.clone(),
+                    color: *color,
+                },
+                SavedCanvasNodeKind::Group { member_ids } => CanvasNodeKind::Group {
+                    member_ids: member_ids.clone(),
+                },
             };
             nodes.push(CanvasNode {
                 id: node.id.clone(),
@@ -876,6 +945,13 @@ impl CanvasWorkspaceState {
                 } => SavedCanvasNodeKind::Agent {
                     pane_index: pane_id.and_then(|id| pane_indices.get(&id).copied()),
                     definition: definition.clone(),
+                },
+                CanvasNodeKind::Note { text, color } => SavedCanvasNodeKind::Note {
+                    text: text.clone(),
+                    color: *color,
+                },
+                CanvasNodeKind::Group { member_ids } => SavedCanvasNodeKind::Group {
+                    member_ids: member_ids.clone(),
                 },
             };
             saved_ids.insert(node.id.clone());
@@ -996,8 +1072,68 @@ impl CanvasWorkspaceState {
         id
     }
 
+    pub(super) fn add_note_node(&mut self, viewport_center: CanvasPoint) -> CanvasNodeId {
+        let id = unique_node_id(&self.nodes, format!("note-node-{}", current_unix_millis()));
+        let position = find_non_overlapping_position(
+            &self.nodes,
+            CANVAS_NOTE_WIDTH,
+            CANVAS_NOTE_HEIGHT,
+            viewport_center,
+        );
+        self.nodes.push(CanvasNode {
+            id: id.clone(),
+            kind: CanvasNodeKind::Note {
+                text: String::new(),
+                color: CanvasNoteColor::default(),
+            },
+            rect: CanvasRect {
+                x: position.x,
+                y: position.y,
+                width: CANVAS_NOTE_WIDTH,
+                height: CANVAS_NOTE_HEIGHT,
+            },
+            z_index: self.next_z_index,
+            title: Some("Note".to_string()),
+            collapsed: false,
+        });
+        self.next_z_index = self.next_z_index.saturating_add(1);
+        id
+    }
+
+    pub(super) fn add_group_node(&mut self, viewport_center: CanvasPoint) -> CanvasNodeId {
+        let id = unique_node_id(&self.nodes, format!("group-node-{}", current_unix_millis()));
+        let position = find_non_overlapping_position(
+            &self.nodes,
+            CANVAS_GROUP_WIDTH,
+            CANVAS_GROUP_HEIGHT,
+            viewport_center,
+        );
+        self.nodes.push(CanvasNode {
+            id: id.clone(),
+            kind: CanvasNodeKind::Group {
+                member_ids: Vec::new(),
+            },
+            rect: CanvasRect {
+                x: position.x,
+                y: position.y,
+                width: CANVAS_GROUP_WIDTH,
+                height: CANVAS_GROUP_HEIGHT,
+            },
+            z_index: self.next_z_index,
+            title: Some("Group".to_string()),
+            collapsed: false,
+        });
+        self.next_z_index = self.next_z_index.saturating_add(1);
+        id
+    }
+
     pub(super) fn remove_node(&mut self, node_id: &CanvasNodeId) {
         self.nodes.retain(|node| &node.id != node_id);
+        for node in &mut self.nodes {
+            if let CanvasNodeKind::Group { member_ids } = &mut node.kind {
+                member_ids.retain(|member_id| member_id != node_id);
+            }
+        }
         self.edges
             .retain(|edge| &edge.source != node_id && &edge.target != node_id);
         if self.selected_node_id.as_ref() == Some(node_id) {
@@ -1019,6 +1155,86 @@ impl CanvasWorkspaceState {
             trimmed => Some(trimmed.to_string()),
         };
         true
+    }
+
+    pub(super) fn set_note_text(&mut self, node_id: &CanvasNodeId, text: String) -> bool {
+        let Some(CanvasNode {
+            kind: CanvasNodeKind::Note {
+                text: note_text, ..
+            },
+            ..
+        }) = self.node_mut(node_id)
+        else {
+            return false;
+        };
+        *note_text = text;
+        true
+    }
+
+    pub(super) fn cycle_note_color(&mut self, node_id: &CanvasNodeId) -> bool {
+        let Some(CanvasNode {
+            kind: CanvasNodeKind::Note { color, .. },
+            ..
+        }) = self.node_mut(node_id)
+        else {
+            return false;
+        };
+        *color = match color {
+            CanvasNoteColor::Yellow => CanvasNoteColor::Blue,
+            CanvasNoteColor::Blue => CanvasNoteColor::Green,
+            CanvasNoteColor::Green => CanvasNoteColor::Rose,
+            CanvasNoteColor::Rose => CanvasNoteColor::Yellow,
+        };
+        true
+    }
+
+    fn group_member_rects(&self, group_id: &CanvasNodeId) -> Vec<(CanvasNodeId, CanvasRect)> {
+        let Some(CanvasNode {
+            kind: CanvasNodeKind::Group { member_ids },
+            ..
+        }) = self.node(group_id)
+        else {
+            return Vec::new();
+        };
+        member_ids
+            .iter()
+            .filter_map(|member_id| {
+                self.node(member_id)
+                    .map(|node| (member_id.clone(), node.rect))
+            })
+            .collect()
+    }
+
+    pub(super) fn refresh_group_membership_for_node(&mut self, node_id: &CanvasNodeId) {
+        let Some(node) = self.node(node_id) else {
+            return;
+        };
+        if node.kind.is_group() {
+            return;
+        }
+        let center = CanvasPoint::new(
+            node.rect.x + node.rect.width / 2.0,
+            node.rect.y + node.rect.height / 2.0,
+        );
+        let destination = self
+            .nodes
+            .iter()
+            .filter(|candidate| candidate.kind.is_group() && candidate.rect.contains(center))
+            .min_by(|a, b| {
+                let a_area = a.rect.width * a.rect.height;
+                let b_area = b.rect.width * b.rect.height;
+                a_area.total_cmp(&b_area)
+            })
+            .map(|group| group.id.clone());
+        for group in &mut self.nodes {
+            let CanvasNodeKind::Group { member_ids } = &mut group.kind else {
+                continue;
+            };
+            member_ids.retain(|member_id| member_id != node_id);
+            if destination.as_ref() == Some(&group.id) {
+                member_ids.push(node_id.clone());
+            }
+        }
     }
 
     pub(super) fn set_edge_enabled(&mut self, edge_id: &CanvasEdgeId, enabled: bool) -> bool {
@@ -1047,6 +1263,14 @@ impl CanvasWorkspaceState {
             || !self.nodes.iter().any(|node| node.id == target)
         {
             anyhow::bail!("Both context-link nodes must exist");
+        }
+        let source_kind = &self.node(&source).expect("source checked above").kind;
+        let target_kind = &self.node(&target).expect("target checked above").kind;
+        if !source_kind.can_source_context() {
+            anyhow::bail!("Group frames cannot be used as context sources");
+        }
+        if !target_kind.is_executable() {
+            anyhow::bail!("Choose a terminal or agent as the context target");
         }
         if self.edges.iter().any(|edge| {
             edge.source == source && edge.target == target && edge.kind == CanvasEdgeKind::Context
@@ -1084,6 +1308,15 @@ impl CanvasWorkspaceState {
             || !self.nodes.iter().any(|node| node.id == target)
         {
             anyhow::bail!("Both dependency nodes must exist");
+        }
+        if !self
+            .node(&source)
+            .is_some_and(|node| node.kind.is_executable())
+            || !self
+                .node(&target)
+                .is_some_and(|node| node.kind.is_executable())
+        {
+            anyhow::bail!("Dependencies can only connect terminals and agents");
         }
         if self.edges.iter().any(|edge| {
             edge.source == source
@@ -1334,6 +1567,7 @@ pub(super) enum CanvasInteraction {
         node_id: CanvasNodeId,
         start: CanvasPoint,
         start_rect: CanvasRect,
+        member_start_rects: Vec<(CanvasNodeId, CanvasRect)>,
     },
     ResizeNode {
         workspace_id: u64,
@@ -1864,6 +2098,10 @@ impl TermiRustApp {
             .workspace(workspace_id)
             .and_then(|workspace| workspace.canvas.node(&node_id))
             .and_then(|node| node.kind.pane_id());
+        let member_start_rects = self
+            .workspace(workspace_id)
+            .map(|workspace| workspace.canvas.group_member_rects(&node_id))
+            .unwrap_or_default();
         if let Some(workspace) = self.workspace_mut(workspace_id) {
             workspace.canvas.select_and_raise(&node_id);
             workspace.canvas.record_layout_history();
@@ -1876,6 +2114,7 @@ impl TermiRustApp {
             node_id,
             start: point_from_pixels(event.position),
             start_rect,
+            member_start_rects,
         });
         if let Some(pane_id) = pane_id
             && let Some(pane) = self.pane(pane_id)
@@ -2033,17 +2272,26 @@ impl TermiRustApp {
                 node_id,
                 start,
                 start_rect,
+                member_start_rects,
                 ..
             } => {
+                let delta_x = (current.x - start.x) / zoom;
+                let delta_y = (current.y - start.y) / zoom;
                 if let Some(node) = workspace.canvas.node_mut(&node_id) {
-                    node.rect.x = start_rect.x + (current.x - start.x) / zoom;
-                    node.rect.y = start_rect.y + (current.y - start.y) / zoom;
+                    node.rect.x = start_rect.x + delta_x;
+                    node.rect.y = start_rect.y + delta_y;
                     let min_width = if node.kind.pane_id().is_some() {
                         CANVAS_MIN_TERMINAL_NODE_WIDTH
                     } else {
                         CANVAS_MIN_NODE_WIDTH
                     };
                     node.rect = clamp_node_rect(node.rect, min_width);
+                }
+                for (member_id, member_start_rect) in member_start_rects {
+                    if let Some(member) = workspace.canvas.node_mut(&member_id) {
+                        member.rect.x = member_start_rect.x + delta_x;
+                        member.rect.y = member_start_rect.y + delta_y;
+                    }
                 }
             }
             CanvasInteraction::ResizeNode {
@@ -2107,12 +2355,16 @@ impl TermiRustApp {
         let Some(interaction) = self.canvas_interaction.take() else {
             return false;
         };
-        if matches!(
-            interaction,
-            CanvasInteraction::MoveNode { .. } | CanvasInteraction::ResizeNode { .. }
-        ) && let Some(workspace) = self.workspace_mut(interaction.workspace_id())
-        {
-            workspace.canvas.discard_unchanged_layout_history();
+        if let Some(workspace) = self.workspace_mut(interaction.workspace_id()) {
+            if let CanvasInteraction::MoveNode { node_id, .. } = &interaction {
+                workspace.canvas.refresh_group_membership_for_node(node_id);
+            }
+            if matches!(
+                interaction,
+                CanvasInteraction::MoveNode { .. } | CanvasInteraction::ResizeNode { .. }
+            ) {
+                workspace.canvas.discard_unchanged_layout_history();
+            }
         }
         self.persist_runtime_state();
         self.sync_terminal_layout(window, cx);
@@ -2267,6 +2519,122 @@ impl TermiRustApp {
         }
         self.canvas_add_menu_open = false;
         self.status_message = "Opened a local terminal on the canvas.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn active_canvas_world_center(&self, window: &Window) -> Option<CanvasPoint> {
+        let viewport = window.viewport_size();
+        let screen_center = CanvasPoint::new(
+            f32::from(viewport.width) / 2.0,
+            (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
+        );
+        self.active_workspace()
+            .map(|workspace| workspace.canvas.transform.screen_to_world(screen_center))
+    }
+
+    pub(super) fn sync_canvas_note_editor(&mut self, cx: &mut Context<Self>) {
+        let Some(node_id) = self.canvas_note_edit_id.clone() else {
+            return;
+        };
+        let mut text = self.canvas_note_editor_input.read(cx).value().to_string();
+        truncate_string_at_utf8_boundary(&mut text, 64 * 1024);
+        if let Some(workspace) = self.active_workspace_mut() {
+            workspace.canvas.set_note_text(&node_id, text);
+        }
+        cx.notify();
+    }
+
+    fn start_canvas_note_edit(
+        &mut self,
+        node_id: CanvasNodeId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.sync_canvas_note_editor(cx);
+        let Some(text) = self.active_workspace().and_then(|workspace| {
+            workspace
+                .canvas
+                .node(&node_id)
+                .and_then(|node| match &node.kind {
+                    CanvasNodeKind::Note { text, .. } => Some(text.clone()),
+                    _ => None,
+                })
+        }) else {
+            return;
+        };
+        self.canvas_note_edit_id = Some(node_id);
+        Self::set_input_value(&self.canvas_note_editor_input, text, window, cx);
+        self.canvas_note_editor_input.focus_handle(cx).focus(window);
+        self.canvas_add_menu_open = false;
+        self.canvas_node_menu_id = None;
+        cx.notify();
+    }
+
+    pub(super) fn finish_canvas_note_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.sync_canvas_note_editor(cx);
+        let node_id = self.canvas_note_edit_id.take();
+        if let Some(node_id) = node_id.as_ref() {
+            self.focus_canvas_node_terminal(node_id, window);
+        }
+        self.persist_runtime_state();
+        self.status_message = "Sticky note saved.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn add_note_to_canvas(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(world_center) = self.active_canvas_world_center(window) else {
+            return;
+        };
+        let Some(workspace) = self.active_workspace_mut() else {
+            return;
+        };
+        workspace.canvas.record_layout_history();
+        let node_id = workspace.canvas.add_note_node(world_center);
+        workspace.canvas.select_and_raise(&node_id);
+        self.persist_runtime_state();
+        self.start_canvas_note_edit(node_id, window, cx);
+    }
+
+    fn add_group_to_canvas(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(world_center) = self.active_canvas_world_center(window) else {
+            return;
+        };
+        let Some(workspace) = self.active_workspace_mut() else {
+            return;
+        };
+        let selected = workspace
+            .canvas
+            .selected_node_id
+            .clone()
+            .and_then(|selected_id| {
+                workspace
+                    .canvas
+                    .node(&selected_id)
+                    .and_then(|node| (!node.kind.is_group()).then_some((selected_id, node.rect)))
+            });
+        workspace.canvas.record_layout_history();
+        let node_id = workspace.canvas.add_group_node(world_center);
+        if let Some((selected_id, selected_rect)) = selected
+            && let Some(group) = workspace.canvas.node_mut(&node_id)
+        {
+            group.rect = CanvasRect {
+                x: selected_rect.x - 48.0,
+                y: selected_rect.y - 48.0,
+                width: selected_rect.width + 96.0,
+                height: selected_rect.height + 96.0,
+            };
+            group.kind = CanvasNodeKind::Group {
+                member_ids: vec![selected_id],
+            };
+        }
+        workspace.canvas.select_and_raise(&node_id);
+        self.canvas_add_menu_open = false;
+        self.persist_runtime_state();
+        self.status_message =
+            "Group frame added. Drag nodes into it, then move the frame to move them together."
+                .to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -3769,6 +4137,63 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn request_canvas_content_node_delete(
+        &mut self,
+        node_id: CanvasNodeId,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((title, is_note)) = self.active_workspace().and_then(|workspace| {
+            workspace
+                .canvas
+                .node(&node_id)
+                .and_then(|node| match node.kind {
+                    CanvasNodeKind::Note { .. } => Some((
+                        node.title.clone().unwrap_or_else(|| "Note".to_string()),
+                        true,
+                    )),
+                    CanvasNodeKind::Group { .. } => Some((
+                        node.title.clone().unwrap_or_else(|| "Group".to_string()),
+                        false,
+                    )),
+                    _ => None,
+                })
+        }) else {
+            return;
+        };
+        self.pending_canvas_node_delete = Some(PendingCanvasNodeDelete {
+            node_id,
+            title,
+            is_note,
+        });
+        self.canvas_node_menu_id = None;
+        cx.notify();
+    }
+
+    fn confirm_canvas_content_node_delete(&mut self, cx: &mut Context<Self>) {
+        let Some(pending) = self.pending_canvas_node_delete.take() else {
+            return;
+        };
+        if let Some(workspace) = self.active_workspace_mut() {
+            workspace.canvas.record_layout_history();
+            workspace.canvas.remove_node(&pending.node_id);
+        }
+        if self.canvas_note_edit_id.as_ref() == Some(&pending.node_id) {
+            self.canvas_note_edit_id = None;
+        }
+        self.pending_context_source
+            .take_if(|source| source == &pending.node_id);
+        self.pending_dependency_source
+            .take_if(|source| source == &pending.node_id);
+        self.persist_runtime_state();
+        self.status_message = if pending.is_note {
+            format!("Deleted note {}.", pending.title)
+        } else {
+            format!("Removed group {}. Its nodes were kept.", pending.title)
+        };
+        self.error_message.clear();
+        cx.notify();
+    }
+
     fn toggle_canvas_node_collapsed(&mut self, node_id: CanvasNodeId, cx: &mut Context<Self>) {
         for workspace in &mut self.workspaces {
             if workspace.canvas.node(&node_id).is_some() {
@@ -3817,6 +4242,7 @@ impl TermiRustApp {
                     )
                 }
             }),
+            CanvasNodeKind::Note { .. } | CanvasNodeKind::Group { .. } => None,
         }
     }
 
@@ -3825,6 +4251,25 @@ impl TermiRustApp {
         source: &CanvasNodeId,
         target: &CanvasNodeId,
     ) -> anyhow::Result<()> {
+        let canvas = &self
+            .active_workspace()
+            .ok_or_else(|| anyhow::anyhow!("No active canvas workspace"))?
+            .canvas;
+        let source_node = canvas
+            .node(source)
+            .ok_or_else(|| anyhow::anyhow!("The source node is unavailable"))?;
+        let target_node = canvas
+            .node(target)
+            .ok_or_else(|| anyhow::anyhow!("The target node is unavailable"))?;
+        if matches!(source_node.kind, CanvasNodeKind::Group { .. }) {
+            anyhow::bail!("Group frames cannot be used as context sources");
+        }
+        if !target_node.kind.is_executable() {
+            anyhow::bail!("Choose a terminal or agent as the context target");
+        }
+        if matches!(source_node.kind, CanvasNodeKind::Note { .. }) {
+            return Ok(());
+        }
         let source_host = self
             .canvas_node_execution_host(source)
             .ok_or_else(|| anyhow::anyhow!("The source node execution host is unavailable"))?;
@@ -4186,6 +4631,8 @@ impl TermiRustApp {
                 &policy,
                 current_unix_millis(),
             )
+        } else if let CanvasNodeKind::Note { text, .. } = &source_node.kind {
+            build_context_handoff(&source_label, text, &policy, current_unix_millis())
         } else {
             build_context_handoff(&source_label, "", &policy, current_unix_millis())
         };
@@ -4306,18 +4753,25 @@ impl TermiRustApp {
         let profiles = self.saved.profiles.clone();
         v_flex()
             .id("canvas-add-menu")
+            .debug_selector(|| "canvas-add-menu".to_string())
             .absolute()
             .top(px(10.0))
             .left(px(12.0))
             .w(px(300.0))
             .max_w(relative(0.9))
-            .max_h(px(480.0))
+            .max_h(relative(0.92))
             .overflow_hidden()
             .rounded(px(7.0))
             .border_1()
             .border_color(theme::border_dark())
             .bg(theme::library_card())
             .shadow_lg()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                cx.stop_propagation();
+            })
+            .on_mouse_down(MouseButton::Right, |_, _, cx| {
+                cx.stop_propagation();
+            })
             .child(
                 h_flex()
                     .h(px(40.0))
@@ -4377,6 +4831,42 @@ impl TermiRustApp {
                             )
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.add_persistent_local_terminal_to_canvas(window, cx);
+                            })),
+                    )
+                    .child(
+                        div()
+                            .px_2()
+                            .pt_2()
+                            .pb_1()
+                            .text_size(px(10.0))
+                            .font_semibold()
+                            .text_color(theme::text_muted())
+                            .child("ORGANIZE"),
+                    )
+                    .child(
+                        Button::new("canvas-add-note")
+                            .debug_selector(|| "canvas-add-note".to_string())
+                            .small()
+                            .w_full()
+                            .justify_start()
+                            .icon(IconName::File)
+                            .label("Sticky Note")
+                            .tooltip("Add editable context that can be linked to an agent")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.add_note_to_canvas(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-add-group")
+                            .debug_selector(|| "canvas-add-group".to_string())
+                            .small()
+                            .w_full()
+                            .justify_start()
+                            .icon(IconName::Frame)
+                            .label("Group Frame")
+                            .tooltip("Drag nodes into a frame and move them together")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.add_group_to_canvas(window, cx);
                             })),
                     )
                     .child(
@@ -4495,7 +4985,7 @@ impl TermiRustApp {
             .left(px(12.0))
             .w(px(520.0))
             .max_w(relative(0.9))
-            .max_h(px(680.0))
+            .max_h(relative(0.92))
             .overflow_hidden()
             .rounded(px(7.0))
             .border_1()
@@ -4964,6 +5454,8 @@ impl TermiRustApp {
                         CanvasNodeKind::Agent { definition, .. } => {
                             definition.provider.label().to_string()
                         }
+                        CanvasNodeKind::Note { .. } => "Note".to_string(),
+                        CanvasNodeKind::Group { .. } => "Group".to_string(),
                     })
             })
             .unwrap_or_else(|| "Unknown node".to_string())
@@ -5059,6 +5551,7 @@ impl TermiRustApp {
         };
         let screen = canvas_node_render_rect(node.0.canvas.transform, node.1);
         let viewport_width = f32::from(window.viewport_size().width);
+        let viewport_height = f32::from(window.viewport_size().height);
         let menu_width = 300.0;
         let menu_gap = 8.0;
         let menu_x = if screen.x + screen.width + menu_gap + menu_width <= viewport_width - 12.0 {
@@ -5066,11 +5559,16 @@ impl TermiRustApp {
         } else {
             (screen.x - menu_width - menu_gap).max(12.0)
         };
-        let menu_y = screen.y.max(12.0);
+        let menu_y = screen.y.max(12.0).min((viewport_height - 280.0).max(12.0));
         let label = self.canvas_node_label(&node_id);
         let rename_id = node_id.clone();
         let dependency_id = node_id.clone();
         let review_id = node_id.clone();
+        let color_id = node_id.clone();
+        let delete_id = node_id.clone();
+        let is_executable = node.1.kind.is_executable();
+        let is_note = matches!(node.1.kind, CanvasNodeKind::Note { .. });
+        let is_group = matches!(node.1.kind, CanvasNodeKind::Group { .. });
 
         v_flex()
             .id("canvas-node-menu")
@@ -5079,6 +5577,7 @@ impl TermiRustApp {
             .left(px(menu_x))
             .w(px(300.0))
             .max_w(relative(0.9))
+            .max_h(relative(0.92))
             .overflow_hidden()
             .rounded(px(7.0))
             .border_1()
@@ -5123,6 +5622,10 @@ impl TermiRustApp {
             )
             .child(
                 v_flex()
+                    .id("canvas-node-menu-list")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
                     .p_2()
                     .gap_1()
                     .child(
@@ -5137,34 +5640,57 @@ impl TermiRustApp {
                                 this.start_canvas_node_rename(rename_id.clone(), window, cx);
                             })),
                     )
-                    .child(
-                        Button::new("canvas-node-menu-dependency")
-                            .debug_selector(|| "canvas-node-menu-dependency".to_string())
-                            .small()
-                            .ghost()
-                            .icon(IconName::Building2)
-                            .label("Create dependency link")
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                cx.stop_propagation();
-                                this.canvas_node_menu_id = None;
-                                this.link_canvas_dependency(dependency_id.clone(), cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("canvas-node-menu-review-context")
-                            .small()
-                            .ghost()
-                            .icon(IconName::Eye)
-                            .label("Review incoming context")
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                cx.stop_propagation();
-                                this.canvas_node_menu_id = None;
-                                if let Some(workspace) = this.active_workspace_mut() {
-                                    workspace.canvas.select_and_raise(&review_id);
-                                }
-                                this.open_context_review_for_selected(window, cx);
-                            })),
-                    )
+                    .when(is_executable, |menu| {
+                        menu.child(
+                            Button::new("canvas-node-menu-dependency")
+                                .debug_selector(|| "canvas-node-menu-dependency".to_string())
+                                .small()
+                                .ghost()
+                                .icon(IconName::Building2)
+                                .label("Create dependency link")
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.canvas_node_menu_id = None;
+                                    this.link_canvas_dependency(dependency_id.clone(), cx);
+                                })),
+                        )
+                    })
+                    .when(is_executable, |menu| {
+                        menu.child(
+                            Button::new("canvas-node-menu-review-context")
+                                .small()
+                                .ghost()
+                                .icon(IconName::Eye)
+                                .label("Review incoming context")
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    cx.stop_propagation();
+                                    this.canvas_node_menu_id = None;
+                                    if let Some(workspace) = this.active_workspace_mut() {
+                                        workspace.canvas.select_and_raise(&review_id);
+                                    }
+                                    this.open_context_review_for_selected(window, cx);
+                                })),
+                        )
+                    })
+                    .when(is_note, |menu| {
+                        menu.child(
+                            Button::new("canvas-node-menu-note-color")
+                                .debug_selector(|| "canvas-node-menu-note-color".to_string())
+                                .small()
+                                .ghost()
+                                .icon(IconName::Palette)
+                                .label("Change note color")
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    if let Some(workspace) = this.active_workspace_mut() {
+                                        workspace.canvas.cycle_note_color(&color_id);
+                                    }
+                                    this.canvas_node_menu_id = None;
+                                    this.persist_runtime_state();
+                                    cx.notify();
+                                })),
+                        )
+                    })
                     .child(
                         Button::new("canvas-node-menu-view-links")
                             .small()
@@ -5176,7 +5702,25 @@ impl TermiRustApp {
                                 this.canvas_node_menu_id = None;
                                 this.toggle_canvas_links(cx);
                             })),
-                    ),
+                    )
+                    .when(is_note || is_group, |menu| {
+                        menu.child(
+                            Button::new("canvas-node-menu-delete-content")
+                                .debug_selector(|| "canvas-node-menu-delete-content".to_string())
+                                .small()
+                                .ghost()
+                                .icon(IconName::Delete)
+                                .label(if is_note {
+                                    "Delete note"
+                                } else {
+                                    "Remove group"
+                                })
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.request_canvas_content_node_delete(delete_id.clone(), cx);
+                                })),
+                        )
+                    }),
             )
             .into_any_element()
     }
@@ -5284,7 +5828,7 @@ impl TermiRustApp {
             .right(px(12.0))
             .w(px(440.0))
             .max_w(relative(0.9))
-            .max_h(px(640.0))
+            .max_h(relative(0.92))
             .overflow_hidden()
             .rounded(px(7.0))
             .border_1()
@@ -5498,7 +6042,7 @@ impl TermiRustApp {
             .right(px(12.0))
             .w(px(500.0))
             .max_w(relative(0.9))
-            .max_h(px(620.0))
+            .max_h(relative(0.92))
             .overflow_hidden()
             .rounded(px(7.0))
             .border_1()
@@ -5825,7 +6369,7 @@ impl TermiRustApp {
             .left(px(12.0))
             .w(px(620.0))
             .max_w(relative(0.9))
-            .max_h(px(620.0))
+            .max_h(relative(0.92))
             .overflow_hidden()
             .rounded(px(7.0))
             .border_1()
@@ -6107,7 +6651,7 @@ impl TermiRustApp {
                             .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                             .icon(IconName::Plus)
                             .label("Add")
-                            .tooltip("Add a terminal or coding agent")
+                            .tooltip("Add a terminal, agent, note, or group")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_canvas_add_menu(cx);
                             })),
@@ -6780,10 +7324,13 @@ impl TermiRustApp {
             let selected = selected_node_id.as_ref() == Some(&node.id);
             let color = if selected {
                 theme::accent()
-            } else if matches!(node.kind, CanvasNodeKind::Agent { .. }) {
-                theme::with_alpha(theme::warning(), 0.76)
             } else {
-                theme::with_alpha(theme::text_muted(), 0.74)
+                match node.kind {
+                    CanvasNodeKind::Agent { .. } => theme::with_alpha(theme::warning(), 0.76),
+                    CanvasNodeKind::Note { color, .. } => canvas_note_background(color),
+                    CanvasNodeKind::Group { .. } => theme::with_alpha(theme::accent(), 0.34),
+                    CanvasNodeKind::Terminal { .. } => theme::with_alpha(theme::text_muted(), 0.74),
+                }
             };
             minimap = minimap.child(
                 div()
@@ -6911,6 +7458,16 @@ impl TermiRustApp {
                     .map(HostProfile::display_name)
                     .unwrap_or_else(|| "Saved host unavailable".to_string()),
             },
+            CanvasNodeKind::Note { .. } => "Canvas note".to_string(),
+            CanvasNodeKind::Group { member_ids } => format!(
+                "{} {}",
+                member_ids.len(),
+                if member_ids.len() == 1 {
+                    "node"
+                } else {
+                    "nodes"
+                }
+            ),
         }
     }
 
@@ -6934,7 +7491,12 @@ impl TermiRustApp {
             .title
             .clone()
             .or_else(|| pane_id.and_then(|id| self.pane(id).map(|pane| pane.title.clone())))
-            .unwrap_or_else(|| "Agent".to_string());
+            .unwrap_or_else(|| match &node.kind {
+                CanvasNodeKind::Terminal { .. } => "Terminal".to_string(),
+                CanvasNodeKind::Agent { .. } => "Agent".to_string(),
+                CanvasNodeKind::Note { .. } => "Note".to_string(),
+                CanvasNodeKind::Group { .. } => "Group".to_string(),
+            });
         let location = self.canvas_node_location_label(node);
         let (status, needs_attention, unread_output) = self
             .structured_agents
@@ -6956,7 +7518,20 @@ impl TermiRustApp {
                     )
                 })
             })
-            .unwrap_or_else(|| ("Idle".to_string(), false, false));
+            .unwrap_or_else(|| {
+                let status = match &node.kind {
+                    CanvasNodeKind::Note { .. } => {
+                        if self.canvas_note_edit_id.as_ref() == Some(&node.id) {
+                            "Editing"
+                        } else {
+                            "Saved"
+                        }
+                    }
+                    CanvasNodeKind::Group { .. } => "Frame",
+                    _ => "Idle",
+                };
+                (status.to_string(), false, false)
+            });
         let subtitle = format!("{location} / {status}");
         let header_node_id = node_id.clone();
         let link_node_id = node_id.clone();
@@ -6968,8 +7543,15 @@ impl TermiRustApp {
         let rename_node_id = node_id.clone();
         let activate_node_id = node_id.clone();
         let renaming = self.canvas_node_rename_id.as_ref() == Some(&node_id);
+        let editing_note = self.canvas_note_edit_id.as_ref() == Some(&node_id);
+        let is_note = matches!(node.kind, CanvasNodeKind::Note { .. });
+        let is_group = matches!(node.kind, CanvasNodeKind::Group { .. });
+        let can_source_context = node.kind.can_source_context();
         let close_pane_id = pane_id;
-        let close_structured_node_id = (pane_id.is_none()).then_some(node_id.clone());
+        let close_structured_node_id =
+            matches!(node.kind, CanvasNodeKind::Agent { pane_id: None, .. })
+                .then_some(node_id.clone());
+        let close_content_node_id = (is_note || is_group).then_some(node_id.clone());
         let structured_output_state = self.structured_agents.get(&node_id).map(|runtime| {
             (
                 !runtime.transcript.trim().is_empty(),
@@ -6979,6 +7561,26 @@ impl TermiRustApp {
         });
         let header_latest_id = node_id.clone();
         let header_copy_id = node_id.clone();
+        let note_edit_id = node_id.clone();
+        let note_color = match &node.kind {
+            CanvasNodeKind::Note { color, .. } => Some(*color),
+            _ => None,
+        };
+        let note_text = match &node.kind {
+            CanvasNodeKind::Note { text, .. } => Some(text.clone()),
+            _ => None,
+        };
+        let group_member_count = match &node.kind {
+            CanvasNodeKind::Group { member_ids } => Some(member_ids.len()),
+            _ => None,
+        };
+        let node_background = note_color.map(canvas_note_background).unwrap_or_else(|| {
+            if is_group {
+                theme::with_alpha(theme::accent(), 0.05)
+            } else {
+                theme::terminal_panel()
+            }
+        });
 
         let mut body = v_flex()
             .id(SharedString::from(format!(
@@ -7005,7 +7607,7 @@ impl TermiRustApp {
             } else {
                 theme::border()
             })
-            .bg(theme::terminal_panel())
+            .bg(node_background)
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, _, window, cx| {
@@ -7025,6 +7627,10 @@ impl TermiRustApp {
                         "canvas-node-header-{}",
                         node_id.as_str()
                     )))
+                    .debug_selector({
+                        let node_id = node_id.clone();
+                        move || format!("canvas-node-header-{}", node_id.as_str())
+                    })
                     .h(px(CANVAS_NODE_HEADER_HEIGHT))
                     .w_full()
                     .px_2()
@@ -7077,6 +7683,8 @@ impl TermiRustApp {
                                 Icon::new(match node.kind {
                                     CanvasNodeKind::Terminal { .. } => IconName::SquareTerminal,
                                     CanvasNodeKind::Agent { .. } => IconName::Bot,
+                                    CanvasNodeKind::Note { .. } => IconName::File,
+                                    CanvasNodeKind::Group { .. } => IconName::Frame,
                                 })
                                 .size(px(14.0))
                                 .text_color(theme::accent()),
@@ -7129,6 +7737,45 @@ impl TermiRustApp {
                     .child(
                         h_flex()
                             .gap_1()
+                            .when(is_note, |actions| {
+                                actions.child(
+                                    Button::new(SharedString::from(format!(
+                                        "canvas-note-edit-{}",
+                                        note_edit_id.as_str()
+                                    )))
+                                    .debug_selector({
+                                        let node_id = note_edit_id.clone();
+                                        move || format!("canvas-note-edit-{}", node_id.as_str())
+                                    })
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(if editing_note {
+                                        IconName::Check
+                                    } else {
+                                        IconName::ALargeSmall
+                                    })
+                                    .tooltip(if editing_note {
+                                        "Save note"
+                                    } else {
+                                        "Edit note"
+                                    })
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                        cx.stop_propagation();
+                                    })
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        cx.stop_propagation();
+                                        if editing_note {
+                                            this.finish_canvas_note_edit(window, cx);
+                                        } else {
+                                            this.start_canvas_note_edit(
+                                                note_edit_id.clone(),
+                                                window,
+                                                cx,
+                                            );
+                                        }
+                                    })),
+                                )
+                            })
                             .when_some(
                                 structured_output_state,
                                 |actions, (has_output, follow_transcript, has_selection)| {
@@ -7227,11 +7874,16 @@ impl TermiRustApp {
                                     },
                                 )),
                             )
-                            .child(
+                            .when(can_source_context, |actions| {
+                                actions.child(
                                 Button::new(SharedString::from(format!(
                                     "canvas-node-link-{}",
                                     link_node_id.as_str()
                                 )))
+                                .debug_selector({
+                                    let node_id = link_node_id.clone();
+                                    move || format!("canvas-node-link-{}", node_id.as_str())
+                                })
                                 .xsmall()
                                 .ghost()
                                 .icon(IconName::ArrowRight)
@@ -7250,6 +7902,7 @@ impl TermiRustApp {
                                     },
                                 )),
                             )
+                            })
                             .child(
                                 Button::new(SharedString::from(more_selector.clone()))
                                     .debug_selector(move || more_selector.clone())
@@ -7302,6 +7955,35 @@ impl TermiRustApp {
                                 },
                             )),
                         )
+                    })
+                    .when_some(close_content_node_id, |header, node_id| {
+                        header.child(
+                            Button::new(SharedString::from(format!(
+                                "canvas-content-node-close-{}",
+                                node_id.as_str()
+                            )))
+                            .debug_selector({
+                                let node_id = node_id.clone();
+                                move || format!("canvas-content-node-close-{}", node_id.as_str())
+                            })
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip(if is_note {
+                                "Delete note"
+                            } else {
+                                "Remove group"
+                            })
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                cx.stop_propagation();
+                            })
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| {
+                                    cx.stop_propagation();
+                                    this.request_canvas_content_node_delete(node_id.clone(), cx);
+                                },
+                            )),
+                        )
                     }),
             );
 
@@ -7314,8 +7996,76 @@ impl TermiRustApp {
                         .child(self.render_terminal_pane(pane, window, cx)),
                 )
             });
-            if pane_id.is_none() {
+            if matches!(node.kind, CanvasNodeKind::Agent { pane_id: None, .. }) {
                 body = body.child(self.render_structured_agent_body(node_id.clone(), selected, cx));
+            }
+            if let Some(note_text) = note_text {
+                body = if editing_note {
+                    body.child(
+                        div()
+                            .id(SharedString::from(format!(
+                                "canvas-note-editor-{}",
+                                node_id.as_str()
+                            )))
+                            .debug_selector({
+                                let node_id = node_id.clone();
+                                move || format!("canvas-note-editor-{}", node_id.as_str())
+                            })
+                            .flex_1()
+                            .min_h_0()
+                            .p_2()
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                cx.stop_propagation();
+                            })
+                            .child(Input::new(&self.canvas_note_editor_input).h_full()),
+                    )
+                } else {
+                    let lines = if note_text.is_empty() {
+                        vec![String::new()]
+                    } else {
+                        note_text.lines().map(str::to_string).collect::<Vec<_>>()
+                    };
+                    body.child(
+                        v_flex()
+                            .id(SharedString::from(format!(
+                                "canvas-note-content-{}",
+                                node_id.as_str()
+                            )))
+                            .debug_selector({
+                                let node_id = node_id.clone();
+                                move || format!("canvas-note-content-{}", node_id.as_str())
+                            })
+                            .flex_1()
+                            .min_h_0()
+                            .p_3()
+                            .gap_1()
+                            .overflow_y_scroll()
+                            .text_size(px(13.0))
+                            .text_color(theme::text_on_dark())
+                            .children(
+                                lines
+                                    .into_iter()
+                                    .map(|line| div().min_h(px(18.0)).child(line)),
+                            ),
+                    )
+                };
+            }
+            if let Some(member_count) = group_member_count {
+                body = body.child(
+                    div()
+                        .flex_1()
+                        .min_h_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(11.0))
+                        .text_color(theme::text_muted_dark())
+                        .child(format!(
+                            "{} {}",
+                            member_count,
+                            if member_count == 1 { "node" } else { "nodes" }
+                        )),
+                );
             }
             body = body.child(
                 div()
@@ -7770,7 +8520,7 @@ impl TermiRustApp {
             .right(px(12.0))
             .w(px(560.0))
             .max_w(relative(0.9))
-            .max_h(px(700.0))
+            .max_h(relative(0.92))
             .overflow_hidden()
             .rounded(px(7.0))
             .border_1()
@@ -7990,9 +8740,9 @@ impl TermiRustApp {
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.confirm_tmux_session_kill(cx);
                                         })),
-                                ),
+                            ),
                         )
-                    }),
+                    })
             )
             .into_any_element()
     }
@@ -8087,6 +8837,113 @@ impl TermiRustApp {
             .into_any_element()
     }
 
+    fn render_canvas_content_node_delete_dialog(&self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(pending) = self.pending_canvas_node_delete.as_ref() else {
+            return div().into_any_element();
+        };
+        v_flex()
+            .id("canvas-content-node-delete-dialog")
+            .debug_selector(|| "canvas-content-node-delete-dialog".to_string())
+            .absolute()
+            .top(px(12.0))
+            .right(px(12.0))
+            .w(px(460.0))
+            .max_w(relative(0.9))
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(theme::danger())
+            .bg(theme::library_card())
+            .shadow_lg()
+            .child(
+                h_flex()
+                    .h(px(44.0))
+                    .px_3()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        div()
+                            .text_size(px(13.0))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child(if pending.is_note {
+                                "Delete sticky note?"
+                            } else {
+                                "Remove group frame?"
+                            }),
+                    )
+                    .child(
+                        Button::new("canvas-content-node-delete-cancel-icon")
+                            .xsmall()
+                            .ghost()
+                            .icon(IconName::Close)
+                            .tooltip("Cancel")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.pending_canvas_node_delete = None;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .p_3()
+                    .gap_3()
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .text_color(theme::text_muted())
+                            .child(if pending.is_note {
+                                format!("{} and its context links will be deleted.", pending.title)
+                            } else {
+                                format!(
+                                    "{} will be removed; its member nodes stay open.",
+                                    pending.title
+                                )
+                            }),
+                    )
+                    .child(
+                        h_flex()
+                            .justify_end()
+                            .gap_2()
+                            .child(
+                                Button::new("canvas-content-node-delete-cancel")
+                                    .debug_selector(|| {
+                                        "canvas-content-node-delete-cancel".to_string()
+                                    })
+                                    .small()
+                                    .ghost()
+                                    .label("Cancel")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.pending_canvas_node_delete = None;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("canvas-content-node-delete-confirm")
+                                    .debug_selector(|| {
+                                        "canvas-content-node-delete-confirm".to_string()
+                                    })
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Danger,
+                                        cx,
+                                    ))
+                                    .icon(IconName::Delete)
+                                    .label(if pending.is_note {
+                                        "Delete Note"
+                                    } else {
+                                        "Remove Group"
+                                    })
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.confirm_canvas_content_node_delete(cx);
+                                    })),
+                            ),
+                    ),
+            )
+            .into_any_element()
+    }
+
     fn render_split_pane_chooser(&self, cx: &mut Context<Self>) -> AnyElement {
         let Some(chooser) = self.split_pane_chooser.as_ref() else {
             return div().into_any_element();
@@ -8118,7 +8975,7 @@ impl TermiRustApp {
             .right(px(12.0))
             .w(px(540.0))
             .max_w(relative(0.9))
-            .max_h(px(680.0))
+            .max_h(relative(0.92))
             .overflow_hidden()
             .rounded(px(7.0))
             .border_1()
@@ -8168,7 +9025,7 @@ impl TermiRustApp {
                     )
                     .child(
                         v_flex()
-                            .max_h(px(500.0))
+                            .max_h(relative(0.9))
                             .overflow_y_scrollbar()
                             .children(panes.into_iter().map(|(pane_id, title, endpoint)| {
                                 let is_selected = selected.contains(&pane_id);
@@ -8283,7 +9140,10 @@ impl TermiRustApp {
         let viewport_height =
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0);
         let mut node_indices: Vec<_> = (0..workspace.canvas.nodes.len()).collect();
-        node_indices.sort_by_key(|index| workspace.canvas.nodes[*index].z_index);
+        node_indices.sort_by_key(|index| {
+            let node = &workspace.canvas.nodes[*index];
+            (!node.kind.is_group(), node.z_index)
+        });
         node_indices.retain(|index| {
             canvas_rect_is_visible(
                 canvas_node_render_rect(
@@ -8360,7 +9220,7 @@ impl TermiRustApp {
                             .text_size(px(14.0))
                             .font_semibold()
                             .text_color(theme::text_on_dark())
-                            .child("Add a terminal or coding agent"),
+                            .child("Add your first canvas node"),
                     )
                     .child(
                         Button::new("canvas-empty-add")
@@ -8504,6 +9364,9 @@ impl TermiRustApp {
         }
         if self.pending_canvas_pane_close.is_some() {
             body = body.child(self.render_canvas_pane_close_dialog(cx));
+        }
+        if self.pending_canvas_node_delete.is_some() {
+            body = body.child(self.render_canvas_content_node_delete_dialog(cx));
         }
         if self.split_pane_chooser.is_some() {
             body = body.child(self.render_split_pane_chooser(cx));
@@ -8925,6 +9788,83 @@ mod tests {
                 .to_string()
                 .contains("different target")
         );
+    }
+
+    #[test]
+    fn notes_are_context_sources_but_not_dependency_or_context_targets() {
+        let mut canvas = CanvasWorkspaceState {
+            nodes: vec![terminal_node("target", 1, 800.0, 0.0)],
+            ..CanvasWorkspaceState::default()
+        };
+        let note_id = canvas.add_note_node(CanvasPoint::new(200.0, 200.0));
+        assert!(canvas.set_note_text(&note_id, "Review the auth boundary".to_string()));
+
+        canvas
+            .add_context_edge(note_id.clone(), CanvasNodeId::new("target"))
+            .expect("notes should feed executable nodes");
+        assert!(
+            canvas
+                .add_dependency_edge(note_id.clone(), CanvasNodeId::new("target"))
+                .unwrap_err()
+                .to_string()
+                .contains("terminals and agents")
+        );
+        assert!(
+            canvas
+                .add_context_edge(CanvasNodeId::new("target"), note_id)
+                .unwrap_err()
+                .to_string()
+                .contains("context target")
+        );
+    }
+
+    #[test]
+    fn groups_capture_dropped_nodes_move_members_and_restore_membership() {
+        let mut canvas = CanvasWorkspaceState {
+            nodes: vec![terminal_node("terminal", 1, 100.0, 100.0)],
+            ..CanvasWorkspaceState::default()
+        };
+        let note_id = canvas.add_note_node(CanvasPoint::new(500.0, 300.0));
+        let group_id = canvas.add_group_node(CanvasPoint::new(450.0, 300.0));
+        canvas.node_mut(&note_id).unwrap().rect.x = 400.0;
+        canvas.node_mut(&note_id).unwrap().rect.y = 100.0;
+        canvas.node_mut(&group_id).unwrap().rect = CanvasRect {
+            x: 0.0,
+            y: 0.0,
+            width: 900.0,
+            height: 600.0,
+        };
+        canvas.refresh_group_membership_for_node(&CanvasNodeId::new("terminal"));
+        canvas.refresh_group_membership_for_node(&note_id);
+
+        let member_rects = canvas.group_member_rects(&group_id);
+        assert_eq!(member_rects.len(), 2);
+        let CanvasNodeKind::Group { member_ids } = &canvas.node(&group_id).unwrap().kind else {
+            panic!("expected group node");
+        };
+        assert_eq!(member_ids.len(), 2);
+
+        canvas.record_layout_history();
+        canvas.node_mut(&note_id).unwrap().rect.x = 2_000.0;
+        canvas.refresh_group_membership_for_node(&note_id);
+        let CanvasNodeKind::Group { member_ids } = &canvas.node(&group_id).unwrap().kind else {
+            panic!("expected group node");
+        };
+        assert_eq!(member_ids, &vec![CanvasNodeId::new("terminal")]);
+        assert!(canvas.undo_layout());
+        let CanvasNodeKind::Group { member_ids } = &canvas.node(&group_id).unwrap().kind else {
+            panic!("expected group node");
+        };
+        assert!(member_ids.contains(&note_id));
+
+        let pane_indices = [(1, 0)].into_iter().collect();
+        let saved = canvas.to_saved(&pane_indices);
+        let restored = CanvasWorkspaceState::from_saved(Some(&saved), &[99]);
+        let CanvasNodeKind::Group { member_ids } = &restored.node(&group_id).unwrap().kind else {
+            panic!("expected restored group node");
+        };
+        assert!(member_ids.contains(&note_id));
+        assert_eq!(restored.node(&note_id).unwrap().kind.pane_id(), None);
     }
 
     #[test]

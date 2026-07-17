@@ -2302,6 +2302,17 @@ fn current_canvas_schema_version() -> u32 {
     CANVAS_SCHEMA_VERSION
 }
 
+fn truncate_string_at_utf8_boundary(value: &mut String, max_bytes: usize) {
+    if value.len() <= max_bytes {
+        return;
+    }
+    let mut boundary = max_bytes;
+    while !value.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    value.truncate(boundary);
+}
+
 fn default_true() -> bool {
     true
 }
@@ -2485,6 +2496,36 @@ pub enum SavedCanvasNodeKind {
         #[serde(default)]
         definition: SavedAgentDefinition,
     },
+    Note {
+        #[serde(default)]
+        text: String,
+        #[serde(default)]
+        color: CanvasNoteColor,
+    },
+    Group {
+        #[serde(default)]
+        member_ids: Vec<CanvasNodeId>,
+    },
+}
+
+impl SavedCanvasNodeKind {
+    fn is_executable(&self) -> bool {
+        matches!(self, Self::Terminal { .. } | Self::Agent { .. })
+    }
+
+    fn can_source_context(&self) -> bool {
+        !matches!(self, Self::Group { .. })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CanvasNoteColor {
+    #[default]
+    Yellow,
+    Blue,
+    Green,
+    Rose,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -2640,6 +2681,14 @@ impl SavedCanvasState {
                     }
                     (true, pane_index.is_some())
                 }
+                SavedCanvasNodeKind::Note { text, .. } => {
+                    if text.len() > 64 * 1024 {
+                        truncate_string_at_utf8_boundary(text, 64 * 1024);
+                        report.node_repairs += 1;
+                    }
+                    (true, false)
+                }
+                SavedCanvasNodeKind::Group { .. } => (true, false),
             };
             if !keep {
                 return false;
@@ -2702,6 +2751,36 @@ impl SavedCanvasState {
             node_ids.insert(CanvasNodeId::new(candidate));
         }
 
+        let group_ids = self
+            .nodes
+            .iter()
+            .filter(|node| matches!(node.kind, SavedCanvasNodeKind::Group { .. }))
+            .map(|node| node.id.clone())
+            .collect::<HashSet<_>>();
+        let member_candidates = node_ids
+            .difference(&group_ids)
+            .cloned()
+            .collect::<HashSet<_>>();
+        let mut assigned_members = HashSet::new();
+        for node in &mut self.nodes {
+            let SavedCanvasNodeKind::Group { member_ids } = &mut node.kind else {
+                continue;
+            };
+            let before = member_ids.clone();
+            member_ids.retain(|member_id| {
+                member_candidates.contains(member_id) && assigned_members.insert(member_id.clone())
+            });
+            if *member_ids != before {
+                report.node_repairs += 1;
+            }
+        }
+
+        let node_kinds = self
+            .nodes
+            .iter()
+            .map(|node| (node.id.clone(), node.kind.clone()))
+            .collect::<HashMap<_, _>>();
+
         let mut edge_ids = HashSet::new();
         let mut semantic_edges = HashSet::new();
         let mut dependency_adjacency: HashMap<CanvasNodeId, Vec<CanvasNodeId>> = HashMap::new();
@@ -2711,6 +2790,24 @@ impl SavedCanvasState {
                 || !node_ids.contains(&edge.target)
                 || edge.source == edge.target
             {
+                return false;
+            }
+
+            let Some(source_kind) = node_kinds.get(&edge.source) else {
+                return false;
+            };
+            let Some(target_kind) = node_kinds.get(&edge.target) else {
+                return false;
+            };
+            let valid_endpoints = match edge.kind {
+                CanvasEdgeKind::Context => {
+                    source_kind.can_source_context() && target_kind.is_executable()
+                }
+                CanvasEdgeKind::Dependency => {
+                    source_kind.is_executable() && target_kind.is_executable()
+                }
+            };
+            if !valid_endpoints {
                 return false;
             }
 
@@ -3034,17 +3131,18 @@ mod tests {
     use super::{
         AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AppSettings,
         AuthConfig, AuthMode, CANVAS_MIN_NODE_WIDTH, CANVAS_MIN_TERMINAL_NODE_WIDTH, CanvasEdgeId,
-        CanvasEdgeKind, CanvasNodeId, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID,
-        DraftProfile, HostColorTag, HostProfile, IdentitySource, ImportedIdentity,
-        JumpHostConnection, LocalPortForward, LocalShellConfig, MobileDevicePairingRequest,
-        PortForwardKind, PortForwardRule, ProfileSource, QuickConnect, RestorableAuth,
-        RestorableConnection, SavedAgentDefinition, SavedCanvasEdge, SavedCanvasNode,
-        SavedCanvasNodeKind, SavedCanvasState, SavedCanvasViewport, SavedCommandHistoryEntry,
-        SavedContextPolicy, SavedIdentity, SavedManagedWorktree, SavedManagedWorktreeDisposition,
-        SavedSnippet, SavedState, SavedVault, SavedVaultMember, SavedWorkspace,
-        SavedWorktreePolicy, SessionLogEntry, SessionLogStatus, ThemePreset, VaultKind,
-        VaultMemberRole, WorkspaceLayoutMode, default_persistent_session_name_for_endpoint,
-        default_persistent_session_name_from_id, identity_id_for_path,
+        CanvasEdgeKind, CanvasNodeId, CanvasNoteColor, ConnectRequest, ConnectionKind,
+        DEFAULT_VAULT_ID, DraftProfile, HostColorTag, HostProfile, IdentitySource,
+        ImportedIdentity, JumpHostConnection, LocalPortForward, LocalShellConfig,
+        MobileDevicePairingRequest, PortForwardKind, PortForwardRule, ProfileSource, QuickConnect,
+        RestorableAuth, RestorableConnection, SavedAgentDefinition, SavedCanvasEdge,
+        SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState, SavedCanvasViewport,
+        SavedCommandHistoryEntry, SavedContextPolicy, SavedIdentity, SavedManagedWorktree,
+        SavedManagedWorktreeDisposition, SavedSnippet, SavedState, SavedVault, SavedVaultMember,
+        SavedWorkspace, SavedWorktreePolicy, SessionLogEntry, SessionLogStatus, ThemePreset,
+        VaultKind, VaultMemberRole, WorkspaceLayoutMode,
+        default_persistent_session_name_for_endpoint, default_persistent_session_name_from_id,
+        identity_id_for_path,
     };
 
     #[test]
@@ -3673,6 +3771,107 @@ mod tests {
                 .iter()
                 .all(|edge| edge.context_policy.is_none())
         );
+    }
+
+    #[test]
+    fn canvas_notes_and_groups_normalize_and_round_trip_safely() {
+        let note_id = CanvasNodeId::new("note");
+        let terminal_id = CanvasNodeId::new("terminal");
+        let group_id = CanvasNodeId::new("group");
+        let mut canvas = SavedCanvasState {
+            nodes: vec![
+                canvas_terminal_node(terminal_id.as_str(), 0),
+                SavedCanvasNode {
+                    id: note_id.clone(),
+                    kind: SavedCanvasNodeKind::Note {
+                        text: "é".repeat(40_000),
+                        color: CanvasNoteColor::Blue,
+                    },
+                    x: 20.0,
+                    y: 30.0,
+                    width: 420.0,
+                    height: 300.0,
+                    z_index: 2,
+                    title: Some("Deploy notes".to_string()),
+                    collapsed: false,
+                },
+                SavedCanvasNode {
+                    id: group_id.clone(),
+                    kind: SavedCanvasNodeKind::Group {
+                        member_ids: vec![
+                            terminal_id.clone(),
+                            note_id.clone(),
+                            note_id.clone(),
+                            CanvasNodeId::new("missing"),
+                            group_id.clone(),
+                        ],
+                    },
+                    x: 0.0,
+                    y: 0.0,
+                    width: 900.0,
+                    height: 600.0,
+                    z_index: 0,
+                    title: Some("Release".to_string()),
+                    collapsed: false,
+                },
+            ],
+            edges: vec![
+                SavedCanvasEdge {
+                    id: CanvasEdgeId::new("note-context"),
+                    source: note_id.clone(),
+                    target: terminal_id.clone(),
+                    kind: CanvasEdgeKind::Context,
+                    enabled: true,
+                    context_policy: Some(SavedContextPolicy::default()),
+                },
+                SavedCanvasEdge {
+                    id: CanvasEdgeId::new("note-dependency"),
+                    source: note_id.clone(),
+                    target: terminal_id.clone(),
+                    kind: CanvasEdgeKind::Dependency,
+                    enabled: true,
+                    context_policy: None,
+                },
+                SavedCanvasEdge {
+                    id: CanvasEdgeId::new("group-context"),
+                    source: group_id.clone(),
+                    target: terminal_id.clone(),
+                    kind: CanvasEdgeKind::Context,
+                    enabled: true,
+                    context_policy: None,
+                },
+                SavedCanvasEdge {
+                    id: CanvasEdgeId::new("invalid-target"),
+                    source: terminal_id.clone(),
+                    target: note_id.clone(),
+                    kind: CanvasEdgeKind::Context,
+                    enabled: true,
+                    context_policy: None,
+                },
+            ],
+            ..SavedCanvasState::default()
+        };
+
+        let report = canvas.normalize(1);
+
+        assert!(report.changed());
+        assert_eq!(report.removed_edges, 3);
+        assert_eq!(canvas.edges.len(), 1);
+        let SavedCanvasNodeKind::Note { text, color } = &canvas.nodes[1].kind else {
+            panic!("expected note node");
+        };
+        assert!(text.len() <= 64 * 1024);
+        assert!(text.is_char_boundary(text.len()));
+        assert_eq!(*color, CanvasNoteColor::Blue);
+        let SavedCanvasNodeKind::Group { member_ids } = &canvas.nodes[2].kind else {
+            panic!("expected group node");
+        };
+        assert_eq!(member_ids, &vec![terminal_id, note_id]);
+
+        let json = serde_json::to_string(&canvas).expect("canvas should serialize");
+        let restored: SavedCanvasState =
+            serde_json::from_str(&json).expect("canvas should deserialize");
+        assert_eq!(restored, canvas);
     }
 
     #[test]
