@@ -12581,18 +12581,16 @@ sleep 1
         app.read_with(cx, |app, _| {
             assert!(app.structured_agents[&node_id].selection.is_some());
         });
-
-        let copy_selection = KeyDownEvent {
-            keystroke: Keystroke::parse("cmd-c").expect("copy shortcut should parse"),
-            is_held: false,
-        };
-        window
+        let transcript_has_focus = window
             .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    assert!(app.handle_canvas_key(&copy_selection, window, cx));
-                })
+                app.read(cx).structured_agents[&node_id]
+                    .transcript_focus
+                    .is_focused(window)
             })
-            .expect("selection copy should succeed");
+            .expect("transcript focus should be readable");
+        assert!(transcript_has_focus);
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string("sentinel".to_string()));
+        cx.simulate_keystrokes(*window, "cmd-c");
         let copied = cx
             .read_from_clipboard()
             .and_then(|item| item.text())

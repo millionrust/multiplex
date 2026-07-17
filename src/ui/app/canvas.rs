@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, ClipboardItem, Context, CursorStyle, Div, Focusable as _,
+    AnyElement, App, ClipboardItem, Context, CursorStyle, Div, FocusHandle, Focusable as _,
     InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, ParentElement, PathBuilder, Point, ScrollHandle,
     ScrollWheelEvent, SharedString, StatefulInteractiveElement as _, Styled, Window,
@@ -164,12 +164,17 @@ pub(super) struct StructuredAgentRuntime {
     pub follow_transcript: bool,
     pub selection: Option<SelectionRange>,
     pub dragging_selection: bool,
+    pub transcript_focus: FocusHandle,
 }
 
 impl StructuredAgentRuntime {
     const MAX_TRANSCRIPT_BYTES: usize = 64 * 1024;
 
-    fn new(handle: StructuredAgentHandle, initial_prompt: Option<&str>) -> Self {
+    fn new(
+        handle: StructuredAgentHandle,
+        initial_prompt: Option<&str>,
+        transcript_focus: FocusHandle,
+    ) -> Self {
         let mut runtime = Self {
             handle,
             state: AgentRunState::Starting,
@@ -182,6 +187,7 @@ impl StructuredAgentRuntime {
             follow_transcript: true,
             selection: None,
             dragging_selection: false,
+            transcript_focus,
         };
         if let Some(prompt) = initial_prompt.filter(|prompt| !prompt.trim().is_empty()) {
             runtime.push_context_message(AgentRole::User, prompt.trim());
@@ -2531,9 +2537,14 @@ impl TermiRustApp {
             .canvas
             .add_agent_node(None, definition, world_center);
         workspace.canvas.select_and_raise(&node_id);
+        let transcript_focus = cx.focus_handle().tab_stop(true);
         self.structured_agents.insert(
             node_id,
-            StructuredAgentRuntime::new(handle, context_initial_prompt.as_deref()),
+            StructuredAgentRuntime::new(
+                handle,
+                context_initial_prompt.as_deref(),
+                transcript_focus,
+            ),
         );
         self.canvas_add_menu_open = false;
         self.status_message = format!("Starting structured {provider_label} session...");
@@ -2817,7 +2828,7 @@ impl TermiRustApp {
         &mut self,
         node_id: &CanvasNodeId,
         event: &MouseDownEvent,
-        window: &Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if event.button != MouseButton::Left {
@@ -2829,6 +2840,7 @@ impl TermiRustApp {
             return;
         };
         if let Some(runtime) = self.structured_agents.get_mut(node_id) {
+            runtime.transcript_focus.focus(window);
             runtime.selection = Some(SelectionRange {
                 anchor: position,
                 head: position,
@@ -2942,8 +2954,11 @@ impl TermiRustApp {
         let result = self.start_structured_agent_handle(&definition, None);
         match result {
             Ok(handle) => {
-                self.structured_agents
-                    .insert(node_id, StructuredAgentRuntime::new(handle, None));
+                let transcript_focus = cx.focus_handle().tab_stop(true);
+                self.structured_agents.insert(
+                    node_id,
+                    StructuredAgentRuntime::new(handle, None, transcript_focus),
+                );
                 self.status_message = "Structured agent restarted.".to_string();
                 self.error_message.clear();
             }
@@ -5656,6 +5671,7 @@ impl TermiRustApp {
         let approval = runtime.approval.clone();
         let task_queued = runtime.queued_prompt.is_some();
         let transcript_scroll = runtime.transcript_scroll.clone();
+        let transcript_focus = runtime.transcript_focus.clone();
         let follow_transcript = runtime.follow_transcript;
         let selection = runtime.selection;
         if follow_transcript {
@@ -5669,6 +5685,7 @@ impl TermiRustApp {
         let selection_move_id = node_id.clone();
         let selection_end_id = node_id.clone();
         let selection_out_id = node_id.clone();
+        let selection_copy_id = node_id.clone();
         let transcript_selector_id = node_id.clone();
         let font_family = self.terminal_font_family(cx);
         let transcript_lines = structured_transcript_lines(&transcript);
@@ -5723,6 +5740,8 @@ impl TermiRustApp {
                     .overflow_scroll()
                     .cursor(CursorStyle::IBeam)
                     .track_scroll(&transcript_scroll)
+                    .track_focus(&transcript_focus)
+                    .focusable()
                     .on_scroll_wheel(cx.listener(move |this, _: &ScrollWheelEvent, _, cx| {
                         this.pause_structured_transcript_follow(&scroll_id, cx);
                     }))
@@ -5759,6 +5778,14 @@ impl TermiRustApp {
                             this.finish_structured_transcript_selection(&selection_out_id, cx);
                         }),
                     )
+                    .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
+                        if event.keystroke.modifiers.secondary()
+                            && event.keystroke.key.as_str() == "c"
+                            && this.copy_structured_agent_transcript(&selection_copy_id, cx)
+                        {
+                            cx.stop_propagation();
+                        }
+                    }))
                     .child(transcript_view),
             )
             .when_some(diagnostic, |body, diagnostic| {
