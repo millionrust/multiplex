@@ -6,6 +6,7 @@ mod hosts;
 mod library;
 mod overlay;
 mod palette;
+mod project;
 mod sftp;
 mod types;
 mod workspace;
@@ -24,6 +25,7 @@ use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
     collect_autocomplete_candidates, collect_command_palette_candidates, pane_recent_output_lines,
 };
+use project::CanvasProjectPanelState;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -37,7 +39,7 @@ use gpui::{
 };
 use gpui_component::IconName;
 use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
-use gpui_component::input::{Input, InputState};
+use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{ActiveTheme, Icon, Sizable, StyledExt as _, h_flex, v_flex};
 use rfd::{AsyncFileDialog, FileDialog};
@@ -923,6 +925,7 @@ pub struct TermiRustApp {
     canvas_interaction: Option<CanvasInteraction>,
     canvas_add_menu_open: bool,
     canvas_links_open: bool,
+    canvas_project_panel: Option<CanvasProjectPanelState>,
     canvas_node_menu_id: Option<crate::models::CanvasNodeId>,
     worktree_manager_open: bool,
     agent_creation: Option<AgentCreationState>,
@@ -944,6 +947,7 @@ pub struct TermiRustApp {
     pane_rename_id: Option<u64>,
     pane_rename_input: Entity<InputState>,
     canvas_node_rename_input: Entity<InputState>,
+    canvas_project_editor_input: Entity<InputState>,
     pending_paste: Option<PendingPaste>,
     pending_snippet_prompts: Option<PendingSnippetPrompts>,
     sync_pull_force: bool,
@@ -954,6 +958,7 @@ pub struct TermiRustApp {
     tab_strip_scroll: ScrollHandle,
     tab_strip_scrolled_to: Option<u64>,
     launched_at: Instant,
+    _canvas_project_editor_subscription: Subscription,
     _window_bounds_subscription: Option<Subscription>,
     _window_bounds_save_task: Option<Task<()>>,
 }
@@ -979,6 +984,19 @@ impl TermiRustApp {
         let vault_member_inputs = VaultMemberInputs::new(window, cx);
         let (event_tx, event_rx) = mpsc::channel();
         let (sftp_event_tx, sftp_event_rx) = mpsc::channel();
+        let canvas_project_editor_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line(true)
+                .placeholder("Select a UTF-8 text file to view or edit")
+        });
+        let canvas_project_editor_subscription = cx.subscribe(
+            &canvas_project_editor_input,
+            |_, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
+            },
+        );
         let known_hosts =
             Arc::new(KnownHostStore::load().expect("unable to initialize known host storage"));
         saved.merge_imported_identities(load_local_ssh_identities().unwrap_or_default());
@@ -1074,6 +1092,7 @@ impl TermiRustApp {
             canvas_interaction: None,
             canvas_add_menu_open: false,
             canvas_links_open: false,
+            canvas_project_panel: None,
             canvas_node_menu_id: None,
             worktree_manager_open: false,
             agent_creation: None,
@@ -1096,6 +1115,7 @@ impl TermiRustApp {
             pane_rename_input: cx.new(|cx| InputState::new(window, cx).placeholder("Pane name")),
             canvas_node_rename_input: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Node title")),
+            canvas_project_editor_input,
             pending_paste: None,
             pending_snippet_prompts: None,
             sync_pull_force: false,
@@ -1106,6 +1126,7 @@ impl TermiRustApp {
             tab_strip_scroll: ScrollHandle::new(),
             tab_strip_scrolled_to: None,
             launched_at: Instant::now(),
+            _canvas_project_editor_subscription: canvas_project_editor_subscription,
             _window_bounds_subscription: None,
             _window_bounds_save_task: None,
         };
@@ -12175,6 +12196,8 @@ mod tests {
         let selected_directory = fixture_root.join("selected-project");
         fs::create_dir_all(&initial_directory).unwrap();
         fs::create_dir_all(&selected_directory).unwrap();
+        let project_file = selected_directory.join("README.md");
+        fs::write(&project_file, "original project text\n").unwrap();
 
         let (app, window) = open_test_app(cx);
         let request = ConnectRequest::local_shell_with_config(
@@ -12210,6 +12233,103 @@ mod tests {
         );
         VisualTestContext::from_window(window.into(), cx)
             .simulate_click(folder_button, gpui::Modifiers::none());
+
+        let files_button = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-project-files",
+            Duration::from_secs(2),
+        );
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(files_button, gpui::Modifiers::none());
+        let file_entry = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-project-entry-0",
+            Duration::from_secs(2),
+        );
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(file_entry, gpui::Modifiers::none());
+        app.read_with(cx, |app, cx| {
+            assert!(app.canvas_project_panel.is_some());
+            assert_eq!(
+                app.canvas_project_editor_input.read(cx).value(),
+                "original project text\n"
+            );
+        });
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.canvas_project_editor_input,
+                        "edited through canvas\n",
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("project editor should update");
+        let save_button = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-project-save",
+            Duration::from_secs(2),
+        );
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(save_button, gpui::Modifiers::none());
+        assert_eq!(
+            fs::read_to_string(&project_file).unwrap(),
+            "edited through canvas\n"
+        );
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.canvas_project_editor_input,
+                        "stale overwrite attempt\n",
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("project editor should become dirty again");
+        fs::write(&project_file, "external agent change\n").unwrap();
+        let save_button = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-project-save",
+            Duration::from_secs(2),
+        );
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(save_button, gpui::Modifiers::none());
+        assert_eq!(
+            fs::read_to_string(&project_file).unwrap(),
+            "external agent change\n"
+        );
+        app.read_with(cx, |app, _| {
+            assert!(app.error_message.contains("changed on disk"));
+        });
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.canvas_project_editor_input,
+                        "edited through canvas\n",
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("project editor should be reverted for closing");
+        let close_button = wait_for_selector_click_center(
+            window,
+            cx,
+            "canvas-project-close",
+            Duration::from_secs(2),
+        );
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(close_button, gpui::Modifiers::none());
+
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {

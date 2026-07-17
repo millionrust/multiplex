@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -42,6 +43,12 @@ use crate::ui::shell::shell_single_quote;
 use crate::ui::theme;
 use crate::{storage::managed_agent_worktree_dir, ui::util::current_unix_millis};
 
+use super::project::{
+    CanvasProjectPanelState, git_snapshot as canvas_project_git_snapshot,
+    load_project_directory as load_canvas_project_directory,
+    read_project_file as read_canvas_project_file, write_project_file as write_canvas_project_file,
+};
+
 pub(super) const CANVAS_TOOLBAR_HEIGHT: f32 = 44.0;
 const CANVAS_RENDER_OVERSCAN: f32 = 96.0;
 const CANVAS_KEYBOARD_REVEAL_PADDING: f32 = 24.0;
@@ -62,6 +69,7 @@ const CANVAS_MINIMAP_WIDTH: f32 = 184.0;
 const CANVAS_MINIMAP_HEIGHT: f32 = 116.0;
 const CANVAS_MINIMAP_PADDING: f32 = 8.0;
 const CANVAS_MINIMAP_MARGIN: f32 = 12.0;
+const CANVAS_PROJECT_PANEL_WIDTH: f32 = 520.0;
 
 fn canvas_project_directory_label(directory: Option<&str>) -> String {
     let Some(directory) = directory else {
@@ -2279,6 +2287,12 @@ impl TermiRustApp {
     }
 
     pub(super) fn pick_canvas_project_directory(&mut self, cx: &mut Context<Self>) {
+        if self.canvas_project_editor_is_dirty(cx) {
+            self.error_message =
+                "Save or revert the open project file before changing folders.".to_string();
+            cx.notify();
+            return;
+        }
         let Some(path) =
             Self::take_dialog_path_for_tests().or_else(|| rfd::FileDialog::new().pick_folder())
         else {
@@ -2299,10 +2313,229 @@ impl TermiRustApp {
                 }
             }
         }
+        self.canvas_project_panel = None;
         self.persist_runtime_state();
         self.status_message = format!(
             "Project folder set to {directory}. New local terminals and agents will open there."
         );
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn canvas_project_editor_is_dirty(&self, cx: &Context<Self>) -> bool {
+        self.canvas_project_panel.as_ref().is_some_and(|panel| {
+            panel.selected_file.is_some()
+                && self.canvas_project_editor_input.read(cx).value().as_ref()
+                    != panel.original_contents
+        })
+    }
+
+    fn toggle_canvas_project_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.canvas_project_panel.is_some() {
+            if self.canvas_project_editor_is_dirty(cx) {
+                self.error_message =
+                    "Save or revert the open file before closing Project Files.".to_string();
+                cx.notify();
+                return;
+            }
+            self.canvas_project_panel = None;
+            cx.notify();
+            return;
+        }
+        let Some((workspace_id, project_directory)) =
+            self.active_workspace().and_then(|workspace| {
+                workspace
+                    .project_directory
+                    .clone()
+                    .map(|directory| (workspace.id, directory))
+            })
+        else {
+            self.error_message =
+                "Choose a Project Folder before opening local project files.".to_string();
+            cx.notify();
+            return;
+        };
+        let root = match PathBuf::from(project_directory).canonicalize() {
+            Ok(path) => path,
+            Err(error) => {
+                self.error_message = format!("Unable to open project folder: {error}");
+                cx.notify();
+                return;
+            }
+        };
+        let entries = match load_canvas_project_directory(&root, &root) {
+            Ok(entries) => entries,
+            Err(error) => {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
+        };
+        let (git_status, git_diff) = canvas_project_git_snapshot(&root, None);
+        Self::set_input_value(&self.canvas_project_editor_input, "", window, cx);
+        self.canvas_project_panel = Some(CanvasProjectPanelState {
+            workspace_id,
+            root: root.clone(),
+            current_directory: root,
+            entries,
+            selected_file: None,
+            original_contents: String::new(),
+            git_status,
+            git_diff,
+        });
+        self.error_message.clear();
+        self.status_message = "Opened local project files.".to_string();
+        cx.notify();
+    }
+
+    fn refresh_canvas_project_panel(&mut self, cx: &mut Context<Self>) {
+        let Some(panel) = self.canvas_project_panel.as_mut() else {
+            return;
+        };
+        match load_canvas_project_directory(&panel.root, &panel.current_directory) {
+            Ok(entries) => panel.entries = entries,
+            Err(error) => {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
+        }
+        (panel.git_status, panel.git_diff) =
+            canvas_project_git_snapshot(&panel.root, panel.selected_file.as_deref());
+        self.error_message.clear();
+        self.status_message = "Project files and Git status refreshed.".to_string();
+        cx.notify();
+    }
+
+    fn open_canvas_project_entry(
+        &mut self,
+        path: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.canvas_project_editor_is_dirty(cx) {
+            self.error_message =
+                "Save or revert the open file before selecting another path.".to_string();
+            cx.notify();
+            return;
+        }
+        let Some(panel) = self.canvas_project_panel.as_mut() else {
+            return;
+        };
+        if path.is_dir() {
+            match load_canvas_project_directory(&panel.root, &path) {
+                Ok(entries) => {
+                    panel.current_directory = path;
+                    panel.entries = entries;
+                    panel.selected_file = None;
+                    panel.original_contents.clear();
+                    panel.git_diff.clear();
+                    Self::set_input_value(&self.canvas_project_editor_input, "", window, cx);
+                    self.error_message.clear();
+                }
+                Err(error) => self.error_message = error.to_string(),
+            }
+            cx.notify();
+            return;
+        }
+        match read_canvas_project_file(&panel.root, &path) {
+            Ok(contents) => {
+                panel.selected_file = Some(path);
+                panel.original_contents = contents.clone();
+                (panel.git_status, panel.git_diff) =
+                    canvas_project_git_snapshot(&panel.root, panel.selected_file.as_deref());
+                Self::set_input_value(&self.canvas_project_editor_input, contents, window, cx);
+                self.error_message.clear();
+                self.status_message = "Opened project file.".to_string();
+            }
+            Err(error) => self.error_message = error.to_string(),
+        }
+        cx.notify();
+    }
+
+    fn navigate_canvas_project_up(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let parent = self.canvas_project_panel.as_ref().and_then(|panel| {
+            (panel.current_directory != panel.root)
+                .then(|| panel.current_directory.parent().map(Path::to_path_buf))
+                .flatten()
+        });
+        if let Some(parent) = parent {
+            self.open_canvas_project_entry(parent, window, cx);
+        }
+    }
+
+    fn save_canvas_project_file(&mut self, cx: &mut Context<Self>) {
+        let contents = self
+            .canvas_project_editor_input
+            .read(cx)
+            .value()
+            .to_string();
+        let Some((root, path, original_contents)) =
+            self.canvas_project_panel.as_ref().and_then(|panel| {
+                panel
+                    .selected_file
+                    .clone()
+                    .map(|path| (panel.root.clone(), path, panel.original_contents.clone()))
+            })
+        else {
+            return;
+        };
+        match read_canvas_project_file(&root, &path) {
+            Ok(on_disk) if on_disk != original_contents => {
+                self.error_message = format!(
+                    "{} changed on disk. Reopen it before saving so external agent changes are not overwritten.",
+                    path.display()
+                );
+                cx.notify();
+                return;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                self.error_message = error.to_string();
+                cx.notify();
+                return;
+            }
+        }
+        match write_canvas_project_file(&root, &path, &contents) {
+            Ok(()) => {
+                if let Some(panel) = self.canvas_project_panel.as_mut() {
+                    panel.original_contents = contents;
+                    (panel.git_status, panel.git_diff) =
+                        canvas_project_git_snapshot(&panel.root, panel.selected_file.as_deref());
+                }
+                self.status_message = format!("Saved {}.", path.display());
+                self.error_message.clear();
+            }
+            Err(error) => self.error_message = error.to_string(),
+        }
+        cx.notify();
+    }
+
+    fn revert_canvas_project_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(contents) = self
+            .canvas_project_panel
+            .as_ref()
+            .map(|panel| panel.original_contents.clone())
+        else {
+            return;
+        };
+        Self::set_input_value(&self.canvas_project_editor_input, contents, window, cx);
+        self.status_message = "Reverted unsaved editor changes.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn copy_canvas_project_diff(&mut self, cx: &mut Context<Self>) {
+        let Some(diff) = self
+            .canvas_project_panel
+            .as_ref()
+            .map(|panel| panel.git_diff.clone())
+            .filter(|diff| !diff.is_empty())
+        else {
+            return;
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string(diff));
+        self.status_message = "Copied the selected file diff.".to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -5271,6 +5504,10 @@ impl TermiRustApp {
         let can_redo_layout = self
             .active_workspace()
             .is_some_and(|workspace| workspace.canvas.can_redo_layout());
+        let project_panel_open = self
+            .canvas_project_panel
+            .as_ref()
+            .is_some_and(|panel| self.active_workspace_id == Some(panel.workspace_id));
         h_flex()
             .h(px(CANVAS_TOOLBAR_HEIGHT))
             .w_full()
@@ -5307,6 +5544,22 @@ impl TermiRustApp {
                             .tooltip(project_directory_tooltip)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.pick_canvas_project_directory(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-project-files")
+                            .debug_selector(|| "canvas-project-files".to_string())
+                            .small()
+                            .ghost()
+                            .icon(if project_panel_open {
+                                IconName::PanelRightClose
+                            } else {
+                                IconName::PanelRightOpen
+                            })
+                            .label("Files")
+                            .tooltip("Browse, edit, and inspect Git changes in the project folder")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.toggle_canvas_project_panel(window, cx);
                             })),
                     )
                     .child(
@@ -5456,6 +5709,373 @@ impl TermiRustApp {
                 let _ = window;
                 toolbar
             })
+    }
+
+    fn render_canvas_project_panel(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let Some(panel) = self
+            .canvas_project_panel
+            .as_ref()
+            .filter(|panel| self.active_workspace_id == Some(panel.workspace_id))
+        else {
+            return div().into_any_element();
+        };
+        let panel_width = CANVAS_PROJECT_PANEL_WIDTH
+            .min((f32::from(window.viewport_size().width) - 24.0).max(320.0));
+        let dirty = self.canvas_project_editor_is_dirty(cx);
+        let can_go_up = panel.current_directory != panel.root;
+        let current_label = panel
+            .current_directory
+            .strip_prefix(&panel.root)
+            .ok()
+            .filter(|path| !path.as_os_str().is_empty())
+            .map(|path| format!("./{}", path.display()))
+            .unwrap_or_else(|| ".".to_string());
+        let selected_label = panel
+            .selected_file
+            .as_deref()
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str())
+            .unwrap_or("Select a text file")
+            .to_string();
+        let git_status = if panel.git_status.trim().is_empty() {
+            "Working tree clean".to_string()
+        } else {
+            panel.git_status.clone()
+        };
+        let git_diff = if panel.git_diff.trim().is_empty() {
+            "No unstaged diff for the selected file.".to_string()
+        } else {
+            panel.git_diff.clone()
+        };
+
+        v_flex()
+            .id("canvas-project-panel")
+            .debug_selector(|| "canvas-project-panel".to_string())
+            .absolute()
+            .top(px(12.0))
+            .right(px(12.0))
+            .bottom(px(12.0))
+            .w(px(panel_width))
+            .min_h_0()
+            .overflow_hidden()
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(theme::border())
+            .bg(theme::terminal_panel())
+            .shadow_lg()
+            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                cx.stop_propagation();
+            })
+            .child(
+                h_flex()
+                    .h(px(42.0))
+                    .px_3()
+                    .gap_2()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::border_dark())
+                    .child(
+                        h_flex()
+                            .min_w_0()
+                            .gap_2()
+                            .child(
+                                Icon::new(IconName::FolderOpen)
+                                    .size(px(14.0))
+                                    .text_color(theme::accent()),
+                            )
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .whitespace_nowrap()
+                                    .text_ellipsis()
+                                    .text_size(px(12.0))
+                                    .font_semibold()
+                                    .text_color(theme::text_on_dark())
+                                    .child(format!("Project Files / {current_label}")),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .child(
+                                Button::new("canvas-project-refresh")
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::Redo2)
+                                    .tooltip("Refresh files and Git status")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.refresh_canvas_project_panel(cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("canvas-project-close")
+                                    .debug_selector(|| "canvas-project-close".to_string())
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::Close)
+                                    .tooltip("Close Project Files")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.toggle_canvas_project_panel(window, cx);
+                                    })),
+                            ),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        v_flex()
+                            .w(px(188.0))
+                            .h_full()
+                            .min_h_0()
+                            .border_r_1()
+                            .border_color(theme::border_dark())
+                            .child(
+                                h_flex()
+                                    .h(px(34.0))
+                                    .px_2()
+                                    .gap_1()
+                                    .items_center()
+                                    .border_b_1()
+                                    .border_color(theme::border_dark())
+                                    .child(
+                                        Button::new("canvas-project-up")
+                                            .xsmall()
+                                            .ghost()
+                                            .icon(IconName::ChevronUp)
+                                            .tooltip("Open parent folder")
+                                            .disabled(!can_go_up)
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.navigate_canvas_project_up(window, cx);
+                                            })),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.0))
+                                            .text_color(theme::text_muted())
+                                            .child(format!("{} items", panel.entries.len())),
+                                    ),
+                            )
+                            .child(v_flex().flex_1().min_h_0().overflow_y_scrollbar().children(
+                                panel.entries.iter().enumerate().map(|(index, entry)| {
+                                    let path = entry.path.clone();
+                                    let selected =
+                                        panel.selected_file.as_ref() == Some(&entry.path);
+                                    h_flex()
+                                        .id(("canvas-project-entry", index))
+                                        .debug_selector(move || {
+                                            format!("canvas-project-entry-{index}")
+                                        })
+                                        .h(px(30.0))
+                                        .w_full()
+                                        .px_2()
+                                        .gap_2()
+                                        .items_center()
+                                        .cursor_pointer()
+                                        .bg(if selected {
+                                            theme::with_alpha(theme::accent(), 0.16)
+                                        } else {
+                                            theme::terminal_panel()
+                                        })
+                                        .hover(|style| {
+                                            style.bg(theme::with_alpha(theme::accent(), 0.1))
+                                        })
+                                        .child(
+                                            Icon::new(if entry.is_directory {
+                                                IconName::FolderClosed
+                                            } else {
+                                                IconName::File
+                                            })
+                                            .size(px(12.0))
+                                            .text_color(if entry.is_directory {
+                                                theme::warning()
+                                            } else {
+                                                theme::text_muted()
+                                            }),
+                                        )
+                                        .child(
+                                            div()
+                                                .min_w_0()
+                                                .overflow_hidden()
+                                                .whitespace_nowrap()
+                                                .text_ellipsis()
+                                                .text_size(px(11.0))
+                                                .text_color(theme::text_on_dark())
+                                                .child(entry.name.clone()),
+                                        )
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            this.open_canvas_project_entry(
+                                                path.clone(),
+                                                window,
+                                                cx,
+                                            );
+                                        }))
+                                }),
+                            )),
+                    )
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .min_h_0()
+                            .child(
+                                h_flex()
+                                    .h(px(38.0))
+                                    .px_2()
+                                    .gap_2()
+                                    .items_center()
+                                    .justify_between()
+                                    .border_b_1()
+                                    .border_color(theme::border_dark())
+                                    .child(
+                                        h_flex()
+                                            .min_w_0()
+                                            .gap_2()
+                                            .child(
+                                                div()
+                                                    .min_w_0()
+                                                    .overflow_hidden()
+                                                    .whitespace_nowrap()
+                                                    .text_ellipsis()
+                                                    .text_size(px(11.0))
+                                                    .font_semibold()
+                                                    .text_color(theme::text_on_dark())
+                                                    .child(selected_label),
+                                            )
+                                            .when(dirty, |header| {
+                                                header.child(
+                                                    div()
+                                                        .px_1()
+                                                        .rounded(px(3.0))
+                                                        .bg(theme::with_alpha(
+                                                            theme::warning(),
+                                                            0.16,
+                                                        ))
+                                                        .text_size(px(9.0))
+                                                        .text_color(theme::warning())
+                                                        .child("UNSAVED"),
+                                                )
+                                            }),
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .gap_1()
+                                            .child(
+                                                Button::new("canvas-project-revert")
+                                                    .xsmall()
+                                                    .ghost()
+                                                    .icon(IconName::Undo2)
+                                                    .tooltip("Revert unsaved editor changes")
+                                                    .disabled(!dirty)
+                                                    .on_click(cx.listener(
+                                                        |this, _, window, cx| {
+                                                            this.revert_canvas_project_editor(
+                                                                window, cx,
+                                                            );
+                                                        },
+                                                    )),
+                                            )
+                                            .child(
+                                                Button::new("canvas-project-save")
+                                                    .debug_selector(|| {
+                                                        "canvas-project-save".to_string()
+                                                    })
+                                                    .small()
+                                                    .custom(Self::action_button_style(
+                                                        theme::ActionTone::Accent,
+                                                        cx,
+                                                    ))
+                                                    .icon(IconName::Check)
+                                                    .label("Save")
+                                                    .disabled(
+                                                        panel.selected_file.is_none() || !dirty,
+                                                    )
+                                                    .on_click(cx.listener(|this, _, _, cx| {
+                                                        this.save_canvas_project_file(cx);
+                                                    })),
+                                            ),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_h(px(160.0))
+                                    .p_2()
+                                    .bg(theme::terminal_bg())
+                                    .child(
+                                        Input::new(&self.canvas_project_editor_input)
+                                            .h_full()
+                                            .disabled(panel.selected_file.is_none()),
+                                    ),
+                            )
+                            .child(
+                                v_flex()
+                                    .h(px(180.0))
+                                    .min_h_0()
+                                    .border_t_1()
+                                    .border_color(theme::border_dark())
+                                    .child(
+                                        h_flex()
+                                            .h(px(34.0))
+                                            .px_2()
+                                            .items_center()
+                                            .justify_between()
+                                            .child(
+                                                div()
+                                                    .text_size(px(10.0))
+                                                    .font_semibold()
+                                                    .text_color(theme::text_muted())
+                                                    .child("GIT STATUS / SELECTED DIFF"),
+                                            )
+                                            .child(
+                                                Button::new("canvas-project-copy-diff")
+                                                    .xsmall()
+                                                    .ghost()
+                                                    .icon(IconName::Copy)
+                                                    .tooltip("Copy selected file diff")
+                                                    .disabled(panel.git_diff.is_empty())
+                                                    .on_click(cx.listener(|this, _, _, cx| {
+                                                        this.copy_canvas_project_diff(cx);
+                                                    })),
+                                            ),
+                                    )
+                                    .child(
+                                        v_flex()
+                                            .flex_1()
+                                            .min_h_0()
+                                            .overflow_y_scrollbar()
+                                            .px_2()
+                                            .pb_2()
+                                            .gap_2()
+                                            .child(v_flex().children(git_status.lines().map(
+                                                |line| {
+                                                    div()
+                                                        .whitespace_nowrap()
+                                                        .font_family(self.terminal_font_family(cx))
+                                                        .text_size(px(10.0))
+                                                        .text_color(theme::text_muted())
+                                                        .child(display_terminal_text(line))
+                                                },
+                                            )))
+                                            .child(v_flex().children(git_diff.lines().map(
+                                                |line| {
+                                                    div()
+                                                        .whitespace_nowrap()
+                                                        .font_family(self.terminal_font_family(cx))
+                                                        .text_size(px(10.0))
+                                                        .text_color(theme::text_on_dark())
+                                                        .child(display_terminal_text(line))
+                                                },
+                                            ))),
+                                    ),
+                            ),
+                    ),
+            )
+            .into_any_element()
     }
 
     fn jump_canvas_from_minimap(
@@ -7151,6 +7771,9 @@ impl TermiRustApp {
         }
         if self.canvas_node_menu_id.is_some() {
             body = body.child(self.render_canvas_node_menu(window, cx));
+        }
+        if self.canvas_project_panel.is_some() {
+            body = body.child(self.render_canvas_project_panel(window, cx));
         }
         if let Some(source) = self.pending_context_source.as_ref() {
             let source_label = self.canvas_node_label(source);

@@ -24,6 +24,15 @@ SSH, restore, and tmux runtimes; changing layout does not reconnect a pane.
 
 Right-click empty canvas space to open the same terminal and agent add menu.
 
+`Files` opens a local project panel for the selected project folder. It provides
+folder navigation, UTF-8 text viewing and editing, explicit Save/Revert actions,
+Git status, and the unstaged diff for the selected file. The panel refuses files
+outside the selected project root (including escaping symlinks), binary files,
+and files larger than 1 MB. Save also refuses to overwrite a file that changed
+on disk after it was opened, which protects concurrent agent edits. Git controls
+are inspect/copy-only; they never stage, discard, commit, or execute a shell
+command.
+
 Use `Cmd+Shift+Arrow` on macOS (the platform secondary modifier elsewhere) to
 cycle node selection without consuming ordinary terminal arrow keys.
 Use `Links` to inspect every directed context/dependency edge, disable it, or
