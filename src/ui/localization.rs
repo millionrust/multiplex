@@ -138,6 +138,111 @@ static_message!(
     session_sidebar_select_project,
     SessionSidebarSelectProjectArgs
 );
+static_message!(global_palette_title, GlobalPaletteTitleArgs);
+static_message!(global_palette_placeholder, GlobalPalettePlaceholderArgs);
+static_message!(global_palette_searching, GlobalPaletteSearchingArgs);
+static_message!(global_palette_empty, GlobalPaletteEmptyArgs);
+static_message!(global_palette_empty_detail, GlobalPaletteEmptyDetailArgs);
+static_message!(global_palette_no_match, GlobalPaletteNoMatchArgs);
+static_message!(
+    global_palette_no_match_detail,
+    GlobalPaletteNoMatchDetailArgs
+);
+static_message!(
+    global_palette_archived_fallback,
+    GlobalPaletteArchivedFallbackArgs
+);
+static_message!(global_palette_pinned, GlobalPalettePinnedArgs);
+static_message!(
+    global_palette_category_attention,
+    GlobalPaletteCategoryAttentionArgs
+);
+static_message!(
+    global_palette_category_sessions,
+    GlobalPaletteCategorySessionsArgs
+);
+static_message!(
+    global_palette_category_projects,
+    GlobalPaletteCategoryProjectsArgs
+);
+static_message!(
+    global_palette_category_groups,
+    GlobalPaletteCategoryGroupsArgs
+);
+static_message!(
+    global_palette_category_presets,
+    GlobalPaletteCategoryPresetsArgs
+);
+static_message!(
+    global_palette_category_actions,
+    GlobalPaletteCategoryActionsArgs
+);
+static_message!(
+    global_palette_category_archive,
+    GlobalPaletteCategoryArchiveArgs
+);
+static_message!(
+    global_palette_category_commands,
+    GlobalPaletteCategoryCommandsArgs
+);
+static_message!(
+    global_palette_add_project_action,
+    GlobalPaletteAddProjectActionArgs
+);
+static_message!(
+    global_palette_new_session_action,
+    GlobalPaletteNewSessionActionArgs
+);
+static_message!(
+    global_palette_show_archive_action,
+    GlobalPaletteShowArchiveActionArgs
+);
+static_message!(global_palette_query_too_long, GlobalPaletteQueryTooLongArgs);
+static_message!(
+    global_palette_too_many_tokens,
+    GlobalPaletteTooManyTokensArgs
+);
+static_message!(global_palette_stale, GlobalPaletteStaleArgs);
+static_message!(
+    global_palette_project_required,
+    GlobalPaletteProjectRequiredArgs
+);
+static_message!(
+    global_palette_status_attention,
+    GlobalPaletteStatusAttentionArgs
+);
+static_message!(global_palette_status_busy, GlobalPaletteStatusBusyArgs);
+static_message!(global_palette_status_done, GlobalPaletteStatusDoneArgs);
+static_message!(
+    global_palette_status_running,
+    GlobalPaletteStatusRunningArgs
+);
+static_message!(global_palette_status_idle, GlobalPaletteStatusIdleArgs);
+static_message!(
+    global_palette_status_unavailable,
+    GlobalPaletteStatusUnavailableArgs
+);
+static_message!(
+    global_palette_status_unknown,
+    GlobalPaletteStatusUnknownArgs
+);
+static_message!(global_palette_ready, GlobalPaletteReadyArgs);
+
+pub fn global_palette_shortcut_hint(modifier: impl Into<String>) -> String {
+    text(&GlobalPaletteShortcutHintArgs::new(Text::new(modifier)))
+}
+
+pub fn global_palette_partial(count: usize) -> String {
+    text(&GlobalPalettePartialArgs::new(Count(count as u64)))
+}
+
+pub fn global_palette_position(position: usize, count: usize) -> String {
+    text(&GlobalPalettePositionArgs::new(
+        Count(position as u64),
+        Count(count as u64),
+    ))
+}
+
 static_message!(group_ungrouped_label, GroupUngroupedLabelArgs);
 static_message!(group_new_action, GroupNewActionArgs);
 static_message!(group_editor_new_title, GroupEditorNewTitleArgs);

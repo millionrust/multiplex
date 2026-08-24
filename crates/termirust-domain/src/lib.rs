@@ -3,6 +3,7 @@ pub mod host;
 pub mod id;
 pub mod preset;
 pub mod project;
+pub mod search;
 pub mod session;
 
 pub use group::{
@@ -24,6 +25,12 @@ pub use preset::{
 pub use project::{
     AddProject, CanonicalPath, FileIdentity, LocalizedUserText, Project, ProjectError,
     ProjectService, ProjectStatus, ProjectSummary,
+};
+pub use search::{
+    Filter, HighlightField, MAX_SEARCH_DOCUMENT_BYTES, MAX_SEARCH_QUERY_SCALARS,
+    MAX_SEARCH_QUERY_TOKENS, MAX_SEARCH_RESULTS, ScoreTuple, SearchAction, SearchActionId,
+    SearchCancellation, SearchCategory, SearchDocument, SearchDocumentId, SearchDocumentInput,
+    SearchError, SearchIndex, SearchPage, SearchQuery, SearchResult, SearchStatus, TextHighlight,
 };
 pub use session::{
     ActivityState, HostedSession, HostedSessionState, LaunchResolutionError,

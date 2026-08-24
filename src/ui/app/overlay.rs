@@ -3,14 +3,19 @@
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    Context, Div, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, ParentElement,
-    SharedString, Stateful, StatefulInteractiveElement as _, Styled, Window, div, px, relative,
+    AnyElement, Context, Div, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton,
+    ParentElement, SharedString, Stateful, StatefulInteractiveElement as _, Styled, Window, div,
+    px, relative,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
+use crate::ui::app::global_search::{
+    category_label, global_search_failure_message, search_status_label,
+};
+use crate::ui::app::palette::{PaletteAction, PaletteCategory};
 use crate::ui::app::{TermiRustApp, primary_shortcut_label};
 use crate::ui::autocomplete::AutocompleteSource;
 use crate::ui::localization;
@@ -188,6 +193,10 @@ impl TermiRustApp {
         let candidates = self.command_palette_candidates(cx);
         let selected_index = self.selected_command_palette_index(candidates.len());
         let query = self.command_palette_query(cx);
+        let searching = self.global_search.searching;
+        let archived_fallback = self.global_search.archived_fallback;
+        let failure = self.global_search.failure;
+        let skipped_documents = self.global_search.skipped_documents;
 
         div()
             .id("command-palette-overlay")
@@ -214,9 +223,9 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .id("command-palette-card")
-                    .w(px(720.))
-                    .max_w(relative(0.9))
-                    .max_h(px(560.))
+                    .w(px(760.))
+                    .max_w(relative(0.94))
+                    .max_h(relative(0.84))
                     .rounded(px(theme::CARD_RADIUS))
                     .bg(theme::library_card())
                     .border_1()
@@ -242,117 +251,162 @@ impl TermiRustApp {
                                             .text_size(px(16.))
                                             .font_semibold()
                                             .text_color(theme::text_main())
-                                            .child("Command Palette"),
+                                            .child(localization::global_palette_title()),
                                     )
                                     .child(
                                         div()
                                             .text_size(px(12.))
                                             .text_color(theme::text_muted())
-                                            .child(format!(
-                                                "{}+K toggle  ↑/↓ move  Enter run",
-                                                primary_shortcut_label()
+                                            .child(localization::global_palette_shortcut_hint(
+                                                primary_shortcut_label(),
                                             )),
                                     ),
                             )
-                            .child(Input::new(&self.shell_inputs.command_palette).w_full()),
+                            .child(Input::new(&self.shell_inputs.command_palette).w_full())
+                            .when(searching || archived_fallback || failure.is_some(), |this| {
+                                this.child(
+                                    h_flex()
+                                        .gap_2()
+                                        .items_center()
+                                        .text_size(px(12.))
+                                        .text_color(theme::text_muted())
+                                        .when(searching, |this| {
+                                            this.child(
+                                                Icon::new(IconName::LoaderCircle)
+                                                    .size(px(13.))
+                                                    .text_color(theme::accent()),
+                                            )
+                                            .child(localization::global_palette_searching())
+                                        })
+                                        .when(archived_fallback, |this| {
+                                            this.child(localization::global_palette_archived_fallback())
+                                        })
+                                        .when_some(failure, |this, failure| {
+                                            this.child(global_search_failure_message(
+                                                failure,
+                                                skipped_documents,
+                                            ))
+                                        }),
+                                )
+                            }),
                     )
                     .child(
                         v_flex()
-                            .max_h(px(400.))
+                            .flex_1()
+                            .min_h_0()
                             .overflow_y_scrollbar()
                             .p_3()
-                            .gap_2()
+                            .gap_1()
                             .when(!candidates.is_empty(), |this| {
                                 this.children(candidates.iter().enumerate().map(|(index, candidate)| {
-                                    let command = candidate.command.clone();
                                     let selected = index == selected_index;
-                                    h_flex()
-                                        .id(("command-palette-item", index))
-                                        .justify_between()
-                                        .items_start()
-                                        .gap_3()
-                                        .p_3()
-                                        .rounded(px(12.))
-                                        .bg(if selected {
-                                            theme::with_alpha(theme::accent(), 0.1)
-                                        } else {
-                                            theme::with_alpha(theme::hover(), 0.72)
+                                    let category_changed = index == 0
+                                        || candidates[index - 1].category != candidate.category;
+                                    let status = candidate.status.filter(|status| {
+                                        *status != termirust_domain::SearchStatus::Unknown
+                                    });
+                                    let source = candidate.source;
+                                    let is_command = candidate.action == PaletteAction::RunCommand;
+                                    let category = candidate.category;
+                                    v_flex()
+                                        .gap_1()
+                                        .when(category_changed, |this| {
+                                            this.child(
+                                                div()
+                                                    .id((
+                                                        "command-palette-category",
+                                                        category.rank() as usize,
+                                                    ))
+                                                    .pt_2()
+                                                    .px_2()
+                                                    .pb_1()
+                                                    .text_size(px(11.))
+                                                    .font_semibold()
+                                                    .text_color(theme::text_muted())
+                                                    .child(category_label(category)),
+                                            )
                                         })
-                                        .border_1()
-                                        .border_color(if selected {
-                                            theme::with_alpha(theme::accent(), 0.42)
-                                        } else {
-                                            theme::border()
-                                        })
-                                        .cursor_pointer()
-                                        .hover(|style| style.bg(theme::hover()))
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            if this.run_command_in_active_pane(
-                                                &command,
-                                                "Command sent to the active session.",
-                                                cx,
-                                            ) {
-                                                this.close_command_palette(window, cx);
-                                            }
-                                        }))
                                         .child(
-                                            v_flex()
-                                                .flex_1()
-                                                .gap(px(4.))
+                                            h_flex()
+                                                .id(("command-palette-item", index))
+                                                .justify_between()
+                                                .items_start()
+                                                .gap_3()
+                                                .px_3()
+                                                .py(px(10.))
+                                                .rounded(px(theme::CARD_RADIUS))
+                                                .bg(if selected {
+                                                    theme::with_alpha(theme::accent(), 0.12)
+                                                } else {
+                                                    theme::with_alpha(theme::hover(), 0.58)
+                                                })
+                                                .border_1()
+                                                .border_color(if selected {
+                                                    theme::with_alpha(theme::accent(), 0.55)
+                                                } else {
+                                                    theme::border()
+                                                })
+                                                .cursor_pointer()
+                                                .hover(|style| style.bg(theme::hover()))
+                                                .on_click(cx.listener(move |this, _, window, cx| {
+                                                    this.activate_command_palette_candidate(
+                                                        index, window, cx,
+                                                    );
+                                                }))
                                                 .child(
-                                                    h_flex()
-                                                        .justify_between()
-                                                        .items_center()
-                                                        .gap_3()
-                                                        .child(
-                                                            div()
-                                                                .text_size(px(14.))
-                                                                .font_semibold()
-                                                                .text_color(theme::text_main())
-                                                                .child(candidate.title.clone()),
-                                                        )
-                                                        .child(
-                                                            h_flex()
-                                                                .gap_2()
-                                                                .items_center()
-                                                                .when(candidate.pinned, |this| {
-                                                                    this.child(self.status_badge(
-                                                                        "Pinned",
-                                                                        theme::library_bg(),
-                                                                        theme::warning(),
-                                                                    ))
-                                                                })
-                                                                .child(self.status_badge(
-                                                                    candidate.source.label(),
-                                                                    theme::library_bg(),
-                                                                    match candidate.source {
-                                                                        AutocompleteSource::Path => {
-                                                                            theme::warning()
-                                                                        }
-                                                                        AutocompleteSource::Context => {
-                                                                            theme::accent()
-                                                                        }
-                                                                        AutocompleteSource::Argument => {
-                                                                            theme::warning()
-                                                                        }
-                                                                        AutocompleteSource::History => {
-                                                                            theme::accent()
-                                                                        }
-                                                                        AutocompleteSource::Snippet => {
-                                                                            theme::success()
-                                                                        }
-                                                                        AutocompleteSource::Builtin => {
-                                                                            theme::slate()
-                                                                        }
-                                                                    },
-                                                                )),
-                                                        ),
+                                                    Icon::new(category_icon(category))
+                                                        .size(px(16.))
+                                                        .text_color(if selected {
+                                                            theme::accent()
+                                                        } else {
+                                                            theme::text_muted()
+                                                        }),
                                                 )
                                                 .child(
-                                                    div()
-                                                        .text_size(px(13.))
-                                                        .text_color(theme::text_muted())
-                                                        .child(candidate.detail.clone()),
+                                                    v_flex()
+                                                        .min_w_0()
+                                                        .flex_1()
+                                                        .gap(px(4.))
+                                                        .child(render_palette_title(
+                                                            &candidate.title,
+                                                            &candidate.highlights,
+                                                        ))
+                                                        .when(!candidate.detail.is_empty(), |this| {
+                                                            this.child(
+                                                                div()
+                                                                    .text_size(px(12.))
+                                                                    .text_color(theme::text_muted())
+                                                                    .child(candidate.detail.clone()),
+                                                            )
+                                                        }),
+                                                )
+                                                .child(
+                                                    h_flex()
+                                                        .flex_wrap()
+                                                        .justify_end()
+                                                        .gap_2()
+                                                        .items_center()
+                                                        .when(candidate.pinned, |this| {
+                                                            this.child(self.status_badge(
+                                                                localization::global_palette_pinned(),
+                                                                theme::library_bg(),
+                                                                theme::warning(),
+                                                            ))
+                                                        })
+                                                        .when_some(status, |this, status| {
+                                                            this.child(self.status_badge(
+                                                                search_status_label(status),
+                                                                theme::library_bg(),
+                                                                status_tone(status),
+                                                            ))
+                                                        })
+                                                        .when(is_command, |this| {
+                                                            this.child(self.status_badge(
+                                                                source.label(),
+                                                                theme::library_bg(),
+                                                                source_tone(source),
+                                                            ))
+                                                        }),
                                                 ),
                                         )
                                         .into_any_element()
@@ -376,9 +430,9 @@ impl TermiRustApp {
                                                 .font_medium()
                                                 .text_color(theme::text_muted())
                                                 .child(if query.is_empty() {
-                                                    "No commands yet"
+                                                    localization::global_palette_empty()
                                                 } else {
-                                                    "No matching commands"
+                                                    localization::global_palette_no_match()
                                                 }),
                                         )
                                         .child(
@@ -386,14 +440,135 @@ impl TermiRustApp {
                                                 .text_size(px(13.))
                                                 .text_color(theme::with_alpha(theme::text_muted(), 0.7))
                                                 .child(if query.is_empty() {
-                                                    "Run a few commands or save snippets to build the palette."
+                                                    localization::global_palette_empty_detail()
                                                 } else {
-                                                    "Try a command prefix, snippet name, or recent task."
+                                                    localization::global_palette_no_match_detail()
                                                 }),
                                         ),
+                                )
+                            }),
+                    )
+                    .child(
+                        h_flex()
+                            .justify_between()
+                            .items_center()
+                            .px_4()
+                            .py_2()
+                            .border_t_1()
+                            .border_color(theme::border())
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .child(localization::global_palette_shortcut_hint(
+                                primary_shortcut_label(),
+                            ))
+                            .child(if candidates.is_empty() {
+                                String::new()
+                            } else {
+                                localization::global_palette_position(
+                                    selected_index + 1,
+                                    candidates.len(),
                                 )
                             }),
                     ),
             )
     }
+}
+
+fn source_tone(source: AutocompleteSource) -> gpui::Hsla {
+    match source {
+        AutocompleteSource::Path | AutocompleteSource::Argument => theme::warning(),
+        AutocompleteSource::Context | AutocompleteSource::History => theme::accent(),
+        AutocompleteSource::Snippet => theme::success(),
+        AutocompleteSource::Builtin => theme::slate(),
+    }
+}
+
+fn category_icon(category: PaletteCategory) -> IconName {
+    match category {
+        PaletteCategory::Attention => IconName::TriangleAlert,
+        PaletteCategory::Sessions | PaletteCategory::Presets | PaletteCategory::Commands => {
+            IconName::SquareTerminal
+        }
+        PaletteCategory::Projects => IconName::FolderOpen,
+        PaletteCategory::Groups => IconName::Folder,
+        PaletteCategory::Actions => IconName::Plus,
+        PaletteCategory::Archive => IconName::Inbox,
+    }
+}
+
+fn status_tone(status: termirust_domain::SearchStatus) -> gpui::Hsla {
+    match status {
+        termirust_domain::SearchStatus::Attention => theme::warning(),
+        termirust_domain::SearchStatus::Busy | termirust_domain::SearchStatus::Running => {
+            theme::accent()
+        }
+        termirust_domain::SearchStatus::Done => theme::success(),
+        termirust_domain::SearchStatus::Idle => theme::slate(),
+        termirust_domain::SearchStatus::Unavailable => theme::danger(),
+        termirust_domain::SearchStatus::Unknown => theme::text_muted(),
+    }
+}
+
+fn render_palette_title(title: &str, highlights: &[termirust_domain::TextHighlight]) -> AnyElement {
+    let mut ranges = highlights
+        .iter()
+        .filter(|highlight| highlight.field == termirust_domain::HighlightField::Title)
+        .filter_map(|highlight| {
+            (highlight.start < highlight.end
+                && highlight.end <= title.len()
+                && title.is_char_boundary(highlight.start)
+                && title.is_char_boundary(highlight.end))
+            .then_some((highlight.start, highlight.end))
+        })
+        .collect::<Vec<_>>();
+    ranges.sort_unstable();
+    ranges.dedup();
+
+    let mut parts = Vec::new();
+    let mut cursor = 0;
+    for (start, end) in ranges {
+        if start < cursor {
+            continue;
+        }
+        if cursor < start {
+            parts.push(
+                div()
+                    .text_color(theme::text_main())
+                    .child(title[cursor..start].to_string())
+                    .into_any_element(),
+            );
+        }
+        parts.push(
+            div()
+                .font_semibold()
+                .text_color(theme::accent())
+                .child(title[start..end].to_string())
+                .into_any_element(),
+        );
+        cursor = end;
+    }
+    if cursor < title.len() {
+        parts.push(
+            div()
+                .text_color(theme::text_main())
+                .child(title[cursor..].to_string())
+                .into_any_element(),
+        );
+    }
+    if parts.is_empty() {
+        parts.push(
+            div()
+                .text_color(theme::text_main())
+                .child(title.to_string())
+                .into_any_element(),
+        );
+    }
+
+    h_flex()
+        .min_w_0()
+        .flex_wrap()
+        .text_size(px(14.))
+        .font_medium()
+        .children(parts)
+        .into_any_element()
 }

@@ -39,6 +39,19 @@ pub(super) struct NewSessionState {
 }
 
 impl TermiRustApp {
+    pub(super) fn open_new_session_with_preset(
+        &mut self,
+        project_id: ProjectId,
+        preset_id: PresetId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_new_session(project_id, window, cx);
+        if self.new_session.is_some() {
+            self.select_new_session_preset(preset_id, cx);
+        }
+    }
+
     pub(super) fn open_new_session(
         &mut self,
         project_id: ProjectId,

@@ -2,6 +2,7 @@ mod canvas;
 mod chrome;
 mod connect;
 mod editor;
+mod global_search;
 mod hosted_session;
 mod hosts;
 mod library;
@@ -27,16 +28,17 @@ use canvas::{
     CanvasWorkspaceState, ContextHandoffReview, PendingCanvasNodeDelete, PendingCanvasPaneClose,
     PendingTmuxClose, SplitPaneChooser, StructuredAgentRuntime,
 };
+use global_search::GlobalSearchState;
 use hosted_session::{DurableSessionPaths, DurableSessionSpec, spawn_durable_session};
 use new_session::NewSessionState;
 use palette::{
-    CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
+    CommandPaletteCandidate, OutputSuggestionContext, PaletteAction, PathSuggestionContext,
     collect_autocomplete_candidates, collect_command_palette_candidates, pane_recent_output_lines,
 };
 use presets::PresetLibraryState;
 use project::CanvasProjectPanelState;
 use projects::ProjectLibraryState;
-use session_library::SessionLibraryState;
+use session_library::{SessionLibraryFilter, SessionLibraryState, SessionLibraryView};
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -439,7 +441,7 @@ impl ShellInputs {
             terminal_search: cx
                 .new(|cx| InputState::new(window, cx).placeholder("Search terminal output")),
             command_palette: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("Run command, snippet, or recent task")
+                InputState::new(window, cx).placeholder(localization::global_palette_placeholder())
             }),
             agent_working_directory: cx.new(|cx| {
                 InputState::new(window, cx).placeholder("Repository or working directory")
@@ -913,6 +915,7 @@ pub struct TermiRustApp {
     session_remove_confirm_input: Entity<InputState>,
     session_sidebar: session_sidebar::SessionSidebarState,
     session_library: SessionLibraryState,
+    global_search: GlobalSearchState,
     project_list_focus: FocusHandle,
     preset_library: PresetLibraryState,
     preset_label_input: Entity<InputState>,
@@ -992,6 +995,7 @@ pub struct TermiRustApp {
     canvas_node_rename_id: Option<crate::models::CanvasNodeId>,
     canvas_note_edit_id: Option<crate::models::CanvasNodeId>,
     selected_command_palette_index: usize,
+    command_palette_origin_focus: Option<FocusHandle>,
     tab_rename_workspace_id: Option<u64>,
     open_workspace_tab_menu: Option<u64>,
     /// Right-click context menu on a terminal pane: (pane id, click position).
@@ -1014,6 +1018,7 @@ pub struct TermiRustApp {
     launched_at: Instant,
     _canvas_project_editor_subscription: Subscription,
     _canvas_note_editor_subscription: Subscription,
+    _command_palette_subscription: Subscription,
     _window_bounds_subscription: Option<Subscription>,
     _window_bounds_save_task: Option<Task<()>>,
 }
@@ -1062,6 +1067,15 @@ impl TermiRustApp {
             |this, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
                     this.sync_canvas_note_editor(cx);
+                }
+            },
+        );
+        let command_palette_subscription = cx.subscribe(
+            &shell_inputs.command_palette,
+            |this, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) && this.show_command_palette {
+                    this.selected_command_palette_index = 0;
+                    this.queue_global_palette_search(cx);
                 }
             },
         );
@@ -1148,6 +1162,7 @@ impl TermiRustApp {
             session_remove_confirm_input,
             session_sidebar: session_sidebar::SessionSidebarState::default(),
             session_library,
+            global_search: GlobalSearchState::new(),
             project_list_focus,
             preset_library,
             preset_label_input,
@@ -1228,6 +1243,7 @@ impl TermiRustApp {
             canvas_node_rename_id: None,
             canvas_note_edit_id: None,
             selected_command_palette_index: 0,
+            command_palette_origin_focus: None,
             tab_rename_workspace_id: None,
             open_workspace_tab_menu: None,
             pane_context_menu: None,
@@ -1251,12 +1267,14 @@ impl TermiRustApp {
             launched_at: Instant::now(),
             _canvas_project_editor_subscription: canvas_project_editor_subscription,
             _canvas_note_editor_subscription: canvas_note_editor_subscription,
+            _command_palette_subscription: command_palette_subscription,
             _window_bounds_subscription: None,
             _window_bounds_save_task: None,
         };
 
         app.load_settings_inputs(window, cx);
         app.repair_session_group_references();
+        app.refresh_global_search_index();
 
         if app.saved.settings.restore_workspaces_on_launch {
             app.restore_saved_workspaces(window, cx);
@@ -3463,38 +3481,29 @@ impl TermiRustApp {
     fn close_command_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.show_command_palette = false;
         self.selected_command_palette_index = 0;
+        self.global_search.cancel();
         self.set_command_palette_input("", window, cx);
-        if let Some(pane) = self.active_pane() {
+        if let Some(origin) = self.command_palette_origin_focus.take() {
+            origin.focus(window);
+        } else if let Some(pane) = self.active_pane() {
             pane.terminal_focus.focus(window);
         }
         cx.notify();
     }
 
     fn toggle_command_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(workspace) = self.active_workspace() else {
-            return;
-        };
-        if workspace.view_mode != WorkspaceViewMode::Terminal {
-            self.error_message = "Switch back to Terminal to run commands.".to_string();
-            cx.notify();
-            return;
-        }
-        let Some(current_input) = self.active_pane().map(|pane| pane.current_input.clone()) else {
-            self.error_message = "Open a terminal session to run commands.".to_string();
-            cx.notify();
-            return;
-        };
-
         if self.show_command_palette {
             self.close_command_palette(window, cx);
             return;
         }
 
-        self.show_command_palette = true;
+        self.command_palette_origin_focus = window.focused(cx);
         self.selected_command_palette_index = 0;
-        self.set_command_palette_input(current_input.trim().to_string(), window, cx);
+        self.set_command_palette_input("", window, cx);
+        self.show_command_palette = true;
+        self.queue_global_palette_search(cx);
         self.focus_command_palette(window, cx);
-        self.status_message = "Command palette ready.".to_string();
+        self.status_message = localization::global_palette_ready();
         self.error_message.clear();
         cx.notify();
     }
@@ -3506,6 +3515,8 @@ impl TermiRustApp {
         self.set_command_palette_input("", window, cx);
         self.show_command_palette = false;
         self.selected_command_palette_index = 0;
+        self.command_palette_origin_focus = None;
+        self.global_search.cancel();
         self.status_message = "Host library ready.".to_string();
         self.error_message.clear();
         self.persist_runtime_state();
@@ -3526,6 +3537,8 @@ impl TermiRustApp {
         self.set_command_palette_input("", window, cx);
         self.show_command_palette = false;
         self.selected_command_palette_index = 0;
+        self.command_palette_origin_focus = None;
+        self.global_search.cancel();
         self.error_message.clear();
         self.status_message = match section {
             NavSection::Projects => localization::projects_ready_status(),
@@ -7197,25 +7210,20 @@ impl TermiRustApp {
     }
 
     fn command_palette_candidates(&self, cx: &App) -> Vec<CommandPaletteCandidate> {
-        let Some(pane) = self.active_pane() else {
-            return Vec::new();
-        };
-
-        collect_command_palette_candidates(
-            &self.command_palette_query(cx),
-            &self.saved.command_history,
-            &self.saved.scoped_command_history,
-            &pane.request.history_scope_key(),
-            &self.saved.snippets,
-            Some(&OutputSuggestionContext {
-                current_path: self
-                    .active_workspace()
-                    .and_then(|workspace| workspace.sftp.as_ref())
-                    .map(|browser| browser.current_path.clone())
-                    .or_else(|| pane.request.startup_directory.clone()),
-                recent_lines: pane_recent_output_lines(pane, 80),
-            }),
-        )
+        let commands = self
+            .active_pane()
+            .map(|pane| {
+                collect_command_palette_candidates(
+                    &self.command_palette_query(cx),
+                    &self.saved.command_history,
+                    &self.saved.scoped_command_history,
+                    &pane.request.history_scope_key(),
+                    &self.saved.snippets,
+                    None,
+                )
+            })
+            .unwrap_or_default();
+        self.global_palette_candidates(commands)
     }
 
     fn selected_command_palette_index(&self, candidate_count: usize) -> usize {
@@ -7236,25 +7244,224 @@ impl TermiRustApp {
         true
     }
 
+    fn set_command_palette_selection(&mut self, index: usize, cx: &mut Context<Self>) -> bool {
+        let candidate_count = self.command_palette_candidates(cx).len();
+        if candidate_count == 0 {
+            return false;
+        }
+        self.selected_command_palette_index = index.min(candidate_count - 1);
+        cx.notify();
+        true
+    }
+
+    fn activate_command_palette_candidate(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let candidates = self.command_palette_candidates(cx);
+        let Some(candidate) = candidates.get(index).cloned() else {
+            return false;
+        };
+        match candidate.action {
+            PaletteAction::RunCommand => {
+                if self.run_command_in_active_pane(
+                    &candidate.command,
+                    "Command sent to the active session.",
+                    cx,
+                ) {
+                    self.close_command_palette(window, cx);
+                    true
+                } else {
+                    false
+                }
+            }
+            PaletteAction::Search(action) => {
+                self.activate_global_palette_action(action, window, cx)
+            }
+        }
+    }
+
+    fn activate_global_palette_action(
+        &mut self,
+        action: termirust_domain::SearchAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        use termirust_domain::{ProjectStatus, SearchAction};
+
+        let available_project = || {
+            self.project_library.snapshot.as_ref().and_then(|snapshot| {
+                self.project_library
+                    .selected_id
+                    .and_then(|id| {
+                        snapshot.projects.iter().find(|summary| {
+                            summary.project.id == id && summary.status == ProjectStatus::Available
+                        })
+                    })
+                    .or_else(|| {
+                        snapshot
+                            .projects
+                            .iter()
+                            .find(|summary| summary.status == ProjectStatus::Available)
+                    })
+                    .map(|summary| summary.project.id)
+            })
+        };
+
+        match action {
+            SearchAction::OpenSession(id) => {
+                let Some((archived, project_id)) =
+                    self.session_library.snapshot.as_ref().and_then(|snapshot| {
+                        snapshot
+                            .sessions
+                            .iter()
+                            .find(|session| session.id == id)
+                            .map(|session| (session.archived_at.is_some(), session.project_id))
+                    })
+                else {
+                    return self.reject_stale_global_palette_result(cx);
+                };
+                if archived {
+                    self.close_command_palette(window, cx);
+                    self.activate_library_section(NavSection::Projects, window, cx);
+                    self.session_library.view = SessionLibraryView::Archive;
+                    self.session_library.filter = SessionLibraryFilter::All;
+                    self.session_sidebar.selected_session = Some(id);
+                    self.project_library.selected_id = Some(project_id);
+                    self.project_list_focus.focus(window);
+                } else {
+                    self.close_command_palette(window, cx);
+                    self.reattach_saved_session(id, window, cx);
+                }
+                true
+            }
+            SearchAction::OpenProject(id) => {
+                let exists = self
+                    .project_library
+                    .snapshot
+                    .as_ref()
+                    .is_some_and(|snapshot| {
+                        snapshot
+                            .projects
+                            .iter()
+                            .any(|summary| summary.project.id == id)
+                    });
+                if !exists {
+                    return self.reject_stale_global_palette_result(cx);
+                }
+                self.close_command_palette(window, cx);
+                self.activate_library_section(NavSection::Projects, window, cx);
+                self.project_library.selected_id = Some(id);
+                self.project_list_focus.focus(window);
+                true
+            }
+            SearchAction::OpenGroup {
+                project_id,
+                group_id,
+            } => {
+                let exists =
+                    self.project_library
+                        .snapshot
+                        .as_ref()
+                        .is_some_and(|snapshot| {
+                            snapshot
+                                .projects
+                                .iter()
+                                .any(|summary| summary.project.id == project_id)
+                                && snapshot.groups.iter().any(|group| {
+                                    group.id == group_id && group.project_id == project_id
+                                })
+                        });
+                if !exists {
+                    return self.reject_stale_global_palette_result(cx);
+                }
+                self.close_command_palette(window, cx);
+                self.activate_library_section(NavSection::Projects, window, cx);
+                self.project_library.selected_id = Some(project_id);
+                self.project_list_focus.focus(window);
+                true
+            }
+            SearchAction::StartPreset(preset_id) => {
+                let enabled = self
+                    .preset_library
+                    .snapshot
+                    .as_ref()
+                    .is_some_and(|snapshot| {
+                        snapshot
+                            .presets
+                            .iter()
+                            .any(|preset| preset.id == preset_id && preset.enabled)
+                    });
+                if !enabled {
+                    return self.reject_stale_global_palette_result(cx);
+                }
+                let Some(project_id) = available_project() else {
+                    self.activate_library_section(NavSection::Projects, window, cx);
+                    self.error_message = localization::global_palette_project_required();
+                    self.project_list_focus.focus(window);
+                    cx.notify();
+                    return true;
+                };
+                self.close_command_palette(window, cx);
+                self.open_new_session_with_preset(project_id, preset_id, window, cx);
+                true
+            }
+            SearchAction::AddProject => {
+                self.close_command_palette(window, cx);
+                self.activate_library_section(NavSection::Projects, window, cx);
+                self.choose_project_folder(window, cx);
+                true
+            }
+            SearchAction::NewSession => {
+                let Some(project_id) = available_project() else {
+                    self.close_command_palette(window, cx);
+                    self.activate_library_section(NavSection::Projects, window, cx);
+                    self.error_message = localization::global_palette_project_required();
+                    self.project_list_focus.focus(window);
+                    cx.notify();
+                    return true;
+                };
+                self.close_command_palette(window, cx);
+                self.open_new_session(project_id, window, cx);
+                true
+            }
+            SearchAction::ShowArchive => {
+                self.close_command_palette(window, cx);
+                self.activate_library_section(NavSection::Projects, window, cx);
+                self.session_library.view = SessionLibraryView::Archive;
+                self.session_library.filter = SessionLibraryFilter::All;
+                self.session_sidebar.selected_session = None;
+                self.project_list_focus.focus(window);
+                cx.notify();
+                true
+            }
+        }
+    }
+
+    fn reject_stale_global_palette_result(&mut self, cx: &mut Context<Self>) -> bool {
+        self.error_message = localization::global_palette_stale();
+        self.refresh_global_search_index();
+        self.queue_global_palette_search(cx);
+        cx.notify();
+        true
+    }
+
     fn run_selected_command_palette(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let candidates = self.command_palette_candidates(cx);
-        if candidates.is_empty() {
+        let candidate_count = self.command_palette_candidates(cx).len();
+        if candidate_count == 0 {
             return false;
         }
-        let candidate = &candidates[self.selected_command_palette_index(candidates.len())];
-        if self.run_command_in_active_pane(
-            &candidate.command,
-            "Command sent to the active session.",
+        self.activate_command_palette_candidate(
+            self.selected_command_palette_index(candidate_count),
+            window,
             cx,
-        ) {
-            self.close_command_palette(window, cx);
-            return true;
-        }
-        false
+        )
     }
 
     fn selected_autocomplete_index(&self, candidate_count: usize) -> usize {
@@ -9919,6 +10126,10 @@ impl TermiRustApp {
             }
             "up" => self.move_command_palette_selection(-1, cx),
             "down" => self.move_command_palette_selection(1, cx),
+            "pageup" => self.move_command_palette_selection(-10, cx),
+            "pagedown" => self.move_command_palette_selection(10, cx),
+            "home" => self.set_command_palette_selection(0, cx),
+            "end" => self.set_command_palette_selection(usize::MAX, cx),
             "enter" => self.run_selected_command_palette(window, cx),
             _ => false,
         }
@@ -9931,7 +10142,7 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) -> bool {
         if self.show_command_palette {
-            return false;
+            return self.handle_command_palette_key(event, window, cx);
         }
 
         if self.handle_canvas_key(event, window, cx) {
@@ -10021,6 +10232,11 @@ impl TermiRustApp {
 
         if !event.keystroke.modifiers.secondary() {
             return false;
+        }
+
+        if !event.keystroke.modifiers.shift && event.keystroke.key.as_str() == "k" {
+            self.toggle_command_palette(window, cx);
+            return true;
         }
 
         if event.keystroke.modifiers.alt && self.workspaces.len() > 1 {
@@ -20459,6 +20675,86 @@ sleep 1
             assert_eq!(app.nav_section, NavSection::Logs);
             assert_eq!(app.status_message, "Switched to Logs view.");
         });
+    }
+
+    #[gpui::test]
+    fn e2e_global_palette_opens_from_library_navigates_and_restores_focus(cx: &mut TestAppContext) {
+        use gpui::Focusable as _;
+
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let open_palette = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-k").expect("palette shortcut should parse"),
+            is_held: false,
+        };
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Projects, window, cx);
+                    app.project_list_focus.focus(window);
+                    assert!(app.project_list_focus.is_focused(window));
+                    assert!(app.handle_global_key(&open_palette, window, cx));
+                    assert!(app.show_command_palette);
+                    assert!(
+                        app.shell_inputs
+                            .command_palette
+                            .read(cx)
+                            .focus_handle(cx)
+                            .is_focused(window)
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        cx.run_until_parked();
+        let result_count = wait_for_app_state(cx, &app, Duration::from_secs(5), |app| {
+            (!app.global_search.searching).then_some(app.global_search.results.len())
+        });
+        assert!(
+            result_count > 0,
+            "global palette should return safe actions"
+        );
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let end = KeyDownEvent {
+                        keystroke: Keystroke::parse("end").unwrap(),
+                        is_held: false,
+                    };
+                    assert!(app.handle_command_palette_key(&end, window, cx));
+                    assert_eq!(
+                        app.selected_command_palette_index,
+                        app.command_palette_candidates(cx).len() - 1
+                    );
+                    let home = KeyDownEvent {
+                        keystroke: Keystroke::parse("home").unwrap(),
+                        is_held: false,
+                    };
+                    assert!(app.handle_command_palette_key(&home, window, cx));
+                    assert_eq!(app.selected_command_palette_index, 0);
+                    let escape = KeyDownEvent {
+                        keystroke: Keystroke::parse("escape").unwrap(),
+                        is_held: false,
+                    };
+                    assert!(app.handle_command_palette_key(&escape, window, cx));
+                    assert!(!app.show_command_palette);
+                    assert!(app.project_list_focus.is_focused(window));
+
+                    assert!(app.handle_global_key(&open_palette, window, cx));
+                    let missing_session = termirust_domain::HostedSessionId::new();
+                    assert!(app.activate_global_palette_action(
+                        termirust_domain::SearchAction::OpenSession(missing_session),
+                        window,
+                        cx,
+                    ));
+                    assert!(app.show_command_palette);
+                    assert_eq!(app.error_message, localization::global_palette_stale());
+                    app.close_command_palette(window, cx);
+                })
+            })
+            .expect("window update should succeed");
     }
 
     #[gpui::test]

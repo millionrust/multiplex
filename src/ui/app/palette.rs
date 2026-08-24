@@ -16,6 +16,40 @@ use crate::ui::autocomplete::{
     path_match_kind, path_query_context,
 };
 use crate::ui::path::remote_parent_path;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum PaletteCategory {
+    Attention,
+    Sessions,
+    Projects,
+    Groups,
+    Presets,
+    Actions,
+    Archive,
+    Commands,
+}
+
+impl PaletteCategory {
+    pub(super) const fn rank(self) -> u8 {
+        match self {
+            Self::Attention => 0,
+            Self::Sessions => 1,
+            Self::Projects => 2,
+            Self::Groups => 3,
+            Self::Presets => 4,
+            Self::Actions => 5,
+            Self::Archive => 6,
+            Self::Commands => 7,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum PaletteAction {
+    Search(termirust_domain::SearchAction),
+    RunCommand,
+}
+
 #[derive(Clone)]
 pub(super) struct CommandPaletteCandidate {
     pub(super) command: String,
@@ -23,6 +57,10 @@ pub(super) struct CommandPaletteCandidate {
     pub(super) detail: String,
     pub(super) source: AutocompleteSource,
     pub(super) pinned: bool,
+    pub(super) category: PaletteCategory,
+    pub(super) action: PaletteAction,
+    pub(super) status: Option<termirust_domain::SearchStatus>,
+    pub(super) highlights: Vec<termirust_domain::TextHighlight>,
 }
 
 #[derive(Clone, Default)]
@@ -276,6 +314,10 @@ pub(super) fn collect_command_palette_candidates(
                     detail: format!("History • {scope}"),
                     source: AutocompleteSource::History,
                     pinned: false,
+                    category: PaletteCategory::Commands,
+                    action: PaletteAction::RunCommand,
+                    status: None,
+                    highlights: Vec::new(),
                 },
                 match_kind,
                 ordinal,
@@ -298,6 +340,10 @@ pub(super) fn collect_command_palette_candidates(
                     detail: "Recent command".to_string(),
                     source: AutocompleteSource::History,
                     pinned: false,
+                    category: PaletteCategory::Commands,
+                    action: PaletteAction::RunCommand,
+                    status: None,
+                    highlights: Vec::new(),
                 },
                 match_kind,
                 ordinal,
@@ -334,6 +380,10 @@ pub(super) fn collect_command_palette_candidates(
                     detail,
                     source: AutocompleteSource::Snippet,
                     pinned: snippet.pinned,
+                    category: PaletteCategory::Commands,
+                    action: PaletteAction::RunCommand,
+                    status: None,
+                    highlights: Vec::new(),
                 },
                 match_kind,
                 ordinal,
@@ -360,6 +410,10 @@ pub(super) fn collect_command_palette_candidates(
                         detail: template.detail,
                         source: AutocompleteSource::Context,
                         pinned: false,
+                        category: PaletteCategory::Commands,
+                        action: PaletteAction::RunCommand,
+                        status: None,
+                        highlights: Vec::new(),
                     },
                     match_kind,
                     ordinal: template.ordinal,
@@ -383,6 +437,10 @@ pub(super) fn collect_command_palette_candidates(
                     detail: template.detail.to_string(),
                     source: template.source,
                     pinned: false,
+                    category: PaletteCategory::Commands,
+                    action: PaletteAction::RunCommand,
+                    status: None,
+                    highlights: Vec::new(),
                 },
                 match_kind,
                 ordinal,
@@ -799,4 +857,95 @@ pub(super) fn pane_recent_output_lines(pane: &SessionPane, limit: usize) -> Vec<
     let keep_from = lines.len().saturating_sub(limit);
     lines.drain(0..keep_from);
     lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use termirust_domain::{
+        HostedSessionId, PositionKey, ScoreTuple, SearchAction, SearchCategory, SearchDocumentId,
+        SearchResult, SearchStatus, TextHighlight,
+    };
+
+    #[test]
+    fn command_candidates_remain_in_the_commands_category() {
+        let candidates = collect_command_palette_candidates(
+            "git status",
+            &["git status".to_string()],
+            &[],
+            "local:test",
+            &[],
+            None,
+        );
+        assert!(!candidates.is_empty());
+        assert!(candidates.iter().all(|candidate| {
+            candidate.category == PaletteCategory::Commands
+                && candidate.action == PaletteAction::RunCommand
+                && candidate.status.is_none()
+                && candidate.highlights.is_empty()
+        }));
+    }
+
+    #[test]
+    fn search_candidates_preserve_category_status_and_highlights() {
+        let id = HostedSessionId::new();
+        let document_id = SearchDocumentId::Session(id);
+        let highlight = TextHighlight {
+            field: termirust_domain::HighlightField::Title,
+            start: 0,
+            end: 4,
+        };
+        let result = SearchResult {
+            id: document_id,
+            category: SearchCategory::Archive,
+            title: "Build retained".to_string(),
+            project_label: Some("Console".to_string()),
+            group_label: Some("Auth".to_string()),
+            preset_label: None,
+            runtime_label: Some("codex".to_string()),
+            status: SearchStatus::Done,
+            pinned: true,
+            archived: true,
+            highlights: vec![highlight],
+            action: SearchAction::OpenSession(id),
+            score: ScoreTuple {
+                match_quality: 3,
+                current_project: 1,
+                actionable_status: 1,
+                pinned: 1,
+                position: PositionKey::FIRST,
+                meaningful_activity_at: 1,
+                id: document_id,
+            },
+        };
+
+        let candidate = super::super::global_search::search_result_candidate(&result);
+        assert_eq!(candidate.category, PaletteCategory::Archive);
+        assert_eq!(candidate.status, Some(SearchStatus::Done));
+        assert_eq!(candidate.detail, "Console / Auth / codex");
+        assert_eq!(candidate.highlights, vec![highlight]);
+        assert!(candidate.pinned);
+        assert_eq!(
+            candidate.action,
+            PaletteAction::Search(SearchAction::OpenSession(id))
+        );
+    }
+
+    #[test]
+    fn category_rank_is_total_and_stable() {
+        let categories = [
+            PaletteCategory::Attention,
+            PaletteCategory::Sessions,
+            PaletteCategory::Projects,
+            PaletteCategory::Groups,
+            PaletteCategory::Presets,
+            PaletteCategory::Actions,
+            PaletteCategory::Archive,
+            PaletteCategory::Commands,
+        ];
+        assert_eq!(
+            categories.map(PaletteCategory::rank),
+            [0, 1, 2, 3, 4, 5, 6, 7]
+        );
+    }
 }

@@ -1149,6 +1149,205 @@ context = "Generic unavailable metadata error preserving retained process data."
 description = "Session metadata unavailable error"
 
 [[messages]]
+id = "global-palette-title"
+context = "Heading for the global Project, session, preset, and action search overlay."
+description = "Global palette title"
+
+[[messages]]
+id = "global-palette-placeholder"
+context = "Placeholder for the global metadata-only search query input."
+description = "Global palette query placeholder"
+
+[[messages]]
+id = "global-palette-shortcut-hint"
+context = "Compact keyboard help in the global palette header."
+description = "Global palette keyboard hint"
+
+[[messages.args]]
+name = "modifier"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "global-palette-searching"
+context = "Non-blocking progress status while an asynchronous query updates cached results."
+description = "Global palette searching status"
+
+[[messages]]
+id = "global-palette-empty"
+context = "Empty-state heading when the global metadata index has no user records."
+description = "Global palette empty heading"
+
+[[messages]]
+id = "global-palette-empty-detail"
+context = "Empty-state guidance when the global metadata index has no user records."
+description = "Global palette empty guidance"
+
+[[messages]]
+id = "global-palette-no-match"
+context = "Filter-empty heading when no global search result matches."
+description = "Global palette no-match heading"
+
+[[messages]]
+id = "global-palette-no-match-detail"
+context = "Guidance shown when no global search result matches."
+description = "Global palette no-match guidance"
+
+[[messages]]
+id = "global-palette-archived-fallback"
+context = "Notice that archived sessions are shown only because no active result matched."
+description = "Archived search fallback notice"
+
+[[messages]]
+id = "global-palette-pinned"
+context = "Text badge for a pinned palette result."
+description = "Pinned palette result badge"
+
+[[messages]]
+id = "global-palette-category-attention"
+context = "Global palette category heading for sessions needing input."
+description = "Attention result category"
+
+[[messages]]
+id = "global-palette-category-sessions"
+context = "Global palette category heading for active sessions."
+description = "Session result category"
+
+[[messages]]
+id = "global-palette-category-projects"
+context = "Global palette category heading for Projects."
+description = "Project result category"
+
+[[messages]]
+id = "global-palette-category-groups"
+context = "Global palette category heading for Project groups."
+description = "Group result category"
+
+[[messages]]
+id = "global-palette-category-presets"
+context = "Global palette category heading for launch presets."
+description = "Preset result category"
+
+[[messages]]
+id = "global-palette-category-actions"
+context = "Global palette category heading for safe application actions."
+description = "Action result category"
+
+[[messages]]
+id = "global-palette-category-archive"
+context = "Global palette category heading for archived sessions."
+description = "Archive result category"
+
+[[messages]]
+id = "global-palette-category-commands"
+context = "Global palette category heading for existing terminal command suggestions."
+description = "Terminal command result category"
+
+[[messages]]
+id = "global-palette-add-project-action"
+context = "Safe global palette action that opens the reviewed add-Project flow."
+description = "Add Project palette action"
+
+[[messages]]
+id = "global-palette-new-session-action"
+context = "Safe global palette action that opens the reviewed new-session flow."
+description = "New session palette action"
+
+[[messages]]
+id = "global-palette-show-archive-action"
+context = "Safe global palette action that opens the session archive."
+description = "Show archive palette action"
+
+[[messages]]
+id = "global-palette-query-too-long"
+context = "Local validation error for a global search query over the scalar limit."
+description = "Global palette query length error"
+
+[[messages]]
+id = "global-palette-too-many-tokens"
+context = "Local validation error for a global search query over the token limit."
+description = "Global palette token-count error"
+
+[[messages]]
+id = "global-palette-partial"
+context = "Warning that bounded/corrupt metadata records were skipped while usable results remain."
+description = "Partial global search warning"
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "global-palette-stale"
+context = "Explanation after a selected result no longer resolves against current metadata."
+description = "Stale global search result"
+
+[[messages]]
+id = "global-palette-project-required"
+context = "Explanation when a preset/new-session action has no available Project target."
+description = "Project required for palette launch"
+
+[[messages]]
+id = "global-palette-status-attention"
+context = "Text status for a search result requiring user input."
+description = "Attention search status"
+
+[[messages]]
+id = "global-palette-status-busy"
+context = "Text status for a busy search result."
+description = "Busy search status"
+
+[[messages]]
+id = "global-palette-status-done"
+context = "Text status for a completed/exited search result."
+description = "Done search status"
+
+[[messages]]
+id = "global-palette-status-running"
+context = "Text status for a running search result."
+description = "Running search status"
+
+[[messages]]
+id = "global-palette-status-idle"
+context = "Text status for an idle search result."
+description = "Idle search status"
+
+[[messages]]
+id = "global-palette-status-unavailable"
+context = "Text status for an unavailable/stale search result."
+description = "Unavailable search status"
+
+[[messages]]
+id = "global-palette-status-unknown"
+context = "Text status when semantic activity is not known."
+description = "Unknown search status"
+
+[[messages]]
+id = "global-palette-position"
+context = "Accessible text announcing the selected result position in the current result count."
+description = "Global palette result position"
+
+[[messages.args]]
+name = "position"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "global-palette-ready"
+context = "Status announcement after opening the global palette."
+description = "Global palette ready status"
+
+[[messages]]
 id = "group-ungrouped-label"
 context = "Heading for sessions placed at the Project root rather than in a named group."
 description = "Ungrouped session heading"

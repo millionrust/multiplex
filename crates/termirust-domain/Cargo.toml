@@ -9,7 +9,13 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 unicode-segmentation = "1.12"
+unicode-casefold = "0.2"
+unicode-normalization = "0.1"
 uuid = { version = "1.22", features = ["serde", "v4"] }
 
 [dev-dependencies]
 tempfile = "3.27"
+
+[[bench]]
+name = "session_search"
+harness = false

@@ -32,7 +32,7 @@ pub(super) struct SessionSidebarState {
     editor: Option<GroupEditor>,
     pending_removal: Option<PendingGroupRemoval>,
     pending_undo: Option<PendingOrganizationUndo>,
-    selected_session: Option<HostedSessionId>,
+    pub selected_session: Option<HostedSessionId>,
 }
 
 struct GroupEditor {
