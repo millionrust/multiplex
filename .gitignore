@@ -2,3 +2,6 @@
 /target
 .DS_Store
 .antigravitycli/
+experiment.md
+mobile_terminal_access_implementation_prompt.md
+tmux_persistence_implementation_prompt.md
