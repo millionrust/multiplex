@@ -84,8 +84,8 @@ pub enum ThemePreset {
 impl ThemePreset {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Ocean => "Termius Dark",
-            Self::Daylight => "Termius Light",
+            Self::Ocean => "Ocean Dark",
+            Self::Daylight => "Daylight Light",
             Self::FlexokiDark => "Flexoki Dark",
             Self::FlexokiLight => "Flexoki Light",
             Self::KanagawaWave => "Kanagawa Wave",

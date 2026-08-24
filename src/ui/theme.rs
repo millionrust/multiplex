@@ -1,6 +1,7 @@
 use std::sync::{OnceLock, RwLock};
 
 use gpui::Hsla;
+use termirust_ui_contract::{ColorValue, DesignTokens, StatusKind, StatusVisual, ThemeKind};
 
 use crate::models::ThemePreset;
 
@@ -10,26 +11,13 @@ struct ThemePalette {
     chrome_bg: u32,
     chrome_tab: u32,
     chrome_tab_active: u32,
-    library_bg: u32,
-    library_sidebar: u32,
-    library_card: u32,
     terminal_bg: u32,
     terminal_panel: u32,
-    border: u32,
     border_dark: u32,
-    text_main: u32,
     text_on_dark: u32,
-    text_muted: u32,
     text_muted_dark: u32,
-    accent: u32,
-    accent_soft: u32,
-    focus_ring: u32,
-    success: u32,
-    warning: u32,
-    danger: u32,
     slate: u32,
     hover: u32,
-    modal_scrim: u32,
 }
 
 const OCEAN: ThemePalette = ThemePalette {
@@ -37,26 +25,13 @@ const OCEAN: ThemePalette = ThemePalette {
     chrome_bg: 0x0a0e17,
     chrome_tab: 0x171c2a,
     chrome_tab_active: 0x232b3d,
-    library_bg: 0x0e131e,
-    library_sidebar: 0x0a0e17,
-    library_card: 0x161b27,
     terminal_bg: 0x07101c,
     terminal_panel: 0x0f1825,
-    border: 0x232a3a,
     border_dark: 0x10141d,
-    text_main: 0xeaedf3,
     text_on_dark: 0xeaedf3,
-    text_muted: 0x6e7689,
     text_muted_dark: 0x6e7689,
-    accent: 0x3ec97a,
-    accent_soft: 0x1d3526,
-    focus_ring: 0x66dc94,
-    success: 0x3ec97a,
-    warning: 0xe09a3a,
-    danger: 0xe25d5d,
     slate: 0x4863a0,
     hover: 0x1c2230,
-    modal_scrim: 0x05080f,
 };
 
 const DAYLIGHT: ThemePalette = ThemePalette {
@@ -64,26 +39,13 @@ const DAYLIGHT: ThemePalette = ThemePalette {
     chrome_bg: 0x2b3a4d,
     chrome_tab: 0x3a4a5e,
     chrome_tab_active: 0x55687f,
-    library_bg: 0xfaf6ec,
-    library_sidebar: 0xfffdf8,
-    library_card: 0xfffdf8,
     terminal_bg: 0x0d1620,
     terminal_panel: 0x142030,
-    border: 0xdacfba,
     border_dark: 0x223040,
-    text_main: 0x2a2924,
     text_on_dark: 0xf4f7fb,
-    text_muted: 0x6f6557,
     text_muted_dark: 0xa3b3c4,
-    accent: 0x2f9d7e,
-    accent_soft: 0xd9f4ea,
-    focus_ring: 0x56b89a,
-    success: 0x44b069,
-    warning: 0xd99332,
-    danger: 0xd9594a,
     slate: 0x496b8f,
     hover: 0xede4cf,
-    modal_scrim: 0x0d141d,
 };
 
 const HOST_CHIP_COLORS: &[u32] = &[
@@ -110,13 +72,39 @@ fn palette() -> ThemePalette {
         ThemePreset::Daylight | ThemePreset::FlexokiLight | ThemePreset::KanagawaLotus => DAYLIGHT,
         _ => OCEAN,
     };
-    base.accent = preset.preview_accent();
-    base.accent_soft = mix(base.accent, base.app_bg, 0.78);
-    base.focus_ring = mix(base.accent, 0xffffff, 0.4);
-    base.success = base.accent;
     base.terminal_bg = preset.preview_bg();
     base.terminal_panel = mix(base.terminal_bg, base.app_bg, 0.5);
     base
+}
+
+fn design_theme_kind(preset: ThemePreset) -> ThemeKind {
+    match preset {
+        ThemePreset::Daylight | ThemePreset::FlexokiLight | ThemePreset::KanagawaLotus => {
+            ThemeKind::Light
+        }
+        ThemePreset::Ocean
+        | ThemePreset::FlexokiDark
+        | ThemePreset::KanagawaWave
+        | ThemePreset::KanagawaDragon
+        | ThemePreset::HackerBlue
+        | ThemePreset::HackerGreen
+        | ThemePreset::HackerRed => ThemeKind::Dark,
+    }
+}
+
+pub const fn design_tokens_for(theme: ThemeKind) -> DesignTokens {
+    DesignTokens::new(theme)
+}
+
+pub fn current_design_tokens() -> DesignTokens {
+    let preset = *theme_preset_state()
+        .read()
+        .expect("theme preset lock poisoned");
+    design_tokens_for(design_theme_kind(preset))
+}
+
+pub fn semantic_status(kind: StatusKind) -> StatusVisual {
+    current_design_tokens().status(kind)
 }
 
 fn mix(a: u32, b: u32, t: f32) -> u32 {
@@ -151,8 +139,18 @@ fn color(hex: u32) -> Hsla {
     gpui::rgb(hex).into()
 }
 
+fn token_color(value: ColorValue) -> Hsla {
+    Hsla {
+        a: f32::from(value.alpha) / 255.0,
+        ..gpui::rgb(
+            (u32::from(value.red) << 16) | (u32::from(value.green) << 8) | u32::from(value.blue),
+        )
+        .into()
+    }
+}
+
 pub fn app_bg() -> Hsla {
-    color(palette().app_bg)
+    token_color(current_design_tokens().color_bg_canvas())
 }
 
 pub fn chrome_bg() -> Hsla {
@@ -168,15 +166,15 @@ pub fn chrome_tab_active() -> Hsla {
 }
 
 pub fn library_bg() -> Hsla {
-    color(palette().library_bg)
+    token_color(current_design_tokens().color_bg_canvas())
 }
 
 pub fn library_sidebar() -> Hsla {
-    color(palette().library_sidebar)
+    token_color(current_design_tokens().color_bg_surface())
 }
 
 pub fn library_card() -> Hsla {
-    color(palette().library_card)
+    token_color(current_design_tokens().color_bg_surface())
 }
 
 pub fn terminal_bg() -> Hsla {
@@ -188,7 +186,7 @@ pub fn terminal_panel() -> Hsla {
 }
 
 pub fn border() -> Hsla {
-    color(palette().border)
+    token_color(current_design_tokens().color_border_default())
 }
 
 pub fn border_dark() -> Hsla {
@@ -196,7 +194,7 @@ pub fn border_dark() -> Hsla {
 }
 
 pub fn text_main() -> Hsla {
-    color(palette().text_main)
+    token_color(current_design_tokens().color_text_primary())
 }
 
 pub fn text_on_dark() -> Hsla {
@@ -204,7 +202,7 @@ pub fn text_on_dark() -> Hsla {
 }
 
 pub fn text_muted() -> Hsla {
-    color(palette().text_muted)
+    token_color(current_design_tokens().color_text_muted())
 }
 
 pub fn text_muted_dark() -> Hsla {
@@ -212,27 +210,27 @@ pub fn text_muted_dark() -> Hsla {
 }
 
 pub fn accent() -> Hsla {
-    color(palette().accent)
+    token_color(current_design_tokens().color_action_primary())
 }
 
 pub fn accent_soft() -> Hsla {
-    color(palette().accent_soft)
+    token_color(current_design_tokens().color_selection())
 }
 
 pub fn focus_ring() -> Hsla {
-    color(palette().focus_ring)
+    token_color(current_design_tokens().color_focus())
 }
 
 pub fn success() -> Hsla {
-    color(palette().success)
+    token_color(semantic_status(StatusKind::Done).color)
 }
 
 pub fn warning() -> Hsla {
-    color(palette().warning)
+    token_color(semantic_status(StatusKind::Attention).color)
 }
 
 pub fn danger() -> Hsla {
-    color(palette().danger)
+    token_color(semantic_status(StatusKind::Error).color)
 }
 
 pub fn slate() -> Hsla {
@@ -244,7 +242,7 @@ pub fn hover() -> Hsla {
 }
 
 pub fn modal_scrim() -> Hsla {
-    with_alpha(color(palette().modal_scrim), 0.56)
+    token_color(current_design_tokens().color_overlay_scrim())
 }
 
 pub fn card_hover() -> Hsla {
@@ -320,7 +318,7 @@ pub fn action_fill(tone: ActionTone) -> Hsla {
 
 pub fn action_foreground(tone: ActionTone) -> Hsla {
     match tone {
-        ActionTone::Accent => library_card(),
+        ActionTone::Accent => token_color(current_design_tokens().color_action_primary_text()),
         ActionTone::AccentSoft | ActionTone::Success | ActionTone::Danger | ActionTone::Neutral => {
             text_main()
         }
@@ -354,8 +352,10 @@ pub fn host_chip_color(label: &str) -> Hsla {
     color(HOST_CHIP_COLORS[index])
 }
 
-pub const HOST_SIDEBAR_WIDTH: f32 = 220.0;
-pub const CHROME_HEIGHT: f32 = 44.0;
-pub const STATUS_HEIGHT: f32 = 28.0;
-pub const WORKSPACE_HEADER_HEIGHT: f32 = 48.0;
-pub const CARD_RADIUS: f32 = 14.0;
+pub const HOST_SIDEBAR_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_host_sidebar_width()
+    .0;
+pub const CHROME_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_chrome_height()
+    .0;
+pub const CARD_RADIUS: f32 = DesignTokens::new(ThemeKind::System).radius_panel().0;

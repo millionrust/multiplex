@@ -44,6 +44,9 @@ jobs:
         if: runner.os == 'macOS'
         run: command -v tmux >/dev/null 2>&1 || brew install tmux
 
+      - name: Verify generated design-token contract
+        run: ./scripts/verify-design-tokens.sh --all-ui --no-new-baseline
+
       - name: Verify Rust workspace
         env:
           TERMIRUST_CLIPPY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}

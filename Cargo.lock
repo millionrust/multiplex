@@ -7106,6 +7106,7 @@ dependencies = [
  "serde",
  "serde_json",
  "termirust-protocol",
+ "termirust-ui-contract",
  "tokio",
  "vt100",
 ]
@@ -7129,6 +7130,16 @@ dependencies = [
  "rand 0.8.6",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "termirust-ui-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "toml 0.9.12+spec-1.1.0",
 ]
 
 [[package]]

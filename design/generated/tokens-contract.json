@@ -1,0 +1,1667 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "83d8003bd4b971e198cb9237643f9f86b75e95d04cf53a6fabdf2896734eff90",
+  "statuses": [
+    {
+      "color": "color.status.attention",
+      "icon": "icon.status.attention",
+      "kind": "attention",
+      "shape": "diamond",
+      "text": "text.status.attention"
+    },
+    {
+      "color": "color.status.busy",
+      "icon": "icon.status.busy",
+      "kind": "busy",
+      "shape": "filled_circle",
+      "text": "text.status.busy"
+    },
+    {
+      "color": "color.status.done",
+      "icon": "icon.status.done",
+      "kind": "done",
+      "shape": "check_circle",
+      "text": "text.status.done"
+    },
+    {
+      "color": "color.status.error",
+      "icon": "icon.status.error",
+      "kind": "error",
+      "shape": "octagon",
+      "text": "text.status.error"
+    },
+    {
+      "color": "color.status.idle",
+      "icon": "icon.status.idle",
+      "kind": "idle",
+      "shape": "hollow_circle",
+      "text": "text.status.idle"
+    },
+    {
+      "color": "color.status.offline",
+      "icon": "icon.status.offline",
+      "kind": "offline",
+      "shape": "broken_link",
+      "text": "text.status.offline"
+    },
+    {
+      "color": "color.status.attention",
+      "icon": "icon.status.orphaned",
+      "kind": "orphaned",
+      "shape": "question_diamond",
+      "text": "text.status.orphaned"
+    },
+    {
+      "color": "color.status.error",
+      "icon": "icon.status.permission_denied",
+      "kind": "permission_denied",
+      "shape": "lock",
+      "text": "text.status.permission_denied"
+    }
+  ],
+  "themes": [
+    "system",
+    "light",
+    "dark",
+    "high_contrast",
+    "recording_friendly"
+  ],
+  "tokens": [
+    {
+      "allowedUse": "Selected and high-attention boundaries.",
+      "category": "border",
+      "description": "Emphasized border.",
+      "key": "border.emphasis",
+      "reducedMotion": null,
+      "values": {
+        "dark": "2",
+        "high_contrast": "2",
+        "light": "2",
+        "recording_friendly": "2",
+        "system": "2"
+      }
+    },
+    {
+      "allowedUse": "Dividers and control outlines.",
+      "category": "border",
+      "description": "Default one-pixel border.",
+      "key": "border.hairline",
+      "reducedMotion": null,
+      "values": {
+        "dark": "1",
+        "high_contrast": "2",
+        "light": "1",
+        "recording_friendly": "1",
+        "system": "1"
+      }
+    },
+    {
+      "allowedUse": "Primary actions and links.",
+      "category": "color",
+      "description": "Primary action color.",
+      "key": "color.action.primary",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#7EA2FF",
+        "high_contrast": "#00FFFF",
+        "light": "#2457D6",
+        "recording_friendly": "#8CA8E8",
+        "system": "#7EA2FF"
+      }
+    },
+    {
+      "allowedUse": "Primary action foreground only.",
+      "category": "color",
+      "description": "Text shown on the primary action color.",
+      "key": "color.action.primary_text",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#07132E",
+        "high_contrast": "#000000",
+        "light": "#FFFFFF",
+        "recording_friendly": "#111318",
+        "system": "#07132E"
+      }
+    },
+    {
+      "allowedUse": "Top-level application backgrounds.",
+      "category": "color",
+      "description": "Window and application canvas background.",
+      "key": "color.bg.canvas",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#101318",
+        "high_contrast": "#000000",
+        "light": "#F7F8FA",
+        "recording_friendly": "#17191D",
+        "system": "#101318"
+      }
+    },
+    {
+      "allowedUse": "Raised application surfaces.",
+      "category": "color",
+      "description": "Menu, popover, and dialog background.",
+      "key": "color.bg.elevated",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#20252D",
+        "high_contrast": "#0A0A0A",
+        "light": "#FFFFFF",
+        "recording_friendly": "#282C33",
+        "system": "#20252D"
+      }
+    },
+    {
+      "allowedUse": "Unraised application surfaces.",
+      "category": "color",
+      "description": "Panel and card surface background.",
+      "key": "color.bg.surface",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#181C22",
+        "high_contrast": "#000000",
+        "light": "#FFFFFF",
+        "recording_friendly": "#202329",
+        "system": "#181C22"
+      }
+    },
+    {
+      "allowedUse": "Terminal viewport only.",
+      "category": "color",
+      "description": "Default terminal background.",
+      "key": "color.bg.terminal",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#0B0D10",
+        "high_contrast": "#000000",
+        "light": "#111318",
+        "recording_friendly": "#111318",
+        "system": "#0B0D10"
+      }
+    },
+    {
+      "allowedUse": "Controls and structural dividers.",
+      "category": "color",
+      "description": "Default control and divider border.",
+      "key": "color.border.default",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#343B46",
+        "high_contrast": "#FFFFFF",
+        "light": "#D7DCE3",
+        "recording_friendly": "#474C55",
+        "system": "#343B46"
+      }
+    },
+    {
+      "allowedUse": "Selection and drag targets.",
+      "category": "color",
+      "description": "Strong selected or drop-target border.",
+      "key": "color.border.strong",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#657083",
+        "high_contrast": "#FFFFFF",
+        "light": "#9AA4B2",
+        "recording_friendly": "#777D87",
+        "system": "#657083"
+      }
+    },
+    {
+      "allowedUse": "Visible focus indication.",
+      "category": "color",
+      "description": "Keyboard focus outline.",
+      "key": "color.focus",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#8FC7FF",
+        "high_contrast": "#FFFF00",
+        "light": "#005FCC",
+        "recording_friendly": "#FFFFFF",
+        "system": "#8FC7FF"
+      }
+    },
+    {
+      "allowedUse": "Visible focus indication.",
+      "category": "color",
+      "description": "Surface-colored separation inside the focus ring.",
+      "key": "color.focus.separation",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#181C22",
+        "high_contrast": "#000000",
+        "light": "#FFFFFF",
+        "recording_friendly": "#202329",
+        "system": "#181C22"
+      }
+    },
+    {
+      "allowedUse": "Modal separation only.",
+      "category": "color",
+      "description": "Modal overlay scrim.",
+      "key": "color.overlay.scrim",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#000000B3",
+        "high_contrast": "#000000E6",
+        "light": "#11131899",
+        "recording_friendly": "#000000D9",
+        "system": "#000000B3"
+      }
+    },
+    {
+      "allowedUse": "Selected content.",
+      "category": "color",
+      "description": "Selected row and terminal selection background.",
+      "key": "color.selection",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#253A69",
+        "high_contrast": "#0033FF",
+        "light": "#DCE7FF",
+        "recording_friendly": "#39465F",
+        "system": "#253A69"
+      }
+    },
+    {
+      "allowedUse": "Attention state with icon and text.",
+      "category": "color",
+      "description": "Attention status color.",
+      "key": "color.status.attention",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#FFB35C",
+        "high_contrast": "#FFFF00",
+        "light": "#A65300",
+        "recording_friendly": "#D6B47A",
+        "system": "#FFB35C"
+      }
+    },
+    {
+      "allowedUse": "Busy state with icon and text.",
+      "category": "color",
+      "description": "Busy status color.",
+      "key": "color.status.busy",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#7EA2FF",
+        "high_contrast": "#00FFFF",
+        "light": "#2457D6",
+        "recording_friendly": "#8CA8E8",
+        "system": "#7EA2FF"
+      }
+    },
+    {
+      "allowedUse": "Done state with icon and text.",
+      "category": "color",
+      "description": "Done status color.",
+      "key": "color.status.done",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#4ED08A",
+        "high_contrast": "#00FF66",
+        "light": "#137A4B",
+        "recording_friendly": "#8BC3A4",
+        "system": "#4ED08A"
+      }
+    },
+    {
+      "allowedUse": "Error state with icon and text.",
+      "category": "color",
+      "description": "Error status color.",
+      "key": "color.status.error",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#FF7B83",
+        "high_contrast": "#FF66FF",
+        "light": "#B4232A",
+        "recording_friendly": "#D99599",
+        "system": "#FF7B83"
+      }
+    },
+    {
+      "allowedUse": "Idle state with icon and text.",
+      "category": "color",
+      "description": "Idle status color.",
+      "key": "color.status.idle",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#98A2B3",
+        "high_contrast": "#FFFFFF",
+        "light": "#667085",
+        "recording_friendly": "#B7BBC2",
+        "system": "#98A2B3"
+      }
+    },
+    {
+      "allowedUse": "Offline state with icon and text.",
+      "category": "color",
+      "description": "Offline status color.",
+      "key": "color.status.offline",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#A7AFBA",
+        "high_contrast": "#FFFFFF",
+        "light": "#5B6472",
+        "recording_friendly": "#A7ABB1",
+        "system": "#A7AFBA"
+      }
+    },
+    {
+      "allowedUse": "Non-critical metadata.",
+      "category": "color",
+      "description": "Muted application text.",
+      "key": "color.text.muted",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#909AA8",
+        "high_contrast": "#D6D6D6",
+        "light": "#6C7583",
+        "recording_friendly": "#9FA5AE",
+        "system": "#909AA8"
+      }
+    },
+    {
+      "allowedUse": "Body copy and headings.",
+      "category": "color",
+      "description": "Primary application text.",
+      "key": "color.text.primary",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#F3F5F7",
+        "high_contrast": "#FFFFFF",
+        "light": "#171A21",
+        "recording_friendly": "#F4F5F6",
+        "system": "#F3F5F7"
+      }
+    },
+    {
+      "allowedUse": "Supporting labels and copy.",
+      "category": "color",
+      "description": "Secondary application text.",
+      "key": "color.text.secondary",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#B6BEC9",
+        "high_contrast": "#FFFFFF",
+        "light": "#535B68",
+        "recording_friendly": "#C3C7CD",
+        "system": "#B6BEC9"
+      }
+    },
+    {
+      "allowedUse": "Compact controls that remain keyboard accessible.",
+      "category": "dimension",
+      "description": "Compact desktop control height.",
+      "key": "control.height.compact",
+      "reducedMotion": null,
+      "values": {
+        "dark": "28",
+        "high_contrast": "28",
+        "light": "28",
+        "recording_friendly": "28",
+        "system": "28"
+      }
+    },
+    {
+      "allowedUse": "Standard desktop controls.",
+      "category": "dimension",
+      "description": "Default desktop control height.",
+      "key": "control.height.default",
+      "reducedMotion": null,
+      "values": {
+        "dark": "36",
+        "high_contrast": "36",
+        "light": "36",
+        "recording_friendly": "36",
+        "system": "36"
+      }
+    },
+    {
+      "allowedUse": "Prominent or touch-compatible controls.",
+      "category": "dimension",
+      "description": "Large control height.",
+      "key": "control.height.large",
+      "reducedMotion": null,
+      "values": {
+        "dark": "44",
+        "high_contrast": "44",
+        "light": "44",
+        "recording_friendly": "44",
+        "system": "44"
+      }
+    },
+    {
+      "allowedUse": "Exiting transitions.",
+      "category": "easing",
+      "description": "Exit transition easing.",
+      "key": "easing.exit",
+      "reducedMotion": null,
+      "values": {
+        "dark": "0.4/0/1/1",
+        "high_contrast": "0.4/0/1/1",
+        "light": "0.4/0/1/1",
+        "recording_friendly": "0.4/0/1/1",
+        "system": "0.4/0/1/1"
+      }
+    },
+    {
+      "allowedUse": "Entering and state-change transitions.",
+      "category": "easing",
+      "description": "Standard UI transition easing.",
+      "key": "easing.standard",
+      "reducedMotion": null,
+      "values": {
+        "dark": "0.2/0/0/1",
+        "high_contrast": "0.2/0/0/1",
+        "light": "0.2/0/0/1",
+        "recording_friendly": "0.2/0/0/1",
+        "system": "0.2/0/0/1"
+      }
+    },
+    {
+      "allowedUse": "Modal dialogs.",
+      "category": "elevation",
+      "description": "Modal elevation.",
+      "key": "elevation.modal",
+      "reducedMotion": null,
+      "values": {
+        "dark": "3",
+        "high_contrast": "0",
+        "light": "3",
+        "recording_friendly": "3",
+        "system": "3"
+      }
+    },
+    {
+      "allowedUse": "Flat surfaces.",
+      "category": "elevation",
+      "description": "No elevation.",
+      "key": "elevation.none",
+      "reducedMotion": null,
+      "values": {
+        "dark": "0",
+        "high_contrast": "0",
+        "light": "0",
+        "recording_friendly": "0",
+        "system": "0"
+      }
+    },
+    {
+      "allowedUse": "Popovers.",
+      "category": "elevation",
+      "description": "Popover elevation.",
+      "key": "elevation.popover",
+      "reducedMotion": null,
+      "values": {
+        "dark": "2",
+        "high_contrast": "0",
+        "light": "2",
+        "recording_friendly": "2",
+        "system": "2"
+      }
+    },
+    {
+      "allowedUse": "Menus and toolbar separators.",
+      "category": "elevation",
+      "description": "Menu and toolbar separator elevation.",
+      "key": "elevation.separator",
+      "reducedMotion": null,
+      "values": {
+        "dark": "1",
+        "high_contrast": "0",
+        "light": "1",
+        "recording_friendly": "1",
+        "system": "1"
+      }
+    },
+    {
+      "allowedUse": "Keyboard focus indication.",
+      "category": "border",
+      "description": "Focus ring surface separation.",
+      "key": "focus.ring.offset",
+      "reducedMotion": null,
+      "values": {
+        "dark": "2",
+        "high_contrast": "2",
+        "light": "2",
+        "recording_friendly": "2",
+        "system": "2"
+      }
+    },
+    {
+      "allowedUse": "Keyboard focus indication.",
+      "category": "border",
+      "description": "Outer focus ring width.",
+      "key": "focus.ring.width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "2",
+        "high_contrast": "3",
+        "light": "2",
+        "recording_friendly": "2",
+        "system": "2"
+      }
+    },
+    {
+      "allowedUse": "Terminal and code content.",
+      "category": "font_family",
+      "description": "User-configurable installed monospace with platform fallback.",
+      "key": "font.mono.family",
+      "reducedMotion": null,
+      "values": {
+        "dark": "system-monospace",
+        "high_contrast": "system-monospace",
+        "light": "system-monospace",
+        "recording_friendly": "system-monospace",
+        "system": "system-monospace"
+      }
+    },
+    {
+      "allowedUse": "Application chrome.",
+      "category": "font_family",
+      "description": "Platform system UI font stack.",
+      "key": "font.ui.family",
+      "reducedMotion": null,
+      "values": {
+        "dark": "system-ui",
+        "high_contrast": "system-ui",
+        "light": "system-ui",
+        "recording_friendly": "system-ui",
+        "system": "system-ui"
+      }
+    },
+    {
+      "allowedUse": "Controls and status icons.",
+      "category": "dimension",
+      "description": "Default icon size.",
+      "key": "icon.size.default",
+      "reducedMotion": null,
+      "values": {
+        "dark": "16",
+        "high_contrast": "16",
+        "light": "16",
+        "recording_friendly": "16",
+        "system": "16"
+      }
+    },
+    {
+      "allowedUse": "Large state illustrations without provider branding.",
+      "category": "dimension",
+      "description": "Large icon size.",
+      "key": "icon.size.large",
+      "reducedMotion": null,
+      "values": {
+        "dark": "24",
+        "high_contrast": "24",
+        "light": "24",
+        "recording_friendly": "24",
+        "system": "24"
+      }
+    },
+    {
+      "allowedUse": "Prominent controls.",
+      "category": "dimension",
+      "description": "Medium icon size.",
+      "key": "icon.size.medium",
+      "reducedMotion": null,
+      "values": {
+        "dark": "20",
+        "high_contrast": "20",
+        "light": "20",
+        "recording_friendly": "20",
+        "system": "20"
+      }
+    },
+    {
+      "allowedUse": "Compact supplemental icons.",
+      "category": "dimension",
+      "description": "Small icon size.",
+      "key": "icon.size.small",
+      "reducedMotion": null,
+      "values": {
+        "dark": "12",
+        "high_contrast": "12",
+        "light": "12",
+        "recording_friendly": "12",
+        "system": "12"
+      }
+    },
+    {
+      "allowedUse": "Attention status with text.",
+      "category": "icon",
+      "description": "Exclamation diamond attention status icon.",
+      "key": "icon.status.attention",
+      "reducedMotion": null,
+      "values": {
+        "dark": "exclamation_diamond",
+        "high_contrast": "exclamation_diamond",
+        "light": "exclamation_diamond",
+        "recording_friendly": "exclamation_diamond",
+        "system": "exclamation_diamond"
+      }
+    },
+    {
+      "allowedUse": "Busy status with text.",
+      "category": "icon",
+      "description": "Stepped spinner busy status icon.",
+      "key": "icon.status.busy",
+      "reducedMotion": null,
+      "values": {
+        "dark": "stepped_spinner",
+        "high_contrast": "stepped_spinner",
+        "light": "stepped_spinner",
+        "recording_friendly": "stepped_spinner",
+        "system": "stepped_spinner"
+      }
+    },
+    {
+      "allowedUse": "Done status with text.",
+      "category": "icon",
+      "description": "Check circle done status icon.",
+      "key": "icon.status.done",
+      "reducedMotion": null,
+      "values": {
+        "dark": "check_circle",
+        "high_contrast": "check_circle",
+        "light": "check_circle",
+        "recording_friendly": "check_circle",
+        "system": "check_circle"
+      }
+    },
+    {
+      "allowedUse": "Error status with text.",
+      "category": "icon",
+      "description": "Octagon error status icon.",
+      "key": "icon.status.error",
+      "reducedMotion": null,
+      "values": {
+        "dark": "octagon",
+        "high_contrast": "octagon",
+        "light": "octagon",
+        "recording_friendly": "octagon",
+        "system": "octagon"
+      }
+    },
+    {
+      "allowedUse": "Idle status with text.",
+      "category": "icon",
+      "description": "Hollow circle idle status icon.",
+      "key": "icon.status.idle",
+      "reducedMotion": null,
+      "values": {
+        "dark": "hollow_circle",
+        "high_contrast": "hollow_circle",
+        "light": "hollow_circle",
+        "recording_friendly": "hollow_circle",
+        "system": "hollow_circle"
+      }
+    },
+    {
+      "allowedUse": "Offline status with text.",
+      "category": "icon",
+      "description": "Broken link offline status icon.",
+      "key": "icon.status.offline",
+      "reducedMotion": null,
+      "values": {
+        "dark": "broken_link",
+        "high_contrast": "broken_link",
+        "light": "broken_link",
+        "recording_friendly": "broken_link",
+        "system": "broken_link"
+      }
+    },
+    {
+      "allowedUse": "Unknown ownership status with text.",
+      "category": "icon",
+      "description": "Question diamond orphaned status icon.",
+      "key": "icon.status.orphaned",
+      "reducedMotion": null,
+      "values": {
+        "dark": "question_diamond",
+        "high_contrast": "question_diamond",
+        "light": "question_diamond",
+        "recording_friendly": "question_diamond",
+        "system": "question_diamond"
+      }
+    },
+    {
+      "allowedUse": "Permission denied status with text.",
+      "category": "icon",
+      "description": "Lock permission-denied status icon.",
+      "key": "icon.status.permission_denied",
+      "reducedMotion": null,
+      "values": {
+        "dark": "lock",
+        "high_contrast": "lock",
+        "light": "lock",
+        "recording_friendly": "lock",
+        "system": "lock"
+      }
+    },
+    {
+      "allowedUse": "Outline icons.",
+      "category": "dimension",
+      "description": "Default icon stroke width.",
+      "key": "icon.stroke.default",
+      "reducedMotion": null,
+      "values": {
+        "dark": "1.5",
+        "high_contrast": "2",
+        "light": "1.5",
+        "recording_friendly": "1.5",
+        "system": "1.5"
+      }
+    },
+    {
+      "allowedUse": "Desktop window chrome.",
+      "category": "dimension",
+      "description": "Desktop top chrome height.",
+      "key": "layout.chrome.height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "44",
+        "high_contrast": "44",
+        "light": "44",
+        "recording_friendly": "44",
+        "system": "44"
+      }
+    },
+    {
+      "allowedUse": "Legacy host library until responsive sidebar migration.",
+      "category": "dimension",
+      "description": "Current host-library sidebar width.",
+      "key": "layout.host_sidebar.width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "220",
+        "high_contrast": "220",
+        "light": "220",
+        "recording_friendly": "220",
+        "system": "220"
+      }
+    },
+    {
+      "allowedUse": "Resizable desktop inspector.",
+      "category": "dimension",
+      "description": "Default inspector width.",
+      "key": "layout.inspector.default",
+      "reducedMotion": null,
+      "values": {
+        "dark": "320",
+        "high_contrast": "320",
+        "light": "320",
+        "recording_friendly": "320",
+        "system": "320"
+      }
+    },
+    {
+      "allowedUse": "Resizable desktop inspector.",
+      "category": "dimension",
+      "description": "Maximum inspector width.",
+      "key": "layout.inspector.maximum",
+      "reducedMotion": null,
+      "values": {
+        "dark": "480",
+        "high_contrast": "480",
+        "light": "480",
+        "recording_friendly": "480",
+        "system": "480"
+      }
+    },
+    {
+      "allowedUse": "Resizable desktop inspector.",
+      "category": "dimension",
+      "description": "Minimum inspector width.",
+      "key": "layout.inspector.minimum",
+      "reducedMotion": null,
+      "values": {
+        "dark": "280",
+        "high_contrast": "280",
+        "light": "280",
+        "recording_friendly": "280",
+        "system": "280"
+      }
+    },
+    {
+      "allowedUse": "Desktop navigation rail.",
+      "category": "dimension",
+      "description": "Primary navigation rail width.",
+      "key": "layout.navigation.width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "52",
+        "high_contrast": "52",
+        "light": "52",
+        "recording_friendly": "52",
+        "system": "52"
+      }
+    },
+    {
+      "allowedUse": "Resizable desktop context sidebar.",
+      "category": "dimension",
+      "description": "Default context sidebar width.",
+      "key": "layout.sidebar.default",
+      "reducedMotion": null,
+      "values": {
+        "dark": "280",
+        "high_contrast": "280",
+        "light": "280",
+        "recording_friendly": "280",
+        "system": "280"
+      }
+    },
+    {
+      "allowedUse": "Resizable desktop context sidebar.",
+      "category": "dimension",
+      "description": "Maximum context sidebar width.",
+      "key": "layout.sidebar.maximum",
+      "reducedMotion": null,
+      "values": {
+        "dark": "420",
+        "high_contrast": "420",
+        "light": "420",
+        "recording_friendly": "420",
+        "system": "420"
+      }
+    },
+    {
+      "allowedUse": "Resizable desktop context sidebar.",
+      "category": "dimension",
+      "description": "Minimum context sidebar width.",
+      "key": "layout.sidebar.minimum",
+      "reducedMotion": null,
+      "values": {
+        "dark": "220",
+        "high_contrast": "220",
+        "light": "220",
+        "recording_friendly": "220",
+        "system": "220"
+      }
+    },
+    {
+      "allowedUse": "Legacy desktop status surfaces until screen migration.",
+      "category": "dimension",
+      "description": "Compact status surface height.",
+      "key": "layout.status.height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "28",
+        "high_contrast": "28",
+        "light": "28",
+        "recording_friendly": "28",
+        "system": "28"
+      }
+    },
+    {
+      "allowedUse": "Window constraints after responsive migration.",
+      "category": "dimension",
+      "description": "Responsive desktop minimum window height target.",
+      "key": "layout.window.minimum_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "640",
+        "high_contrast": "640",
+        "light": "640",
+        "recording_friendly": "640",
+        "system": "640"
+      }
+    },
+    {
+      "allowedUse": "Window constraints after responsive migration.",
+      "category": "dimension",
+      "description": "Responsive desktop minimum window width target.",
+      "key": "layout.window.minimum_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "960",
+        "high_contrast": "960",
+        "light": "960",
+        "recording_friendly": "960",
+        "system": "960"
+      }
+    },
+    {
+      "allowedUse": "Desktop workspace headers.",
+      "category": "dimension",
+      "description": "Workspace header height.",
+      "key": "layout.workspace_header.height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "48",
+        "high_contrast": "48",
+        "light": "48",
+        "recording_friendly": "48",
+        "system": "48"
+      }
+    },
+    {
+      "allowedUse": "Non-spatial hover and focus feedback.",
+      "category": "duration",
+      "description": "Fast hover and focus transition.",
+      "key": "motion.fast",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "100ms",
+        "high_contrast": "100ms",
+        "light": "100ms",
+        "recording_friendly": "100ms",
+        "system": "100ms"
+      }
+    },
+    {
+      "allowedUse": "Reduced-motion replacement.",
+      "category": "duration",
+      "description": "Instant reduced-motion replacement.",
+      "key": "motion.instant",
+      "reducedMotion": null,
+      "values": {
+        "dark": "0ms",
+        "high_contrast": "0ms",
+        "light": "0ms",
+        "recording_friendly": "0ms",
+        "system": "0ms"
+      }
+    },
+    {
+      "allowedUse": "Menu and popover transitions.",
+      "category": "duration",
+      "description": "Menu and popover transition.",
+      "key": "motion.normal",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "160ms",
+        "high_contrast": "160ms",
+        "light": "160ms",
+        "recording_friendly": "160ms",
+        "system": "160ms"
+      }
+    },
+    {
+      "allowedUse": "Spinner cycle with a discrete reduced-motion replacement.",
+      "category": "duration",
+      "description": "Unknown-duration progress cycle.",
+      "key": "motion.progress",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "900ms",
+        "high_contrast": "900ms",
+        "light": "900ms",
+        "recording_friendly": "900ms",
+        "system": "900ms"
+      }
+    },
+    {
+      "allowedUse": "Panel transitions without bounce or parallax.",
+      "category": "duration",
+      "description": "Panel transition.",
+      "key": "motion.slow",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "240ms",
+        "high_contrast": "240ms",
+        "light": "240ms",
+        "recording_friendly": "240ms",
+        "system": "240ms"
+      }
+    },
+    {
+      "allowedUse": "Buttons, inputs, and compact controls.",
+      "category": "radius",
+      "description": "Control corner radius.",
+      "key": "radius.control",
+      "reducedMotion": null,
+      "values": {
+        "dark": "6",
+        "high_contrast": "6",
+        "light": "6",
+        "recording_friendly": "6",
+        "system": "6"
+      }
+    },
+    {
+      "allowedUse": "Modal dialogs.",
+      "category": "radius",
+      "description": "Dialog corner radius.",
+      "key": "radius.dialog",
+      "reducedMotion": null,
+      "values": {
+        "dark": "12",
+        "high_contrast": "12",
+        "light": "12",
+        "recording_friendly": "12",
+        "system": "12"
+      }
+    },
+    {
+      "allowedUse": "Individual repeated panels and cards.",
+      "category": "radius",
+      "description": "Panel corner radius.",
+      "key": "radius.panel",
+      "reducedMotion": null,
+      "values": {
+        "dark": "8",
+        "high_contrast": "8",
+        "light": "8",
+        "recording_friendly": "8",
+        "system": "8"
+      }
+    },
+    {
+      "allowedUse": "Tags and status chips only.",
+      "category": "radius",
+      "description": "Pill radius reserved for tags and status chips.",
+      "key": "radius.pill",
+      "reducedMotion": null,
+      "values": {
+        "dark": "999",
+        "high_contrast": "999",
+        "light": "999",
+        "recording_friendly": "999",
+        "system": "999"
+      }
+    },
+    {
+      "allowedUse": "Modal dialogs.",
+      "category": "shadow",
+      "description": "Modal shadow.",
+      "key": "shadow.modal",
+      "reducedMotion": null,
+      "values": {
+        "dark": "0/8/24/0/#00000066",
+        "high_contrast": "none",
+        "light": "0/8/24/0/#11131833",
+        "recording_friendly": "0/8/24/0/#00000052",
+        "system": "0/8/24/0/#00000066"
+      }
+    },
+    {
+      "allowedUse": "Flat and high-contrast surfaces.",
+      "category": "shadow",
+      "description": "No shadow.",
+      "key": "shadow.none",
+      "reducedMotion": null,
+      "values": {
+        "dark": "none",
+        "high_contrast": "none",
+        "light": "none",
+        "recording_friendly": "none",
+        "system": "none"
+      }
+    },
+    {
+      "allowedUse": "Popovers.",
+      "category": "shadow",
+      "description": "Popover shadow.",
+      "key": "shadow.popover",
+      "reducedMotion": null,
+      "values": {
+        "dark": "0/4/12/0/#0000004D",
+        "high_contrast": "none",
+        "light": "0/4/12/0/#11131829",
+        "recording_friendly": "0/4/12/0/#0000003D",
+        "system": "0/4/12/0/#0000004D"
+      }
+    },
+    {
+      "allowedUse": "Menus and toolbar separators.",
+      "category": "shadow",
+      "description": "Subtle menu and toolbar separator shadow.",
+      "key": "shadow.separator",
+      "reducedMotion": null,
+      "values": {
+        "dark": "0/1/2/0/#00000033",
+        "high_contrast": "none",
+        "light": "0/1/2/0/#1113181F",
+        "recording_friendly": "0/1/2/0/#00000026",
+        "system": "0/1/2/0/#00000033"
+      }
+    },
+    {
+      "allowedUse": "Explicitly remove spacing.",
+      "category": "spacing",
+      "description": "Zero spacing.",
+      "key": "space.0",
+      "reducedMotion": null,
+      "values": {
+        "dark": "0",
+        "high_contrast": "0",
+        "light": "0",
+        "recording_friendly": "0",
+        "system": "0"
+      }
+    },
+    {
+      "allowedUse": "Global spacing scale.",
+      "category": "spacing",
+      "description": "Two-pixel spacing step.",
+      "key": "space.1",
+      "reducedMotion": null,
+      "values": {
+        "dark": "2",
+        "high_contrast": "2",
+        "light": "2",
+        "recording_friendly": "2",
+        "system": "2"
+      }
+    },
+    {
+      "allowedUse": "Global spacing scale.",
+      "category": "spacing",
+      "description": "Four-pixel spacing step.",
+      "key": "space.2",
+      "reducedMotion": null,
+      "values": {
+        "dark": "4",
+        "high_contrast": "4",
+        "light": "4",
+        "recording_friendly": "4",
+        "system": "4"
+      }
+    },
+    {
+      "allowedUse": "Global spacing scale.",
+      "category": "spacing",
+      "description": "Eight-pixel spacing step.",
+      "key": "space.3",
+      "reducedMotion": null,
+      "values": {
+        "dark": "8",
+        "high_contrast": "8",
+        "light": "8",
+        "recording_friendly": "8",
+        "system": "8"
+      }
+    },
+    {
+      "allowedUse": "Global spacing scale.",
+      "category": "spacing",
+      "description": "Twelve-pixel spacing step.",
+      "key": "space.4",
+      "reducedMotion": null,
+      "values": {
+        "dark": "12",
+        "high_contrast": "12",
+        "light": "12",
+        "recording_friendly": "12",
+        "system": "12"
+      }
+    },
+    {
+      "allowedUse": "Global spacing scale.",
+      "category": "spacing",
+      "description": "Sixteen-pixel spacing step.",
+      "key": "space.5",
+      "reducedMotion": null,
+      "values": {
+        "dark": "16",
+        "high_contrast": "16",
+        "light": "16",
+        "recording_friendly": "16",
+        "system": "16"
+      }
+    },
+    {
+      "allowedUse": "Global spacing scale.",
+      "category": "spacing",
+      "description": "Twenty-four-pixel spacing step.",
+      "key": "space.6",
+      "reducedMotion": null,
+      "values": {
+        "dark": "24",
+        "high_contrast": "24",
+        "light": "24",
+        "recording_friendly": "24",
+        "system": "24"
+      }
+    },
+    {
+      "allowedUse": "Global spacing scale.",
+      "category": "spacing",
+      "description": "Thirty-two-pixel spacing step.",
+      "key": "space.7",
+      "reducedMotion": null,
+      "values": {
+        "dark": "32",
+        "high_contrast": "32",
+        "light": "32",
+        "recording_friendly": "32",
+        "system": "32"
+      }
+    },
+    {
+      "allowedUse": "Global spacing scale.",
+      "category": "spacing",
+      "description": "Forty-eight-pixel spacing step.",
+      "key": "space.8",
+      "reducedMotion": null,
+      "values": {
+        "dark": "48",
+        "high_contrast": "48",
+        "light": "48",
+        "recording_friendly": "48",
+        "system": "48"
+      }
+    },
+    {
+      "allowedUse": "Global spacing scale.",
+      "category": "spacing",
+      "description": "Sixty-four-pixel spacing step.",
+      "key": "space.9",
+      "reducedMotion": null,
+      "values": {
+        "dark": "64",
+        "high_contrast": "64",
+        "light": "64",
+        "recording_friendly": "64",
+        "system": "64"
+      }
+    },
+    {
+      "allowedUse": "Terminal viewport padding only.",
+      "category": "spacing",
+      "description": "Terminal viewport padding.",
+      "key": "space.terminal.padding",
+      "reducedMotion": null,
+      "values": {
+        "dark": "8",
+        "high_contrast": "8",
+        "light": "8",
+        "recording_friendly": "8",
+        "system": "8"
+      }
+    },
+    {
+      "allowedUse": "Desktop interactive controls.",
+      "category": "dimension",
+      "description": "Minimum desktop pointer target.",
+      "key": "target.pointer.minimum",
+      "reducedMotion": null,
+      "values": {
+        "dark": "36",
+        "high_contrast": "36",
+        "light": "36",
+        "recording_friendly": "36",
+        "system": "36"
+      }
+    },
+    {
+      "allowedUse": "Touch-capable controls.",
+      "category": "dimension",
+      "description": "Minimum touch target.",
+      "key": "target.touch.minimum",
+      "reducedMotion": null,
+      "values": {
+        "dark": "44",
+        "high_contrast": "44",
+        "light": "44",
+        "recording_friendly": "44",
+        "system": "44"
+      }
+    },
+    {
+      "allowedUse": "Localization lookup only.",
+      "category": "text",
+      "description": "Stable developer localization ID for attention status.",
+      "key": "text.status.attention",
+      "reducedMotion": null,
+      "values": {
+        "dark": "status.attention",
+        "high_contrast": "status.attention",
+        "light": "status.attention",
+        "recording_friendly": "status.attention",
+        "system": "status.attention"
+      }
+    },
+    {
+      "allowedUse": "Localization lookup only.",
+      "category": "text",
+      "description": "Stable developer localization ID for busy status.",
+      "key": "text.status.busy",
+      "reducedMotion": null,
+      "values": {
+        "dark": "status.busy",
+        "high_contrast": "status.busy",
+        "light": "status.busy",
+        "recording_friendly": "status.busy",
+        "system": "status.busy"
+      }
+    },
+    {
+      "allowedUse": "Localization lookup only.",
+      "category": "text",
+      "description": "Stable developer localization ID for done status.",
+      "key": "text.status.done",
+      "reducedMotion": null,
+      "values": {
+        "dark": "status.done",
+        "high_contrast": "status.done",
+        "light": "status.done",
+        "recording_friendly": "status.done",
+        "system": "status.done"
+      }
+    },
+    {
+      "allowedUse": "Localization lookup only.",
+      "category": "text",
+      "description": "Stable developer localization ID for error status.",
+      "key": "text.status.error",
+      "reducedMotion": null,
+      "values": {
+        "dark": "status.error",
+        "high_contrast": "status.error",
+        "light": "status.error",
+        "recording_friendly": "status.error",
+        "system": "status.error"
+      }
+    },
+    {
+      "allowedUse": "Localization lookup only.",
+      "category": "text",
+      "description": "Stable developer localization ID for idle status.",
+      "key": "text.status.idle",
+      "reducedMotion": null,
+      "values": {
+        "dark": "status.idle",
+        "high_contrast": "status.idle",
+        "light": "status.idle",
+        "recording_friendly": "status.idle",
+        "system": "status.idle"
+      }
+    },
+    {
+      "allowedUse": "Localization lookup only.",
+      "category": "text",
+      "description": "Stable developer localization ID for offline status.",
+      "key": "text.status.offline",
+      "reducedMotion": null,
+      "values": {
+        "dark": "status.offline",
+        "high_contrast": "status.offline",
+        "light": "status.offline",
+        "recording_friendly": "status.offline",
+        "system": "status.offline"
+      }
+    },
+    {
+      "allowedUse": "Localization lookup only.",
+      "category": "text",
+      "description": "Stable developer localization ID for orphaned status.",
+      "key": "text.status.orphaned",
+      "reducedMotion": null,
+      "values": {
+        "dark": "status.orphaned",
+        "high_contrast": "status.orphaned",
+        "light": "status.orphaned",
+        "recording_friendly": "status.orphaned",
+        "system": "status.orphaned"
+      }
+    },
+    {
+      "allowedUse": "Localization lookup only.",
+      "category": "text",
+      "description": "Stable developer localization ID for permission-denied status.",
+      "key": "text.status.permission_denied",
+      "reducedMotion": null,
+      "values": {
+        "dark": "status.permission_denied",
+        "high_contrast": "status.permission_denied",
+        "light": "status.permission_denied",
+        "recording_friendly": "status.permission_denied",
+        "system": "status.permission_denied"
+      }
+    },
+    {
+      "allowedUse": "Application body copy.",
+      "category": "typography",
+      "description": "Default body typography.",
+      "key": "type.body",
+      "reducedMotion": null,
+      "values": {
+        "dark": "14/20/400",
+        "high_contrast": "14/20/400",
+        "light": "14/20/400",
+        "recording_friendly": "14/20/400",
+        "system": "14/20/400"
+      }
+    },
+    {
+      "allowedUse": "Dense supporting copy.",
+      "category": "typography",
+      "description": "Small body typography.",
+      "key": "type.body.small",
+      "reducedMotion": null,
+      "values": {
+        "dark": "13/18/400",
+        "high_contrast": "13/18/400",
+        "light": "13/18/400",
+        "recording_friendly": "13/18/400",
+        "system": "13/18/400"
+      }
+    },
+    {
+      "allowedUse": "Compact metadata.",
+      "category": "typography",
+      "description": "Caption typography.",
+      "key": "type.caption",
+      "reducedMotion": null,
+      "values": {
+        "dark": "12/16/500",
+        "high_contrast": "12/16/500",
+        "light": "12/16/500",
+        "recording_friendly": "12/16/500",
+        "system": "12/16/500"
+      }
+    },
+    {
+      "allowedUse": "Primary section headings.",
+      "category": "typography",
+      "description": "Heading typography.",
+      "key": "type.heading",
+      "reducedMotion": null,
+      "values": {
+        "dark": "20/28/650",
+        "high_contrast": "20/28/650",
+        "light": "20/28/650",
+        "recording_friendly": "20/28/650",
+        "system": "20/28/650"
+      }
+    },
+    {
+      "allowedUse": "Section headings.",
+      "category": "typography",
+      "description": "Small heading typography.",
+      "key": "type.heading.small",
+      "reducedMotion": null,
+      "values": {
+        "dark": "16/22/600",
+        "high_contrast": "16/22/600",
+        "light": "16/22/600",
+        "recording_friendly": "16/22/600",
+        "system": "16/22/600"
+      }
+    },
+    {
+      "allowedUse": "Control and row labels.",
+      "category": "typography",
+      "description": "Control label typography.",
+      "key": "type.label",
+      "reducedMotion": null,
+      "values": {
+        "dark": "14/20/600",
+        "high_contrast": "14/20/600",
+        "light": "14/20/600",
+        "recording_friendly": "14/20/600",
+        "system": "14/20/600"
+      }
+    },
+    {
+      "allowedUse": "Terminal viewport only; font size remains user-configurable.",
+      "category": "typography",
+      "description": "Default terminal typography before user scaling.",
+      "key": "type.terminal",
+      "reducedMotion": null,
+      "values": {
+        "dark": "14/18.9/400",
+        "high_contrast": "14/18.9/400",
+        "light": "14/18.9/400",
+        "recording_friendly": "14/18.9/400",
+        "system": "14/18.9/400"
+      }
+    },
+    {
+      "allowedUse": "Top-level page titles.",
+      "category": "typography",
+      "description": "Page title typography.",
+      "key": "type.title",
+      "reducedMotion": null,
+      "values": {
+        "dark": "28/36/700",
+        "high_contrast": "28/36/700",
+        "light": "28/36/700",
+        "recording_friendly": "28/36/700",
+        "system": "28/36/700"
+      }
+    },
+    {
+      "allowedUse": "Normal application content.",
+      "category": "z_index",
+      "description": "Base content layer.",
+      "key": "z.base",
+      "reducedMotion": null,
+      "values": {
+        "dark": "0",
+        "high_contrast": "0",
+        "light": "0",
+        "recording_friendly": "0",
+        "system": "0"
+      }
+    },
+    {
+      "allowedUse": "Drag previews only.",
+      "category": "z_index",
+      "description": "Drag preview layer.",
+      "key": "z.drag",
+      "reducedMotion": null,
+      "values": {
+        "dark": "700",
+        "high_contrast": "700",
+        "light": "700",
+        "recording_friendly": "700",
+        "system": "700"
+      }
+    },
+    {
+      "allowedUse": "Dropdown menus.",
+      "category": "z_index",
+      "description": "Dropdown layer.",
+      "key": "z.dropdown",
+      "reducedMotion": null,
+      "values": {
+        "dark": "100",
+        "high_contrast": "100",
+        "light": "100",
+        "recording_friendly": "100",
+        "system": "100"
+      }
+    },
+    {
+      "allowedUse": "Modal dialogs.",
+      "category": "z_index",
+      "description": "Modal dialog layer.",
+      "key": "z.modal",
+      "reducedMotion": null,
+      "values": {
+        "dark": "410",
+        "high_contrast": "410",
+        "light": "410",
+        "recording_friendly": "410",
+        "system": "410"
+      }
+    },
+    {
+      "allowedUse": "Modal scrims.",
+      "category": "z_index",
+      "description": "Modal scrim layer.",
+      "key": "z.modal_scrim",
+      "reducedMotion": null,
+      "values": {
+        "dark": "400",
+        "high_contrast": "400",
+        "light": "400",
+        "recording_friendly": "400",
+        "system": "400"
+      }
+    },
+    {
+      "allowedUse": "Popovers.",
+      "category": "z_index",
+      "description": "Popover layer.",
+      "key": "z.popover",
+      "reducedMotion": null,
+      "values": {
+        "dark": "200",
+        "high_contrast": "200",
+        "light": "200",
+        "recording_friendly": "200",
+        "system": "200"
+      }
+    },
+    {
+      "allowedUse": "Security and exact approval prompts.",
+      "category": "z_index",
+      "description": "Security prompt layer.",
+      "key": "z.security_prompt",
+      "reducedMotion": null,
+      "values": {
+        "dark": "500",
+        "high_contrast": "500",
+        "light": "500",
+        "recording_friendly": "500",
+        "system": "500"
+      }
+    },
+    {
+      "allowedUse": "Sticky headers and rails.",
+      "category": "z_index",
+      "description": "Sticky application chrome layer.",
+      "key": "z.sticky",
+      "reducedMotion": null,
+      "values": {
+        "dark": "10",
+        "high_contrast": "10",
+        "light": "10",
+        "recording_friendly": "10",
+        "system": "10"
+      }
+    },
+    {
+      "allowedUse": "In-app notifications.",
+      "category": "z_index",
+      "description": "Toast layer.",
+      "key": "z.toast",
+      "reducedMotion": null,
+      "values": {
+        "dark": "300",
+        "high_contrast": "300",
+        "light": "300",
+        "recording_friendly": "300",
+        "system": "300"
+      }
+    },
+    {
+      "allowedUse": "Tooltips.",
+      "category": "z_index",
+      "description": "Tooltip layer.",
+      "key": "z.tooltip",
+      "reducedMotion": null,
+      "values": {
+        "dark": "600",
+        "high_contrast": "600",
+        "light": "600",
+        "recording_friendly": "600",
+        "system": "600"
+      }
+    }
+  ]
+}
