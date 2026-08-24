@@ -69,6 +69,7 @@ pub struct HostClient {
     selected_version: Option<ProtocolVersion>,
     capabilities: CapabilitySet,
     limits: NegotiatedLimits,
+    last_snapshot: Option<wire::ViewportSnapshotEvent>,
     next_request: u64,
 }
 
@@ -78,6 +79,7 @@ impl HostClient {
             endpoint,
             capabilities: CapabilitySet::from_wire(&[]),
             limits: options.limits,
+            last_snapshot: None,
             options,
             state: ConnectionState::Disconnected,
             #[cfg(unix)]
@@ -112,6 +114,10 @@ impl HostClient {
 
     pub const fn limits(&self) -> NegotiatedLimits {
         self.limits
+    }
+
+    pub fn take_last_snapshot(&mut self) -> Option<wire::ViewportSnapshotEvent> {
+        self.last_snapshot.take()
     }
 
     #[cfg(unix)]
@@ -298,6 +304,7 @@ impl HostClient {
         )
         .await?;
         let mut tracker = SequenceTracker::new(from_sequence);
+        self.last_snapshot = None;
         let mut outputs = Vec::new();
         let mut bytes = 0_u64;
         let mut saw_ready = false;
@@ -336,6 +343,16 @@ impl HostClient {
                         Ok(SequenceDecision::IdenticalDuplicate) => {}
                         Err(error) => return Err(sequence_error(error)),
                     }
+                }
+                Some(envelope_payload::Message::ViewportSnapshotEvent(snapshot)) if saw_ready => {
+                    self.require_session(&snapshot.session_id)?;
+                    if snapshot.terminal_bytes.len() > MAX_REPLAY_BYTES as usize
+                        || snapshot.boundary_sequence < from_sequence.get()
+                    {
+                        return Err(ClientError::new(ClientErrorCode::ResourceLimit));
+                    }
+                    tracker = SequenceTracker::new(OutputSequence::new(snapshot.boundary_sequence));
+                    self.last_snapshot = Some(snapshot);
                 }
                 Some(envelope_payload::Message::StateEvent(state)) if saw_ready => {
                     self.require_session(&state.session_id)?;

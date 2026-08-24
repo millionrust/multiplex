@@ -1,4 +1,5 @@
 pub mod group;
+pub mod host;
 pub mod id;
 pub mod preset;
 pub mod project;
@@ -8,6 +9,7 @@ pub use group::{
     Group, GroupDestination, GroupError, GroupInverseCommand, GroupMutation, GroupName,
     MAX_GROUP_NAME_SCALARS, MAX_GROUPS_PER_PROJECT, validate_group_set,
 };
+pub use host::{DurabilityWatermark, HostLifecycle, ProcessToken};
 pub use id::{
     CommandId, GroupId, HostInstanceId, HostedSessionId, OutputSequence, PositionError,
     PositionKey, PresetId, ProjectId, Revision,

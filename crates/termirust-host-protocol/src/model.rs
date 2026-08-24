@@ -230,6 +230,26 @@ pub fn encode_session_id(value: HostedSessionId) -> Vec<u8> {
     value.as_uuid().as_bytes().to_vec()
 }
 
+pub fn opaque_endpoint_name(session_id: HostedSessionId) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let bytes = session_id.as_uuid().into_bytes();
+    let mut name = String::with_capacity(22);
+    for chunk in bytes.chunks(3) {
+        let first = chunk[0];
+        let second = chunk.get(1).copied().unwrap_or(0);
+        let third = chunk.get(2).copied().unwrap_or(0);
+        name.push(ALPHABET[(first >> 2) as usize] as char);
+        name.push(ALPHABET[(((first & 0x03) << 4) | (second >> 4)) as usize] as char);
+        if chunk.len() > 1 {
+            name.push(ALPHABET[(((second & 0x0f) << 2) | (third >> 6)) as usize] as char);
+        }
+        if chunk.len() > 2 {
+            name.push(ALPHABET[(third & 0x3f) as usize] as char);
+        }
+    }
+    name
+}
+
 pub fn decode_session_id(bytes: &[u8]) -> Result<HostedSessionId, IdDecodeError> {
     decode_uuid(bytes).map(HostedSessionId::from_uuid)
 }

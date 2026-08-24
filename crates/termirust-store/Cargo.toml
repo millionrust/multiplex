@@ -7,6 +7,7 @@ description = "Versioned atomic local metadata stores for TermiRust"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+crc32c = "0.6"
 libc = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

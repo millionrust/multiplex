@@ -1,0 +1,26 @@
+[package]
+name = "termirust-session-host"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "One-session durable PTY Host for TermiRust"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+crc32c = "0.6"
+libc = "0.2"
+portable-pty = "0.9"
+prost = "0.14"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+termirust-domain = { version = "0.1.0", path = "../termirust-domain" }
+termirust-host-protocol = { version = "0.1.0", path = "../termirust-host-protocol" }
+termirust-store = { version = "0.1.0", path = "../termirust-store" }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+vt100 = "0.16"
+
+[dev-dependencies]
+tempfile = "3.27"
+termirust-client = { version = "0.1.0", path = "../termirust-client" }
+uuid = "1.22"

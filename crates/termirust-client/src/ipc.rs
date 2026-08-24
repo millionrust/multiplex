@@ -4,6 +4,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use termirust_domain::HostedSessionId;
+use termirust_host_protocol::opaque_endpoint_name;
 
 use crate::{ClientError, ClientErrorCode};
 
@@ -16,7 +17,7 @@ pub struct LocalEndpoint {
 impl LocalEndpoint {
     pub fn new(runtime_root: impl Into<PathBuf>, session_id: HostedSessionId) -> Self {
         let runtime_root = runtime_root.into();
-        let socket_path = runtime_root.join(opaque_socket_name(session_id));
+        let socket_path = runtime_root.join(opaque_endpoint_name(session_id));
         Self {
             runtime_root,
             socket_path,
@@ -30,26 +31,6 @@ impl LocalEndpoint {
     pub fn socket_path(&self) -> &Path {
         &self.socket_path
     }
-}
-
-fn opaque_socket_name(session_id: HostedSessionId) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-    let bytes = session_id.as_uuid().into_bytes();
-    let mut name = String::with_capacity(22);
-    for chunk in bytes.chunks(3) {
-        let first = chunk[0];
-        let second = chunk.get(1).copied().unwrap_or(0);
-        let third = chunk.get(2).copied().unwrap_or(0);
-        name.push(ALPHABET[(first >> 2) as usize] as char);
-        name.push(ALPHABET[(((first & 0x03) << 4) | (second >> 4)) as usize] as char);
-        if chunk.len() > 1 {
-            name.push(ALPHABET[(((second & 0x0f) << 2) | (third >> 6)) as usize] as char);
-        }
-        if chunk.len() > 2 {
-            name.push(ALPHABET[(third & 0x3f) as usize] as char);
-        }
-    }
-    name
 }
 
 impl fmt::Debug for LocalEndpoint {

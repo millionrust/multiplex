@@ -13,7 +13,7 @@ pub use model::{
     CapabilitySet, IdDecodeError, NegotiatedLimits, PreservedPayload, ProtocolRange,
     ProtocolVersion, decode_command_id, decode_host_instance_id, decode_session_id,
     encode_command_id, encode_host_instance_id, encode_payload, encode_session_id,
-    negotiate_protocol, payload_kind,
+    negotiate_protocol, opaque_endpoint_name, payload_kind,
 };
 
 pub const CURRENT_PROTOCOL: ProtocolRange = ProtocolRange {

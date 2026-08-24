@@ -7317,6 +7317,8 @@ dependencies = [
  "tempfile",
  "termirust-domain",
  "termirust-host-protocol",
+ "termirust-session-host",
+ "termirust-store",
  "tokio",
  "tokio-util",
  "uuid",
@@ -7368,9 +7370,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "termirust-session-host"
+version = "0.1.0"
+dependencies = [
+ "crc32c",
+ "libc",
+ "portable-pty",
+ "prost",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "termirust-client",
+ "termirust-domain",
+ "termirust-host-protocol",
+ "termirust-store",
+ "tokio",
+ "tokio-util",
+ "uuid",
+ "vt100",
+]
+
+[[package]]
 name = "termirust-store"
 version = "0.1.0"
 dependencies = [
+ "crc32c",
  "libc",
  "serde",
  "serde_json",
