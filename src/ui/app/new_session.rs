@@ -133,12 +133,10 @@ impl TermiRustApp {
                     .send(crate::ssh::SessionCommand::Disconnect);
             }
             if let Some(id) = hosted_session_id {
-                self.saved.update_app_attached_session(
+                self.mutate_session(
                     id,
-                    HostedSessionState::Cancelled,
-                    current_unix_millis(),
+                    termirust_domain::SessionMutation::SetLifecycle(HostedSessionState::Cancelled),
                 );
-                let _ = save_saved_state(&self.saved);
             }
             if let Some(state) = self.new_session.as_mut() {
                 state.phase = HostedSessionState::Cancelled;
@@ -314,31 +312,65 @@ impl TermiRustApp {
                 .unwrap_or_else(|| resolved.working_directory().to_path_buf()),
         };
         let initial_input = self.new_session_initial_input.read(cx).value().to_string();
+        let (title, title_source) = if initial_input.trim().is_empty() {
+            (
+                preset.label.as_str().to_string(),
+                termirust_domain::TitleSource::Default,
+            )
+        } else {
+            (
+                termirust_domain::automatic_title_from_explicit_input(
+                    &initial_input,
+                    resolved.session_id,
+                )
+                .as_str()
+                .to_string(),
+                termirust_domain::TitleSource::Automatic,
+            )
+        };
         let now = current_unix_millis();
         let position = self
             .saved
             .next_app_attached_session_position(project.id, None);
-        self.saved
-            .upsert_app_attached_session(SavedAppAttachedSession {
-                id: resolved.session_id,
-                route: resolved.route,
-                origin: resolved.origin,
-                state: HostedSessionState::Provisioning,
-                project_label: project.display_name.as_str().to_string(),
-                preset_label: preset.label.as_str().to_string(),
-                durable_host: Some(SavedDurableHost {
-                    runtime_root: paths.runtime_root.to_string_lossy().to_string(),
-                    session_dir: paths.session_dir.to_string_lossy().to_string(),
-                    working_directory: config.cwd.clone(),
-                    last_sequence: 0,
-                    durable_sequence: 0,
-                }),
-                group_id: None,
-                position,
-                started_at: now,
-                updated_at: now,
-            });
-        let _ = save_saved_state(&self.saved);
+        let record = SavedAppAttachedSession {
+            id: resolved.session_id,
+            route: resolved.route,
+            origin: resolved.origin,
+            state: HostedSessionState::Provisioning,
+            project_label: project.display_name.as_str().to_string(),
+            preset_label: preset.label.as_str().to_string(),
+            title,
+            title_source,
+            activity: termirust_domain::ActivityState::Unknown,
+            pinned: false,
+            read_through_sequence: 0,
+            unread_sequence: None,
+            archived_at: None,
+            revision: termirust_domain::Revision::ZERO,
+            durable_host: Some(SavedDurableHost {
+                runtime_root: paths.runtime_root.to_string_lossy().to_string(),
+                session_dir: paths.session_dir.to_string_lossy().to_string(),
+                working_directory: config.cwd.clone(),
+                last_sequence: 0,
+                durable_sequence: 0,
+            }),
+            group_id: None,
+            position,
+            started_at: now,
+            updated_at: now,
+        };
+        if let Err(error) = self
+            .session_library
+            .create_from_saved(&mut self.saved, record)
+        {
+            return self.fail_new_session(
+                &localization::new_session_start_error(error.to_string()),
+                cx,
+            );
+        }
+        if let Err(error) = save_saved_state(&self.saved) {
+            eprintln!("[session-library] compatibility projection save failed: {error:#}");
+        }
 
         let pane_id = self.next_session_id();
         let mut request = ConnectRequest::local_shell_with_config(pane_id, config);
@@ -391,41 +423,34 @@ impl TermiRustApp {
     }
 
     pub(super) fn stop_app_attached_session(&mut self, pane_id: u64, cx: &mut Context<Self>) {
-        let stoppable = self.pane(pane_id).is_some_and(|pane| {
-            let Some(attached) = pane.app_attached.as_ref() else {
-                return false;
-            };
-            if pane.closed {
-                return false;
-            }
-            if attached.route != termirust_domain::SessionLaunchRoute::DurableHost {
-                return true;
-            }
-            self.saved
-                .app_attached_sessions
-                .iter()
-                .find(|session| session.id == attached.hosted_session_id)
-                .is_some_and(|session| {
-                    !matches!(
-                        session.state,
-                        HostedSessionState::Exited
-                            | HostedSessionState::Orphaned
-                            | HostedSessionState::Gap
-                            | HostedSessionState::PermissionDenied
-                            | HostedSessionState::Incompatible
-                            | HostedSessionState::Offline
+        let Some((hosted_session_id, durable)) = self.pane(pane_id).and_then(|pane| {
+            (!pane.closed).then(|| {
+                pane.app_attached.as_ref().map(|attached| {
+                    (
+                        attached.hosted_session_id,
+                        attached.route == termirust_domain::SessionLaunchRoute::DurableHost,
                     )
                 })
-        });
-        if !stoppable {
+            })?
+        }) else {
+            return;
+        };
+        if !self
+            .session_library
+            .session(hosted_session_id)
+            .is_some_and(|session| session.lifecycle.can_stop())
+        {
+            return;
+        }
+        if !self.mutate_session(
+            hosted_session_id,
+            termirust_domain::SessionMutation::SetLifecycle(HostedSessionState::Stopping),
+        ) {
             return;
         }
         let Some(pane) = self.pane_mut(pane_id) else {
             return;
         };
-        let durable = pane.app_attached.as_ref().is_some_and(|session| {
-            session.route == termirust_domain::SessionLaunchRoute::DurableHost
-        });
         pane.user_closed = true;
         pane.status = "Stopping".to_string();
         let _ = pane.runtime.command_tx.send(if durable {
@@ -449,22 +474,22 @@ impl TermiRustApp {
         }) else {
             return;
         };
-        self.saved.update_app_attached_session(
+        self.mutate_session(
             session_id,
-            if self
-                .pane(pane_id)
-                .and_then(|pane| pane.app_attached.as_ref())
-                .is_some_and(|session| {
-                    session.route == termirust_domain::SessionLaunchRoute::DurableHost
-                })
-            {
-                HostedSessionState::Live
-            } else {
-                HostedSessionState::RunningAppAttached
-            },
-            current_unix_millis(),
+            termirust_domain::SessionMutation::SetLifecycle(
+                if self
+                    .pane(pane_id)
+                    .and_then(|pane| pane.app_attached.as_ref())
+                    .is_some_and(|session| {
+                        session.route == termirust_domain::SessionLaunchRoute::DurableHost
+                    })
+                {
+                    HostedSessionState::Live
+                } else {
+                    HostedSessionState::RunningAppAttached
+                },
+            ),
         );
-        let _ = save_saved_state(&self.saved);
 
         if let Some(input) = initial_input {
             if self.saved.settings.confirm_multiline_paste
@@ -545,9 +570,10 @@ impl TermiRustApp {
         } else {
             HostedSessionState::Exited
         };
-        self.saved
-            .update_app_attached_session(session_id, state, current_unix_millis());
-        let _ = save_saved_state(&self.saved);
+        self.mutate_session(
+            session_id,
+            termirust_domain::SessionMutation::SetLifecycle(state),
+        );
         if let Some(sheet) = self.new_session.as_mut()
             && sheet.hosted_session_id == Some(session_id)
         {
@@ -805,6 +831,7 @@ fn session_phase_label(state: HostedSessionState) -> String {
         HostedSessionState::Replaying => localization::new_session_phase_replaying(),
         HostedSessionState::Live => localization::new_session_phase_live(),
         HostedSessionState::RecordingPaused => localization::new_session_phase_recording_paused(),
+        HostedSessionState::Stopping => localization::new_session_status_stopping(),
         HostedSessionState::Offline => localization::new_session_phase_offline(),
         HostedSessionState::Orphaned => localization::new_session_phase_orphaned(),
         HostedSessionState::Gap => localization::new_session_phase_gap(),

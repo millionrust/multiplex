@@ -26,6 +26,9 @@ pub use project::{
     ProjectService, ProjectStatus, ProjectSummary,
 };
 pub use session::{
-    HostedSessionState, LaunchResolutionError, MAX_PATH_SEARCH_DIRECTORIES, ResolvedLaunch,
-    SessionLaunchRoute, SessionOrigin, resolve_launch,
+    ActivityState, HostedSession, HostedSessionState, LaunchResolutionError,
+    MAX_AUTOMATIC_TITLE_GRAPHEMES, MAX_PATH_SEARCH_DIRECTORIES, MAX_SESSION_TITLE_SCALARS,
+    MAX_SESSIONS_PER_PROJECT, ResolvedLaunch, SessionLaunchRoute, SessionMutation, SessionOrigin,
+    SessionStateError, SessionTitle, TitleSource, automatic_title_from_explicit_input,
+    reduce_session, resolve_launch,
 };

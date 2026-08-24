@@ -11,6 +11,7 @@ mod palette;
 mod presets;
 mod project;
 mod projects;
+mod session_library;
 mod session_sidebar;
 mod sftp;
 mod types;
@@ -35,6 +36,7 @@ use palette::{
 use presets::PresetLibraryState;
 use project::CanvasProjectPanelState;
 use projects::ProjectLibraryState;
+use session_library::SessionLibraryState;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -907,7 +909,10 @@ pub struct TermiRustApp {
     project_library: ProjectLibraryState,
     project_label_input: Entity<InputState>,
     group_name_input: Entity<InputState>,
+    session_title_input: Entity<InputState>,
+    session_remove_confirm_input: Entity<InputState>,
     session_sidebar: session_sidebar::SessionSidebarState,
+    session_library: SessionLibraryState,
     project_list_focus: FocusHandle,
     preset_library: PresetLibraryState,
     preset_label_input: Entity<InputState>,
@@ -1078,10 +1083,18 @@ impl TermiRustApp {
             })
             .unwrap_or(AuthMode::Password);
         let project_library = ProjectLibraryState::open_default();
+        let session_library = SessionLibraryState::open_default(&mut saved);
         let project_label_input = cx
             .new(|cx| InputState::new(window, cx).placeholder(localization::project_label_field()));
         let group_name_input =
             cx.new(|cx| InputState::new(window, cx).placeholder(localization::group_name_field()));
+        let session_title_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(localization::session_library_title_field())
+        });
+        let session_remove_confirm_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(localization::session_library_remove_confirm_placeholder())
+        });
         let project_list_focus = cx.focus_handle().tab_stop(true);
         let preset_library = PresetLibraryState::open_default();
         let preset_label_input = cx
@@ -1131,7 +1144,10 @@ impl TermiRustApp {
             project_library,
             project_label_input,
             group_name_input,
+            session_title_input,
+            session_remove_confirm_input,
             session_sidebar: session_sidebar::SessionSidebarState::default(),
+            session_library,
             project_list_focus,
             preset_library,
             preset_label_input,
@@ -5407,12 +5423,12 @@ impl TermiRustApp {
             }
             pane.terminal_focus.focus(window);
         }
-        self.saved.update_app_attached_session(
+        self.mutate_session(
             session_id,
-            termirust_domain::HostedSessionState::Attaching,
-            crate::ui::util::current_unix_millis(),
+            termirust_domain::SessionMutation::SetLifecycle(
+                termirust_domain::HostedSessionState::Attaching,
+            ),
         );
-        let _ = save_saved_state(&self.saved);
         self.status_message = "Retrying durable Host attachment...".to_string();
         self.error_message.clear();
         cx.notify();
@@ -5969,12 +5985,12 @@ impl TermiRustApp {
                     .then_some(session.hosted_session_id)
             })
         }) {
-            self.saved.update_app_attached_session(
+            self.mutate_session(
                 hosted_session_id,
-                termirust_domain::HostedSessionState::Exited,
-                current_unix_millis(),
+                termirust_domain::SessionMutation::SetLifecycle(
+                    termirust_domain::HostedSessionState::Exited,
+                ),
             );
-            let _ = save_saved_state(&self.saved);
         }
         if let Some(pane) = self.pane_mut(pane_id) {
             pane.user_closed = true;
@@ -6045,13 +6061,13 @@ impl TermiRustApp {
             .collect::<Vec<_>>();
 
         for hosted_session_id in hosted_session_ids {
-            self.saved.update_app_attached_session(
+            self.mutate_session(
                 hosted_session_id,
-                termirust_domain::HostedSessionState::Exited,
-                current_unix_millis(),
+                termirust_domain::SessionMutation::SetLifecycle(
+                    termirust_domain::HostedSessionState::Exited,
+                ),
             );
         }
-        let _ = save_saved_state(&self.saved);
 
         for pane_id in &pane_ids {
             if let Some(pane) = self.pane(*pane_id) {
@@ -6229,14 +6245,32 @@ impl TermiRustApp {
                             .iter_mut()
                             .find(|saved| saved.id == hosted_session_id)
                         {
-                            saved.state = state;
-                            saved.updated_at = current_unix_millis();
                             if let Some(host) = saved.durable_host.as_mut() {
                                 host.last_sequence = host.last_sequence.max(last_sequence);
                                 host.durable_sequence = host.durable_sequence.max(durable_sequence);
                             }
                         }
-                        let _ = save_saved_state(&self.saved);
+                        let reconciled = self.session_library.reconcile(
+                            &mut self.saved,
+                            hosted_session_id,
+                            state,
+                            termirust_domain::OutputSequence::new(last_sequence),
+                        );
+                        match reconciled {
+                            Ok(_) => {
+                                if let Err(error) = save_saved_state(&self.saved) {
+                                    eprintln!(
+                                        "[session-library] compatibility projection save failed: {error:#}"
+                                    );
+                                }
+                                self.complete_pending_session_archive(hosted_session_id, state);
+                            }
+                            Err(error) => {
+                                eprintln!("[session-library] reconcile failed: {error}");
+                                self.error_message =
+                                    localization::session_library_operation_failed();
+                            }
+                        }
                     }
                 }
                 SshEvent::Error {
@@ -20061,20 +20095,30 @@ sleep 1
                         project_id: project.id,
                         preset_id: termirust_domain::PresetId::new(),
                     };
-                    app.saved
-                        .upsert_app_attached_session(crate::models::SavedAppAttachedSession {
-                            id: session_id,
-                            route: termirust_domain::SessionLaunchRoute::LegacyAppAttached,
-                            origin,
-                            state: termirust_domain::HostedSessionState::RunningAppAttached,
-                            project_label: localization::projects_nav_label(),
-                            preset_label: localization::new_session_title(),
-                            durable_host: None,
-                            group_id: None,
-                            position: termirust_domain::PositionKey::FIRST,
-                            started_at: 1,
-                            updated_at: 1,
-                        });
+                    let record = crate::models::SavedAppAttachedSession {
+                        id: session_id,
+                        route: termirust_domain::SessionLaunchRoute::LegacyAppAttached,
+                        origin,
+                        state: termirust_domain::HostedSessionState::RunningAppAttached,
+                        project_label: localization::projects_nav_label(),
+                        preset_label: localization::new_session_title(),
+                        title: localization::new_session_title(),
+                        title_source: termirust_domain::TitleSource::Default,
+                        activity: termirust_domain::ActivityState::Unknown,
+                        pinned: false,
+                        read_through_sequence: 0,
+                        unread_sequence: None,
+                        archived_at: None,
+                        revision: termirust_domain::Revision::ZERO,
+                        durable_host: None,
+                        group_id: None,
+                        position: termirust_domain::PositionKey::FIRST,
+                        started_at: 1,
+                        updated_at: 1,
+                    };
+                    app.session_library
+                        .create_from_saved(&mut app.saved, record)
+                        .expect("session metadata should be created");
                     crate::storage::save_saved_state(&app.saved)
                         .expect("session placement should persist");
                     app.activate_library_section(NavSection::Projects, window, cx);

@@ -14,10 +14,12 @@ use gpui_component::{
 };
 use termirust_domain::{
     Group, GroupDestination, GroupError, GroupId, GroupInverseCommand, HostedSessionId,
-    HostedSessionState, ProjectError, ProjectId,
+    HostedSessionState, OutputSequence, ProjectError, ProjectId, SessionMutation,
+    SessionStateError, SessionTitle,
 };
-use termirust_store::StoreError;
+use termirust_store::{SessionRemovalPlan, StoreError};
 
+use super::session_library::{SessionLibraryFilter, SessionLibraryRecovery, SessionLibraryView};
 use super::{TermiRustApp, theme};
 use crate::models::{SavedAppAttachedSession, SavedSessionPlacement};
 use crate::storage::save_saved_state;
@@ -75,7 +77,27 @@ impl TermiRustApp {
             .saved
             .repair_app_attached_group_references(&valid_groups);
         if !repaired.is_empty() {
-            let _ = save_saved_state(&self.saved);
+            let projects = repaired
+                .iter()
+                .filter_map(|id| {
+                    self.saved
+                        .app_attached_sessions
+                        .iter()
+                        .find(|session| session.id == *id)
+                        .map(|session| session.origin.project_id)
+                })
+                .collect::<std::collections::HashSet<_>>();
+            for project_id in projects {
+                let placements = self.saved.app_attached_session_placements(project_id);
+                if let Err(error) = self
+                    .session_library
+                    .apply_placements(&mut self.saved, &placements)
+                {
+                    self.handle_session_library_error(error);
+                    return;
+                }
+            }
+            self.persist_session_projection();
             self.status_message = localization::group_repair_status(repaired.len());
         }
     }
@@ -225,7 +247,16 @@ impl TermiRustApp {
                 let placements =
                     self.saved
                         .relocate_group_sessions(group.project_id, group.id, destination);
-                let _ = save_saved_state(&self.saved);
+                let updated = self.saved.app_attached_session_placements(group.project_id);
+                if let Err(error) = self
+                    .session_library
+                    .apply_placements(&mut self.saved, &updated)
+                {
+                    self.handle_session_library_error(error);
+                    cx.notify();
+                    return;
+                }
+                self.persist_session_projection();
                 self.session_sidebar.pending_removal = None;
                 self.record_group_inverse(mutation.inverse, placements);
                 self.finish_group_mutation();
@@ -245,6 +276,274 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn set_session_library_view(&mut self, view: SessionLibraryView, cx: &mut Context<Self>) {
+        self.session_library.view = view;
+        self.session_library.pending_stop_archive_review = None;
+        self.session_library.pending_removal = None;
+        self.session_library.renaming = None;
+        cx.notify();
+    }
+
+    fn set_session_library_filter(&mut self, filter: SessionLibraryFilter, cx: &mut Context<Self>) {
+        self.session_library.filter = filter;
+        cx.notify();
+    }
+
+    fn begin_session_rename(
+        &mut self,
+        id: HostedSessionId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(title) = self
+            .session_library
+            .session(id)
+            .map(|session| session.title.as_str().to_string())
+        else {
+            return;
+        };
+        Self::set_input_value(&self.session_title_input, title, window, cx);
+        self.session_library.renaming = Some(id);
+        self.session_library.pending_removal = None;
+        self.session_title_input
+            .update(cx, |input, cx| input.focus(window, cx));
+        cx.notify();
+    }
+
+    fn cancel_session_rename(&mut self, cx: &mut Context<Self>) {
+        self.session_library.renaming = None;
+        cx.notify();
+    }
+
+    fn save_session_rename(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self.session_library.renaming else {
+            return;
+        };
+        let value = self.session_title_input.read(cx).value().to_string();
+        let Ok(title) = SessionTitle::new(&value) else {
+            self.error_message = localization::session_library_operation_failed();
+            cx.notify();
+            return;
+        };
+        if self.mutate_session(id, SessionMutation::Rename(title)) {
+            self.session_library.renaming = None;
+        }
+        cx.notify();
+    }
+
+    pub(super) fn mutate_session(
+        &mut self,
+        id: HostedSessionId,
+        mutation: SessionMutation,
+    ) -> bool {
+        match self.session_library.mutate(&mut self.saved, id, mutation) {
+            Ok(_) => {
+                self.persist_session_projection();
+                self.status_message = localization::session_library_operation_complete();
+                self.error_message.clear();
+                true
+            }
+            Err(error) => {
+                self.handle_session_library_error(error);
+                false
+            }
+        }
+    }
+
+    fn persist_session_projection(&self) {
+        if let Err(error) = save_saved_state(&self.saved) {
+            eprintln!("[session-library] compatibility projection save failed: {error:#}");
+        }
+    }
+
+    fn handle_session_library_error(&mut self, error: StoreError) {
+        let stale = matches!(
+            error,
+            StoreError::SessionDomain(SessionStateError::StaleRevision { .. })
+        );
+        if stale {
+            let _ = self.session_library.reload();
+        }
+        eprintln!("[session-library] operation failed: {error}");
+        self.error_message = localization::session_library_operation_failed();
+    }
+
+    fn toggle_session_pin(&mut self, id: HostedSessionId, cx: &mut Context<Self>) {
+        let Some(pinned) = self
+            .session_library
+            .session(id)
+            .map(|session| session.pinned)
+        else {
+            return;
+        };
+        self.mutate_session(id, SessionMutation::SetPinned(!pinned));
+        cx.notify();
+    }
+
+    fn toggle_session_read(&mut self, id: HostedSessionId, cx: &mut Context<Self>) {
+        let Some(session) = self.session_library.session(id).cloned() else {
+            return;
+        };
+        let mutation = if session.unread() {
+            SessionMutation::MarkRead {
+                through: session.last_output_sequence,
+            }
+        } else if session.last_output_sequence > OutputSequence::ZERO {
+            SessionMutation::MarkUnread {
+                at: session.last_output_sequence,
+            }
+        } else {
+            return;
+        };
+        self.mutate_session(id, mutation);
+        cx.notify();
+    }
+
+    fn archive_or_stop_session(&mut self, id: HostedSessionId, cx: &mut Context<Self>) {
+        let Some(session) = self.session_library.session(id).cloned() else {
+            return;
+        };
+        if session.lifecycle.can_stop() {
+            self.session_library.pending_stop_archive_review = Some(id);
+        } else if session.lifecycle.is_exited() {
+            self.mutate_session(
+                id,
+                SessionMutation::Archive {
+                    at: crate::ui::util::current_unix_millis(),
+                },
+            );
+        }
+        cx.notify();
+    }
+
+    fn session_pane_id(&self, id: HostedSessionId) -> Option<u64> {
+        self.panes.iter().find_map(|pane| {
+            pane.app_attached
+                .as_ref()
+                .and_then(|attached| (attached.hosted_session_id == id).then_some(pane.id))
+        })
+    }
+
+    fn stop_session_only(&mut self, id: HostedSessionId, cx: &mut Context<Self>) {
+        let Some(pane_id) = self.session_pane_id(id) else {
+            self.error_message = localization::session_library_operation_failed();
+            cx.notify();
+            return;
+        };
+        self.stop_app_attached_session(pane_id, cx);
+    }
+
+    fn confirm_stop_and_archive(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self.session_library.pending_stop_archive_review.take() else {
+            return;
+        };
+        let Some(pane_id) = self.session_pane_id(id) else {
+            self.error_message = localization::session_library_operation_failed();
+            cx.notify();
+            return;
+        };
+        self.session_library.pending_archive_after_stop = Some(id);
+        self.stop_app_attached_session(pane_id, cx);
+        if self
+            .session_library
+            .session(id)
+            .is_some_and(|value| value.lifecycle == HostedSessionState::Stopping)
+        {
+            self.status_message = localization::session_library_stop_archive_pending();
+        } else {
+            self.session_library.pending_archive_after_stop = None;
+        }
+        cx.notify();
+    }
+
+    fn cancel_stop_and_archive(&mut self, cx: &mut Context<Self>) {
+        self.session_library.pending_stop_archive_review = None;
+        cx.notify();
+    }
+
+    pub(super) fn complete_pending_session_archive(
+        &mut self,
+        id: HostedSessionId,
+        lifecycle: HostedSessionState,
+    ) {
+        if self.session_library.pending_archive_after_stop != Some(id) {
+            return;
+        }
+        if lifecycle == HostedSessionState::Exited {
+            self.session_library.pending_archive_after_stop = None;
+            self.mutate_session(
+                id,
+                SessionMutation::Archive {
+                    at: crate::ui::util::current_unix_millis(),
+                },
+            );
+        } else if matches!(
+            lifecycle,
+            HostedSessionState::Failed
+                | HostedSessionState::Offline
+                | HostedSessionState::Orphaned
+                | HostedSessionState::Gap
+                | HostedSessionState::PermissionDenied
+                | HostedSessionState::Incompatible
+        ) {
+            self.session_library.pending_archive_after_stop = None;
+            self.error_message = localization::session_library_operation_failed();
+        }
+    }
+
+    fn restore_session(&mut self, id: HostedSessionId, cx: &mut Context<Self>) {
+        self.mutate_session(id, SessionMutation::Restore);
+        cx.notify();
+    }
+
+    fn begin_session_removal(
+        &mut self,
+        id: HostedSessionId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        Self::set_input_value(
+            &self.session_remove_confirm_input,
+            String::new(),
+            window,
+            cx,
+        );
+        match self.session_library.prepare_removal(id) {
+            Ok(()) => {
+                self.session_library.renaming = None;
+                self.error_message.clear();
+            }
+            Err(error) => self.handle_session_library_error(error),
+        }
+        cx.notify();
+    }
+
+    fn cancel_session_removal(&mut self, cx: &mut Context<Self>) {
+        self.session_library.pending_removal = None;
+        cx.notify();
+    }
+
+    fn confirm_session_removal(&mut self, cx: &mut Context<Self>) {
+        let confirmation = self
+            .session_remove_confirm_input
+            .read(cx)
+            .value()
+            .to_string();
+        match self
+            .session_library
+            .confirm_removal(&mut self.saved, &confirmation)
+        {
+            Ok(_) => {
+                self.persist_session_projection();
+                self.session_sidebar.selected_session = None;
+                self.status_message = localization::session_library_operation_complete();
+                self.error_message.clear();
+            }
+            Err(error) => self.handle_session_library_error(error),
+        }
+        cx.notify();
+    }
+
     fn move_session_to(
         &mut self,
         id: HostedSessionId,
@@ -252,15 +551,37 @@ impl TermiRustApp {
         before: Option<HostedSessionId>,
         cx: &mut Context<Self>,
     ) {
-        let Some(inverse) = self
+        let Some(project_id) = self
             .saved
-            .move_app_attached_session(id, destination, before)
+            .app_attached_sessions
+            .iter()
+            .find(|session| session.id == id)
+            .map(|session| session.origin.project_id)
         else {
             self.error_message = localization::group_error_generic();
             cx.notify();
             return;
         };
-        let _ = save_saved_state(&self.saved);
+        let inverse = self.saved.app_attached_session_placements(project_id);
+        let mut candidate = self.saved.clone();
+        if candidate
+            .move_app_attached_session(id, destination, before)
+            .is_none()
+        {
+            self.error_message = localization::group_error_generic();
+            cx.notify();
+            return;
+        }
+        let placements = candidate.app_attached_session_placements(project_id);
+        if let Err(error) = self
+            .session_library
+            .apply_placements(&mut self.saved, &placements)
+        {
+            self.handle_session_library_error(error);
+            cx.notify();
+            return;
+        }
+        self.persist_session_projection();
         self.session_sidebar.pending_undo = Some(PendingOrganizationUndo {
             inverse: OrganizationInverse::Session {
                 placements: inverse,
@@ -314,11 +635,17 @@ impl TermiRustApp {
         }
         match pending.inverse {
             OrganizationInverse::Session { placements } => {
-                self.saved
-                    .restore_app_attached_session_placements(&placements);
-                let _ = save_saved_state(&self.saved);
-                self.status_message = localization::group_organization_updated();
-                self.error_message.clear();
+                match self
+                    .session_library
+                    .apply_placements(&mut self.saved, &placements)
+                {
+                    Ok(()) => {
+                        self.persist_session_projection();
+                        self.status_message = localization::group_organization_updated();
+                        self.error_message.clear();
+                    }
+                    Err(error) => self.handle_session_library_error(error),
+                }
             }
             OrganizationInverse::Group {
                 command,
@@ -382,8 +709,15 @@ impl TermiRustApp {
                 if !placements.is_empty() {
                     self.saved
                         .restore_app_attached_session_placements(&placements);
+                    if let Err(error) = self
+                        .session_library
+                        .apply_placements(&mut self.saved, &placements)
+                    {
+                        self.handle_session_library_error(error);
+                        return;
+                    }
                 }
-                let _ = save_saved_state(&self.saved);
+                self.persist_session_projection();
                 self.finish_group_mutation();
                 self.session_sidebar.pending_undo = None;
             }
@@ -475,17 +809,17 @@ impl TermiRustApp {
         project_id: ProjectId,
         group_id: Option<GroupId>,
     ) -> Vec<SavedAppAttachedSession> {
-        let mut sessions = self
-            .saved
-            .app_attached_sessions
-            .iter()
-            .filter(|session| {
-                session.origin.project_id == project_id && session.group_id == group_id
+        self.session_library
+            .visible_sessions(project_id, group_id)
+            .into_iter()
+            .filter_map(|metadata| {
+                self.saved
+                    .app_attached_sessions
+                    .iter()
+                    .find(|record| record.id == metadata.id)
+                    .cloned()
             })
-            .cloned()
-            .collect::<Vec<_>>();
-        sessions.sort_by_key(|session| (session.position, session.id));
-        sessions
+            .collect()
     }
 
     fn group_session_count(&self, id: GroupId) -> usize {
@@ -514,13 +848,15 @@ impl TermiRustApp {
                 .child(localization::session_sidebar_select_project())
                 .into_any_element();
         };
-        let session_count = self
-            .saved
-            .app_attached_sessions
-            .iter()
-            .filter(|session| session.origin.project_id == project_id)
-            .count();
         let groups = self.project_groups(project_id);
+        let session_count = self.sessions_in_destination(project_id, None).len()
+            + groups
+                .iter()
+                .map(|group| {
+                    self.sessions_in_destination(project_id, Some(group.id))
+                        .len()
+                })
+                .sum::<usize>();
 
         v_flex()
             .id("session-sidebar")
@@ -569,6 +905,89 @@ impl TermiRustApp {
                             })),
                     ),
             )
+            .child(
+                v_flex()
+                    .px(px(theme::SPACE_5))
+                    .py(px(theme::SPACE_3))
+                    .gap(px(theme::SPACE_2))
+                    .border_b_1()
+                    .border_color(theme::border())
+                    .child(
+                        h_flex()
+                            .gap(px(theme::SPACE_2))
+                            .child(
+                                Button::new("session-view-active")
+                                    .debug_selector(|| "session-view-active".to_string())
+                                    .small()
+                                    .selected(
+                                        self.session_library.view == SessionLibraryView::Active,
+                                    )
+                                    .label(localization::session_library_active_view())
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.set_session_library_view(
+                                            SessionLibraryView::Active,
+                                            cx,
+                                        );
+                                    })),
+                            )
+                            .child(
+                                Button::new("session-view-archive")
+                                    .debug_selector(|| "session-view-archive".to_string())
+                                    .small()
+                                    .selected(
+                                        self.session_library.view == SessionLibraryView::Archive,
+                                    )
+                                    .label(localization::session_library_archive_view())
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.set_session_library_view(
+                                            SessionLibraryView::Archive,
+                                            cx,
+                                        );
+                                    })),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .flex_wrap()
+                            .gap(px(theme::SPACE_2))
+                            .child(self.render_session_filter_button(
+                                SessionLibraryFilter::All,
+                                "session-filter-all",
+                                localization::session_library_filter_all(),
+                                cx,
+                            ))
+                            .child(self.render_session_filter_button(
+                                SessionLibraryFilter::Unread,
+                                "session-filter-unread",
+                                localization::session_library_filter_unread(),
+                                cx,
+                            ))
+                            .child(self.render_session_filter_button(
+                                SessionLibraryFilter::Pinned,
+                                "session-filter-pinned",
+                                localization::session_library_filter_pinned(),
+                                cx,
+                            )),
+                    ),
+            )
+            .when_some(self.session_library.recovery_state(), |this, recovery| {
+                this.child(
+                    div()
+                        .mx(px(theme::SPACE_4))
+                        .mt(px(theme::SPACE_3))
+                        .p(px(theme::SPACE_3))
+                        .border_1()
+                        .border_color(theme::warning())
+                        .rounded(px(theme::CARD_RADIUS))
+                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                        .text_color(theme::text_main())
+                        .child(session_recovery_label(recovery)),
+                )
+            })
+            .when_some(
+                self.session_library.pending_stop_archive_review,
+                |this, id| this.child(self.render_stop_archive_review(id, cx)),
+            )
             .when(self.session_sidebar.pending_undo.is_some(), |this| {
                 this.child(
                     h_flex()
@@ -594,6 +1013,10 @@ impl TermiRustApp {
             .when_some(
                 self.session_sidebar.pending_removal.as_ref(),
                 |this, pending| this.child(self.render_group_removal(pending, cx)),
+            )
+            .when_some(
+                self.session_library.pending_removal.as_ref(),
+                |this, plan| this.child(self.render_session_removal(plan, cx)),
             )
             .child(
                 v_flex()
@@ -627,9 +1050,79 @@ impl TermiRustApp {
                                 .text_center()
                                 .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                 .text_color(theme::text_muted())
-                                .child(localization::session_sidebar_empty()),
+                                .child(
+                                    if self.session_library.filter != SessionLibraryFilter::All {
+                                        localization::session_library_filter_empty()
+                                    } else if self.session_library.view
+                                        == SessionLibraryView::Archive
+                                    {
+                                        localization::session_library_archive_empty()
+                                    } else {
+                                        localization::session_sidebar_empty()
+                                    },
+                                ),
                         )
                     }),
+            )
+            .into_any_element()
+    }
+
+    fn render_session_filter_button(
+        &self,
+        filter: SessionLibraryFilter,
+        id: &'static str,
+        label: String,
+        cx: &Context<Self>,
+    ) -> Button {
+        Button::new(id)
+            .debug_selector(move || id.to_string())
+            .small()
+            .selected(self.session_library.filter == filter)
+            .label(label)
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.set_session_library_filter(filter, cx);
+            }))
+    }
+
+    fn render_stop_archive_review(&self, _id: HostedSessionId, cx: &Context<Self>) -> AnyElement {
+        v_flex()
+            .id("session-stop-archive-review")
+            .debug_selector(|| "session-stop-archive-review".to_string())
+            .mx(px(theme::SPACE_4))
+            .mt(px(theme::SPACE_4))
+            .p(px(theme::SPACE_4))
+            .gap(px(theme::SPACE_3))
+            .border_1()
+            .border_color(theme::warning())
+            .rounded(px(theme::CARD_RADIUS))
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                    .text_color(theme::text_main())
+                    .child(localization::session_library_stop_archive_warning()),
+            )
+            .child(
+                h_flex()
+                    .gap(px(theme::SPACE_2))
+                    .child(
+                        Button::new("session-stop-archive-confirm")
+                            .debug_selector(|| "session-stop-archive-confirm".to_string())
+                            .small()
+                            .danger()
+                            .label(localization::session_library_stop_archive_action())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.confirm_stop_and_archive(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("session-stop-archive-cancel")
+                            .debug_selector(|| "session-stop-archive-cancel".to_string())
+                            .small()
+                            .label(localization::common_cancel())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.cancel_stop_and_archive(cx);
+                            })),
+                    ),
             )
             .into_any_element()
     }
@@ -761,6 +1254,87 @@ impl TermiRustApp {
                             .label(localization::common_cancel())
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.cancel_group_removal(cx);
+                            })),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    fn render_session_removal(&self, plan: &SessionRemovalPlan, cx: &Context<Self>) -> AnyElement {
+        let manifest = plan.manifest;
+        let confirmation_matches = !manifest.requires_title_confirmation()
+            || self.session_remove_confirm_input.read(cx).value().as_ref() == plan.title.as_str();
+        v_flex()
+            .id("session-remove-review")
+            .debug_selector(|| "session-remove-review".to_string())
+            .mx(px(theme::SPACE_4))
+            .mt(px(theme::SPACE_4))
+            .p(px(theme::SPACE_4))
+            .gap(px(theme::SPACE_3))
+            .border_1()
+            .border_color(theme::warning())
+            .rounded(px(theme::CARD_RADIUS))
+            .child(
+                div()
+                    .font_semibold()
+                    .text_color(theme::text_main())
+                    .child(localization::session_library_remove_title()),
+            )
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                    .text_color(theme::text_muted())
+                    .child(localization::session_library_remove_warning()),
+            )
+            .child(
+                v_flex()
+                    .gap(px(theme::SPACE_2))
+                    .child(removal_manifest_row(
+                        localization::session_library_remove_metadata(),
+                        manifest.metadata_bytes,
+                    ))
+                    .child(removal_manifest_row(
+                        localization::session_library_remove_journal(),
+                        manifest.journal_bytes,
+                    ))
+                    .child(removal_manifest_row(
+                        localization::session_library_remove_transcript(),
+                        manifest.transcript_bytes,
+                    ))
+                    .child(removal_manifest_row(
+                        localization::session_library_remove_artifacts(),
+                        manifest.artifact_bytes,
+                    ))
+                    .child(removal_manifest_row(
+                        localization::session_library_remove_files(),
+                        manifest.file_count as u64,
+                    )),
+            )
+            .when(manifest.requires_title_confirmation(), |this| {
+                this.child(Input::new(&self.session_remove_confirm_input))
+            })
+            .child(
+                h_flex()
+                    .gap(px(theme::SPACE_2))
+                    .child(
+                        Button::new("session-remove-confirm")
+                            .debug_selector(|| "session-remove-confirm".to_string())
+                            .small()
+                            .danger()
+                            .icon(IconName::Delete)
+                            .label(localization::session_library_confirm_remove_action())
+                            .disabled(!confirmation_matches)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.confirm_session_removal(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("session-remove-cancel")
+                            .debug_selector(|| "session-remove-cancel".to_string())
+                            .small()
+                            .label(localization::common_cancel())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.cancel_session_removal(cx);
                             })),
                     ),
             )
@@ -930,10 +1504,14 @@ impl TermiRustApp {
         cx: &Context<Self>,
     ) -> AnyElement {
         let id = session.id;
+        let Some(metadata) = self.session_library.session(id) else {
+            return div().into_any_element();
+        };
         let key = session_key(id);
         let selected = self.session_sidebar.selected_session == Some(id);
         let groups = self.project_groups(session.origin.project_id);
         let current_group = session.group_id;
+        let renaming = self.session_library.renaming == Some(id);
         v_flex()
             .id(("project-session-row", key))
             .debug_selector(|| "project-session-row".to_string())
@@ -971,13 +1549,30 @@ impl TermiRustApp {
                                             .font_medium()
                                             .text_color(theme::text_main())
                                             .truncate()
-                                            .child(session.preset_label.clone()),
+                                            .child(metadata.title.as_str().to_string()),
                                     )
                                     .child(
-                                        div()
+                                        h_flex()
+                                            .flex_wrap()
+                                            .gap(px(theme::SPACE_2))
                                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                                             .text_color(theme::text_muted())
-                                            .child(session_state_label(session.state)),
+                                            .child(session_state_label(metadata.lifecycle))
+                                            .when(metadata.pinned, |this| {
+                                                this.child(
+                                                    div()
+                                                        .text_color(theme::accent())
+                                                        .child(localization::session_library_pinned_badge()),
+                                                )
+                                            })
+                                            .when(metadata.unread(), |this| {
+                                                this.child(
+                                                    div()
+                                                        .font_semibold()
+                                                        .text_color(theme::warning())
+                                                        .child(localization::session_library_unread_badge()),
+                                                )
+                                            }),
                                     ),
                             ),
                     )
@@ -986,7 +1581,7 @@ impl TermiRustApp {
                             .debug_selector(|| "session-move".to_string())
                             .small()
                             .selected(selected)
-                            .label(localization::group_move_session_action())
+                            .label(localization::session_library_inspector_title())
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.select_session_for_move(id, cx);
                             })),
@@ -994,80 +1589,315 @@ impl TermiRustApp {
             )
             .when(selected, |this| {
                 this.child(
-                    h_flex()
-                        .flex_wrap()
-                        .gap(px(theme::SPACE_2))
-                        .when(
-                            session.route == termirust_domain::SessionLaunchRoute::DurableHost,
-                            |this| {
-                                this.child(
-                                    Button::new(("session-open", key))
-                                        .debug_selector(|| "session-open".to_string())
+                    v_flex()
+                        .gap(px(theme::SPACE_3))
+                        .pt(px(theme::SPACE_2))
+                        .border_t_1()
+                        .border_color(theme::soft_border())
+                        .when(renaming, |this| {
+                            this.child(
+                                v_flex()
+                                    .gap(px(theme::SPACE_2))
+                                    .child(Input::new(&self.session_title_input))
+                                    .child(
+                                        h_flex()
+                                            .gap(px(theme::SPACE_2))
+                                            .child(
+                                                Button::new(("session-rename-save", key))
+                                                    .debug_selector(|| "session-rename-save".to_string())
+                                                    .small()
+                                                    .primary()
+                                                    .label(localization::common_save())
+                                                    .on_click(cx.listener(|this, _, _, cx| {
+                                                        this.save_session_rename(cx);
+                                                    })),
+                                            )
+                                            .child(
+                                                Button::new(("session-rename-cancel", key))
+                                                    .debug_selector(|| "session-rename-cancel".to_string())
+                                                    .small()
+                                                    .label(localization::common_cancel())
+                                                    .on_click(cx.listener(|this, _, _, cx| {
+                                                        this.cancel_session_rename(cx);
+                                                    })),
+                                            ),
+                                    ),
+                            )
+                        })
+                        .child(
+                            v_flex()
+                                .gap(px(theme::SPACE_2))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                .text_color(theme::text_muted())
+                                .child(inspector_row(
+                                    localization::session_library_state_label(),
+                                    session_state_label(metadata.lifecycle),
+                                ))
+                                .child(inspector_row(
+                                    localization::session_library_title_source_label(),
+                                    title_source_label(metadata.title_source),
+                                ))
+                                .child(inspector_row(
+                                    localization::session_library_activity_label(),
+                                    activity_label(metadata.activity),
+                                ))
+                                .child(inspector_row(
+                                    localization::session_library_position_label(),
+                                    format!("{} / {}", index + 1, count),
+                                )),
+                        )
+                        .child(
+                            h_flex()
+                                .flex_wrap()
+                                .gap(px(theme::SPACE_2))
+                                .when(
+                                    session.route
+                                        == termirust_domain::SessionLaunchRoute::DurableHost,
+                                    |this| {
+                                        this.child(
+                                            Button::new(("session-open", key))
+                                                .debug_selector(|| "session-open".to_string())
+                                                .small()
+                                                .icon(IconName::SquareTerminal)
+                                                .label(localization::common_open())
+                                                .on_click(cx.listener(move |this, _, window, cx| {
+                                                    this.reattach_saved_session(id, window, cx);
+                                                })),
+                                        )
+                                    },
+                                )
+                                .child(
+                                    Button::new(("session-rename", key))
+                                        .debug_selector(|| "session-rename".to_string())
                                         .small()
-                                        .icon(IconName::SquareTerminal)
-                                        .label(localization::common_open())
+                                        .label(localization::session_library_rename_action())
                                         .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.reattach_saved_session(id, window, cx);
+                                            this.begin_session_rename(id, window, cx);
                                         })),
                                 )
-                            },
+                                .child(
+                                    Button::new(("session-pin", key))
+                                        .debug_selector(|| "session-pin".to_string())
+                                        .small()
+                                        .icon(IconName::Star)
+                                        .selected(metadata.pinned)
+                                        .label(if metadata.pinned {
+                                            localization::session_library_unpin_action()
+                                        } else {
+                                            localization::session_library_pin_action()
+                                        })
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.toggle_session_pin(id, cx);
+                                        })),
+                                )
+                                .child(
+                                    Button::new(("session-read", key))
+                                        .debug_selector(|| "session-read".to_string())
+                                        .small()
+                                        .disabled(
+                                            !metadata.unread()
+                                                && metadata.last_output_sequence
+                                                    == OutputSequence::ZERO,
+                                        )
+                                        .label(if metadata.unread() {
+                                            localization::session_library_mark_read_action()
+                                        } else {
+                                            localization::session_library_mark_unread_action()
+                                        })
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.toggle_session_read(id, cx);
+                                        })),
+                                ),
                         )
                         .child(
-                            Button::new(("session-up", key))
-                                .debug_selector(|| "session-up".to_string())
-                                .small()
-                                .icon(IconName::ChevronUp)
-                                .label(localization::group_move_up_action())
-                                .disabled(index == 0)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.move_session_by(id, -1, cx);
-                                })),
+                            h_flex()
+                                .flex_wrap()
+                                .gap(px(theme::SPACE_2))
+                                .when(metadata.lifecycle.can_stop(), |this| {
+                                    this.child(
+                                        Button::new(("session-stop", key))
+                                            .debug_selector(|| "session-stop".to_string())
+                                            .small()
+                                            .danger()
+                                            .label(localization::new_session_stop_action())
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.stop_session_only(id, cx);
+                                            })),
+                                    )
+                                })
+                                .when(metadata.archived_at.is_none(), |this| {
+                                    this.child(
+                                        Button::new(("session-archive", key))
+                                            .debug_selector(|| "session-archive".to_string())
+                                            .small()
+                                            .disabled(
+                                                !metadata.lifecycle.can_stop()
+                                                    && !metadata.lifecycle.is_exited(),
+                                            )
+                                            .label(if metadata.lifecycle.can_stop() {
+                                                localization::session_library_stop_archive_action()
+                                            } else {
+                                                localization::session_library_archive_action()
+                                            })
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.archive_or_stop_session(id, cx);
+                                            })),
+                                    )
+                                })
+                                .when(metadata.archived_at.is_some(), |this| {
+                                    this.child(
+                                        Button::new(("session-restore", key))
+                                            .debug_selector(|| "session-restore".to_string())
+                                            .small()
+                                            .label(localization::session_library_restore_action())
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.restore_session(id, cx);
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new(("session-resume", key))
+                                            .debug_selector(|| "session-resume".to_string())
+                                            .small()
+                                            .disabled(true)
+                                            .label(localization::session_library_resume_action()),
+                                    )
+                                    .child(
+                                        Button::new(("session-remove", key))
+                                            .debug_selector(|| "session-remove".to_string())
+                                            .small()
+                                            .danger()
+                                            .icon(IconName::Delete)
+                                            .disabled(!metadata.can_remove())
+                                            .label(localization::session_library_remove_action())
+                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                                this.begin_session_removal(id, window, cx);
+                                            })),
+                                    )
+                                })
+                                .when(metadata.archived_at.is_some(), |this| {
+                                    this.child(
+                                        div()
+                                            .w_full()
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                            .text_color(theme::text_muted())
+                                            .child(localization::session_library_resume_unavailable()),
+                                    )
+                                }),
                         )
                         .child(
-                            Button::new(("session-down", key))
-                                .debug_selector(|| "session-down".to_string())
-                                .small()
-                                .icon(IconName::ChevronDown)
-                                .label(localization::group_move_down_action())
-                                .disabled(index + 1 == count)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.move_session_by(id, 1, cx);
+                            h_flex()
+                                .flex_wrap()
+                                .gap(px(theme::SPACE_2))
+                                .child(
+                                    Button::new(("session-up", key))
+                                        .debug_selector(|| "session-up".to_string())
+                                        .small()
+                                        .icon(IconName::ChevronUp)
+                                        .label(localization::group_move_up_action())
+                                        .disabled(index == 0)
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.move_session_by(id, -1, cx);
+                                        })),
+                                )
+                                .child(
+                                    Button::new(("session-down", key))
+                                        .debug_selector(|| "session-down".to_string())
+                                        .small()
+                                        .icon(IconName::ChevronDown)
+                                        .label(localization::group_move_down_action())
+                                        .disabled(index + 1 == count)
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.move_session_by(id, 1, cx);
+                                        })),
+                                )
+                                .child(
+                                    Button::new(("session-to-root", key))
+                                        .debug_selector(|| "session-to-root".to_string())
+                                        .small()
+                                        .selected(current_group.is_none())
+                                        .label(localization::group_move_to_root_action())
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.move_session_to(
+                                                id,
+                                                GroupDestination::ProjectRoot,
+                                                None,
+                                                cx,
+                                            );
+                                        })),
+                                )
+                                .children(groups.into_iter().map(|group| {
+                                    let group_id = group.id;
+                                    Button::new(("session-to-group", group_key(group_id) ^ key))
+                                        .debug_selector(|| "session-to-group".to_string())
+                                        .small()
+                                        .selected(current_group == Some(group_id))
+                                        .label(localization::group_move_to_action(group.name.as_str()))
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.move_session_to(
+                                                id,
+                                                GroupDestination::Group(group_id),
+                                                None,
+                                                cx,
+                                            );
+                                        }))
                                 })),
-                        )
-                        .child(
-                            Button::new(("session-to-root", key))
-                                .debug_selector(|| "session-to-root".to_string())
-                                .small()
-                                .selected(current_group.is_none())
-                                .label(localization::group_move_to_root_action())
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.move_session_to(
-                                        id,
-                                        GroupDestination::ProjectRoot,
-                                        None,
-                                        cx,
-                                    );
-                                })),
-                        )
-                        .children(groups.into_iter().map(|group| {
-                            let group_id = group.id;
-                            Button::new(("session-to-group", group_key(group_id) ^ key))
-                                .debug_selector(|| "session-to-group".to_string())
-                                .small()
-                                .selected(current_group == Some(group_id))
-                                .label(localization::group_move_to_action(group.name.as_str()))
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.move_session_to(
-                                        id,
-                                        GroupDestination::Group(group_id),
-                                        None,
-                                        cx,
-                                    );
-                                }))
-                        })),
+                        ),
                 )
             })
             .into_any_element()
+    }
+}
+
+fn inspector_row(label: String, value: String) -> AnyElement {
+    h_flex()
+        .justify_between()
+        .gap(px(theme::SPACE_3))
+        .child(div().child(label))
+        .child(div().text_color(theme::text_main()).child(value))
+        .into_any_element()
+}
+
+fn removal_manifest_row(label: String, value: u64) -> AnyElement {
+    inspector_row(label, value.to_string())
+}
+
+fn title_source_label(source: termirust_domain::TitleSource) -> String {
+    match source {
+        termirust_domain::TitleSource::Default => {
+            localization::session_library_title_source_default()
+        }
+        termirust_domain::TitleSource::Automatic => {
+            localization::session_library_title_source_automatic()
+        }
+        termirust_domain::TitleSource::Imported => {
+            localization::session_library_title_source_imported()
+        }
+        termirust_domain::TitleSource::Manual => {
+            localization::session_library_title_source_manual()
+        }
+    }
+}
+
+fn activity_label(activity: termirust_domain::ActivityState) -> String {
+    match activity {
+        termirust_domain::ActivityState::Unknown => {
+            localization::session_library_activity_unknown()
+        }
+        termirust_domain::ActivityState::Idle => localization::session_library_activity_idle(),
+    }
+}
+
+fn session_recovery_label(recovery: SessionLibraryRecovery) -> String {
+    match recovery {
+        SessionLibraryRecovery::RecoveredLastGood => {
+            localization::session_library_recovered_last_good()
+        }
+        SessionLibraryRecovery::Corrupt => localization::session_library_store_corrupt(),
+        SessionLibraryRecovery::Newer => localization::session_library_store_newer(),
+        SessionLibraryRecovery::PermissionDenied => {
+            localization::session_library_store_permission()
+        }
+        SessionLibraryRecovery::Unavailable => localization::session_library_store_unavailable(),
     }
 }
 
@@ -1091,6 +1921,7 @@ fn session_state_label(state: HostedSessionState) -> String {
         HostedSessionState::Replaying => localization::new_session_phase_replaying(),
         HostedSessionState::Live => localization::new_session_phase_live(),
         HostedSessionState::RecordingPaused => localization::new_session_phase_recording_paused(),
+        HostedSessionState::Stopping => localization::new_session_status_stopping(),
         HostedSessionState::Offline => localization::new_session_phase_offline(),
         HostedSessionState::Orphaned => localization::new_session_phase_orphaned(),
         HostedSessionState::Gap => localization::new_session_phase_gap(),
@@ -1110,6 +1941,7 @@ fn session_state_color(state: HostedSessionState) -> gpui::Hsla {
         | HostedSessionState::Provisioning
         | HostedSessionState::Attaching
         | HostedSessionState::Replaying
+        | HostedSessionState::Stopping
         | HostedSessionState::Validating => theme::warning(),
         HostedSessionState::Failed
         | HostedSessionState::RecordingPaused
@@ -1143,6 +1975,14 @@ mod tests {
             state: HostedSessionState::RunningAppAttached,
             project_label: localization::projects_nav_label(),
             preset_label: localization::new_session_title(),
+            title: localization::new_session_title(),
+            title_source: termirust_domain::TitleSource::Default,
+            activity: termirust_domain::ActivityState::Unknown,
+            pinned: false,
+            read_through_sequence: 0,
+            unread_sequence: None,
+            archived_at: None,
+            revision: termirust_domain::Revision::ZERO,
             durable_host: None,
             group_id,
             position,

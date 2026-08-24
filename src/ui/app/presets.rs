@@ -1365,7 +1365,8 @@ fn classify_store_failure(error: StoreError) -> PresetStoreFailure {
         | StoreError::InvalidInstanceId
         | StoreError::Domain(_)
         | StoreError::GroupDomain(_)
-        | StoreError::PresetDomain(_) => PresetStoreFailure::Unavailable,
+        | StoreError::PresetDomain(_)
+        | StoreError::SessionDomain(_) => PresetStoreFailure::Unavailable,
     }
 }
 

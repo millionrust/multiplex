@@ -873,7 +873,8 @@ fn classify_store_failure(error: StoreError) -> ProjectStoreFailure {
         | StoreError::InvalidInstanceId
         | StoreError::Domain(_)
         | StoreError::GroupDomain(_)
-        | StoreError::PresetDomain(_) => ProjectStoreFailure::Unavailable,
+        | StoreError::PresetDomain(_)
+        | StoreError::SessionDomain(_) => ProjectStoreFailure::Unavailable,
     }
 }
 

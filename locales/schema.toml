@@ -899,6 +899,256 @@ context = "Empty state asking the user to select a Project before organizing ses
 description = "Select Project to organize sessions"
 
 [[messages]]
+id = "session-library-title-field"
+context = "Placeholder for the sensitive editable session title."
+description = "Session title field"
+
+[[messages]]
+id = "session-library-remove-confirm-placeholder"
+context = "Placeholder asking for the exact sensitive session title before guarded removal."
+description = "Removal title confirmation field"
+
+[[messages]]
+id = "session-library-active-view"
+context = "Tab that shows non-archived durable sessions."
+description = "Active session view"
+
+[[messages]]
+id = "session-library-archive-view"
+context = "Tab that shows archived durable sessions."
+description = "Archived session view"
+
+[[messages]]
+id = "session-library-filter-all"
+context = "Filter showing every session in the selected view."
+description = "All sessions filter"
+
+[[messages]]
+id = "session-library-filter-unread"
+context = "Filter showing sessions with unread output."
+description = "Unread sessions filter"
+
+[[messages]]
+id = "session-library-filter-pinned"
+context = "Filter showing pinned sessions."
+description = "Pinned sessions filter"
+
+[[messages]]
+id = "session-library-filter-empty"
+context = "Empty state when a session filter has no matches."
+description = "No matching sessions"
+
+[[messages]]
+id = "session-library-archive-empty"
+context = "Empty state when the selected Project has no archived sessions."
+description = "No archived sessions"
+
+[[messages]]
+id = "session-library-unread-badge"
+context = "Text badge announcing that a session has unread output."
+description = "Unread badge"
+
+[[messages]]
+id = "session-library-pinned-badge"
+context = "Text badge announcing that a session is pinned."
+description = "Pinned badge"
+
+[[messages]]
+id = "session-library-rename-action"
+context = "Action that opens the sensitive session-title editor."
+description = "Rename session action"
+
+[[messages]]
+id = "session-library-pin-action"
+context = "Action that pins a session to the start of its group."
+description = "Pin session action"
+
+[[messages]]
+id = "session-library-unpin-action"
+context = "Action that removes a session pin."
+description = "Unpin session action"
+
+[[messages]]
+id = "session-library-mark-read-action"
+context = "Action that marks output through the current sequence as read."
+description = "Mark session read action"
+
+[[messages]]
+id = "session-library-mark-unread-action"
+context = "Action that marks the current output sequence unread."
+description = "Mark session unread action"
+
+[[messages]]
+id = "session-library-archive-action"
+context = "Action that archives an exited session without deleting data."
+description = "Archive session action"
+
+[[messages]]
+id = "session-library-stop-archive-action"
+context = "Explicit destructive-process action that stops a live session and archives only after exit."
+description = "Stop and archive session action"
+
+[[messages]]
+id = "session-library-restore-action"
+context = "Action that returns archived metadata to the active list without starting a process."
+description = "Restore archived session action"
+
+[[messages]]
+id = "session-library-resume-action"
+context = "Disabled provider-resume action shown for clarity."
+description = "Resume session action"
+
+[[messages]]
+id = "session-library-resume-unavailable"
+context = "Reason provider-specific resume is unavailable in this version."
+description = "Resume unavailable explanation"
+
+[[messages]]
+id = "session-library-remove-action"
+context = "Action opening the guarded retained-data removal review."
+description = "Remove archived session action"
+
+[[messages]]
+id = "session-library-remove-title"
+context = "Heading for the exact retained-data removal review."
+description = "Remove retained session data heading"
+
+[[messages]]
+id = "session-library-remove-warning"
+context = "Warning that guarded removal affects only TermiRust retained data and uses quarantine."
+description = "Session data removal warning"
+
+[[messages]]
+id = "session-library-remove-metadata"
+context = "Label for metadata bytes in a removal manifest."
+description = "Metadata byte count label"
+
+[[messages]]
+id = "session-library-remove-journal"
+context = "Label for journal bytes in a removal manifest."
+description = "Journal byte count label"
+
+[[messages]]
+id = "session-library-remove-transcript"
+context = "Label for transcript bytes in a removal manifest."
+description = "Transcript byte count label"
+
+[[messages]]
+id = "session-library-remove-artifacts"
+context = "Label for artifact bytes in a removal manifest."
+description = "Artifact byte count label"
+
+[[messages]]
+id = "session-library-remove-files"
+context = "Label for file count in a removal manifest."
+description = "Removal file count label"
+
+[[messages]]
+id = "session-library-confirm-remove-action"
+context = "Final action that moves retained session data into recoverable quarantine."
+description = "Confirm session data removal action"
+
+[[messages]]
+id = "session-library-inspector-title"
+context = "Heading above lifecycle metadata and session actions."
+description = "Session details heading"
+
+[[messages]]
+id = "session-library-title-source-label"
+context = "Inspector label for the source of a session title."
+description = "Session title source label"
+
+[[messages]]
+id = "session-library-activity-label"
+context = "Inspector label for conservative activity state."
+description = "Session activity label"
+
+[[messages]]
+id = "session-library-position-label"
+context = "Inspector label for a session's position in its group."
+description = "Session position label"
+
+[[messages]]
+id = "session-library-state-label"
+context = "Inspector label for durable session lifecycle state."
+description = "Session lifecycle label"
+
+[[messages]]
+id = "session-library-operation-complete"
+context = "Generic privacy-safe success status for a session metadata operation."
+description = "Session operation success status"
+
+[[messages]]
+id = "session-library-operation-failed"
+context = "Generic privacy-safe error for a session metadata operation."
+description = "Session operation error"
+
+[[messages]]
+id = "session-library-stop-archive-pending"
+context = "Status shown after a stop signal while archive waits for confirmed process exit."
+description = "Stop and archive pending status"
+
+[[messages]]
+id = "session-library-stop-archive-warning"
+context = "Review shown before a live process is sent a stop signal for stop-and-archive."
+description = "Stop and archive review warning"
+
+[[messages]]
+id = "session-library-title-source-default"
+context = "Inspector value for a title inherited from the launch preset."
+description = "Default title source"
+
+[[messages]]
+id = "session-library-title-source-automatic"
+context = "Inspector value for a title safely derived from explicit first input."
+description = "Automatic title source"
+
+[[messages]]
+id = "session-library-title-source-imported"
+context = "Inspector value for a title imported from legacy metadata."
+description = "Imported title source"
+
+[[messages]]
+id = "session-library-title-source-manual"
+context = "Inspector value for a user-edited session title."
+description = "Manual title source"
+
+[[messages]]
+id = "session-library-activity-unknown"
+context = "Conservative activity value when no evidence is available."
+description = "Unknown session activity"
+
+[[messages]]
+id = "session-library-activity-idle"
+context = "Conservative activity value for a connected session without semantic provider claims."
+description = "Idle session activity"
+
+[[messages]]
+id = "session-library-recovered-last-good"
+context = "Read-only warning after session metadata is recovered from a last-good copy."
+description = "Recovered session metadata warning"
+
+[[messages]]
+id = "session-library-store-corrupt"
+context = "Error when session metadata is corrupt while retained process data remains untouched."
+description = "Corrupt session metadata error"
+
+[[messages]]
+id = "session-library-store-newer"
+context = "Error when session metadata was written by a newer application version."
+description = "Newer session metadata error"
+
+[[messages]]
+id = "session-library-store-permission"
+context = "Error when session metadata cannot be opened due to permissions."
+description = "Session metadata permission error"
+
+[[messages]]
+id = "session-library-store-unavailable"
+context = "Generic unavailable metadata error preserving retained process data."
+description = "Session metadata unavailable error"
+
+[[messages]]
 id = "group-ungrouped-label"
 context = "Heading for sessions placed at the Project root rather than in a named group."
 description = "Ungrouped session heading"

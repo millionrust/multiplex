@@ -3,8 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use termirust_domain::{
-    GroupDestination, GroupId, HostedSessionId, HostedSessionState, PositionKey, ProjectId,
-    SessionLaunchRoute, SessionOrigin,
+    ActivityState, GroupDestination, GroupId, HostedSession, HostedSessionId, HostedSessionState,
+    OutputSequence, PositionKey, ProjectId, Revision, SessionLaunchRoute, SessionOrigin,
+    SessionTitle, TitleSource,
 };
 use termirust_protocol::{
     MobileDevicePairingError, MobileDevicePairingRequest, MobileDeviceRecord, MobileDeviceVaultKey,
@@ -1069,7 +1070,7 @@ pub struct SavedState {
     pub app_attached_sessions: Vec<SavedAppAttachedSession>,
 }
 
-const MAX_APP_ATTACHED_SESSION_RECORDS: usize = 200;
+const MAX_APP_ATTACHED_SESSION_RECORDS: usize = 100_000;
 const MAX_APP_ATTACHED_SESSION_LABEL_CHARS: usize = 256;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1080,6 +1081,22 @@ pub struct SavedAppAttachedSession {
     pub state: HostedSessionState,
     pub project_label: String,
     pub preset_label: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub title_source: TitleSource,
+    #[serde(default)]
+    pub activity: ActivityState,
+    #[serde(default)]
+    pub pinned: bool,
+    #[serde(default)]
+    pub read_through_sequence: u64,
+    #[serde(default)]
+    pub unread_sequence: Option<u64>,
+    #[serde(default)]
+    pub archived_at: Option<u64>,
+    #[serde(default)]
+    pub revision: Revision,
     #[serde(default)]
     pub durable_host: Option<SavedDurableHost>,
     #[serde(default)]
@@ -3164,6 +3181,14 @@ impl SavedState {
                 .chars()
                 .take(MAX_APP_ATTACHED_SESSION_LABEL_CHARS)
                 .collect();
+            if session.title.trim().is_empty() {
+                session.title = session.preset_label.clone();
+            }
+            session.title = session
+                .title
+                .chars()
+                .take(termirust_domain::MAX_SESSION_TITLE_SCALARS)
+                .collect();
         }
         if self.app_attached_sessions.len() > MAX_APP_ATTACHED_SESSION_RECORDS {
             let drain = self.app_attached_sessions.len() - MAX_APP_ATTACHED_SESSION_RECORDS;
@@ -3336,6 +3361,13 @@ impl SavedState {
             .collect()
     }
 
+    pub fn app_attached_session_placements(
+        &self,
+        project_id: ProjectId,
+    ) -> Vec<SavedSessionPlacement> {
+        self.project_session_placements(project_id)
+    }
+
     fn rebalance_app_attached_destination(
         &mut self,
         project_id: ProjectId,
@@ -3378,20 +3410,9 @@ impl SavedState {
         }
     }
 
-    pub fn update_app_attached_session(
-        &mut self,
-        id: HostedSessionId,
-        state: HostedSessionState,
-        updated_at: u64,
-    ) {
-        if let Some(session) = self
-            .app_attached_sessions
-            .iter_mut()
-            .find(|session| session.id == id)
-        {
-            session.state = state;
-            session.updated_at = updated_at;
-        }
+    pub fn remove_app_attached_session(&mut self, id: HostedSessionId) {
+        self.app_attached_sessions
+            .retain(|session| session.id != id);
     }
 
     pub fn register_managed_agent_worktree(&mut self, worktree: SavedManagedWorktree) {
@@ -3423,6 +3444,70 @@ impl SavedState {
     }
 }
 
+impl SavedAppAttachedSession {
+    pub fn to_hosted_session(&self) -> Result<HostedSession, termirust_domain::SessionStateError> {
+        let fallback = if self.preset_label.trim().is_empty() {
+            format!("Untitled session {}", &self.id.to_string()[..8])
+        } else {
+            self.preset_label.clone()
+        };
+        let title = SessionTitle::new(if self.title.trim().is_empty() {
+            &fallback
+        } else {
+            &self.title
+        })?;
+        let last_output_sequence = OutputSequence::new(
+            self.durable_host
+                .as_ref()
+                .map(|host| host.last_sequence)
+                .unwrap_or_default(),
+        );
+        let read_through_sequence =
+            OutputSequence::new(self.read_through_sequence).min(last_output_sequence);
+        let unread_sequence = self
+            .unread_sequence
+            .map(OutputSequence::new)
+            .filter(|sequence| *sequence <= last_output_sequence);
+        Ok(HostedSession {
+            id: self.id,
+            project_id: self.origin.project_id,
+            group_id: self.group_id,
+            preset_id: Some(self.origin.preset_id),
+            title,
+            title_source: self.title_source,
+            lifecycle: self.state,
+            activity: self.activity,
+            pinned: self.pinned,
+            position: self.position,
+            last_output_sequence,
+            read_through_sequence,
+            unread_sequence,
+            archived_at: self.archived_at.filter(|_| self.state.is_exited()),
+            created_at: self.started_at,
+            updated_at: self.updated_at,
+            revision: self.revision,
+        })
+    }
+
+    pub fn apply_hosted_session(&mut self, session: &HostedSession) {
+        self.state = session.lifecycle;
+        self.group_id = session.group_id;
+        self.position = session.position;
+        self.title = session.title.as_str().to_string();
+        self.title_source = session.title_source;
+        self.activity = session.activity;
+        self.pinned = session.pinned;
+        self.read_through_sequence = session.read_through_sequence.get();
+        self.unread_sequence = session.unread_sequence.map(OutputSequence::get);
+        self.archived_at = session.archived_at;
+        self.revision = session.revision;
+        self.updated_at = session.updated_at;
+        if let Some(host) = self.durable_host.as_mut() {
+            host.last_sequence = host.last_sequence.max(session.last_output_sequence.get());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -3442,7 +3527,8 @@ mod tests {
         identity_id_for_path,
     };
     use termirust_domain::{
-        HostedSessionId, HostedSessionState, PresetId, ProjectId, SessionLaunchRoute, SessionOrigin,
+        ActivityState, HostedSessionId, HostedSessionState, PresetId, ProjectId, Revision,
+        SessionLaunchRoute, SessionOrigin, TitleSource,
     };
 
     #[test]
@@ -3467,6 +3553,14 @@ mod tests {
             state: HostedSessionState::RunningAppAttached,
             project_label: "p".repeat(400),
             preset_label: "preset".to_string(),
+            title: String::new(),
+            title_source: TitleSource::Default,
+            activity: ActivityState::Unknown,
+            pinned: false,
+            read_through_sequence: 0,
+            unread_sequence: None,
+            archived_at: None,
+            revision: Revision::ZERO,
             durable_host: None,
             group_id: None,
             position: termirust_domain::PositionKey::FIRST,
@@ -3504,6 +3598,14 @@ mod tests {
             state: HostedSessionState::Live,
             project_label: "project".to_string(),
             preset_label: "codex".to_string(),
+            title: "codex".to_string(),
+            title_source: TitleSource::Default,
+            activity: ActivityState::Unknown,
+            pinned: false,
+            read_through_sequence: 0,
+            unread_sequence: None,
+            archived_at: None,
+            revision: Revision::ZERO,
             durable_host: Some(super::SavedDurableHost {
                 runtime_root: "/tmp/runtime".to_string(),
                 session_dir: "/tmp/session".to_string(),

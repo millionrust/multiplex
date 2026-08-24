@@ -427,18 +427,35 @@ async fn attach_loop(
                         .map_err(|error| format!("Durable Host resize failed: {error}"))?;
                 }
                 Some(SessionCommand::StopDurable) => {
-                    let _ = client.stop(CommandId::new(), wire::StopMode::Graceful, &cancel).await;
+                    let stop_result = client
+                        .stop(CommandId::new(), wire::StopMode::Graceful, &cancel)
+                        .await;
                     client.disconnect();
+                    let (state, status, disconnected) = match stop_result {
+                        Ok(_) => (
+                            termirust_domain::HostedSessionState::Exited,
+                            "Stopped; retained output is read-only",
+                            "Durable session stopped",
+                        ),
+                        Err(error) => {
+                            eprintln!("[durable-session] Host stop failed: {error}");
+                            (
+                                termirust_domain::HostedSessionState::Orphaned,
+                                "Stop was not confirmed; retained output and process evidence were preserved",
+                                "Durable session stop was not confirmed",
+                            )
+                        }
+                    };
                     let _ = event_tx.send(status_event(
                         spec.pane_id,
-                        termirust_domain::HostedSessionState::Exited,
+                        state,
                         model.watermark(),
                         false,
-                        "Stopped; retained output is read-only",
+                        status,
                     ));
                     let _ = event_tx.send(SshEvent::Disconnected {
                         session_id: spec.pane_id,
-                        message: "Durable session stopped".to_string(),
+                        message: disconnected.to_string(),
                     });
                     return Ok(());
                 }

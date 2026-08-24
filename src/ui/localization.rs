@@ -417,6 +417,168 @@ pub fn new_session_workspace_title(
     ))
 }
 
+static_message!(session_library_title_field, SessionLibraryTitleFieldArgs);
+static_message!(
+    session_library_remove_confirm_placeholder,
+    SessionLibraryRemoveConfirmPlaceholderArgs
+);
+static_message!(session_library_active_view, SessionLibraryActiveViewArgs);
+static_message!(session_library_archive_view, SessionLibraryArchiveViewArgs);
+static_message!(session_library_filter_all, SessionLibraryFilterAllArgs);
+static_message!(
+    session_library_filter_unread,
+    SessionLibraryFilterUnreadArgs
+);
+static_message!(
+    session_library_filter_pinned,
+    SessionLibraryFilterPinnedArgs
+);
+static_message!(session_library_filter_empty, SessionLibraryFilterEmptyArgs);
+static_message!(
+    session_library_archive_empty,
+    SessionLibraryArchiveEmptyArgs
+);
+static_message!(session_library_unread_badge, SessionLibraryUnreadBadgeArgs);
+static_message!(session_library_pinned_badge, SessionLibraryPinnedBadgeArgs);
+static_message!(
+    session_library_rename_action,
+    SessionLibraryRenameActionArgs
+);
+static_message!(session_library_pin_action, SessionLibraryPinActionArgs);
+static_message!(session_library_unpin_action, SessionLibraryUnpinActionArgs);
+static_message!(
+    session_library_mark_read_action,
+    SessionLibraryMarkReadActionArgs
+);
+static_message!(
+    session_library_mark_unread_action,
+    SessionLibraryMarkUnreadActionArgs
+);
+static_message!(
+    session_library_archive_action,
+    SessionLibraryArchiveActionArgs
+);
+static_message!(
+    session_library_stop_archive_action,
+    SessionLibraryStopArchiveActionArgs
+);
+static_message!(
+    session_library_restore_action,
+    SessionLibraryRestoreActionArgs
+);
+static_message!(
+    session_library_resume_action,
+    SessionLibraryResumeActionArgs
+);
+static_message!(
+    session_library_resume_unavailable,
+    SessionLibraryResumeUnavailableArgs
+);
+static_message!(
+    session_library_remove_action,
+    SessionLibraryRemoveActionArgs
+);
+static_message!(session_library_remove_title, SessionLibraryRemoveTitleArgs);
+static_message!(
+    session_library_remove_warning,
+    SessionLibraryRemoveWarningArgs
+);
+static_message!(
+    session_library_remove_metadata,
+    SessionLibraryRemoveMetadataArgs
+);
+static_message!(
+    session_library_remove_journal,
+    SessionLibraryRemoveJournalArgs
+);
+static_message!(
+    session_library_remove_transcript,
+    SessionLibraryRemoveTranscriptArgs
+);
+static_message!(
+    session_library_remove_artifacts,
+    SessionLibraryRemoveArtifactsArgs
+);
+static_message!(session_library_remove_files, SessionLibraryRemoveFilesArgs);
+static_message!(
+    session_library_confirm_remove_action,
+    SessionLibraryConfirmRemoveActionArgs
+);
+static_message!(
+    session_library_inspector_title,
+    SessionLibraryInspectorTitleArgs
+);
+static_message!(
+    session_library_title_source_label,
+    SessionLibraryTitleSourceLabelArgs
+);
+static_message!(
+    session_library_activity_label,
+    SessionLibraryActivityLabelArgs
+);
+static_message!(
+    session_library_position_label,
+    SessionLibraryPositionLabelArgs
+);
+static_message!(session_library_state_label, SessionLibraryStateLabelArgs);
+static_message!(
+    session_library_operation_complete,
+    SessionLibraryOperationCompleteArgs
+);
+static_message!(
+    session_library_operation_failed,
+    SessionLibraryOperationFailedArgs
+);
+static_message!(
+    session_library_stop_archive_pending,
+    SessionLibraryStopArchivePendingArgs
+);
+static_message!(
+    session_library_stop_archive_warning,
+    SessionLibraryStopArchiveWarningArgs
+);
+static_message!(
+    session_library_title_source_default,
+    SessionLibraryTitleSourceDefaultArgs
+);
+static_message!(
+    session_library_title_source_automatic,
+    SessionLibraryTitleSourceAutomaticArgs
+);
+static_message!(
+    session_library_title_source_imported,
+    SessionLibraryTitleSourceImportedArgs
+);
+static_message!(
+    session_library_title_source_manual,
+    SessionLibraryTitleSourceManualArgs
+);
+static_message!(
+    session_library_activity_unknown,
+    SessionLibraryActivityUnknownArgs
+);
+static_message!(
+    session_library_activity_idle,
+    SessionLibraryActivityIdleArgs
+);
+static_message!(
+    session_library_recovered_last_good,
+    SessionLibraryRecoveredLastGoodArgs
+);
+static_message!(
+    session_library_store_corrupt,
+    SessionLibraryStoreCorruptArgs
+);
+static_message!(session_library_store_newer, SessionLibraryStoreNewerArgs);
+static_message!(
+    session_library_store_permission,
+    SessionLibraryStorePermissionArgs
+);
+static_message!(
+    session_library_store_unavailable,
+    SessionLibraryStoreUnavailableArgs
+);
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;

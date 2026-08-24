@@ -438,7 +438,8 @@ fn store_as_domain(error: StoreError) -> PresetError {
         StoreError::Io { .. }
         | StoreError::InvalidInstanceId
         | StoreError::Domain(_)
-        | StoreError::GroupDomain(_) => PresetError::Store {
+        | StoreError::GroupDomain(_)
+        | StoreError::SessionDomain(_) => PresetError::Store {
             code: "unavailable",
         },
     }

@@ -75,6 +75,7 @@ pub enum StoreError {
     Domain(ProjectError),
     GroupDomain(GroupError),
     PresetDomain(termirust_domain::PresetError),
+    SessionDomain(termirust_domain::SessionStateError),
 }
 
 impl fmt::Display for StoreError {
@@ -100,6 +101,7 @@ impl fmt::Display for StoreError {
             Self::Domain(error) => error.fmt(formatter),
             Self::GroupDomain(error) => error.fmt(formatter),
             Self::PresetDomain(error) => error.fmt(formatter),
+            Self::SessionDomain(error) => error.fmt(formatter),
         }
     }
 }
@@ -121,6 +123,12 @@ impl From<GroupError> for StoreError {
 impl From<termirust_domain::PresetError> for StoreError {
     fn from(error: termirust_domain::PresetError) -> Self {
         Self::PresetDomain(error)
+    }
+}
+
+impl From<termirust_domain::SessionStateError> for StoreError {
+    fn from(error: termirust_domain::SessionStateError) -> Self {
+        Self::SessionDomain(error)
     }
 }
 
@@ -1125,6 +1133,9 @@ fn store_as_domain(error: StoreError) -> ProjectError {
         },
         StoreError::GroupDomain(_) => ProjectError::Store {
             code: "group-domain",
+        },
+        StoreError::SessionDomain(_) => ProjectError::Store {
+            code: "session-domain",
         },
     }
 }

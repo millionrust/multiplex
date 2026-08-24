@@ -3,6 +3,7 @@ pub mod journal;
 pub mod lease;
 pub mod presets;
 pub mod projects;
+pub mod sessions;
 
 pub use atomic::{AtomicWriter, Durability, SystemAtomicWriter};
 pub use journal::{
@@ -18,4 +19,8 @@ pub use presets::{PresetRepository, PresetSnapshot};
 pub use projects::{
     CURRENT_FORMAT_VERSION, ProjectRepository, ProjectSnapshot, RemovedProject, StoreError,
     StoreHealth,
+};
+pub use sessions::{
+    QuarantinedSession, SessionRemovalManifest, SessionRemovalPlan, SessionRepository,
+    SessionSnapshot,
 };
