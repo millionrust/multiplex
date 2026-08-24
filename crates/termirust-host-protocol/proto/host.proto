@@ -1,0 +1,255 @@
+syntax = "proto3";
+
+package termirust.host.v1;
+
+// Tags are permanent. Removed fields must be reserved by number and name.
+message ProtocolVersion {
+  uint32 major = 1;
+  uint32 minor = 2;
+}
+
+message ProtocolRange {
+  ProtocolVersion minimum = 1;
+  ProtocolVersion maximum = 2;
+}
+
+enum Capability {
+  CAPABILITY_UNSPECIFIED = 0;
+  CAPABILITY_STATE = 1;
+  CAPABILITY_ATTACH_REPLAY = 2;
+  CAPABILITY_INPUT = 3;
+  CAPABILITY_RESIZE = 4;
+  CAPABILITY_STOP = 5;
+  CAPABILITY_INTERRUPT = 6;
+  CAPABILITY_ACTIVITY_SNAPSHOT = 7;
+}
+
+message Limits {
+  uint32 maximum_frame_bytes = 1;
+  uint32 maximum_output_bytes = 2;
+  uint32 maximum_outbound_frames = 3;
+  uint32 maximum_idempotency_outcomes = 4;
+  uint32 idempotency_ttl_seconds = 5;
+}
+
+message HandshakeRequest {
+  bytes session_id = 1;
+  ProtocolRange protocol = 2;
+  repeated Capability capabilities = 3;
+  Limits limits = 4;
+  bytes client_nonce = 5;
+}
+
+message HandshakeResponse {
+  bytes host_instance_id = 1;
+  bytes session_id = 2;
+  ProtocolVersion selected_version = 3;
+  repeated Capability capabilities = 4;
+  Limits limits = 5;
+  bytes host_nonce = 6;
+  bytes client_nonce_echo = 7;
+}
+
+message Viewport {
+  uint32 columns = 1;
+  uint32 rows = 2;
+}
+
+message GetStateRequest {
+  bytes session_id = 1;
+}
+
+enum Lifecycle {
+  LIFECYCLE_UNSPECIFIED = 0;
+  LIFECYCLE_STARTING = 1;
+  LIFECYCLE_READY = 2;
+  LIFECYCLE_STOPPING = 3;
+  LIFECYCLE_EXITED = 4;
+  LIFECYCLE_FAILED = 5;
+}
+
+message StateEvent {
+  bytes session_id = 1;
+  bytes host_instance_id = 2;
+  Lifecycle lifecycle = 3;
+  uint64 earliest_sequence = 4;
+  uint64 latest_sequence = 5;
+  bool has_writer_lease = 6;
+}
+
+message AttachRequest {
+  bytes session_id = 1;
+  uint64 from_sequence = 2;
+  Viewport viewport = 3;
+  uint64 maximum_replay_bytes = 4;
+  uint32 maximum_replay_records = 5;
+}
+
+message ReadyEvent {
+  bytes session_id = 1;
+  uint64 latest_sequence = 2;
+}
+
+message OutputEvent {
+  bytes session_id = 1;
+  uint64 sequence = 2;
+  bytes bytes = 3;
+}
+
+message ViewportSnapshotEvent {
+  bytes session_id = 1;
+  uint64 boundary_sequence = 2;
+  Viewport viewport = 3;
+  bytes terminal_bytes = 4;
+}
+
+message InputRequest {
+  bytes session_id = 1;
+  bytes command_id = 2;
+  bytes bytes = 3;
+}
+
+message ResizeRequest {
+  bytes session_id = 1;
+  bytes command_id = 2;
+  Viewport viewport = 3;
+}
+
+enum StopMode {
+  STOP_MODE_UNSPECIFIED = 0;
+  STOP_MODE_GRACEFUL = 1;
+  STOP_MODE_FORCE = 2;
+}
+
+message StopRequest {
+  bytes session_id = 1;
+  bytes command_id = 2;
+  StopMode mode = 3;
+}
+
+message InterruptRequest {
+  bytes session_id = 1;
+  bytes command_id = 2;
+}
+
+message ActivitySnapshotRequest {
+  bytes session_id = 1;
+}
+
+message DetachRequest {
+  bytes session_id = 1;
+}
+
+message CommandResult {
+  bytes command_id = 1;
+  bool applied = 2;
+}
+
+message ExitEvent {
+  bytes session_id = 1;
+  int32 code = 2;
+  bool code_available = 3;
+}
+
+message LifecycleEvent {
+  bytes session_id = 1;
+  uint64 sequence = 2;
+  Lifecycle lifecycle = 3;
+}
+
+enum Activity {
+  ACTIVITY_UNSPECIFIED = 0;
+  ACTIVITY_UNKNOWN = 1;
+  ACTIVITY_IDLE = 2;
+  ACTIVITY_BUSY = 3;
+  ACTIVITY_NEEDS_INPUT = 4;
+  ACTIVITY_DONE = 5;
+  ACTIVITY_FAILED = 6;
+}
+
+message ActivityEvent {
+  bytes session_id = 1;
+  uint64 sequence = 2;
+  Activity activity = 3;
+}
+
+enum WarningCode {
+  WARNING_CODE_UNSPECIFIED = 0;
+  WARNING_CODE_OUTPUT_GAP = 1;
+  WARNING_CODE_RECORDING_PAUSED = 2;
+  WARNING_CODE_WRITER_LEASE_LOST = 3;
+}
+
+message WarningEvent {
+  bytes session_id = 1;
+  uint64 sequence = 2;
+  WarningCode code = 3;
+  RecoveryHint recovery = 4;
+}
+
+message GapEvent {
+  bytes session_id = 1;
+  uint64 expected_sequence = 2;
+  uint64 actual_sequence = 3;
+  uint64 earliest_available_sequence = 4;
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_MALFORMED_FRAME = 1;
+  ERROR_CODE_FRAME_TOO_LARGE = 2;
+  ERROR_CODE_CHECKSUM_MISMATCH = 3;
+  ERROR_CODE_PROTOCOL_INCOMPATIBLE = 4;
+  ERROR_CODE_PERMISSION_DENIED = 5;
+  ERROR_CODE_WRONG_SESSION = 6;
+  ERROR_CODE_CONFLICTING_DUPLICATE = 7;
+  ERROR_CODE_SEQUENCE_GAP = 8;
+  ERROR_CODE_RESOURCE_LIMIT = 9;
+  ERROR_CODE_CANCELLED = 10;
+  ERROR_CODE_INVALID_STATE = 11;
+  ERROR_CODE_HANDSHAKE_REPLAY = 12;
+}
+
+enum RecoveryHint {
+  RECOVERY_HINT_UNSPECIFIED = 0;
+  RECOVERY_HINT_RECONNECT = 1;
+  RECOVERY_HINT_REPLAY = 2;
+  RECOVERY_HINT_UPGRADE = 3;
+  RECOVERY_HINT_REAUTHORIZE = 4;
+  RECOVERY_HINT_RETRY_EXPLICITLY = 5;
+}
+
+message ProtocolError {
+  ErrorCode code = 1;
+  RecoveryHint recovery = 2;
+  ProtocolRange supported_protocol = 3;
+  uint64 expected_sequence = 4;
+  uint64 earliest_available_sequence = 5;
+}
+
+message EnvelopePayload {
+  reserved 40 to 49;
+  oneof message {
+    HandshakeRequest handshake_request = 1;
+    HandshakeResponse handshake_response = 2;
+    GetStateRequest get_state_request = 3;
+    StateEvent state_event = 4;
+    AttachRequest attach_request = 5;
+    ReadyEvent ready_event = 6;
+    OutputEvent output_event = 7;
+    ViewportSnapshotEvent viewport_snapshot_event = 8;
+    InputRequest input_request = 9;
+    ResizeRequest resize_request = 10;
+    StopRequest stop_request = 11;
+    InterruptRequest interrupt_request = 12;
+    ActivitySnapshotRequest activity_snapshot_request = 13;
+    DetachRequest detach_request = 14;
+    CommandResult command_result = 15;
+    ExitEvent exit_event = 16;
+    GapEvent gap_event = 17;
+    ProtocolError protocol_error = 18;
+    LifecycleEvent lifecycle_event = 19;
+    ActivityEvent activity_event = 20;
+    WarningEvent warning_event = 21;
+  }
+}

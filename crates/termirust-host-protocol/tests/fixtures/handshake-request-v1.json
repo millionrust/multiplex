@@ -1,0 +1,19 @@
+{
+  "fixture": "handshake-request-v1",
+  "wire_format": "TRH1+protobuf",
+  "protocol_major": 1,
+  "protocol_minor": 0,
+  "frame_kind": 1,
+  "frame_bytes": 128,
+  "request_id_hex": "11111111111111111111111111111111",
+  "session_id": "00000000-0000-0000-0000-000000000001",
+  "capabilities": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ]
+}

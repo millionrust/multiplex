@@ -1,0 +1,20 @@
+[package]
+name = "termirust-client"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Conforming local client for TermiRust session Hosts"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+crc32c = "0.6"
+libc = "0.2"
+prost = "0.14"
+termirust-domain = { version = "0.1.0", path = "../termirust-domain" }
+termirust-host-protocol = { version = "0.1.0", path = "../termirust-host-protocol" }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+
+[dev-dependencies]
+tempfile = "3.27"
+uuid = "1.22"

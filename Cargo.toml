@@ -12,7 +12,9 @@ default-run = "termirust"
 
 [workspace]
 members = [
+    "crates/termirust-client",
     "crates/termirust-domain",
+    "crates/termirust-host-protocol",
     "crates/termirust-mobile-ffi",
     "crates/termirust-protocol",
     "crates/termirust-store",

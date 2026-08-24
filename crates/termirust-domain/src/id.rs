@@ -82,6 +82,114 @@ impl FromStr for GroupId {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
+pub struct HostInstanceId(Uuid);
+
+impl HostInstanceId {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    pub const fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub const fn as_uuid(self) -> Uuid {
+        self.0
+    }
+}
+
+impl Default for HostInstanceId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl fmt::Display for HostInstanceId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+impl FromStr for HostInstanceId {
+    type Err = uuid::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Uuid::parse_str(value).map(Self)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct CommandId(Uuid);
+
+impl CommandId {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    pub const fn from_uuid(value: Uuid) -> Self {
+        Self(value)
+    }
+
+    pub const fn as_uuid(self) -> Uuid {
+        self.0
+    }
+}
+
+impl Default for CommandId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl fmt::Display for CommandId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+impl FromStr for CommandId {
+    type Err = uuid::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Uuid::parse_str(value).map(Self)
+    }
+}
+
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+)]
+#[serde(transparent)]
+pub struct OutputSequence(u64);
+
+impl OutputSequence {
+    pub const ZERO: Self = Self(0);
+
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+
+    pub fn checked_next(self) -> Option<Self> {
+        self.0.checked_add(1).map(Self)
+    }
+
+    pub fn checked_add(self, value: u64) -> Option<Self> {
+        self.0.checked_add(value).map(Self)
+    }
+}
+
+impl fmt::Display for OutputSequence {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
 pub struct PresetId(Uuid);
 
 impl PresetId {
@@ -247,6 +355,23 @@ mod tests {
         let id = GroupId::from_uuid(Uuid::from_u128(3));
         assert_eq!(id.to_string(), "00000000-0000-0000-0000-000000000003");
         assert_eq!(id.to_string().parse(), Ok(id));
+    }
+
+    #[test]
+    fn host_and_command_ids_are_canonical_and_round_trip() {
+        let host = HostInstanceId::from_uuid(Uuid::from_u128(4));
+        let command = CommandId::from_uuid(Uuid::from_u128(5));
+        assert_eq!(host.to_string().parse(), Ok(host));
+        assert_eq!(command.to_string().parse(), Ok(command));
+    }
+
+    #[test]
+    fn output_sequence_is_checked_and_monotonic() {
+        assert_eq!(
+            OutputSequence::ZERO.checked_next(),
+            Some(OutputSequence::new(1))
+        );
+        assert_eq!(OutputSequence::new(u64::MAX).checked_next(), None);
     }
 
     #[test]
