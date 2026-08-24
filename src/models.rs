@@ -2,6 +2,7 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use termirust_domain::{HostedSessionId, HostedSessionState, SessionLaunchRoute, SessionOrigin};
 use termirust_protocol::{
     MobileDevicePairingError, MobileDevicePairingRequest, MobileDeviceRecord, MobileDeviceVaultKey,
 };
@@ -1061,6 +1062,23 @@ pub struct SavedState {
     pub window_bounds: Option<SavedWindowBounds>,
     #[serde(default)]
     pub managed_agent_worktrees: Vec<SavedManagedWorktree>,
+    #[serde(default)]
+    pub app_attached_sessions: Vec<SavedAppAttachedSession>,
+}
+
+const MAX_APP_ATTACHED_SESSION_RECORDS: usize = 200;
+const MAX_APP_ATTACHED_SESSION_LABEL_CHARS: usize = 256;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SavedAppAttachedSession {
+    pub id: HostedSessionId,
+    pub route: SessionLaunchRoute,
+    pub origin: SessionOrigin,
+    pub state: HostedSessionState,
+    pub project_label: String,
+    pub preset_label: String,
+    pub started_at: u64,
+    pub updated_at: u64,
 }
 
 impl SavedState {
@@ -1143,6 +1161,7 @@ impl SavedState {
     pub fn ensure_vaults(&mut self) {
         self.ensure_settings();
         self.ensure_host_groups();
+        self.normalize_app_attached_sessions();
         if !self.vaults.iter().any(|vault| vault.id == DEFAULT_VAULT_ID) {
             self.vaults.push(SavedVault::personal());
         }
@@ -3097,6 +3116,68 @@ impl QuickConnect {
 }
 
 impl SavedState {
+    fn normalize_app_attached_sessions(&mut self) {
+        for session in &mut self.app_attached_sessions {
+            session.project_label = session
+                .project_label
+                .chars()
+                .take(MAX_APP_ATTACHED_SESSION_LABEL_CHARS)
+                .collect();
+            session.preset_label = session
+                .preset_label
+                .chars()
+                .take(MAX_APP_ATTACHED_SESSION_LABEL_CHARS)
+                .collect();
+        }
+        if self.app_attached_sessions.len() > MAX_APP_ATTACHED_SESSION_RECORDS {
+            let drain = self.app_attached_sessions.len() - MAX_APP_ATTACHED_SESSION_RECORDS;
+            self.app_attached_sessions.drain(..drain);
+        }
+    }
+
+    pub fn upsert_app_attached_session(&mut self, session: SavedAppAttachedSession) {
+        if let Some(existing) = self
+            .app_attached_sessions
+            .iter_mut()
+            .find(|existing| existing.id == session.id)
+        {
+            *existing = session;
+        } else {
+            self.app_attached_sessions.push(session);
+        }
+        self.normalize_app_attached_sessions();
+    }
+
+    pub fn mark_app_attached_sessions_exited(&mut self) {
+        for session in &mut self.app_attached_sessions {
+            if matches!(
+                session.state,
+                HostedSessionState::Draft
+                    | HostedSessionState::Validating
+                    | HostedSessionState::Starting
+                    | HostedSessionState::RunningAppAttached
+            ) {
+                session.state = HostedSessionState::Exited;
+            }
+        }
+    }
+
+    pub fn update_app_attached_session(
+        &mut self,
+        id: HostedSessionId,
+        state: HostedSessionState,
+        updated_at: u64,
+    ) {
+        if let Some(session) = self
+            .app_attached_sessions
+            .iter_mut()
+            .find(|session| session.id == id)
+        {
+            session.state = state;
+            session.updated_at = updated_at;
+        }
+    }
+
     pub fn register_managed_agent_worktree(&mut self, worktree: SavedManagedWorktree) {
         if let Some(existing) = self
             .managed_agent_worktrees
@@ -3144,6 +3225,9 @@ mod tests {
         default_persistent_session_name_for_endpoint, default_persistent_session_name_from_id,
         identity_id_for_path,
     };
+    use termirust_domain::{
+        HostedSessionId, HostedSessionState, PresetId, ProjectId, SessionLaunchRoute, SessionOrigin,
+    };
 
     #[test]
     fn parses_user_at_host() {
@@ -3151,6 +3235,40 @@ mod tests {
         assert_eq!(qc.username, "root");
         assert_eq!(qc.host, "192.168.1.1");
         assert_eq!(qc.port, 22);
+    }
+
+    #[test]
+    fn app_attached_metadata_is_bounded_and_restart_marks_it_exited() {
+        let mut state = SavedState::default();
+        let id = HostedSessionId::new();
+        state.upsert_app_attached_session(super::SavedAppAttachedSession {
+            id,
+            route: SessionLaunchRoute::LegacyAppAttached,
+            origin: SessionOrigin {
+                project_id: ProjectId::new(),
+                preset_id: PresetId::new(),
+            },
+            state: HostedSessionState::RunningAppAttached,
+            project_label: "p".repeat(400),
+            preset_label: "preset".to_string(),
+            started_at: 1,
+            updated_at: 2,
+        });
+        assert_eq!(state.app_attached_sessions.len(), 1);
+        assert_eq!(
+            state.app_attached_sessions[0].project_label.chars().count(),
+            256
+        );
+        state.mark_app_attached_sessions_exited();
+        assert_eq!(
+            state.app_attached_sessions[0].state,
+            HostedSessionState::Exited
+        );
+        let json = serde_json::to_string(&state).unwrap();
+        assert!(!json.contains("argv"));
+        assert!(!json.contains("initial_input"));
+        assert!(!json.contains("working_directory"));
+        assert_eq!(state.app_attached_sessions[0].id, id);
     }
 
     #[test]

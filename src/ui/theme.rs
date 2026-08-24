@@ -358,6 +358,11 @@ pub const HOST_SIDEBAR_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
 pub const CHROME_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
     .layout_chrome_height()
     .0;
+pub const DIALOG_MAX_WIDTH: f32 = HOST_SIDEBAR_WIDTH + HOST_SIDEBAR_WIDTH;
+pub const ICON_SIZE_DEFAULT: f32 = DesignTokens::new(ThemeKind::System).icon_size_default().0;
+pub const WORKSPACE_HEADER_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_workspace_header_height()
+    .0;
 pub const CARD_RADIUS: f32 = DesignTokens::new(ThemeKind::System).radius_panel().0;
 pub const SPACE_2: f32 = DesignTokens::new(ThemeKind::System).space_2().0;
 pub const SPACE_3: f32 = DesignTokens::new(ThemeKind::System).space_3().0;

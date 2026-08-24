@@ -1,8 +1,9 @@
 pub mod id;
 pub mod preset;
 pub mod project;
+pub mod session;
 
-pub use id::{PositionError, PositionKey, PresetId, ProjectId, Revision};
+pub use id::{HostedSessionId, PositionError, PositionKey, PresetId, ProjectId, Revision};
 pub use preset::{
     DetectionCandidate, DetectionReport, DetectionStatus, ExecutableSpec, LaunchPreset,
     MAX_ARGUMENT_BYTES, MAX_ARGUMENTS, MAX_DETECTION_CANDIDATES, MAX_EXECUTABLE_BYTES, MAX_PRESETS,
@@ -13,4 +14,8 @@ pub use preset::{
 pub use project::{
     AddProject, CanonicalPath, FileIdentity, LocalizedUserText, Project, ProjectError,
     ProjectService, ProjectStatus, ProjectSummary,
+};
+pub use session::{
+    HostedSessionState, LaunchResolutionError, MAX_PATH_SEARCH_DIRECTORIES, ResolvedLaunch,
+    SessionLaunchRoute, SessionOrigin, resolve_launch,
 };

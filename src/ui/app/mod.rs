@@ -4,6 +4,7 @@ mod connect;
 mod editor;
 mod hosts;
 mod library;
+mod new_session;
 mod overlay;
 mod palette;
 mod presets;
@@ -23,6 +24,7 @@ use canvas::{
     CanvasWorkspaceState, ContextHandoffReview, PendingCanvasNodeDelete, PendingCanvasPaneClose,
     PendingTmuxClose, SplitPaneChooser, StructuredAgentRuntime,
 };
+use new_session::NewSessionState;
 use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
     collect_autocomplete_candidates, collect_command_palette_candidates, pane_recent_output_lines,
@@ -47,6 +49,7 @@ use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{ActiveTheme, Icon, Sizable, StyledExt as _, h_flex, v_flex};
 use rfd::{AsyncFileDialog, FileDialog};
+use termirust_domain::{HostedSessionId, SessionOrigin};
 use termirust_protocol::MobileDevicePairingRequest;
 use vt100::MouseProtocolMode;
 
@@ -487,6 +490,15 @@ struct SessionPane {
     auto_reconnect_attempts: u8,
     auto_reconnect_at: Option<u64>,
     user_closed: bool,
+    app_attached: Option<AppAttachedPaneState>,
+}
+
+struct AppAttachedPaneState {
+    hosted_session_id: HostedSessionId,
+    #[allow(dead_code)]
+    origin: SessionOrigin,
+    pending_initial_input: Option<String>,
+    cancel_requested: bool,
 }
 
 #[derive(Clone)]
@@ -895,6 +907,8 @@ pub struct TermiRustApp {
     preset_subdirectory_input: Entity<InputState>,
     preset_argument_inputs: Vec<Entity<InputState>>,
     preset_list_focus: FocusHandle,
+    new_session: Option<NewSessionState>,
+    new_session_initial_input: Entity<InputState>,
     nav_section: NavSection,
     show_editor_panel: bool,
     event_tx: Sender<SshEvent>,
@@ -1071,6 +1085,12 @@ impl TermiRustApp {
         let preset_argument_inputs =
             vec![cx.new(|cx| InputState::new(window, cx).placeholder("--literal-argument"))];
         let preset_list_focus = cx.focus_handle().tab_stop(true);
+        let new_session_initial_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line(true)
+                .auto_grow(3, 8)
+                .placeholder(localization::new_session_initial_input_placeholder())
+        });
 
         let imported_host_count = saved
             .profiles
@@ -1107,6 +1127,8 @@ impl TermiRustApp {
             preset_subdirectory_input,
             preset_argument_inputs,
             preset_list_focus,
+            new_session: None,
+            new_session_initial_input,
             nav_section: NavSection::Hosts,
             show_editor_panel: false,
             event_tx,
@@ -4350,6 +4372,9 @@ impl TermiRustApp {
                 let Some(pane) = self.pane(*pane_id) else {
                     continue;
                 };
+                if pane.app_attached.is_some() {
+                    continue;
+                }
                 let Some(restorable) = pane.request.to_restorable() else {
                     continue;
                 };
@@ -5198,6 +5223,7 @@ impl TermiRustApp {
             auto_reconnect_attempts: 0,
             auto_reconnect_at: None,
             user_closed: false,
+            app_attached: None,
         });
 
         let _ = window;
@@ -5701,6 +5727,18 @@ impl TermiRustApp {
     }
 
     fn close_pane(&mut self, pane_id: u64, cx: &mut Context<Self>) {
+        if let Some(hosted_session_id) = self.pane(pane_id).and_then(|pane| {
+            pane.app_attached
+                .as_ref()
+                .map(|session| session.hosted_session_id)
+        }) {
+            self.saved.update_app_attached_session(
+                hosted_session_id,
+                termirust_domain::HostedSessionState::Exited,
+                current_unix_millis(),
+            );
+            let _ = save_saved_state(&self.saved);
+        }
         if let Some(pane) = self.pane_mut(pane_id) {
             pane.user_closed = true;
             pane.auto_reconnect_at = None;
@@ -5757,6 +5795,25 @@ impl TermiRustApp {
             .iter()
             .map(|node| node.id.clone())
             .collect();
+        let hosted_session_ids = pane_ids
+            .iter()
+            .filter_map(|pane_id| {
+                self.pane(*pane_id).and_then(|pane| {
+                    pane.app_attached
+                        .as_ref()
+                        .map(|session| session.hosted_session_id)
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for hosted_session_id in hosted_session_ids {
+            self.saved.update_app_attached_session(
+                hosted_session_id,
+                termirust_domain::HostedSessionState::Exited,
+                current_unix_millis(),
+            );
+        }
+        let _ = save_saved_state(&self.saved);
 
         for pane_id in &pane_ids {
             if let Some(pane) = self.pane(*pane_id) {
@@ -5841,7 +5898,6 @@ impl TermiRustApp {
                             "[app] WARNING: Connected event for unknown pane session_id={session_id}"
                         );
                     }
-
                     let local_shell = self
                         .pane(session_id)
                         .is_some_and(|pane| pane.request.is_local_shell());
@@ -5879,6 +5935,7 @@ impl TermiRustApp {
                         "SSH session connected.".to_string()
                     };
                     self.error_message.clear();
+                    self.app_attached_ready(session_id, cx);
                 }
                 SshEvent::Output { session_id, data } => {
                     if let Some(workspace_id) = self.pane_workspace_id(session_id) {
@@ -5910,6 +5967,7 @@ impl TermiRustApp {
                             .update_session_log(&log_id, |e| e.mark_error(&message));
                         let _ = save_saved_state(&self.saved);
                     }
+                    self.set_app_attached_terminal_state(session_id, true, &message);
                     let scheduled_reconnect = self.maybe_schedule_auto_reconnect(session_id);
 
                     self.error_message = message;
@@ -5954,6 +6012,7 @@ impl TermiRustApp {
                             .update_session_log(&log_id, |e| e.mark_disconnected());
                         let _ = save_saved_state(&self.saved);
                     }
+                    self.set_app_attached_terminal_state(session_id, false, &message);
                     let mut scheduled = false;
                     if !was_user_closed {
                         scheduled = self.maybe_schedule_auto_reconnect(session_id);
@@ -9494,6 +9553,9 @@ impl Render for TermiRustApp {
             .when_some(self.pane_context_menu, |this, (pane_id, position)| {
                 this.child(self.render_pane_context_menu_layer(pane_id, position, cx))
             })
+            .when(self.new_session.is_some(), |this| {
+                this.child(self.render_new_session_sheet(cx))
+            })
     }
 }
 
@@ -9536,6 +9598,10 @@ impl TermiRustApp {
         }
 
         if event.keystroke.key.as_str() == "escape" {
+            if self.new_session.is_some() {
+                self.close_new_session(cx);
+                return true;
+            }
             if self.pending_canvas_fleet_disconnect {
                 self.pending_canvas_fleet_disconnect = false;
                 cx.notify();
@@ -9728,6 +9794,12 @@ impl TermiRustApp {
             }
             "n" => {
                 if self.active_workspace_id.is_none() {
+                    if self.nav_section == NavSection::Projects
+                        && let Some(project_id) = self.project_library.selected_id
+                    {
+                        self.open_new_session(project_id, window, cx);
+                        return true;
+                    }
                     self.activate_library(window, cx);
                     self.open_editor_for_new_host(window, cx);
                     true
@@ -18334,7 +18406,9 @@ sleep 1
                 .iter()
                 .all(|pane_id| {
                     app.pane(*pane_id).is_some_and(|pane| {
-                        !pane.connected && pane.closed && pane.status == "Closing"
+                        !pane.connected
+                            && pane.closed
+                            && matches!(pane.status.as_str(), "Closing" | "Closed")
                     })
                 })
                 .then_some(())

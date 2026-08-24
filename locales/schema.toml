@@ -661,3 +661,171 @@ description = "Claude runtime label"
 id = "runtime-label-gemini"
 context = "Nominative label for the compiled Gemini CLI candidate."
 description = "Gemini runtime label"
+
+[[messages]]
+id = "new-session-action"
+context = "Project row action that opens launch review."
+description = "New session action"
+[[messages]]
+id = "new-session-title"
+context = "Launch review sheet title."
+description = "New session title"
+[[messages]]
+id = "new-session-warning"
+context = "Truthful app-attached lifecycle warning."
+description = "App attached warning"
+[[messages]]
+id = "new-session-durable-copy"
+context = "Future durable Host setup note."
+description = "Durable sessions note"
+[[messages]]
+id = "new-session-project-field"
+context = "Project review field label."
+description = "Project field"
+[[messages]]
+id = "new-session-preset-field"
+context = "Preset review field label."
+description = "Preset field"
+[[messages]]
+id = "new-session-working-directory-field"
+context = "Resolved working directory preview label."
+description = "Working directory field"
+[[messages]]
+id = "new-session-initial-input-field"
+context = "Optional explicit initial input field label."
+description = "Initial input field"
+[[messages]]
+id = "new-session-initial-input-hint"
+context = "Initial input blank and Ready-only behavior."
+description = "Initial input hint"
+[[messages]]
+id = "new-session-initial-input-placeholder"
+context = "Initial input placeholder."
+description = "Initial input placeholder"
+[[messages]]
+id = "new-session-risk-warning"
+context = "Per-launch risky user preset warning."
+description = "Risky preset warning"
+[[messages]]
+id = "new-session-cancel-start"
+context = "Cancel an in-progress launch."
+description = "Cancel start action"
+[[messages]]
+id = "new-session-starting-action"
+context = "Disabled Start action while launch runs."
+description = "Starting action"
+[[messages]]
+id = "new-session-stop-action"
+context = "Stop an app-owned attached session."
+description = "Stop action"
+[[messages]]
+id = "new-session-phase-draft"
+context = "Launch sheet draft phase."
+description = "Draft phase"
+[[messages]]
+id = "new-session-phase-validating"
+context = "Launch sheet validation phase."
+description = "Validating phase"
+[[messages]]
+id = "new-session-phase-starting"
+context = "Launch sheet runtime start phase."
+description = "Starting phase"
+[[messages]]
+id = "new-session-phase-running"
+context = "Launch sheet running phase."
+description = "Running phase"
+[[messages]]
+id = "new-session-phase-failed"
+context = "Launch sheet failure phase."
+description = "Failed phase"
+[[messages]]
+id = "new-session-phase-cancelled"
+context = "Launch sheet cancelled phase."
+description = "Cancelled phase"
+[[messages]]
+id = "new-session-phase-exited"
+context = "Launch sheet exited phase."
+description = "Exited phase"
+[[messages]]
+id = "new-session-status-starting"
+context = "Global status while app-attached session starts."
+description = "Session starting status"
+[[messages]]
+id = "new-session-status-stopping"
+context = "Global status while app-attached session stops."
+description = "Session stopping status"
+[[messages]]
+id = "new-session-status-ready"
+context = "Global status when session reaches Ready."
+description = "Session ready status"
+[[messages]]
+id = "new-session-status-ready-input"
+context = "Global status after explicit initial input is sent."
+description = "Initial input sent status"
+[[messages]]
+id = "new-session-status-review-input"
+context = "Global status requiring multiline input confirmation."
+description = "Review initial input status"
+[[messages]]
+id = "new-session-preset-required"
+context = "No enabled launch preset recovery message."
+description = "Preset required"
+[[messages]]
+id = "new-session-review-stale"
+context = "Project or preset revision changed recovery message."
+description = "Launch review stale"
+[[messages]]
+id = "new-session-project-missing"
+context = "Selected project disappeared recovery message."
+description = "Project missing"
+[[messages]]
+id = "new-session-preset-missing"
+context = "Selected preset disappeared recovery message."
+description = "Preset missing"
+[[messages]]
+id = "new-session-cancelled-clean"
+context = "Post-spawn cancellation exact cleanup message."
+description = "Session cancelled cleanly"
+[[messages]]
+id = "new-session-validation-cancelled"
+context = "Pre-spawn validation cancellation message."
+description = "Validation cancelled"
+[[messages]]
+id = "new-session-terminal-error"
+context = "Terminal allocation failure after validation."
+description = "Terminal start error"
+[[messages]]
+id = "new-session-exited-before-ready"
+context = "Process exited before Ready fallback error."
+description = "Exited before ready"
+[[messages]]
+id = "new-session-platform-home"
+context = "Platform home working directory preview."
+description = "Platform home"
+[[messages]]
+id = "new-session-unavailable-value"
+context = "Unavailable review value."
+description = "Unavailable value"
+[[messages]]
+id = "new-session-start-error"
+context = "Launch adapter validation error with isolated diagnostic."
+description = "Preset start error"
+[[messages.args]]
+name = "detail"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "new-session-workspace-title"
+context = "Workspace title joining isolated project and preset labels."
+description = "Session workspace title"
+[[messages.args]]
+name = "project"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "preset"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"

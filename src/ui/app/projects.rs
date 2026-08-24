@@ -699,6 +699,18 @@ impl TermiRustApp {
                                 )
                             })
                             .child(
+                                Button::new(("project-new-session", element_key))
+                                    .debug_selector(|| "project-new-session".to_string())
+                                    .small()
+                                    .primary()
+                                    .icon(IconName::SquareTerminal)
+                                    .label(localization::new_session_action())
+                                    .disabled(summary.status != ProjectStatus::Available)
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.open_new_session(project_id, window, cx);
+                                    })),
+                            )
+                            .child(
                                 v_flex()
                                     .items_end()
                                     .gap(px(theme::SPACE_2))

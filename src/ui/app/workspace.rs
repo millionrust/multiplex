@@ -14,7 +14,7 @@ use gpui::{
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
-use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
+use gpui_component::{Disableable as _, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::models::ConnectionKind;
 use crate::terminal::{TerminalRow, TerminalStyle};
@@ -23,6 +23,7 @@ use crate::ui::app::{
     TERMINAL_INNER_PADDING_X, TERMINAL_INNER_PADDING_Y, TERMINAL_LINE_HEIGHT, TermiRustApp,
     WORKSPACE_PADDING, WORKSPACE_SEARCH_ROW_HEIGHT, WorkspaceTabDrag, WorkspaceViewMode,
 };
+use crate::ui::localization;
 use crate::ui::path::format_file_size;
 use crate::ui::render_terminal::{
     SelectionRange, default_terminal_style, display_terminal_text, selection_contains,
@@ -536,6 +537,7 @@ impl TermiRustApp {
             .active_workspace()
             .map(|workspace| workspace.active_pane_id)
             == Some(pane.id);
+        let is_app_attached = pane.app_attached.is_some();
 
         v_flex()
             .id(("terminal-pane", pane.id))
@@ -560,11 +562,56 @@ impl TermiRustApp {
                     this.drop_tab_on_pane(drag.workspace_id, pane_id, window, cx);
                 }),
             )
+            .when(is_app_attached, |this| {
+                this.child(
+                    h_flex()
+                        .w_full()
+                        .min_h(px(theme::WORKSPACE_HEADER_HEIGHT))
+                        .items_center()
+                        .justify_between()
+                        .gap(px(theme::SPACE_3))
+                        .px(px(theme::SPACE_4))
+                        .py(px(theme::SPACE_2))
+                        .border_b_1()
+                        .border_color(theme::border_dark())
+                        .child(
+                            v_flex()
+                                .min_w_0()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                        .font_semibold()
+                                        .text_color(theme::text_on_dark())
+                                        .child(localization::new_session_warning()),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                        .text_color(theme::text_muted_dark())
+                                        .child(localization::new_session_durable_copy()),
+                                ),
+                        )
+                        .child(
+                            Button::new(("app-attached-stop", pane_id))
+                                .small()
+                                .danger()
+                                .icon(IconName::Close)
+                                .label(localization::new_session_stop_action())
+                                .disabled(pane.closed)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.stop_app_attached_session(pane_id, cx);
+                                })),
+                        ),
+                )
+            })
             .child(
                 div()
                     .id(("terminal-surface", pane.id))
                     .debug_selector(move || terminal_selector.clone())
-                    .size_full()
+                    .w_full()
+                    .flex_1()
+                    .min_h_0()
                     .track_focus(&pane.terminal_focus)
                     .focusable()
                     .bg(theme::terminal_bg())

@@ -12,6 +12,7 @@ use crate::storage::set_test_app_dir_override;
 const TEST_SSH_IMAGE: &str = "termirust-e2e-sshd:local";
 const TEST_SSH_USER: &str = "termirust";
 const TEST_SSH_PASSWORD: &str = "termirust-pass";
+pub const TEST_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
 fn test_mutex() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();

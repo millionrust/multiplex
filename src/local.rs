@@ -181,7 +181,8 @@ fn run_local_session(
                     }
                 }
                 Ok(SessionCommand::Disconnect) => {
-                    let _ = child.kill();
+                    let _ = terminate_owned_pty_process_group(child.as_mut());
+                    let _ = child.wait();
                     let _ = event_tx.send(SshEvent::Disconnected {
                         session_id,
                         message: "Local shell closed".to_string(),
@@ -190,7 +191,8 @@ fn run_local_session(
                 }
                 Err(TokioTryRecvError::Empty) => break,
                 Err(TokioTryRecvError::Disconnected) => {
-                    let _ = child.kill();
+                    let _ = terminate_owned_pty_process_group(child.as_mut());
+                    let _ = child.wait();
                     return Ok(());
                 }
             }
@@ -647,6 +649,91 @@ mod tests {
         }
         assert!(fixture.child.try_wait().unwrap().is_some());
         assert!(sentinel.child.try_wait().unwrap().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn disconnect_reaps_the_spawned_local_process_group_only() {
+        use std::os::unix::process::CommandExt;
+
+        let suffix = format!(
+            "{}-{}",
+            std::process::id(),
+            TEST_SUFFIX.fetch_add(1, Ordering::Relaxed)
+        );
+        let fixture = std::env::temp_dir().join(format!("termirust-disconnect-{suffix}"));
+        std::fs::create_dir_all(&fixture).unwrap();
+        let child_pid_file = fixture.join("child-pid");
+
+        let mut sentinel_command = ProcessCommand::new("/bin/sleep");
+        sentinel_command.arg("30").process_group(0);
+        let sentinel = sentinel_command
+            .spawn()
+            .expect("sentinel process should start");
+        let mut sentinel = ProcessGroupGuard { child: sentinel };
+
+        let command = format!(
+            "sleep 30 & child=$!; printf '%s' \"$child\" > '{}'; wait",
+            child_pid_file.display()
+        );
+        let request = ConnectRequest::local_shell_with_config(
+            903,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: vec!["-c".to_string(), command],
+                cwd: Some(fixture.display().to_string()),
+            },
+        );
+        let (event_tx, event_rx) = std::sync::mpsc::channel();
+        let runtime = spawn_local_session(request, event_tx);
+        wait_for_event(
+            &event_rx,
+            Instant::now() + Duration::from_secs(5),
+            |event| {
+                matches!(
+                    event,
+                    SshEvent::Connected {
+                        session_id: 903,
+                        ..
+                    }
+                )
+            },
+        );
+        let child_pid: i32 =
+            wait_for_file(&child_pid_file, Instant::now() + Duration::from_secs(5))
+                .parse()
+                .expect("fixture should write a child pid");
+
+        runtime.command_tx.send(SessionCommand::Disconnect).unwrap();
+        wait_for_event(
+            &event_rx,
+            Instant::now() + Duration::from_secs(5),
+            |event| {
+                matches!(
+                    event,
+                    SshEvent::Disconnected {
+                        session_id: 903,
+                        ..
+                    }
+                )
+            },
+        );
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            let result = unsafe { libc::kill(child_pid, 0) };
+            if result == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(unsafe { libc::kill(child_pid, 0) }, -1);
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::ESRCH)
+        );
+        assert!(sentinel.child.try_wait().unwrap().is_none());
+        std::fs::remove_dir_all(fixture).unwrap();
     }
 
     fn wait_for_event(

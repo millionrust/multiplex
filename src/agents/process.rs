@@ -3,10 +3,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
-use termirust_domain::{PresetRisk, classify_argument_strings};
+use termirust_domain::{PermissionPolicy, PresetRisk, ResolvedLaunch, classify_argument_strings};
 
 use crate::agents::adapter::provider_descriptor;
-use crate::models::{AgentBackendKind, AgentPermissionPolicy, AgentProvider, SavedAgentDefinition};
+use crate::models::{
+    AgentBackendKind, AgentPermissionPolicy, AgentProvider, LocalShellConfig, SavedAgentDefinition,
+};
 
 const MAX_VERSION_OUTPUT_BYTES: usize = 4096;
 
@@ -33,6 +35,40 @@ pub struct AgentLaunchSpec {
     pub executable: PathBuf,
     pub arguments: Vec<OsString>,
     pub working_directory: Option<PathBuf>,
+}
+
+pub fn build_app_attached_launch_config(resolved: &ResolvedLaunch) -> Result<LocalShellConfig> {
+    resolved
+        .revalidate()
+        .context("Launch target changed during validation")?;
+    let mut args =
+        permission_arguments_for_runtime(resolved.runtime.as_deref(), resolved.permission_policy)?;
+    args.extend(resolved.arguments().iter().cloned());
+    Ok(LocalShellConfig {
+        program: resolved.executable().to_string_lossy().to_string(),
+        args,
+        cwd: Some(resolved.working_directory().to_string_lossy().to_string()),
+    })
+}
+
+fn permission_arguments_for_runtime(
+    runtime: Option<&str>,
+    policy: PermissionPolicy,
+) -> Result<Vec<String>> {
+    let runtime = runtime.unwrap_or_default();
+    let values: &[&str] = match (runtime, policy) {
+        (_, PermissionPolicy::AskAsNeeded) => &[],
+        ("codex", PermissionPolicy::ReadOnly) => &["--sandbox", "read-only"],
+        ("codex", PermissionPolicy::WorkspaceWrite) => &["--sandbox", "workspace-write"],
+        ("claude" | "claude-code", PermissionPolicy::ReadOnly) => &["--permission-mode", "plan"],
+        ("claude" | "claude-code", PermissionPolicy::WorkspaceWrite) => &[],
+        ("gemini" | "gemini-cli", PermissionPolicy::ReadOnly) => &["--approval-mode", "plan"],
+        ("gemini" | "gemini-cli", PermissionPolicy::WorkspaceWrite) => &[],
+        _ => bail!(
+            "This runtime cannot enforce the selected permission policy. Choose Ask as needed or use a supported runtime preset."
+        ),
+    };
+    Ok(values.iter().map(|value| (*value).to_string()).collect())
 }
 
 pub fn detect_agent_executable(definition: &SavedAgentDefinition) -> AgentExecutableStatus {
@@ -358,7 +394,7 @@ fn read_version(executable: &Path, version_argument: &str) -> Result<Option<Stri
 mod tests {
     use super::{
         AgentExecutableStatus, build_interactive_launch_spec, build_remote_interactive_arguments,
-        build_remote_structured_command, detect_agent_executable,
+        build_remote_structured_command, detect_agent_executable, permission_arguments_for_runtime,
     };
     use crate::models::{
         AgentBackendKind, AgentPermissionPolicy, AgentProvider, SavedAgentDefinition,
@@ -367,6 +403,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use termirust_domain::PermissionPolicy;
 
     #[cfg(unix)]
     fn executable_fixture(name: &str) -> PathBuf {
@@ -383,6 +420,23 @@ mod tests {
         permissions.set_mode(0o700);
         fs::set_permissions(&path, permissions).unwrap();
         path
+    }
+
+    #[test]
+    fn app_attached_policy_arguments_are_explicit_and_argv_only() {
+        assert_eq!(
+            permission_arguments_for_runtime(Some("codex"), PermissionPolicy::ReadOnly).unwrap(),
+            ["--sandbox", "read-only"]
+        );
+        assert_eq!(
+            permission_arguments_for_runtime(Some("claude"), PermissionPolicy::WorkspaceWrite)
+                .unwrap(),
+            Vec::<String>::new()
+        );
+        assert!(
+            permission_arguments_for_runtime(Some("custom"), PermissionPolicy::WorkspaceWrite)
+                .is_err()
+        );
     }
 
     #[test]

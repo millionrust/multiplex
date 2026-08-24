@@ -24,8 +24,8 @@ pub use headless::{
 };
 pub use orchestrator::{SchedulableAgent, schedule_dependency_dag};
 pub use process::{
-    AgentExecutableStatus, build_interactive_launch_spec, build_remote_interactive_arguments,
-    detect_agent_executable,
+    AgentExecutableStatus, build_app_attached_launch_config, build_interactive_launch_spec,
+    build_remote_interactive_arguments, detect_agent_executable,
 };
 pub use protocol::{AgentApprovalRequest, AgentEvent, AgentRole, AgentRunState};
 pub use worktree::{create_managed_worktree, managed_worktree_status, remove_managed_worktree};

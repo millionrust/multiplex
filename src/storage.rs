@@ -604,6 +604,7 @@ pub fn load_saved_state() -> Result<SavedState> {
         fs::read_to_string(&path).with_context(|| format!("Unable to read {}", path.display()))?;
     let mut state: SavedState = serde_json::from_str(&content)
         .with_context(|| format!("Unable to parse {}", path.display()))?;
+    state.mark_app_attached_sessions_exited();
     state.ensure_vaults();
     Ok(state)
 }
@@ -611,6 +612,7 @@ pub fn load_saved_state() -> Result<SavedState> {
 pub fn save_saved_state(state: &SavedState) -> Result<()> {
     let path = state_file()?;
     let mut persisted = state.clone();
+    persisted.mark_app_attached_sessions_exited();
     persisted.ensure_vaults();
     persisted
         .profiles

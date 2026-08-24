@@ -262,6 +262,84 @@ pub fn preset_argument_count(count: usize) -> String {
     text(&PresetArgumentCountArgs::new(Count(count as u64)))
 }
 
+static_message!(new_session_action, NewSessionActionArgs);
+static_message!(new_session_title, NewSessionTitleArgs);
+static_message!(new_session_warning, NewSessionWarningArgs);
+static_message!(new_session_durable_copy, NewSessionDurableCopyArgs);
+static_message!(new_session_project_field, NewSessionProjectFieldArgs);
+static_message!(new_session_preset_field, NewSessionPresetFieldArgs);
+static_message!(
+    new_session_working_directory_field,
+    NewSessionWorkingDirectoryFieldArgs
+);
+static_message!(
+    new_session_initial_input_field,
+    NewSessionInitialInputFieldArgs
+);
+static_message!(
+    new_session_initial_input_hint,
+    NewSessionInitialInputHintArgs
+);
+static_message!(
+    new_session_initial_input_placeholder,
+    NewSessionInitialInputPlaceholderArgs
+);
+static_message!(new_session_risk_warning, NewSessionRiskWarningArgs);
+static_message!(new_session_cancel_start, NewSessionCancelStartArgs);
+static_message!(new_session_starting_action, NewSessionStartingActionArgs);
+static_message!(new_session_stop_action, NewSessionStopActionArgs);
+static_message!(new_session_phase_draft, NewSessionPhaseDraftArgs);
+static_message!(new_session_phase_validating, NewSessionPhaseValidatingArgs);
+static_message!(new_session_phase_starting, NewSessionPhaseStartingArgs);
+static_message!(new_session_phase_running, NewSessionPhaseRunningArgs);
+static_message!(new_session_phase_failed, NewSessionPhaseFailedArgs);
+static_message!(new_session_phase_cancelled, NewSessionPhaseCancelledArgs);
+static_message!(new_session_phase_exited, NewSessionPhaseExitedArgs);
+static_message!(new_session_status_starting, NewSessionStatusStartingArgs);
+static_message!(new_session_status_stopping, NewSessionStatusStoppingArgs);
+static_message!(new_session_status_ready, NewSessionStatusReadyArgs);
+static_message!(
+    new_session_status_ready_input,
+    NewSessionStatusReadyInputArgs
+);
+static_message!(
+    new_session_status_review_input,
+    NewSessionStatusReviewInputArgs
+);
+static_message!(new_session_preset_required, NewSessionPresetRequiredArgs);
+static_message!(new_session_review_stale, NewSessionReviewStaleArgs);
+static_message!(new_session_project_missing, NewSessionProjectMissingArgs);
+static_message!(new_session_preset_missing, NewSessionPresetMissingArgs);
+static_message!(new_session_cancelled_clean, NewSessionCancelledCleanArgs);
+static_message!(
+    new_session_validation_cancelled,
+    NewSessionValidationCancelledArgs
+);
+static_message!(new_session_terminal_error, NewSessionTerminalErrorArgs);
+static_message!(
+    new_session_exited_before_ready,
+    NewSessionExitedBeforeReadyArgs
+);
+static_message!(new_session_platform_home, NewSessionPlatformHomeArgs);
+static_message!(
+    new_session_unavailable_value,
+    NewSessionUnavailableValueArgs
+);
+
+pub fn new_session_start_error(detail: impl Into<String>) -> String {
+    text(&NewSessionStartErrorArgs::new(UserData::new(detail)))
+}
+
+pub fn new_session_workspace_title(
+    project: impl Into<String>,
+    preset: impl Into<String>,
+) -> String {
+    text(&NewSessionWorkspaceTitleArgs::new(
+        UserData::new(project),
+        UserData::new(preset),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
