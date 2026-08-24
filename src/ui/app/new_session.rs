@@ -16,10 +16,13 @@ use termirust_domain::{
     ProjectId, ResolvedLaunch, Revision, WorkingDirectoryRule, resolve_launch,
 };
 
+use super::hosted_session::{
+    DurableLaunch, DurableSessionPaths, DurableSessionSpec, spawn_durable_session,
+};
 use super::{AppAttachedPaneState, PendingPaste, TermiRustApp, theme};
 use crate::agents::build_app_attached_launch_config;
-use crate::models::{ConnectRequest, SavedAppAttachedSession};
-use crate::storage::save_saved_state;
+use crate::models::{ConnectRequest, SavedAppAttachedSession, SavedDurableHost};
+use crate::storage::{app_dir, save_saved_state};
 use crate::ui::localization;
 use crate::ui::util::current_unix_millis;
 
@@ -290,6 +293,26 @@ impl TermiRustApp {
                 );
             }
         };
+        let paths = match app_dir().and_then(|directory| {
+            DurableSessionPaths::create(&directory, resolved.session_id).map_err(Into::into)
+        }) {
+            Ok(paths) => paths,
+            Err(error) => {
+                return self.fail_new_session(
+                    &localization::new_session_start_error(error.to_string()),
+                    cx,
+                );
+            }
+        };
+        let launch = DurableLaunch {
+            executable: PathBuf::from(&config.program),
+            arguments: config.args.clone(),
+            cwd: config
+                .cwd
+                .as_deref()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| resolved.working_directory().to_path_buf()),
+        };
         let initial_input = self.new_session_initial_input.read(cx).value().to_string();
         let now = current_unix_millis();
         let position = self
@@ -300,9 +323,16 @@ impl TermiRustApp {
                 id: resolved.session_id,
                 route: resolved.route,
                 origin: resolved.origin,
-                state: HostedSessionState::Starting,
+                state: HostedSessionState::Provisioning,
                 project_label: project.display_name.as_str().to_string(),
                 preset_label: preset.label.as_str().to_string(),
+                durable_host: Some(SavedDurableHost {
+                    runtime_root: paths.runtime_root.to_string_lossy().to_string(),
+                    session_dir: paths.session_dir.to_string_lossy().to_string(),
+                    working_directory: config.cwd.clone(),
+                    last_sequence: 0,
+                    durable_sequence: 0,
+                }),
                 group_id: None,
                 position,
                 started_at: now,
@@ -310,32 +340,40 @@ impl TermiRustApp {
             });
         let _ = save_saved_state(&self.saved);
 
-        let mut request = ConnectRequest::local_shell_with_config(0, config);
+        let pane_id = self.next_session_id();
+        let mut request = ConnectRequest::local_shell_with_config(pane_id, config);
         request.title = localization::new_session_workspace_title(
             project.display_name.as_str(),
             preset.label.as_str(),
         );
-        let Some((_, pane_id)) = self.open_request_workspace(request, window, cx) else {
-            self.saved.update_app_attached_session(
-                resolved.session_id,
-                HostedSessionState::Failed,
-                current_unix_millis(),
-            );
-            let _ = save_saved_state(&self.saved);
-            return self.fail_new_session(&localization::new_session_terminal_error(), cx);
-        };
+        let runtime = spawn_durable_session(
+            DurableSessionSpec {
+                pane_id,
+                session_id: resolved.session_id,
+                paths,
+                launch: Some(launch),
+                from_sequence: termirust_domain::OutputSequence::ZERO,
+            },
+            self.event_tx.clone(),
+        );
+        let terminal_focus = cx.focus_handle().tab_stop(true);
+        self.register_pane(request.clone(), runtime, terminal_focus);
+        self.open_spawned_pane_workspace(&request, pane_id);
         if let Some(pane) = self.pane_mut(pane_id) {
             pane.app_attached = Some(AppAttachedPaneState {
                 hosted_session_id: resolved.session_id,
+                route: resolved.route,
                 origin: resolved.origin,
                 pending_initial_input: (!initial_input.is_empty()).then_some(initial_input),
                 cancel_requested: false,
+                last_sequence: 0,
+                has_writer_lease: false,
             });
-            pane.status = "Starting".to_string();
+            pane.status = "Provisioning".to_string();
             pane.terminal_focus.focus(window);
         }
         if let Some(state) = self.new_session.as_mut() {
-            state.phase = HostedSessionState::Starting;
+            state.phase = HostedSessionState::Provisioning;
             state.spawned_pane_id = Some(pane_id);
         }
         self.status_message = localization::new_session_status_starting();
@@ -353,18 +391,48 @@ impl TermiRustApp {
     }
 
     pub(super) fn stop_app_attached_session(&mut self, pane_id: u64, cx: &mut Context<Self>) {
+        let stoppable = self.pane(pane_id).is_some_and(|pane| {
+            let Some(attached) = pane.app_attached.as_ref() else {
+                return false;
+            };
+            if pane.closed {
+                return false;
+            }
+            if attached.route != termirust_domain::SessionLaunchRoute::DurableHost {
+                return true;
+            }
+            self.saved
+                .app_attached_sessions
+                .iter()
+                .find(|session| session.id == attached.hosted_session_id)
+                .is_some_and(|session| {
+                    !matches!(
+                        session.state,
+                        HostedSessionState::Exited
+                            | HostedSessionState::Orphaned
+                            | HostedSessionState::Gap
+                            | HostedSessionState::PermissionDenied
+                            | HostedSessionState::Incompatible
+                            | HostedSessionState::Offline
+                    )
+                })
+        });
+        if !stoppable {
+            return;
+        }
         let Some(pane) = self.pane_mut(pane_id) else {
             return;
         };
-        if pane.app_attached.is_none() || pane.closed {
-            return;
-        }
+        let durable = pane.app_attached.as_ref().is_some_and(|session| {
+            session.route == termirust_domain::SessionLaunchRoute::DurableHost
+        });
         pane.user_closed = true;
         pane.status = "Stopping".to_string();
-        let _ = pane
-            .runtime
-            .command_tx
-            .send(crate::ssh::SessionCommand::Disconnect);
+        let _ = pane.runtime.command_tx.send(if durable {
+            crate::ssh::SessionCommand::StopDurable
+        } else {
+            crate::ssh::SessionCommand::Disconnect
+        });
         self.status_message = localization::new_session_status_stopping();
         self.error_message.clear();
         cx.notify();
@@ -383,7 +451,17 @@ impl TermiRustApp {
         };
         self.saved.update_app_attached_session(
             session_id,
-            HostedSessionState::RunningAppAttached,
+            if self
+                .pane(pane_id)
+                .and_then(|pane| pane.app_attached.as_ref())
+                .is_some_and(|session| {
+                    session.route == termirust_domain::SessionLaunchRoute::DurableHost
+                })
+            {
+                HostedSessionState::Live
+            } else {
+                HostedSessionState::RunningAppAttached
+            },
             current_unix_millis(),
         );
         let _ = save_saved_state(&self.saved);
@@ -435,8 +513,33 @@ impl TermiRustApp {
         }) else {
             return;
         };
+        let durable = self.pane(pane_id).is_some_and(|pane| {
+            pane.app_attached.as_ref().is_some_and(|session| {
+                session.route == termirust_domain::SessionLaunchRoute::DurableHost
+            })
+        });
+        let preserved_durable_state = self
+            .saved
+            .app_attached_sessions
+            .iter()
+            .find(|session| session.id == session_id)
+            .map(|session| session.state)
+            .filter(|state| {
+                matches!(
+                    state,
+                    HostedSessionState::Exited
+                        | HostedSessionState::Orphaned
+                        | HostedSessionState::Gap
+                        | HostedSessionState::PermissionDenied
+                        | HostedSessionState::Incompatible
+                )
+            });
         let state = if cancelled {
             HostedSessionState::Cancelled
+        } else if let Some(state) = preserved_durable_state {
+            state
+        } else if durable {
+            HostedSessionState::Offline
         } else if failed {
             HostedSessionState::Failed
         } else {
@@ -684,7 +787,11 @@ fn explicit_path_snapshot() -> Vec<PathBuf> {
 fn new_session_busy(state: HostedSessionState) -> bool {
     matches!(
         state,
-        HostedSessionState::Validating | HostedSessionState::Starting
+        HostedSessionState::Validating
+            | HostedSessionState::Starting
+            | HostedSessionState::Provisioning
+            | HostedSessionState::Attaching
+            | HostedSessionState::Replaying
     )
 }
 
@@ -693,6 +800,16 @@ fn session_phase_label(state: HostedSessionState) -> String {
         HostedSessionState::Draft => localization::new_session_phase_draft(),
         HostedSessionState::Validating => localization::new_session_phase_validating(),
         HostedSessionState::Starting => localization::new_session_phase_starting(),
+        HostedSessionState::Provisioning => localization::new_session_phase_provisioning(),
+        HostedSessionState::Attaching => localization::new_session_phase_attaching(),
+        HostedSessionState::Replaying => localization::new_session_phase_replaying(),
+        HostedSessionState::Live => localization::new_session_phase_live(),
+        HostedSessionState::RecordingPaused => localization::new_session_phase_recording_paused(),
+        HostedSessionState::Offline => localization::new_session_phase_offline(),
+        HostedSessionState::Orphaned => localization::new_session_phase_orphaned(),
+        HostedSessionState::Gap => localization::new_session_phase_gap(),
+        HostedSessionState::PermissionDenied => localization::new_session_phase_permission_denied(),
+        HostedSessionState::Incompatible => localization::new_session_phase_incompatible(),
         HostedSessionState::RunningAppAttached => localization::new_session_phase_running(),
         HostedSessionState::Failed => localization::new_session_phase_failed(),
         HostedSessionState::Cancelled => localization::new_session_phase_cancelled(),
@@ -817,7 +934,7 @@ mod tests {
             }
             assert!(
                 std::time::Instant::now() < deadline,
-                "timed out waiting for the synthetic app-attached session"
+                "timed out waiting for the synthetic durable session"
             );
             std::thread::sleep(TEST_POLL_INTERVAL);
         }
@@ -1036,9 +1153,13 @@ mod tests {
                     .iter()
                     .find(|session| session.id == hosted_session_id)
                     .map(|session| session.state),
-                Some(HostedSessionState::RunningAppAttached)
+                Some(HostedSessionState::Live)
             );
-            assert!(app.saved.restored_workspaces.is_empty());
+            assert_eq!(app.saved.restored_workspaces.len(), 1);
+            assert_eq!(
+                app.saved.restored_workspaces[0].panes[0].durable_session_id,
+                Some(hosted_session_id)
+            );
         });
 
         app.update(cx, |app, cx| {

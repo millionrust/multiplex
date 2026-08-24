@@ -27,6 +27,7 @@ pub enum SessionCommand {
     Input(Vec<u8>),
     Resize(TerminalSize),
     KillTmuxSession { session_name: String },
+    StopDurable,
     Disconnect,
 }
 
@@ -39,6 +40,19 @@ pub enum SshEvent {
     Output {
         session_id: u64,
         data: Vec<u8>,
+    },
+    HostedSnapshot {
+        session_id: u64,
+        data: Vec<u8>,
+        boundary_sequence: u64,
+    },
+    HostedStatus {
+        session_id: u64,
+        state: termirust_domain::HostedSessionState,
+        last_sequence: u64,
+        durable_sequence: u64,
+        has_writer_lease: bool,
+        detail: String,
     },
     Error {
         session_id: u64,
@@ -486,7 +500,7 @@ async fn run_session(
                             session_name,
                         });
                     }
-                    Some(SessionCommand::Disconnect) | None => {
+                    Some(SessionCommand::StopDurable | SessionCommand::Disconnect) | None => {
                         eprintln!("[ssh][{session_id}] disconnect command received");
                         let _ = writer.shutdown().await;
                         break;
@@ -1372,6 +1386,7 @@ mod tests {
                         "{label} disconnected before connect for session {session_id}: {message}"
                     );
                 }
+                Ok(_) => panic!("{label} received an event reserved for durable sessions"),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => {
                     panic!("{label} channel disconnected unexpectedly");
@@ -1407,6 +1422,7 @@ mod tests {
                 }) => {
                     panic!("unexpected {label} error after disconnect for {session_id}: {message}")
                 }
+                Ok(_) => panic!("{label} received an event reserved for durable sessions"),
                 Err(error) => panic!("did not observe {label} disconnect event: {error}"),
             }
         };
@@ -1486,6 +1502,7 @@ mod tests {
                         "{label} disconnected before expected output for {session_id}: {message}"
                     )
                 }
+                Ok(_) => panic!("{label} received an event reserved for durable sessions"),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => {
                     panic!("{label} channel disconnected unexpectedly");
@@ -1551,6 +1568,7 @@ mod tests {
                         "ssh runtime disconnected before output for session {session_id}: {message}"
                     );
                 }
+                Ok(_) => panic!("SSH runtime received an event reserved for durable sessions"),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => {
                     panic!("ssh runtime channel disconnected unexpectedly");
@@ -1581,6 +1599,7 @@ mod tests {
                     session_id,
                     message,
                 }) => panic!("unexpected ssh error after disconnect for {session_id}: {message}"),
+                Ok(_) => panic!("SSH runtime received an event reserved for durable sessions"),
                 Err(error) => panic!("did not observe disconnect event: {error}"),
             }
         };
@@ -1792,6 +1811,7 @@ mod tests {
                     session_id,
                     message,
                 }) => panic!("tmux kill failed for session {session_id}: {message}"),
+                Ok(_) => panic!("SSH runtime received an event reserved for durable sessions"),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(error) => panic!("tmux kill event channel failed: {error}"),
             }
@@ -1896,6 +1916,7 @@ mod tests {
                         "jump-host ssh runtime disconnected before output for session {session_id}: {message}"
                     );
                 }
+                Ok(_) => panic!("SSH runtime received an event reserved for durable sessions"),
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => {
                     panic!("jump-host ssh runtime channel disconnected unexpectedly");
@@ -1931,6 +1952,7 @@ mod tests {
                 }) => panic!(
                     "unexpected jump-host ssh error after disconnect for {session_id}: {message}"
                 ),
+                Ok(_) => panic!("SSH runtime received an event reserved for durable sessions"),
                 Err(error) => panic!("did not observe jump-host disconnect event: {error}"),
             }
         };

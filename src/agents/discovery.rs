@@ -518,7 +518,9 @@ mod tests {
             RuntimeProbeDescriptor::fixture("unknown", "unknown"),
         ];
         let discovery = CliDiscovery::new(DiscoveryLimits {
-            probe_timeout: Duration::from_secs(2),
+            // Preserve the production two-second budget while giving this
+            // concurrency fixture headroom when the full GPUI suite saturates CI.
+            probe_timeout: Duration::from_secs(5),
             ..DiscoveryLimits::default()
         });
         let report = discovery.discover(

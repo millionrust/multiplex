@@ -19,6 +19,35 @@ use crate::models::SavedWindowBounds;
 use crate::storage::{load_local_ssh_hosts, load_saved_state};
 use crate::ui::TermiRustApp;
 
+const SESSION_HOST_MODE: &str = "--session-host";
+
+fn run_session_host_mode() -> Result<(), termirust_session_host::HostError> {
+    use std::io::Write as _;
+
+    if !termirust_session_host::stdin_is_pipe()? {
+        return Err(termirust_session_host::HostError::new(
+            termirust_session_host::HostErrorCode::PermissionDenied,
+        ));
+    }
+    let descriptor = termirust_session_host::LaunchDescriptor::read(std::io::stdin().lock())?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(termirust_session_host::HostError::io)?;
+    runtime.block_on(async move {
+        let host = termirust_session_host::start(descriptor).await?;
+        writeln!(
+            std::io::stdout(),
+            "{{\"schema_version\":1,\"lifecycle\":\"ready\",\"code\":\"host_ready\"}}"
+        )
+        .map_err(termirust_session_host::HostError::io)?;
+        std::io::stdout()
+            .flush()
+            .map_err(termirust_session_host::HostError::io)?;
+        host.wait().await
+    })
+}
+
 /// Resolve the bounds and display to open the window at. Restores the last
 /// saved frame on the display it was saved on; if that display is no longer
 /// connected, the saved coordinates are meaningless, so it centers on the
@@ -107,6 +136,17 @@ fn init_file_logging() {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some(SESSION_HOST_MODE) {
+        if let Err(error) = run_session_host_mode() {
+            eprintln!(
+                "{{\"schema_version\":1,\"lifecycle\":\"failed\",\"code\":\"{}\",\"io_kind\":\"{:?}\"}}",
+                error.stable_code(),
+                error.io_kind
+            );
+            std::process::exit(1);
+        }
+        return;
+    }
     init_file_logging();
 
     std::panic::set_hook(Box::new(|info| {

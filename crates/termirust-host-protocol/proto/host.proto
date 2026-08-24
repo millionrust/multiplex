@@ -75,6 +75,8 @@ message StateEvent {
   uint64 earliest_sequence = 4;
   uint64 latest_sequence = 5;
   bool has_writer_lease = 6;
+  bool recording_paused = 7;
+  uint64 durable_sequence = 8;
 }
 
 message AttachRequest {

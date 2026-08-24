@@ -1081,11 +1081,25 @@ pub struct SavedAppAttachedSession {
     pub project_label: String,
     pub preset_label: String,
     #[serde(default)]
+    pub durable_host: Option<SavedDurableHost>,
+    #[serde(default)]
     pub group_id: Option<GroupId>,
     #[serde(default = "default_session_organization_position")]
     pub position: PositionKey,
     pub started_at: u64,
     pub updated_at: u64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SavedDurableHost {
+    pub runtime_root: String,
+    pub session_dir: String,
+    #[serde(default)]
+    pub working_directory: Option<String>,
+    #[serde(default)]
+    pub last_sequence: u64,
+    #[serde(default)]
+    pub durable_sequence: u64,
 }
 
 fn default_session_organization_position() -> PositionKey {
@@ -2052,6 +2066,7 @@ impl ConnectRequest {
                 local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: None,
+                durable_session_id: None,
             }),
             ConnectionKind::LocalShell => Some(RestorableConnection {
                 title: self.title.clone(),
@@ -2072,6 +2087,7 @@ impl ConnectRequest {
                 local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: self.local_shell.clone(),
+                durable_session_id: None,
             }),
         }
     }
@@ -2199,6 +2215,8 @@ pub struct RestorableConnection {
     pub local_forward: Option<LocalPortForward>,
     #[serde(default)]
     pub local_shell: Option<LocalShellConfig>,
+    #[serde(default)]
+    pub durable_session_id: Option<HostedSessionId>,
 }
 
 impl RestorableConnection {
@@ -3346,13 +3364,15 @@ impl SavedState {
 
     pub fn mark_app_attached_sessions_exited(&mut self) {
         for session in &mut self.app_attached_sessions {
-            if matches!(
-                session.state,
-                HostedSessionState::Draft
-                    | HostedSessionState::Validating
-                    | HostedSessionState::Starting
-                    | HostedSessionState::RunningAppAttached
-            ) {
+            if session.route == SessionLaunchRoute::LegacyAppAttached
+                && matches!(
+                    session.state,
+                    HostedSessionState::Draft
+                        | HostedSessionState::Validating
+                        | HostedSessionState::Starting
+                        | HostedSessionState::RunningAppAttached
+                )
+            {
                 session.state = HostedSessionState::Exited;
             }
         }
@@ -3447,6 +3467,7 @@ mod tests {
             state: HostedSessionState::RunningAppAttached,
             project_label: "p".repeat(400),
             preset_label: "preset".to_string(),
+            durable_host: None,
             group_id: None,
             position: termirust_domain::PositionKey::FIRST,
             started_at: 1,
@@ -3467,6 +3488,66 @@ mod tests {
         assert!(!json.contains("initial_input"));
         assert!(!json.contains("working_directory"));
         assert_eq!(state.app_attached_sessions[0].id, id);
+    }
+
+    #[test]
+    fn restart_preserves_durable_host_state_and_metadata() {
+        let mut state = SavedState::default();
+        let id = HostedSessionId::new();
+        state.upsert_app_attached_session(super::SavedAppAttachedSession {
+            id,
+            route: SessionLaunchRoute::DurableHost,
+            origin: SessionOrigin {
+                project_id: ProjectId::new(),
+                preset_id: PresetId::new(),
+            },
+            state: HostedSessionState::Live,
+            project_label: "project".to_string(),
+            preset_label: "codex".to_string(),
+            durable_host: Some(super::SavedDurableHost {
+                runtime_root: "/tmp/runtime".to_string(),
+                session_dir: "/tmp/session".to_string(),
+                working_directory: Some("/tmp/project".to_string()),
+                last_sequence: 41,
+                durable_sequence: 39,
+            }),
+            group_id: None,
+            position: termirust_domain::PositionKey::FIRST,
+            started_at: 1,
+            updated_at: 2,
+        });
+
+        state.mark_app_attached_sessions_exited();
+
+        assert_eq!(
+            state.app_attached_sessions[0].state,
+            HostedSessionState::Live
+        );
+        let json = serde_json::to_string(&state).unwrap();
+        let restored: SavedState = serde_json::from_str(&json).unwrap();
+        let host = restored.app_attached_sessions[0]
+            .durable_host
+            .as_ref()
+            .unwrap();
+        assert_eq!(host.last_sequence, 41);
+        assert_eq!(host.durable_sequence, 39);
+        assert_eq!(restored.app_attached_sessions[0].id, id);
+    }
+
+    #[test]
+    fn restorable_connection_defaults_old_json_and_preserves_durable_session_id() {
+        let old: RestorableConnection = serde_json::from_str(
+            r#"{"title":"Local","kind":"local_shell","local_shell":{"program":"/bin/sh","args":[],"cwd":null}}"#,
+        )
+        .unwrap();
+        assert_eq!(old.durable_session_id, None);
+
+        let id = HostedSessionId::new();
+        let mut durable = old;
+        durable.durable_session_id = Some(id);
+        let encoded = serde_json::to_string(&durable).unwrap();
+        let decoded: RestorableConnection = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.durable_session_id, Some(id));
     }
 
     #[test]
@@ -3813,6 +3894,7 @@ mod tests {
                 local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: None,
+                durable_session_id: None,
             }],
         };
 
@@ -3852,6 +3934,7 @@ mod tests {
                 local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: None,
+                durable_session_id: None,
             }],
         });
         state.active_workspace_index = Some(0);

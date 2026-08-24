@@ -89,6 +89,10 @@ pub fn common_delete() -> String {
     text(&CommonDeleteArgs::new())
 }
 
+pub fn common_open() -> String {
+    text(&CommonOpenArgs::new())
+}
+
 pub fn common_retry() -> String {
     text(&CommonRetryArgs::new())
 }
@@ -315,6 +319,7 @@ pub fn preset_argument_count(count: usize) -> String {
 static_message!(new_session_action, NewSessionActionArgs);
 static_message!(new_session_title, NewSessionTitleArgs);
 static_message!(new_session_warning, NewSessionWarningArgs);
+static_message!(new_session_legacy_warning, NewSessionLegacyWarningArgs);
 static_message!(new_session_durable_copy, NewSessionDurableCopyArgs);
 static_message!(new_session_project_field, NewSessionProjectFieldArgs);
 static_message!(new_session_preset_field, NewSessionPresetFieldArgs);
@@ -341,6 +346,28 @@ static_message!(new_session_stop_action, NewSessionStopActionArgs);
 static_message!(new_session_phase_draft, NewSessionPhaseDraftArgs);
 static_message!(new_session_phase_validating, NewSessionPhaseValidatingArgs);
 static_message!(new_session_phase_starting, NewSessionPhaseStartingArgs);
+static_message!(
+    new_session_phase_provisioning,
+    NewSessionPhaseProvisioningArgs
+);
+static_message!(new_session_phase_attaching, NewSessionPhaseAttachingArgs);
+static_message!(new_session_phase_replaying, NewSessionPhaseReplayingArgs);
+static_message!(new_session_phase_live, NewSessionPhaseLiveArgs);
+static_message!(
+    new_session_phase_recording_paused,
+    NewSessionPhaseRecordingPausedArgs
+);
+static_message!(new_session_phase_offline, NewSessionPhaseOfflineArgs);
+static_message!(new_session_phase_orphaned, NewSessionPhaseOrphanedArgs);
+static_message!(new_session_phase_gap, NewSessionPhaseGapArgs);
+static_message!(
+    new_session_phase_permission_denied,
+    NewSessionPhasePermissionDeniedArgs
+);
+static_message!(
+    new_session_phase_incompatible,
+    NewSessionPhaseIncompatibleArgs
+);
 static_message!(new_session_phase_running, NewSessionPhaseRunningArgs);
 static_message!(new_session_phase_failed, NewSessionPhaseFailedArgs);
 static_message!(new_session_phase_cancelled, NewSessionPhaseCancelledArgs);

@@ -2,6 +2,7 @@ mod canvas;
 mod chrome;
 mod connect;
 mod editor;
+mod hosted_session;
 mod hosts;
 mod library;
 mod new_session;
@@ -25,6 +26,7 @@ use canvas::{
     CanvasWorkspaceState, ContextHandoffReview, PendingCanvasNodeDelete, PendingCanvasPaneClose,
     PendingTmuxClose, SplitPaneChooser, StructuredAgentRuntime,
 };
+use hosted_session::{DurableSessionPaths, DurableSessionSpec, spawn_durable_session};
 use new_session::NewSessionState;
 use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
@@ -59,9 +61,9 @@ use crate::local::spawn_local_session;
 use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
     HostColorTag, HostProfile, JumpHostConnection, PortForwardKind, PortForwardRule, ProfileSource,
-    QuickConnect, SavedHostGroup, SavedIdentity, SavedSnippet, SavedSplitNode, SavedState,
-    SavedVault, SavedVaultMember, SavedWindowBounds, SavedWorkspace, SessionLogEntry, SplitAxis,
-    ThemePreset, VaultKind, VaultMemberRole, WorkspaceLayoutMode,
+    QuickConnect, SavedAppAttachedSession, SavedHostGroup, SavedIdentity, SavedSnippet,
+    SavedSplitNode, SavedState, SavedVault, SavedVaultMember, SavedWindowBounds, SavedWorkspace,
+    SessionLogEntry, SplitAxis, ThemePreset, VaultKind, VaultMemberRole, WorkspaceLayoutMode,
     default_persistent_session_name_from_id,
 };
 use crate::sftp::{
@@ -496,10 +498,13 @@ struct SessionPane {
 
 struct AppAttachedPaneState {
     hosted_session_id: HostedSessionId,
+    route: termirust_domain::SessionLaunchRoute,
     #[allow(dead_code)]
     origin: SessionOrigin,
     pending_initial_input: Option<String>,
     cancel_requested: bool,
+    last_sequence: u64,
+    has_writer_lease: bool,
 }
 
 #[derive(Clone)]
@@ -4380,12 +4385,18 @@ impl TermiRustApp {
                 let Some(pane) = self.pane(*pane_id) else {
                     continue;
                 };
-                if pane.app_attached.is_some() {
+                if pane.app_attached.as_ref().is_some_and(|session| {
+                    session.route == termirust_domain::SessionLaunchRoute::LegacyAppAttached
+                }) {
                     continue;
                 }
-                let Some(restorable) = pane.request.to_restorable() else {
+                let Some(mut restorable) = pane.request.to_restorable() else {
                     continue;
                 };
+                restorable.durable_session_id = pane.app_attached.as_ref().and_then(|session| {
+                    (session.route == termirust_domain::SessionLaunchRoute::DurableHost)
+                        .then_some(session.hosted_session_id)
+                });
 
                 if workspace.active_pane_id == *pane_id {
                     active_pane_index = panes.len();
@@ -4486,7 +4497,34 @@ impl TermiRustApp {
 
             for (pane_index, pane_state) in saved_workspace.panes.iter().enumerate() {
                 let request = pane_state.to_connect_request(self.next_session_id());
-                let pane_id = self.spawn_pane(request, window, cx);
+                let pane_id = if let Some(session_id) = pane_state.durable_session_id {
+                    let Some(durable_session) = self
+                        .saved
+                        .app_attached_sessions
+                        .iter()
+                        .find(|session| session.id == session_id)
+                        .cloned()
+                    else {
+                        self.error_message =
+                            "A durable workspace pane is missing its saved session metadata; no process was started."
+                                .to_string();
+                        continue;
+                    };
+                    let Some(pane_id) = self.spawn_saved_durable_pane(
+                        request.clone(),
+                        &durable_session,
+                        window,
+                        cx,
+                    ) else {
+                        self.error_message =
+                            "A durable workspace pane is missing verified Host metadata; no process was started."
+                                .to_string();
+                        continue;
+                    };
+                    pane_id
+                } else {
+                    self.spawn_pane(request, window, cx)
+                };
                 if pane_index == saved_workspace.active_pane_index {
                     active_pane_id = Some(pane_id);
                 }
@@ -5185,13 +5223,12 @@ impl TermiRustApp {
     fn spawn_pane(
         &mut self,
         request: ConnectRequest,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> u64 {
         let pane_id = request.session_id;
         let endpoint = request.endpoint_label();
         let title = request.title.clone();
-        let terminal_scrollback_rows = request.terminal_scrollback_rows;
         eprintln!("[app] spawn_pane: pane_id={pane_id} title='{title}' endpoint={endpoint}");
         let terminal_focus = cx.focus_handle().tab_stop(true);
         let runtime = if request.kind == ConnectionKind::LocalShell {
@@ -5204,6 +5241,193 @@ impl TermiRustApp {
                 self.saved.settings.ssh_keepalive_secs,
             )
         };
+        self.register_pane(request, runtime, terminal_focus)
+    }
+
+    fn spawn_saved_durable_pane(
+        &mut self,
+        mut request: ConnectRequest,
+        saved_session: &SavedAppAttachedSession,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<u64> {
+        let host = saved_session.durable_host.as_ref()?;
+        request.session_id = self.next_session_id();
+        if let Some(shell) = request.local_shell.as_mut() {
+            shell.cwd = host.working_directory.clone();
+        }
+        let pane_id = request.session_id;
+        let runtime = spawn_durable_session(
+            DurableSessionSpec {
+                pane_id,
+                session_id: saved_session.id,
+                paths: DurableSessionPaths {
+                    runtime_root: host.runtime_root.clone().into(),
+                    session_dir: host.session_dir.clone().into(),
+                },
+                launch: None,
+                from_sequence: termirust_domain::OutputSequence::ZERO,
+            },
+            self.event_tx.clone(),
+        );
+        let terminal_focus = cx.focus_handle().tab_stop(true);
+        self.register_pane(request, runtime, terminal_focus);
+        if let Some(pane) = self.pane_mut(pane_id) {
+            pane.app_attached = Some(AppAttachedPaneState {
+                hosted_session_id: saved_session.id,
+                route: saved_session.route,
+                origin: saved_session.origin,
+                pending_initial_input: None,
+                cancel_requested: false,
+                last_sequence: 0,
+                has_writer_lease: false,
+            });
+            pane.status = "Attaching".to_string();
+            pane.terminal_focus.focus(window);
+        }
+        Some(pane_id)
+    }
+
+    pub(super) fn reattach_saved_session(
+        &mut self,
+        session_id: HostedSessionId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some((pane_id, closed)) = self.panes.iter().find_map(|pane| {
+            pane.app_attached.as_ref().and_then(|hosted| {
+                (hosted.hosted_session_id == session_id).then_some((pane.id, pane.closed))
+            })
+        }) {
+            if closed {
+                self.retry_durable_pane(pane_id, window, cx);
+                return;
+            }
+            if let Some(workspace_id) = self.pane_workspace_id(pane_id) {
+                self.active_workspace_id = Some(workspace_id);
+                if let Some(workspace) = self.workspace_mut(workspace_id) {
+                    workspace.active_pane_id = pane_id;
+                }
+                if let Some(pane) = self.pane(pane_id) {
+                    pane.terminal_focus.focus(window);
+                }
+                cx.notify();
+            }
+            return;
+        }
+        let Some(saved_session) = self
+            .saved
+            .app_attached_sessions
+            .iter()
+            .find(|session| session.id == session_id)
+            .cloned()
+        else {
+            return;
+        };
+        if saved_session.route != termirust_domain::SessionLaunchRoute::DurableHost {
+            self.error_message =
+                "Legacy app-attached sessions cannot be reopened after their process exits."
+                    .to_string();
+            cx.notify();
+            return;
+        }
+        let mut request = ConnectRequest::local_shell_with_config(
+            0,
+            self.saved.settings.default_local_shell.clone(),
+        );
+        request.title = format!(
+            "{} - {}",
+            saved_session.project_label, saved_session.preset_label
+        );
+        let Some(pane_id) =
+            self.spawn_saved_durable_pane(request.clone(), &saved_session, window, cx)
+        else {
+            self.error_message = "This durable session has no valid Host metadata.".to_string();
+            cx.notify();
+            return;
+        };
+        self.open_spawned_pane_workspace(&request, pane_id);
+        self.status_message = "Attaching to durable session...".to_string();
+        self.error_message.clear();
+        self.persist_runtime_state();
+        cx.notify();
+    }
+
+    pub(super) fn retry_durable_pane(
+        &mut self,
+        pane_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((session_id, saved_session)) = self.pane(pane_id).and_then(|pane| {
+            let attached = pane.app_attached.as_ref()?;
+            (attached.route == termirust_domain::SessionLaunchRoute::DurableHost).then(|| {
+                let saved = self
+                    .saved
+                    .app_attached_sessions
+                    .iter()
+                    .find(|saved| saved.id == attached.hosted_session_id)
+                    .cloned();
+                (attached.hosted_session_id, saved)
+            })
+        }) else {
+            return;
+        };
+        let Some(host) = saved_session.and_then(|saved| saved.durable_host) else {
+            self.error_message = "This durable session has no valid Host metadata.".to_string();
+            cx.notify();
+            return;
+        };
+        let runtime = spawn_durable_session(
+            DurableSessionSpec {
+                pane_id,
+                session_id,
+                paths: DurableSessionPaths {
+                    runtime_root: host.runtime_root.into(),
+                    session_dir: host.session_dir.into(),
+                },
+                launch: None,
+                from_sequence: termirust_domain::OutputSequence::ZERO,
+            },
+            self.event_tx.clone(),
+        );
+        if let Some(pane) = self.pane_mut(pane_id) {
+            let size = pane.terminal.size();
+            pane.runtime = runtime;
+            pane.terminal = TerminalState::new(size, pane.request.terminal_scrollback_rows);
+            pane.connected = false;
+            pane.closed = false;
+            pane.user_closed = false;
+            pane.status = "Attaching to durable Host".to_string();
+            pane.selection = None;
+            if let Some(attached) = pane.app_attached.as_mut() {
+                attached.last_sequence = 0;
+                attached.has_writer_lease = false;
+                attached.cancel_requested = false;
+            }
+            pane.terminal_focus.focus(window);
+        }
+        self.saved.update_app_attached_session(
+            session_id,
+            termirust_domain::HostedSessionState::Attaching,
+            crate::ui::util::current_unix_millis(),
+        );
+        let _ = save_saved_state(&self.saved);
+        self.status_message = "Retrying durable Host attachment...".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn register_pane(
+        &mut self,
+        request: ConnectRequest,
+        runtime: SessionRuntimeHandle,
+        terminal_focus: FocusHandle,
+    ) -> u64 {
+        let pane_id = request.session_id;
+        let endpoint = request.endpoint_label();
+        let title = request.title.clone();
+        let terminal_scrollback_rows = request.terminal_scrollback_rows;
         eprintln!("[app] spawn_pane: session spawned, creating pane state...");
 
         let log_entry = SessionLogEntry::new(&request);
@@ -5234,7 +5458,6 @@ impl TermiRustApp {
             app_attached: None,
         });
 
-        let _ = window;
         pane_id
     }
 
@@ -5279,6 +5502,11 @@ impl TermiRustApp {
     ) -> Option<(u64, u64)> {
         request.session_id = self.next_session_id();
         let pane_id = self.spawn_pane(request.clone(), window, cx);
+        let workspace_id = self.open_spawned_pane_workspace(&request, pane_id);
+        Some((workspace_id, pane_id))
+    }
+
+    fn open_spawned_pane_workspace(&mut self, request: &ConnectRequest, pane_id: u64) -> u64 {
         let workspace_id = self.next_workspace_id();
 
         self.workspaces.push(WorkspaceTab {
@@ -5308,7 +5536,7 @@ impl TermiRustApp {
         });
 
         self.active_workspace_id = Some(workspace_id);
-        Some((workspace_id, pane_id))
+        workspace_id
     }
 
     fn connect_current(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -5736,9 +5964,10 @@ impl TermiRustApp {
 
     fn close_pane(&mut self, pane_id: u64, cx: &mut Context<Self>) {
         if let Some(hosted_session_id) = self.pane(pane_id).and_then(|pane| {
-            pane.app_attached
-                .as_ref()
-                .map(|session| session.hosted_session_id)
+            pane.app_attached.as_ref().and_then(|session| {
+                (session.route == termirust_domain::SessionLaunchRoute::LegacyAppAttached)
+                    .then_some(session.hosted_session_id)
+            })
         }) {
             self.saved.update_app_attached_session(
                 hosted_session_id,
@@ -5807,9 +6036,10 @@ impl TermiRustApp {
             .iter()
             .filter_map(|pane_id| {
                 self.pane(*pane_id).and_then(|pane| {
-                    pane.app_attached
-                        .as_ref()
-                        .map(|session| session.hosted_session_id)
+                    pane.app_attached.as_ref().and_then(|session| {
+                        (session.route == termirust_domain::SessionLaunchRoute::LegacyAppAttached)
+                            .then_some(session.hosted_session_id)
+                    })
                 })
             })
             .collect::<Vec<_>>();
@@ -5958,6 +6188,57 @@ impl TermiRustApp {
                         panes_to_refresh.push(session_id);
                     }
                 }
+                SshEvent::HostedSnapshot {
+                    session_id,
+                    data,
+                    boundary_sequence,
+                } => {
+                    if let Some(pane) = self.pane_mut(session_id) {
+                        let size = pane.terminal.size();
+                        pane.terminal =
+                            TerminalState::new(size, pane.request.terminal_scrollback_rows);
+                        pane.terminal.process_bytes(&data);
+                        if let Some(hosted) = pane.app_attached.as_mut() {
+                            hosted.last_sequence = boundary_sequence;
+                        }
+                        pane.selection = None;
+                        pane.dragging_selection = false;
+                        panes_to_refresh.push(session_id);
+                    }
+                }
+                SshEvent::HostedStatus {
+                    session_id,
+                    state,
+                    last_sequence,
+                    durable_sequence,
+                    has_writer_lease,
+                    detail,
+                } => {
+                    let hosted_session_id = self.pane_mut(session_id).and_then(|pane| {
+                        pane.status = detail;
+                        pane.app_attached.as_mut().map(|hosted| {
+                            hosted.last_sequence = last_sequence;
+                            hosted.has_writer_lease = has_writer_lease;
+                            hosted.hosted_session_id
+                        })
+                    });
+                    if let Some(hosted_session_id) = hosted_session_id {
+                        if let Some(saved) = self
+                            .saved
+                            .app_attached_sessions
+                            .iter_mut()
+                            .find(|saved| saved.id == hosted_session_id)
+                        {
+                            saved.state = state;
+                            saved.updated_at = current_unix_millis();
+                            if let Some(host) = saved.durable_host.as_mut() {
+                                host.last_sequence = host.last_sequence.max(last_sequence);
+                                host.durable_sequence = host.durable_sequence.max(durable_sequence);
+                            }
+                        }
+                        let _ = save_saved_state(&self.saved);
+                    }
+                }
                 SshEvent::Error {
                     session_id,
                     message,
@@ -6011,10 +6292,17 @@ impl TermiRustApp {
                         .pane(session_id)
                         .map(|pane| pane.user_closed)
                         .unwrap_or(true);
+                    let durable = self.pane(session_id).is_some_and(|pane| {
+                        pane.app_attached.as_ref().is_some_and(|attached| {
+                            attached.route == termirust_domain::SessionLaunchRoute::DurableHost
+                        })
+                    });
                     if let Some(pane) = self.pane_mut(session_id) {
                         pane.connected = false;
                         pane.closed = true;
-                        pane.status = "Closed".to_string();
+                        if !durable {
+                            pane.status = "Closed".to_string();
+                        }
                         let log_id = pane.log_id.clone();
                         self.saved
                             .update_session_log(&log_id, |e| e.mark_disconnected());
@@ -6022,7 +6310,7 @@ impl TermiRustApp {
                     }
                     self.set_app_attached_terminal_state(session_id, false, &message);
                     let mut scheduled = false;
-                    if !was_user_closed {
+                    if !was_user_closed && !durable {
                         scheduled = self.maybe_schedule_auto_reconnect(session_id);
                     }
 
@@ -6030,6 +6318,8 @@ impl TermiRustApp {
                         self.pane(session_id)
                             .map(|pane| pane.status.clone())
                             .unwrap_or_default()
+                    } else if durable {
+                        message.clone()
                     } else if self
                         .pane(session_id)
                         .is_some_and(|pane| pane.request.is_local_shell())
@@ -6038,7 +6328,7 @@ impl TermiRustApp {
                     } else {
                         "SSH session closed.".to_string()
                     };
-                    if !scheduled && self.error_message.is_empty() {
+                    if !scheduled && !durable && self.error_message.is_empty() {
                         self.error_message = message;
                     }
                 }
@@ -6697,6 +6987,15 @@ impl TermiRustApp {
             return false;
         };
         if !pane.connected {
+            return false;
+        }
+        if pane.app_attached.as_ref().is_some_and(|session| {
+            session.route == termirust_domain::SessionLaunchRoute::DurableHost
+                && !session.has_writer_lease
+        }) {
+            self.error_message =
+                "This durable session is read-only because another client owns input.".to_string();
+            cx.notify();
             return false;
         }
 
@@ -10105,6 +10404,7 @@ mod tests {
     use std::fs;
     use std::path::Path;
     use std::time::{Duration, Instant};
+    use termirust_domain::HostedSessionId;
     use vt100::MouseProtocolMode;
 
     fn docker_ssh_request(server: &DockerSshServer) -> ConnectRequest {
@@ -10243,6 +10543,7 @@ mod tests {
                 local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: None,
+                durable_session_id: None,
             }],
             ..SavedWorkspace::default()
         });
@@ -10282,6 +10583,7 @@ mod tests {
                 local_forwards: Vec::new(),
                 local_forward: None,
                 local_shell: None,
+                durable_session_id: None,
             }],
             ..SavedWorkspace::default()
         });
@@ -13464,6 +13766,7 @@ sleep 30
                     args: Vec::new(),
                     cwd: Some(fixture_directory.display().to_string()),
                 }),
+                durable_session_id: None,
             }],
         });
         saved.active_workspace_index = Some(0);
@@ -19766,6 +20069,7 @@ sleep 1
                             state: termirust_domain::HostedSessionState::RunningAppAttached,
                             project_label: localization::projects_nav_label(),
                             preset_label: localization::new_session_title(),
+                            durable_host: None,
                             group_id: None,
                             position: termirust_domain::PositionKey::FIRST,
                             started_at: 1,
@@ -21261,6 +21565,7 @@ sleep 1
                     args: Vec::new(),
                     cwd: Some(std::env::temp_dir().display().to_string()),
                 }),
+                durable_session_id: None,
             }],
             ..SavedWorkspace::default()
         });
@@ -21272,6 +21577,39 @@ sleep 1
             assert_eq!(app.active_workspace_id, None);
             assert_eq!(app.nav_section, NavSection::Hosts);
             assert_eq!(app.saved.restored_workspaces.len(), 1);
+        });
+    }
+
+    #[gpui::test]
+    fn restore_missing_durable_metadata_never_launches_a_replacement_process(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.restore_workspaces_on_launch = true;
+        let mut pane = ConnectRequest::local_shell_with_config(
+            1,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: vec!["-c".to_string(), "touch should-not-exist".to_string()],
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        )
+        .to_restorable()
+        .unwrap();
+        pane.durable_session_id = Some(HostedSessionId::new());
+        saved.restored_workspaces.push(SavedWorkspace {
+            title: "missing-durable-metadata".to_string(),
+            panes: vec![pane],
+            ..SavedWorkspace::default()
+        });
+
+        let (app, _window) = open_test_app_with_state(cx, saved);
+
+        app.read_with(cx, |app, _| {
+            assert!(app.panes.is_empty());
+            assert!(app.workspaces.is_empty());
+            assert!(app.error_message.contains("no process was started"));
         });
     }
 

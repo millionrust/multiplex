@@ -7299,11 +7299,15 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "termirust-client",
  "termirust-domain",
+ "termirust-host-protocol",
  "termirust-protocol",
+ "termirust-session-host",
  "termirust-store",
  "termirust-ui-contract",
  "tokio",
+ "tokio-util",
  "vt100",
 ]
 

@@ -15,6 +15,7 @@ pub const MAX_PATH_SEARCH_DIRECTORIES: usize = 256;
 #[serde(rename_all = "snake_case")]
 pub enum SessionLaunchRoute {
     LegacyAppAttached,
+    DurableHost,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -29,6 +30,16 @@ pub enum HostedSessionState {
     Draft,
     Validating,
     Starting,
+    Provisioning,
+    Attaching,
+    Replaying,
+    Live,
+    RecordingPaused,
+    Offline,
+    Orphaned,
+    Gap,
+    PermissionDenied,
+    Incompatible,
     RunningAppAttached,
     Failed,
     Cancelled,
@@ -174,7 +185,7 @@ pub fn resolve_launch(
 
     Ok(ResolvedLaunch {
         session_id,
-        route: SessionLaunchRoute::LegacyAppAttached,
+        route: SessionLaunchRoute::DurableHost,
         origin: SessionOrigin {
             project_id: project.id,
             preset_id: preset.id,
@@ -328,6 +339,7 @@ mod tests {
             None,
         )
         .unwrap();
+        assert_eq!(resolved.route, SessionLaunchRoute::DurableHost);
         assert_eq!(
             resolved.arguments(),
             ["argument with spaces", "$(not-a-shell)"]

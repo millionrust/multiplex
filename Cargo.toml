@@ -63,9 +63,13 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 termirust-protocol = { version = "0.1.0", path = "crates/termirust-protocol" }
 termirust-domain = { version = "0.1.0", path = "crates/termirust-domain" }
+termirust-client = { version = "0.1.0", path = "crates/termirust-client" }
+termirust-host-protocol = { version = "0.1.0", path = "crates/termirust-host-protocol" }
+termirust-session-host = { version = "0.1.0", path = "crates/termirust-session-host" }
 termirust-store = { version = "0.1.0", path = "crates/termirust-store" }
 termirust-ui-contract = { version = "0.1.0", path = "crates/termirust-ui-contract" }
 tokio = { version = "1", features = ["io-util", "net", "rt", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 vt100 = "0.16.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]

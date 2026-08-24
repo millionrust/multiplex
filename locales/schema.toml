@@ -23,6 +23,11 @@ context = "Shared destructive action that deletes the selected record."
 description = "Delete"
 
 [[messages]]
+id = "common-open"
+context = "Shared action that opens the selected record."
+description = "Open"
+
+[[messages]]
 id = "common-retry"
 context = "Shared action that retries a failed operation."
 description = "Retry"
@@ -731,6 +736,46 @@ id = "new-session-phase-starting"
 context = "Launch sheet runtime start phase."
 description = "Starting phase"
 [[messages]]
+id = "new-session-phase-provisioning"
+context = "Durable Host process is being provisioned."
+description = "Provisioning phase"
+[[messages]]
+id = "new-session-phase-attaching"
+context = "Client is attaching to the durable Host."
+description = "Attaching phase"
+[[messages]]
+id = "new-session-phase-replaying"
+context = "Saved terminal output is being replayed."
+description = "Replay phase"
+[[messages]]
+id = "new-session-phase-live"
+context = "Durable session is live and recording."
+description = "Live durable phase"
+[[messages]]
+id = "new-session-phase-recording-paused"
+context = "Session is live but durable output recording is paused."
+description = "Recording paused phase"
+[[messages]]
+id = "new-session-phase-offline"
+context = "Durable Host is currently unavailable."
+description = "Offline phase"
+[[messages]]
+id = "new-session-phase-orphaned"
+context = "Host ownership is gone and retained output is read-only."
+description = "Orphaned phase"
+[[messages]]
+id = "new-session-phase-gap"
+context = "Durable output history contains a visible gap."
+description = "History gap phase"
+[[messages]]
+id = "new-session-phase-permission-denied"
+context = "Durable Host rejected the local client identity."
+description = "Permission denied phase"
+[[messages]]
+id = "new-session-phase-incompatible"
+context = "Durable Host protocol requires a different app version."
+description = "Incompatible protocol phase"
+[[messages]]
 id = "new-session-phase-running"
 context = "Launch sheet running phase."
 description = "Running phase"
@@ -746,6 +791,10 @@ description = "Cancelled phase"
 id = "new-session-phase-exited"
 context = "Launch sheet exited phase."
 description = "Exited phase"
+[[messages]]
+id = "new-session-legacy-warning"
+context = "Ownership warning for legacy app-attached sessions."
+description = "Legacy session ownership warning"
 [[messages]]
 id = "new-session-status-starting"
 context = "Global status while app-attached session starts."

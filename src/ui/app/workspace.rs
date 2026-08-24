@@ -31,6 +31,7 @@ use crate::ui::render_terminal::{
 };
 use crate::ui::theme;
 use gpui_component::ActiveTheme as _;
+use termirust_domain::{HostedSessionState, SessionLaunchRoute};
 
 impl TermiRustApp {
     fn render_workspace_search(&self, _window: &mut Window, cx: &mut Context<Self>) -> Option<Div> {
@@ -538,6 +539,46 @@ impl TermiRustApp {
             .map(|workspace| workspace.active_pane_id)
             == Some(pane.id);
         let is_app_attached = pane.app_attached.is_some();
+        let durable = pane
+            .app_attached
+            .as_ref()
+            .is_some_and(|attached| attached.route == SessionLaunchRoute::DurableHost);
+        let durable_state = pane.app_attached.as_ref().and_then(|attached| {
+            self.saved
+                .app_attached_sessions
+                .iter()
+                .find(|session| session.id == attached.hosted_session_id)
+                .map(|session| session.state)
+        });
+        let can_retry = durable
+            && pane.closed
+            && durable_state.is_some_and(|state| {
+                matches!(
+                    state,
+                    HostedSessionState::Offline
+                        | HostedSessionState::Gap
+                        | HostedSessionState::PermissionDenied
+                        | HostedSessionState::Incompatible
+                )
+            });
+        let can_stop = !pane.closed
+            && (!durable
+                || durable_state.is_some_and(|state| {
+                    !matches!(
+                        state,
+                        HostedSessionState::Exited
+                            | HostedSessionState::Orphaned
+                            | HostedSessionState::Gap
+                            | HostedSessionState::PermissionDenied
+                            | HostedSessionState::Incompatible
+                            | HostedSessionState::Offline
+                    )
+                }));
+        let app_attached_title: SharedString = if durable {
+            localization::new_session_warning().into()
+        } else {
+            localization::new_session_legacy_warning().into()
+        };
 
         v_flex()
             .id(("terminal-pane", pane.id))
@@ -583,25 +624,40 @@ impl TermiRustApp {
                                         .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                         .font_semibold()
                                         .text_color(theme::text_on_dark())
-                                        .child(localization::new_session_warning()),
+                                        .child(app_attached_title.clone()),
                                 )
                                 .child(
                                     div()
                                         .text_size(px(theme::TYPE_CAPTION_SIZE))
                                         .text_color(theme::text_muted_dark())
-                                        .child(localization::new_session_durable_copy()),
+                                        .child(pane.status.clone()),
                                 ),
                         )
                         .child(
-                            Button::new(("app-attached-stop", pane_id))
-                                .small()
-                                .danger()
-                                .icon(IconName::Close)
-                                .label(localization::new_session_stop_action())
-                                .disabled(pane.closed)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.stop_app_attached_session(pane_id, cx);
-                                })),
+                            h_flex()
+                                .gap(px(theme::SPACE_2))
+                                .when(can_retry, |this| {
+                                    this.child(
+                                        Button::new(("durable-retry", pane_id))
+                                            .small()
+                                            .icon(IconName::Redo2)
+                                            .label(localization::common_retry())
+                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                                this.retry_durable_pane(pane_id, window, cx);
+                                            })),
+                                    )
+                                })
+                                .child(
+                                    Button::new(("app-attached-stop", pane_id))
+                                        .small()
+                                        .danger()
+                                        .icon(IconName::Close)
+                                        .label(localization::new_session_stop_action())
+                                        .disabled(!can_stop)
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.stop_app_attached_session(pane_id, cx);
+                                        })),
+                                ),
                         ),
                 )
             })

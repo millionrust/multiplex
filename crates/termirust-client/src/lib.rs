@@ -1,5 +1,6 @@
 //! Local, bounded client for the TermiRust Host protocol.
 
+mod attach_model;
 mod client;
 mod error;
 mod idempotency;
@@ -9,6 +10,7 @@ mod transport;
 
 pub mod synthetic;
 
+pub use attach_model::{AttachPhase, GpuiAttachModel, OutputDisposition};
 pub use client::{ConnectOptions, ConnectionState, HostClient, SequencedOutput};
 pub use error::{ClientError, ClientErrorCode};
 pub use idempotency::{IdempotencyCache, IdempotencyDecision};

@@ -131,6 +131,7 @@ struct RuntimeState {
     parser: Mutex<vt100::Parser>,
     lifecycle: RwLock<HostLifecycle>,
     latest_sequence: AtomicU64,
+    durable_sequence: AtomicU64,
     recording_paused: AtomicBool,
     exited: AtomicBool,
     exit_code: StdMutex<Option<i32>>,
@@ -375,6 +376,7 @@ pub async fn start_with_cancel(
         )),
         lifecycle: RwLock::new(HostLifecycle::Ready),
         latest_sequence: AtomicU64::new(latest_sequence.get()),
+        durable_sequence: AtomicU64::new(latest_sequence.get()),
         recording_paused: AtomicBool::new(recording_paused),
         exited: AtomicBool::new(false),
         exit_code: StdMutex::new(None),
@@ -622,6 +624,9 @@ async fn heartbeat_loop(
             _ = cancel.cancelled() => break,
             _ = interval.tick() => {
                 let latest = state.journal.lock().await.sync()?;
+                state
+                    .durable_sequence
+                    .store(latest.get(), Ordering::Release);
                 let metadata = HostMetadata {
                     format_version: HostMetadata::FORMAT_VERSION,
                     session_id: state.descriptor.session_id,
@@ -1272,6 +1277,8 @@ async fn send_state(
             earliest_sequence: earliest,
             latest_sequence: latest,
             has_writer_lease: state.has_writer(connection_id).await,
+            recording_paused: state.recording_paused.load(Ordering::Acquire),
+            durable_sequence: state.durable_sequence.load(Ordering::Acquire),
         }),
         cancel,
     )

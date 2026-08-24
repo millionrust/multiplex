@@ -92,7 +92,7 @@ pub struct MobileVaultExportReport {
     pub known_hosts: usize,
 }
 
-fn app_dir() -> Result<PathBuf> {
+pub(crate) fn app_dir() -> Result<PathBuf> {
     #[cfg(test)]
     if let Some(path) = TEST_APP_DIR_OVERRIDE.with(|override_path| override_path.borrow().clone()) {
         fs::create_dir_all(&path)

@@ -70,6 +70,7 @@ pub struct HostClient {
     capabilities: CapabilitySet,
     limits: NegotiatedLimits,
     last_snapshot: Option<wire::ViewportSnapshotEvent>,
+    last_state: Option<wire::StateEvent>,
     next_request: u64,
 }
 
@@ -80,6 +81,7 @@ impl HostClient {
             capabilities: CapabilitySet::from_wire(&[]),
             limits: options.limits,
             last_snapshot: None,
+            last_state: None,
             options,
             state: ConnectionState::Disconnected,
             #[cfg(unix)]
@@ -118,6 +120,10 @@ impl HostClient {
 
     pub fn take_last_snapshot(&mut self) -> Option<wire::ViewportSnapshotEvent> {
         self.last_snapshot.take()
+    }
+
+    pub fn take_last_state(&mut self) -> Option<wire::StateEvent> {
+        self.last_state.take()
     }
 
     #[cfg(unix)]
@@ -305,6 +311,7 @@ impl HostClient {
         .await?;
         let mut tracker = SequenceTracker::new(from_sequence);
         self.last_snapshot = None;
+        self.last_state = None;
         let mut outputs = Vec::new();
         let mut bytes = 0_u64;
         let mut saw_ready = false;
@@ -356,6 +363,7 @@ impl HostClient {
                 }
                 Some(envelope_payload::Message::StateEvent(state)) if saw_ready => {
                     self.require_session(&state.session_id)?;
+                    self.last_state = Some(state);
                     return Ok(outputs);
                 }
                 Some(envelope_payload::Message::GapEvent(gap)) => {

@@ -780,7 +780,14 @@ impl TermiRustApp {
         let sessions = self.sessions_in_destination(project_id, group_id);
         let running = sessions
             .iter()
-            .filter(|session| session.state == HostedSessionState::RunningAppAttached)
+            .filter(|session| {
+                matches!(
+                    session.state,
+                    HostedSessionState::RunningAppAttached
+                        | HostedSessionState::Live
+                        | HostedSessionState::RecordingPaused
+                )
+            })
             .count();
         let key = group_id.map(group_key).unwrap_or(0);
         let header = h_flex()
@@ -990,6 +997,21 @@ impl TermiRustApp {
                     h_flex()
                         .flex_wrap()
                         .gap(px(theme::SPACE_2))
+                        .when(
+                            session.route == termirust_domain::SessionLaunchRoute::DurableHost,
+                            |this| {
+                                this.child(
+                                    Button::new(("session-open", key))
+                                        .debug_selector(|| "session-open".to_string())
+                                        .small()
+                                        .icon(IconName::SquareTerminal)
+                                        .label(localization::common_open())
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            this.reattach_saved_session(id, window, cx);
+                                        })),
+                                )
+                            },
+                        )
                         .child(
                             Button::new(("session-up", key))
                                 .debug_selector(|| "session-up".to_string())
@@ -1064,6 +1086,16 @@ fn session_state_label(state: HostedSessionState) -> String {
         HostedSessionState::Draft => localization::new_session_phase_draft(),
         HostedSessionState::Validating => localization::new_session_phase_validating(),
         HostedSessionState::Starting => localization::new_session_phase_starting(),
+        HostedSessionState::Provisioning => localization::new_session_phase_provisioning(),
+        HostedSessionState::Attaching => localization::new_session_phase_attaching(),
+        HostedSessionState::Replaying => localization::new_session_phase_replaying(),
+        HostedSessionState::Live => localization::new_session_phase_live(),
+        HostedSessionState::RecordingPaused => localization::new_session_phase_recording_paused(),
+        HostedSessionState::Offline => localization::new_session_phase_offline(),
+        HostedSessionState::Orphaned => localization::new_session_phase_orphaned(),
+        HostedSessionState::Gap => localization::new_session_phase_gap(),
+        HostedSessionState::PermissionDenied => localization::new_session_phase_permission_denied(),
+        HostedSessionState::Incompatible => localization::new_session_phase_incompatible(),
         HostedSessionState::RunningAppAttached => localization::new_session_phase_running(),
         HostedSessionState::Failed => localization::new_session_phase_failed(),
         HostedSessionState::Cancelled => localization::new_session_phase_cancelled(),
@@ -1073,9 +1105,19 @@ fn session_state_label(state: HostedSessionState) -> String {
 
 fn session_state_color(state: HostedSessionState) -> gpui::Hsla {
     match state {
-        HostedSessionState::RunningAppAttached => theme::success(),
-        HostedSessionState::Starting | HostedSessionState::Validating => theme::warning(),
-        HostedSessionState::Failed => theme::danger(),
+        HostedSessionState::RunningAppAttached | HostedSessionState::Live => theme::success(),
+        HostedSessionState::Starting
+        | HostedSessionState::Provisioning
+        | HostedSessionState::Attaching
+        | HostedSessionState::Replaying
+        | HostedSessionState::Validating => theme::warning(),
+        HostedSessionState::Failed
+        | HostedSessionState::RecordingPaused
+        | HostedSessionState::Offline
+        | HostedSessionState::Orphaned
+        | HostedSessionState::Gap
+        | HostedSessionState::PermissionDenied
+        | HostedSessionState::Incompatible => theme::danger(),
         _ => theme::text_muted(),
     }
 }
@@ -1101,6 +1143,7 @@ mod tests {
             state: HostedSessionState::RunningAppAttached,
             project_label: localization::projects_nav_label(),
             preset_label: localization::new_session_title(),
+            durable_host: None,
             group_id,
             position,
             started_at: 1,

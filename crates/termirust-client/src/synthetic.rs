@@ -808,6 +808,8 @@ async fn send_state(
             earliest_sequence: config.first_output_sequence.get(),
             latest_sequence: latest_sequence(config)?.get(),
             has_writer_lease: true,
+            recording_paused: false,
+            durable_sequence: 0,
         }),
         cancel,
     )

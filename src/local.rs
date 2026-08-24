@@ -180,7 +180,7 @@ fn run_local_session(
                         }
                     }
                 }
-                Ok(SessionCommand::Disconnect) => {
+                Ok(SessionCommand::StopDurable | SessionCommand::Disconnect) => {
                     let _ = terminate_owned_pty_process_group(child.as_mut());
                     let _ = child.wait();
                     let _ = event_tx.send(SshEvent::Disconnected {
