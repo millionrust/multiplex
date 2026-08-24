@@ -10,6 +10,7 @@ mod palette;
 mod presets;
 mod project;
 mod projects;
+mod session_sidebar;
 mod sftp;
 mod types;
 mod workspace;
@@ -900,6 +901,8 @@ pub struct TermiRustApp {
     draft_auth_mode: AuthMode,
     project_library: ProjectLibraryState,
     project_label_input: Entity<InputState>,
+    group_name_input: Entity<InputState>,
+    session_sidebar: session_sidebar::SessionSidebarState,
     project_list_focus: FocusHandle,
     preset_library: PresetLibraryState,
     preset_label_input: Entity<InputState>,
@@ -1072,6 +1075,8 @@ impl TermiRustApp {
         let project_library = ProjectLibraryState::open_default();
         let project_label_input = cx
             .new(|cx| InputState::new(window, cx).placeholder(localization::project_label_field()));
+        let group_name_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder(localization::group_name_field()));
         let project_list_focus = cx.focus_handle().tab_stop(true);
         let preset_library = PresetLibraryState::open_default();
         let preset_label_input = cx
@@ -1120,6 +1125,8 @@ impl TermiRustApp {
             draft_auth_mode,
             project_library,
             project_label_input,
+            group_name_input,
+            session_sidebar: session_sidebar::SessionSidebarState::default(),
             project_list_focus,
             preset_library,
             preset_label_input,
@@ -1228,6 +1235,7 @@ impl TermiRustApp {
         };
 
         app.load_settings_inputs(window, cx);
+        app.repair_session_group_references();
 
         if app.saved.settings.restore_workspaces_on_launch {
             app.restore_saved_workspaces(window, cx);
@@ -19712,6 +19720,233 @@ sleep 1
             fs::read(&sentinel).expect("sentinel must remain after undo"),
             b"folder-content-must-survive"
         );
+    }
+
+    #[gpui::test]
+    fn e2e_session_sidebar_group_move_guard_undo_and_restart(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let fixture = tempfile::tempdir().expect("project fixture should be created");
+        let project_root = fixture.path().join("session-groups");
+        fs::create_dir(&project_root).expect("project folder should be created");
+        let (app, window) = open_test_app(cx);
+        let (project_id, session_id, origin) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let repository = app
+                        .project_library
+                        .repository
+                        .clone()
+                        .expect("project repository should exist");
+                    let expected = app
+                        .project_library
+                        .snapshot
+                        .as_ref()
+                        .expect("project snapshot should exist")
+                        .revision;
+                    let project = repository
+                        .add_project(termirust_domain::AddProject {
+                            id: termirust_domain::ProjectId::new(),
+                            root: project_root.clone(),
+                            display_name: None,
+                            expected,
+                        })
+                        .expect("project should be added");
+                    app.project_library.reload();
+                    app.project_library.selected_id = Some(project.id);
+                    let session_id = termirust_domain::HostedSessionId::new();
+                    let origin = termirust_domain::SessionOrigin {
+                        project_id: project.id,
+                        preset_id: termirust_domain::PresetId::new(),
+                    };
+                    app.saved
+                        .upsert_app_attached_session(crate::models::SavedAppAttachedSession {
+                            id: session_id,
+                            route: termirust_domain::SessionLaunchRoute::LegacyAppAttached,
+                            origin,
+                            state: termirust_domain::HostedSessionState::RunningAppAttached,
+                            project_label: localization::projects_nav_label(),
+                            preset_label: localization::new_session_title(),
+                            group_id: None,
+                            position: termirust_domain::PositionKey::FIRST,
+                            started_at: 1,
+                            updated_at: 1,
+                        });
+                    crate::storage::save_saved_state(&app.saved)
+                        .expect("session placement should persist");
+                    app.activate_library_section(NavSection::Projects, window, cx);
+                    (project.id, session_id, origin)
+                })
+            })
+            .expect("fixture setup should update");
+
+        let _ = selector_click_center(window, cx, "session-sidebar");
+        let _ = selector_click_center(window, cx, "group-new");
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_group_editor(project_id, None, window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.group_name_input,
+                        localization::group_editor_new_title(),
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("group name should update");
+        let save_group =
+            wait_for_selector_click_center(window, cx, "group-save", Duration::from_secs(2));
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(save_group, gpui::Modifiers::none());
+        let group_id = app.read_with(cx, |app, _| {
+            let snapshot = app
+                .project_library
+                .snapshot
+                .as_ref()
+                .expect("project snapshot should exist");
+            assert_eq!(snapshot.groups.len(), 1);
+            snapshot.groups[0].id
+        });
+
+        let _ = selector_click_center(window, cx, "session-move");
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| {
+                    app.select_session_for_move(session_id, cx);
+                })
+            })
+            .expect("session move controls should open");
+        let move_to_group =
+            wait_for_selector_click_center(window, cx, "session-to-group", Duration::from_secs(2));
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(move_to_group, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            let session = app
+                .saved
+                .app_attached_sessions
+                .iter()
+                .find(|session| session.id == session_id)
+                .expect("session should remain present");
+            assert_eq!(session.group_id, Some(group_id));
+            assert_eq!(session.origin, origin);
+            assert_eq!(
+                session.state,
+                termirust_domain::HostedSessionState::RunningAppAttached
+            );
+        });
+
+        let disclosure = selector_click_center(window, cx, "group-disclosure");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(disclosure, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.project_library
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.groups.first())
+                    .is_some_and(|group| group.collapsed)
+            );
+        });
+
+        let _ = selector_click_center(window, cx, "group-remove");
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| app.begin_group_removal(group_id, cx))
+            })
+            .expect("guarded group removal should open");
+        let _ = wait_for_selector_click_center(
+            window,
+            cx,
+            "group-remove-cancel",
+            Duration::from_secs(2),
+        );
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| app.cancel_group_removal(cx))
+            })
+            .expect("group removal should cancel");
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.saved.app_attached_sessions[0].group_id, Some(group_id));
+            assert_eq!(
+                app.project_library
+                    .snapshot
+                    .as_ref()
+                    .expect("snapshot should exist")
+                    .groups
+                    .len(),
+                1
+            );
+        });
+
+        let _ = selector_click_center(window, cx, "group-remove");
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| app.begin_group_removal(group_id, cx))
+            })
+            .expect("guarded group removal should reopen");
+        let _ = wait_for_selector_click_center(
+            window,
+            cx,
+            "group-remove-to-root",
+            Duration::from_secs(2),
+        );
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| {
+                    app.remove_group_to(
+                        group_id,
+                        Some(termirust_domain::GroupDestination::ProjectRoot),
+                        cx,
+                    );
+                })
+            })
+            .expect("group sessions should move to root");
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.project_library
+                    .snapshot
+                    .as_ref()
+                    .expect("snapshot should exist")
+                    .groups
+                    .is_empty()
+            );
+            assert_eq!(app.saved.app_attached_sessions[0].group_id, None);
+            assert_eq!(app.saved.app_attached_sessions[0].origin, origin);
+        });
+
+        let _ = wait_for_selector_click_center(window, cx, "group-undo", Duration::from_secs(2));
+        window
+            .update(cx, |_, _, cx| {
+                app.update(cx, |app, cx| app.undo_organization(cx))
+            })
+            .expect("group removal should undo");
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.saved.app_attached_sessions[0].group_id, Some(group_id));
+            assert_eq!(
+                app.saved.app_attached_sessions[0].origin.project_id,
+                project_id
+            );
+            assert!(
+                app.project_library
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.groups.first())
+                    .is_some_and(|group| group.collapsed)
+            );
+        });
+
+        let persisted = load_saved_state().expect("saved state should reload");
+        let (restarted, _) = open_test_app_with_state(cx, persisted);
+        restarted.read_with(cx, |app, _| {
+            assert_eq!(app.saved.app_attached_sessions[0].group_id, Some(group_id));
+            assert!(
+                app.project_library
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.groups.first())
+                    .is_some_and(|group| group.collapsed)
+            );
+        });
     }
 
     #[gpui::test]

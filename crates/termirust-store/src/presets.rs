@@ -435,11 +435,12 @@ fn store_as_domain(error: StoreError) -> PresetError {
         } => PresetError::Store {
             code: "permission-denied",
         },
-        StoreError::Io { .. } | StoreError::InvalidInstanceId | StoreError::Domain(_) => {
-            PresetError::Store {
-                code: "unavailable",
-            }
-        }
+        StoreError::Io { .. }
+        | StoreError::InvalidInstanceId
+        | StoreError::Domain(_)
+        | StoreError::GroupDomain(_) => PresetError::Store {
+            code: "unavailable",
+        },
     }
 }
 

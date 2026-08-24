@@ -127,6 +127,56 @@ static_message!(projects_empty_title, ProjectsEmptyTitleArgs);
 static_message!(projects_empty_description, ProjectsEmptyDescriptionArgs);
 static_message!(projects_folder_safety, ProjectsFolderSafetyArgs);
 static_message!(projects_local_only, ProjectsLocalOnlyArgs);
+static_message!(session_sidebar_title, SessionSidebarTitleArgs);
+static_message!(session_sidebar_subtitle, SessionSidebarSubtitleArgs);
+static_message!(session_sidebar_empty, SessionSidebarEmptyArgs);
+static_message!(
+    session_sidebar_select_project,
+    SessionSidebarSelectProjectArgs
+);
+static_message!(group_ungrouped_label, GroupUngroupedLabelArgs);
+static_message!(group_new_action, GroupNewActionArgs);
+static_message!(group_editor_new_title, GroupEditorNewTitleArgs);
+static_message!(group_editor_edit_title, GroupEditorEditTitleArgs);
+static_message!(group_name_field, GroupNameFieldArgs);
+static_message!(group_rename_action, GroupRenameActionArgs);
+static_message!(group_collapse_action, GroupCollapseActionArgs);
+static_message!(group_expand_action, GroupExpandActionArgs);
+static_message!(group_move_up_action, GroupMoveUpActionArgs);
+static_message!(group_move_down_action, GroupMoveDownActionArgs);
+static_message!(group_remove_action, GroupRemoveActionArgs);
+static_message!(group_remove_title, GroupRemoveTitleArgs);
+static_message!(group_move_session_action, GroupMoveSessionActionArgs);
+static_message!(group_move_to_root_action, GroupMoveToRootActionArgs);
+static_message!(group_organization_updated, GroupOrganizationUpdatedArgs);
+static_message!(group_undo_action, GroupUndoActionArgs);
+static_message!(group_error_invalid_name, GroupErrorInvalidNameArgs);
+static_message!(group_error_duplicate, GroupErrorDuplicateArgs);
+static_message!(group_error_stale, GroupErrorStaleArgs);
+static_message!(group_error_generic, GroupErrorGenericArgs);
+
+pub fn group_session_count(count: usize) -> String {
+    text(&GroupSessionCountArgs::new(Count(count as u64)))
+}
+
+pub fn group_running_summary(count: usize) -> String {
+    text(&GroupRunningSummaryArgs::new(Count(count as u64)))
+}
+
+pub fn group_remove_description(name: impl Into<String>, count: usize) -> String {
+    text(&GroupRemoveDescriptionArgs::new(
+        UserData::new(name),
+        Count(count as u64),
+    ))
+}
+
+pub fn group_move_to_action(name: impl Into<String>) -> String {
+    text(&GroupMoveToActionArgs::new(UserData::new(name)))
+}
+
+pub fn group_repair_status(count: usize) -> String {
+    text(&GroupRepairStatusArgs::new(Count(count as u64)))
+}
 static_message!(project_review_title, ProjectReviewTitleArgs);
 static_message!(project_validating, ProjectValidatingArgs);
 static_message!(project_label_field, ProjectLabelFieldArgs);

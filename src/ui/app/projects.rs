@@ -11,10 +11,10 @@ use gpui_component::input::Input;
 use gpui_component::{
     Disableable as _, Icon, IconName, Sizable as _, StyledExt as _, h_flex, v_flex,
 };
-use termirust_domain::{
-    AddProject, CanonicalPath, Project, ProjectError, ProjectId, ProjectStatus,
+use termirust_domain::{AddProject, CanonicalPath, ProjectError, ProjectId, ProjectStatus};
+use termirust_store::{
+    ProjectRepository, ProjectSnapshot, RemovedProject, StoreError, StoreHealth,
 };
-use termirust_store::{ProjectRepository, ProjectSnapshot, StoreError, StoreHealth};
 
 use super::{TermiRustApp, theme};
 use crate::storage::project_store_dir;
@@ -45,12 +45,12 @@ pub(super) struct ProjectAddValidation {
 }
 
 pub(super) struct PendingProjectRemoval {
-    project: Project,
+    removed: RemovedProject,
     expires_at: Instant,
 }
 
 pub(super) struct ProjectLibraryState {
-    repository: Option<ProjectRepository>,
+    pub repository: Option<ProjectRepository>,
     pub load_state: ProjectLibraryLoadState,
     pub snapshot: Option<ProjectSnapshot>,
     pub selected_id: Option<ProjectId>,
@@ -85,7 +85,7 @@ impl ProjectLibraryState {
         state
     }
 
-    fn reload(&mut self) {
+    pub fn reload(&mut self) {
         let Some(repository) = &self.repository else {
             self.load_state = ProjectLibraryLoadState::Failed(ProjectStoreFailure::Unavailable);
             self.snapshot = None;
@@ -315,13 +315,14 @@ impl TermiRustApp {
             return;
         };
         match repository.remove_project(id, expected) {
-            Ok(project) => {
-                let name = project.display_name.as_str().to_string();
+            Ok(removed) => {
+                let name = removed.project.display_name.as_str().to_string();
                 self.project_library.pending_removal = Some(PendingProjectRemoval {
-                    project,
+                    removed,
                     expires_at: Instant::now() + PROJECT_UNDO_WINDOW,
                 });
                 self.project_library.reload();
+                self.repair_session_group_references();
                 self.status_message = localization::project_removed_status(name);
                 self.error_message.clear();
             }
@@ -356,8 +357,9 @@ impl TermiRustApp {
         else {
             return;
         };
-        match repository.restore_project(pending.project, expected) {
-            Ok(project) => {
+        match repository.restore_project(pending.removed, expected) {
+            Ok(restored) => {
+                let project = restored.project;
                 let name = project.display_name.as_str().to_string();
                 self.project_library.reload();
                 self.project_library.selected_id = Some(project.id);
@@ -388,6 +390,7 @@ impl TermiRustApp {
 
     pub(super) fn retry_project_library(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.project_library.reload();
+        self.repair_session_group_references();
         if matches!(
             self.project_library.load_state,
             ProjectLibraryLoadState::Ready
@@ -437,7 +440,18 @@ impl TermiRustApp {
                         })),
                 )
                 .into_any_element(),
-            ProjectLibraryLoadState::Ready => self.render_project_list(cx),
+            ProjectLibraryLoadState::Ready => h_flex()
+                .flex_1()
+                .min_h_0()
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .h_full()
+                        .child(self.render_project_list(cx)),
+                )
+                .child(self.render_session_sidebar(self.project_library.selected_id, cx))
+                .into_any_element(),
         };
 
         v_flex()
@@ -503,7 +517,7 @@ impl TermiRustApp {
             .when_some(
                 self.project_library.pending_removal.as_ref(),
                 |this, pending| {
-                    let name = pending.project.display_name.as_str().to_string();
+                    let name = pending.removed.project.display_name.as_str().to_string();
                     this.child(
                         h_flex()
                             .id("project-undo-banner")
@@ -858,6 +872,7 @@ fn classify_store_failure(error: StoreError) -> ProjectStoreFailure {
         StoreError::Io { .. }
         | StoreError::InvalidInstanceId
         | StoreError::Domain(_)
+        | StoreError::GroupDomain(_)
         | StoreError::PresetDomain(_) => ProjectStoreFailure::Unavailable,
     }
 }

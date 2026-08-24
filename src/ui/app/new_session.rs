@@ -292,6 +292,9 @@ impl TermiRustApp {
         };
         let initial_input = self.new_session_initial_input.read(cx).value().to_string();
         let now = current_unix_millis();
+        let position = self
+            .saved
+            .next_app_attached_session_position(project.id, None);
         self.saved
             .upsert_app_attached_session(SavedAppAttachedSession {
                 id: resolved.session_id,
@@ -300,6 +303,8 @@ impl TermiRustApp {
                 state: HostedSessionState::Starting,
                 project_label: project.display_name.as_str().to_string(),
                 preset_label: preset.label.as_str().to_string(),
+                group_id: None,
+                position,
                 started_at: now,
                 updated_at: now,
             });
@@ -891,6 +896,7 @@ mod tests {
                     app.project_library.snapshot = Some(ProjectSnapshot {
                         revision: project.revision,
                         projects: vec![project.clone().into()],
+                        groups: Vec::new(),
                         health: StoreHealth::Healthy,
                         read_only: false,
                         durability: Durability::Full,
@@ -987,6 +993,7 @@ mod tests {
                     app.project_library.snapshot = Some(ProjectSnapshot {
                         revision: project.revision,
                         projects: vec![project.clone().into()],
+                        groups: Vec::new(),
                         health: StoreHealth::Healthy,
                         read_only: false,
                         durability: Durability::Full,

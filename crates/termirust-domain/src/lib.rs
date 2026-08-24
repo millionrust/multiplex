@@ -1,9 +1,14 @@
+pub mod group;
 pub mod id;
 pub mod preset;
 pub mod project;
 pub mod session;
 
-pub use id::{HostedSessionId, PositionError, PositionKey, PresetId, ProjectId, Revision};
+pub use group::{
+    Group, GroupDestination, GroupError, GroupInverseCommand, GroupMutation, GroupName,
+    MAX_GROUP_NAME_SCALARS, MAX_GROUPS_PER_PROJECT, validate_group_set,
+};
+pub use id::{GroupId, HostedSessionId, PositionError, PositionKey, PresetId, ProjectId, Revision};
 pub use preset::{
     DetectionCandidate, DetectionReport, DetectionStatus, ExecutableSpec, LaunchPreset,
     MAX_ARGUMENT_BYTES, MAX_ARGUMENTS, MAX_DETECTION_CANDIDATES, MAX_EXECUTABLE_BYTES, MAX_PRESETS,

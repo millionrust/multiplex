@@ -829,3 +829,189 @@ name = "preset"
 type = "UserData"
 sensitivity = "sensitive"
 bidi = "isolate"
+[[messages]]
+id = "session-sidebar-title"
+context = "Heading for the selected Project session organizer."
+description = "Project sessions organizer title"
+
+[[messages]]
+id = "session-sidebar-subtitle"
+context = "Explanation beneath the Project session organizer heading."
+description = "Session organization does not affect running processes"
+
+[[messages]]
+id = "session-sidebar-empty"
+context = "Empty state when the selected Project has no app-attached session records."
+description = "No Project sessions"
+
+[[messages]]
+id = "session-sidebar-select-project"
+context = "Empty state asking the user to select a Project before organizing sessions."
+description = "Select Project to organize sessions"
+
+[[messages]]
+id = "group-ungrouped-label"
+context = "Heading for sessions placed at the Project root rather than in a named group."
+description = "Ungrouped session heading"
+
+[[messages]]
+id = "group-new-action"
+context = "Action that opens the new session group editor."
+description = "Create group action"
+
+[[messages]]
+id = "group-editor-new-title"
+context = "Heading for the new session group editor."
+description = "New group editor title"
+
+[[messages]]
+id = "group-editor-edit-title"
+context = "Heading for the rename session group editor."
+description = "Rename group editor title"
+
+[[messages]]
+id = "group-name-field"
+context = "Label and placeholder for a session group name."
+description = "Group name field"
+
+[[messages]]
+id = "group-rename-action"
+context = "Action that opens the selected group name editor."
+description = "Rename group action"
+
+[[messages]]
+id = "group-collapse-action"
+context = "Action that collapses a session group and exposes its collapsed state in text."
+description = "Collapse group action"
+
+[[messages]]
+id = "group-expand-action"
+context = "Action that expands a collapsed session group."
+description = "Expand group action"
+
+[[messages]]
+id = "group-move-up-action"
+context = "Keyboard-operable alternative to moving a group upward by pointer."
+description = "Move group up"
+
+[[messages]]
+id = "group-move-down-action"
+context = "Keyboard-operable alternative to moving a group downward by pointer."
+description = "Move group down"
+
+[[messages]]
+id = "group-remove-action"
+context = "Action that removes a session group without deleting sessions."
+description = "Remove group action"
+
+[[messages]]
+id = "group-session-count"
+context = "Session count shown in a group disclosure heading."
+description = "Group session count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "group-running-summary"
+context = "Short group state summary showing how many sessions are currently running."
+description = "Running sessions in group"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "group-remove-title"
+context = "Heading for the guarded non-empty group removal panel."
+description = "Remove non-empty group title"
+
+[[messages]]
+id = "group-remove-description"
+context = "Explanation that removing a user-named group relocates but never deletes its sessions."
+description = "Non-empty group removal explanation"
+
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "group-move-session-action"
+context = "Action that exposes destination and ordering controls for one session."
+description = "Move session action"
+
+[[messages]]
+id = "group-move-to-root-action"
+context = "Action that moves a session to the ungrouped Project root."
+description = "Move session to root"
+
+[[messages]]
+id = "group-move-to-action"
+context = "Action that moves a session to a user-named group."
+description = "Move session to named group"
+
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "group-organization-updated"
+context = "Live status after a group or session organization mutation succeeds."
+description = "Organization updated status"
+
+[[messages]]
+id = "group-undo-action"
+context = "Action that reverses the latest group or session organization mutation."
+description = "Undo organization action"
+
+[[messages]]
+id = "group-repair-status"
+context = "Recovery status after invalid group references are moved safely to Project root."
+description = "Repaired session group references"
+plural_arg = "count"
+plural_variants = ["one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "group-error-invalid-name"
+context = "Validation error for an empty, NUL-containing, or overlong group name."
+description = "Invalid group name error"
+
+[[messages]]
+id = "group-error-duplicate"
+context = "Validation error when another group in the Project has the same case-insensitive name."
+description = "Duplicate group name error"
+
+[[messages]]
+id = "group-error-stale"
+context = "Conflict error after group metadata changed in another writer."
+description = "Stale group organization error"
+
+[[messages]]
+id = "group-error-generic"
+context = "Safe generic error for group storage and invariant failures."
+description = "Generic group operation error"

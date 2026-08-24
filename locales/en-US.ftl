@@ -174,3 +174,46 @@ new-session-platform-home = Platform home
 new-session-unavailable-value = Unavailable
 new-session-start-error = Unable to start this preset: { $detail }
 new-session-workspace-title = Session: { $project } · { $preset }
+session-sidebar-title = Sessions
+session-sidebar-subtitle = Organize session records without changing running processes or working directories.
+session-sidebar-empty = No sessions for this Project yet. Start one from the Project row.
+session-sidebar-select-project = Select a Project to organize its sessions.
+group-ungrouped-label = Ungrouped
+group-new-action = New group
+group-editor-new-title = New group
+group-editor-edit-title = Rename group
+group-name-field = Group name
+group-rename-action = Rename
+group-collapse-action = Collapse
+group-expand-action = Expand
+group-move-up-action = Move up
+group-move-down-action = Move down
+group-remove-action = Remove group
+group-session-count = { $count ->
+    [zero] No sessions
+    [one] One session
+    [many] { $count } sessions
+   *[other] { $count } sessions
+    }
+group-running-summary = { $count ->
+    [zero] None running
+    [one] One running
+    [many] { $count } running
+   *[other] { $count } running
+    }
+group-remove-title = Move sessions before removing group
+group-remove-description = { $name } contains { $count } sessions. Choose a destination; no session or process will be deleted.
+group-move-session-action = Move session
+group-move-to-root-action = Move to Ungrouped
+group-move-to-action = Move to { $name }
+group-organization-updated = Session organization updated.
+group-undo-action = Undo
+group-repair-status = { $count ->
+    [one] One invalid group reference was recovered to Ungrouped.
+    [many] { $count } invalid group references were recovered to Ungrouped.
+   *[other] { $count } invalid group references were recovered to Ungrouped.
+    }
+group-error-invalid-name = Enter a group name between 1 and 256 characters.
+group-error-duplicate = A group with this name already exists in the Project.
+group-error-stale = Session organization changed and was reloaded. Try again.
+group-error-generic = The session organization change could not be completed safely.

@@ -10,6 +10,45 @@ development-locale-active = ⟦Åçţîṽé ðéṽéļøþɱéñţ ļøçåļ�
 development-localization-hint = ⟦Þŕéṽîéŵ ţéẋţ éẋþåñšîøñ åñð ƀîðîŕéçţîøñåļ ļåýøûţ šţŕéšš ŵîţĥøûţ çĥåñĝîñĝ šåṽéð ƒøŕɱ ṽåļûéš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 development-localization-title = ⟦Þšéûðø-ļøçåļéš~~~~⟧
 field-error = ⟦Éŕŕøŕ: ~⟧{ $reason }
+group-collapse-action = ⟦Çøļļåþšé~~⟧
+group-editor-edit-title = ⟦Ŕéñåɱé ĝŕøûþ~~~⟧
+group-editor-new-title = ⟦Ñéŵ ĝŕøûþ~~⟧
+group-error-duplicate = ⟦Å ĝŕøûþ ŵîţĥ ţĥîš ñåɱé åļŕéåðý éẋîšţš îñ ţĥé Þŕøĵéçţ.~~~~~~~~~~~~~~~~~~~~⟧
+group-error-generic = ⟦Ţĥé šéššîøñ øŕĝåñîžåţîøñ çĥåñĝé çøûļð ñøţ ƀé çøɱþļéţéð šåƒéļý.~~~~~~~~~~~~~~~~~~~~~~~⟧
+group-error-invalid-name = ⟦Éñţéŕ å ĝŕøûþ ñåɱé ƀéţŵééñ 1 åñð 256 çĥåŕåçţéŕš.~~~~~~~~~~~~~~~~~~⟧
+group-error-stale = ⟦Šéššîøñ øŕĝåñîžåţîøñ çĥåñĝéð åñð ŵåš ŕéļøåðéð. Ţŕý åĝåîñ.~~~~~~~~~~~~~~~~~~~~~⟧
+group-expand-action = ⟦Éẋþåñð~⟧
+group-move-down-action = ⟦Ṁøṽé ðøŵñ~~⟧
+group-move-session-action = ⟦Ṁøṽé šéššîøñ~~~⟧
+group-move-to-action = ⟦Ṁøṽé ţø ~~⟧{ $name }
+group-move-to-root-action = ⟦Ṁøṽé ţø Ûñĝŕøûþéð~~~~~⟧
+group-move-up-action = ⟦Ṁøṽé ûþ~⟧
+group-name-field = ⟦Ĝŕøûþ ñåɱé~~⟧
+group-new-action = ⟦Ñéŵ ĝŕøûþ~~⟧
+group-organization-updated = ⟦Šéššîøñ øŕĝåñîžåţîøñ ûþðåţéð.~~~~~~~~~~⟧
+group-remove-action = ⟦Ŕéɱøṽé ĝŕøûþ~~~⟧
+group-remove-description = { $name }⟦ çøñţåîñš ~~⟧{ $count }⟦ šéššîøñš. Çĥøøšé å ðéšţîñåţîøñ; ñø šéššîøñ øŕ þŕøçéšš ŵîļļ ƀé ðéļéţéð.~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+group-remove-title = ⟦Ṁøṽé šéššîøñš ƀéƒøŕé ŕéɱøṽîñĝ ĝŕøûþ~~~~~~~~~~~~⟧
+group-rename-action = ⟦Ŕéñåɱé~⟧
+group-repair-status = { $count ->
+    [many] { $count }⟦ îñṽåļîð ĝŕøûþ ŕéƒéŕéñçéš ŵéŕé ŕéçøṽéŕéð ţø Ûñĝŕøûþéð.~~~~~~~~~~~~~~~~~~~~⟧
+    [one] ⟦Øñé îñṽåļîð ĝŕøûþ ŕéƒéŕéñçé ŵåš ŕéçøṽéŕéð ţø Ûñĝŕøûþéð.~~~~~~~~~~~~~~~~~~~~⟧
+   *[other] { $count }⟦ îñṽåļîð ĝŕøûþ ŕéƒéŕéñçéš ŵéŕé ŕéçøṽéŕéð ţø Ûñĝŕøûþéð.~~~~~~~~~~~~~~~~~~~~⟧
+    }
+group-running-summary = { $count ->
+    [many] { $count }⟦ ŕûññîñĝ~~⟧
+    [one] ⟦Øñé ŕûññîñĝ~~~⟧
+   *[other] { $count }⟦ ŕûññîñĝ~~⟧
+    [zero] ⟦Ñøñé ŕûññîñĝ~~~⟧
+    }
+group-session-count = { $count ->
+    [many] { $count }⟦ šéššîøñš~~⟧
+    [one] ⟦Øñé šéššîøñ~~~⟧
+   *[other] { $count }⟦ šéššîøñš~~⟧
+    [zero] ⟦Ñø šéššîøñš~~~⟧
+    }
+group-undo-action = ⟦Ûñðø⟧
+group-ungrouped-label = ⟦Ûñĝŕøûþéð~~⟧
 last-updated = ⟦Ļåšţ ûþðåţéð ~~~~⟧{ $when }
 new-session-action = ⟦Ñéŵ šéššîøñ~~~⟧
 new-session-cancel-start = ⟦Çåñçéļ šţåŕţ~~~⟧
@@ -164,6 +203,10 @@ session-count = { $count ->
    *[other] { $count }⟦ åçţîṽé šéššîøñš~~~~~⟧
     [zero] ⟦Ñø åçţîṽé šéššîøñš~~~~~~⟧
     }
+session-sidebar-empty = ⟦Ñø šéššîøñš ƒøŕ ţĥîš Þŕøĵéçţ ýéţ. Šţåŕţ øñé ƒŕøɱ ţĥé Þŕøĵéçţ ŕøŵ.~~~~~~~~~~~~~~~~~~~~~~~~⟧
+session-sidebar-select-project = ⟦Šéļéçţ å Þŕøĵéçţ ţø øŕĝåñîžé îţš šéššîøñš.~~~~~~~~~~~~~~~⟧
+session-sidebar-subtitle = ⟦Øŕĝåñîžé šéššîøñ ŕéçøŕðš ŵîţĥøûţ çĥåñĝîñĝ ŕûññîñĝ þŕøçéššéš øŕ ŵøŕķîñĝ ðîŕéçţøŕîéš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+session-sidebar-title = ⟦Šéššîøñš~~⟧
 shortcut-hint = ⟦Šĥøŕţçûţ: ~~⟧{ $key }
 status-connecting = ⟦Çøññéçţîñĝ ţø ~~~~⟧{ $host }⟦…⟧
 status-ready = ⟦Ŕéåðý⟧

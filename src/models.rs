@@ -2,7 +2,10 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use termirust_domain::{HostedSessionId, HostedSessionState, SessionLaunchRoute, SessionOrigin};
+use termirust_domain::{
+    GroupDestination, GroupId, HostedSessionId, HostedSessionState, PositionKey, ProjectId,
+    SessionLaunchRoute, SessionOrigin,
+};
 use termirust_protocol::{
     MobileDevicePairingError, MobileDevicePairingRequest, MobileDeviceRecord, MobileDeviceVaultKey,
 };
@@ -1077,8 +1080,23 @@ pub struct SavedAppAttachedSession {
     pub state: HostedSessionState,
     pub project_label: String,
     pub preset_label: String,
+    #[serde(default)]
+    pub group_id: Option<GroupId>,
+    #[serde(default = "default_session_organization_position")]
+    pub position: PositionKey,
     pub started_at: u64,
     pub updated_at: u64,
+}
+
+fn default_session_organization_position() -> PositionKey {
+    PositionKey::FIRST
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SavedSessionPlacement {
+    pub id: HostedSessionId,
+    pub group_id: Option<GroupId>,
+    pub position: PositionKey,
 }
 
 impl SavedState {
@@ -3148,6 +3166,184 @@ impl SavedState {
         self.normalize_app_attached_sessions();
     }
 
+    pub fn next_app_attached_session_position(
+        &self,
+        project_id: ProjectId,
+        group_id: Option<GroupId>,
+    ) -> PositionKey {
+        self.app_attached_sessions
+            .iter()
+            .filter(|session| {
+                session.origin.project_id == project_id && session.group_id == group_id
+            })
+            .map(|session| session.position)
+            .max()
+            .and_then(|position| position.after().ok())
+            .unwrap_or(PositionKey::FIRST)
+    }
+
+    pub fn move_app_attached_session(
+        &mut self,
+        id: HostedSessionId,
+        destination: GroupDestination,
+        before: Option<HostedSessionId>,
+    ) -> Option<Vec<SavedSessionPlacement>> {
+        let project_id = self
+            .app_attached_sessions
+            .iter()
+            .find(|session| session.id == id)?
+            .origin
+            .project_id;
+        let destination_group = destination.group_id();
+        if before.is_some_and(|before_id| {
+            self.app_attached_sessions.iter().all(|session| {
+                session.id != before_id
+                    || session.origin.project_id != project_id
+                    || session.group_id != destination_group
+            })
+        }) {
+            return None;
+        }
+        let inverse = self.project_session_placements(project_id);
+        let moving_index = self
+            .app_attached_sessions
+            .iter()
+            .position(|session| session.id == id)?;
+        self.app_attached_sessions[moving_index].group_id = destination_group;
+
+        let mut destination_ids = self
+            .app_attached_sessions
+            .iter()
+            .filter(|session| {
+                session.origin.project_id == project_id && session.group_id == destination_group
+            })
+            .map(|session| (session.position, session.id))
+            .collect::<Vec<_>>();
+        destination_ids.sort_by_key(|(position, session_id)| (*position, *session_id));
+        destination_ids.retain(|(_, session_id)| *session_id != id);
+        let insert_at = before
+            .and_then(|before_id| {
+                destination_ids
+                    .iter()
+                    .position(|(_, session_id)| *session_id == before_id)
+            })
+            .unwrap_or(destination_ids.len());
+        destination_ids.insert(insert_at, (PositionKey::FIRST, id));
+        for (index, (_, session_id)) in destination_ids.into_iter().enumerate() {
+            let position = PositionKey::rebalanced(index).ok()?;
+            let session = self
+                .app_attached_sessions
+                .iter_mut()
+                .find(|session| session.id == session_id)?;
+            session.position = position;
+        }
+        Some(inverse)
+    }
+
+    pub fn relocate_group_sessions(
+        &mut self,
+        project_id: ProjectId,
+        group_id: GroupId,
+        destination: GroupDestination,
+    ) -> Vec<SavedSessionPlacement> {
+        let inverse = self.project_session_placements(project_id);
+        let ids = self
+            .app_attached_sessions
+            .iter()
+            .filter(|session| {
+                session.origin.project_id == project_id && session.group_id == Some(group_id)
+            })
+            .map(|session| session.id)
+            .collect::<Vec<_>>();
+        for id in ids {
+            let _ = self.move_app_attached_session(id, destination, None);
+        }
+        inverse
+    }
+
+    pub fn restore_app_attached_session_placements(
+        &mut self,
+        placements: &[SavedSessionPlacement],
+    ) {
+        for placement in placements {
+            if let Some(session) = self
+                .app_attached_sessions
+                .iter_mut()
+                .find(|session| session.id == placement.id)
+            {
+                session.group_id = placement.group_id;
+                session.position = placement.position;
+            }
+        }
+    }
+
+    pub fn repair_app_attached_group_references(
+        &mut self,
+        valid_groups: &HashMap<GroupId, ProjectId>,
+    ) -> Vec<HostedSessionId> {
+        let mut repaired = Vec::new();
+        for session in &mut self.app_attached_sessions {
+            let valid = session.group_id.is_none_or(|group_id| {
+                valid_groups.get(&group_id) == Some(&session.origin.project_id)
+            });
+            if !valid {
+                session.group_id = None;
+                repaired.push(session.id);
+            }
+        }
+        let project_ids = repaired
+            .iter()
+            .filter_map(|id| {
+                self.app_attached_sessions
+                    .iter()
+                    .find(|session| session.id == *id)
+                    .map(|session| session.origin.project_id)
+            })
+            .collect::<HashSet<_>>();
+        for project_id in project_ids {
+            self.rebalance_app_attached_destination(project_id, None);
+        }
+        repaired
+    }
+
+    fn project_session_placements(&self, project_id: ProjectId) -> Vec<SavedSessionPlacement> {
+        self.app_attached_sessions
+            .iter()
+            .filter(|session| session.origin.project_id == project_id)
+            .map(|session| SavedSessionPlacement {
+                id: session.id,
+                group_id: session.group_id,
+                position: session.position,
+            })
+            .collect()
+    }
+
+    fn rebalance_app_attached_destination(
+        &mut self,
+        project_id: ProjectId,
+        group_id: Option<GroupId>,
+    ) {
+        let mut ids = self
+            .app_attached_sessions
+            .iter()
+            .filter(|session| {
+                session.origin.project_id == project_id && session.group_id == group_id
+            })
+            .map(|session| (session.position, session.id))
+            .collect::<Vec<_>>();
+        ids.sort_by_key(|(position, id)| (*position, *id));
+        for (index, (_, id)) in ids.into_iter().enumerate() {
+            if let (Ok(position), Some(session)) = (
+                PositionKey::rebalanced(index),
+                self.app_attached_sessions
+                    .iter_mut()
+                    .find(|session| session.id == id),
+            ) {
+                session.position = position;
+            }
+        }
+    }
+
     pub fn mark_app_attached_sessions_exited(&mut self) {
         for session in &mut self.app_attached_sessions {
             if matches!(
@@ -3251,6 +3447,8 @@ mod tests {
             state: HostedSessionState::RunningAppAttached,
             project_label: "p".repeat(400),
             preset_label: "preset".to_string(),
+            group_id: None,
+            position: termirust_domain::PositionKey::FIRST,
             started_at: 1,
             updated_at: 2,
         });

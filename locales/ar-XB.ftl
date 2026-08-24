@@ -10,6 +10,45 @@ development-locale-active = ⁧ :elacol tnempoleved evitcA⁩{ $locale }
 development-localization-hint = ⁧.seulav mrof devas gnignahc tuohtiw sserts tuoyal lanoitceridib dna noisnapxe txet weiverP⁩
 development-localization-title = ⁧selacol-oduesP⁩
 field-error = ⁧ :rorrE⁩{ $reason }
+group-collapse-action = ⁧espalloC⁩
+group-editor-edit-title = ⁧puorg emaneR⁩
+group-editor-new-title = ⁧puorg weN⁩
+group-error-duplicate = ⁧.tcejorP eht ni stsixe ydaerla eman siht htiw puorg A⁩
+group-error-generic = ⁧.ylefas detelpmoc eb ton dluoc egnahc noitazinagro noisses ehT⁩
+group-error-invalid-name = ⁧.sretcarahc 652 dna 1 neewteb eman puorg a retnE⁩
+group-error-stale = ⁧.niaga yrT .dedaoler saw dna degnahc noitazinagro noisseS⁩
+group-expand-action = ⁧dnapxE⁩
+group-move-down-action = ⁧nwod evoM⁩
+group-move-session-action = ⁧noisses evoM⁩
+group-move-to-action = ⁧ ot evoM⁩{ $name }
+group-move-to-root-action = ⁧depuorgnU ot evoM⁩
+group-move-up-action = ⁧pu evoM⁩
+group-name-field = ⁧eman puorG⁩
+group-new-action = ⁧puorg weN⁩
+group-organization-updated = ⁧.detadpu noitazinagro noisseS⁩
+group-remove-action = ⁧puorg evomeR⁩
+group-remove-description = { $name }⁧ sniatnoc ⁩{ $count }⁧.deteled eb lliw ssecorp ro noisses on ;noitanitsed a esoohC .snoisses ⁩
+group-remove-title = ⁧puorg gnivomer erofeb snoisses evoM⁩
+group-rename-action = ⁧emaneR⁩
+group-repair-status = { $count ->
+    [many] { $count }⁧.depuorgnU ot derevocer erew secnerefer puorg dilavni ⁩
+    [one] ⁧.depuorgnU ot derevocer saw ecnerefer puorg dilavni enO⁩
+   *[other] { $count }⁧.depuorgnU ot derevocer erew secnerefer puorg dilavni ⁩
+    }
+group-running-summary = { $count ->
+    [many] { $count }⁧gninnur ⁩
+    [one] ⁧gninnur enO⁩
+   *[other] { $count }⁧gninnur ⁩
+    [zero] ⁧gninnur enoN⁩
+    }
+group-session-count = { $count ->
+    [many] { $count }⁧snoisses ⁩
+    [one] ⁧noisses enO⁩
+   *[other] { $count }⁧snoisses ⁩
+    [zero] ⁧snoisses oN⁩
+    }
+group-undo-action = ⁧odnU⁩
+group-ungrouped-label = ⁧depuorgnU⁩
 last-updated = ⁧ detadpu tsaL⁩{ $when }
 new-session-action = ⁧noisses weN⁩
 new-session-cancel-start = ⁧trats lecnaC⁩
@@ -164,6 +203,10 @@ session-count = { $count ->
    *[other] { $count }⁧snoisses evitca ⁩
     [zero] ⁧snoisses evitca oN⁩
     }
+session-sidebar-empty = ⁧.wor tcejorP eht morf eno tratS .tey tcejorP siht rof snoisses oN⁩
+session-sidebar-select-project = ⁧.snoisses sti ezinagro ot tcejorP a tceleS⁩
+session-sidebar-subtitle = ⁧.seirotcerid gnikrow ro sessecorp gninnur gnignahc tuohtiw sdrocer noisses ezinagrO⁩
+session-sidebar-title = ⁧snoisseS⁩
 shortcut-hint = ⁧ :tuctrohS⁩{ $key }
 status-connecting = ⁧ ot gnitcennoC⁩{ $host }⁧…⁩
 status-ready = ⁧ydaeR⁩
