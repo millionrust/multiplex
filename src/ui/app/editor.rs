@@ -16,6 +16,7 @@ use crate::models::{AuthMode, ThemePreset};
 use crate::ui::app::{
     EditorMenu, ICON_KEY, ICON_PANEL_COLLAPSE_RIGHT, ICON_TAG, NavSection, TermiRustApp, app_icon,
 };
+use crate::ui::localization;
 use crate::ui::theme;
 
 impl TermiRustApp {
@@ -583,7 +584,7 @@ impl TermiRustApp {
                 Button::new("editor-connect")
                     .w_full()
                     .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                    .label("Connect")
+                    .label(localization::common_connect())
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.connect_from_editor(window, cx);
                     })),
@@ -597,7 +598,7 @@ impl TermiRustApp {
                             .small()
                             .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                             .icon(IconName::Check)
-                            .label("Save")
+                            .label(localization::common_save())
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.save_profile(window, cx);
                             })),
@@ -609,7 +610,7 @@ impl TermiRustApp {
                                 .small()
                                 .ghost()
                                 .icon(IconName::Delete)
-                                .label("Delete")
+                                .label(localization::common_delete())
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.remove_selected_profile(window, cx);
                                     this.close_editor_dialog(window, cx);

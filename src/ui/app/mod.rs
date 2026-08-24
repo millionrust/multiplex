@@ -6,7 +6,9 @@ mod hosts;
 mod library;
 mod overlay;
 mod palette;
+mod presets;
 mod project;
+mod projects;
 mod sftp;
 mod types;
 mod workspace;
@@ -25,7 +27,9 @@ use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PathSuggestionContext,
     collect_autocomplete_candidates, collect_command_palette_candidates, pane_recent_output_lines,
 };
+use presets::PresetLibraryState;
 use project::CanvasProjectPanelState;
+use projects::ProjectLibraryState;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -70,6 +74,7 @@ use crate::storage::{
 use crate::terminal::{TerminalSize, TerminalState};
 use crate::ui::autocomplete::{AutocompleteCandidate, AutocompleteSource};
 use crate::ui::keys::{MouseEventKind, encode_mouse_report, encode_terminal_input};
+use crate::ui::localization;
 use crate::ui::path::remote_parent_path;
 use crate::ui::render_terminal::{SelectionRange, normalized_selection};
 use crate::ui::shell::{shell_command_requires_continuation, startup_bytes_for_request};
@@ -140,6 +145,8 @@ fn ssh_config_path_label() -> &'static str {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum NavSection {
+    Projects,
+    Presets,
     Hosts,
     Sftp,
     Vaults,
@@ -158,21 +165,25 @@ enum KeychainTab {
 }
 
 impl NavSection {
-    fn label(self) -> &'static str {
+    fn label(self) -> String {
         match self {
-            Self::Hosts => "Hosts",
-            Self::Sftp => "SFTP",
-            Self::Vaults => "Vaults",
-            Self::Keychain => "Keys",
-            Self::Snippets => "Snippets",
-            Self::Settings => "Settings",
-            Self::KnownHosts => "Known Hosts",
-            Self::Logs => "Logs",
+            Self::Projects => localization::projects_nav_label(),
+            Self::Presets => localization::presets_nav_label(),
+            Self::Hosts => "Hosts".to_string(),
+            Self::Sftp => "SFTP".to_string(),
+            Self::Vaults => "Vaults".to_string(),
+            Self::Keychain => "Keys".to_string(),
+            Self::Snippets => "Snippets".to_string(),
+            Self::Settings => "Settings".to_string(),
+            Self::KnownHosts => "Known Hosts".to_string(),
+            Self::Logs => "Logs".to_string(),
         }
     }
 
     fn icon(self) -> Icon {
         match self {
+            Self::Projects => IconName::Folder.into(),
+            Self::Presets => IconName::SquareTerminal.into(),
             Self::Hosts => IconName::SquareTerminal.into(),
             Self::Sftp => IconName::Folder.into(),
             Self::Vaults => app_icon(ICON_VAULT),
@@ -875,6 +886,15 @@ pub struct TermiRustApp {
     vault_inputs: VaultInputs,
     vault_member_inputs: VaultMemberInputs,
     draft_auth_mode: AuthMode,
+    project_library: ProjectLibraryState,
+    project_label_input: Entity<InputState>,
+    project_list_focus: FocusHandle,
+    preset_library: PresetLibraryState,
+    preset_label_input: Entity<InputState>,
+    preset_executable_input: Entity<InputState>,
+    preset_subdirectory_input: Entity<InputState>,
+    preset_argument_inputs: Vec<Entity<InputState>>,
+    preset_list_focus: FocusHandle,
     nav_section: NavSection,
     show_editor_panel: bool,
     event_tx: Sender<SshEvent>,
@@ -1035,6 +1055,22 @@ impl TermiRustApp {
                     .map(|profile| profile.auth_mode)
             })
             .unwrap_or(AuthMode::Password);
+        let project_library = ProjectLibraryState::open_default();
+        let project_label_input = cx
+            .new(|cx| InputState::new(window, cx).placeholder(localization::project_label_field()));
+        let project_list_focus = cx.focus_handle().tab_stop(true);
+        let preset_library = PresetLibraryState::open_default();
+        let preset_label_input = cx
+            .new(|cx| InputState::new(window, cx).placeholder(localization::preset_label_field()));
+        let preset_executable_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(localization::preset_executable_field())
+        });
+        let preset_subdirectory_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(localization::preset_subdirectory_field())
+        });
+        let preset_argument_inputs =
+            vec![cx.new(|cx| InputState::new(window, cx).placeholder("--literal-argument"))];
+        let preset_list_focus = cx.focus_handle().tab_stop(true);
 
         let imported_host_count = saved
             .profiles
@@ -1062,6 +1098,15 @@ impl TermiRustApp {
             vault_inputs,
             vault_member_inputs,
             draft_auth_mode,
+            project_library,
+            project_label_input,
+            project_list_focus,
+            preset_library,
+            preset_label_input,
+            preset_executable_input,
+            preset_subdirectory_input,
+            preset_argument_inputs,
+            preset_list_focus,
             nav_section: NavSection::Hosts,
             show_editor_panel: false,
             event_tx,
@@ -3431,7 +3476,11 @@ impl TermiRustApp {
         self.show_command_palette = false;
         self.selected_command_palette_index = 0;
         self.error_message.clear();
-        self.status_message = format!("{} ready.", section.label());
+        self.status_message = match section {
+            NavSection::Projects => localization::projects_ready_status(),
+            NavSection::Presets => localization::presets_ready_status(),
+            _ => format!("{} ready.", section.label()),
+        };
         self.persist_runtime_state();
         cx.notify();
     }
@@ -5280,7 +5329,7 @@ impl TermiRustApp {
                 self.status_message = if request.kind == ConnectionKind::LocalShell {
                     "Opening local terminal...".to_string()
                 } else {
-                    format!("Connecting to {}...", request.address())
+                    localization::status_connecting(request.address())
                 };
                 self.error_message.clear();
                 Self::set_input_value(&self.inputs.password, "", window, cx);
@@ -5537,7 +5586,7 @@ impl TermiRustApp {
         self.active_workspace_id = Some(workspace_id);
         self.show_editor_panel = false;
         self.mark_onboarding_complete();
-        self.status_message = format!("Connecting to {}...", request.address());
+        self.status_message = localization::status_connecting(request.address());
         self.error_message.clear();
         self.set_terminal_search_input("", window, cx);
         self.set_quick_connect_password_input("", window, cx);
@@ -5761,6 +5810,7 @@ impl TermiRustApp {
 
     fn process_events(&mut self, cx: &mut Context<Self>) {
         let mut changed = self.process_structured_agent_events();
+        changed |= self.process_project_undo_expiry();
         let mut panes_to_refresh = Vec::new();
         let mut sftp_directories_to_refresh = HashSet::new();
 
@@ -9295,6 +9345,8 @@ impl TermiRustApp {
 
     fn render_library_content(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         match self.nav_section {
+            NavSection::Projects => self.render_projects_view(cx).into_any_element(),
+            NavSection::Presets => self.render_presets_view(cx).into_any_element(),
             NavSection::Hosts => self.render_hosts_view(window, cx).into_any_element(),
             NavSection::Sftp => self.render_sftp_view(cx).into_any_element(),
             NavSection::Vaults => self.render_vaults_view(cx).into_any_element(),
@@ -9624,7 +9676,8 @@ impl TermiRustApp {
 
         match event.keystroke.key.as_str() {
             "1" => {
-                self.activate_library_section(NavSection::Hosts, window, cx);
+                self.activate_library_section(NavSection::Projects, window, cx);
+                self.project_list_focus.focus(window);
                 true
             }
             "2" => {
@@ -9805,14 +9858,16 @@ fn search_rows(rows: &[String], query: &str) -> Vec<SearchMatch> {
 
 fn nav_section_key(section: NavSection) -> u64 {
     match section {
-        NavSection::Hosts => 0,
-        NavSection::Vaults => 1,
-        NavSection::Keychain => 2,
-        NavSection::Snippets => 3,
-        NavSection::Settings => 4,
-        NavSection::KnownHosts => 5,
-        NavSection::Logs => 6,
-        NavSection::Sftp => 7,
+        NavSection::Projects => 0,
+        NavSection::Presets => 9,
+        NavSection::Hosts => 1,
+        NavSection::Vaults => 2,
+        NavSection::Keychain => 3,
+        NavSection::Snippets => 4,
+        NavSection::Settings => 5,
+        NavSection::KnownHosts => 6,
+        NavSection::Logs => 7,
+        NavSection::Sftp => 8,
     }
 }
 
@@ -9957,6 +10012,7 @@ mod tests {
         DockerSshServer, TestIsolation, allocate_local_port, queue_dialog_path,
     };
     use crate::ui::keys::TerminalCellPos;
+    use crate::ui::localization;
     use crate::ui::render_terminal::SelectionRange;
     use crate::ui::shell::shell_single_quote;
     use crate::ui::util::format_relative_time_for;
@@ -19101,13 +19157,13 @@ sleep 1
         let (app, window) = open_test_app(cx);
 
         for (shortcut, expected) in [
+            ("cmd-1", NavSection::Projects),
             ("cmd-2", NavSection::Vaults),
             ("cmd-3", NavSection::Keychain),
             ("cmd-4", NavSection::Snippets),
             ("cmd-5", NavSection::Settings),
             ("cmd-6", NavSection::KnownHosts),
             ("cmd-7", NavSection::Logs),
-            ("cmd-1", NavSection::Hosts),
         ] {
             let event = KeyDownEvent {
                 keystroke: Keystroke::parse(shortcut).expect("shortcut should parse"),
@@ -19125,7 +19181,12 @@ sleep 1
             app.read_with(cx, |app, _| {
                 assert_eq!(app.active_workspace_id, None);
                 assert_eq!(app.nav_section, expected);
-                assert_eq!(app.status_message, format!("{} ready.", expected.label()));
+                let expected_status = if expected == NavSection::Projects {
+                    localization::projects_ready_status()
+                } else {
+                    format!("{} ready.", expected.label())
+                };
+                assert_eq!(app.status_message, expected_status);
             });
         }
 
@@ -19174,6 +19235,94 @@ sleep 1
         app.read_with(cx, |app, _| {
             assert!(app.show_editor_panel);
             assert_eq!(app.selected_profile_id, None);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_preset_form_persists_literal_arguments_and_renders_row(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Presets, window, cx);
+                    app.open_new_preset(window, cx);
+                    let label = app.preset_label_input.clone();
+                    let executable = app.preset_executable_input.clone();
+                    let argument = app.preset_argument_inputs[0].clone();
+                    TermiRustApp::set_input_value(&label, "Literal Codex", window, cx);
+                    TermiRustApp::set_input_value(&executable, "codex", window, cx);
+                    TermiRustApp::set_input_value(&argument, "$(touch must-not-run)", window, cx);
+                    app.save_preset_editor(cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let preset = &app
+                .preset_library
+                .snapshot
+                .as_ref()
+                .expect("preset snapshot")
+                .presets[0];
+            assert_eq!(preset.label.as_str(), "Literal Codex");
+            assert_eq!(preset.args[0].as_str(), "$(touch must-not-run)");
+            assert!(app.preset_library.editor.is_none());
+        });
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        assert!(visual.debug_bounds("presets-view").is_some());
+        assert!(visual.debug_bounds("preset-row").is_some());
+    }
+
+    #[gpui::test]
+    fn e2e_risky_favorite_requires_explicit_confirmation(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Presets, window, cx);
+                    app.open_new_preset(window, cx);
+                    let label = app.preset_label_input.clone();
+                    let executable = app.preset_executable_input.clone();
+                    let argument = app.preset_argument_inputs[0].clone();
+                    TermiRustApp::set_input_value(&label, "Risk review", window, cx);
+                    TermiRustApp::set_input_value(&executable, "codex", window, cx);
+                    TermiRustApp::set_input_value(
+                        &argument,
+                        "--dangerously-bypass-approvals-and-sandbox",
+                        window,
+                        cx,
+                    );
+                    app.preset_library.editor.as_mut().unwrap().favorite = true;
+                    app.save_preset_editor(cx);
+                    assert_eq!(app.error_message, localization::preset_error_risk_confirm());
+                    assert!(
+                        app.preset_library
+                            .snapshot
+                            .as_ref()
+                            .unwrap()
+                            .presets
+                            .is_empty()
+                    );
+                    app.preset_library
+                        .editor
+                        .as_mut()
+                        .unwrap()
+                        .confirm_risky_favorite = true;
+                    app.save_preset_editor(cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, _| {
+            let preset = &app.preset_library.snapshot.as_ref().unwrap().presets[0];
+            assert!(preset.favorite);
+            assert!(preset.risk.is_risky());
+            assert!(app.error_message.is_empty());
         });
     }
 
@@ -19273,13 +19422,14 @@ sleep 1
             .expect("window update should succeed");
 
         for (selector, expected) in [
-            ("nav-card-1", NavSection::Vaults),
-            ("nav-card-2", NavSection::Keychain),
-            ("nav-card-3", NavSection::Snippets),
-            ("nav-card-4", NavSection::Settings),
-            ("nav-card-5", NavSection::KnownHosts),
-            ("nav-card-6", NavSection::Logs),
-            ("nav-card-0", NavSection::Hosts),
+            ("nav-card-0", NavSection::Projects),
+            ("nav-card-1", NavSection::Hosts),
+            ("nav-card-2", NavSection::Vaults),
+            ("nav-card-3", NavSection::Keychain),
+            ("nav-card-4", NavSection::Snippets),
+            ("nav-card-5", NavSection::Settings),
+            ("nav-card-6", NavSection::KnownHosts),
+            ("nav-card-7", NavSection::Logs),
         ] {
             let click_point = selector_click_center(window, cx, selector);
             let mut visual = VisualTestContext::from_window(window.into(), cx);
@@ -19291,6 +19441,203 @@ sleep 1
                 assert!(app.error_message.is_empty());
             });
         }
+    }
+
+    #[gpui::test]
+    fn e2e_projects_add_restart_unavailable_remove_and_undo_preserve_files(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let fixture = tempfile::tempdir().expect("project fixture should be created");
+        let project_root = fixture.path().join("Console");
+        fs::create_dir(&project_root).expect("project folder should be created");
+        let sentinel = project_root.join("KEEP.txt");
+        fs::write(&sentinel, b"folder-content-must-survive").expect("sentinel should be written");
+
+        let (app, window) = open_test_app(cx);
+        let projects_nav = selector_click_center(window, cx, "nav-card-0");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(projects_nav, gpui::Modifiers::none());
+
+        queue_dialog_path(None);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.choose_project_folder(window, cx);
+                })
+            })
+            .expect("cancelled picker should update without mutation");
+        app.read_with(cx, |app, _| {
+            assert!(app.project_library.add_draft.is_none());
+            let snapshot = app
+                .project_library
+                .snapshot
+                .as_ref()
+                .expect("project snapshot should load");
+            assert!(snapshot.projects.is_empty());
+            assert_eq!(snapshot.revision, termirust_domain::Revision::default());
+        });
+
+        queue_dialog_path(Some(project_root.clone()));
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.choose_project_folder(window, cx);
+                    assert!(app.project_library.add_validation.is_some());
+                    app.cancel_project_add(cx);
+                })
+            })
+            .expect("validation cancellation should update without mutation");
+        VisualTestContext::from_window(window.into(), cx).run_until_parked();
+        app.read_with(cx, |app, _| {
+            assert!(app.project_library.add_validation.is_none());
+            assert!(app.project_library.add_draft.is_none());
+            assert!(
+                app.project_library
+                    .snapshot
+                    .as_ref()
+                    .is_some_and(|snapshot| snapshot.projects.is_empty())
+            );
+        });
+
+        queue_dialog_path(Some(project_root.clone()));
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.choose_project_folder(window, cx);
+                })
+            })
+            .expect("selected project folder should open review");
+        app.read_with(cx, |app, _| {
+            assert!(app.project_library.add_validation.is_some());
+        });
+        let _review_center = selector_click_center(window, cx, "project-add-review");
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.project_library.add_draft.is_some(),
+                "project review should open: {}",
+                app.error_message
+            );
+        });
+        let confirm = selector_click_center(window, cx, "project-add-confirm");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(confirm, gpui::Modifiers::none());
+
+        let project_id = app.read_with(cx, |app, _| {
+            assert_eq!(app.nav_section, NavSection::Projects);
+            let snapshot = app
+                .project_library
+                .snapshot
+                .as_ref()
+                .expect("project snapshot should load");
+            assert_eq!(snapshot.projects.len(), 1);
+            assert_eq!(
+                snapshot.projects[0].status,
+                termirust_domain::ProjectStatus::Available
+            );
+            snapshot.projects[0].project.id
+        });
+
+        queue_dialog_path(Some(project_root.clone()));
+        let duplicate_add = selector_click_center(window, cx, "projects-add");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(duplicate_add, gpui::Modifiers::none());
+        let duplicate_confirm = selector_click_center(window, cx, "project-add-confirm");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(duplicate_confirm, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            let snapshot = app
+                .project_library
+                .snapshot
+                .as_ref()
+                .expect("project snapshot should load");
+            assert_eq!(snapshot.projects.len(), 1);
+            assert_eq!(app.project_library.selected_id, Some(project_id));
+            let expected_name = snapshot.projects[0].project.display_name.as_str();
+            assert_eq!(
+                app.status_message,
+                localization::project_duplicate_status(expected_name)
+            );
+        });
+
+        let (restarted, restarted_window) = open_test_app(cx);
+        restarted_window
+            .update(cx, |_, window, cx| {
+                restarted.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Projects, window, cx);
+                })
+            })
+            .expect("restart window update should succeed");
+        restarted.read_with(cx, |app, _| {
+            assert!(
+                app.project_library
+                    .snapshot
+                    .as_ref()
+                    .is_some_and(|snapshot| {
+                        snapshot
+                            .projects
+                            .iter()
+                            .any(|summary| summary.project.id == project_id)
+                    })
+            );
+        });
+
+        let displaced_root = fixture.path().join("Console-disconnected");
+        fs::rename(&project_root, &displaced_root)
+            .expect("fixture folder should become unavailable");
+        let (unavailable, _) = open_test_app(cx);
+        unavailable.read_with(cx, |app, _| {
+            let snapshot = app
+                .project_library
+                .snapshot
+                .as_ref()
+                .expect("unavailable project record should remain");
+            assert_eq!(snapshot.projects.len(), 1);
+            assert_eq!(
+                snapshot.projects[0].status,
+                termirust_domain::ProjectStatus::Unavailable
+            );
+        });
+        fs::rename(&displaced_root, &project_root)
+            .expect("fixture folder should become available again");
+
+        restarted_window
+            .update(cx, |_, _window, cx| {
+                restarted.update(cx, |app, cx| {
+                    app.remove_project(project_id, cx);
+                    assert!(app.project_library.pending_removal.is_some());
+                })
+            })
+            .expect("remove should update");
+        assert_eq!(
+            fs::read(&sentinel).expect("sentinel must remain after remove"),
+            b"folder-content-must-survive"
+        );
+
+        restarted_window
+            .update(cx, |_, window, cx| {
+                restarted.update(cx, |app, cx| {
+                    app.undo_project_removal(window, cx);
+                })
+            })
+            .expect("undo should update");
+        restarted.read_with(cx, |app, _| {
+            assert!(
+                app.project_library
+                    .snapshot
+                    .as_ref()
+                    .is_some_and(|snapshot| {
+                        snapshot
+                            .projects
+                            .iter()
+                            .any(|summary| summary.project.id == project_id)
+                    })
+            );
+        });
+        assert_eq!(
+            fs::read(&sentinel).expect("sentinel must remain after undo"),
+            b"folder-content-must-survive"
+        );
     }
 
     #[gpui::test]

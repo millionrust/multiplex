@@ -16,6 +16,7 @@ use crate::ui::app::{
     CanvasWorkspaceState, ConnectDialogMode, ConnectFailure, ConnectProtocol, NavSection,
     SplitNode, TermiRustApp, WorkspaceTab, WorkspaceViewMode,
 };
+use crate::ui::localization;
 use crate::ui::theme;
 
 impl TermiRustApp {
@@ -403,7 +404,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Neutral,
                                         cx,
                                     ))
-                                    .label("Close")
+                                    .label(localization::common_close())
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.close_connect_dialog_tab(workspace_id, window, cx);
                                     })),
@@ -594,7 +595,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Neutral,
                                         cx,
                                     ))
-                                    .label("Close")
+                                    .label(localization::common_close())
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.close_connect_dialog_tab(workspace_id, window, cx);
                                     })),
@@ -789,7 +790,7 @@ impl TermiRustApp {
             workspace.connect_failure = None;
         }
         self.active_workspace_id = Some(workspace_id);
-        self.status_message = format!("Connecting to {}…", request.address());
+        self.status_message = localization::status_connecting(request.address());
         self.error_message.clear();
         self.sync_terminal_layout(window, cx);
         if let Some(pane) = self.pane(pane_id) {
@@ -948,7 +949,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Neutral,
                                         cx,
                                     ))
-                                    .label("Close")
+                                    .label(localization::common_close())
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.close_connect_dialog_tab(workspace_id, window, cx);
                                     })),

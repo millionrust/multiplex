@@ -19,6 +19,7 @@ use crate::ui::app::{
     ICON_KEY, ICON_SHIELD_CHECK, KeychainTab, NavSection, TermiRustApp, app_icon,
     primary_shortcut_label,
 };
+use crate::ui::localization;
 use crate::ui::theme;
 use crate::ui::util::{format_relative_time, short_host_key};
 
@@ -818,7 +819,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Accent,
                                         cx,
                                     ))
-                                    .label("Save")
+                                    .label(localization::common_save())
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.save_vault(window, cx);
                                     })),
@@ -834,7 +835,7 @@ impl TermiRustApp {
                                             .small()
                                             .ghost()
                                             .icon(IconName::Delete)
-                                            .label("Delete")
+                                            .label(localization::common_delete())
                                             .on_click(cx.listener(|this, _, window, cx| {
                                                 this.remove_selected_vault(window, cx);
                                             })),
@@ -1411,7 +1412,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Accent,
                                         _cx,
                                     ))
-                                    .label("Save")
+                                    .label(localization::common_save())
                                     .on_click(_cx.listener(|this, _, window, cx| {
                                         this.save_snippet(window, cx);
                                     })),
@@ -1423,7 +1424,7 @@ impl TermiRustApp {
                                         .small()
                                         .ghost()
                                         .icon(IconName::Delete)
-                                        .label("Delete")
+                                        .label(localization::common_delete())
                                         .on_click(_cx.listener(|this, _, window, cx| {
                                             this.remove_selected_snippet(window, cx);
                                         })),
@@ -1542,7 +1543,7 @@ impl TermiRustApp {
                                                 theme::ActionTone::Success,
                                                 _cx,
                                             ))
-                                            .label("Run")
+                                            .label(localization::common_run())
                                             .on_click(_cx.listener(move |this, _, window, cx| {
                                                 this.run_snippet_command(&run_command, window, cx);
                                             })),
@@ -1744,7 +1745,12 @@ impl TermiRustApp {
             }))
     }
 
-    fn settings_shortcut_row(&self, keys: &'static str, description: &'static str) -> Div {
+    fn settings_shortcut_row(
+        &self,
+        keys: &'static str,
+        description: impl Into<SharedString>,
+    ) -> Div {
+        let description = description.into();
         h_flex()
             .justify_between()
             .items_center()
@@ -1771,11 +1777,14 @@ impl TermiRustApp {
             )
     }
 
-    fn settings_shortcut_group<const N: usize>(
+    fn settings_shortcut_group<const N: usize, D>(
         &self,
         title: &'static str,
-        rows: [(&'static str, &'static str); N],
-    ) -> Div {
+        rows: [(&'static str, D); N],
+    ) -> Div
+    where
+        D: Into<SharedString>,
+    {
         v_flex()
             .gap_1()
             .child(
@@ -1895,6 +1904,41 @@ impl TermiRustApp {
                     ),
                 ),
         );
+
+        let localization_card = localization::development_controls_enabled().then(|| {
+            self.settings_section_card(
+                localization::development_localization_title(),
+                localization::development_localization_hint(),
+                h_flex().gap_2().flex_wrap().children(
+                    localization::development_locales()
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, locale)| {
+                            let selected = locale == localization::current_locale();
+                            Button::new(("settings-development-locale", index))
+                                .small()
+                                .custom(Self::action_button_style(
+                                    if selected {
+                                        theme::ActionTone::AccentSoft
+                                    } else {
+                                        theme::ActionTone::Neutral
+                                    },
+                                    cx,
+                                ))
+                                .label(locale.tag())
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    if localization::set_development_locale(locale.tag()).is_ok() {
+                                        this.status_message =
+                                            localization::development_locale_active(locale);
+                                        this.error_message.clear();
+                                        cx.notify();
+                                    }
+                                }))
+                                .into_any_element()
+                        }),
+                ),
+            )
+        });
 
         let terminal_card = self.settings_section_card(
             "Terminal",
@@ -2623,16 +2667,16 @@ impl TermiRustApp {
                 .child(self.settings_shortcut_group(
                     "Navigation",
                     [
-                        ("Cmd+1", "Open Hosts"),
-                        ("Cmd+2", "Open Vaults"),
-                        ("Cmd+3", "Open Keychain"),
-                        ("Cmd+4", "Open Snippets"),
-                        ("Cmd+5", "Open Settings"),
-                        ("Cmd+6", "Open Known Hosts"),
-                        ("Cmd+7", "Open Logs"),
-                        ("Cmd+,", "Jump to Settings"),
-                        ("Cmd+L", "Focus host search / toggle Logs"),
-                        ("Cmd+N", "Create a new host (in library)"),
+                        ("Cmd+1", localization::projects_shortcut_description()),
+                        ("Cmd+2", "Open Vaults".to_string()),
+                        ("Cmd+3", "Open Keychain".to_string()),
+                        ("Cmd+4", "Open Snippets".to_string()),
+                        ("Cmd+5", "Open Settings".to_string()),
+                        ("Cmd+6", "Open Known Hosts".to_string()),
+                        ("Cmd+7", "Open Logs".to_string()),
+                        ("Cmd+,", "Jump to Settings".to_string()),
+                        ("Cmd+L", "Focus host search / toggle Logs".to_string()),
+                        ("Cmd+N", "Create a new host (in library)".to_string()),
                     ],
                 ))
                 .child(self.settings_divider())
@@ -2702,6 +2746,7 @@ impl TermiRustApp {
                             .gap_4()
                             .track_scroll(&self.settings_scroll)
                             .child(appearance_card)
+                            .when_some(localization_card, |this, card| this.child(card))
                             .child(terminal_card)
                             .child(startup_card)
                             .child(sessions_card)

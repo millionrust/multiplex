@@ -16,6 +16,7 @@ use crate::ui::app::{
     NavSection, TermiRustApp, WorkspaceIndicators, WorkspaceTab, WorkspaceTabDrag,
     WorkspaceTabDragPreview, nav_section_key,
 };
+use crate::ui::localization;
 use crate::ui::theme;
 
 impl TermiRustApp {
@@ -516,7 +517,7 @@ impl TermiRustApp {
                     if let Some((_, pane_id)) =
                         app.open_request_workspace(request.clone(), window, cx)
                     {
-                        app.status_message = format!("Connecting to {}...", request.address());
+                        app.status_message = localization::status_connecting(request.address());
                         app.error_message.clear();
                         app.sync_terminal_layout(window, cx);
                         if let Some(pane) = app.pane(pane_id) {
@@ -986,6 +987,8 @@ impl TermiRustApp {
             .child(
                 v_flex().gap(px(2.)).children(
                     [
+                        NavSection::Projects,
+                        NavSection::Presets,
                         NavSection::Hosts,
                         NavSection::Vaults,
                         NavSection::Keychain,

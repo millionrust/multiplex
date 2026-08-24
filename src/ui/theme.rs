@@ -359,3 +359,16 @@ pub const CHROME_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
     .layout_chrome_height()
     .0;
 pub const CARD_RADIUS: f32 = DesignTokens::new(ThemeKind::System).radius_panel().0;
+pub const SPACE_2: f32 = DesignTokens::new(ThemeKind::System).space_2().0;
+pub const SPACE_3: f32 = DesignTokens::new(ThemeKind::System).space_3().0;
+pub const SPACE_4: f32 = DesignTokens::new(ThemeKind::System).space_4().0;
+pub const SPACE_5: f32 = DesignTokens::new(ThemeKind::System).space_5().0;
+pub const SPACE_6: f32 = DesignTokens::new(ThemeKind::System).space_6().0;
+pub const SPACE_7: f32 = DesignTokens::new(ThemeKind::System).space_7().0;
+pub const TYPE_CAPTION_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_caption().size;
+pub const TYPE_BODY_SMALL_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_body_small().size;
+pub const TYPE_BODY_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_body().size;
+pub const TYPE_HEADING_SMALL_SIZE: f32 = DesignTokens::new(ThemeKind::System)
+    .type_heading_small()
+    .size;
+pub const TYPE_HEADING_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_heading().size;

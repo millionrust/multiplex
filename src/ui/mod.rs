@@ -1,6 +1,7 @@
 mod app;
 pub mod autocomplete;
 pub mod keys;
+pub mod localization;
 pub mod path;
 pub mod render_terminal;
 pub mod sftp_local;

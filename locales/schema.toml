@@ -1,0 +1,663 @@
+version = 1
+default_locale = "en-US"
+supported_locales = ["en-US", "en-XA", "ar-XB"]
+
+[[messages]]
+id = "common-cancel"
+context = "Shared button used to dismiss an operation without applying it."
+description = "Cancel"
+
+[[messages]]
+id = "common-close"
+context = "Shared button used to close a dialog or pane."
+description = "Close"
+
+[[messages]]
+id = "common-connect"
+context = "Shared primary action that starts a connection."
+description = "Connect"
+
+[[messages]]
+id = "common-delete"
+context = "Shared destructive action that deletes the selected record."
+description = "Delete"
+
+[[messages]]
+id = "common-retry"
+context = "Shared action that retries a failed operation."
+description = "Retry"
+
+[[messages]]
+id = "common-run"
+context = "Shared action that runs the prepared command."
+description = "Run"
+
+[[messages]]
+id = "common-save"
+context = "Shared action that saves the current form."
+description = "Save"
+
+[[messages]]
+id = "status-ready"
+context = "Short status shown when a session can accept input."
+description = "Ready"
+
+[[messages]]
+id = "status-connecting"
+context = "Status shown while opening a connection to a user-supplied host."
+description = "Connecting to a host"
+
+[[messages.args]]
+name = "host"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "session-count"
+context = "Count of active sessions. Keep every plural branch short."
+description = "Active session count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "transfer-summary"
+context = "Summary shown after transferring one or more files."
+description = "Transferred file count and total byte size"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages.args]]
+name = "bytes"
+type = "ByteSize"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "last-updated"
+context = "Timestamp describing when a view was last refreshed."
+description = "Last updated timestamp"
+
+[[messages.args]]
+name = "when"
+type = "DateTime"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "shortcut-hint"
+context = "Textual keyboard shortcut hint. The shortcut is supplied by the platform."
+description = "Keyboard shortcut hint"
+
+[[messages.args]]
+name = "key"
+type = "KeyName"
+sensitivity = "public"
+bidi = "isolate"
+
+[[messages]]
+id = "path-unavailable"
+context = "Error shown when a user-selected path cannot be opened."
+description = "Unavailable path error"
+
+[[messages.args]]
+name = "path"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "field-error"
+context = "Generic field validation message supplied by a trusted domain validator."
+description = "Field validation error"
+
+[[messages.args]]
+name = "reason"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "development-localization-title"
+context = "Development-only Settings section for exercising localization layouts."
+description = "Pseudo-locale settings title"
+
+[[messages]]
+id = "development-localization-hint"
+context = "Development-only explanation of pseudo-locale layout testing."
+description = "Pseudo-locale settings explanation"
+
+[[messages]]
+id = "development-locale-active"
+context = "Status shown after a developer switches the active pseudo-locale."
+description = "Active development locale status"
+
+[[messages.args]]
+name = "locale"
+type = "KeyName"
+sensitivity = "public"
+bidi = "isolate"
+
+[[messages]]
+id = "projects-nav-label"
+context = "Primary navigation label for the persistent project library."
+description = "Projects navigation label"
+
+[[messages]]
+id = "projects-title"
+context = "Heading for the project library and future durable sessions screen."
+description = "Projects and sessions screen title"
+
+[[messages]]
+id = "projects-subtitle"
+context = "Short explanation under the project library heading."
+description = "Project library subtitle"
+
+[[messages]]
+id = "projects-shortcut-description"
+context = "Settings description for the keyboard shortcut that opens the project list."
+description = "Open projects keyboard shortcut"
+
+[[messages]]
+id = "projects-loading"
+context = "Status while project metadata is loading from local storage."
+description = "Loading project library"
+
+[[messages]]
+id = "projects-ready-status"
+context = "Status announcement after opening the project list."
+description = "Project library ready"
+
+[[messages]]
+id = "projects-add-action"
+context = "Primary action that opens the native folder picker to add a project."
+description = "Add project action"
+
+[[messages]]
+id = "projects-empty-title"
+context = "Empty-state heading when the project library has no records."
+description = "No projects empty-state title"
+
+[[messages]]
+id = "projects-empty-description"
+context = "Empty-state explanation of why a folder can be added."
+description = "No projects empty-state explanation"
+
+[[messages]]
+id = "projects-folder-safety"
+context = "Safety promise shown before a project folder is added."
+description = "Project folder is not modified"
+
+[[messages]]
+id = "projects-local-only"
+context = "Privacy note explaining that the project library is local and needs no service."
+description = "Local-only project metadata statement"
+
+[[messages]]
+id = "project-review-title"
+context = "Heading for the add-project review sheet after folder selection."
+description = "Review selected project"
+
+[[messages]]
+id = "project-validating"
+context = "Progress text while the selected project folder is canonicalized and checked."
+description = "Validating project folder"
+
+[[messages]]
+id = "project-review-description"
+context = "Review-sheet text containing a user-selected canonical folder path."
+description = "Selected project folder"
+
+[[messages.args]]
+name = "path"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "project-label-field"
+context = "Label for the editable project display-name input."
+description = "Project name field label"
+
+[[messages]]
+id = "project-add-confirm"
+context = "Primary action that commits a reviewed project folder to local metadata."
+description = "Confirm add project"
+
+[[messages]]
+id = "project-status-available"
+context = "Text status for a project folder that can be opened."
+description = "Available project status"
+
+[[messages]]
+id = "project-status-unavailable"
+context = "Text status for a retained project whose folder is currently missing."
+description = "Unavailable project status"
+
+[[messages]]
+id = "project-status-permission-denied"
+context = "Text status for a retained project whose folder permission is denied."
+description = "Permission-denied project status"
+
+[[messages]]
+id = "project-remove-action"
+context = "Action that removes project metadata from TermiRust without deleting files."
+description = "Remove project metadata action"
+
+[[messages]]
+id = "project-files-stay"
+context = "Persistent safety statement beside the remove action."
+description = "Project files remain on disk"
+
+[[messages]]
+id = "project-added-status"
+context = "Status after adding a project with a user-supplied display name."
+description = "Project added confirmation"
+
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "project-duplicate-status"
+context = "Status after choosing a folder that is already in the project library."
+description = "Existing project focused"
+
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "project-removed-status"
+context = "Undo banner text after project metadata is removed."
+description = "Project metadata removed"
+
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "project-undo-action"
+context = "Action in the temporary banner that restores removed project metadata."
+description = "Undo project removal"
+
+[[messages]]
+id = "project-restored-status"
+context = "Status after undo restores project metadata."
+description = "Project metadata restored"
+
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "project-undo-expired"
+context = "Status when the metadata-only project removal undo period has elapsed."
+description = "Project undo expired"
+
+[[messages]]
+id = "project-store-recovered"
+context = "Warning shown when the last-good project metadata is displayed read-only."
+description = "Recovered project store warning"
+
+[[messages]]
+id = "project-store-corrupt"
+context = "Error shown when project metadata is corrupt and cannot be safely rewritten."
+description = "Corrupt project store error"
+
+[[messages]]
+id = "project-store-newer"
+context = "Error shown when project metadata was written by a newer unsupported version."
+description = "Newer project store error"
+
+[[messages]]
+id = "project-store-unavailable"
+context = "Error shown when local project metadata storage cannot be opened."
+description = "Unavailable project store error"
+
+[[messages]]
+id = "project-error-empty-path"
+context = "Validation error for an empty project folder selection."
+description = "Empty project path error"
+
+[[messages]]
+id = "project-error-permission-denied"
+context = "Validation error when the selected folder cannot be read."
+description = "Project permission validation error"
+
+[[messages]]
+id = "project-error-unavailable"
+context = "Validation error when the selected project folder is missing."
+description = "Project unavailable validation error"
+
+[[messages]]
+id = "project-error-not-directory"
+context = "Validation error when the selected project path is not a folder."
+description = "Project is not a folder error"
+
+[[messages]]
+id = "project-error-path-too-long"
+context = "Validation error when a selected project path exceeds supported bounds."
+description = "Project path too long error"
+
+[[messages]]
+id = "project-error-invalid-label"
+context = "Validation error when a project display name is empty, unsafe, or too long."
+description = "Invalid project label error"
+
+[[messages]]
+id = "project-error-stale"
+context = "Recoverable error when project metadata changed before a mutation committed."
+description = "Stale project revision error"
+
+[[messages]]
+id = "project-error-generic"
+context = "Safe generic project operation error without paths or secrets."
+description = "Generic project error"
+
+[[messages]]
+id = "presets-nav-label"
+context = "Library navigation label for launch presets."
+description = "Presets navigation"
+[[messages]]
+id = "presets-title"
+context = "Heading for the launch preset library."
+description = "Preset library heading"
+[[messages]]
+id = "presets-subtitle"
+context = "Security-oriented description of structured presets."
+description = "Preset library description"
+[[messages]]
+id = "presets-ready-status"
+context = "Status when preset metadata is ready."
+description = "Preset library ready"
+[[messages]]
+id = "presets-add-action"
+context = "Action to create a preset."
+description = "Add preset"
+[[messages]]
+id = "presets-scan-action"
+context = "Action to run read-only CLI version probes."
+description = "Detect CLIs"
+[[messages]]
+id = "presets-scanning"
+context = "Polite status during CLI detection."
+description = "Scanning CLIs"
+[[messages]]
+id = "presets-scan-cancelled"
+context = "Recovery copy after cancelling detection."
+description = "Detection cancelled"
+[[messages]]
+id = "presets-scan-partial"
+context = "Recovery copy for partial detection results."
+description = "Partial detection"
+[[messages]]
+id = "presets-scan-none"
+context = "Empty result from CLI detection."
+description = "No detected CLIs"
+[[messages]]
+id = "presets-detected-title"
+context = "Heading for read-only detected proposals."
+description = "Detected proposals"
+[[messages]]
+id = "presets-empty-title"
+context = "Heading when no presets are saved."
+description = "No presets"
+[[messages]]
+id = "presets-empty-description"
+context = "Description when no presets are saved."
+description = "Preset empty description"
+[[messages]]
+id = "preset-form-title-new"
+context = "Heading for new preset form."
+description = "New preset"
+[[messages]]
+id = "preset-form-title-edit"
+context = "Heading for edit preset form."
+description = "Edit preset"
+[[messages]]
+id = "preset-label-field"
+context = "Visible preset name field label."
+description = "Preset name"
+[[messages]]
+id = "preset-executable-field"
+context = "Visible executable field label."
+description = "Executable"
+[[messages]]
+id = "preset-arguments-field"
+context = "Visible repeatable argv field label."
+description = "Arguments"
+[[messages]]
+id = "preset-argument-add"
+context = "Action to append one literal argument row."
+description = "Add argument"
+[[messages]]
+id = "preset-argument-remove"
+context = "Action to remove one literal argument row."
+description = "Remove argument"
+[[messages]]
+id = "preset-working-directory-field"
+context = "Visible working-directory rule label."
+description = "Working directory"
+[[messages]]
+id = "preset-working-project-root"
+context = "Project-root working directory option."
+description = "Project root"
+[[messages]]
+id = "preset-working-home"
+context = "Platform-home working directory option."
+description = "Home folder"
+[[messages]]
+id = "preset-working-subdirectory"
+context = "Contained subdirectory working option."
+description = "Project subfolder"
+[[messages]]
+id = "preset-subdirectory-field"
+context = "Contained project subfolder field label."
+description = "Subfolder"
+[[messages]]
+id = "preset-permission-field"
+context = "Permission policy field label."
+description = "Permission policy"
+[[messages]]
+id = "preset-permission-ask"
+context = "Ask-as-needed permission option."
+description = "Ask as needed"
+[[messages]]
+id = "preset-permission-read-only"
+context = "Read-only permission option."
+description = "Read only"
+[[messages]]
+id = "preset-permission-workspace-write"
+context = "Workspace-write permission option."
+description = "Workspace write"
+[[messages]]
+id = "preset-enabled-field"
+context = "Enabled preset toggle label."
+description = "Enabled"
+[[messages]]
+id = "preset-favorite-field"
+context = "Favorite preset toggle label."
+description = "Favorite"
+[[messages]]
+id = "preset-risk-confirm-field"
+context = "Explicit confirmation for risky favorite preset."
+description = "Risk confirmation"
+[[messages]]
+id = "preset-risk-warning"
+context = "Persistent visible risky preset warning."
+description = "Risk warning"
+[[messages]]
+id = "preset-safe-copy"
+context = "Explains literal argv and no-install behavior."
+description = "Preset safety copy"
+[[messages]]
+id = "preset-save-action"
+context = "Action to persist a validated preset."
+description = "Save preset"
+[[messages]]
+id = "preset-edit-action"
+context = "Action to edit a saved preset."
+description = "Edit preset"
+[[messages]]
+id = "preset-delete-action"
+context = "Action to remove a saved preset."
+description = "Remove preset"
+[[messages]]
+id = "preset-move-up-action"
+context = "Keyboard-accessible action to reorder preset upward."
+description = "Move up"
+[[messages]]
+id = "preset-move-down-action"
+context = "Keyboard-accessible action to reorder preset downward."
+description = "Move down"
+[[messages]]
+id = "preset-accept-action"
+context = "Action to accept a detected proposal without launching it."
+description = "Accept suggestion"
+[[messages]]
+id = "preset-status-supported"
+context = "Supported detected CLI status."
+description = "Supported"
+[[messages]]
+id = "preset-status-unknown"
+context = "Unknown detected CLI version status."
+description = "Version unknown"
+[[messages]]
+id = "preset-status-unsupported"
+context = "Unsupported detected CLI version status."
+description = "Unsupported version"
+[[messages]]
+id = "preset-status-missing"
+context = "Missing executable preset status."
+description = "Executable missing"
+[[messages]]
+id = "preset-status-permission"
+context = "Permission-denied executable status."
+description = "Permission denied"
+[[messages]]
+id = "preset-status-timeout"
+context = "Timed-out version probe status."
+description = "Probe timed out"
+[[messages]]
+id = "preset-status-failed"
+context = "Failed version probe status."
+description = "Version check failed"
+[[messages]]
+id = "preset-status-risky"
+context = "Persistent risky preset status."
+description = "Risky"
+[[messages]]
+id = "preset-status-disabled"
+context = "Disabled preset status."
+description = "Disabled"
+[[messages]]
+id = "preset-store-recovered"
+context = "Read-only last-good preset recovery copy."
+description = "Preset store recovered"
+[[messages]]
+id = "preset-store-corrupt"
+context = "Corrupt preset metadata error."
+description = "Preset store corrupt"
+[[messages]]
+id = "preset-store-newer"
+context = "Newer preset metadata error."
+description = "Preset store newer"
+[[messages]]
+id = "preset-store-unavailable"
+context = "Unavailable preset metadata error."
+description = "Preset store unavailable"
+[[messages]]
+id = "preset-error-invalid"
+context = "Safe generic preset field validation error."
+description = "Invalid preset"
+[[messages]]
+id = "preset-error-stale"
+context = "Recoverable stale preset revision error."
+description = "Stale preset revision"
+[[messages]]
+id = "preset-error-risk-confirm"
+context = "Risky favorite confirmation validation error."
+description = "Risk confirmation required"
+[[messages]]
+id = "preset-saved-status"
+context = "Status after saving a user-named preset."
+description = "Preset saved"
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "preset-removed-status"
+context = "Status after removing a user-named preset."
+description = "Preset removed"
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "preset-accepted-status"
+context = "Status after accepting a detected runtime label."
+description = "Detected preset accepted"
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "preset-detected-version"
+context = "Detected CLI version with isolated provider output."
+description = "Detected version"
+[[messages.args]]
+name = "version"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "preset-argument-count"
+context = "Count of literal arguments in a launch preset."
+description = "Preset argument count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "runtime-label-codex"
+context = "Nominative label for the compiled Codex CLI candidate."
+description = "Codex runtime label"
+[[messages]]
+id = "runtime-label-claude"
+context = "Nominative label for the compiled Claude Code CLI candidate."
+description = "Claude runtime label"
+[[messages]]
+id = "runtime-label-gemini"
+context = "Nominative label for the compiled Gemini CLI candidate."
+description = "Gemini runtime label"

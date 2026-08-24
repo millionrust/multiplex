@@ -1,6 +1,7 @@
 mod adapter;
 mod codex;
 mod context;
+mod discovery;
 mod headless;
 mod orchestrator;
 mod process;
@@ -14,6 +15,9 @@ pub use codex::{
     spawn_remote_codex_session,
 };
 pub use context::{build_agent_context_handoff, build_context_handoff};
+pub use discovery::{
+    CliDiscovery, DiscoveryCancellation, discovery_path_snapshot, known_runtime_descriptors,
+};
 pub use headless::{
     HeadlessSessionConfig, HeadlessSessionHandle, RemoteHeadlessSessionConfig,
     RemoteHeadlessSessionHandle, spawn_headless_session, spawn_remote_headless_session,

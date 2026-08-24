@@ -7105,10 +7105,22 @@ dependencies = [
  "russh-sftp",
  "serde",
  "serde_json",
+ "tempfile",
+ "termirust-domain",
  "termirust-protocol",
+ "termirust-store",
  "termirust-ui-contract",
  "tokio",
  "vt100",
+]
+
+[[package]]
+name = "termirust-domain"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]
@@ -7130,6 +7142,18 @@ dependencies = [
  "rand 0.8.6",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "termirust-store"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "termirust-domain",
+ "uuid",
 ]
 
 [[package]]

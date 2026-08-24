@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
+use termirust_domain::{PresetRisk, classify_argument_strings};
 
 use crate::agents::adapter::provider_descriptor;
 use crate::models::{AgentBackendKind, AgentPermissionPolicy, AgentProvider, SavedAgentDefinition};
@@ -250,24 +251,13 @@ fn permission_arguments(definition: &SavedAgentDefinition) -> Result<Vec<OsStrin
 }
 
 fn validate_safe_arguments(provider: AgentProvider, arguments: &[String]) -> Result<()> {
-    let lowered: Vec<_> = arguments
-        .iter()
-        .map(|argument| argument.to_ascii_lowercase())
-        .collect();
-    let forbidden = match provider {
-        AgentProvider::Codex => [
-            "--dangerously-bypass-approvals-and-sandbox",
-            "danger-full-access",
-        ]
-        .as_slice(),
-        AgentProvider::ClaudeCode => ["--dangerously-skip-permissions"].as_slice(),
-        AgentProvider::Gemini => ["--yolo", "yolo"].as_slice(),
-        AgentProvider::CustomCli | AgentProvider::GroqApi => [].as_slice(),
+    let runtime = match provider {
+        AgentProvider::Codex => Some("codex"),
+        AgentProvider::ClaudeCode => Some("claude"),
+        AgentProvider::Gemini => Some("gemini"),
+        AgentProvider::CustomCli | AgentProvider::GroqApi => None,
     };
-    if let Some(argument) = lowered
-        .iter()
-        .find(|argument| forbidden.iter().any(|value| argument.contains(value)))
-    {
+    if let PresetRisk::Risky(argument) = classify_argument_strings(runtime, arguments) {
         bail!(
             "Unsafe permission-bypass argument is not allowed for {}: {argument}",
             provider.label()

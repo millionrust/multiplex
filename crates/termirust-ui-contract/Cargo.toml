@@ -19,3 +19,11 @@ path = "src/bin/generate_tokens.rs"
 [[bin]]
 name = "verify-design-tokens"
 path = "src/bin/verify_design_tokens.rs"
+
+[[bin]]
+name = "generate-messages"
+path = "src/bin/generate_messages.rs"
+
+[[bin]]
+name = "verify-localization"
+path = "src/bin/verify_localization.rs"

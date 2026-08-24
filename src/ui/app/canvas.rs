@@ -37,6 +37,7 @@ use crate::models::{
 use crate::ssh::SessionCommand;
 use crate::ui::app::{TermiRustApp, WorkspaceViewMode};
 use crate::ui::keys::TerminalCellPos;
+use crate::ui::localization;
 use crate::ui::render_terminal::{
     SelectionRange, display_terminal_text, normalized_selection, selection_contains,
 };
@@ -6325,7 +6326,7 @@ impl TermiRustApp {
                                     Button::new("canvas-fleet-disconnect-cancel")
                                         .xsmall()
                                         .ghost()
-                                        .label("Cancel")
+                                        .label(localization::common_cancel())
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.pending_canvas_fleet_disconnect = false;
                                             cx.notify();
@@ -7918,7 +7919,7 @@ impl TermiRustApp {
                                                         cx,
                                                     ))
                                                     .icon(IconName::Check)
-                                                    .label("Save")
+                                                    .label(localization::common_save())
                                                     .disabled(
                                                         panel.selected_file.is_none() || !dirty,
                                                     )
@@ -9362,7 +9363,7 @@ impl TermiRustApp {
                                 Button::new("context-review-cancel")
                                     .small()
                                     .ghost()
-                                    .label("Cancel")
+                                    .label(localization::common_cancel())
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.context_handoff_review = None;
                                         cx.notify();
@@ -9602,7 +9603,7 @@ impl TermiRustApp {
                                     .debug_selector(|| "canvas-pane-close-cancel".to_string())
                                     .small()
                                     .ghost()
-                                    .label("Cancel")
+                                    .label(localization::common_cancel())
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.pending_canvas_pane_close = None;
                                         cx.notify();
@@ -9702,7 +9703,7 @@ impl TermiRustApp {
                                     })
                                     .small()
                                     .ghost()
-                                    .label("Cancel")
+                                    .label(localization::common_cancel())
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.pending_canvas_node_delete = None;
                                         cx.notify();
@@ -9889,7 +9890,7 @@ impl TermiRustApp {
                                         Button::new("canvas-split-pane-chooser-cancel")
                                             .small()
                                             .ghost()
-                                            .label("Cancel")
+                                            .label(localization::common_cancel())
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.split_pane_chooser = None;
                                                 cx.notify();

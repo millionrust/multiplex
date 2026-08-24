@@ -13,6 +13,7 @@ use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::ui::app::{TermiRustApp, primary_shortcut_label};
 use crate::ui::autocomplete::AutocompleteSource;
+use crate::ui::localization;
 use crate::ui::theme;
 
 impl TermiRustApp {
@@ -67,7 +68,7 @@ impl TermiRustApp {
                                             theme::ActionTone::Accent,
                                             cx,
                                         ))
-                                        .label("Run")
+                                        .label(localization::common_run())
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.confirm_snippet_prompts(cx);
                                         })),
@@ -79,7 +80,7 @@ impl TermiRustApp {
                                             theme::ActionTone::Neutral,
                                             cx,
                                         ))
-                                        .label("Cancel")
+                                        .label(localization::common_cancel())
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.cancel_snippet_prompts(cx);
                                         })),
@@ -167,7 +168,7 @@ impl TermiRustApp {
                                 .debug_selector(|| "paste-cancel".to_string())
                                 .small()
                                 .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
-                                .label("Cancel")
+                                .label(localization::common_cancel())
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                     cx.stop_propagation();
                                 })

@@ -1,12 +1,15 @@
 mod contract;
 pub mod generated;
 pub mod lint;
+pub mod localization_lint;
+pub mod messages;
 
 pub use contract::{
     ContractError, GenerationArtifacts, TokenManifest, generate_artifacts, load_manifest,
     parse_manifest,
 };
 pub use generated::*;
+pub use messages::*;
 
 #[cfg(test)]
 mod tokens_tests {

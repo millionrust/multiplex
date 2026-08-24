@@ -245,11 +245,14 @@ pub fn queue_dialog_path(path: Option<PathBuf>) {
 }
 
 pub fn take_dialog_path() -> Option<PathBuf> {
+    take_dialog_selection().flatten()
+}
+
+pub fn take_dialog_selection() -> Option<Option<PathBuf>> {
     dialog_paths()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .pop_front()
-        .flatten()
 }
 
 impl Drop for DockerSshServer {

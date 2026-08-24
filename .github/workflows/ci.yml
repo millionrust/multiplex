@@ -47,6 +47,9 @@ jobs:
       - name: Verify generated design-token contract
         run: ./scripts/verify-design-tokens.sh --all-ui --no-new-baseline
 
+      - name: Verify localization contract and copy policy
+        run: ./scripts/verify-localization.sh --locales en-US,en-XA,ar-XB --no-new-baseline
+
       - name: Verify Rust workspace
         env:
           TERMIRUST_CLIPPY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
