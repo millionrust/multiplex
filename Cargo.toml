@@ -2,6 +2,7 @@
 name = "termirust"
 version = "0.1.0"
 edition = "2024"
+rust-version.workspace = true
 description = "Native desktop SSH client built with GPUI"
 authors = ["TermiRust contributors"]
 license = "MIT OR Apache-2.0"
@@ -12,6 +13,11 @@ default-run = "termirust"
 [workspace]
 members = ["crates/termirust-mobile-ffi", "crates/termirust-protocol"]
 resolver = "3"
+
+[workspace.package]
+# The locked all-target dependency graph requires Rust 1.88. Development and
+# CI use the newer pinned toolchain declared in rust-toolchain.toml.
+rust-version = "1.88"
 
 [package.metadata.bundle]
 name = "TermiRust"
@@ -46,7 +52,7 @@ russh = { version = "0.57", default-features = false, features = ["ring", "rsa"]
 russh-sftp = "2.1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-termirust-protocol = { path = "crates/termirust-protocol" }
+termirust-protocol = { version = "0.1.0", path = "crates/termirust-protocol" }
 tokio = { version = "1", features = ["io-util", "net", "rt", "sync", "time"] }
 vt100 = "0.16.2"
 

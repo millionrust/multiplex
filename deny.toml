@@ -1,0 +1,60 @@
+[graph]
+all-features = true
+
+[advisories]
+# These transitive findings require gpui/russh dependency migrations, which are
+# intentionally outside Goal 01. Desktop maintainers own every exception and
+# must remove, replace, or explicitly renew it before 2026-11-30.
+ignore = [
+    { id = "RUSTSEC-2023-0071", reason = "Owner: desktop maintainers; expires: 2026-11-30; transitive rsa timing advisory has no safe upgrade and requires russh migration." },
+    { id = "RUSTSEC-2024-0384", reason = "Owner: desktop maintainers; expires: 2026-11-30; transitive instant replacement requires gpui dependency migration." },
+    { id = "RUSTSEC-2024-0436", reason = "Owner: desktop maintainers; expires: 2026-11-30; transitive paste replacement requires upstream dependency migration." },
+    { id = "RUSTSEC-2025-0052", reason = "Owner: desktop maintainers; expires: 2026-11-30; transitive async-std removal requires gpui dependency migration." },
+    { id = "RUSTSEC-2025-0134", reason = "Owner: desktop maintainers; expires: 2026-11-30; transitive rustls-pemfile removal requires gpui HTTP dependency migration." },
+    { id = "RUSTSEC-2026-0074", reason = "Owner: desktop maintainers; expires: 2026-11-30; affected libcrux API is not used directly and upgrade requires russh migration." },
+    { id = "RUSTSEC-2026-0105", reason = "Owner: desktop maintainers; expires: 2026-11-30; transitive core2 replacement requires gpui image dependency migration." },
+    { id = "RUSTSEC-2026-0153", reason = "Owner: desktop maintainers; expires: 2026-11-30; fix requires a reviewed russh 0.60 migration." },
+    { id = "RUSTSEC-2026-0154", reason = "Owner: desktop maintainers; expires: 2026-11-30; fix requires a reviewed russh 0.60 migration." },
+    { id = "RUSTSEC-2026-0173", reason = "Owner: desktop maintainers; expires: 2026-11-30; transitive proc-macro-error2 removal requires upstream migration." },
+    { id = "RUSTSEC-2026-0192", reason = "Owner: desktop maintainers; expires: 2026-11-30; transitive ttf-parser replacement requires gpui font dependency migration." },
+    { id = "RUSTSEC-2026-0194", reason = "Owner: desktop maintainers; expires: 2026-11-30; quick-xml 0.41 is outside the upstream semver constraint and requires gpui migration." },
+    { id = "RUSTSEC-2026-0195", reason = "Owner: desktop maintainers; expires: 2026-11-30; quick-xml 0.41 is outside the upstream semver constraint and requires gpui migration." },
+    { id = "RUSTSEC-2026-0206", reason = "Owner: desktop maintainers; expires: 2026-11-30; transitive rustybuzz replacement requires gpui text dependency migration." },
+    { id = "RUSTSEC-2026-0207", reason = "Owner: desktop maintainers; expires: 2026-11-30; affected libcrux API is not used directly and upgrade requires russh migration." },
+    { id = "RUSTSEC-2026-0208", reason = "Owner: desktop maintainers; expires: 2026-11-30; affected libcrux API is not used directly and upgrade requires russh migration." },
+    { id = "RUSTSEC-2026-0212", reason = "Owner: desktop maintainers; expires: 2026-11-30; libcrux fix requires a reviewed russh migration." },
+    { crate = "core2@0.4.0", reason = "Owner: desktop maintainers; expires: 2026-11-30; yanked transitive crate requires gpui image dependency migration." },
+    { crate = "spin@0.9.8", reason = "Owner: desktop maintainers; expires: 2026-11-30; yanked transitive crate requires gpui dependency migration." },
+]
+
+[licenses]
+confidence-threshold = 0.93
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-1-Clause",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "NCSA",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "simplest-path"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -1,5 +1,8 @@
 name: ci
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main, dev]
@@ -7,7 +10,7 @@ on:
 
 jobs:
   test:
-    name: test (${{ matrix.runner }})
+    name: rust baseline (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -15,12 +18,18 @@ jobs:
         runner: [ubuntu-22.04, macos-14]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97.1
         with:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.19.8
 
       - name: Linux build dependencies
         if: runner.os == 'Linux'
@@ -29,13 +38,42 @@ jobs:
           sudo apt-get install -y \
             libxkbcommon-dev libssl-dev libfontconfig1-dev \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            pkg-config tmux
+
+      - name: macOS tmux dependency
+        if: runner.os == 'macOS'
+        run: command -v tmux >/dev/null 2>&1 || brew install tmux
+
+      - name: Verify Rust workspace
+        env:
+          TERMIRUST_CLIPPY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: ./scripts/verify-rust.sh workspace
+
+      - name: Repeat local tmux regression
+        run: ./scripts/repeat-test.sh 25 local::tests::local_tmux_session_survives_disconnect_and_reattaches
+
+      - name: Repeat canvas tmux capability regression
+        run: ./scripts/repeat-test.sh 25 ui::app::tests::canvas_persistent_local_terminal_opens_or_explains_missing_tmux
+
+  msrv:
+    name: Rust 1.88 MSRV
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@1.88.0
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxkbcommon-dev libssl-dev libfontconfig1-dev \
+            libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
             pkg-config
 
-      - name: cargo fmt
-        run: cargo fmt --all -- --check
-
-      - name: cargo build
-        run: cargo build --locked
-
-      - name: cargo test
-        run: cargo test --locked --all-targets
+      - name: Check minimum supported Rust version
+        run: cargo +1.88.0 check --workspace --all-targets --all-features --locked
