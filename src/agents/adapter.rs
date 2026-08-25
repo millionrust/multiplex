@@ -1,12 +1,11 @@
 use crate::models::AgentProvider;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct AgentCapabilities {
+pub struct AgentLaunchModes {
     pub interactive_pty: bool,
     pub structured_events: bool,
     pub approvals: bool,
     pub cancellation: bool,
-    pub resume: bool,
     pub context_handoff: bool,
     pub remote: bool,
 }
@@ -17,7 +16,8 @@ pub struct AgentProviderDescriptor {
     pub executable: Option<&'static str>,
     pub version_argument: &'static str,
     pub install_guidance: &'static str,
-    pub capabilities: AgentCapabilities,
+    /// Implementation routes, not detected semantic capabilities.
+    pub launch_modes: AgentLaunchModes,
 }
 
 pub fn provider_descriptor(provider: AgentProvider) -> AgentProviderDescriptor {
@@ -27,12 +27,11 @@ pub fn provider_descriptor(provider: AgentProvider) -> AgentProviderDescriptor {
             executable: Some("codex"),
             version_argument: "--version",
             install_guidance: "Install Codex CLI from https://developers.openai.com/codex/cli, then select Check again.",
-            capabilities: AgentCapabilities {
+            launch_modes: AgentLaunchModes {
                 interactive_pty: true,
                 structured_events: true,
                 approvals: true,
                 cancellation: true,
-                resume: true,
                 context_handoff: true,
                 remote: true,
             },
@@ -42,12 +41,11 @@ pub fn provider_descriptor(provider: AgentProvider) -> AgentProviderDescriptor {
             executable: Some("claude"),
             version_argument: "--version",
             install_guidance: "Install Claude Code from https://code.claude.com/docs/en/setup, then select Check again.",
-            capabilities: AgentCapabilities {
+            launch_modes: AgentLaunchModes {
                 interactive_pty: true,
                 structured_events: true,
                 approvals: false,
                 cancellation: true,
-                resume: false,
                 context_handoff: true,
                 remote: true,
             },
@@ -57,12 +55,11 @@ pub fn provider_descriptor(provider: AgentProvider) -> AgentProviderDescriptor {
             executable: Some("gemini"),
             version_argument: "--version",
             install_guidance: "Install Gemini CLI from https://geminicli.com/docs/get-started/installation, then select Check again.",
-            capabilities: AgentCapabilities {
+            launch_modes: AgentLaunchModes {
                 interactive_pty: true,
                 structured_events: true,
                 approvals: false,
                 cancellation: true,
-                resume: false,
                 context_handoff: true,
                 remote: true,
             },
@@ -72,10 +69,10 @@ pub fn provider_descriptor(provider: AgentProvider) -> AgentProviderDescriptor {
             executable: None,
             version_argument: "--version",
             install_guidance: "Choose an installed executable. TermiRust will not install or run it through a shell.",
-            capabilities: AgentCapabilities {
+            launch_modes: AgentLaunchModes {
                 interactive_pty: true,
                 remote: true,
-                ..AgentCapabilities::default()
+                ..AgentLaunchModes::default()
             },
         },
         AgentProvider::GroqApi => AgentProviderDescriptor {
@@ -83,7 +80,7 @@ pub fn provider_descriptor(provider: AgentProvider) -> AgentProviderDescriptor {
             executable: None,
             version_argument: "--version",
             install_guidance: "Groq API agents are not available in this release. Use a reviewed Custom CLI executable instead.",
-            capabilities: AgentCapabilities::default(),
+            launch_modes: AgentLaunchModes::default(),
         },
     }
 }
@@ -96,13 +93,13 @@ mod tests {
     #[test]
     fn provider_capabilities_do_not_overstate_custom_or_groq_support() {
         let custom = provider_descriptor(AgentProvider::CustomCli);
-        assert!(custom.capabilities.interactive_pty);
-        assert!(!custom.capabilities.structured_events);
-        assert!(!custom.capabilities.approvals);
+        assert!(custom.launch_modes.interactive_pty);
+        assert!(!custom.launch_modes.structured_events);
+        assert!(!custom.launch_modes.approvals);
 
         let groq = provider_descriptor(AgentProvider::GroqApi);
-        assert!(!groq.capabilities.interactive_pty);
-        assert!(!groq.capabilities.structured_events);
+        assert!(!groq.launch_modes.interactive_pty);
+        assert!(!groq.launch_modes.structured_events);
     }
 
     #[test]
@@ -114,21 +111,19 @@ mod tests {
         ] {
             let descriptor = provider_descriptor(provider);
             assert!(descriptor.executable.is_some());
-            assert!(descriptor.capabilities.interactive_pty);
-            assert!(descriptor.capabilities.structured_events);
-            assert!(descriptor.capabilities.cancellation);
+            assert!(descriptor.launch_modes.interactive_pty);
+            assert!(descriptor.launch_modes.structured_events);
+            assert!(descriptor.launch_modes.cancellation);
         }
     }
 
     #[test]
-    fn headless_adapters_do_not_claim_interactive_approval_or_resume() {
+    fn headless_adapters_do_not_implement_interactive_approval() {
         for provider in [AgentProvider::ClaudeCode, AgentProvider::Gemini] {
             let descriptor = provider_descriptor(provider);
-            assert!(!descriptor.capabilities.approvals);
-            assert!(!descriptor.capabilities.resume);
+            assert!(!descriptor.launch_modes.approvals);
         }
         let codex = provider_descriptor(AgentProvider::Codex);
-        assert!(codex.capabilities.approvals);
-        assert!(codex.capabilities.resume);
+        assert!(codex.launch_modes.approvals);
     }
 }

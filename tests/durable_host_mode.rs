@@ -23,6 +23,7 @@ async fn packaged_binary_host_mode_survives_gui_client_disconnect() {
         runtime_root: fixture.path().join("runtime"),
         session_dir: fixture.path().join("session"),
         executable: "/bin/sh".into(),
+        runtime_detection: None,
         arguments: vec![
             "-c".to_string(),
             "printf 'PACKAGED-HOST-READY\\n'; while IFS= read -r line; do printf 'PACKAGED:%s\\n' \"$line\"; done".to_string(),

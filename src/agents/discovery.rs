@@ -6,51 +6,21 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use termirust_domain::{
-    DetectionCandidate, DetectionReport, DetectionStatus, ExecutableSpec, RuntimeId,
+    ExecutableSpec, MAX_RUNTIME_CANDIDATES, RuntimeDescriptor, RuntimeDescriptorKind,
+    RuntimeDetectionResult, RuntimeDetectionStatus, RuntimeId, compiled_runtime_descriptors,
+    parse_runtime_version,
 };
 
 const MAX_PATH_ENTRIES: usize = 128;
 const MAX_PATH_BYTES: usize = 64 * 1024;
-const MAX_CANDIDATES_PER_RUNTIME: usize = 3;
 const MAX_COMBINED_OUTPUT: usize = 8 * 1024;
+use termirust_session_host::process_observation::fingerprint_executable;
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct RuntimeProbeDescriptor {
-    pub runtime: RuntimeId,
-    pub executable_names: Vec<String>,
-    pub version_arguments: Vec<String>,
-    pub minimum_major_version: Option<u64>,
-}
-
-impl RuntimeProbeDescriptor {
-    #[cfg(test)]
-    fn fixture(runtime: &str, executable: &str) -> Self {
-        Self {
-            runtime: RuntimeId::new(runtime).unwrap(),
-            executable_names: vec![executable.to_string()],
-            version_arguments: vec!["--version".to_string()],
-            minimum_major_version: None,
-        }
-    }
-}
-
-pub fn known_runtime_descriptors() -> Vec<RuntimeProbeDescriptor> {
-    [
-        ("claude", "claude"),
-        ("codex", "codex"),
-        ("gemini", "gemini"),
-    ]
-    .into_iter()
-    .map(|(runtime, executable)| RuntimeProbeDescriptor {
-        runtime: RuntimeId::new(runtime).expect("compiled runtime ID is valid"),
-        executable_names: vec![executable.to_string()],
-        version_arguments: vec!["--version".to_string()],
-        minimum_major_version: None,
-    })
-    .collect()
+pub fn known_runtime_descriptors() -> Vec<RuntimeDescriptor> {
+    compiled_runtime_descriptors()
 }
 
 pub fn discovery_path_snapshot() -> OsString {
@@ -87,11 +57,32 @@ impl DiscoveryCancellation {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeDiscoveryEntry {
+    pub result: RuntimeDetectionResult,
+    pub executable: Option<ExecutableSpec>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RuntimeDiscoveryReport {
+    pub entries: Vec<RuntimeDiscoveryEntry>,
+    pub partial: bool,
+    pub cancelled: bool,
+}
+
+impl RuntimeDiscoveryReport {
+    pub fn entry(&self, runtime_id: &RuntimeId) -> Option<&RuntimeDiscoveryEntry> {
+        self.entries
+            .iter()
+            .find(|entry| &entry.result.runtime_id == runtime_id)
+    }
+}
+
 #[derive(Clone)]
 struct CachedReport {
     key: u64,
     created_at: Instant,
-    report: DetectionReport,
+    report: RuntimeDiscoveryReport,
 }
 
 pub struct CliDiscovery {
@@ -115,97 +106,136 @@ impl CliDiscovery {
 
     pub fn discover(
         &self,
-        descriptors: &[RuntimeProbeDescriptor],
+        descriptors: &[RuntimeDescriptor],
         path_snapshot: &OsString,
         cancel: &DiscoveryCancellation,
         refresh: bool,
-    ) -> DetectionReport {
+    ) -> RuntimeDiscoveryReport {
         let bounded_path = bounded_path_entries(path_snapshot);
-        let initial_found = find_candidates(descriptors, &bounded_path);
-        let key = discovery_key(descriptors, &bounded_path, &initial_found);
+        let found = find_candidates(descriptors, &bounded_path);
+        let key = discovery_key(descriptors, &bounded_path, &found);
+        let cached = self
+            .cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
         if !refresh
-            && let Some(cached) = self
-                .cache
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .as_ref()
-                .filter(|cached| {
-                    cached.key == key && cached.created_at.elapsed() < self.limits.cache_ttl
-                })
+            && let Some(cached) = cached.as_ref().filter(|cached| {
+                cached.key == key && cached.created_at.elapsed() < self.limits.cache_ttl
+            })
         {
             return cached.report.clone();
         }
 
         let mut descriptors = descriptors.to_vec();
-        descriptors.sort_by(|left, right| left.runtime.cmp(&right.runtime));
-        let found = find_candidates(&descriptors, &bounded_path);
-        let mut jobs = Vec::new();
-        let mut candidates = Vec::new();
-        for descriptor in &descriptors {
-            let paths = found.get(&descriptor.runtime).cloned().unwrap_or_default();
-            if paths.is_empty() {
-                if let Some(name) = descriptor.executable_names.first()
-                    && let Ok(executable) = ExecutableSpec::parse(name)
-                {
-                    candidates.push(DetectionCandidate {
-                        runtime: descriptor.runtime.clone(),
-                        executable,
-                        version: None,
-                        status: DetectionStatus::Missing,
-                        diagnostic_code: Some("not-found".to_string()),
-                    });
-                }
-                continue;
-            }
-            for path in paths.into_iter().take(MAX_CANDIDATES_PER_RUNTIME) {
-                jobs.push((descriptor.clone(), path));
-            }
-        }
-
+        descriptors.sort_by(|left, right| left.id.cmp(&right.id));
         let path_value = std::env::join_paths(&bounded_path).unwrap_or_default();
-        let concurrency = self.limits.max_concurrency.clamp(1, 4);
-        for chunk in jobs.chunks(concurrency) {
+        let mut entries = Vec::with_capacity(descriptors.len());
+        for descriptor in &descriptors {
             if cancel.is_cancelled() {
                 break;
             }
-            let results = thread::scope(|scope| {
-                let handles = chunk
-                    .iter()
-                    .map(|(descriptor, path)| {
-                        let descriptor = descriptor.clone();
-                        let path = path.clone();
-                        let path_value = path_value.clone();
-                        let cancel = cancel.clone();
-                        let timeout = self.limits.probe_timeout;
-                        scope
-                            .spawn(move || probe(&descriptor, &path, &path_value, timeout, &cancel))
+            if descriptor.kind == RuntimeDescriptorKind::GenericCommand {
+                entries.push(RuntimeDiscoveryEntry {
+                    result: RuntimeDetectionResult {
+                        runtime_id: descriptor.id.clone(),
+                        descriptor_version: descriptor.descriptor_version,
+                        status: RuntimeDetectionStatus::Available,
+                        fingerprint: None,
+                        safe_version: None,
+                        capabilities: Default::default(),
+                        diagnostic_code: Some("generic-command".to_string()),
+                    },
+                    executable: None,
+                });
+                continue;
+            }
+            let paths = found.get(&descriptor.id).cloned().unwrap_or_default();
+            if paths.is_empty() {
+                entries.push(missing_entry(descriptor));
+                continue;
+            }
+            let concurrency = self.limits.max_concurrency.clamp(1, 4);
+            let mut probes = Vec::new();
+            for chunk in paths
+                .into_iter()
+                .take(MAX_RUNTIME_CANDIDATES)
+                .collect::<Vec<_>>()
+                .chunks(concurrency)
+            {
+                if cancel.is_cancelled() {
+                    break;
+                }
+                let results = thread::scope(|scope| {
+                    let handles = chunk
+                        .iter()
+                        .map(|path| {
+                            let descriptor = descriptor.clone();
+                            let path = path.clone();
+                            let path_value = path_value.clone();
+                            let cancel = cancel.clone();
+                            let timeout = self.limits.probe_timeout;
+                            scope.spawn(move || {
+                                probe(&descriptor, &path, &path_value, timeout, &cancel)
+                            })
+                        })
+                        .collect::<Vec<_>>();
+                    handles
+                        .into_iter()
+                        .map(|handle| handle.join().unwrap_or_else(|_| partial_probe(descriptor)))
+                        .collect::<Vec<_>>()
+                });
+                probes.extend(results);
+            }
+            probes.sort_by(|left, right| {
+                detection_rank(left.entry.result.status)
+                    .cmp(&detection_rank(right.entry.result.status))
+                    .then_with(|| {
+                        left.entry
+                            .executable
+                            .as_ref()
+                            .map(ExecutableSpec::as_str)
+                            .cmp(&right.entry.executable.as_ref().map(ExecutableSpec::as_str))
                     })
-                    .collect::<Vec<_>>();
-                handles
-                    .into_iter()
-                    .map(|handle| handle.join().expect("probe thread panicked"))
-                    .collect::<Vec<_>>()
             });
-            candidates.extend(results);
+            entries.push(
+                probes
+                    .into_iter()
+                    .next()
+                    .map(|probe| probe.entry)
+                    .unwrap_or_else(|| partial_entry(descriptor, "cancelled")),
+            );
         }
-        candidates.sort_by(|left, right| {
-            left.runtime
-                .cmp(&right.runtime)
-                .then_with(|| detection_rank(&left.status).cmp(&detection_rank(&right.status)))
-                .then_with(|| left.executable.as_str().cmp(right.executable.as_str()))
-        });
         let cancelled = cancel.is_cancelled();
+        if cancelled {
+            for descriptor in &descriptors {
+                if entries
+                    .iter()
+                    .any(|entry| entry.result.runtime_id == descriptor.id)
+                {
+                    continue;
+                }
+                let previous = cached
+                    .as_ref()
+                    .and_then(|cached| cached.report.entry(&descriptor.id))
+                    .filter(|entry| cached_entry_is_current(entry, descriptor, &found));
+                entries.push(
+                    previous
+                        .cloned()
+                        .unwrap_or_else(|| partial_entry(descriptor, "cancelled")),
+                );
+            }
+        }
+        entries.sort_by(|left, right| left.result.runtime_id.cmp(&right.result.runtime_id));
         let partial = cancelled
-            || candidates.iter().any(|candidate| {
+            || entries.iter().any(|entry| {
                 matches!(
-                    candidate.status,
-                    DetectionStatus::TimedOut
-                        | DetectionStatus::PermissionDenied
-                        | DetectionStatus::Failed
+                    entry.result.status,
+                    RuntimeDetectionStatus::Partial | RuntimeDetectionStatus::PermissionDenied
                 )
             });
-        let report = DetectionReport {
-            candidates,
+        let report = RuntimeDiscoveryReport {
+            entries,
             partial,
             cancelled,
         };
@@ -223,9 +253,35 @@ impl CliDiscovery {
     }
 }
 
+fn cached_entry_is_current(
+    entry: &RuntimeDiscoveryEntry,
+    descriptor: &RuntimeDescriptor,
+    found: &BTreeMap<RuntimeId, Vec<PathBuf>>,
+) -> bool {
+    if descriptor.kind == RuntimeDescriptorKind::GenericCommand {
+        return entry.result.status == RuntimeDetectionStatus::Available
+            && entry.result.fingerprint.is_none()
+            && entry.result.capabilities.is_empty();
+    }
+    let paths = found
+        .get(&descriptor.id)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    if entry.result.status == RuntimeDetectionStatus::Missing {
+        return paths.is_empty();
+    }
+    let (Some(expected), Some(executable)) = (entry.result.fingerprint, entry.executable.as_ref())
+    else {
+        return false;
+    };
+    paths.iter().any(|path| {
+        path.to_string_lossy() == executable.as_str()
+            && fingerprint_executable(path).ok() == Some(expected)
+    })
+}
+
 fn bounded_path_entries(path_snapshot: &OsString) -> Vec<PathBuf> {
-    let encoded = path_snapshot.to_string_lossy();
-    if encoded.len() > MAX_PATH_BYTES {
+    if path_snapshot.to_string_lossy().len() > MAX_PATH_BYTES {
         return Vec::new();
     }
     std::env::split_paths(path_snapshot)
@@ -234,13 +290,13 @@ fn bounded_path_entries(path_snapshot: &OsString) -> Vec<PathBuf> {
 }
 
 fn find_candidates(
-    descriptors: &[RuntimeProbeDescriptor],
+    descriptors: &[RuntimeDescriptor],
     path_entries: &[PathBuf],
 ) -> BTreeMap<RuntimeId, Vec<PathBuf>> {
     let mut found = BTreeMap::new();
     for descriptor in descriptors {
         let mut runtime_paths = Vec::new();
-        for executable_name in &descriptor.executable_names {
+        for executable_name in &descriptor.executable_candidates {
             for directory in path_entries {
                 let candidate = directory.join(executable_name);
                 if is_executable_file(&candidate) && !runtime_paths.contains(&candidate) {
@@ -255,7 +311,7 @@ fn find_candidates(
                 }
             }
         }
-        found.insert(descriptor.runtime.clone(), runtime_paths);
+        found.insert(descriptor.id.clone(), runtime_paths);
     }
     found
 }
@@ -279,37 +335,66 @@ fn is_executable_file(path: &Path) -> bool {
 }
 
 fn discovery_key(
-    descriptors: &[RuntimeProbeDescriptor],
+    descriptors: &[RuntimeDescriptor],
     paths: &[PathBuf],
     found: &BTreeMap<RuntimeId, Vec<PathBuf>>,
 ) -> u64 {
     let mut hasher = DefaultHasher::new();
-    descriptors.hash(&mut hasher);
+    for descriptor in descriptors {
+        descriptor.id.hash(&mut hasher);
+        descriptor.descriptor_version.hash(&mut hasher);
+        descriptor.executable_candidates.hash(&mut hasher);
+        descriptor.version_arguments.hash(&mut hasher);
+    }
     for path in paths {
         path.hash(&mut hasher);
     }
     for path in found.values().flatten() {
         path.hash(&mut hasher);
-        if let Ok(metadata) = path.metadata() {
-            metadata.len().hash(&mut hasher);
-            metadata
-                .modified()
-                .unwrap_or(SystemTime::UNIX_EPOCH)
-                .hash(&mut hasher);
+        match fingerprint_executable(path) {
+            Ok(fingerprint) => fingerprint.hash(&mut hasher),
+            Err(error) => error.kind().hash(&mut hasher),
         }
     }
     hasher.finish()
 }
 
+struct ProbeResult {
+    entry: RuntimeDiscoveryEntry,
+}
+
 fn probe(
-    descriptor: &RuntimeProbeDescriptor,
+    descriptor: &RuntimeDescriptor,
     path: &Path,
     path_snapshot: &OsString,
     timeout: Duration,
     cancel: &DiscoveryCancellation,
-) -> DetectionCandidate {
-    let executable = ExecutableSpec::parse(path.to_string_lossy().as_ref())
-        .expect("discovered executable path is absolute");
+) -> ProbeResult {
+    let executable = ExecutableSpec::parse(path.to_string_lossy().as_ref()).ok();
+    let fingerprint = match fingerprint_executable(path) {
+        Ok(fingerprint) => fingerprint,
+        Err(error) => {
+            let status = if error.kind() == std::io::ErrorKind::PermissionDenied {
+                RuntimeDetectionStatus::PermissionDenied
+            } else {
+                RuntimeDetectionStatus::Partial
+            };
+            return ProbeResult {
+                entry: RuntimeDiscoveryEntry {
+                    result: RuntimeDetectionResult {
+                        runtime_id: descriptor.id.clone(),
+                        descriptor_version: descriptor.descriptor_version,
+                        status,
+                        fingerprint: None,
+                        safe_version: None,
+                        capabilities: Default::default(),
+                        diagnostic_code: Some("fingerprint-unavailable".to_string()),
+                    },
+                    executable,
+                },
+            };
+        }
+    };
     let mut command = Command::new(path);
     command
         .args(&descriptor.version_arguments)
@@ -325,23 +410,27 @@ fn probe(
         Ok(child) => child,
         Err(error) => {
             let permission_denied = error.kind() == std::io::ErrorKind::PermissionDenied;
-            return DetectionCandidate {
-                runtime: descriptor.runtime.clone(),
-                executable,
-                version: None,
-                status: if permission_denied {
-                    DetectionStatus::PermissionDenied
-                } else {
-                    DetectionStatus::Failed
+            return ProbeResult {
+                entry: RuntimeDiscoveryEntry {
+                    result: RuntimeDetectionResult {
+                        runtime_id: descriptor.id.clone(),
+                        descriptor_version: descriptor.descriptor_version,
+                        status: if permission_denied {
+                            RuntimeDetectionStatus::PermissionDenied
+                        } else {
+                            RuntimeDetectionStatus::Partial
+                        },
+                        fingerprint: Some(fingerprint),
+                        safe_version: None,
+                        capabilities: Default::default(),
+                        diagnostic_code: Some(if permission_denied {
+                            "permission-denied".to_string()
+                        } else {
+                            "spawn-failed".to_string()
+                        }),
+                    },
+                    executable,
                 },
-                diagnostic_code: Some(
-                    if permission_denied {
-                        "permission-denied"
-                    } else {
-                        "spawn-failed"
-                    }
-                    .to_string(),
-                ),
             };
         }
     };
@@ -354,22 +443,22 @@ fn probe(
         readers.push(spawn_output_reader(stream, output.clone()));
     }
     let started = Instant::now();
-    let (status, diagnostic_code) = loop {
+    let diagnostic = loop {
         if cancel.is_cancelled() {
             let _ = child.kill();
             let _ = child.wait();
-            break (DetectionStatus::Failed, Some("cancelled".to_string()));
-        }
-        if started.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            break (DetectionStatus::TimedOut, Some("timeout".to_string()));
+            break Some("cancelled");
         }
         match child.try_wait() {
-            Ok(Some(exit)) if exit.success() => break (DetectionStatus::Supported, None),
-            Ok(Some(_)) => break (DetectionStatus::Failed, Some("non-zero-exit".to_string())),
+            Ok(Some(exit)) if exit.success() => break None,
+            Ok(Some(_)) => break Some("non-zero-exit"),
+            Ok(None) if started.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break Some("timeout");
+            }
             Ok(None) => thread::sleep(Duration::from_millis(10)),
-            Err(_) => break (DetectionStatus::Failed, Some("wait-failed".to_string())),
+            Err(_) => break Some("wait-failed"),
         }
     };
     for reader in readers {
@@ -378,24 +467,40 @@ fn probe(
     let output = output
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let version = String::from_utf8_lossy(&output).trim().to_string();
-    let mut status = status;
-    if status == DetectionStatus::Supported {
-        let parsed_major = parse_first_number(&version);
-        if parsed_major.is_none() {
-            status = DetectionStatus::DetectedUnknownVersion;
-        } else if let Some(minimum) = descriptor.minimum_major_version
-            && parsed_major.is_some_and(|major| major < minimum)
-        {
-            status = DetectionStatus::UnsupportedVersion;
-        }
-    }
-    DetectionCandidate {
-        runtime: descriptor.runtime.clone(),
-        executable,
-        version: (!version.is_empty()).then_some(version),
-        status,
-        diagnostic_code,
+    let parsed = (diagnostic.is_none())
+        .then(|| String::from_utf8_lossy(&output))
+        .and_then(|output| parse_runtime_version(&output));
+    let capabilities = parsed
+        .map(|version| descriptor.capabilities_for(version))
+        .unwrap_or_default();
+    let (status, diagnostic_code) = if let Some(code) = diagnostic {
+        (RuntimeDetectionStatus::Partial, Some(code.to_string()))
+    } else if parsed.is_none() {
+        (
+            RuntimeDetectionStatus::UnsupportedVersion,
+            Some("malformed-version".to_string()),
+        )
+    } else if capabilities.is_empty() {
+        (
+            RuntimeDetectionStatus::UnsupportedVersion,
+            Some("unsupported-version".to_string()),
+        )
+    } else {
+        (RuntimeDetectionStatus::Available, None)
+    };
+    ProbeResult {
+        entry: RuntimeDiscoveryEntry {
+            result: RuntimeDetectionResult {
+                runtime_id: descriptor.id.clone(),
+                descriptor_version: descriptor.descriptor_version,
+                status,
+                fingerprint: Some(fingerprint),
+                safe_version: parsed.map(|version| version.to_string()),
+                capabilities,
+                diagnostic_code,
+            },
+            executable,
+        },
     }
 }
 
@@ -418,22 +523,52 @@ fn spawn_output_reader(
     })
 }
 
-fn parse_first_number(value: &str) -> Option<u64> {
-    value
-        .split(|character: char| !character.is_ascii_digit())
-        .find(|part| !part.is_empty())
-        .and_then(|part| part.parse().ok())
+fn missing_entry(descriptor: &RuntimeDescriptor) -> RuntimeDiscoveryEntry {
+    RuntimeDiscoveryEntry {
+        result: RuntimeDetectionResult {
+            runtime_id: descriptor.id.clone(),
+            descriptor_version: descriptor.descriptor_version,
+            status: RuntimeDetectionStatus::Missing,
+            fingerprint: None,
+            safe_version: None,
+            capabilities: Default::default(),
+            diagnostic_code: Some("not-found".to_string()),
+        },
+        executable: descriptor
+            .executable_candidates
+            .first()
+            .and_then(|candidate| ExecutableSpec::parse(candidate).ok()),
+    }
 }
 
-fn detection_rank(status: &DetectionStatus) -> u8 {
+fn partial_entry(descriptor: &RuntimeDescriptor, code: &str) -> RuntimeDiscoveryEntry {
+    RuntimeDiscoveryEntry {
+        result: RuntimeDetectionResult {
+            runtime_id: descriptor.id.clone(),
+            descriptor_version: descriptor.descriptor_version,
+            status: RuntimeDetectionStatus::Partial,
+            fingerprint: None,
+            safe_version: None,
+            capabilities: Default::default(),
+            diagnostic_code: Some(code.to_string()),
+        },
+        executable: None,
+    }
+}
+
+fn partial_probe(descriptor: &RuntimeDescriptor) -> ProbeResult {
+    ProbeResult {
+        entry: partial_entry(descriptor, "probe-thread-failed"),
+    }
+}
+
+fn detection_rank(status: RuntimeDetectionStatus) -> u8 {
     match status {
-        DetectionStatus::Supported => 0,
-        DetectionStatus::DetectedUnknownVersion => 1,
-        DetectionStatus::UnsupportedVersion => 2,
-        DetectionStatus::PermissionDenied => 3,
-        DetectionStatus::TimedOut => 4,
-        DetectionStatus::Failed => 5,
-        DetectionStatus::Missing => 6,
+        RuntimeDetectionStatus::Available => 0,
+        RuntimeDetectionStatus::UnsupportedVersion => 1,
+        RuntimeDetectionStatus::PermissionDenied => 2,
+        RuntimeDetectionStatus::Partial => 3,
+        RuntimeDetectionStatus::Missing => 4,
     }
 }
 
@@ -444,10 +579,17 @@ mod tests {
 
     static DISCOVERY_TEST_LOCK: Mutex<()> = Mutex::new(());
 
-    fn discovery_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    fn guard() -> std::sync::MutexGuard<'static, ()> {
         DISCOVERY_TEST_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn loaded_test_discovery() -> CliDiscovery {
+        CliDiscovery::new(DiscoveryLimits {
+            probe_timeout: Duration::from_secs(10),
+            ..DiscoveryLimits::default()
+        })
     }
 
     #[cfg(unix)]
@@ -459,117 +601,226 @@ mod tests {
         path
     }
 
+    #[cfg(unix)]
+    fn committed_fixture(directory: &Path, relative: &str, name: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt as _;
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/runtimes")
+            .join(relative);
+        let destination = directory.join(name);
+        fs::copy(source, &destination).unwrap();
+        fs::set_permissions(&destination, fs::Permissions::from_mode(0o700)).unwrap();
+        destination
+    }
+
+    fn descriptor(id: &str, executable: &str) -> RuntimeDescriptor {
+        let mut descriptor = compiled_runtime_descriptors()
+            .into_iter()
+            .find(|descriptor| descriptor.id.as_str() == id)
+            .unwrap_or_else(|| {
+                compiled_runtime_descriptors()
+                    .into_iter()
+                    .find(|descriptor| descriptor.id.as_str() == "codex")
+                    .unwrap()
+            });
+        descriptor.id = RuntimeId::new(id).unwrap();
+        descriptor.executable_candidates = vec![executable.to_string()];
+        descriptor
+    }
+
     #[test]
     #[cfg(unix)]
-    fn discovery_is_bounded_deterministic_and_argv_only() {
-        let _guard = discovery_test_guard();
+    fn runtime_registry_detection_is_bounded_deterministic_and_argv_only() {
+        let _guard = guard();
         let fixture = tempfile::tempdir().unwrap();
-        let probe = "[ \"$#\" -eq 1 ] && [ \"$1\" = '--version' ] || exit 9; \
-                     [ \"${LC_ALL:-}\" = C ] && [ \"${HOME+x}\" != x ] || exit 8";
+        let probe = "[ \"$#\" -eq 1 ] && [ \"$1\" = '--version' ] || exit 9; [ \"${LC_ALL:-}\" = C ] && [ \"${HOME+x}\" != x ] || exit 8";
         executable(
             fixture.path(),
-            "beta",
-            &format!("{probe}; printf 'beta 2.0\\n'"),
+            "codex-fixture",
+            &format!("{probe}; printf 'codex-cli 1.0.7\\n'"),
         );
         executable(
             fixture.path(),
-            "alpha",
-            &format!("{probe}; printf 'alpha 1.0\\n'"),
+            "claude-fixture",
+            &format!("{probe}; printf '2.0.4 (Claude Code)\\n'"),
         );
-        let descriptors = vec![
-            RuntimeProbeDescriptor::fixture("beta", "beta"),
-            RuntimeProbeDescriptor::fixture("alpha", "alpha"),
-        ];
-        let report = CliDiscovery::default().discover(
-            &descriptors,
+        let report = loaded_test_discovery().discover(
+            &[
+                descriptor("codex", "codex-fixture"),
+                descriptor("claude", "claude-fixture"),
+            ],
             &std::env::join_paths([fixture.path()]).unwrap(),
             &DiscoveryCancellation::default(),
             true,
         );
         assert_eq!(
             report
-                .candidates
+                .entries
                 .iter()
-                .map(|candidate| candidate.runtime.as_str())
+                .map(|entry| entry.result.runtime_id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["alpha", "beta"]
+            vec!["claude", "codex"]
         );
         assert!(
             report
-                .candidates
+                .entries
                 .iter()
-                .all(|candidate| candidate.status == DetectionStatus::Supported),
-            "{report:?}"
+                .all(|entry| entry.result.status == RuntimeDetectionStatus::Available)
+        );
+        assert!(
+            report
+                .entries
+                .iter()
+                .all(|entry| !entry.result.capabilities.is_empty())
         );
         assert!(!report.partial);
     }
 
     #[test]
     #[cfg(unix)]
-    fn hanging_and_malformed_probes_do_not_hide_success() {
-        let _guard = discovery_test_guard();
+    fn runtime_registry_committed_contract_fixtures_match_truth_table() {
+        let _guard = guard();
+        for (runtime, cases) in [
+            (
+                "codex",
+                [
+                    ("codex/lower-boundary.sh", RuntimeDetectionStatus::Available),
+                    ("codex/supported.sh", RuntimeDetectionStatus::Available),
+                    (
+                        "codex/upper-boundary.sh",
+                        RuntimeDetectionStatus::UnsupportedVersion,
+                    ),
+                    (
+                        "codex/unsupported.sh",
+                        RuntimeDetectionStatus::UnsupportedVersion,
+                    ),
+                ],
+            ),
+            (
+                "claude",
+                [
+                    (
+                        "claude/lower-boundary.sh",
+                        RuntimeDetectionStatus::Available,
+                    ),
+                    ("claude/supported.sh", RuntimeDetectionStatus::Available),
+                    (
+                        "claude/upper-boundary.sh",
+                        RuntimeDetectionStatus::UnsupportedVersion,
+                    ),
+                    (
+                        "claude/unsupported.sh",
+                        RuntimeDetectionStatus::UnsupportedVersion,
+                    ),
+                ],
+            ),
+            (
+                "gemini",
+                [
+                    (
+                        "gemini/lower-boundary.sh",
+                        RuntimeDetectionStatus::Available,
+                    ),
+                    ("gemini/supported.sh", RuntimeDetectionStatus::Available),
+                    (
+                        "gemini/upper-boundary.sh",
+                        RuntimeDetectionStatus::UnsupportedVersion,
+                    ),
+                    (
+                        "gemini/unsupported.sh",
+                        RuntimeDetectionStatus::UnsupportedVersion,
+                    ),
+                ],
+            ),
+        ] {
+            for (index, (fixture, expected)) in cases.into_iter().enumerate() {
+                let directory = tempfile::tempdir().unwrap();
+                let executable_name = format!("{runtime}-{index}");
+                committed_fixture(directory.path(), fixture, &executable_name);
+                let report = loaded_test_discovery().discover(
+                    &[descriptor(runtime, &executable_name)],
+                    &std::env::join_paths([directory.path()]).unwrap(),
+                    &DiscoveryCancellation::default(),
+                    true,
+                );
+                assert_eq!(report.entries[0].result.status, expected, "{fixture}");
+                assert_eq!(
+                    report.entries[0].result.capabilities.is_empty(),
+                    expected != RuntimeDetectionStatus::Available,
+                    "{fixture}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn runtime_registry_reports_unsupported_malformed_hanging_and_missing() {
+        let _guard = guard();
+        assert_eq!(
+            DiscoveryLimits::default().probe_timeout,
+            Duration::from_secs(2)
+        );
         let fixture = tempfile::tempdir().unwrap();
-        executable(fixture.path(), "good", "printf 'good 1.0\\n'");
-        executable(fixture.path(), "hang", "while :; do sleep 1; done");
-        executable(fixture.path(), "unknown", "printf 'not-a-version\\n'");
-        let descriptors = vec![
-            RuntimeProbeDescriptor::fixture("good", "good"),
-            RuntimeProbeDescriptor::fixture("hang", "hang"),
-            RuntimeProbeDescriptor::fixture("unknown", "unknown"),
-        ];
-        let discovery = CliDiscovery::new(DiscoveryLimits {
-            // Preserve the production two-second budget while giving this
-            // concurrency fixture headroom when the full GPUI suite saturates CI.
-            probe_timeout: Duration::from_secs(5),
-            ..DiscoveryLimits::default()
-        });
+        executable(fixture.path(), "unsupported", "printf 'codex-cli 1.1.0\\n'");
+        committed_fixture(fixture.path(), "generic/malformed.sh", "malformed");
+        committed_fixture(fixture.path(), "generic/hanging.sh", "hang");
+        let discovery = CliDiscovery::default();
         let report = discovery.discover(
-            &descriptors,
+            &[
+                descriptor("unsupported-fixture", "unsupported"),
+                descriptor("malformed-fixture", "malformed"),
+                descriptor("zz-hanging-fixture", "hang"),
+                descriptor("missing-fixture", "missing"),
+            ],
             &std::env::join_paths([fixture.path()]).unwrap(),
             &DiscoveryCancellation::default(),
             true,
         );
         assert!(report.partial);
-        assert!(
+        assert_eq!(
             report
-                .candidates
-                .iter()
-                .any(|candidate| candidate.status == DetectionStatus::TimedOut)
+                .entry(&RuntimeId::new("unsupported-fixture").unwrap())
+                .map(|entry| entry.result.status),
+            Some(RuntimeDetectionStatus::UnsupportedVersion),
+            "{report:#?}"
+        );
+        assert_eq!(
+            report
+                .entry(&RuntimeId::new("zz-hanging-fixture").unwrap())
+                .map(|entry| entry.result.status),
+            Some(RuntimeDetectionStatus::Partial),
+            "{report:#?}"
+        );
+        assert_eq!(
+            report
+                .entry(&RuntimeId::new("missing-fixture").unwrap())
+                .map(|entry| entry.result.status),
+            Some(RuntimeDetectionStatus::Missing),
+            "{report:#?}"
         );
         assert!(
             report
-                .candidates
+                .entries
                 .iter()
-                .any(|candidate| { candidate.status == DetectionStatus::DetectedUnknownVersion }),
-            "{report:?}"
-        );
-        assert!(
-            report
-                .candidates
-                .iter()
-                .any(|candidate| candidate.status == DetectionStatus::Supported)
+                .all(|entry| !format!("{entry:?}").contains("private-looking"))
         );
     }
 
     #[test]
     #[cfg(unix)]
-    fn cancellation_stops_scan() {
-        let _guard = discovery_test_guard();
+    fn runtime_registry_cancellation_stops_exact_probe_and_does_not_cache_partial() {
+        let _guard = guard();
         let fixture = tempfile::tempdir().unwrap();
-        executable(fixture.path(), "hang", "while :; do sleep 1; done");
-        let descriptor = RuntimeProbeDescriptor::fixture("hang", "hang");
+        executable(fixture.path(), "hang", "while :; do :; done");
         let cancel = DiscoveryCancellation::default();
-        let cancel_worker = cancel.clone();
+        let worker = cancel.clone();
         thread::spawn(move || {
-            thread::sleep(Duration::from_millis(50));
-            cancel_worker.cancel();
+            thread::sleep(Duration::from_millis(40));
+            worker.cancel();
         });
-        let discovery = CliDiscovery::new(DiscoveryLimits {
-            probe_timeout: Duration::from_secs(2),
-            ..DiscoveryLimits::default()
-        });
-        let report = discovery.discover(
-            &[descriptor],
+        let report = CliDiscovery::default().discover(
+            &[descriptor("codex", "hang")],
             &std::env::join_paths([fixture.path()]).unwrap(),
             &cancel,
             true,
@@ -580,11 +831,61 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn cache_invalidates_when_executable_metadata_changes() {
-        let _guard = discovery_test_guard();
+    fn runtime_registry_cancel_retains_only_prior_fingerprint_valid_rows() {
+        let _guard = guard();
         let fixture = tempfile::tempdir().unwrap();
-        let path = executable(fixture.path(), "tool", "printf 'tool 1.0\\n'");
-        let descriptor = RuntimeProbeDescriptor::fixture("tool", "tool");
+        let changed = executable(fixture.path(), "changed", "printf 'codex-cli 1.0.1\\n'");
+        executable(fixture.path(), "stable", "printf 'codex-cli 1.0.2\\n'");
+        let descriptors = [
+            descriptor("aaa-changed-fixture", "changed"),
+            descriptor("codex", "stable"),
+        ];
+        let discovery = CliDiscovery::default();
+        let path = std::env::join_paths([fixture.path()]).unwrap();
+        let initial = discovery.discover(
+            &descriptors,
+            &path,
+            &DiscoveryCancellation::default(),
+            false,
+        );
+        assert!(
+            initial
+                .entries
+                .iter()
+                .all(|entry| entry.result.status == RuntimeDetectionStatus::Available)
+        );
+
+        fs::write(&changed, "#!/bin/sh\nwhile :; do :; done\n").unwrap();
+        let cancel = DiscoveryCancellation::default();
+        let worker = cancel.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(40));
+            worker.cancel();
+        });
+        let refreshed = discovery.discover(&descriptors, &path, &cancel, true);
+
+        assert!(refreshed.cancelled);
+        assert_eq!(
+            refreshed
+                .entry(&RuntimeId::new("aaa-changed-fixture").unwrap())
+                .map(|entry| entry.result.status),
+            Some(RuntimeDetectionStatus::Partial)
+        );
+        assert_eq!(
+            refreshed
+                .entry(&RuntimeId::new("codex").unwrap())
+                .map(|entry| entry.result.status),
+            Some(RuntimeDetectionStatus::Available)
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn runtime_registry_cache_invalidates_on_same_name_content_replacement() {
+        let _guard = guard();
+        let fixture = tempfile::tempdir().unwrap();
+        let path = executable(fixture.path(), "tool", "printf 'codex-cli 1.0.1\\n'");
+        let descriptor = descriptor("codex", "tool");
         let discovery = CliDiscovery::default();
         let path_snapshot = std::env::join_paths([fixture.path()]).unwrap();
         let first = discovery.discover(
@@ -593,114 +894,88 @@ mod tests {
             &DiscoveryCancellation::default(),
             false,
         );
-        thread::sleep(Duration::from_millis(20));
-        fs::write(&path, "#!/bin/sh\nprintf 'tool 2.0\\n'\n").unwrap();
+        fs::write(&path, "#!/bin/sh\nprintf 'codex-cli 1.0.2\\n'\n").unwrap();
         let second = discovery.discover(
-            std::slice::from_ref(&descriptor),
+            &[descriptor],
             &path_snapshot,
             &DiscoveryCancellation::default(),
             false,
         );
-        assert_ne!(first.candidates[0].version, second.candidates[0].version);
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn huge_output_is_truncated_and_unsupported_is_explicit() {
-        let _guard = discovery_test_guard();
-        let fixture = tempfile::tempdir().unwrap();
-        executable(
-            fixture.path(),
-            "huge",
-            "printf '1.0 '; i=0; while [ $i -lt 12000 ]; do printf x; i=$((i+1)); done; printf '\\n'",
+        assert_ne!(
+            first.entries[0].result.fingerprint,
+            second.entries[0].result.fingerprint
         );
-        let mut descriptor = RuntimeProbeDescriptor::fixture("huge", "huge");
-        descriptor.minimum_major_version = Some(99);
-        let report = CliDiscovery::default().discover(
-            &[descriptor],
-            &std::env::join_paths([fixture.path()]).unwrap(),
-            &DiscoveryCancellation::default(),
-            true,
-        );
-        assert!(report.candidates[0].version.as_ref().unwrap().len() <= MAX_COMBINED_OUTPUT);
-        assert_eq!(
-            report.candidates[0].status,
-            DetectionStatus::UnsupportedVersion
+        assert_ne!(
+            first.entries[0].result.safe_version,
+            second.entries[0].result.safe_version
         );
     }
 
     #[test]
     #[cfg(unix)]
-    fn path_and_candidate_search_limits_are_enforced() {
-        let _guard = discovery_test_guard();
-        let fixture = tempfile::tempdir().unwrap();
-        executable(fixture.path(), "late", "printf 'late 1.0\\n'");
-        let mut entries = (0..MAX_PATH_ENTRIES)
-            .map(|index| fixture.path().join(format!("missing-{index}")))
-            .collect::<Vec<_>>();
-        entries.push(fixture.path().to_path_buf());
-        let report = CliDiscovery::default().discover(
-            &[RuntimeProbeDescriptor::fixture("late", "late")],
-            &std::env::join_paths(entries).unwrap(),
-            &DiscoveryCancellation::default(),
-            true,
-        );
-        assert_eq!(report.candidates[0].status, DetectionStatus::Missing);
-
-        let oversized_path = OsString::from("x".repeat(MAX_PATH_BYTES + 1));
-        let report = CliDiscovery::default().discover(
-            &[RuntimeProbeDescriptor::fixture("late", "late")],
-            &oversized_path,
-            &DiscoveryCancellation::default(),
-            true,
-        );
-        assert_eq!(report.candidates[0].status, DetectionStatus::Missing);
-
-        let directories = (0..4)
-            .map(|_| tempfile::tempdir().unwrap())
-            .collect::<Vec<_>>();
-        for directory in &directories {
-            executable(directory.path(), "tool", "printf 'tool 1.0\\n'");
-        }
-        let report = CliDiscovery::default().discover(
-            &[RuntimeProbeDescriptor::fixture("tool", "tool")],
-            &std::env::join_paths(directories.iter().map(|directory| directory.path())).unwrap(),
-            &DiscoveryCancellation::default(),
-            true,
-        );
-        assert_eq!(report.candidates.len(), MAX_CANDIDATES_PER_RUNTIME);
-        assert!(
-            report
-                .candidates
-                .iter()
-                .all(|candidate| candidate.status == DetectionStatus::Supported)
-        );
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn inaccessible_probe_is_reported_as_permission_denied() {
+    fn runtime_registry_path_candidate_output_and_permission_limits_hold() {
         use std::os::unix::fs::PermissionsExt as _;
 
-        let _guard = discovery_test_guard();
+        let _guard = guard();
         let fixture = tempfile::tempdir().unwrap();
-        let interpreter = fixture.path().join("blocked-interpreter");
-        fs::write(&interpreter, "#!/bin/sh\nexit 0\n").unwrap();
-        fs::set_permissions(&interpreter, fs::Permissions::from_mode(0o600)).unwrap();
-        let candidate = fixture.path().join("blocked");
-        fs::write(&candidate, format!("#!{}\n", interpreter.to_string_lossy())).unwrap();
-        fs::set_permissions(&candidate, fs::Permissions::from_mode(0o700)).unwrap();
-
+        committed_fixture(fixture.path(), "generic/oversized.sh", "huge");
+        let blocked = committed_fixture(fixture.path(), "generic/permission-denied.sh", "blocked");
+        fs::set_permissions(&blocked, fs::Permissions::from_mode(0o100)).unwrap();
         let report = CliDiscovery::default().discover(
-            &[RuntimeProbeDescriptor::fixture("blocked", "blocked")],
+            &[descriptor("codex", "huge"), descriptor("claude", "blocked")],
             &std::env::join_paths([fixture.path()]).unwrap(),
             &DiscoveryCancellation::default(),
             true,
         );
-        assert_eq!(
-            report.candidates[0].status,
-            DetectionStatus::PermissionDenied
+        assert!(
+            report
+                .entries
+                .iter()
+                .all(|entry| entry.result.capabilities.is_empty())
         );
-        assert!(report.partial);
+        assert_eq!(
+            report
+                .entry(&RuntimeId::new("claude").unwrap())
+                .map(|entry| entry.result.status),
+            Some(RuntimeDetectionStatus::PermissionDenied)
+        );
+        assert_eq!(
+            report
+                .entry(&RuntimeId::new("codex").unwrap())
+                .map(|entry| entry.result.status),
+            Some(RuntimeDetectionStatus::UnsupportedVersion)
+        );
+
+        let oversized = OsString::from("x".repeat(MAX_PATH_BYTES + 1));
+        let report = CliDiscovery::default().discover(
+            &[descriptor("codex", "tool")],
+            &oversized,
+            &DiscoveryCancellation::default(),
+            true,
+        );
+        assert_eq!(
+            report.entries[0].result.status,
+            RuntimeDetectionStatus::Missing
+        );
+    }
+
+    #[test]
+    fn runtime_registry_generic_command_is_available_but_claims_no_semantics() {
+        let generic = compiled_runtime_descriptors()
+            .into_iter()
+            .find(|descriptor| descriptor.kind == RuntimeDescriptorKind::GenericCommand)
+            .unwrap();
+        let report = CliDiscovery::default().discover(
+            &[generic],
+            &OsString::new(),
+            &DiscoveryCancellation::default(),
+            true,
+        );
+        assert_eq!(
+            report.entries[0].result.status,
+            RuntimeDetectionStatus::Available
+        );
+        assert!(report.entries[0].result.capabilities.is_empty());
+        assert!(report.entries[0].executable.is_none());
     }
 }

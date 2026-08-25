@@ -2,6 +2,7 @@ mod descriptor;
 mod error;
 mod framing;
 mod host;
+pub mod process_observation;
 
 pub use descriptor::{LaunchDescriptor, MAX_DESCRIPTOR_BYTES, StopDeadlines, stdin_is_pipe};
 pub use error::{HostError, HostErrorCode};

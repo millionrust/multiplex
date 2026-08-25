@@ -10,7 +10,8 @@ use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as
 
 use serde::{Deserialize, Serialize};
 use termirust_domain::{
-    DurabilityWatermark, HostInstanceId, HostLifecycle, HostedSessionId, ProcessToken,
+    DurabilityWatermark, HostInstanceId, HostLifecycle, HostedSessionId, OccupantOwnership,
+    ProcessToken, RuntimeRecognition,
 };
 
 use crate::{AtomicWriter, Durability, SystemAtomicWriter};
@@ -75,6 +76,8 @@ pub struct HostMetadata {
     pub session_id: HostedSessionId,
     pub host_instance_id: HostInstanceId,
     pub process_token: Option<ProcessToken>,
+    #[serde(default)]
+    pub runtime_recognition: Option<RuntimeRecognition>,
     pub lifecycle: HostLifecycle,
     pub endpoint_name: String,
     pub heartbeat_monotonic_nanos: u64,
@@ -100,6 +103,31 @@ impl HostMetadata {
             || self
                 .process_token
                 .is_some_and(|token| !token.belongs_to(expected_host))
+            || self
+                .runtime_recognition
+                .as_ref()
+                .is_some_and(|recognition| {
+                    recognition.occupant.as_ref().is_some_and(|occupant| {
+                        occupant.descriptor_version == 0
+                            || occupant.generation.get() == 0
+                            || occupant.capabilities.len() > 8
+                            || occupant.safe_version.as_ref().is_some_and(|version| {
+                                version.is_empty()
+                                    || version.len() > termirust_domain::MAX_RUNTIME_VERSION_BYTES
+                                    || !version
+                                        .bytes()
+                                        .all(|byte| byte.is_ascii_digit() || byte == b'.')
+                            })
+                            || matches!(
+                                occupant.ownership,
+                                OccupantOwnership::Managed {
+                                    host_instance,
+                                    child_token,
+                                } if host_instance != expected_host
+                                    || !child_token.belongs_to(expected_host)
+                            )
+                    })
+                })
         {
             return Err(LeaseError::new(LeaseErrorCode::InvalidMetadata));
         }
@@ -294,6 +322,7 @@ mod tests {
             session_id: HostedSessionId::new(),
             host_instance_id: host,
             process_token: None,
+            runtime_recognition: None,
             lifecycle: HostLifecycle::Starting,
             endpoint_name: "opaque".to_string(),
             heartbeat_monotonic_nanos: 1,
@@ -337,6 +366,7 @@ mod tests {
                 session_id: HostedSessionId::new(),
                 host_instance_id: host,
                 process_token: Some(ProcessToken::new(host, 999_999, 1)),
+                runtime_recognition: None,
                 lifecycle: HostLifecycle::Ready,
                 endpoint_name: "opaque".to_string(),
                 heartbeat_monotonic_nanos: 1,

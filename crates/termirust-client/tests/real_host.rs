@@ -19,6 +19,7 @@ fn descriptor(fixture: &tempfile::TempDir, session_id: HostedSessionId) -> Launc
         runtime_root: fixture.path().join("runtime"),
         session_dir: fixture.path().join("session"),
         executable: "/bin/sh".into(),
+        runtime_detection: None,
         arguments: vec![
             "-c".to_string(),
             "trap '' INT TERM; printf 'HOST-READY\\n'; while IFS= read -r line; do printf 'HOST-OUT:%s\\n' \"$line\"; done".to_string(),

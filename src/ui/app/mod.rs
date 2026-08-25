@@ -12,6 +12,7 @@ mod palette;
 mod presets;
 mod project;
 mod projects;
+mod runtimes;
 mod session_library;
 mod session_sidebar;
 mod sftp;

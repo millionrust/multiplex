@@ -36,6 +36,7 @@ async fn lifecycle_stop_archive_restore_requires_confirmed_host_exit() {
         runtime_root: fixture.path().join("runtime"),
         session_dir: session_dir.clone(),
         executable: "/bin/sh".into(),
+        runtime_detection: None,
         arguments: vec![
             "-c".to_string(),
             "trap 'exit 0' TERM INT; while :; do sleep 1; done".to_string(),

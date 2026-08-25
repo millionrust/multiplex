@@ -15,7 +15,9 @@ use std::os::unix::fs::{FileTypeExt as _, MetadataExt as _, PermissionsExt as _}
 
 use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
 use termirust_domain::{
-    CommandId, DurabilityWatermark, HostLifecycle, OutputSequence, ProcessToken,
+    CommandId, DurabilityWatermark, HostLifecycle, OccupantGeneration, OccupantOwnership,
+    OutputSequence, ProcessToken, RecognitionConfidence, RuntimeCapabilitySet, RuntimeOccupant,
+    RuntimeRecognition,
 };
 use termirust_host_protocol::wire::{self, envelope_payload};
 use termirust_host_protocol::{
@@ -37,6 +39,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::descriptor::LaunchDescriptor;
 use crate::framing::HostWireStream;
+use crate::process_observation::fingerprint_executable;
 use crate::{HostError, HostErrorCode};
 
 const MAX_CONNECTIONS: usize = 32;
@@ -124,6 +127,7 @@ impl Drop for SessionHostHandle {
 struct RuntimeState {
     descriptor: LaunchDescriptor,
     process_token: ProcessToken,
+    runtime_recognition: Option<RuntimeRecognition>,
     process_group: i32,
     master: StdMutex<Box<dyn MasterPty + Send>>,
     writer: StdMutex<Box<dyn Write + Send>>,
@@ -362,9 +366,11 @@ pub async fn start_with_cancel(
         .take_writer()
         .map_err(|_| HostError::new(HostErrorCode::PtyUnavailable))?;
     let process_token = ProcessToken::new(descriptor.host_instance_id, process_group as u64, 1);
+    let runtime_recognition = recognition_for_launch(&descriptor, process_token);
     let state = Arc::new(RuntimeState {
         descriptor: descriptor.clone(),
         process_token,
+        runtime_recognition,
         process_group,
         master: StdMutex::new(pair.master),
         writer: StdMutex::new(writer),
@@ -632,6 +638,7 @@ async fn heartbeat_loop(
                     session_id: state.descriptor.session_id,
                     host_instance_id: state.descriptor.host_instance_id,
                     process_token: Some(state.process_token),
+                    runtime_recognition: state.runtime_recognition.clone(),
                     lifecycle: *state.lifecycle.read().await,
                     endpoint_name: endpoint_name.clone(),
                     heartbeat_monotonic_nanos: monotonic_nanos(),
@@ -667,6 +674,7 @@ fn write_metadata(
         session_id: state.descriptor.session_id,
         host_instance_id: state.descriptor.host_instance_id,
         process_token: Some(state.process_token),
+        runtime_recognition: state.runtime_recognition.clone(),
         lifecycle,
         endpoint_name: opaque_endpoint_name(state.descriptor.session_id),
         heartbeat_monotonic_nanos: heartbeat,
@@ -677,6 +685,45 @@ fn write_metadata(
     };
     lease.write_metadata(&metadata)?;
     Ok(())
+}
+
+fn recognition_for_launch(
+    descriptor: &LaunchDescriptor,
+    process_token: ProcessToken,
+) -> Option<RuntimeRecognition> {
+    let detection = descriptor.runtime_detection.as_ref()?;
+    let fingerprint_matches = fingerprint_executable(&descriptor.executable)
+        .ok()
+        .is_some_and(|fingerprint| Some(fingerprint) == detection.fingerprint);
+    let (ownership, confidence, capabilities) = if fingerprint_matches {
+        (
+            OccupantOwnership::Managed {
+                host_instance: descriptor.host_instance_id,
+                child_token: process_token,
+            },
+            RecognitionConfidence::Verified,
+            detection.capabilities.clone(),
+        )
+    } else {
+        (
+            OccupantOwnership::Ambiguous,
+            RecognitionConfidence::Uncertain,
+            RuntimeCapabilitySet::default(),
+        )
+    };
+    Some(RuntimeRecognition {
+        occupant: Some(RuntimeOccupant {
+            runtime_id: detection.runtime_id.clone(),
+            descriptor_version: detection.descriptor_version,
+            safe_version: detection.safe_version.clone(),
+            generation: OccupantGeneration::new(process_token.generation()),
+            ownership,
+            capabilities,
+            stale: false,
+        }),
+        confidence,
+        observed_at_nanos: monotonic_nanos(),
+    })
 }
 
 struct UserOnlyListener {
@@ -1548,4 +1595,89 @@ impl NonceCache {
 fn monotonic_nanos() -> u64 {
     static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
     u64::try_from(START.get_or_init(Instant::now).elapsed().as_nanos()).unwrap_or(u64::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+    use termirust_domain::{
+        HostInstanceId, HostedSessionId, RuntimeCapability, RuntimeDetectionResult,
+        RuntimeDetectionStatus, RuntimeId,
+    };
+    use termirust_store::JournalLimits;
+
+    fn descriptor_with_detection(
+        executable: PathBuf,
+        fingerprint: termirust_domain::ExecutableFingerprint,
+    ) -> LaunchDescriptor {
+        let session_id = HostedSessionId::new();
+        let fixture = std::env::temp_dir().join(format!("termirust-runtime-{session_id}"));
+        let host_instance_id = HostInstanceId::new();
+        LaunchDescriptor {
+            format_version: LaunchDescriptor::FORMAT_VERSION,
+            session_id,
+            host_instance_id,
+            runtime_root: fixture.join("runtime"),
+            session_dir: fixture.join("session"),
+            executable,
+            runtime_detection: Some(RuntimeDetectionResult {
+                runtime_id: RuntimeId::new("codex").unwrap(),
+                descriptor_version: 1,
+                status: RuntimeDetectionStatus::Available,
+                fingerprint: Some(fingerprint),
+                safe_version: Some("1.0.7".to_string()),
+                capabilities: RuntimeCapabilitySet::new([
+                    RuntimeCapability::InteractivePty,
+                    RuntimeCapability::Cancellation,
+                ]),
+                diagnostic_code: None,
+            }),
+            arguments: Vec::new(),
+            environment: BTreeMap::new(),
+            cwd: None,
+            columns: 80,
+            rows: 24,
+            journal_limits: JournalLimits::default(),
+            stop_deadlines: crate::StopDeadlines::default(),
+        }
+    }
+
+    #[test]
+    fn process_observation_host_launch_requires_exact_executable_fingerprint_for_managed() {
+        let executable = PathBuf::from("/bin/sh");
+        let fingerprint = fingerprint_executable(&executable).unwrap();
+        let descriptor = descriptor_with_detection(executable, fingerprint);
+        let token = ProcessToken::new(descriptor.host_instance_id, 42, 1);
+
+        let recognition = recognition_for_launch(&descriptor, token).unwrap();
+        let occupant = recognition.occupant.unwrap();
+        assert_eq!(recognition.confidence, RecognitionConfidence::Verified);
+        assert!(matches!(
+            occupant.ownership,
+            OccupantOwnership::Managed {
+                host_instance,
+                child_token,
+            } if host_instance == descriptor.host_instance_id && child_token == token
+        ));
+        assert!(!occupant.effective_capabilities().is_empty());
+    }
+
+    #[test]
+    fn process_observation_host_launch_fails_closed_after_executable_change() {
+        let fixture = tempfile::tempdir().unwrap();
+        let changed = fixture.path().join("changed-runtime");
+        fs::write(&changed, b"different executable").unwrap();
+        let descriptor = descriptor_with_detection(
+            PathBuf::from("/bin/sh"),
+            fingerprint_executable(&changed).unwrap(),
+        );
+        let token = ProcessToken::new(descriptor.host_instance_id, 42, 1);
+
+        let recognition = recognition_for_launch(&descriptor, token).unwrap();
+        let occupant = recognition.occupant.unwrap();
+        assert_eq!(recognition.confidence, RecognitionConfidence::Uncertain);
+        assert_eq!(occupant.ownership, OccupantOwnership::Ambiguous);
+        assert!(occupant.effective_capabilities().is_empty());
+    }
 }

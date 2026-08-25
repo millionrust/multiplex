@@ -9,7 +9,9 @@ use std::time::Duration;
 use std::os::unix::fs::MetadataExt as _;
 
 use serde::{Deserialize, Serialize};
-use termirust_domain::{HostInstanceId, HostedSessionId};
+use termirust_domain::{
+    HostInstanceId, HostedSessionId, RuntimeDetectionResult, RuntimeDetectionStatus,
+};
 use termirust_store::JournalLimits;
 
 use crate::{HostError, HostErrorCode};
@@ -70,6 +72,8 @@ pub struct LaunchDescriptor {
     pub runtime_root: PathBuf,
     pub session_dir: PathBuf,
     pub executable: PathBuf,
+    #[serde(default)]
+    pub runtime_detection: Option<RuntimeDetectionResult>,
     pub arguments: Vec<String>,
     pub environment: BTreeMap<String, String>,
     pub cwd: Option<PathBuf>,
@@ -89,6 +93,16 @@ impl fmt::Debug for LaunchDescriptor {
             .field("runtime_root", &"[REDACTED]")
             .field("session_dir", &"[REDACTED]")
             .field("executable", &"[REDACTED]")
+            .field(
+                "runtime_detection",
+                &self.runtime_detection.as_ref().map(|detection| {
+                    (
+                        detection.runtime_id.as_str(),
+                        detection.descriptor_version,
+                        detection.status,
+                    )
+                }),
+            )
             .field(
                 "arguments",
                 &format_args!("{} entries", self.arguments.len()),
@@ -121,6 +135,21 @@ impl LaunchDescriptor {
             || !self.session_dir.is_absolute()
             || !self.executable.is_absolute()
             || self.cwd.as_ref().is_some_and(|path| !path.is_absolute())
+            || self.runtime_detection.as_ref().is_some_and(|detection| {
+                detection.descriptor_version == 0
+                    || detection.status != RuntimeDetectionStatus::Available
+                    || detection.fingerprint.is_none()
+                    || detection.safe_version.as_ref().is_none_or(|version| {
+                        version.is_empty()
+                            || version.len() > termirust_domain::MAX_RUNTIME_VERSION_BYTES
+                            || !version
+                                .bytes()
+                                .all(|byte| byte.is_ascii_digit() || byte == b'.')
+                    })
+                    || detection.capabilities.is_empty()
+                    || detection.capabilities.len() > 8
+                    || detection.diagnostic_code.is_some()
+            })
         {
             return Err(HostError::new(HostErrorCode::DescriptorInvalid));
         }
@@ -239,6 +268,7 @@ mod tests {
             runtime_root: fixture.path().join("runtime"),
             session_dir: fixture.path().join("session"),
             executable: PathBuf::from("/bin/sh"),
+            runtime_detection: None,
             arguments: vec!["canary-argument".to_string()],
             environment: BTreeMap::from([("TOKEN".to_string(), "canary-secret".to_string())]),
             cwd: Some(fixture.path().to_path_buf()),

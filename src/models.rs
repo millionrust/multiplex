@@ -1117,6 +1117,8 @@ pub struct SavedDurableHost {
     pub last_sequence: u64,
     #[serde(default)]
     pub durable_sequence: u64,
+    #[serde(default)]
+    pub runtime_recognition: Option<termirust_domain::RuntimeRecognition>,
 }
 
 fn default_session_organization_position() -> PositionKey {
@@ -3612,6 +3614,7 @@ mod tests {
                 working_directory: Some("/tmp/project".to_string()),
                 last_sequence: 41,
                 durable_sequence: 39,
+                runtime_recognition: None,
             }),
             group_id: None,
             position: termirust_domain::PositionKey::FIRST,

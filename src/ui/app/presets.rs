@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use gpui::prelude::FluentBuilder as _;
@@ -12,15 +12,18 @@ use gpui_component::{
     Disableable as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex,
 };
 use termirust_domain::{
-    DetectionCandidate, DetectionReport, DetectionStatus, ExecutableSpec, LaunchPreset,
-    PermissionPolicy, PresetDraft, PresetError, PresetId, PresetOrigin, WorkingDirectoryRule,
-    classify_argument_strings,
+    ExecutableSpec, LaunchPreset, PermissionPolicy, PresetDraft, PresetError, PresetId,
+    PresetOrigin, RuntimeDetectionStatus, WorkingDirectoryRule, classify_argument_strings,
 };
 use termirust_store::{PresetRepository, PresetSnapshot, StoreError, StoreHealth};
 
+use super::runtimes::{
+    capability_summary, detection_status_label, executable_basename, runtime_label,
+};
 use super::{TermiRustApp, theme};
 use crate::agents::{
-    CliDiscovery, DiscoveryCancellation, discovery_path_snapshot, known_runtime_descriptors,
+    CliDiscovery, DiscoveryCancellation, RuntimeDiscoveryEntry, RuntimeDiscoveryReport,
+    discovery_path_snapshot, known_runtime_descriptors,
 };
 use crate::storage::project_store_dir;
 use crate::ui::localization;
@@ -62,7 +65,7 @@ pub(super) struct PresetLibraryState {
     pub load_state: PresetLibraryLoadState,
     pub snapshot: Option<PresetSnapshot>,
     pub editor: Option<PresetEditorState>,
-    pub scan_report: Option<DetectionReport>,
+    pub scan_report: Option<RuntimeDiscoveryReport>,
     pub scan_cancel: Option<DiscoveryCancellation>,
     scan_generation: u64,
 }
@@ -438,11 +441,9 @@ impl TermiRustApp {
                         localization::presets_scan_cancelled()
                     } else if report.partial {
                         localization::presets_scan_partial()
-                    } else if report.candidates.iter().all(|candidate| {
-                        !matches!(
-                            candidate.status,
-                            DetectionStatus::Supported | DetectionStatus::DetectedUnknownVersion
-                        )
+                    } else if report.entries.iter().all(|entry| {
+                        entry.result.status != RuntimeDetectionStatus::Available
+                            || entry.result.capabilities.is_empty()
                     }) {
                         localization::presets_scan_none()
                     } else {
@@ -464,21 +465,23 @@ impl TermiRustApp {
         cx.notify();
     }
 
-    fn accept_detected_preset(&mut self, candidate: DetectionCandidate, cx: &mut Context<Self>) {
-        if !matches!(
-            candidate.status,
-            DetectionStatus::Supported | DetectionStatus::DetectedUnknownVersion
-        ) {
+    fn accept_detected_preset(&mut self, candidate: RuntimeDiscoveryEntry, cx: &mut Context<Self>) {
+        if candidate.result.status != RuntimeDetectionStatus::Available
+            || candidate.result.capabilities.is_empty()
+        {
             return;
         }
-        let label = runtime_label(candidate.runtime.as_str());
+        let Some(executable) = candidate.executable.as_ref() else {
+            return;
+        };
+        let label = runtime_label(candidate.result.runtime_id.as_str());
         let draft = PresetDraft {
             id: PresetId::new(),
             label: label.clone(),
-            executable: candidate.executable.as_str().to_string(),
+            executable: executable.as_str().to_string(),
             args: Vec::new(),
             working_directory: WorkingDirectoryRule::ProjectRoot,
-            runtime: Some(candidate.runtime.as_str().to_string()),
+            runtime: Some(candidate.result.runtime_id.as_str().to_string()),
             enabled: true,
             favorite: false,
             permission_policy: PermissionPolicy::AskAsNeeded,
@@ -635,8 +638,11 @@ impl TermiRustApp {
                     theme::accent(),
                 ))
             })
+            .when(self.preset_library.scan_report.is_none(), |this| {
+                this.child(self.render_pending_runtime_report(scanning))
+            })
             .when_some(self.preset_library.scan_report.as_ref(), |this, report| {
-                this.child(self.render_detection_report(report, cx))
+                this.child(self.render_detection_report(report, scanning, cx))
             })
             .when_some(self.preset_library.editor.as_ref(), |this, editor| {
                 this.child(self.render_preset_editor(editor, cx))
@@ -645,7 +651,12 @@ impl TermiRustApp {
             .into_any_element()
     }
 
-    fn render_detection_report(&self, report: &DetectionReport, cx: &Context<Self>) -> AnyElement {
+    fn render_detection_report(
+        &self,
+        report: &RuntimeDiscoveryReport,
+        scanning: bool,
+        cx: &Context<Self>,
+    ) -> AnyElement {
         v_flex()
             .id("preset-detection-results")
             .mx(px(theme::SPACE_6))
@@ -662,7 +673,7 @@ impl TermiRustApp {
                     .text_color(theme::text_main())
                     .child(localization::presets_detected_title()),
             )
-            .when(report.partial, |this| {
+            .when(report.partial && !scanning, |this| {
                 this.child(
                     div()
                         .text_size(px(theme::TYPE_CAPTION_SIZE))
@@ -672,16 +683,25 @@ impl TermiRustApp {
             })
             .children(
                 report
-                    .candidates
+                    .entries
                     .iter()
                     .cloned()
                     .enumerate()
                     .map(|(index, candidate)| {
-                        let (status, color, icon) = detection_presentation(&candidate.status);
-                        let accept = matches!(
-                            candidate.status,
-                            DetectionStatus::Supported | DetectionStatus::DetectedUnknownVersion
-                        ) && !self.preset_exists_for(&candidate);
+                        let (status, color, icon) = if scanning {
+                            (
+                                localization::presets_scanning(),
+                                theme::accent(),
+                                IconName::LoaderCircle,
+                            )
+                        } else {
+                            detection_presentation(candidate.result.status)
+                        };
+                        let accept = !scanning
+                            && candidate.result.status == RuntimeDetectionStatus::Available
+                            && !candidate.result.capabilities.is_empty()
+                            && candidate.executable.is_some()
+                            && !self.preset_exists_for(&candidate);
                         h_flex()
                             .id(("detected-preset", index))
                             .justify_between()
@@ -692,10 +712,9 @@ impl TermiRustApp {
                                 v_flex()
                                     .gap(px(theme::SPACE_2))
                                     .child(
-                                        div()
-                                            .font_medium()
-                                            .text_color(theme::text_main())
-                                            .child(runtime_label(candidate.runtime.as_str())),
+                                        div().font_medium().text_color(theme::text_main()).child(
+                                            runtime_label(candidate.result.runtime_id.as_str()),
+                                        ),
                                     )
                                     .child(
                                         h_flex()
@@ -708,7 +727,7 @@ impl TermiRustApp {
                                             )
                                             .child(status)
                                             .when_some(
-                                                candidate.version.clone(),
+                                                candidate.result.safe_version.clone(),
                                                 |this, version| {
                                                     this.child(
                                                         localization::preset_detected_version(
@@ -717,6 +736,34 @@ impl TermiRustApp {
                                                     )
                                                 },
                                             ),
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .flex_wrap()
+                                            .gap(px(theme::SPACE_2))
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                            .text_color(theme::text_muted())
+                                            .child(localization::runtime_registry_contract(
+                                                candidate.result.descriptor_version,
+                                            ))
+                                            .when_some(
+                                                candidate.executable.as_ref(),
+                                                |this, executable| {
+                                                    this.child(
+                                                        localization::runtime_registry_executable(
+                                                            executable_display(executable),
+                                                        ),
+                                                    )
+                                                },
+                                            ),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                            .text_color(theme::text_muted())
+                                            .child(localization::runtime_registry_capabilities(
+                                                capability_summary(&candidate.result.capabilities),
+                                            )),
                                     ),
                             )
                             .child(
@@ -735,14 +782,89 @@ impl TermiRustApp {
             .into_any_element()
     }
 
-    fn preset_exists_for(&self, candidate: &DetectionCandidate) -> bool {
+    fn render_pending_runtime_report(&self, scanning: bool) -> AnyElement {
+        v_flex()
+            .id("preset-detection-results")
+            .mx(px(theme::SPACE_6))
+            .mt(px(theme::SPACE_5))
+            .p(px(theme::SPACE_4))
+            .gap(px(theme::SPACE_3))
+            .rounded(px(theme::CARD_RADIUS))
+            .bg(theme::library_card())
+            .border_1()
+            .border_color(theme::border())
+            .child(
+                div()
+                    .font_semibold()
+                    .text_color(theme::text_main())
+                    .child(localization::presets_detected_title()),
+            )
+            .children(known_runtime_descriptors().into_iter().enumerate().map(
+                |(index, descriptor)| {
+                    h_flex()
+                        .id(("pending-runtime", index))
+                        .justify_between()
+                        .items_center()
+                        .flex_wrap()
+                        .gap(px(theme::SPACE_3))
+                        .child(
+                            v_flex()
+                                .gap(px(theme::SPACE_2))
+                                .child(
+                                    div()
+                                        .font_medium()
+                                        .text_color(theme::text_main())
+                                        .child(runtime_label(descriptor.id.as_str())),
+                                )
+                                .child(
+                                    h_flex()
+                                        .gap(px(theme::SPACE_2))
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                        .text_color(if scanning {
+                                            theme::accent()
+                                        } else {
+                                            theme::text_muted()
+                                        })
+                                        .child(
+                                            Icon::new(if scanning {
+                                                IconName::LoaderCircle
+                                            } else {
+                                                IconName::Minus
+                                            })
+                                            .size(px(theme::TYPE_BODY_SMALL_SIZE)),
+                                        )
+                                        .child(if scanning {
+                                            localization::presets_scanning()
+                                        } else {
+                                            localization::runtime_status_not_checked()
+                                        }),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                        .text_color(theme::text_muted())
+                                        .child(localization::runtime_registry_contract(
+                                            descriptor.descriptor_version,
+                                        )),
+                                ),
+                        )
+                        .into_any_element()
+                },
+            ))
+            .into_any_element()
+    }
+
+    fn preset_exists_for(&self, candidate: &RuntimeDiscoveryEntry) -> bool {
+        let Some(executable) = candidate.executable.as_ref() else {
+            return false;
+        };
         self.preset_library
             .snapshot
             .as_ref()
             .is_some_and(|snapshot| {
                 snapshot.presets.iter().any(|preset| {
-                    preset.runtime.as_ref() == Some(&candidate.runtime)
-                        && preset.executable == candidate.executable
+                    preset.runtime.as_ref() == Some(&candidate.result.runtime_id)
+                        && preset.executable == *executable
                 })
             })
     }
@@ -1261,43 +1383,18 @@ fn preset_status_chip(message: String, color: gpui::Hsla, icon: IconName) -> imp
         .child(message)
 }
 
-fn detection_presentation(status: &DetectionStatus) -> (String, gpui::Hsla, IconName) {
+fn detection_presentation(status: RuntimeDetectionStatus) -> (String, gpui::Hsla, IconName) {
+    let label = detection_status_label(status);
     match status {
-        DetectionStatus::Supported => (
-            localization::preset_status_supported(),
-            theme::success(),
-            IconName::Check,
-        ),
-        DetectionStatus::DetectedUnknownVersion => (
-            localization::preset_status_unknown(),
-            theme::warning(),
-            IconName::TriangleAlert,
-        ),
-        DetectionStatus::UnsupportedVersion => (
-            localization::preset_status_unsupported(),
-            theme::warning(),
-            IconName::TriangleAlert,
-        ),
-        DetectionStatus::Missing => (
-            localization::preset_status_missing(),
-            theme::text_muted(),
-            IconName::Close,
-        ),
-        DetectionStatus::PermissionDenied => (
-            localization::preset_status_permission(),
-            theme::danger(),
-            IconName::TriangleAlert,
-        ),
-        DetectionStatus::TimedOut => (
-            localization::preset_status_timeout(),
-            theme::warning(),
-            IconName::TriangleAlert,
-        ),
-        DetectionStatus::Failed => (
-            localization::preset_status_failed(),
-            theme::danger(),
-            IconName::TriangleAlert,
-        ),
+        RuntimeDetectionStatus::Available => (label, theme::success(), IconName::Check),
+        RuntimeDetectionStatus::UnsupportedVersion => {
+            (label, theme::warning(), IconName::TriangleAlert)
+        }
+        RuntimeDetectionStatus::Missing => (label, theme::text_muted(), IconName::Close),
+        RuntimeDetectionStatus::PermissionDenied => {
+            (label, theme::danger(), IconName::TriangleAlert)
+        }
+        RuntimeDetectionStatus::Partial => (label, theme::danger(), IconName::TriangleAlert),
     }
 }
 
@@ -1338,20 +1435,7 @@ fn is_executable_file(path: &Path) -> bool {
 fn executable_display(executable: &ExecutableSpec) -> String {
     match executable {
         ExecutableSpec::SearchPath(value) => value.clone(),
-        ExecutableSpec::Absolute(value) => PathBuf::from(value)
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("Executable")
-            .to_string(),
-    }
-}
-
-fn runtime_label(runtime: &str) -> String {
-    match runtime {
-        "codex" => localization::runtime_label_codex(),
-        "claude" => localization::runtime_label_claude(),
-        "gemini" => localization::runtime_label_gemini(),
-        value => value.to_string(),
+        ExecutableSpec::Absolute(value) => executable_basename(value),
     }
 }
 
@@ -1399,15 +1483,13 @@ mod tests {
     #[test]
     fn every_detection_state_has_text_color_and_shape() {
         for status in [
-            DetectionStatus::Supported,
-            DetectionStatus::DetectedUnknownVersion,
-            DetectionStatus::UnsupportedVersion,
-            DetectionStatus::Missing,
-            DetectionStatus::PermissionDenied,
-            DetectionStatus::TimedOut,
-            DetectionStatus::Failed,
+            RuntimeDetectionStatus::Available,
+            RuntimeDetectionStatus::UnsupportedVersion,
+            RuntimeDetectionStatus::Missing,
+            RuntimeDetectionStatus::PermissionDenied,
+            RuntimeDetectionStatus::Partial,
         ] {
-            let (text, _, _) = detection_presentation(&status);
+            let (text, _, _) = detection_presentation(status);
             assert!(!text.is_empty());
         }
     }

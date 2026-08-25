@@ -15,6 +15,7 @@ use termirust_domain::{
     HostedSessionId, HostedSessionState, LaunchPreset, PermissionPolicy, PresetId, Project,
     ProjectId, ResolvedLaunch, Revision, WorkingDirectoryRule, resolve_launch,
 };
+use termirust_store::read_host_metadata;
 
 use super::hosted_session::{
     DurableLaunch, DurableSessionPaths, DurableSessionSpec, spawn_durable_session,
@@ -315,6 +316,20 @@ impl TermiRustApp {
                 );
             }
         };
+        let runtime_detection = preset.runtime.as_ref().and_then(|runtime_id| {
+            self.preset_library
+                .scan_report
+                .as_ref()
+                .and_then(|report| report.entry(runtime_id))
+                .filter(|entry| {
+                    entry.result.status == termirust_domain::RuntimeDetectionStatus::Available
+                        && entry
+                            .executable
+                            .as_ref()
+                            .is_some_and(|executable| executable.as_str() == config.program)
+                })
+                .map(|entry| entry.result.clone())
+        });
         let launch = DurableLaunch {
             executable: PathBuf::from(&config.program),
             arguments: config.args.clone(),
@@ -323,6 +338,7 @@ impl TermiRustApp {
                 .as_deref()
                 .map(PathBuf::from)
                 .unwrap_or_else(|| resolved.working_directory().to_path_buf()),
+            runtime_detection,
         };
         let initial_input = self.new_session_initial_input.read(cx).value().to_string();
         let (title, title_source) = if initial_input.trim().is_empty() {
@@ -366,6 +382,7 @@ impl TermiRustApp {
                 working_directory: config.cwd.clone(),
                 last_sequence: 0,
                 durable_sequence: 0,
+                runtime_recognition: None,
             }),
             group_id: None,
             position,
@@ -503,6 +520,7 @@ impl TermiRustApp {
                 },
             ),
         );
+        self.refresh_saved_runtime_recognition(session_id);
 
         if let Some(input) = initial_input {
             if self.saved.settings.confirm_multiline_paste
@@ -536,6 +554,30 @@ impl TermiRustApp {
         }
         self.error_message.clear();
         cx.notify();
+    }
+
+    fn refresh_saved_runtime_recognition(&mut self, session_id: HostedSessionId) {
+        let session_dir = self
+            .saved
+            .app_attached_sessions
+            .iter()
+            .find(|session| session.id == session_id)
+            .and_then(|session| session.durable_host.as_ref())
+            .map(|host| PathBuf::from(&host.session_dir));
+        let recognition = session_dir
+            .as_deref()
+            .and_then(|directory| read_host_metadata(directory).ok())
+            .and_then(|metadata| metadata.runtime_recognition);
+        if let Some(host) = self
+            .saved
+            .app_attached_sessions
+            .iter_mut()
+            .find(|session| session.id == session_id)
+            .and_then(|session| session.durable_host.as_mut())
+        {
+            host.runtime_recognition = recognition;
+            let _ = save_saved_state(&self.saved);
+        }
     }
 
     pub(super) fn set_app_attached_terminal_state(

@@ -666,6 +666,137 @@ description = "Claude runtime label"
 id = "runtime-label-gemini"
 context = "Nominative label for the compiled Gemini CLI candidate."
 description = "Gemini runtime label"
+[[messages]]
+id = "runtime-label-generic"
+context = "Nominative label for a user-provided command without semantic capabilities."
+description = "Generic runtime label"
+[[messages]]
+id = "runtime-status-not-checked"
+context = "Runtime registry row before the first explicit local detection check."
+description = "Runtime not checked status"
+[[messages]]
+id = "runtime-registry-contract"
+context = "Compiled runtime descriptor contract version."
+description = "Runtime contract version"
+[[messages.args]]
+name = "version"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "runtime-registry-executable"
+context = "Runtime executable basename; never an absolute path."
+description = "Runtime executable"
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "runtime-registry-capabilities"
+context = "Comma-separated localized effective capability labels."
+description = "Runtime capabilities summary"
+[[messages.args]]
+name = "capabilities"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "runtime-capabilities-none"
+context = "Runtime has no verified semantic capability."
+description = "No runtime capabilities"
+[[messages]]
+id = "runtime-capability-interactive"
+context = "Runtime capability label."
+description = "Interactive terminal capability"
+[[messages]]
+id = "runtime-capability-structured"
+context = "Runtime capability label."
+description = "Structured events capability"
+[[messages]]
+id = "runtime-capability-approvals"
+context = "Runtime capability label."
+description = "Approval requests capability"
+[[messages]]
+id = "runtime-capability-cancellation"
+context = "Runtime capability label."
+description = "Cancellation capability"
+[[messages]]
+id = "runtime-capability-context"
+context = "Runtime capability label."
+description = "Context handoff capability"
+[[messages]]
+id = "runtime-capability-remote"
+context = "Runtime capability label."
+description = "Remote launch capability"
+[[messages]]
+id = "runtime-capability-resume"
+context = "Runtime capability label; unavailable until a later exact contract."
+description = "Resume capability"
+[[messages]]
+id = "runtime-capability-transcript"
+context = "Runtime capability label; unavailable until a later exact contract."
+description = "Transcript export capability"
+[[messages]]
+id = "runtime-inspector-runtime-label"
+context = "Session inspector runtime field label."
+description = "Runtime inspector label"
+[[messages]]
+id = "runtime-inspector-version-label"
+context = "Session inspector verified version field label."
+description = "Runtime version inspector label"
+[[messages]]
+id = "runtime-inspector-ownership-label"
+context = "Session inspector process ownership field label."
+description = "Runtime ownership inspector label"
+[[messages]]
+id = "runtime-inspector-confidence-label"
+context = "Session inspector runtime evidence confidence field label."
+description = "Runtime confidence inspector label"
+[[messages]]
+id = "runtime-inspector-generation-label"
+context = "Session inspector occupant generation field label."
+description = "Runtime generation inspector label"
+[[messages]]
+id = "runtime-inspector-capabilities-label"
+context = "Session inspector effective capability field label."
+description = "Effective capability inspector label"
+[[messages]]
+id = "runtime-version-unverified"
+context = "No exact verified runtime version is available."
+description = "Unverified runtime version"
+[[messages]]
+id = "runtime-ownership-managed"
+context = "Host-issued process ownership proof."
+description = "Managed ownership"
+[[messages]]
+id = "runtime-ownership-observed"
+context = "Recognized process without Host ownership proof."
+description = "Observed ownership"
+[[messages]]
+id = "runtime-ownership-ambiguous"
+context = "Process ownership cannot be proven."
+description = "Ambiguous ownership"
+[[messages]]
+id = "runtime-confidence-verified"
+context = "Runtime evidence confidence label."
+description = "Verified confidence"
+[[messages]]
+id = "runtime-confidence-observed"
+context = "Runtime evidence confidence label."
+description = "Observed confidence"
+[[messages]]
+id = "runtime-confidence-uncertain"
+context = "Runtime evidence confidence label."
+description = "Uncertain confidence"
+[[messages]]
+id = "runtime-stale-label"
+context = "Runtime observation is temporarily stale."
+description = "Stale runtime label"
+[[messages]]
+id = "runtime-unverified-explanation"
+context = "Explains why semantic runtime actions are unavailable."
+description = "Unverified runtime explanation"
 
 [[messages]]
 id = "new-session-action"

@@ -143,6 +143,7 @@ pub(super) struct DurableLaunch {
     pub executable: PathBuf,
     pub arguments: Vec<String>,
     pub cwd: PathBuf,
+    pub runtime_detection: Option<termirust_domain::RuntimeDetectionResult>,
 }
 
 pub(super) fn spawn_durable_session(
@@ -233,6 +234,7 @@ fn launch_host_process(
         runtime_root: spec.paths.runtime_root.clone(),
         session_dir: spec.paths.session_dir.clone(),
         executable: launch.executable,
+        runtime_detection: launch.runtime_detection,
         arguments: launch.arguments,
         environment,
         cwd: Some(launch.cwd),

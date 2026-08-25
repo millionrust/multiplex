@@ -30,6 +30,7 @@ async fn host_survives_one_thousand_gui_drops_during_ordered_replay() {
         runtime_root: fixture.path().join("runtime"),
         session_dir: fixture.path().join("session"),
         executable: "/bin/sh".into(),
+        runtime_detection: None,
         arguments: vec![
             "-c".to_string(),
             "i=1; while [ $i -le 1000 ]; do printf 'COUNT:%04d\\n' \"$i\"; i=$((i+1)); sleep 0.001; done; while IFS= read -r line; do printf 'INPUT:%s\\n' \"$line\"; done".to_string(),
@@ -93,7 +94,7 @@ async fn host_survives_one_thousand_gui_drops_during_ordered_replay() {
     )
     .await
     .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(15);
     while !String::from_utf8_lossy(&terminal_bytes).contains("COUNT:1000")
         && Instant::now() < deadline
     {

@@ -16,7 +16,8 @@ pub use codex::{
 };
 pub use context::{build_agent_context_handoff, build_context_handoff};
 pub use discovery::{
-    CliDiscovery, DiscoveryCancellation, discovery_path_snapshot, known_runtime_descriptors,
+    CliDiscovery, DiscoveryCancellation, RuntimeDiscoveryEntry, RuntimeDiscoveryReport,
+    discovery_path_snapshot, known_runtime_descriptors,
 };
 pub use headless::{
     HeadlessSessionConfig, HeadlessSessionHandle, RemoteHeadlessSessionConfig,

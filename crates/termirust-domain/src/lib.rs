@@ -3,6 +3,7 @@ pub mod host;
 pub mod id;
 pub mod preset;
 pub mod project;
+pub mod runtime;
 pub mod search;
 pub mod session;
 
@@ -25,6 +26,15 @@ pub use preset::{
 pub use project::{
     AddProject, CanonicalPath, FileIdentity, LocalizedUserText, Project, ProjectError,
     ProjectService, ProjectStatus, ProjectSummary,
+};
+pub use runtime::{
+    ExecutableFingerprint, MAX_RUNTIME_CANDIDATES, MAX_RUNTIME_DESCRIPTORS,
+    MAX_RUNTIME_VERSION_BYTES, ObservedProcess, OccupantGeneration, OccupantOwnership,
+    ProcessIdentity, ProcessObservation, ProcessObservationStatus, RecognitionConfidence,
+    RuntimeCapability, RuntimeCapabilitySet, RuntimeDescriptor, RuntimeDescriptorKind,
+    RuntimeDetectionResult, RuntimeDetectionStatus, RuntimeLaunchMode, RuntimeOccupant,
+    RuntimeRecognition, RuntimeVersion, RuntimeVersionRule, compiled_runtime_descriptors,
+    parse_runtime_version,
 };
 pub use search::{
     Filter, HighlightField, MAX_SEARCH_DOCUMENT_BYTES, MAX_SEARCH_QUERY_SCALARS,

@@ -19,6 +19,7 @@ use termirust_domain::{
 };
 use termirust_store::{SessionRemovalPlan, StoreError};
 
+use super::runtimes::runtime_inspector_projection;
 use super::session_library::{SessionLibraryFilter, SessionLibraryRecovery, SessionLibraryView};
 use super::{TermiRustApp, theme};
 use crate::models::{SavedAppAttachedSession, SavedSessionPlacement};
@@ -1512,6 +1513,15 @@ impl TermiRustApp {
         let groups = self.project_groups(session.origin.project_id);
         let current_group = session.group_id;
         let renaming = self.session_library.renaming == Some(id);
+        let runtime =
+            (session.route == termirust_domain::SessionLaunchRoute::DurableHost).then(|| {
+                runtime_inspector_projection(
+                    session
+                        .durable_host
+                        .as_ref()
+                        .and_then(|host| host.runtime_recognition.as_ref()),
+                )
+            });
         v_flex()
             .id(("project-session-row", key))
             .debug_selector(|| "project-session-row".to_string())
@@ -1646,6 +1656,56 @@ impl TermiRustApp {
                                     format!("{} / {}", index + 1, count),
                                 )),
                         )
+                        .when_some(runtime, |this, runtime| {
+                            let confidence = if runtime.stale {
+                                format!(
+                                    "{} ({})",
+                                    runtime.confidence,
+                                    localization::runtime_stale_label()
+                                )
+                            } else {
+                                runtime.confidence
+                            };
+                            this.child(
+                                v_flex()
+                                    .id(("session-runtime-inspector", key))
+                                    .debug_selector(|| "session-runtime-inspector".to_string())
+                                    .gap(px(theme::SPACE_2))
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(inspector_row(
+                                        localization::runtime_inspector_runtime_label(),
+                                        runtime.runtime,
+                                    ))
+                                    .child(inspector_row(
+                                        localization::runtime_inspector_version_label(),
+                                        runtime.version,
+                                    ))
+                                    .child(inspector_row(
+                                        localization::runtime_inspector_ownership_label(),
+                                        runtime.ownership,
+                                    ))
+                                    .child(inspector_row(
+                                        localization::runtime_inspector_confidence_label(),
+                                        confidence,
+                                    ))
+                                    .child(inspector_row(
+                                        localization::runtime_inspector_generation_label(),
+                                        runtime.generation,
+                                    ))
+                                    .child(inspector_row(
+                                        localization::runtime_inspector_capabilities_label(),
+                                        runtime.capabilities,
+                                    ))
+                                    .when_some(runtime.explanation, |this, explanation| {
+                                        this.child(
+                                            div()
+                                                .text_color(theme::warning())
+                                                .child(explanation),
+                                        )
+                                    }),
+                            )
+                        })
                         .child(
                             h_flex()
                                 .flex_wrap()

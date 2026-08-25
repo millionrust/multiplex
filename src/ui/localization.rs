@@ -380,6 +380,79 @@ static_message!(preset_error_risk_confirm, PresetErrorRiskConfirmArgs);
 static_message!(runtime_label_codex, RuntimeLabelCodexArgs);
 static_message!(runtime_label_claude, RuntimeLabelClaudeArgs);
 static_message!(runtime_label_gemini, RuntimeLabelGeminiArgs);
+static_message!(runtime_label_generic, RuntimeLabelGenericArgs);
+static_message!(runtime_status_not_checked, RuntimeStatusNotCheckedArgs);
+static_message!(runtime_capabilities_none, RuntimeCapabilitiesNoneArgs);
+static_message!(
+    runtime_capability_interactive,
+    RuntimeCapabilityInteractiveArgs
+);
+static_message!(
+    runtime_capability_structured,
+    RuntimeCapabilityStructuredArgs
+);
+static_message!(runtime_capability_approvals, RuntimeCapabilityApprovalsArgs);
+static_message!(
+    runtime_capability_cancellation,
+    RuntimeCapabilityCancellationArgs
+);
+static_message!(runtime_capability_context, RuntimeCapabilityContextArgs);
+static_message!(runtime_capability_remote, RuntimeCapabilityRemoteArgs);
+static_message!(runtime_capability_resume, RuntimeCapabilityResumeArgs);
+static_message!(
+    runtime_capability_transcript,
+    RuntimeCapabilityTranscriptArgs
+);
+static_message!(
+    runtime_inspector_runtime_label,
+    RuntimeInspectorRuntimeLabelArgs
+);
+static_message!(
+    runtime_inspector_version_label,
+    RuntimeInspectorVersionLabelArgs
+);
+static_message!(
+    runtime_inspector_ownership_label,
+    RuntimeInspectorOwnershipLabelArgs
+);
+static_message!(
+    runtime_inspector_confidence_label,
+    RuntimeInspectorConfidenceLabelArgs
+);
+static_message!(
+    runtime_inspector_generation_label,
+    RuntimeInspectorGenerationLabelArgs
+);
+static_message!(
+    runtime_inspector_capabilities_label,
+    RuntimeInspectorCapabilitiesLabelArgs
+);
+static_message!(runtime_version_unverified, RuntimeVersionUnverifiedArgs);
+static_message!(runtime_ownership_managed, RuntimeOwnershipManagedArgs);
+static_message!(runtime_ownership_observed, RuntimeOwnershipObservedArgs);
+static_message!(runtime_ownership_ambiguous, RuntimeOwnershipAmbiguousArgs);
+static_message!(runtime_confidence_verified, RuntimeConfidenceVerifiedArgs);
+static_message!(runtime_confidence_observed, RuntimeConfidenceObservedArgs);
+static_message!(runtime_confidence_uncertain, RuntimeConfidenceUncertainArgs);
+static_message!(runtime_stale_label, RuntimeStaleLabelArgs);
+static_message!(
+    runtime_unverified_explanation,
+    RuntimeUnverifiedExplanationArgs
+);
+
+pub fn runtime_registry_contract(version: u16) -> String {
+    text(&RuntimeRegistryContractArgs::new(Count(u64::from(version))))
+}
+
+pub fn runtime_registry_executable(name: impl Into<String>) -> String {
+    text(&RuntimeRegistryExecutableArgs::new(UserData::new(name)))
+}
+
+pub fn runtime_registry_capabilities(capabilities: impl Into<String>) -> String {
+    text(&RuntimeRegistryCapabilitiesArgs::new(UserData::new(
+        capabilities,
+    )))
+}
 
 pub fn project_review_description(path: impl Into<String>) -> String {
     text(&ProjectReviewDescriptionArgs::new(UserData::new(path)))

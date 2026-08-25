@@ -112,7 +112,7 @@ pub fn build_interactive_launch_spec(definition: &SavedAgentDefinition) -> Resul
         bail!("The selected agent backend is not an interactive terminal");
     }
     let descriptor = provider_descriptor(definition.provider);
-    if !descriptor.capabilities.interactive_pty {
+    if !descriptor.launch_modes.interactive_pty {
         bail!(
             "{} does not provide an interactive CLI backend",
             definition.provider.label()
@@ -158,7 +158,7 @@ pub fn build_remote_interactive_arguments(
         bail!("The selected agent backend is not an interactive terminal");
     }
     let descriptor = provider_descriptor(definition.provider);
-    if !descriptor.capabilities.interactive_pty {
+    if !descriptor.launch_modes.interactive_pty {
         bail!(
             "{} does not provide an interactive CLI backend",
             definition.provider.label()
@@ -186,7 +186,7 @@ pub fn build_remote_structured_command(
         bail!("The selected agent backend is not structured");
     }
     let descriptor = provider_descriptor(definition.provider);
-    if !descriptor.capabilities.structured_events || !descriptor.capabilities.remote {
+    if !descriptor.launch_modes.structured_events || !descriptor.launch_modes.remote {
         bail!(
             "{} does not support remote structured sessions",
             definition.provider.label()
