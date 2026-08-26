@@ -61,6 +61,7 @@ russh = { version = "0.57", default-features = false, features = ["ring", "rsa"]
 russh-sftp = "2.1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.10"
 termirust-protocol = { version = "0.1.0", path = "crates/termirust-protocol" }
 termirust-domain = { version = "0.1.0", path = "crates/termirust-domain" }
 termirust-client = { version = "0.1.0", path = "crates/termirust-client" }

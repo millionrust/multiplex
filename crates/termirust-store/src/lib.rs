@@ -4,6 +4,7 @@ pub mod lease;
 pub mod presets;
 pub mod projects;
 pub mod sessions;
+pub mod transcript;
 
 pub use atomic::{AtomicWriter, Durability, SystemAtomicWriter};
 pub use journal::{
@@ -23,4 +24,8 @@ pub use projects::{
 pub use sessions::{
     QuarantinedSession, SessionRemovalManifest, SessionRemovalPlan, SessionRepository,
     SessionSnapshot,
+};
+pub use transcript::{
+    TranscriptExportError, TranscriptExportLabels, TranscriptExportResult,
+    TranscriptExportSourceSummary, TranscriptExportSpec, TranscriptPageStream, export_transcript,
 };

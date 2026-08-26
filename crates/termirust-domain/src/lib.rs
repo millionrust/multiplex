@@ -7,6 +7,7 @@ pub mod project;
 pub mod runtime;
 pub mod search;
 pub mod session;
+pub mod transcript;
 
 pub use activity::{
     ActivityAggregate, ActivityConfidence, ActivityError, ActivityEvidence, ActivityEvidenceKind,
@@ -53,4 +54,14 @@ pub use session::{
     MAX_PATH_SEARCH_DIRECTORIES, MAX_SESSION_TITLE_SCALARS, MAX_SESSIONS_PER_PROJECT,
     ResolvedLaunch, SessionLaunchRoute, SessionMutation, SessionOrigin, SessionStateError,
     SessionTitle, TitleSource, automatic_title_from_explicit_input, reduce_session, resolve_launch,
+};
+pub use transcript::{
+    ExportManifest, MAX_PROVIDER_CONTRACT_BYTES, MAX_PROVIDER_RECORD_REF_BYTES,
+    MAX_TRANSCRIPT_EXPORTED_ENTRIES, MAX_TRANSCRIPT_OUTPUT_BYTES, MAX_TRANSCRIPT_PAGE_ENTRIES,
+    MAX_TRANSCRIPT_RECORD_BYTES, MAX_TRANSCRIPT_SCANNED_RECORDS, NormalizedTranscript,
+    ProviderRecordRef, TranscriptCancellation, TranscriptCategorySet, TranscriptContent,
+    TranscriptEntry, TranscriptError, TranscriptKind, TranscriptLimits, TranscriptPage,
+    TranscriptRange, TranscriptRequest, deterministic_content_hash, escape_markdown_text,
+    normalize_transcript_content, render_transcript_entry_markdown,
+    render_transcript_entry_markdown_with_label,
 };

@@ -16,6 +16,7 @@ mod runtimes;
 mod session_library;
 mod session_sidebar;
 mod sftp;
+mod transcript_export;
 mod types;
 mod workspace;
 

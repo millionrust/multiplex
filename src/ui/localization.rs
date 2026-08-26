@@ -439,6 +439,19 @@ static_message!(
     runtime_unverified_explanation,
     RuntimeUnverifiedExplanationArgs
 );
+static_message!(transcript_export_action, TranscriptExportActionArgs);
+static_message!(
+    transcript_export_unavailable_unverified,
+    TranscriptExportUnavailableUnverifiedArgs
+);
+static_message!(
+    transcript_export_unavailable_contract,
+    TranscriptExportUnavailableContractArgs
+);
+static_message!(
+    transcript_export_unavailable_pending,
+    TranscriptExportUnavailablePendingArgs
+);
 
 pub fn runtime_registry_contract(version: u16) -> String {
     text(&RuntimeRegistryContractArgs::new(Count(u64::from(version))))

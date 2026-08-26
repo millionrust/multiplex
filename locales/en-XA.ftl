@@ -341,6 +341,10 @@ session-sidebar-title = ⟦Šéššîøñš~~⟧
 shortcut-hint = ⟦Šĥøŕţçûţ: ~~⟧{ $key }
 status-connecting = ⟦Çøññéçţîñĝ ţø ~~~~⟧{ $host }⟦…⟧
 status-ready = ⟦Ŕéåðý⟧
+transcript-export-action = ⟦Éẋþøŕţ ţŕåñšçŕîþţ~~~~~⟧
+transcript-export-unavailable-contract = ⟦Ûñåṽåîļåƀļé: ñø åþþŕøṽéð ţŕåñšçŕîþţ çøñţŕåçţ éẋîšţš ƒøŕ ţĥîš þŕøṽîðéŕ åñð ṽéŕšîøñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+transcript-export-unavailable-pending = ⟦Ûñåṽåîļåƀļé: ţĥîš ţŕåñšçŕîþţ çøñţŕåçţ îš åŵåîţîñĝ åþþŕøṽåļ.~~~~~~~~~~~~~~~~~~~~~~⟧
+transcript-export-unavailable-unverified = ⟦Ûñåṽåîļåƀļé: ţĥîš šéššîøñ ĥåš ñø ṽéŕîƒîéð ŕûñţîɱé þŕøøƒ.~~~~~~~~~~~~~~~~~~~~~⟧
 transfer-summary = { $count ->
     [many] { $count }⟦ ƒîļéš ţŕåñšƒéŕŕéð (~~~~~~⟧{ $bytes }⟦)⟧
     [one] ⟦Øñé ƒîļé ţŕåñšƒéŕŕéð (~~~~~~~⟧{ $bytes }⟦)⟧

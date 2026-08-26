@@ -341,6 +341,10 @@ session-sidebar-title = ⁧snoisseS⁩
 shortcut-hint = ⁧ :tuctrohS⁩{ $key }
 status-connecting = ⁧ ot gnitcennoC⁩{ $host }⁧…⁩
 status-ready = ⁧ydaeR⁩
+transcript-export-action = ⁧tpircsnart tropxE⁩
+transcript-export-unavailable-contract = ⁧.noisrev dna redivorp siht rof stsixe tcartnoc tpircsnart devorppa on :elbaliavanU⁩
+transcript-export-unavailable-pending = ⁧.lavorppa gnitiawa si tcartnoc tpircsnart siht :elbaliavanU⁩
+transcript-export-unavailable-unverified = ⁧.foorp emitnur deifirev on sah noisses siht :elbaliavanU⁩
 transfer-summary = { $count ->
     [many] { $count }⁧) derrefsnart selif ⁩{ $bytes }⁧(⁩
     [one] ⁧) derrefsnart elif enO⁩{ $bytes }⁧(⁩

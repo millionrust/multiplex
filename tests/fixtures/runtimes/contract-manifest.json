@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "transcript_contracts": [
+    {
+      "id": "termirust-sanitized-v1",
+      "runtime": "fixture",
+      "version": "1.0.0",
+      "release_enabled": false,
+      "record_format": "bounded-json-lines-v1",
+      "source": "candidate/transcripts/records.jsonl",
+      "provenance": "TermiRust-owned synthetic contract; no provider support claim"
+    }
+  ],
+  "scenarios": [
+    "equal_times",
+    "missing_times",
+    "unicode",
+    "markdown_injection",
+    "canary_secrets",
+    "malformed",
+    "oversize",
+    "escaping_symlink",
+    "permission_denied",
+    "source_changed",
+    "cancelled"
+  ]
+}

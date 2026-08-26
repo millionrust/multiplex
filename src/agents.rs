@@ -8,6 +8,7 @@ mod orchestrator;
 mod process;
 mod protocol;
 mod stream;
+mod transcript;
 mod worktree;
 
 pub use activity::activity_projection_for_agent_event;
@@ -31,4 +32,5 @@ pub use process::{
     build_remote_interactive_arguments, detect_agent_executable,
 };
 pub use protocol::{AgentApprovalRequest, AgentEvent, AgentRole, AgentRunState};
+pub(crate) use transcript::sanitized_candidate_transcript_contract;
 pub use worktree::{create_managed_worktree, managed_worktree_status, remove_managed_worktree};

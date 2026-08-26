@@ -1,0 +1,4 @@
+{"kind":"user","occurred_at":1,"content":"valid before malformed"}
+{"kind":"assistant","content":
+{"kind":"unknown","occurred_at":2,"content":"unsupported kind"}
+{"kind":"assistant","occurred_at":3,"content":"valid after malformed"}

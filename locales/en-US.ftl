@@ -165,6 +165,10 @@ runtime-confidence-observed = Observed
 runtime-confidence-uncertain = Uncertain
 runtime-stale-label = Stale
 runtime-unverified-explanation = No current Host-issued runtime proof. Semantic control actions remain unavailable.
+transcript-export-action = Export transcript
+transcript-export-unavailable-unverified = Unavailable: this session has no verified runtime proof.
+transcript-export-unavailable-contract = Unavailable: no approved transcript contract exists for this provider and version.
+transcript-export-unavailable-pending = Unavailable: this transcript contract is awaiting approval.
 
 new-session-action = New session
 new-session-title = New session

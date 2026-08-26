@@ -7298,6 +7298,7 @@ dependencies = [
  "russh-sftp",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "termirust-client",
  "termirust-domain",
@@ -7334,6 +7335,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "unicode-casefold",
  "unicode-normalization",
@@ -7406,6 +7408,7 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "termirust-domain",
  "uuid",

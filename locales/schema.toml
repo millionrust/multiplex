@@ -762,6 +762,22 @@ id = "runtime-inspector-capabilities-label"
 context = "Session inspector effective capability field label."
 description = "Effective capability inspector label"
 [[messages]]
+id = "transcript-export-action"
+context = "Session inspector action for explicitly exporting a filtered transcript."
+description = "Export transcript action"
+[[messages]]
+id = "transcript-export-unavailable-unverified"
+context = "Visible reason why transcript export is disabled when runtime proof is unavailable."
+description = "Unverified runtime transcript export reason"
+[[messages]]
+id = "transcript-export-unavailable-contract"
+context = "Visible reason why transcript export is disabled for an unsupported provider/version."
+description = "Unsupported transcript contract reason"
+[[messages]]
+id = "transcript-export-unavailable-pending"
+context = "Visible reason why a fixture-backed transcript contract is disabled pending approval."
+description = "Pending transcript contract reason"
+[[messages]]
 id = "runtime-version-unverified"
 context = "No exact verified runtime version is available."
 description = "Unverified runtime version"

@@ -21,6 +21,7 @@ use termirust_store::{SessionRemovalPlan, StoreError};
 
 use super::runtimes::runtime_inspector_projection;
 use super::session_library::{SessionLibraryFilter, SessionLibraryRecovery, SessionLibraryView};
+use super::transcript_export::transcript_export_projection;
 use super::{TermiRustApp, theme};
 use crate::models::{SavedAppAttachedSession, SavedSessionPlacement};
 use crate::storage::save_saved_state;
@@ -1513,15 +1514,14 @@ impl TermiRustApp {
         let groups = self.project_groups(session.origin.project_id);
         let current_group = session.group_id;
         let renaming = self.session_library.renaming == Some(id);
-        let runtime =
-            (session.route == termirust_domain::SessionLaunchRoute::DurableHost).then(|| {
-                runtime_inspector_projection(
-                    session
-                        .durable_host
-                        .as_ref()
-                        .and_then(|host| host.runtime_recognition.as_ref()),
-                )
-            });
+        let recognition = session
+            .durable_host
+            .as_ref()
+            .and_then(|host| host.runtime_recognition.as_ref());
+        let runtime = (session.route == termirust_domain::SessionLaunchRoute::DurableHost)
+            .then(|| runtime_inspector_projection(recognition));
+        let transcript = (session.route == termirust_domain::SessionLaunchRoute::DurableHost)
+            .then(|| transcript_export_projection(recognition));
         v_flex()
             .id(("project-session-row", key))
             .debug_selector(|| "project-session-row".to_string())
@@ -1703,6 +1703,42 @@ impl TermiRustApp {
                                             div()
                                                 .text_color(theme::warning())
                                                 .child(explanation),
+                                        )
+                                    }),
+                            )
+                        })
+                        .when_some(transcript, |this, transcript| {
+                            let reason = transcript.reason_text().unwrap_or_else(
+                                localization::transcript_export_unavailable_contract,
+                            );
+                            this.child(
+                                v_flex()
+                                    .id(("session-transcript-export", key))
+                                    .debug_selector(|| "session-transcript-export".to_string())
+                                    .gap(px(theme::SPACE_2))
+                                    .child(
+                                        Button::new(("session-transcript-export-action", key))
+                                            .debug_selector(|| {
+                                                "session-transcript-export-action".to_string()
+                                            })
+                                            .small()
+                                            .icon(IconName::File)
+                                            .disabled(!transcript.available)
+                                            .tooltip(reason.clone())
+                                            .label(localization::transcript_export_action()),
+                                    )
+                                    .when(!transcript.available, |this| {
+                                        this.child(
+                                            h_flex()
+                                                .items_start()
+                                                .gap(px(theme::SPACE_2))
+                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                                .text_color(theme::warning())
+                                                .child(
+                                                    Icon::new(IconName::TriangleAlert)
+                                                        .size(px(theme::SPACE_4)),
+                                                )
+                                                .child(div().min_w_0().child(reason)),
                                         )
                                     }),
                             )
