@@ -1,6 +1,9 @@
 use std::time::Duration;
 
-use termirust_domain::{CommandId, HostInstanceId, HostedSessionId, OutputSequence};
+use termirust_domain::{
+    ActivityAggregate, ActivityConfidence, ActivitySourceKind, ActivityState, AttentionReason,
+    CommandId, HostInstanceId, HostSequence, HostedSessionId, OccupantGeneration, OutputSequence,
+};
 use termirust_host_protocol::wire::{self, envelope_payload};
 use termirust_host_protocol::{
     CURRENT_PROTOCOL, CapabilitySet, FrameKind, HANDSHAKE_NONCE_BYTES, MAX_OUTPUT_BYTES,
@@ -467,7 +470,7 @@ impl HostClient {
     pub async fn request_activity_snapshot(
         &mut self,
         cancel: &CancellationToken,
-    ) -> Result<wire::ActivityEvent, ClientError> {
+    ) -> Result<ActivityAggregate, ClientError> {
         self.require_ready()?;
         self.require_capability(wire::Capability::ActivitySnapshot)?;
         let request_id = self.next_request_id();
@@ -484,7 +487,7 @@ impl HostClient {
         match response.message {
             Some(envelope_payload::Message::ActivityEvent(event)) => {
                 self.require_session(&event.session_id)?;
-                Ok(event)
+                Ok(activity_from_wire(event))
             }
             Some(envelope_payload::Message::ProtocolError(error)) => {
                 Err(ClientError::protocol(&error))
@@ -633,6 +636,57 @@ impl HostClient {
         value[8..].copy_from_slice(&self.next_request.to_be_bytes());
         self.next_request = self.next_request.saturating_add(1);
         value
+    }
+}
+
+fn activity_from_wire(event: wire::ActivityEvent) -> ActivityAggregate {
+    let state = match wire::Activity::try_from(event.activity).ok() {
+        Some(wire::Activity::Idle) => ActivityState::Idle,
+        Some(wire::Activity::Busy) => ActivityState::Busy,
+        Some(wire::Activity::NeedsInput) => ActivityState::NeedsInput,
+        Some(wire::Activity::Done) => ActivityState::Done,
+        Some(wire::Activity::Failed) => ActivityState::Failed,
+        Some(wire::Activity::Unspecified | wire::Activity::Unknown) | None => {
+            ActivityState::Unknown
+        }
+    };
+    let confidence = match wire::ActivityConfidence::try_from(event.confidence).ok() {
+        Some(wire::ActivityConfidence::Verified) => ActivityConfidence::Verified,
+        Some(wire::ActivityConfidence::Unspecified | wire::ActivityConfidence::Estimated)
+        | None => ActivityConfidence::Estimated,
+    };
+    let source_kind = match wire::ActivitySourceKind::try_from(event.source_kind).ok() {
+        Some(wire::ActivitySourceKind::Output) => ActivitySourceKind::Output,
+        Some(wire::ActivitySourceKind::PromptObservation) => ActivitySourceKind::PromptObservation,
+        Some(wire::ActivitySourceKind::ProcessObservation) => {
+            ActivitySourceKind::ProcessObservation
+        }
+        Some(wire::ActivitySourceKind::StructuredAdapter) => ActivitySourceKind::StructuredAdapter,
+        Some(wire::ActivitySourceKind::Approval) => ActivitySourceKind::Approval,
+        Some(wire::ActivitySourceKind::ProcessExit) => ActivitySourceKind::ProcessExit,
+        Some(wire::ActivitySourceKind::Unspecified) | None => ActivitySourceKind::Unknown,
+    };
+    let attention_reason = match wire::AttentionReason::try_from(event.attention_reason).ok() {
+        Some(wire::AttentionReason::Input) => Some(AttentionReason::Input),
+        Some(wire::AttentionReason::Approval) => Some(AttentionReason::Approval),
+        Some(wire::AttentionReason::Permission) => Some(AttentionReason::Permission),
+        Some(wire::AttentionReason::Confirmation) => Some(AttentionReason::Confirmation),
+        Some(wire::AttentionReason::Unspecified) | None => None,
+    };
+    ActivityAggregate {
+        state,
+        confidence,
+        effective_sequence: HostSequence::new(event.sequence),
+        generation: OccupantGeneration::new(event.generation.max(1)),
+        source_kind,
+        source_id: "host-snapshot".to_string(),
+        expires_at: None,
+        stale: event.stale,
+        attention_reason,
+        attention_sequence: state
+            .requires_attention()
+            .then_some(OutputSequence::new(event.output_sequence))
+            .filter(|sequence| *sequence > OutputSequence::ZERO),
     }
 }
 

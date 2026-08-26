@@ -2,7 +2,7 @@
 use std::path::Path;
 
 use termirust_domain::{
-    ActivityState, GroupId, HostedSession, HostedSessionId, HostedSessionState, OutputSequence,
+    ActivityAggregate, GroupId, HostedSession, HostedSessionId, HostedSessionState, OutputSequence,
     ProjectId, Revision, SessionMutation, SessionStateError,
 };
 use termirust_store::{
@@ -211,16 +211,9 @@ impl SessionLibraryState {
         saved: &mut SavedState,
         id: HostedSessionId,
         lifecycle: HostedSessionState,
+        activity: ActivityAggregate,
         through: OutputSequence,
     ) -> Result<HostedSession, StoreError> {
-        let activity = if matches!(
-            lifecycle,
-            HostedSessionState::Live | HostedSessionState::RecordingPaused
-        ) {
-            ActivityState::Idle
-        } else {
-            ActivityState::Unknown
-        };
         if let Some(current) = self.session(id)
             && current.lifecycle == lifecycle
             && current.activity == activity
@@ -412,8 +405,7 @@ mod tests {
     use super::*;
     use crate::models::{SavedDurableHost, SavedState};
     use termirust_domain::{
-        ActivityState, HostedSessionState, PositionKey, PresetId, SessionLaunchRoute,
-        SessionOrigin, TitleSource,
+        HostedSessionState, PositionKey, PresetId, SessionLaunchRoute, SessionOrigin, TitleSource,
     };
 
     fn record(state: HostedSessionState) -> SavedAppAttachedSession {
@@ -430,7 +422,7 @@ mod tests {
             preset_label: "Codex".to_string(),
             title: "Investigate parser".to_string(),
             title_source: TitleSource::Manual,
-            activity: ActivityState::Unknown,
+            activity: ActivityAggregate::default(),
             pinned: false,
             read_through_sequence: 0,
             unread_sequence: None,
@@ -557,6 +549,15 @@ mod tests {
                 },
             )
             .unwrap();
+        library
+            .mutate(
+                &mut saved,
+                first_id,
+                SessionMutation::MarkUnread {
+                    at: OutputSequence::new(3),
+                },
+            )
+            .unwrap();
 
         let visible = library.visible_sessions(project_id, None);
         assert_eq!(visible[0].id, second_id);
@@ -572,5 +573,123 @@ mod tests {
         library.view = SessionLibraryView::Archive;
         assert_eq!(library.visible_sessions(project_id, None)[0].id, first_id);
         assert!(library.session(first_id).unwrap().unread());
+    }
+}
+
+#[cfg(test)]
+mod activity_tests {
+    use super::*;
+    use termirust_domain::{
+        ActivityConfidence, ActivitySourceKind, ActivityState, AttentionReason, HostSequence,
+        PositionKey, PresetId, SessionLaunchRoute, SessionOrigin, TitleSource,
+    };
+
+    fn record() -> SavedAppAttachedSession {
+        SavedAppAttachedSession {
+            id: HostedSessionId::new(),
+            route: SessionLaunchRoute::DurableHost,
+            origin: SessionOrigin {
+                project_id: ProjectId::new(),
+                preset_id: PresetId::new(),
+            },
+            state: HostedSessionState::Live,
+            project_label: "Project".to_string(),
+            preset_label: "Agent".to_string(),
+            title: "Attention fixture".to_string(),
+            title_source: TitleSource::Manual,
+            activity: ActivityAggregate::default(),
+            pinned: false,
+            read_through_sequence: 0,
+            unread_sequence: None,
+            archived_at: None,
+            revision: Revision::ZERO,
+            durable_host: Some(crate::models::SavedDurableHost::default()),
+            group_id: None,
+            position: PositionKey::FIRST,
+            started_at: 1,
+            updated_at: 1,
+        }
+    }
+
+    #[test]
+    fn activity_attention_is_unread_but_output_and_row_selection_are_not_acknowledgements() {
+        let fixture = tempfile::tempdir().unwrap();
+        let mut saved = SavedState::default();
+        let record = record();
+        let id = record.id;
+        saved.app_attached_sessions.push(record);
+        let mut library = SessionLibraryState::open_repository(
+            SessionRepository::open(
+                fixture.path().join("metadata"),
+                fixture.path().join("sessions"),
+            )
+            .unwrap(),
+            &mut saved,
+        );
+        let output = library
+            .mutate(
+                &mut saved,
+                id,
+                SessionMutation::ObserveOutput {
+                    through: OutputSequence::new(4),
+                },
+            )
+            .unwrap();
+        assert!(!output.unread());
+        let activity = ActivityAggregate {
+            state: ActivityState::NeedsInput,
+            confidence: ActivityConfidence::Verified,
+            effective_sequence: HostSequence::new(1),
+            source_kind: ActivitySourceKind::Approval,
+            source_id: "ui-test".to_string(),
+            stale: false,
+            attention_reason: Some(AttentionReason::Approval),
+            attention_sequence: Some(OutputSequence::new(4)),
+            ..ActivityAggregate::default()
+        };
+        let attention = library
+            .mutate(
+                &mut saved,
+                id,
+                SessionMutation::ApplyActivity {
+                    activity,
+                    visible_through: None,
+                },
+            )
+            .unwrap();
+        assert!(attention.unread());
+        assert!(library.session(id).unwrap().unread());
+    }
+
+    #[test]
+    fn activity_read_watermark_clears_only_the_sequence_actually_displayed() {
+        let mut session = record().to_hosted_session().unwrap();
+        termirust_domain::reduce_session(
+            &mut session,
+            SessionMutation::ObserveOutput {
+                through: OutputSequence::new(6),
+            },
+        )
+        .unwrap();
+        let activity = ActivityAggregate {
+            state: ActivityState::Failed,
+            confidence: ActivityConfidence::Verified,
+            effective_sequence: HostSequence::new(2),
+            source_kind: ActivitySourceKind::ProcessExit,
+            source_id: "ui-test".to_string(),
+            stale: false,
+            attention_sequence: Some(OutputSequence::new(6)),
+            ..ActivityAggregate::default()
+        };
+        termirust_domain::reduce_session(
+            &mut session,
+            SessionMutation::ApplyActivity {
+                activity,
+                visible_through: Some(termirust_domain::ReadWatermark(OutputSequence::new(5))),
+            },
+        )
+        .unwrap();
+        assert_eq!(session.read_through_sequence, OutputSequence::new(5));
+        assert_eq!(session.unread_sequence, Some(OutputSequence::new(6)));
     }
 }

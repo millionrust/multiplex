@@ -1568,6 +1568,7 @@ impl TermiRustApp {
                                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                                             .text_color(theme::text_muted())
                                             .child(session_state_label(metadata.lifecycle))
+                                            .child(activity_label(&metadata.activity))
                                             .when(metadata.pinned, |this| {
                                                 this.child(
                                                     div()
@@ -1649,7 +1650,7 @@ impl TermiRustApp {
                                 ))
                                 .child(inspector_row(
                                     localization::session_library_activity_label(),
-                                    activity_label(metadata.activity),
+                                    activity_label(&metadata.activity),
                                 ))
                                 .child(inspector_row(
                                     localization::session_library_position_label(),
@@ -1938,13 +1939,27 @@ fn title_source_label(source: termirust_domain::TitleSource) -> String {
     }
 }
 
-fn activity_label(activity: termirust_domain::ActivityState) -> String {
-    match activity {
+fn activity_label(activity: &termirust_domain::ActivityAggregate) -> String {
+    let state = match activity.state {
         termirust_domain::ActivityState::Unknown => {
             localization::session_library_activity_unknown()
         }
         termirust_domain::ActivityState::Idle => localization::session_library_activity_idle(),
-    }
+        termirust_domain::ActivityState::Busy => localization::session_library_activity_busy(),
+        termirust_domain::ActivityState::NeedsInput => {
+            localization::session_library_activity_needs_input()
+        }
+        termirust_domain::ActivityState::Done => localization::session_library_activity_done(),
+        termirust_domain::ActivityState::Failed => localization::session_library_activity_failed(),
+    };
+    let confidence = if activity.stale {
+        return format!("{state} ({})", localization::runtime_stale_label());
+    } else if activity.confidence == termirust_domain::ActivityConfidence::Verified {
+        localization::runtime_confidence_verified()
+    } else {
+        localization::session_library_activity_estimated()
+    };
+    format!("{state} ({confidence})")
 }
 
 fn session_recovery_label(recovery: SessionLibraryRecovery) -> String {
@@ -2037,7 +2052,7 @@ mod tests {
             preset_label: localization::new_session_title(),
             title: localization::new_session_title(),
             title_source: termirust_domain::TitleSource::Default,
-            activity: termirust_domain::ActivityState::Unknown,
+            activity: termirust_domain::ActivityAggregate::default(),
             pinned: false,
             read_through_sequence: 0,
             unread_sequence: None,

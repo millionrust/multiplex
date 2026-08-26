@@ -1,3 +1,4 @@
+pub mod activity;
 pub mod group;
 pub mod host;
 pub mod id;
@@ -7,6 +8,11 @@ pub mod runtime;
 pub mod search;
 pub mod session;
 
+pub use activity::{
+    ActivityAggregate, ActivityConfidence, ActivityError, ActivityEvidence, ActivityEvidenceKind,
+    ActivitySourceKind, ActivityState, AttentionReason, HEURISTIC_IDLE_QUIET_NANOS, HostSequence,
+    MAX_ACTIVITY_SOURCE_ID_BYTES, ReadWatermark, reduce_activity, refresh_activity_staleness,
+};
 pub use group::{
     Group, GroupDestination, GroupError, GroupInverseCommand, GroupMutation, GroupName,
     MAX_GROUP_NAME_SCALARS, MAX_GROUPS_PER_PROJECT, validate_group_set,
@@ -43,9 +49,8 @@ pub use search::{
     SearchError, SearchIndex, SearchPage, SearchQuery, SearchResult, SearchStatus, TextHighlight,
 };
 pub use session::{
-    ActivityState, HostedSession, HostedSessionState, LaunchResolutionError,
-    MAX_AUTOMATIC_TITLE_GRAPHEMES, MAX_PATH_SEARCH_DIRECTORIES, MAX_SESSION_TITLE_SCALARS,
-    MAX_SESSIONS_PER_PROJECT, ResolvedLaunch, SessionLaunchRoute, SessionMutation, SessionOrigin,
-    SessionStateError, SessionTitle, TitleSource, automatic_title_from_explicit_input,
-    reduce_session, resolve_launch,
+    HostedSession, HostedSessionState, LaunchResolutionError, MAX_AUTOMATIC_TITLE_GRAPHEMES,
+    MAX_PATH_SEARCH_DIRECTORIES, MAX_SESSION_TITLE_SCALARS, MAX_SESSIONS_PER_PROJECT,
+    ResolvedLaunch, SessionLaunchRoute, SessionMutation, SessionOrigin, SessionStateError,
+    SessionTitle, TitleSource, automatic_title_from_explicit_input, reduce_session, resolve_launch,
 };

@@ -18,10 +18,10 @@ use crate::agents::{
     AgentApprovalRequest, AgentEvent, AgentExecutableStatus, AgentRole, AgentRunState,
     CodexSessionConfig, CodexSessionHandle, HeadlessSessionConfig, HeadlessSessionHandle,
     RemoteCodexSessionConfig, RemoteHeadlessSessionConfig, RemoteHeadlessSessionHandle,
-    SchedulableAgent, build_agent_context_handoff, build_context_handoff,
-    build_interactive_launch_spec, build_remote_interactive_arguments, create_managed_worktree,
-    detect_agent_executable, managed_worktree_status, provider_descriptor, remove_managed_worktree,
-    schedule_dependency_dag, spawn_codex_session, spawn_headless_session,
+    SchedulableAgent, activity_projection_for_agent_event, build_agent_context_handoff,
+    build_context_handoff, build_interactive_launch_spec, build_remote_interactive_arguments,
+    create_managed_worktree, detect_agent_executable, managed_worktree_status, provider_descriptor,
+    remove_managed_worktree, schedule_dependency_dag, spawn_codex_session, spawn_headless_session,
     spawn_remote_codex_session, spawn_remote_headless_session,
 };
 use crate::local::{local_tmux_install_guidance, local_tmux_version};
@@ -3935,14 +3935,15 @@ impl TermiRustApp {
             let Some(runtime) = self.structured_agents.get_mut(&node_id) else {
                 continue;
             };
+            if !is_selected
+                && activity_projection_for_agent_event(&event)
+                    .is_some_and(|activity| activity.requires_unread_attention())
+            {
+                runtime.unread_output = true;
+            }
             match event {
                 AgentEvent::StateChanged(state) => {
                     runtime.state = state;
-                    if !is_selected
-                        && (state == AgentRunState::Succeeded || agent_state_needs_attention(state))
-                    {
-                        runtime.unread_output = true;
-                    }
                     if state != AgentRunState::WaitingForApproval {
                         runtime.approval = None;
                     }
@@ -3950,29 +3951,17 @@ impl TermiRustApp {
                 AgentEvent::MessageDelta { role, text } => {
                     runtime.push_text(&text);
                     runtime.push_context_message(role, &text);
-                    if !is_selected {
-                        runtime.unread_output = true;
-                    }
                 }
                 AgentEvent::ApprovalRequested(approval) => {
                     runtime.state = AgentRunState::WaitingForApproval;
                     runtime.approval = Some(approval);
-                    if !is_selected {
-                        runtime.unread_output = true;
-                    }
                 }
                 AgentEvent::Failed { error } => {
                     runtime.state = AgentRunState::Failed;
                     runtime.diagnostic = Some(error);
-                    if !is_selected {
-                        runtime.unread_output = true;
-                    }
                 }
                 AgentEvent::Diagnostic { message } => {
                     runtime.diagnostic = Some(message);
-                    if !is_selected {
-                        runtime.unread_output = true;
-                    }
                 }
                 AgentEvent::ToolStarted(call) => {
                     runtime.push_text(&format!(
@@ -3980,9 +3969,6 @@ impl TermiRustApp {
                         call.name,
                         call.summary.unwrap_or_default()
                     ));
-                    if !is_selected {
-                        runtime.unread_output = true;
-                    }
                 }
                 AgentEvent::ToolFinished { .. }
                 | AgentEvent::SessionReady { .. }

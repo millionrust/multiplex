@@ -280,8 +280,13 @@ session-count = { $count ->
     [zero] ⟦Ñø åçţîṽé šéššîøñš~~~~~~⟧
     }
 session-library-active-view = ⟦Åçţîṽé~⟧
+session-library-activity-busy = ⟦Ɓûšý⟧
+session-library-activity-done = ⟦Ðøñé⟧
+session-library-activity-estimated = ⟦Éšţîɱåţéð~~⟧
+session-library-activity-failed = ⟦Ƒåîļéð~⟧
 session-library-activity-idle = ⟦Îðļé⟧
 session-library-activity-label = ⟦Åçţîṽîţý~~⟧
+session-library-activity-needs-input = ⟦Ñééðš îñþûţ~~~⟧
 session-library-activity-unknown = ⟦Ûñķñøŵñ~⟧
 session-library-archive-action = ⟦Åŕçĥîṽé~⟧
 session-library-archive-empty = ⟦Ñø åŕçĥîṽéð šéššîøñš ƒøŕ ţĥîš Þŕøĵéçţ.~~~~~~~~~~~~~~⟧

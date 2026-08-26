@@ -740,6 +740,26 @@ static_message!(
     SessionLibraryActivityIdleArgs
 );
 static_message!(
+    session_library_activity_busy,
+    SessionLibraryActivityBusyArgs
+);
+static_message!(
+    session_library_activity_needs_input,
+    SessionLibraryActivityNeedsInputArgs
+);
+static_message!(
+    session_library_activity_done,
+    SessionLibraryActivityDoneArgs
+);
+static_message!(
+    session_library_activity_failed,
+    SessionLibraryActivityFailedArgs
+);
+static_message!(
+    session_library_activity_estimated,
+    SessionLibraryActivityEstimatedArgs
+);
+static_message!(
     session_library_recovered_last_good,
     SessionLibraryRecoveredLastGoodArgs
 );

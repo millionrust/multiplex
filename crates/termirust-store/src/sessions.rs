@@ -638,6 +638,7 @@ fn validate_document(document: &SessionsDocument) -> Result<(), StoreError> {
             .into());
         }
         if SessionTitle::new(session.title.as_str())? != session.title
+            || session.activity.validate().is_err()
             || session.read_through_sequence > session.last_output_sequence
             || session
                 .unread_sequence
@@ -802,7 +803,7 @@ mod tests {
     use std::sync::{Arc, Barrier};
     use std::thread;
     use termirust_domain::{
-        ActivityState, HostedSessionState, OutputSequence, PresetId, SessionTitle, TitleSource,
+        HostedSessionState, OutputSequence, PresetId, SessionTitle, TitleSource,
     };
     use uuid::Uuid;
 
@@ -815,7 +816,7 @@ mod tests {
             title: SessionTitle::new(&format!("Session {id}")).unwrap(),
             title_source: TitleSource::Default,
             lifecycle: state,
-            activity: ActivityState::Unknown,
+            activity: termirust_domain::ActivityAggregate::default(),
             pinned: false,
             position: PositionKey::FIRST,
             last_output_sequence: OutputSequence::ZERO,
@@ -873,6 +874,72 @@ mod tests {
         let snapshot = reopened.load().unwrap();
         assert_eq!(snapshot.revision, Revision::new(2));
         assert_eq!(snapshot.sessions[0].title.as_str(), "Manual");
+    }
+
+    #[test]
+    fn activity_replay_persists_attention_and_exact_read_watermarks_across_restart() {
+        let (fixture, repository) = repository();
+        let created = repository
+            .create_session(session(1, 20, HostedSessionState::Live), Revision::ZERO)
+            .unwrap();
+        let observed = repository
+            .mutate_session(
+                created.id,
+                created.revision,
+                SessionMutation::ObserveOutput {
+                    through: OutputSequence::new(5),
+                },
+                2,
+            )
+            .unwrap();
+        assert!(!observed.unread(), "ordinary output is not attention");
+        let needs_input = termirust_domain::ActivityAggregate {
+            state: termirust_domain::ActivityState::NeedsInput,
+            confidence: termirust_domain::ActivityConfidence::Verified,
+            effective_sequence: termirust_domain::HostSequence::new(1),
+            source_kind: termirust_domain::ActivitySourceKind::Approval,
+            source_id: "store-test".to_string(),
+            stale: false,
+            attention_reason: Some(termirust_domain::AttentionReason::Approval),
+            attention_sequence: Some(OutputSequence::new(5)),
+            ..termirust_domain::ActivityAggregate::default()
+        };
+        let attention = repository
+            .mutate_session(
+                created.id,
+                observed.revision,
+                SessionMutation::ApplyActivity {
+                    activity: needs_input,
+                    visible_through: None,
+                },
+                3,
+            )
+            .unwrap();
+        assert_eq!(attention.unread_sequence, Some(OutputSequence::new(5)));
+
+        let reopened = SessionRepository::open(
+            fixture.path().join("metadata"),
+            fixture.path().join("durable-sessions"),
+        )
+        .unwrap();
+        let restored = reopened.load().unwrap().sessions.remove(0);
+        assert_eq!(
+            restored.activity.state,
+            termirust_domain::ActivityState::NeedsInput
+        );
+        assert!(restored.unread());
+        let read = reopened
+            .mutate_session(
+                restored.id,
+                restored.revision,
+                SessionMutation::MarkRead {
+                    through: OutputSequence::new(5),
+                },
+                4,
+            )
+            .unwrap();
+        assert!(!read.unread());
+        assert_eq!(read.read_through_sequence, OutputSequence::new(5));
     }
 
     #[test]

@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::{
-    ExecutableSpec, FileIdentity, GroupId, HostedSessionId, LaunchPreset, OutputSequence,
-    PermissionPolicy, PositionKey, PresetId, PresetRisk, Project, ProjectId, Revision,
-    WorkingDirectoryRule,
+    ActivityAggregate, ExecutableSpec, FileIdentity, GroupId, HostedSessionId, LaunchPreset,
+    OutputSequence, PermissionPolicy, PositionKey, PresetId, PresetRisk, Project, ProjectId,
+    ReadWatermark, Revision, WorkingDirectoryRule,
 };
 
 pub const MAX_PATH_SEARCH_DIRECTORIES: usize = 256;
@@ -93,14 +93,6 @@ pub enum TitleSource {
     Manual,
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ActivityState {
-    #[default]
-    Unknown,
-    Idle,
-}
-
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct SessionTitle(String);
@@ -150,7 +142,8 @@ pub struct HostedSession {
     pub title: SessionTitle,
     pub title_source: TitleSource,
     pub lifecycle: HostedSessionState,
-    pub activity: ActivityState,
+    #[serde(default)]
+    pub activity: ActivityAggregate,
     pub pinned: bool,
     pub position: PositionKey,
     pub last_output_sequence: OutputSequence,
@@ -191,11 +184,15 @@ pub enum SessionMutation {
     ObserveOutput {
         through: OutputSequence,
     },
-    SetActivity(ActivityState),
+    SetActivity(ActivityAggregate),
+    ApplyActivity {
+        activity: ActivityAggregate,
+        visible_through: Option<ReadWatermark>,
+    },
     SetLifecycle(HostedSessionState),
     Reconcile {
         lifecycle: HostedSessionState,
-        activity: ActivityState,
+        activity: ActivityAggregate,
         through: OutputSequence,
     },
     Archive {
@@ -326,13 +323,22 @@ pub fn reduce_session(
                 return Ok(false);
             }
             session.last_output_sequence = through;
-            observe_unread(session, through);
         }
         SessionMutation::SetActivity(activity) => {
             if session.activity == activity {
                 return Ok(false);
             }
-            session.activity = activity;
+            apply_activity(session, activity, None);
+        }
+        SessionMutation::ApplyActivity {
+            activity,
+            visible_through,
+        } => {
+            let before = session.clone();
+            apply_activity(session, activity, visible_through);
+            if *session == before {
+                return Ok(false);
+            }
         }
         SessionMutation::SetLifecycle(lifecycle) => {
             if session.lifecycle == lifecycle {
@@ -367,9 +373,8 @@ pub fn reduce_session(
                 return Ok(false);
             }
             session.lifecycle = lifecycle;
-            session.activity = activity;
             session.last_output_sequence = through;
-            observe_unread(session, through);
+            apply_activity(session, activity, None);
         }
         SessionMutation::Archive { at } => {
             if session.archived_at.is_some() {
@@ -390,12 +395,38 @@ pub fn reduce_session(
     Ok(true)
 }
 
-fn observe_unread(session: &mut HostedSession, through: OutputSequence) {
-    if session.unread_sequence.is_none()
-        && through > session.read_through_sequence
-        && let Some(first_unread) = session.read_through_sequence.checked_next()
+fn apply_activity(
+    session: &mut HostedSession,
+    activity: ActivityAggregate,
+    visible_through: Option<ReadWatermark>,
+) {
+    let attention_sequence = activity
+        .state
+        .requires_attention()
+        .then_some(activity.attention_sequence)
+        .flatten()
+        .map(|sequence| sequence.min(session.last_output_sequence));
+    session.activity = activity;
+    if let Some(ReadWatermark(visible)) = visible_through {
+        let visible = visible.min(session.last_output_sequence);
+        session.read_through_sequence = session.read_through_sequence.max(visible);
+        if session
+            .unread_sequence
+            .is_some_and(|sequence| sequence <= visible)
+        {
+            session.unread_sequence = None;
+        }
+    }
+    if let Some(attention_sequence) = attention_sequence
+        && attention_sequence > session.read_through_sequence
     {
-        session.unread_sequence = Some(first_unread);
+        session.unread_sequence = Some(
+            session
+                .unread_sequence
+                .map_or(attention_sequence, |current| {
+                    current.min(attention_sequence)
+                }),
+        );
     }
 }
 
@@ -892,7 +923,7 @@ mod tests {
             title: SessionTitle::new("Default title").unwrap(),
             title_source: TitleSource::Default,
             lifecycle: state,
-            activity: ActivityState::Unknown,
+            activity: ActivityAggregate::default(),
             pinned: false,
             position: PositionKey::FIRST,
             last_output_sequence: OutputSequence::ZERO,
@@ -956,6 +987,28 @@ mod tests {
                 &mut session,
                 SessionMutation::ObserveOutput {
                     through: OutputSequence::new(8),
+                }
+            ),
+            Ok(true)
+        );
+        assert!(!session.unread());
+        assert_eq!(
+            reduce_session(
+                &mut session,
+                SessionMutation::ApplyActivity {
+                    activity: ActivityAggregate {
+                        state: crate::ActivityState::NeedsInput,
+                        confidence: crate::ActivityConfidence::Verified,
+                        effective_sequence: crate::HostSequence::new(1),
+                        generation: crate::OccupantGeneration::new(1),
+                        source_kind: crate::ActivitySourceKind::Approval,
+                        source_id: "approval".to_string(),
+                        expires_at: None,
+                        stale: false,
+                        attention_reason: Some(crate::AttentionReason::Approval),
+                        attention_sequence: Some(OutputSequence::new(8)),
+                    },
+                    visible_through: None,
                 }
             ),
             Ok(true)

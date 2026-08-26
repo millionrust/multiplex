@@ -10,8 +10,8 @@ use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as
 
 use serde::{Deserialize, Serialize};
 use termirust_domain::{
-    DurabilityWatermark, HostInstanceId, HostLifecycle, HostedSessionId, OccupantOwnership,
-    ProcessToken, RuntimeRecognition,
+    ActivityAggregate, DurabilityWatermark, HostInstanceId, HostLifecycle, HostedSessionId,
+    OccupantOwnership, ProcessToken, RuntimeRecognition,
 };
 
 use crate::{AtomicWriter, Durability, SystemAtomicWriter};
@@ -78,6 +78,8 @@ pub struct HostMetadata {
     pub process_token: Option<ProcessToken>,
     #[serde(default)]
     pub runtime_recognition: Option<RuntimeRecognition>,
+    #[serde(default)]
+    pub activity: ActivityAggregate,
     pub lifecycle: HostLifecycle,
     pub endpoint_name: String,
     pub heartbeat_monotonic_nanos: u64,
@@ -128,6 +130,7 @@ impl HostMetadata {
                             )
                     })
                 })
+            || self.activity.validate().is_err()
         {
             return Err(LeaseError::new(LeaseErrorCode::InvalidMetadata));
         }
@@ -323,6 +326,7 @@ mod tests {
             host_instance_id: host,
             process_token: None,
             runtime_recognition: None,
+            activity: ActivityAggregate::default(),
             lifecycle: HostLifecycle::Starting,
             endpoint_name: "opaque".to_string(),
             heartbeat_monotonic_nanos: 1,
@@ -367,6 +371,7 @@ mod tests {
                 host_instance_id: host,
                 process_token: Some(ProcessToken::new(host, 999_999, 1)),
                 runtime_recognition: None,
+                activity: ActivityAggregate::default(),
                 lifecycle: HostLifecycle::Ready,
                 endpoint_name: "opaque".to_string(),
                 heartbeat_monotonic_nanos: 1,

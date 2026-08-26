@@ -13,11 +13,11 @@ use termirust_domain::{
 };
 use termirust_host_protocol::wire;
 use termirust_session_host::{LaunchDescriptor, StopDeadlines};
-use termirust_store::{JournalLimits, SessionRepository, StoreError};
+use termirust_store::{JournalLimits, SessionRepository, StoreError, read_host_metadata};
 use tokio_util::sync::CancellationToken;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn lifecycle_stop_archive_restore_requires_confirmed_host_exit() {
+async fn activity_lifecycle_stop_archive_restore_requires_confirmed_host_exit() {
     let fixture = tempfile::tempdir().unwrap();
     let session_id = HostedSessionId::new();
     let session_dir = fixture
@@ -74,7 +74,10 @@ async fn lifecycle_stop_archive_restore_requires_confirmed_host_exit() {
                 title: SessionTitle::new("Lifecycle fixture").unwrap(),
                 title_source: TitleSource::Manual,
                 lifecycle: HostedSessionState::Live,
-                activity: ActivityState::Idle,
+                activity: termirust_domain::ActivityAggregate {
+                    state: ActivityState::Idle,
+                    ..termirust_domain::ActivityAggregate::default()
+                },
                 pinned: false,
                 position: PositionKey::FIRST,
                 last_output_sequence: OutputSequence::ZERO,
@@ -127,6 +130,12 @@ async fn lifecycle_stop_archive_restore_requires_confirmed_host_exit() {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     assert!(process.try_wait().unwrap().is_some());
+    let host_metadata = read_host_metadata(&session_dir).unwrap();
+    assert_eq!(host_metadata.activity.state, ActivityState::Done);
+    assert_eq!(
+        host_metadata.activity.confidence,
+        termirust_domain::ActivityConfidence::Verified
+    );
 
     let exited = repository
         .mutate_session(

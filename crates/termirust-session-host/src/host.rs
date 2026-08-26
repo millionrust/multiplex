@@ -15,9 +15,11 @@ use std::os::unix::fs::{FileTypeExt as _, MetadataExt as _, PermissionsExt as _}
 
 use portable_pty::{CommandBuilder, MasterPty, PtySize, native_pty_system};
 use termirust_domain::{
-    CommandId, DurabilityWatermark, HostLifecycle, OccupantGeneration, OccupantOwnership,
-    OutputSequence, ProcessToken, RecognitionConfidence, RuntimeCapabilitySet, RuntimeOccupant,
-    RuntimeRecognition,
+    ActivityAggregate, ActivityConfidence, ActivityEvidence, ActivityEvidenceKind,
+    ActivitySourceKind, CommandId, DurabilityWatermark, HostLifecycle, HostSequence,
+    OccupantGeneration, OccupantOwnership, OutputSequence, ProcessToken, RecognitionConfidence,
+    RuntimeCapabilitySet, RuntimeOccupant, RuntimeRecognition, reduce_activity,
+    refresh_activity_staleness,
 };
 use termirust_host_protocol::wire::{self, envelope_payload};
 use termirust_host_protocol::{
@@ -29,10 +31,10 @@ use termirust_host_protocol::{
 };
 use termirust_store::{
     AppendOutcome, HostLease, HostMetadata, JournalFrame, JournalKind, JournalStore,
-    TerminalSnapshot, load_snapshot,
+    TerminalSnapshot, load_snapshot, read_host_metadata,
 };
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{Mutex, Notify, RwLock, Semaphore};
+use tokio::sync::{Mutex, Notify, RwLock, Semaphore, mpsc, oneshot};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
@@ -45,8 +47,8 @@ use crate::{HostError, HostErrorCode};
 const MAX_CONNECTIONS: usize = 32;
 pub const MAX_LIVE_HOSTS: usize = 32;
 const PTY_CHANNEL_FRAMES: usize = 64;
+const ACTIVITY_CHANNEL_EVENTS: usize = 128;
 const TASK_JOIN_DEADLINE: Duration = Duration::from_secs(2);
-const EXIT_DRAIN_DEADLINE: Duration = Duration::from_millis(500);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
 const IDEMPOTENCY_TTL: Duration = Duration::from_secs(10 * 60);
 const HOST_SLOT_PREFIX: &str = "host-slot-";
@@ -127,24 +129,45 @@ impl Drop for SessionHostHandle {
 struct RuntimeState {
     descriptor: LaunchDescriptor,
     process_token: ProcessToken,
+    occupant_generation: OccupantGeneration,
     runtime_recognition: Option<RuntimeRecognition>,
     process_group: i32,
     master: StdMutex<Box<dyn MasterPty + Send>>,
     writer: StdMutex<Box<dyn Write + Send>>,
     journal: Mutex<JournalStore>,
     parser: Mutex<vt100::Parser>,
+    activity: RwLock<ActivityAggregate>,
+    activity_sequence: AtomicU64,
+    activity_tx: mpsc::Sender<ActivitySubmission>,
     lifecycle: RwLock<HostLifecycle>,
     latest_sequence: AtomicU64,
+    last_output_monotonic_nanos: AtomicU64,
+    last_prompt_output_sequence: AtomicU64,
     durable_sequence: AtomicU64,
     recording_paused: AtomicBool,
     exited: AtomicBool,
     exit_code: StdMutex<Option<i32>>,
     exit_notify: Notify,
+    stop_requested: AtomicBool,
+    stop_response_sent: AtomicBool,
+    stop_response_notify: Notify,
     writer_lease: Mutex<Option<u64>>,
     active_connections: AtomicU64,
     next_connection: AtomicU64,
     idempotency: Mutex<MutationCache>,
     handshake_nonces: Mutex<NonceCache>,
+}
+
+struct ActivitySubmission {
+    evidence: ActivityEvidence,
+    acknowledged: oneshot::Sender<Result<(), HostError>>,
+}
+
+struct HostRuntimeInputs {
+    reader: Box<dyn Read + Send>,
+    child: Box<dyn portable_pty::Child + Send + Sync>,
+    activity_rx: mpsc::Receiver<ActivitySubmission>,
+    _host_capacity: HostCapacityGuards,
 }
 
 impl RuntimeState {
@@ -207,30 +230,8 @@ impl RuntimeState {
         }
     }
 
-    fn signal_owned_leader(&self, signal: i32) -> Result<(), HostError> {
-        if !self
-            .process_token
-            .belongs_to(self.descriptor.host_instance_id)
-            || self.process_token.platform_identity() != self.process_group as u64
-        {
-            return Err(HostError::new(HostErrorCode::ProcessIdentityUnavailable));
-        }
-        let result = unsafe { libc::kill(self.process_group, signal) };
-        if result == 0 {
-            Ok(())
-        } else {
-            let error = io::Error::last_os_error();
-            if error.raw_os_error() == Some(libc::ESRCH) && self.exited.load(Ordering::Acquire) {
-                Ok(())
-            } else {
-                Err(HostError::io(error))
-            }
-        }
-    }
-
     fn force_kill_owned(&self) -> Result<(), HostError> {
-        self.signal_owned(libc::SIGKILL)?;
-        self.signal_owned_leader(libc::SIGKILL)
+        self.signal_owned(libc::SIGKILL)
     }
 
     async fn stop_owned(&self, force: bool) -> Result<(), HostError> {
@@ -271,16 +272,66 @@ impl RuntimeState {
     }
 
     async fn wait_for_exit(&self, duration: Duration) -> Result<(), HostError> {
+        let notified = self.exit_notify.notified();
         if self.exited.load(Ordering::Acquire) {
             return Ok(());
         }
-        timeout(
-            duration.max(Duration::from_millis(1)),
-            self.exit_notify.notified(),
-        )
-        .await
-        .map_err(|_| HostError::new(HostErrorCode::Cancelled))?;
+        timeout(duration.max(Duration::from_millis(1)), notified)
+            .await
+            .map_err(|_| HostError::new(HostErrorCode::Cancelled))?;
         Ok(())
+    }
+
+    async fn submit_activity(
+        &self,
+        source_id: &'static str,
+        source_kind: ActivitySourceKind,
+        confidence: ActivityConfidence,
+        kind: ActivityEvidenceKind,
+        expires_at: Option<u64>,
+    ) -> Result<(), HostError> {
+        let sequence = self
+            .activity_sequence
+            .fetch_add(1, Ordering::AcqRel)
+            .checked_add(1)
+            .map(HostSequence::new)
+            .ok_or_else(|| HostError::new(HostErrorCode::ResourceLimit))?;
+        let generation = self.occupant_generation;
+        let evidence = ActivityEvidence {
+            session_id: self.descriptor.session_id,
+            generation,
+            host_sequence: sequence,
+            output_sequence: OutputSequence::new(self.latest_sequence.load(Ordering::Acquire)),
+            source_id: source_id.to_string(),
+            source_kind,
+            confidence,
+            kind,
+            expires_at,
+        };
+        let (acknowledged, result) = oneshot::channel();
+        self.activity_tx
+            .send(ActivitySubmission {
+                evidence,
+                acknowledged,
+            })
+            .await
+            .map_err(|_| HostError::new(HostErrorCode::JoinFailed).at_stage("activity_closed"))?;
+        result
+            .await
+            .map_err(|_| HostError::new(HostErrorCode::JoinFailed).at_stage("activity_ack"))?
+    }
+
+    async fn wait_for_stop_response(&self) {
+        if !self.stop_requested.load(Ordering::Acquire)
+            || self.stop_response_sent.load(Ordering::Acquire)
+        {
+            return;
+        }
+        let notified = self.stop_response_notify.notified();
+        if self.stop_response_sent.load(Ordering::Acquire) {
+            return;
+        }
+        let _ = timeout(Duration::from_millis(500), notified).await;
     }
 }
 
@@ -312,6 +363,12 @@ pub async fn start_with_cancel(
     let journal = JournalStore::open(&lease, descriptor.journal_limits)?;
     let latest_sequence = journal.latest_sequence();
     let recording_paused = journal.recording_paused();
+    let occupant_generation = read_host_metadata(&descriptor.session_dir)
+        .ok()
+        .filter(|metadata| metadata.session_id == descriptor.session_id)
+        .map_or(OccupantGeneration::new(1), |metadata| {
+            metadata.activity.generation.next()
+        });
 
     if launch_cancel.is_cancelled() {
         return Err(HostError::new(HostErrorCode::Cancelled));
@@ -365,11 +422,17 @@ pub async fn start_with_cancel(
         .master
         .take_writer()
         .map_err(|_| HostError::new(HostErrorCode::PtyUnavailable))?;
-    let process_token = ProcessToken::new(descriptor.host_instance_id, process_group as u64, 1);
+    let process_token = ProcessToken::new(
+        descriptor.host_instance_id,
+        process_group as u64,
+        occupant_generation.get(),
+    );
     let runtime_recognition = recognition_for_launch(&descriptor, process_token);
+    let (activity_tx, activity_rx) = mpsc::channel(ACTIVITY_CHANNEL_EVENTS);
     let state = Arc::new(RuntimeState {
         descriptor: descriptor.clone(),
         process_token,
+        occupant_generation,
         runtime_recognition,
         process_group,
         master: StdMutex::new(pair.master),
@@ -380,30 +443,44 @@ pub async fn start_with_cancel(
             descriptor.columns,
             10_000,
         )),
+        activity: RwLock::new(ActivityAggregate {
+            generation: occupant_generation,
+            ..ActivityAggregate::default()
+        }),
+        activity_sequence: AtomicU64::new(0),
+        activity_tx,
         lifecycle: RwLock::new(HostLifecycle::Ready),
         latest_sequence: AtomicU64::new(latest_sequence.get()),
+        last_output_monotonic_nanos: AtomicU64::new(monotonic_nanos()),
+        last_prompt_output_sequence: AtomicU64::new(0),
         durable_sequence: AtomicU64::new(latest_sequence.get()),
         recording_paused: AtomicBool::new(recording_paused),
         exited: AtomicBool::new(false),
         exit_code: StdMutex::new(None),
         exit_notify: Notify::new(),
+        stop_requested: AtomicBool::new(false),
+        stop_response_sent: AtomicBool::new(false),
+        stop_response_notify: Notify::new(),
         writer_lease: Mutex::new(None),
         active_connections: AtomicU64::new(0),
         next_connection: AtomicU64::new(1),
         idempotency: Mutex::new(MutationCache::default()),
         handshake_nonces: Mutex::new(NonceCache::default()),
     });
-    write_metadata(&lease, &state, HostLifecycle::Ready, monotonic_nanos())?;
+    write_metadata(&lease, &state, HostLifecycle::Ready, monotonic_nanos()).await?;
 
     let cancel = CancellationToken::new();
     let task = tokio::spawn(run_host(
         listener,
         lease,
-        reader,
-        child,
         state.clone(),
         cancel.clone(),
-        host_capacity,
+        HostRuntimeInputs {
+            reader,
+            child,
+            activity_rx,
+            _host_capacity: host_capacity,
+        },
     ));
     Ok(SessionHostHandle {
         runtime_root: descriptor.runtime_root,
@@ -417,13 +494,18 @@ pub async fn start_with_cancel(
 async fn run_host(
     listener: UserOnlyListener,
     lease: Arc<HostLease>,
-    mut reader: Box<dyn Read + Send>,
-    mut child: Box<dyn portable_pty::Child + Send + Sync>,
     state: Arc<RuntimeState>,
     cancel: CancellationToken,
-    _host_capacity: HostCapacityGuards,
+    inputs: HostRuntimeInputs,
 ) -> Result<(), HostError> {
+    let HostRuntimeInputs {
+        mut reader,
+        mut child,
+        activity_rx,
+        _host_capacity,
+    } = inputs;
     let child_cancel = cancel.child_token();
+    let activity_cancel = CancellationToken::new();
     let (output_tx, output_rx) = tokio::sync::mpsc::channel(PTY_CHANNEL_FRAMES);
     let reader_task = tokio::task::spawn_blocking(move || -> Result<(), HostError> {
         let mut bytes = vec![0_u8; MAX_OUTPUT_BYTES];
@@ -437,7 +519,12 @@ async fn run_host(
             }
         }
     });
-    let output_task = tokio::spawn(output_loop(state.clone(), output_rx, child_cancel.clone()));
+    let output_task = tokio::spawn(output_loop(state.clone(), output_rx));
+    let activity_task = tokio::spawn(activity_loop(
+        state.clone(),
+        activity_rx,
+        activity_cancel.clone(),
+    ));
     let server_task = tokio::spawn(accept_loop(listener, state.clone(), child_cancel.clone()));
     let heartbeat_task = tokio::spawn(heartbeat_loop(
         lease.clone(),
@@ -455,13 +542,8 @@ async fn run_host(
             }
         }
     };
-    if let Some(status) = natural_status {
-        mark_exited(
-            &state,
-            i32::try_from(status.exit_code()).unwrap_or(i32::MAX),
-        )
-        .await;
-        tokio::time::sleep(EXIT_DRAIN_DEADLINE).await;
+    let exit_code = if let Some(status) = natural_status {
+        i32::try_from(status.exit_code()).unwrap_or(i32::MAX)
     } else {
         state.force_kill_owned()?;
         if child.try_wait().map_err(HostError::io)?.is_none() {
@@ -483,17 +565,29 @@ async fn run_host(
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         };
-        mark_exited(
-            &state,
-            i32::try_from(result.exit_code()).unwrap_or(i32::MAX),
-        )
-        .await;
-    }
-    write_metadata(&lease, &state, HostLifecycle::Exited, monotonic_nanos())?;
-    child_cancel.cancel();
-    join_task(server_task).await?;
+        i32::try_from(result.exit_code()).unwrap_or(i32::MAX)
+    };
+    mark_exited(&state, exit_code).await;
+    state.wait_for_stop_response().await;
     join_task(output_task).await?;
+    state
+        .submit_activity(
+            "host-exit",
+            ActivitySourceKind::ProcessExit,
+            ActivityConfidence::Verified,
+            ActivityEvidenceKind::ProcessExited {
+                success: exit_code == 0,
+                output_drained: true,
+            },
+            None,
+        )
+        .await?;
+    write_metadata(&lease, &state, HostLifecycle::Exited, monotonic_nanos()).await?;
+    child_cancel.cancel();
+    activity_cancel.cancel();
+    join_task(server_task).await?;
     join_task(heartbeat_task).await?;
+    join_task(activity_task).await?;
     drop(state);
     timeout(TASK_JOIN_DEADLINE, reader_task)
         .await
@@ -568,51 +662,95 @@ async fn join_task(task: JoinHandle<Result<(), HostError>>) -> Result<(), HostEr
 async fn output_loop(
     state: Arc<RuntimeState>,
     mut output_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
-    cancel: CancellationToken,
 ) -> Result<(), HostError> {
     let mut last_sync = Instant::now();
+    while let Some(bytes) = output_rx.recv().await {
+        process_output(&state, bytes, &mut last_sync).await?;
+    }
+    Ok(())
+}
+
+async fn process_output(
+    state: &RuntimeState,
+    bytes: Vec<u8>,
+    last_sync: &mut Instant,
+) -> Result<(), HostError> {
+    state.parser.lock().await.process(&bytes);
+    state
+        .last_output_monotonic_nanos
+        .store(monotonic_nanos(), Ordering::Release);
+    let sequence = state
+        .latest_sequence
+        .fetch_add(1, Ordering::AcqRel)
+        .checked_add(1)
+        .map(OutputSequence::new)
+        .ok_or_else(|| HostError::new(HostErrorCode::ResourceLimit))?;
+    if !state.recording_paused.load(Ordering::Acquire) {
+        let frame = JournalFrame {
+            kind: JournalKind::Output,
+            sequence,
+            monotonic_nanos: monotonic_nanos(),
+            flags: 0,
+            payload: bytes,
+        };
+        let mut journal = state.journal.lock().await;
+        if journal.append(&frame)? == AppendOutcome::RecordingPausedDiskLimit {
+            state.recording_paused.store(true, Ordering::Release);
+        } else if journal.compaction_due() {
+            let parser = state.parser.lock().await;
+            let (rows, columns) = parser.screen().size();
+            let snapshot = TerminalSnapshot {
+                boundary: sequence,
+                columns: u32::from(columns),
+                rows: u32::from(rows),
+                terminal_bytes: parser.screen().contents_formatted(),
+            };
+            journal.compact(&snapshot)?;
+        } else if last_sync.elapsed() >= HEARTBEAT_INTERVAL {
+            journal.sync()?;
+            *last_sync = Instant::now();
+        }
+    }
+    state
+        .submit_activity(
+            "pty-output",
+            ActivitySourceKind::Output,
+            ActivityConfidence::Estimated,
+            ActivityEvidenceKind::Output,
+            Some(monotonic_nanos().saturating_add(5_000_000_000)),
+        )
+        .await?;
+    Ok(())
+}
+
+async fn activity_loop(
+    state: Arc<RuntimeState>,
+    mut activity_rx: mpsc::Receiver<ActivitySubmission>,
+    cancel: CancellationToken,
+) -> Result<(), HostError> {
     loop {
-        let bytes = tokio::select! {
+        let submission = tokio::select! {
             biased;
-            _ = cancel.cancelled() => break,
-            output = output_rx.recv() => match output {
-                Some(bytes) => bytes,
+            submission = activity_rx.recv() => match submission {
+                Some(submission) => submission,
                 None => break,
             },
+            _ = cancel.cancelled() => match activity_rx.try_recv() {
+                Ok(submission) => submission,
+                Err(_) => break,
+            },
         };
-        state.parser.lock().await.process(&bytes);
-        let sequence = state
-            .latest_sequence
-            .fetch_add(1, Ordering::AcqRel)
-            .checked_add(1)
-            .map(OutputSequence::new)
-            .ok_or_else(|| HostError::new(HostErrorCode::ResourceLimit))?;
-        if !state.recording_paused.load(Ordering::Acquire) {
-            let frame = JournalFrame {
-                kind: JournalKind::Output,
-                sequence,
-                monotonic_nanos: monotonic_nanos(),
-                flags: 0,
-                payload: bytes,
-            };
-            let mut journal = state.journal.lock().await;
-            if journal.append(&frame)? == AppendOutcome::RecordingPausedDiskLimit {
-                state.recording_paused.store(true, Ordering::Release);
-            } else if journal.compaction_due() {
-                let parser = state.parser.lock().await;
-                let (rows, columns) = parser.screen().size();
-                let snapshot = TerminalSnapshot {
-                    boundary: sequence,
-                    columns: u32::from(columns),
-                    rows: u32::from(rows),
-                    terminal_bytes: parser.screen().contents_formatted(),
-                };
-                journal.compact(&snapshot)?;
-            } else if last_sync.elapsed() >= HEARTBEAT_INTERVAL {
-                journal.sync()?;
-                last_sync = Instant::now();
-            }
-        }
+        let result = {
+            let mut aggregate = state.activity.write().await;
+            reduce_activity(
+                state.descriptor.session_id,
+                &mut aggregate,
+                &submission.evidence,
+            )
+            .map(|_| ())
+            .map_err(|_| HostError::new(HostErrorCode::Protocol).at_stage("activity_evidence"))
+        };
+        let _ = submission.acknowledged.send(result);
     }
     Ok(())
 }
@@ -629,6 +767,11 @@ async fn heartbeat_loop(
             biased;
             _ = cancel.cancelled() => break,
             _ = interval.tick() => {
+                observe_quiet_prompt(&state).await?;
+                {
+                    let mut activity = state.activity.write().await;
+                    refresh_activity_staleness(&mut activity, monotonic_nanos());
+                }
                 let latest = state.journal.lock().await.sync()?;
                 state
                     .durable_sequence
@@ -639,6 +782,7 @@ async fn heartbeat_loop(
                     host_instance_id: state.descriptor.host_instance_id,
                     process_token: Some(state.process_token),
                     runtime_recognition: state.runtime_recognition.clone(),
+                    activity: state.activity.read().await.clone(),
                     lifecycle: *state.lifecycle.read().await,
                     endpoint_name: endpoint_name.clone(),
                     heartbeat_monotonic_nanos: monotonic_nanos(),
@@ -654,6 +798,52 @@ async fn heartbeat_loop(
     Ok(())
 }
 
+async fn observe_quiet_prompt(state: &RuntimeState) -> Result<(), HostError> {
+    let now = monotonic_nanos();
+    let last_output = state.last_output_monotonic_nanos.load(Ordering::Acquire);
+    let quiet_nanos = now.saturating_sub(last_output);
+    if quiet_nanos < termirust_domain::HEURISTIC_IDLE_QUIET_NANOS {
+        return Ok(());
+    }
+    let output_sequence = state.latest_sequence.load(Ordering::Acquire);
+    if output_sequence == 0
+        || state.last_prompt_output_sequence.load(Ordering::Acquire) == output_sequence
+    {
+        return Ok(());
+    }
+    let (prompt_recognized, alternate_screen) = {
+        let parser = state.parser.lock().await;
+        let screen = parser.screen();
+        let prompt_recognized = screen
+            .contents()
+            .lines()
+            .rev()
+            .find(|line| !line.trim().is_empty())
+            .and_then(|line| line.trim_end().bytes().next_back())
+            .is_some_and(|byte| matches!(byte, b'$' | b'#' | b'>' | b'%'));
+        (prompt_recognized, screen.alternate_screen())
+    };
+    if !prompt_recognized || alternate_screen {
+        return Ok(());
+    }
+    state
+        .last_prompt_output_sequence
+        .store(output_sequence, Ordering::Release);
+    state
+        .submit_activity(
+            "prompt-quiet",
+            ActivitySourceKind::PromptObservation,
+            ActivityConfidence::Estimated,
+            ActivityEvidenceKind::PromptQuiet {
+                quiet_nanos,
+                prompt_recognized,
+                alternate_screen,
+            },
+            Some(now.saturating_add(5_000_000_000)),
+        )
+        .await
+}
+
 async fn mark_exited(state: &RuntimeState, exit_code: i32) {
     if let Ok(mut code) = state.exit_code.lock() {
         *code = Some(exit_code);
@@ -663,7 +853,7 @@ async fn mark_exited(state: &RuntimeState, exit_code: i32) {
     state.exit_notify.notify_waiters();
 }
 
-fn write_metadata(
+async fn write_metadata(
     lease: &HostLease,
     state: &RuntimeState,
     lifecycle: HostLifecycle,
@@ -675,6 +865,7 @@ fn write_metadata(
         host_instance_id: state.descriptor.host_instance_id,
         process_token: Some(state.process_token),
         runtime_recognition: state.runtime_recognition.clone(),
+        activity: state.activity.read().await.clone(),
         lifecycle,
         endpoint_name: opaque_endpoint_name(state.descriptor.session_id),
         heartbeat_monotonic_nanos: heartbeat,
@@ -1112,6 +1303,7 @@ async fn serve_connection(
             }
             Some(envelope_payload::Message::StopRequest(request)) => {
                 require_session(&request.session_id, &state)?;
+                state.stop_requested.store(true, Ordering::Release);
                 let command_id = decode_command_id(&request.command_id)
                     .map_err(|_| HostError::new(HostErrorCode::Protocol))?;
                 validate_command_request(command_id, envelope.request_id)?;
@@ -1147,21 +1339,31 @@ async fn serve_connection(
                     &cancel,
                 )
                 .await?;
+                state.stop_response_sent.store(true, Ordering::Release);
+                state.stop_response_notify.notify_waiters();
             }
             Some(envelope_payload::Message::ActivitySnapshotRequest(request)) => {
                 require_session(&request.session_id, &state)?;
+                let activity = state.activity.read().await.clone();
                 send_message(
                     &mut stream,
                     envelope.request_id,
                     selected,
                     envelope_payload::Message::ActivityEvent(wire::ActivityEvent {
                         session_id: encode_session_id(state.descriptor.session_id),
-                        sequence: state.latest_sequence.load(Ordering::Acquire),
-                        activity: i32::from(if state.exited.load(Ordering::Acquire) {
-                            wire::Activity::Done
-                        } else {
-                            wire::Activity::Unknown
-                        }),
+                        sequence: activity.effective_sequence.get(),
+                        activity: wire_activity(activity.state) as i32,
+                        generation: activity.generation.get(),
+                        confidence: wire_activity_confidence(activity.confidence) as i32,
+                        source_kind: wire_activity_source(activity.source_kind) as i32,
+                        stale: activity.stale,
+                        attention_reason: wire_attention_reason(activity.attention_reason) as i32,
+                        output_sequence: activity
+                            .attention_sequence
+                            .unwrap_or_else(|| {
+                                OutputSequence::new(state.latest_sequence.load(Ordering::Acquire))
+                            })
+                            .get(),
                     }),
                     &cancel,
                 )
@@ -1172,6 +1374,50 @@ async fn serve_connection(
                 return Ok(());
             }
             _ => return Err(HostError::new(HostErrorCode::Protocol)),
+        }
+    }
+}
+
+fn wire_activity(activity: termirust_domain::ActivityState) -> wire::Activity {
+    match activity {
+        termirust_domain::ActivityState::Unknown => wire::Activity::Unknown,
+        termirust_domain::ActivityState::Idle => wire::Activity::Idle,
+        termirust_domain::ActivityState::Busy => wire::Activity::Busy,
+        termirust_domain::ActivityState::NeedsInput => wire::Activity::NeedsInput,
+        termirust_domain::ActivityState::Done => wire::Activity::Done,
+        termirust_domain::ActivityState::Failed => wire::Activity::Failed,
+    }
+}
+
+fn wire_activity_confidence(confidence: ActivityConfidence) -> wire::ActivityConfidence {
+    match confidence {
+        ActivityConfidence::Estimated => wire::ActivityConfidence::Estimated,
+        ActivityConfidence::Verified => wire::ActivityConfidence::Verified,
+    }
+}
+
+fn wire_activity_source(source: ActivitySourceKind) -> wire::ActivitySourceKind {
+    match source {
+        ActivitySourceKind::Unknown => wire::ActivitySourceKind::Unspecified,
+        ActivitySourceKind::Output => wire::ActivitySourceKind::Output,
+        ActivitySourceKind::PromptObservation => wire::ActivitySourceKind::PromptObservation,
+        ActivitySourceKind::ProcessObservation => wire::ActivitySourceKind::ProcessObservation,
+        ActivitySourceKind::StructuredAdapter => wire::ActivitySourceKind::StructuredAdapter,
+        ActivitySourceKind::Approval => wire::ActivitySourceKind::Approval,
+        ActivitySourceKind::ProcessExit => wire::ActivitySourceKind::ProcessExit,
+    }
+}
+
+fn wire_attention_reason(
+    reason: Option<termirust_domain::AttentionReason>,
+) -> wire::AttentionReason {
+    match reason {
+        None => wire::AttentionReason::Unspecified,
+        Some(termirust_domain::AttentionReason::Input) => wire::AttentionReason::Input,
+        Some(termirust_domain::AttentionReason::Approval) => wire::AttentionReason::Approval,
+        Some(termirust_domain::AttentionReason::Permission) => wire::AttentionReason::Permission,
+        Some(termirust_domain::AttentionReason::Confirmation) => {
+            wire::AttentionReason::Confirmation
         }
     }
 }

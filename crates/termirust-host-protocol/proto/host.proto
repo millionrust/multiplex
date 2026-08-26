@@ -173,6 +173,36 @@ message ActivityEvent {
   bytes session_id = 1;
   uint64 sequence = 2;
   Activity activity = 3;
+  uint64 generation = 4;
+  ActivityConfidence confidence = 5;
+  ActivitySourceKind source_kind = 6;
+  bool stale = 7;
+  AttentionReason attention_reason = 8;
+  uint64 output_sequence = 9;
+}
+
+enum ActivityConfidence {
+  ACTIVITY_CONFIDENCE_UNSPECIFIED = 0;
+  ACTIVITY_CONFIDENCE_ESTIMATED = 1;
+  ACTIVITY_CONFIDENCE_VERIFIED = 2;
+}
+
+enum ActivitySourceKind {
+  ACTIVITY_SOURCE_KIND_UNSPECIFIED = 0;
+  ACTIVITY_SOURCE_KIND_OUTPUT = 1;
+  ACTIVITY_SOURCE_KIND_PROMPT_OBSERVATION = 2;
+  ACTIVITY_SOURCE_KIND_PROCESS_OBSERVATION = 3;
+  ACTIVITY_SOURCE_KIND_STRUCTURED_ADAPTER = 4;
+  ACTIVITY_SOURCE_KIND_APPROVAL = 5;
+  ACTIVITY_SOURCE_KIND_PROCESS_EXIT = 6;
+}
+
+enum AttentionReason {
+  ATTENTION_REASON_UNSPECIFIED = 0;
+  ATTENTION_REASON_INPUT = 1;
+  ATTENTION_REASON_APPROVAL = 2;
+  ATTENTION_REASON_PERMISSION = 3;
+  ATTENTION_REASON_CONFIRMATION = 4;
 }
 
 enum WarningCode {

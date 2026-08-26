@@ -1,0 +1,6 @@
+{
+  "session_id": "not-a-session-id",
+  "generation": 0,
+  "host_sequence": 0,
+  "source_id": "this source contains spaces and is intentionally invalid"
+}

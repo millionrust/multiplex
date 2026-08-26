@@ -1255,6 +1255,31 @@ context = "Conservative activity value for a connected session without semantic 
 description = "Idle session activity"
 
 [[messages]]
+id = "session-library-activity-busy"
+context = "Activity value while the session is producing work."
+description = "Busy session activity"
+
+[[messages]]
+id = "session-library-activity-needs-input"
+context = "Activity value when a session requires a user response."
+description = "Session needs input activity"
+
+[[messages]]
+id = "session-library-activity-done"
+context = "Activity value after verified successful completion."
+description = "Done session activity"
+
+[[messages]]
+id = "session-library-activity-failed"
+context = "Activity value after verified failure."
+description = "Failed session activity"
+
+[[messages]]
+id = "session-library-activity-estimated"
+context = "Confidence label for activity inferred from bounded terminal heuristics."
+description = "Estimated activity confidence"
+
+[[messages]]
 id = "session-library-recovered-last-good"
 context = "Read-only warning after session metadata is recovered from a last-good copy."
 description = "Recovered session metadata warning"

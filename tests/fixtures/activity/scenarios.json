@@ -1,0 +1,11 @@
+[
+  { "name": "delayed_duplicate", "expected": "busy" },
+  { "name": "stale_generation", "expected": "done" },
+  { "name": "exit_drain", "expected": "done" },
+  { "name": "prompt_quiet", "expected": "idle" },
+  { "name": "alternate_screen", "expected": "busy" },
+  { "name": "output_after_done", "expected": "busy" },
+  { "name": "clock_reversal", "expected": "busy" },
+  { "name": "view_read_race", "expected": "needs_input" },
+  { "name": "crash_boundary", "expected": "failed" }
+]

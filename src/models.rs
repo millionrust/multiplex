@@ -3,9 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use termirust_domain::{
-    ActivityState, GroupDestination, GroupId, HostedSession, HostedSessionId, HostedSessionState,
-    OutputSequence, PositionKey, ProjectId, Revision, SessionLaunchRoute, SessionOrigin,
-    SessionTitle, TitleSource,
+    GroupDestination, GroupId, HostedSession, HostedSessionId, HostedSessionState, OutputSequence,
+    PositionKey, ProjectId, Revision, SessionLaunchRoute, SessionOrigin, SessionTitle, TitleSource,
 };
 use termirust_protocol::{
     MobileDevicePairingError, MobileDevicePairingRequest, MobileDeviceRecord, MobileDeviceVaultKey,
@@ -1086,7 +1085,7 @@ pub struct SavedAppAttachedSession {
     #[serde(default)]
     pub title_source: TitleSource,
     #[serde(default)]
-    pub activity: ActivityState,
+    pub activity: termirust_domain::ActivityAggregate,
     #[serde(default)]
     pub pinned: bool,
     #[serde(default)]
@@ -3478,7 +3477,7 @@ impl SavedAppAttachedSession {
             title,
             title_source: self.title_source,
             lifecycle: self.state,
-            activity: self.activity,
+            activity: self.activity.clone(),
             pinned: self.pinned,
             position: self.position,
             last_output_sequence,
@@ -3497,7 +3496,7 @@ impl SavedAppAttachedSession {
         self.position = session.position;
         self.title = session.title.as_str().to_string();
         self.title_source = session.title_source;
-        self.activity = session.activity;
+        self.activity = session.activity.clone();
         self.pinned = session.pinned;
         self.read_through_sequence = session.read_through_sequence.get();
         self.unread_sequence = session.unread_sequence.map(OutputSequence::get);
@@ -3529,8 +3528,8 @@ mod tests {
         identity_id_for_path,
     };
     use termirust_domain::{
-        ActivityState, HostedSessionId, HostedSessionState, PresetId, ProjectId, Revision,
-        SessionLaunchRoute, SessionOrigin, TitleSource,
+        HostedSessionId, HostedSessionState, PresetId, ProjectId, Revision, SessionLaunchRoute,
+        SessionOrigin, TitleSource,
     };
 
     #[test]
@@ -3557,7 +3556,7 @@ mod tests {
             preset_label: "preset".to_string(),
             title: String::new(),
             title_source: TitleSource::Default,
-            activity: ActivityState::Unknown,
+            activity: termirust_domain::ActivityAggregate::default(),
             pinned: false,
             read_through_sequence: 0,
             unread_sequence: None,
@@ -3602,7 +3601,7 @@ mod tests {
             preset_label: "codex".to_string(),
             title: "codex".to_string(),
             title_source: TitleSource::Default,
-            activity: ActivityState::Unknown,
+            activity: termirust_domain::ActivityAggregate::default(),
             pinned: false,
             read_through_sequence: 0,
             unread_sequence: None,

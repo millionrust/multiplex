@@ -370,7 +370,7 @@ impl TermiRustApp {
             preset_label: preset.label.as_str().to_string(),
             title,
             title_source,
-            activity: termirust_domain::ActivityState::Unknown,
+            activity: termirust_domain::ActivityAggregate::default(),
             pinned: false,
             read_through_sequence: 0,
             unread_sequence: None,

@@ -1,3 +1,4 @@
+pub mod activity;
 mod adapter;
 mod codex;
 mod context;
@@ -9,6 +10,7 @@ mod protocol;
 mod stream;
 mod worktree;
 
+pub use activity::activity_projection_for_agent_event;
 pub use adapter::provider_descriptor;
 pub use codex::{
     CodexSessionConfig, CodexSessionHandle, RemoteCodexSessionConfig, spawn_codex_session,

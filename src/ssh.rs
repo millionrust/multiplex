@@ -51,6 +51,7 @@ pub enum SshEvent {
         state: termirust_domain::HostedSessionState,
         last_sequence: u64,
         durable_sequence: u64,
+        activity: termirust_domain::ActivityAggregate,
         has_writer_lease: bool,
         detail: String,
     },

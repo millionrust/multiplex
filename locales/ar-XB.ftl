@@ -280,8 +280,13 @@ session-count = { $count ->
     [zero] ⁧snoisses evitca oN⁩
     }
 session-library-active-view = ⁧evitcA⁩
+session-library-activity-busy = ⁧ysuB⁩
+session-library-activity-done = ⁧enoD⁩
+session-library-activity-estimated = ⁧detamitsE⁩
+session-library-activity-failed = ⁧deliaF⁩
 session-library-activity-idle = ⁧eldI⁩
 session-library-activity-label = ⁧ytivitcA⁩
+session-library-activity-needs-input = ⁧tupni sdeeN⁩
 session-library-activity-unknown = ⁧nwonknU⁩
 session-library-archive-action = ⁧evihcrA⁩
 session-library-archive-empty = ⁧.tcejorP siht rof snoisses devihcra oN⁩

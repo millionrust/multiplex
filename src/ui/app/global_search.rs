@@ -357,7 +357,10 @@ impl TermiRustApp {
                         group_label: session.group_id.and_then(|id| groups.get(&id).cloned()),
                         preset_label,
                         runtime_label,
-                        status: search_status_for_session(session.lifecycle, session.activity),
+                        status: search_status_for_session(
+                            session.lifecycle,
+                            session.activity.state,
+                        ),
                         pinned: session.pinned,
                         archived: session.archived_at.is_some(),
                         position: session.position,

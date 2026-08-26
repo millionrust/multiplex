@@ -6241,6 +6241,7 @@ impl TermiRustApp {
                     state,
                     last_sequence,
                     durable_sequence,
+                    activity,
                     has_writer_lease,
                     detail,
                 } => {
@@ -6268,6 +6269,7 @@ impl TermiRustApp {
                             &mut self.saved,
                             hosted_session_id,
                             state,
+                            activity,
                             termirust_domain::OutputSequence::new(last_sequence),
                         );
                         match reconciled {
@@ -20321,7 +20323,7 @@ sleep 1
                         preset_label: localization::new_session_title(),
                         title: localization::new_session_title(),
                         title_source: termirust_domain::TitleSource::Default,
-                        activity: termirust_domain::ActivityState::Unknown,
+                        activity: termirust_domain::ActivityAggregate::default(),
                         pinned: false,
                         read_through_sequence: 0,
                         unread_sequence: None,

@@ -376,10 +376,8 @@ async fn remaining_minimum_commands_are_capability_checked_and_bounded() {
     assert!(client.resize(command(27), 120, 40, &cancel).await.unwrap());
     assert!(client.interrupt(command(28), &cancel).await.unwrap());
     let activity = client.request_activity_snapshot(&cancel).await.unwrap();
-    assert_eq!(
-        wire::Activity::try_from(activity.activity).unwrap(),
-        wire::Activity::Unknown
-    );
+    assert_eq!(activity.state, termirust_domain::ActivityState::Unknown);
+    assert!(activity.stale);
     assert!(
         client
             .stop(command(29), wire::StopMode::Graceful, &cancel)

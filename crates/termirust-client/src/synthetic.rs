@@ -542,6 +542,12 @@ async fn serve_connection(
                         session_id: encode_session_id(config.session_id),
                         sequence: latest_sequence(&config)?.get(),
                         activity: i32::from(wire::Activity::Unknown),
+                        generation: 1,
+                        confidence: i32::from(wire::ActivityConfidence::Estimated),
+                        source_kind: i32::from(wire::ActivitySourceKind::Unspecified),
+                        stale: true,
+                        attention_reason: i32::from(wire::AttentionReason::Unspecified),
+                        output_sequence: latest_sequence(&config)?.get(),
                     }),
                     &cancel,
                 )

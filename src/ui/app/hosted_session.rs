@@ -18,7 +18,7 @@ use termirust_host_protocol::wire;
 use termirust_session_host::{LaunchDescriptor, StopDeadlines};
 use termirust_store::{
     HostLease, JournalKind, JournalLimits, JournalStore, ReconciliationResult, load_snapshot,
-    reconcile_host,
+    read_host_metadata, reconcile_host,
 };
 use tokio::runtime::Builder;
 use tokio::sync::mpsc::{self, UnboundedReceiver};
@@ -164,6 +164,7 @@ pub(super) fn spawn_durable_session(
                     state: termirust_domain::HostedSessionState::Offline,
                     last_sequence: 0,
                     durable_sequence: 0,
+                    activity: termirust_domain::ActivityAggregate::default(),
                     has_writer_lease: false,
                     detail: message.clone(),
                 });
@@ -540,15 +541,21 @@ async fn attach_loop(
                 let state = client.take_last_state().ok_or_else(|| {
                     "Durable Host did not return an attach state watermark".to_string()
                 })?;
+                let activity = client
+                    .request_activity_snapshot(&cancel)
+                    .await
+                    .unwrap_or_default();
                 let lifecycle = wire::Lifecycle::try_from(state.lifecycle)
                     .unwrap_or(wire::Lifecycle::Unspecified);
                 if matches!(lifecycle, wire::Lifecycle::Exited | wire::Lifecycle::Failed) {
                     model.mark_dead();
-                    let _ = event_tx.send(status_event(
+                    let _ = event_tx.send(status_event_with_durability(
                         spec.pane_id,
                         termirust_domain::HostedSessionState::Exited,
                         model.watermark(),
+                        OutputSequence::new(state.durable_sequence),
                         false,
+                        activity,
                         "Process exited; retained output is read-only",
                     ));
                     let _ = event_tx.send(SshEvent::Disconnected {
@@ -575,6 +582,7 @@ async fn attach_loop(
                     model.watermark(),
                     OutputSequence::new(state.durable_sequence),
                     state.has_writer_lease,
+                    activity,
                     if state.recording_paused {
                         "Live; output recording paused at the disk limit"
                     } else if state.has_writer_lease {
@@ -660,6 +668,9 @@ fn replay_retained_output(
     if reconciliation == ReconciliationResult::Active {
         return Ok(false);
     }
+    let activity = read_host_metadata(&spec.paths.session_dir)
+        .map(|metadata| metadata.activity)
+        .unwrap_or_default();
     let lease = HostLease::acquire(&spec.paths.session_dir, HostInstanceId::new())
         .map_err(|error| format!("Unable to open retained session output: {error}"))?;
     let journal = JournalStore::open(&lease, JournalLimits::default())
@@ -699,11 +710,13 @@ fn replay_retained_output(
     };
     let last_sequence = read.latest.unwrap_or(from);
     event_tx
-        .send(status_event(
+        .send(status_event_with_durability(
             spec.pane_id,
             state,
             last_sequence,
+            journal.latest_sequence(),
             false,
+            activity,
             if state == termirust_domain::HostedSessionState::Orphaned {
                 "Host is gone; retained output is read-only and cannot be stopped"
             } else {
@@ -731,6 +744,7 @@ fn status_event(
         sequence,
         OutputSequence::ZERO,
         has_writer_lease,
+        termirust_domain::ActivityAggregate::default(),
         detail,
     )
 }
@@ -741,6 +755,7 @@ fn status_event_with_durability(
     sequence: OutputSequence,
     durable_sequence: OutputSequence,
     has_writer_lease: bool,
+    activity: termirust_domain::ActivityAggregate,
     detail: &str,
 ) -> SshEvent {
     SshEvent::HostedStatus {
@@ -748,6 +763,7 @@ fn status_event_with_durability(
         state,
         last_sequence: sequence.get(),
         durable_sequence: durable_sequence.get(),
+        activity,
         has_writer_lease,
         detail: detail.to_string(),
     }
