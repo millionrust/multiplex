@@ -1869,3 +1869,324 @@ description = "Stale group organization error"
 id = "group-error-generic"
 context = "Safe generic error for group storage and invariant failures."
 description = "Generic group operation error"
+
+[[messages]]
+id = "activity-center-nav-label"
+context = "Library navigation label for durable session activity notifications."
+description = "Activity Center navigation label"
+
+[[messages]]
+id = "activity-center-title"
+context = "Heading for the canonical in-app activity notification list."
+description = "Activity Center title"
+
+[[messages]]
+id = "activity-center-description"
+context = "Privacy-safe explanation of the in-app activity list."
+description = "Activity Center description"
+
+[[messages]]
+id = "activity-center-settings-action"
+context = "Action that opens notification settings from the Activity Center."
+description = "Activity Center settings action"
+
+[[messages]]
+id = "activity-center-store-corrupt"
+context = "Recovery message when only the notification ledger is corrupt."
+description = "Corrupt notification ledger message"
+
+[[messages]]
+id = "activity-center-store-newer"
+context = "Safe message when notification metadata was written by a newer app."
+description = "Newer notification store message"
+
+[[messages]]
+id = "activity-center-store-permission-denied"
+context = "Safe message when local notification metadata cannot be read."
+description = "Notification store permission message"
+
+[[messages]]
+id = "activity-center-store-unavailable"
+context = "Safe message when the local Activity Center cannot be loaded."
+description = "Unavailable Activity Center message"
+
+[[messages]]
+id = "activity-center-empty-title"
+context = "Empty-state heading before any eligible activity is recorded."
+description = "Empty Activity Center title"
+
+[[messages]]
+id = "activity-center-empty-description"
+context = "Empty-state explanation of eligible session activity."
+description = "Empty Activity Center description"
+
+[[messages]]
+id = "activity-center-dismiss-action"
+context = "Local organization action that hides one Activity Center row."
+description = "Dismiss activity action"
+
+[[messages]]
+id = "activity-center-position"
+context = "Position of an Activity Center row within the currently visible record list."
+description = "Activity row position"
+
+[[messages.args]]
+name = "position"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "activity-center-dismissed"
+context = "Status after an activity row is locally dismissed without marking the session read."
+description = "Activity dismissed status"
+
+[[messages]]
+id = "activity-center-link-stale"
+context = "Safe recovery message for removed, archived, changed, or stale-generation activity links."
+description = "Stale activity link message"
+
+[[messages]]
+id = "activity-center-operation-failed"
+context = "Safe generic error for notification metadata operations."
+description = "Activity Center operation error"
+
+[[messages]]
+id = "notification-settings-title"
+context = "Settings card heading for in-app and operating-system notifications."
+description = "Notification settings title"
+
+[[messages]]
+id = "notification-settings-description"
+context = "Privacy-safe explanation of notification delivery choices."
+description = "Notification settings description"
+
+[[messages]]
+id = "notification-mode-off"
+context = "Notification mode that records no new Activity Center rows."
+description = "Notifications off mode"
+
+[[messages]]
+id = "notification-mode-in-app"
+context = "Notification mode that records only in-app Activity Center rows."
+description = "In-app notification mode"
+
+[[messages]]
+id = "notification-mode-os"
+context = "Notification mode that records in-app rows and may deliver authorized OS notifications."
+description = "OS notification mode"
+
+[[messages]]
+id = "notification-recording-title"
+context = "Setting that replaces user session titles in notification presentation."
+description = "Recording-friendly notification title"
+
+[[messages]]
+id = "notification-recording-description"
+context = "Explanation that generic session labels hide user titles."
+description = "Recording-friendly notification description"
+
+[[messages]]
+id = "notification-toggle-on"
+context = "Enabled label for the recording-friendly notification setting."
+description = "Notification setting on label"
+
+[[messages]]
+id = "notification-toggle-off"
+context = "Disabled label for the recording-friendly notification setting."
+description = "Notification setting off label"
+
+[[messages]]
+id = "notification-permission-label"
+context = "Label for the operating-system notification permission state."
+description = "Notification permission label"
+
+[[messages]]
+id = "notification-permission-unknown"
+context = "OS notification permission has not been requested."
+description = "Unknown notification permission"
+
+[[messages]]
+id = "notification-permission-granted"
+context = "OS notification permission is granted."
+description = "Granted notification permission"
+
+[[messages]]
+id = "notification-permission-denied"
+context = "OS notification permission is denied."
+description = "Denied notification permission"
+
+[[messages]]
+id = "notification-permission-unavailable"
+context = "OS notifications are unavailable on this platform."
+description = "Unavailable notification permission"
+
+[[messages]]
+id = "notification-permission-denied-guidance"
+context = "Single persistent guidance row after OS notification permission denial."
+description = "Denied notification guidance"
+
+[[messages]]
+id = "notification-refresh-action"
+context = "Action that rechecks OS notification permission without prompting repeatedly."
+description = "Refresh notification permission action"
+
+[[messages]]
+id = "notification-reset-action"
+context = "Explicit recovery action that resets only corrupt notification metadata."
+description = "Reset notification data action"
+
+[[messages]]
+id = "notification-preview"
+context = "Privacy-safe example of an OS notification payload."
+description = "Notification preview"
+
+[[messages]]
+id = "notification-settings-saved"
+context = "Status after notification preferences are saved."
+description = "Notification settings saved status"
+
+[[messages]]
+id = "notification-permission-refreshed"
+context = "Status after OS notification permission is rechecked."
+description = "Notification permission refreshed status"
+
+[[messages]]
+id = "notification-reset-complete"
+context = "Status after only the corrupt notification ledger is reset."
+description = "Notification reset complete status"
+
+[[messages]]
+id = "notification-individual-payload"
+context = "Privacy-bounded OS notification body containing only an allowed title and generic activity state."
+description = "Individual OS notification payload"
+
+[[messages.args]]
+name = "title"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages.args]]
+name = "state"
+type = "Text"
+sensitivity = "public"
+bidi = "isolate"
+
+[[messages]]
+id = "activity-age-just-now"
+context = "Relative age for Activity Center records less than one minute old."
+description = "Activity age just now"
+
+[[messages]]
+id = "activity-age-yesterday"
+context = "Relative age for Activity Center records one day old."
+description = "Activity age yesterday"
+
+[[messages]]
+id = "activity-age-minutes"
+context = "Relative age in whole minutes for an Activity Center record."
+description = "Activity age in minutes"
+plural_arg = "count"
+plural_variants = ["one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "activity-age-hours"
+context = "Relative age in whole hours for an Activity Center record."
+description = "Activity age in hours"
+plural_arg = "count"
+plural_variants = ["one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "activity-age-days"
+context = "Relative age in whole days for an Activity Center record."
+description = "Activity age in days"
+plural_arg = "count"
+plural_variants = ["one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "activity-age-weeks"
+context = "Relative age in whole weeks for an Activity Center record."
+description = "Activity age in weeks"
+plural_arg = "count"
+plural_variants = ["one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "activity-age-months"
+context = "Relative age in whole months for an Activity Center record."
+description = "Activity age in months"
+plural_arg = "count"
+plural_variants = ["one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "activity-age-years"
+context = "Relative age in whole years for an Activity Center record."
+description = "Activity age in years"
+plural_arg = "count"
+plural_variants = ["one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "notification-summary-payload"
+context = "Coalesced OS notification body for a bounded count of session updates."
+description = "Summary OS notification payload"
+plural_arg = "count"
+plural_variants = ["one", "many", "other"]
+
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "notification-permission-status"
+context = "Settings row joining the localized OS permission label and state."
+description = "Notification permission status"
+
+[[messages.args]]
+name = "state"
+type = "Text"
+sensitivity = "public"
+bidi = "isolate"

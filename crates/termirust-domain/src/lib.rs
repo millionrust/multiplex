@@ -2,6 +2,7 @@ pub mod activity;
 pub mod group;
 pub mod host;
 pub mod id;
+pub mod notification;
 pub mod preset;
 pub mod project;
 pub mod runtime;
@@ -23,6 +24,16 @@ pub use host::{DurabilityWatermark, HostLifecycle, ProcessToken};
 pub use id::{
     CommandId, GroupId, HostInstanceId, HostedSessionId, ManagedWorktreeId, OutputSequence,
     PositionError, PositionKey, PresetId, ProjectId, Revision,
+};
+pub use notification::{
+    ABSOLUTE_OS_NOTIFICATIONS_PER_HOUR, COALESCE_AFTER_EVENTS, DEFAULT_OS_NOTIFICATIONS_PER_HOUR,
+    DeepLinkFailure, DeepLinkSessionState, GENERIC_NOTIFICATION_TITLE, MAX_NOTIFICATION_KEYS,
+    MAX_NOTIFICATION_RECORDS, MAX_NOTIFICATION_TITLE_SCALARS, NOTIFICATION_COALESCE_WINDOW_MILLIS,
+    NOTIFICATION_KEY_TTL_MILLIS, NOTIFICATION_RATE_WINDOW_MILLIS, NotificationActivity,
+    NotificationClock, NotificationContext, NotificationDecision, NotificationError,
+    NotificationEvent, NotificationKey, NotificationLedger, NotificationMode, NotificationPolicy,
+    NotificationRecord, NotificationSuppression, PermissionState, PlatformDelivery,
+    SessionDeepLink, reduce_notification, resolve_session_deep_link,
 };
 pub use preset::{
     DetectionCandidate, DetectionReport, DetectionStatus, ExecutableSpec, LaunchPreset,

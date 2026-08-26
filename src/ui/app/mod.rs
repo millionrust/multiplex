@@ -1,3 +1,4 @@
+mod activity_center;
 mod canvas;
 mod chrome;
 mod connect;
@@ -7,6 +8,7 @@ mod hosted_session;
 mod hosts;
 mod library;
 mod new_session;
+mod notification_settings;
 mod overlay;
 mod palette;
 mod presets;
@@ -26,6 +28,7 @@ pub(crate) use types::{
     ToolbarMenu, WorkspaceRuntimeTone, WorkspaceViewMode,
 };
 
+use activity_center::ActivityCenterState;
 use canvas::{
     AgentCreationState, CANVAS_NODE_HEADER_HEIGHT, CANVAS_TOOLBAR_HEIGHT, CanvasInteraction,
     CanvasWorkspaceState, ContextHandoffReview, PendingCanvasNodeDelete, PendingCanvasPaneClose,
@@ -160,6 +163,7 @@ fn ssh_config_path_label() -> &'static str {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum NavSection {
     Projects,
+    Activity,
     Presets,
     Hosts,
     Sftp,
@@ -182,6 +186,7 @@ impl NavSection {
     fn label(self) -> String {
         match self {
             Self::Projects => localization::projects_nav_label(),
+            Self::Activity => localization::activity_center_nav_label(),
             Self::Presets => localization::presets_nav_label(),
             Self::Hosts => "Hosts".to_string(),
             Self::Sftp => "SFTP".to_string(),
@@ -197,6 +202,7 @@ impl NavSection {
     fn icon(self) -> Icon {
         match self {
             Self::Projects => IconName::Folder.into(),
+            Self::Activity => IconName::Bell.into(),
             Self::Presets => IconName::SquareTerminal.into(),
             Self::Hosts => IconName::SquareTerminal.into(),
             Self::Sftp => IconName::Folder.into(),
@@ -919,6 +925,8 @@ pub struct TermiRustApp {
     session_remove_confirm_input: Entity<InputState>,
     session_sidebar: session_sidebar::SessionSidebarState,
     session_library: SessionLibraryState,
+    activity_center: ActivityCenterState,
+    window_active: bool,
     global_search: GlobalSearchState,
     project_list_focus: FocusHandle,
     preset_library: PresetLibraryState,
@@ -1027,6 +1035,7 @@ pub struct TermiRustApp {
     _canvas_note_editor_subscription: Subscription,
     _command_palette_subscription: Subscription,
     _window_bounds_subscription: Option<Subscription>,
+    _window_activation_subscription: Option<Subscription>,
     _window_bounds_save_task: Option<Task<()>>,
 }
 
@@ -1105,6 +1114,7 @@ impl TermiRustApp {
             .unwrap_or(AuthMode::Password);
         let project_library = ProjectLibraryState::open_default();
         let session_library = SessionLibraryState::open_default(&mut saved);
+        let activity_center = ActivityCenterState::open_default();
         let project_label_input = cx
             .new(|cx| InputState::new(window, cx).placeholder(localization::project_label_field()));
         let group_name_input =
@@ -1175,6 +1185,8 @@ impl TermiRustApp {
             session_remove_confirm_input,
             session_sidebar: session_sidebar::SessionSidebarState::default(),
             session_library,
+            activity_center,
+            window_active: window.is_window_active(),
             global_search: GlobalSearchState::new(),
             project_list_focus,
             preset_library,
@@ -1285,6 +1297,7 @@ impl TermiRustApp {
             _canvas_note_editor_subscription: canvas_note_editor_subscription,
             _command_palette_subscription: command_palette_subscription,
             _window_bounds_subscription: None,
+            _window_activation_subscription: None,
             _window_bounds_save_task: None,
         };
 
@@ -1305,6 +1318,12 @@ impl TermiRustApp {
             this.persist_window_bounds(window, cx);
         });
         app._window_bounds_subscription = Some(window_bounds_subscription);
+        let window_activation_subscription =
+            cx.observe_window_activation(window, |this, window, cx| {
+                this.window_active = window.is_window_active();
+                cx.notify();
+            });
+        app._window_activation_subscription = Some(window_activation_subscription);
 
         cx.spawn_in(window, async move |this, cx| {
             loop {
@@ -1316,6 +1335,7 @@ impl TermiRustApp {
                     .update(|window, cx| {
                         let _ = this.update(cx, |app, cx| {
                             app.process_events(cx);
+                            app.process_activity_activation(window, cx);
                             app.process_pending_auto_reconnects(window, cx);
                         });
                     })
@@ -6269,6 +6289,14 @@ impl TermiRustApp {
                         })
                     });
                     if let Some(hosted_session_id) = hosted_session_id {
+                        let previous_session =
+                            self.session_library.session(hosted_session_id).cloned();
+                        let visibly_focused = self.window_active
+                            && self.active_pane().is_some_and(|pane| {
+                                pane.app_attached.as_ref().is_some_and(|attached| {
+                                    attached.hosted_session_id == hosted_session_id
+                                })
+                            });
                         if let Some(saved) = self
                             .saved
                             .app_attached_sessions
@@ -6288,10 +6316,19 @@ impl TermiRustApp {
                             termirust_domain::OutputSequence::new(last_sequence),
                         );
                         match reconciled {
-                            Ok(_) => {
+                            Ok(session) => {
                                 if let Err(error) = save_saved_state(&self.saved) {
                                     eprintln!(
                                         "[session-library] compatibility projection save failed: {error:#}"
+                                    );
+                                }
+                                if let Err(error) = self.activity_center.observe_transition(
+                                    previous_session.as_ref(),
+                                    &session,
+                                    visibly_focused,
+                                ) {
+                                    eprintln!(
+                                        "[activity-center] committed transition could not be recorded: {error}"
                                     );
                                 }
                                 self.complete_pending_session_archive(hosted_session_id, state);
@@ -9971,6 +10008,7 @@ impl TermiRustApp {
     fn render_library_content(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         match self.nav_section {
             NavSection::Projects => self.render_projects_view(cx).into_any_element(),
+            NavSection::Activity => self.render_activity_center_view(cx).into_any_element(),
             NavSection::Presets => self.render_presets_view(cx).into_any_element(),
             NavSection::Hosts => self.render_hosts_view(window, cx).into_any_element(),
             NavSection::Sftp => self.render_sftp_view(cx).into_any_element(),
@@ -10513,6 +10551,7 @@ fn search_rows(rows: &[String], query: &str) -> Vec<SearchMatch> {
 fn nav_section_key(section: NavSection) -> u64 {
     match section {
         NavSection::Projects => 0,
+        NavSection::Activity => 10,
         NavSection::Presets => 9,
         NavSection::Hosts => 1,
         NavSection::Vaults => 2,
@@ -20083,6 +20122,7 @@ sleep 1
 
         for (selector, expected) in [
             ("nav-card-0", NavSection::Projects),
+            ("nav-card-10", NavSection::Activity),
             ("nav-card-1", NavSection::Hosts),
             ("nav-card-2", NavSection::Vaults),
             ("nav-card-3", NavSection::Keychain),

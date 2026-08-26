@@ -1,6 +1,7 @@
 mod atomic;
 pub mod journal;
 pub mod lease;
+pub mod notifications;
 pub mod presets;
 pub mod projects;
 pub mod sessions;
@@ -16,6 +17,7 @@ pub use lease::{
     HostLease, HostMetadata, LeaseError, LeaseErrorCode, ReconciliationResult, read_host_metadata,
     reconcile_host,
 };
+pub use notifications::{NotificationRepository, NotificationSnapshot, NotificationStoreError};
 pub use presets::{PresetRepository, PresetSnapshot};
 pub use projects::{
     CURRENT_FORMAT_VERSION, ProjectRepository, ProjectSnapshot, RemovedProject, StoreError,

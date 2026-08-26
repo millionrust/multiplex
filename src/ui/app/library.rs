@@ -1583,7 +1583,7 @@ impl TermiRustApp {
             )
     }
 
-    fn settings_section_card<E: IntoElement>(
+    pub(super) fn settings_section_card<E: IntoElement>(
         &self,
         title: impl Into<SharedString>,
         description: impl Into<SharedString>,
@@ -1659,7 +1659,7 @@ impl TermiRustApp {
             )
     }
 
-    fn settings_divider(&self) -> Div {
+    pub(super) fn settings_divider(&self) -> Div {
         div()
             .h(px(1.))
             .w_full()
@@ -2711,6 +2711,8 @@ impl TermiRustApp {
                 )),
         );
 
+        let notification_card = self.render_notification_settings_card(cx);
+
         v_flex()
             .flex_1()
             .min_h_0()
@@ -2750,6 +2752,7 @@ impl TermiRustApp {
                             .child(terminal_card)
                             .child(startup_card)
                             .child(sessions_card)
+                            .child(notification_card)
                             .child(local_shell_card)
                             .child(shortcuts_card)
                             .child(portable_card)

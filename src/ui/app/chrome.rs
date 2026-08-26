@@ -964,6 +964,8 @@ impl TermiRustApp {
             }))
             .child(
                 div()
+                    .flex_1()
+                    .min_w_0()
                     .text_size(px(13.))
                     .font_medium()
                     .text_color(if active {
@@ -972,6 +974,26 @@ impl TermiRustApp {
                         theme::text_main()
                     })
                     .child(section.label()),
+            )
+            .when(
+                section == NavSection::Activity && self.activity_center.visible_count() > 0,
+                |this| {
+                    this.child(
+                        div()
+                            .min_w(px(22.))
+                            .h(px(20.))
+                            .px_1()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(8.))
+                            .bg(theme::accent())
+                            .text_size(px(11.))
+                            .font_semibold()
+                            .text_color(theme::library_bg())
+                            .child(self.activity_center.visible_count().min(99).to_string()),
+                    )
+                },
             )
     }
 
@@ -988,6 +1010,7 @@ impl TermiRustApp {
                 v_flex().gap(px(2.)).children(
                     [
                         NavSection::Projects,
+                        NavSection::Activity,
                         NavSection::Presets,
                         NavSection::Hosts,
                         NavSection::Vaults,

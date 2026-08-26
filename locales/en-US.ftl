@@ -398,3 +398,78 @@ group-error-invalid-name = Enter a group name between 1 and 256 characters.
 group-error-duplicate = A group with this name already exists in the Project.
 group-error-stale = Session organization changed and was reloaded. Try again.
 group-error-generic = The session organization change could not be completed safely.
+activity-center-nav-label = Activity
+activity-center-title = Activity Center
+activity-center-description = Unseen session requests and completed work, without terminal content.
+activity-center-settings-action = Settings
+activity-center-store-corrupt = Activity data is damaged. Session and Project data remain safe; reset only Activity data from Settings.
+activity-center-store-newer = Activity data was written by a newer TermiRust version. Update the app to open it safely.
+activity-center-store-permission-denied = TermiRust cannot read its local Activity data. Check the app data folder permissions.
+activity-center-store-unavailable = Activity data is temporarily unavailable. Sessions remain usable.
+activity-center-empty-title = No unseen activity
+activity-center-empty-description = Needs input, done, and failed transitions appear here when their session is not visibly focused.
+activity-center-dismiss-action = Dismiss
+activity-center-position = { $position } of { $count }
+activity-center-dismissed = Activity dismissed locally. The session read state was not changed.
+activity-center-link-stale = This activity changed or is no longer available. The session library was opened safely.
+activity-center-operation-failed = The Activity Center change could not be saved safely.
+notification-settings-title = Notifications
+notification-settings-description = Keep activity in the app or also receive bounded OS alerts. Terminal content is never included.
+notification-mode-off = Off
+notification-mode-in-app = In app
+notification-mode-os = In app + OS
+notification-recording-title = Recording-friendly titles
+notification-recording-description = Replace user session titles with “A session” in Activity and OS notifications.
+notification-toggle-on = On
+notification-toggle-off = Off
+notification-permission-label = OS permission
+notification-permission-unknown = Not requested
+notification-permission-granted = Granted
+notification-permission-denied = Denied
+notification-permission-unavailable = Unavailable
+notification-permission-denied-guidance = OS notifications are denied. Enable them in System Settings, then refresh here; TermiRust will not prompt repeatedly.
+notification-refresh-action = Refresh permission
+notification-reset-action = Reset Activity data
+notification-preview = Preview: TermiRust — A session: Needs input
+notification-settings-saved = Notification settings saved.
+notification-permission-refreshed = OS notification permission refreshed.
+notification-reset-complete = Activity data reset. Session and Project data were not changed.
+notification-individual-payload = Activity for { $title }: { $state }
+notification-summary-payload = { $count ->
+    [one] One session update
+    [many] { $count } session updates
+   *[other] { $count } session updates
+    }
+notification-permission-status = OS permission: { $state }
+activity-age-just-now = just now
+activity-age-yesterday = yesterday
+activity-age-minutes = { $count ->
+    [one] 1 minute ago
+    [many] { $count } minutes ago
+   *[other] { $count } minutes ago
+    }
+activity-age-hours = { $count ->
+    [one] 1 hour ago
+    [many] { $count } hours ago
+   *[other] { $count } hours ago
+    }
+activity-age-days = { $count ->
+    [one] 1 day ago
+    [many] { $count } days ago
+   *[other] { $count } days ago
+    }
+activity-age-weeks = { $count ->
+    [one] 1 week ago
+    [many] { $count } weeks ago
+   *[other] { $count } weeks ago
+    }
+activity-age-months = { $count ->
+    [one] 1 month ago
+    [many] { $count } months ago
+   *[other] { $count } months ago
+    }
+activity-age-years = { $count ->
+    [one] 1 year ago
+    [many] { $count } years ago
+   *[other] { $count } years ago
+    }

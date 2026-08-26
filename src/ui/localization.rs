@@ -118,6 +118,138 @@ macro_rules! static_message {
 }
 
 static_message!(projects_nav_label, ProjectsNavLabelArgs);
+static_message!(activity_center_nav_label, ActivityCenterNavLabelArgs);
+static_message!(activity_center_title, ActivityCenterTitleArgs);
+static_message!(activity_center_description, ActivityCenterDescriptionArgs);
+static_message!(
+    activity_center_settings_action,
+    ActivityCenterSettingsActionArgs
+);
+static_message!(
+    activity_center_store_corrupt,
+    ActivityCenterStoreCorruptArgs
+);
+static_message!(activity_center_store_newer, ActivityCenterStoreNewerArgs);
+static_message!(
+    activity_center_store_permission_denied,
+    ActivityCenterStorePermissionDeniedArgs
+);
+static_message!(
+    activity_center_store_unavailable,
+    ActivityCenterStoreUnavailableArgs
+);
+static_message!(activity_center_empty_title, ActivityCenterEmptyTitleArgs);
+static_message!(
+    activity_center_empty_description,
+    ActivityCenterEmptyDescriptionArgs
+);
+static_message!(
+    activity_center_dismiss_action,
+    ActivityCenterDismissActionArgs
+);
+
+pub fn activity_center_position(position: usize, count: usize) -> String {
+    text(&ActivityCenterPositionArgs::new(
+        Count(position as u64),
+        Count(count as u64),
+    ))
+}
+
+static_message!(activity_center_dismissed, ActivityCenterDismissedArgs);
+static_message!(activity_center_link_stale, ActivityCenterLinkStaleArgs);
+static_message!(
+    activity_center_operation_failed,
+    ActivityCenterOperationFailedArgs
+);
+static_message!(notification_settings_title, NotificationSettingsTitleArgs);
+static_message!(
+    notification_settings_description,
+    NotificationSettingsDescriptionArgs
+);
+static_message!(notification_mode_off, NotificationModeOffArgs);
+static_message!(notification_mode_in_app, NotificationModeInAppArgs);
+static_message!(notification_mode_os, NotificationModeOsArgs);
+static_message!(notification_recording_title, NotificationRecordingTitleArgs);
+static_message!(
+    notification_recording_description,
+    NotificationRecordingDescriptionArgs
+);
+static_message!(notification_toggle_on, NotificationToggleOnArgs);
+static_message!(notification_toggle_off, NotificationToggleOffArgs);
+static_message!(
+    notification_permission_unknown,
+    NotificationPermissionUnknownArgs
+);
+static_message!(
+    notification_permission_granted,
+    NotificationPermissionGrantedArgs
+);
+static_message!(
+    notification_permission_denied,
+    NotificationPermissionDeniedArgs
+);
+static_message!(
+    notification_permission_unavailable,
+    NotificationPermissionUnavailableArgs
+);
+static_message!(
+    notification_permission_denied_guidance,
+    NotificationPermissionDeniedGuidanceArgs
+);
+static_message!(notification_refresh_action, NotificationRefreshActionArgs);
+static_message!(notification_reset_action, NotificationResetActionArgs);
+static_message!(notification_preview, NotificationPreviewArgs);
+static_message!(notification_settings_saved, NotificationSettingsSavedArgs);
+static_message!(
+    notification_permission_refreshed,
+    NotificationPermissionRefreshedArgs
+);
+static_message!(notification_reset_complete, NotificationResetCompleteArgs);
+
+pub fn notification_individual_payload(
+    title: impl Into<String>,
+    state: impl Into<String>,
+) -> String {
+    text(&NotificationIndividualPayloadArgs::new(
+        UserData::new(title),
+        Text::new(state),
+    ))
+}
+
+pub fn notification_summary_payload(count: usize) -> String {
+    text(&NotificationSummaryPayloadArgs::new(Count(count as u64)))
+}
+
+pub fn notification_permission_status(state: impl Into<String>) -> String {
+    text(&NotificationPermissionStatusArgs::new(Text::new(state)))
+}
+
+static_message!(activity_age_just_now, ActivityAgeJustNowArgs);
+static_message!(activity_age_yesterday, ActivityAgeYesterdayArgs);
+
+pub fn activity_age_minutes(count: usize) -> String {
+    text(&ActivityAgeMinutesArgs::new(Count(count as u64)))
+}
+
+pub fn activity_age_hours(count: usize) -> String {
+    text(&ActivityAgeHoursArgs::new(Count(count as u64)))
+}
+
+pub fn activity_age_days(count: usize) -> String {
+    text(&ActivityAgeDaysArgs::new(Count(count as u64)))
+}
+
+pub fn activity_age_weeks(count: usize) -> String {
+    text(&ActivityAgeWeeksArgs::new(Count(count as u64)))
+}
+
+pub fn activity_age_months(count: usize) -> String {
+    text(&ActivityAgeMonthsArgs::new(Count(count as u64)))
+}
+
+pub fn activity_age_years(count: usize) -> String {
+    text(&ActivityAgeYearsArgs::new(Count(count as u64)))
+}
 static_message!(projects_title, ProjectsTitleArgs);
 static_message!(projects_subtitle, ProjectsSubtitleArgs);
 static_message!(

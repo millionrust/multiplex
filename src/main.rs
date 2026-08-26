@@ -4,6 +4,7 @@ mod credentials;
 mod local;
 mod models;
 mod platform_mac;
+mod platform_notifications;
 mod sftp;
 mod ssh;
 mod storage;

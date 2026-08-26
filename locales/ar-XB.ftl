@@ -1,4 +1,51 @@
 # Generated ar-XB pseudo-catalog. Do not edit; run generate-messages.
+activity-age-days = { $count ->
+    [many] { $count }⁧oga syad ⁩
+    [one] ⁧oga yad 1⁩
+   *[other] { $count }⁧oga syad ⁩
+    }
+activity-age-hours = { $count ->
+    [many] { $count }⁧oga sruoh ⁩
+    [one] ⁧oga ruoh 1⁩
+   *[other] { $count }⁧oga sruoh ⁩
+    }
+activity-age-just-now = ⁧won tsuj⁩
+activity-age-minutes = { $count ->
+    [many] { $count }⁧oga setunim ⁩
+    [one] ⁧oga etunim 1⁩
+   *[other] { $count }⁧oga setunim ⁩
+    }
+activity-age-months = { $count ->
+    [many] { $count }⁧oga shtnom ⁩
+    [one] ⁧oga htnom 1⁩
+   *[other] { $count }⁧oga shtnom ⁩
+    }
+activity-age-weeks = { $count ->
+    [many] { $count }⁧oga skeew ⁩
+    [one] ⁧oga keew 1⁩
+   *[other] { $count }⁧oga skeew ⁩
+    }
+activity-age-years = { $count ->
+    [many] { $count }⁧oga sraey ⁩
+    [one] ⁧oga raey 1⁩
+   *[other] { $count }⁧oga sraey ⁩
+    }
+activity-age-yesterday = ⁧yadretsey⁩
+activity-center-description = ⁧.tnetnoc lanimret tuohtiw ,krow detelpmoc dna stseuqer noisses neesnU⁩
+activity-center-dismiss-action = ⁧ssimsiD⁩
+activity-center-dismissed = ⁧.degnahc ton saw etats daer noisses ehT .yllacol dessimsid ytivitcA⁩
+activity-center-empty-description = ⁧.desucof ylbisiv ton si noisses rieht nehw ereh raeppa snoitisnart deliaf dna ,enod ,tupni sdeeN⁩
+activity-center-empty-title = ⁧ytivitca neesnu oN⁩
+activity-center-link-stale = ⁧.ylefas denepo saw yrarbil noisses ehT .elbaliava regnol on si ro degnahc ytivitca sihT⁩
+activity-center-nav-label = ⁧ytivitcA⁩
+activity-center-operation-failed = ⁧.ylefas devas eb ton dluoc egnahc retneC ytivitcA ehT⁩
+activity-center-position = { $position }⁧ fo ⁩{ $count }
+activity-center-settings-action = ⁧sgnitteS⁩
+activity-center-store-corrupt = ⁧.sgnitteS morf atad ytivitcA ylno teser ;efas niamer atad tcejorP dna noisseS .degamad si atad ytivitcA⁩
+activity-center-store-newer = ⁧.ylefas ti nepo ot ppa eht etadpU .noisrev tsuRimreT rewen a yb nettirw saw atad ytivitcA⁩
+activity-center-store-permission-denied = ⁧.snoissimrep redlof atad ppa eht kcehC .atad ytivitcA lacol sti daer tonnac tsuRimreT⁩
+activity-center-store-unavailable = ⁧.elbasu niamer snoisseS .elbaliavanu yliraropmet si atad ytivitcA⁩
+activity-center-title = ⁧retneC ytivitcA⁩
 common-cancel = ⁧lecnaC⁩
 common-close = ⁧esolC⁩
 common-connect = ⁧tcennoC⁩
@@ -135,6 +182,34 @@ new-session-validation-cancelled = ⁧.dehcnual saw gnihtoN .dellecnac noitadila
 new-session-warning = ⁧erusolc ppa dna bat sevivrus — tsoH elbaruD⁩
 new-session-working-directory-field = ⁧yrotcerid gnikroW⁩
 new-session-workspace-title = ⁧ :noisseS⁩{ $project }⁧ · ⁩{ $preset }
+notification-individual-payload = ⁧ rof ytivitcA⁩{ $title }⁧ :⁩{ $state }
+notification-mode-in-app = ⁧ppa nI⁩
+notification-mode-off = ⁧ffO⁩
+notification-mode-os = ⁧SO + ppa nI⁩
+notification-permission-denied = ⁧deineD⁩
+notification-permission-denied-guidance = ⁧.yldetaeper tpmorp ton lliw tsuRimreT ;ereh hserfer neht ,sgnitteS metsyS ni meht elbanE .deined era snoitacifiton SO⁩
+notification-permission-granted = ⁧detnarG⁩
+notification-permission-label = ⁧noissimrep SO⁩
+notification-permission-refreshed = ⁧.dehserfer noissimrep noitacifiton SO⁩
+notification-permission-status = ⁧ :noissimrep SO⁩{ $state }
+notification-permission-unavailable = ⁧elbaliavanU⁩
+notification-permission-unknown = ⁧detseuqer toN⁩
+notification-preview = ⁧tupni sdeeN :noisses A — tsuRimreT :weiverP⁩
+notification-recording-description = ⁧.snoitacifiton SO dna ytivitcA ni ”noisses A“ htiw seltit noisses resu ecalpeR⁩
+notification-recording-title = ⁧seltit yldneirf-gnidroceR⁩
+notification-refresh-action = ⁧noissimrep hserfeR⁩
+notification-reset-action = ⁧atad ytivitcA teseR⁩
+notification-reset-complete = ⁧.degnahc ton erew atad tcejorP dna noisseS .teser atad ytivitcA⁩
+notification-settings-description = ⁧.dedulcni reven si tnetnoc lanimreT .strela SO dednuob eviecer osla ro ppa eht ni ytivitca peeK⁩
+notification-settings-saved = ⁧.devas sgnittes noitacifitoN⁩
+notification-settings-title = ⁧snoitacifitoN⁩
+notification-summary-payload = { $count ->
+    [many] { $count }⁧setadpu noisses ⁩
+    [one] ⁧etadpu noisses enO⁩
+   *[other] { $count }⁧setadpu noisses ⁩
+    }
+notification-toggle-off = ⁧ffO⁩
+notification-toggle-on = ⁧nO⁩
 path-unavailable = ⁧ nepo tonnaC⁩{ $path }
 preset-accept-action = ⁧noitseggus tpeccA⁩
 preset-accepted-status = ⁧ teserp detceted deddA⁩{ $name }⁧.dehcnual saw gnihtoN .⁩

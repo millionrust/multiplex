@@ -1,4 +1,51 @@
 # Generated en-XA pseudo-catalog. Do not edit; run generate-messages.
+activity-age-days = { $count ->
+    [many] { $count }⟦ ðåýš åĝø~~⟧
+    [one] ⟦1 ðåý åĝø~~⟧
+   *[other] { $count }⟦ ðåýš åĝø~~⟧
+    }
+activity-age-hours = { $count ->
+    [many] { $count }⟦ ĥøûŕš åĝø~~⟧
+    [one] ⟦1 ĥøûŕ åĝø~~⟧
+   *[other] { $count }⟦ ĥøûŕš åĝø~~⟧
+    }
+activity-age-just-now = ⟦ĵûšţ ñøŵ~~⟧
+activity-age-minutes = { $count ->
+    [many] { $count }⟦ ɱîñûţéš åĝø~~~⟧
+    [one] ⟦1 ɱîñûţé åĝø~~~⟧
+   *[other] { $count }⟦ ɱîñûţéš åĝø~~~⟧
+    }
+activity-age-months = { $count ->
+    [many] { $count }⟦ ɱøñţĥš åĝø~~~⟧
+    [one] ⟦1 ɱøñţĥ åĝø~~~⟧
+   *[other] { $count }⟦ ɱøñţĥš åĝø~~~⟧
+    }
+activity-age-weeks = { $count ->
+    [many] { $count }⟦ ŵééķš åĝø~~⟧
+    [one] ⟦1 ŵééķ åĝø~~⟧
+   *[other] { $count }⟦ ŵééķš åĝø~~⟧
+    }
+activity-age-years = { $count ->
+    [many] { $count }⟦ ýéåŕš åĝø~~⟧
+    [one] ⟦1 ýéåŕ åĝø~~⟧
+   *[other] { $count }⟦ ýéåŕš åĝø~~⟧
+    }
+activity-age-yesterday = ⟦ýéšţéŕðåý~~⟧
+activity-center-description = ⟦Ûñšééñ šéššîøñ ŕéʠûéšţš åñð çøɱþļéţéð ŵøŕķ, ŵîţĥøûţ ţéŕɱîñåļ çøñţéñţ.~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+activity-center-dismiss-action = ⟦Ðîšɱîšš~⟧
+activity-center-dismissed = ⟦Åçţîṽîţý ðîšɱîššéð ļøçåļļý. Ţĥé šéššîøñ ŕéåð šţåţé ŵåš ñøţ çĥåñĝéð.~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+activity-center-empty-description = ⟦Ñééðš îñþûţ, ðøñé, åñð ƒåîļéð ţŕåñšîţîøñš åþþéåŕ ĥéŕé ŵĥéñ ţĥéîŕ šéššîøñ îš ñøţ ṽîšîƀļý ƒøçûšéð.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+activity-center-empty-title = ⟦Ñø ûñšééñ åçţîṽîţý~~~~~~⟧
+activity-center-link-stale = ⟦Ţĥîš åçţîṽîţý çĥåñĝéð øŕ îš ñø ļøñĝéŕ åṽåîļåƀļé. Ţĥé šéššîøñ ļîƀŕåŕý ŵåš øþéñéð šåƒéļý.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+activity-center-nav-label = ⟦Åçţîṽîţý~~⟧
+activity-center-operation-failed = ⟦Ţĥé Åçţîṽîţý Çéñţéŕ çĥåñĝé çøûļð ñøţ ƀé šåṽéð šåƒéļý.~~~~~~~~~~~~~~~~~~~~⟧
+activity-center-position = { $position }⟦ øƒ ⟧{ $count }
+activity-center-settings-action = ⟦Šéţţîñĝš~~⟧
+activity-center-store-corrupt = ⟦Åçţîṽîţý ðåţå îš ðåɱåĝéð. Šéššîøñ åñð Þŕøĵéçţ ðåţå ŕéɱåîñ šåƒé; ŕéšéţ øñļý Åçţîṽîţý ðåţå ƒŕøɱ Šéţţîñĝš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+activity-center-store-newer = ⟦Åçţîṽîţý ðåţå ŵåš ŵŕîţţéñ ƀý å ñéŵéŕ ŢéŕɱîŔûšţ ṽéŕšîøñ. Ûþðåţé ţĥé åþþ ţø øþéñ îţ šåƒéļý.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+activity-center-store-permission-denied = ⟦ŢéŕɱîŔûšţ çåññøţ ŕéåð îţš ļøçåļ Åçţîṽîţý ðåţå. Çĥéçķ ţĥé åþþ ðåţå ƒøļðéŕ þéŕɱîššîøñš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+activity-center-store-unavailable = ⟦Åçţîṽîţý ðåţå îš ţéɱþøŕåŕîļý ûñåṽåîļåƀļé. Šéššîøñš ŕéɱåîñ ûšåƀļé.~~~~~~~~~~~~~~~~~~~~~~~~⟧
+activity-center-title = ⟦Åçţîṽîţý Çéñţéŕ~~~~⟧
 common-cancel = ⟦Çåñçéļ~⟧
 common-close = ⟦Çļøšé⟧
 common-connect = ⟦Çøññéçţ~⟧
@@ -135,6 +182,34 @@ new-session-validation-cancelled = ⟦Ṽåļîðåţîøñ çåñçéļļéð. 
 new-session-warning = ⟦Ðûŕåƀļé Ĥøšţ — šûŕṽîṽéš ţåƀ åñð åþþ çļøšûŕé~~~~~~~~~~~~~~~~⟧
 new-session-working-directory-field = ⟦Ŵøŕķîñĝ ðîŕéçţøŕý~~~~~⟧
 new-session-workspace-title = ⟦Šéššîøñ: ~~⟧{ $project }⟦ · ⟧{ $preset }
+notification-individual-payload = ⟦Åçţîṽîţý ƒøŕ ~~~~⟧{ $title }⟦: ⟧{ $state }
+notification-mode-in-app = ⟦Îñ åþþ~⟧
+notification-mode-off = ⟦Øƒƒ⟧
+notification-mode-os = ⟦Îñ åþþ + ØŠ~~~⟧
+notification-permission-denied = ⟦Ðéñîéð~⟧
+notification-permission-denied-guidance = ⟦ØŠ ñøţîƒîçåţîøñš åŕé ðéñîéð. Éñåƀļé ţĥéɱ îñ Šýšţéɱ Šéţţîñĝš, ţĥéñ ŕéƒŕéšĥ ĥéŕé; ŢéŕɱîŔûšţ ŵîļļ ñøţ þŕøɱþţ ŕéþéåţéðļý.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+notification-permission-granted = ⟦Ĝŕåñţéð~⟧
+notification-permission-label = ⟦ØŠ þéŕɱîššîøñ~~~~⟧
+notification-permission-refreshed = ⟦ØŠ ñøţîƒîçåţîøñ þéŕɱîššîøñ ŕéƒŕéšĥéð.~~~~~~~~~~~~~⟧
+notification-permission-status = ⟦ØŠ þéŕɱîššîøñ: ~~~~⟧{ $state }
+notification-permission-unavailable = ⟦Ûñåṽåîļåƀļé~~~⟧
+notification-permission-unknown = ⟦Ñøţ ŕéʠûéšţéð~~~~⟧
+notification-preview = ⟦Þŕéṽîéŵ: ŢéŕɱîŔûšţ — Å šéššîøñ: Ñééðš îñþûţ~~~~~~~~~~~~~~~~⟧
+notification-recording-description = ⟦Ŕéþļåçé ûšéŕ šéššîøñ ţîţļéš ŵîţĥ “Å šéššîøñ” îñ Åçţîṽîţý åñð ØŠ ñøţîƒîçåţîøñš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+notification-recording-title = ⟦Ŕéçøŕðîñĝ-ƒŕîéñðļý ţîţļéš~~~~~~~~⟧
+notification-refresh-action = ⟦Ŕéƒŕéšĥ þéŕɱîššîøñ~~~~~~⟧
+notification-reset-action = ⟦Ŕéšéţ Åçţîṽîţý ðåţå~~~~~~⟧
+notification-reset-complete = ⟦Åçţîṽîţý ðåţå ŕéšéţ. Šéššîøñ åñð Þŕøĵéçţ ðåţå ŵéŕé ñøţ çĥåñĝéð.~~~~~~~~~~~~~~~~~~~~~~~~⟧
+notification-settings-description = ⟦Ķééþ åçţîṽîţý îñ ţĥé åþþ øŕ åļšø ŕéçéîṽé ƀøûñðéð ØŠ åļéŕţš. Ţéŕɱîñåļ çøñţéñţ îš ñéṽéŕ îñçļûðéð.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+notification-settings-saved = ⟦Ñøţîƒîçåţîøñ šéţţîñĝš šåṽéð.~~~~~~~~~~⟧
+notification-settings-title = ⟦Ñøţîƒîçåţîøñš~~~~⟧
+notification-summary-payload = { $count ->
+    [many] { $count }⟦ šéššîøñ ûþðåţéš~~~~~⟧
+    [one] ⟦Øñé šéššîøñ ûþðåţé~~~~~~⟧
+   *[other] { $count }⟦ šéššîøñ ûþðåţéš~~~~~⟧
+    }
+notification-toggle-off = ⟦Øƒƒ⟧
+notification-toggle-on = ⟦Øñ⟧
 path-unavailable = ⟦Çåññøţ øþéñ ~~~⟧{ $path }
 preset-accept-action = ⟦Åççéþţ šûĝĝéšţîøñ~~~~~⟧
 preset-accepted-status = ⟦Åððéð ðéţéçţéð þŕéšéţ ~~~~~~~⟧{ $name }⟦. Ñøţĥîñĝ ŵåš ļåûñçĥéð.~~~~~~~~⟧
