@@ -19,6 +19,7 @@ mod sftp;
 mod transcript_export;
 mod types;
 mod workspace;
+mod worktree_launch;
 
 pub(crate) use types::{
     ConnectDialogMode, ConnectProtocol, DropZone, EditorMenu, HostsSort, HostsViewMode,
@@ -41,6 +42,7 @@ use presets::PresetLibraryState;
 use project::CanvasProjectPanelState;
 use projects::ProjectLibraryState;
 use session_library::{SessionLibraryFilter, SessionLibraryState, SessionLibraryView};
+use worktree_launch::WorktreeLaunchUiState;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -927,6 +929,9 @@ pub struct TermiRustApp {
     preset_list_focus: FocusHandle,
     new_session: Option<NewSessionState>,
     new_session_initial_input: Entity<InputState>,
+    worktree_launch: Option<WorktreeLaunchUiState>,
+    worktree_base_input: Entity<InputState>,
+    worktree_branch_input: Entity<InputState>,
     nav_section: NavSection,
     show_editor_panel: bool,
     event_tx: Sender<SshEvent>,
@@ -1130,6 +1135,12 @@ impl TermiRustApp {
                 .auto_grow(3, 8)
                 .placeholder(localization::new_session_initial_input_placeholder())
         });
+        let worktree_base_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(localization::worktree_base_placeholder())
+        });
+        let worktree_branch_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(localization::worktree_branch_field())
+        });
 
         let imported_host_count = saved
             .profiles
@@ -1174,6 +1185,9 @@ impl TermiRustApp {
             preset_list_focus,
             new_session: None,
             new_session_initial_input,
+            worktree_launch: None,
+            worktree_base_input,
+            worktree_branch_input,
             nav_section: NavSection::Hosts,
             show_editor_panel: false,
             event_tx,
@@ -10108,6 +10122,9 @@ impl Render for TermiRustApp {
             .when(self.new_session.is_some(), |this| {
                 this.child(self.render_new_session_sheet(cx))
             })
+            .when(self.worktree_launch.is_some(), |this| {
+                this.child(self.render_worktree_launch_sheet(cx))
+            })
     }
 }
 
@@ -10154,6 +10171,10 @@ impl TermiRustApp {
         }
 
         if event.keystroke.key.as_str() == "escape" {
+            if self.worktree_launch.is_some() {
+                self.close_worktree_launch(cx);
+                return true;
+            }
             if self.new_session.is_some() {
                 self.close_new_session(cx);
                 return true;
@@ -20181,6 +20202,19 @@ sleep 1
         let duplicate_add = selector_click_center(window, cx, "projects-add");
         VisualTestContext::from_window(window.into(), cx)
             .simulate_click(duplicate_add, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            assert!(
+                app.project_library.add_validation.is_some()
+                    || app.project_library.add_draft.is_some(),
+                "projects add click did not begin validation: section={:?} worktree_sheet={} error={:?}",
+                app.nav_section,
+                app.worktree_launch.is_some(),
+                app.error_message,
+            );
+        });
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.project_library.add_draft.is_some().then_some(())
+        });
         let duplicate_confirm = selector_click_center(window, cx, "project-add-confirm");
         VisualTestContext::from_window(window.into(), cx)
             .simulate_click(duplicate_confirm, gpui::Modifiers::none());

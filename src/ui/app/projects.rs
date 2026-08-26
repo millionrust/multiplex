@@ -463,6 +463,7 @@ impl TermiRustApp {
             .bg(theme::library_bg())
             .child(
                 h_flex()
+                    .flex_none()
                     .justify_between()
                     .items_center()
                     .flex_wrap()
@@ -549,6 +550,44 @@ impl TermiRustApp {
             .when_some(
                 self.project_library.add_validation.as_ref(),
                 |this, validation| this.child(self.render_project_validation(validation, cx)),
+            )
+            .when_some(
+                self.project_library
+                    .snapshot
+                    .as_ref()
+                    .and_then(|snapshot| snapshot.worktree_intents.first()),
+                |this, intent| {
+                    let id = intent.plan.id;
+                    this.child(
+                        h_flex()
+                            .id("worktree-recovery-banner")
+                            .mx(px(theme::SPACE_6))
+                            .mt(px(theme::SPACE_5))
+                            .p(px(theme::SPACE_4))
+                            .gap(px(theme::SPACE_4))
+                            .justify_between()
+                            .flex_wrap()
+                            .rounded(px(theme::CARD_RADIUS))
+                            .bg(theme::accent_soft())
+                            .text_color(theme::warning())
+                            .child(
+                                h_flex()
+                                    .gap(px(theme::SPACE_2))
+                                    .child(
+                                        Icon::new(IconName::TriangleAlert)
+                                            .size(px(theme::ICON_SIZE_DEFAULT)),
+                                    )
+                                    .child(localization::worktree_recovery_banner()),
+                            )
+                            .child(
+                                Button::new("worktree-review-recovery")
+                                    .label(localization::worktree_review_recovery_action())
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.review_worktree_recovery(id, window, cx);
+                                    })),
+                            ),
+                    )
+                },
             )
             .child(content)
             .into_any_element()
@@ -689,7 +728,8 @@ impl TermiRustApp {
                     )
                     .child(
                         h_flex()
-                            .flex_none()
+                            .flex_wrap()
+                            .justify_end()
                             .gap(px(theme::SPACE_4))
                             .items_center()
                             .child(
@@ -722,6 +762,17 @@ impl TermiRustApp {
                                     .disabled(summary.status != ProjectStatus::Available)
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.open_new_session(project_id, window, cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new(("project-new-worktree", element_key))
+                                    .debug_selector(|| "project-new-worktree".to_string())
+                                    .small()
+                                    .icon(IconName::Plus)
+                                    .label(localization::worktree_new_action())
+                                    .disabled(summary.status != ProjectStatus::Available)
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.open_worktree_launch(project_id, window, cx);
                                     })),
                             )
                             .child(
@@ -874,7 +925,8 @@ fn classify_store_failure(error: StoreError) -> ProjectStoreFailure {
         | StoreError::Domain(_)
         | StoreError::GroupDomain(_)
         | StoreError::PresetDomain(_)
-        | StoreError::SessionDomain(_) => ProjectStoreFailure::Unavailable,
+        | StoreError::SessionDomain(_)
+        | StoreError::WorktreeDomain(_) => ProjectStoreFailure::Unavailable,
     }
 }
 

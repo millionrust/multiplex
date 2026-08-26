@@ -13,8 +13,10 @@ use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 use serde::{Deserialize, Serialize};
 use termirust_domain::{
     AddProject, CanonicalPath, Group, GroupDestination, GroupError, GroupId, GroupInverseCommand,
-    GroupMutation, GroupName, LocalizedUserText, MAX_GROUPS_PER_PROJECT, PositionKey, Project,
-    ProjectError, ProjectId, ProjectService, ProjectSummary, Revision, validate_group_set,
+    GroupMutation, GroupName, LocalizedUserText, MAX_GROUPS_PER_PROJECT,
+    MAX_WORKTREE_REGISTRATIONS, ManagedWorktreeId, PositionKey, Project, ProjectError, ProjectId,
+    ProjectService, ProjectSummary, Revision, WorktreeError, WorktreeIntent, WorktreeIntentState,
+    WorktreeRegistration, validate_group_set,
 };
 
 use crate::{AtomicWriter, Durability, SystemAtomicWriter};
@@ -40,6 +42,8 @@ pub struct ProjectSnapshot {
     pub revision: Revision,
     pub projects: Vec<ProjectSummary>,
     pub groups: Vec<Group>,
+    pub worktree_intents: Vec<WorktreeIntent>,
+    pub worktrees: Vec<WorktreeRegistration>,
     pub health: StoreHealth,
     pub read_only: bool,
     pub durability: Durability,
@@ -76,6 +80,7 @@ pub enum StoreError {
     GroupDomain(GroupError),
     PresetDomain(termirust_domain::PresetError),
     SessionDomain(termirust_domain::SessionStateError),
+    WorktreeDomain(WorktreeError),
 }
 
 impl fmt::Display for StoreError {
@@ -102,6 +107,7 @@ impl fmt::Display for StoreError {
             Self::GroupDomain(error) => error.fmt(formatter),
             Self::PresetDomain(error) => error.fmt(formatter),
             Self::SessionDomain(error) => error.fmt(formatter),
+            Self::WorktreeDomain(error) => error.fmt(formatter),
         }
     }
 }
@@ -132,6 +138,12 @@ impl From<termirust_domain::SessionStateError> for StoreError {
     }
 }
 
+impl From<WorktreeError> for StoreError {
+    fn from(error: WorktreeError) -> Self {
+        Self::WorktreeDomain(error)
+    }
+}
+
 #[derive(Clone)]
 pub struct ProjectRepository {
     root: PathBuf,
@@ -153,6 +165,10 @@ struct ProjectsDocument {
     projects: Vec<Project>,
     #[serde(default)]
     groups: Vec<Group>,
+    #[serde(default)]
+    worktree_intents: Vec<WorktreeIntent>,
+    #[serde(default)]
+    worktrees: Vec<WorktreeRegistration>,
 }
 
 impl ProjectRepository {
@@ -231,6 +247,177 @@ impl ProjectRepository {
         sort_projects(&mut document.projects);
         self.write_document_locked(&document)?;
         Ok(project)
+    }
+
+    pub fn begin_worktree_intent(
+        &self,
+        mut intent: WorktreeIntent,
+        expected: Revision,
+    ) -> Result<WorktreeIntent, StoreError> {
+        intent.plan.validate()?;
+        let _ = LocalizedUserText::new(&intent.child_display_name)?;
+        let _lock = self.acquire_lock()?;
+        self.validate_format_locked()?;
+        let mut document = self.mutable_document_locked()?;
+        require_revision(expected, document.revision)?;
+        require_project(&document, intent.plan.source_project_id)?;
+        if document.projects.len() >= MAX_PROJECTS {
+            return Err(ProjectError::ResourceLimit {
+                limit: MAX_PROJECTS,
+            }
+            .into());
+        }
+        if document.worktrees.len() + document.worktree_intents.len() >= MAX_WORKTREE_REGISTRATIONS
+        {
+            return Err(WorktreeError::ResourceLimit {
+                limit: MAX_WORKTREE_REGISTRATIONS,
+            }
+            .into());
+        }
+        if document
+            .projects
+            .iter()
+            .any(|project| project.id == intent.plan.child_project_id)
+            || document
+                .worktree_intents
+                .iter()
+                .any(|candidate| worktree_plan_conflicts(&candidate.plan, &intent.plan))
+            || document.worktrees.iter().any(|candidate| {
+                candidate.id == intent.plan.id
+                    || candidate.child_project_id == intent.plan.child_project_id
+                    || candidate.branch == intent.plan.generated_branch
+                    || candidate.managed_path.as_path() == intent.plan.managed_path.as_path()
+            })
+        {
+            return Err(WorktreeError::RegistrationConflict.into());
+        }
+        let revision = next_revision(document.revision)?;
+        intent.revision = revision;
+        intent.state = WorktreeIntentState::Planned;
+        document.worktree_intents.push(intent.clone());
+        document.revision = revision;
+        self.write_document_locked(&document)?;
+        Ok(intent)
+    }
+
+    pub fn mark_worktree_intent_needs_inspection(
+        &self,
+        id: ManagedWorktreeId,
+        expected: Revision,
+    ) -> Result<WorktreeIntent, StoreError> {
+        let _lock = self.acquire_lock()?;
+        self.validate_format_locked()?;
+        let mut document = self.mutable_document_locked()?;
+        require_revision(expected, document.revision)?;
+        let index = document
+            .worktree_intents
+            .iter()
+            .position(|intent| intent.plan.id == id)
+            .ok_or(StoreError::WorktreeDomain(
+                WorktreeError::RegistrationConflict,
+            ))?;
+        let revision = next_revision(document.revision)?;
+        document.worktree_intents[index].state = WorktreeIntentState::NeedsInspection;
+        document.worktree_intents[index].revision = revision;
+        document.revision = revision;
+        let intent = document.worktree_intents[index].clone();
+        self.write_document_locked(&document)?;
+        Ok(intent)
+    }
+
+    pub fn cancel_worktree_intent(
+        &self,
+        id: ManagedWorktreeId,
+        expected: Revision,
+    ) -> Result<(), StoreError> {
+        let _lock = self.acquire_lock()?;
+        self.validate_format_locked()?;
+        let mut document = self.mutable_document_locked()?;
+        require_revision(expected, document.revision)?;
+        let index = document
+            .worktree_intents
+            .iter()
+            .position(|intent| intent.plan.id == id)
+            .ok_or(StoreError::WorktreeDomain(
+                WorktreeError::RegistrationConflict,
+            ))?;
+        document.worktree_intents.remove(index);
+        document.revision = next_revision(document.revision)?;
+        self.write_document_locked(&document)?;
+        Ok(())
+    }
+
+    pub fn register_worktree_child(
+        &self,
+        id: ManagedWorktreeId,
+        expected: Revision,
+    ) -> Result<(Project, WorktreeRegistration), StoreError> {
+        let _lock = self.acquire_lock()?;
+        self.validate_format_locked()?;
+        let mut document = self.mutable_document_locked()?;
+        require_revision(expected, document.revision)?;
+        let intent_index = document
+            .worktree_intents
+            .iter()
+            .position(|intent| intent.plan.id == id)
+            .ok_or(StoreError::WorktreeDomain(
+                WorktreeError::RegistrationConflict,
+            ))?;
+        let intent = document.worktree_intents[intent_index].clone();
+        intent.plan.validate()?;
+        require_project(&document, intent.plan.source_project_id)?;
+        if document.projects.len() >= MAX_PROJECTS {
+            return Err(ProjectError::ResourceLimit {
+                limit: MAX_PROJECTS,
+            }
+            .into());
+        }
+        let canonical_path = CanonicalPath::resolve(intent.plan.managed_path.as_path())?;
+        if canonical_path.as_path() != intent.plan.managed_path.as_path()
+            || canonical_path.as_path() == intent.plan.managed_root.as_path()
+            || !canonical_path
+                .as_path()
+                .starts_with(intent.plan.managed_root.as_path())
+        {
+            return Err(WorktreeError::SymlinkSwap.into());
+        }
+        if document.projects.iter().any(|project| {
+            project.id == intent.plan.child_project_id
+                || project.canonical_root.identity() == canonical_path.identity()
+        }) || document.worktrees.iter().any(|registration| {
+            registration.id == id
+                || registration.child_project_id == intent.plan.child_project_id
+                || registration.branch == intent.plan.generated_branch
+        }) {
+            return Err(WorktreeError::RegistrationConflict.into());
+        }
+        let revision = next_revision(document.revision)?;
+        let project = Project {
+            id: intent.plan.child_project_id,
+            display_name: LocalizedUserText::new(&intent.child_display_name)?,
+            canonical_root: canonical_path.clone(),
+            position: next_tail_position(&mut document.projects)?,
+            revision,
+        };
+        let registration = WorktreeRegistration {
+            id,
+            source_project_id: intent.plan.source_project_id,
+            child_project_id: project.id,
+            repository_root: intent.plan.repository_root,
+            managed_root: intent.plan.managed_root,
+            managed_path: canonical_path,
+            base: intent.plan.selected_base,
+            branch: intent.plan.generated_branch,
+            revision,
+        };
+        registration.validate()?;
+        document.worktree_intents.remove(intent_index);
+        document.projects.push(project.clone());
+        document.worktrees.push(registration.clone());
+        document.revision = revision;
+        sort_projects(&mut document.projects);
+        self.write_document_locked(&document)?;
+        Ok((project, registration))
     }
 
     pub fn remove_project(
@@ -689,6 +876,8 @@ impl ProjectRepository {
                 revision: Revision::ZERO,
                 projects: Vec::new(),
                 groups: Vec::new(),
+                worktree_intents: Vec::new(),
+                worktrees: Vec::new(),
             };
             self.write_document_locked(&document)?;
         }
@@ -775,6 +964,8 @@ impl ProjectRepository {
         if persisted.revision != document.revision
             || persisted.projects != document.projects
             || persisted.groups != document.groups
+            || persisted.worktree_intents != document.worktree_intents
+            || persisted.worktrees != document.worktrees
         {
             return Err(StoreError::Corrupt {
                 name: PROJECTS_FILE,
@@ -910,6 +1101,48 @@ fn validate_document(document: &ProjectsDocument) -> Result<(), ProjectError> {
             code: "future-group-revision",
         });
     }
+    if document.worktree_intents.len() + document.worktrees.len() > MAX_WORKTREE_REGISTRATIONS {
+        return Err(ProjectError::Store {
+            code: "worktree-limit",
+        });
+    }
+    let mut worktree_ids = HashSet::new();
+    let mut worktree_children = HashSet::new();
+    let mut worktree_paths = HashSet::new();
+    let mut worktree_branches = HashSet::new();
+    for intent in &document.worktree_intents {
+        intent.plan.validate().map_err(|_| ProjectError::Store {
+            code: "invalid-worktree-intent",
+        })?;
+        LocalizedUserText::new(&intent.child_display_name).map_err(|_| ProjectError::Store {
+            code: "invalid-worktree-label",
+        })?;
+        if intent.revision > document.revision
+            || !worktree_ids.insert(intent.plan.id)
+            || !worktree_children.insert(intent.plan.child_project_id)
+            || !worktree_paths.insert(intent.plan.managed_path.as_path())
+            || !worktree_branches.insert(&intent.plan.generated_branch)
+        {
+            return Err(ProjectError::Store {
+                code: "duplicate-worktree-intent",
+            });
+        }
+    }
+    for registration in &document.worktrees {
+        registration.validate().map_err(|_| ProjectError::Store {
+            code: "invalid-worktree-registration",
+        })?;
+        if registration.revision > document.revision
+            || !worktree_ids.insert(registration.id)
+            || !worktree_children.insert(registration.child_project_id)
+            || !worktree_paths.insert(registration.managed_path.as_path())
+            || !worktree_branches.insert(&registration.branch)
+        {
+            return Err(ProjectError::Store {
+                code: "duplicate-worktree-registration",
+            });
+        }
+    }
     Ok(())
 }
 
@@ -927,10 +1160,22 @@ fn snapshot(
             .map(ProjectSummary::from)
             .collect(),
         groups: document.groups,
+        worktree_intents: document.worktree_intents,
+        worktrees: document.worktrees,
         health,
         read_only,
         durability,
     }
+}
+
+fn worktree_plan_conflicts(
+    left: &termirust_domain::WorktreePlan,
+    right: &termirust_domain::WorktreePlan,
+) -> bool {
+    left.id == right.id
+        || left.child_project_id == right.child_project_id
+        || left.generated_branch == right.generated_branch
+        || left.managed_path.as_path() == right.managed_path.as_path()
 }
 
 fn sort_projects(projects: &mut [Project]) {
@@ -1137,6 +1382,9 @@ fn store_as_domain(error: StoreError) -> ProjectError {
         StoreError::SessionDomain(_) => ProjectError::Store {
             code: "session-domain",
         },
+        StoreError::WorktreeDomain(_) => ProjectError::Store {
+            code: "worktree-domain",
+        },
     }
 }
 
@@ -1159,6 +1407,10 @@ mod tests {
         GroupId::from_uuid(Uuid::from_u128(10_000 + value))
     }
 
+    fn worktree_id(value: u128) -> ManagedWorktreeId {
+        ManagedWorktreeId::from_uuid(Uuid::from_u128(20_000 + value))
+    }
+
     fn repository(root: &Path) -> ProjectRepository {
         ProjectRepository::open_with(root, INSTANCE_ID.to_string(), Arc::new(SystemAtomicWriter))
             .unwrap()
@@ -1171,6 +1423,227 @@ mod tests {
             display_name: None,
             expected,
         }
+    }
+
+    fn worktree_intent(
+        id: ManagedWorktreeId,
+        source_project_id: ProjectId,
+        child_project_id: ProjectId,
+        repository_root: &Path,
+        managed_root: &Path,
+        managed_path: &Path,
+    ) -> WorktreeIntent {
+        let canonical_managed_root = CanonicalPath::resolve(managed_root).unwrap();
+        let canonical_managed_path = canonical_managed_root.as_path().join(
+            managed_path
+                .file_name()
+                .expect("fixture managed path has a basename"),
+        );
+        WorktreeIntent {
+            plan: termirust_domain::WorktreePlan::new(
+                id,
+                source_project_id,
+                child_project_id,
+                CanonicalPath::resolve(repository_root).unwrap(),
+                canonical_managed_root,
+                termirust_domain::BaseCandidate {
+                    ref_name: termirust_domain::GitReference::new("main").unwrap(),
+                    commit_oid: termirust_domain::CommitOid::new(&"a".repeat(40)).unwrap(),
+                    source: termirust_domain::BaseSource::ConfiguredMainline,
+                },
+                termirust_domain::GitReference::new("termirust/worktree/test").unwrap(),
+                termirust_domain::ManagedPath::new(canonical_managed_path).unwrap(),
+            )
+            .unwrap(),
+            child_display_name: "Isolated test".to_string(),
+            state: WorktreeIntentState::Planned,
+            revision: Revision::ZERO,
+        }
+    }
+
+    #[test]
+    fn worktree_registration_is_atomic_persistent_and_project_removal_keeps_evidence() {
+        let fixture = tempfile::tempdir().unwrap();
+        let store_root = fixture.path().join("store");
+        let repository_root = fixture.path().join("repository");
+        let managed_root = fixture.path().join("managed");
+        fs::create_dir(&repository_root).unwrap();
+        fs::create_dir(&managed_root).unwrap();
+        let repo = repository(&store_root);
+        let source = repo
+            .add_project(add_request(id(1), &repository_root, Revision::ZERO))
+            .unwrap();
+        let managed_path = managed_root.join("child");
+        let intent = repo
+            .begin_worktree_intent(
+                worktree_intent(
+                    worktree_id(1),
+                    source.id,
+                    id(2),
+                    &repository_root,
+                    &managed_root,
+                    &managed_path,
+                ),
+                Revision::new(1),
+            )
+            .unwrap();
+        assert_eq!(intent.revision, Revision::new(2));
+        fs::create_dir(&managed_path).unwrap();
+        let sentinel = managed_path.join("KEEP.txt");
+        fs::write(&sentinel, "keep").unwrap();
+        let (child, registration) = repo
+            .register_worktree_child(worktree_id(1), Revision::new(2))
+            .unwrap();
+        assert_eq!(child.id, id(2));
+        assert_eq!(registration.child_project_id, child.id);
+
+        let reopened = repository(&store_root);
+        let snapshot = reopened.load().unwrap();
+        assert_eq!(snapshot.worktree_intents.len(), 0);
+        assert_eq!(snapshot.worktrees, vec![registration.clone()]);
+        assert_eq!(snapshot.projects.len(), 2);
+        reopened
+            .remove_project(child.id, snapshot.revision)
+            .unwrap();
+        let after_remove = reopened.load().unwrap();
+        assert_eq!(after_remove.worktrees, vec![registration]);
+        assert_eq!(after_remove.projects.len(), 1);
+        assert!(sentinel.exists());
+    }
+
+    #[test]
+    fn worktree_registration_crash_intent_survives_and_is_reconcilable() {
+        let fixture = tempfile::tempdir().unwrap();
+        let store_root = fixture.path().join("store");
+        let repository_root = fixture.path().join("repository");
+        let managed_root = fixture.path().join("managed");
+        fs::create_dir(&repository_root).unwrap();
+        fs::create_dir(&managed_root).unwrap();
+        let repo = repository(&store_root);
+        let source = repo
+            .add_project(add_request(id(1), &repository_root, Revision::ZERO))
+            .unwrap();
+        let managed_path = managed_root.join("crash-child");
+        repo.begin_worktree_intent(
+            worktree_intent(
+                worktree_id(2),
+                source.id,
+                id(3),
+                &repository_root,
+                &managed_root,
+                &managed_path,
+            ),
+            Revision::new(1),
+        )
+        .unwrap();
+
+        let reopened = repository(&store_root);
+        let recovered = reopened.load().unwrap();
+        assert_eq!(recovered.worktree_intents.len(), 1);
+        let marked = reopened
+            .mark_worktree_intent_needs_inspection(worktree_id(2), recovered.revision)
+            .unwrap();
+        assert_eq!(marked.state, WorktreeIntentState::NeedsInspection);
+        let marked_snapshot = reopened.load().unwrap();
+        assert_eq!(marked_snapshot.worktree_intents, vec![marked]);
+
+        reopened
+            .cancel_worktree_intent(worktree_id(2), marked_snapshot.revision)
+            .unwrap();
+        assert!(reopened.load().unwrap().worktree_intents.is_empty());
+        assert!(!managed_path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn worktree_registration_rejects_symlink_swap_without_mutating_store() {
+        use std::os::unix::fs::symlink;
+
+        let fixture = tempfile::tempdir().unwrap();
+        let store_root = fixture.path().join("store");
+        let repository_root = fixture.path().join("repository");
+        let managed_root = fixture.path().join("managed");
+        let outside = fixture.path().join("outside");
+        fs::create_dir(&repository_root).unwrap();
+        fs::create_dir(&managed_root).unwrap();
+        fs::create_dir(&outside).unwrap();
+        let repo = repository(&store_root);
+        let source = repo
+            .add_project(add_request(id(1), &repository_root, Revision::ZERO))
+            .unwrap();
+        let managed_path = managed_root.join("swapped");
+        repo.begin_worktree_intent(
+            worktree_intent(
+                worktree_id(3),
+                source.id,
+                id(4),
+                &repository_root,
+                &managed_root,
+                &managed_path,
+            ),
+            Revision::new(1),
+        )
+        .unwrap();
+        symlink(&outside, &managed_path).unwrap();
+        assert!(matches!(
+            repo.register_worktree_child(worktree_id(3), Revision::new(2)),
+            Err(StoreError::WorktreeDomain(WorktreeError::SymlinkSwap))
+        ));
+        let snapshot = repo.load().unwrap();
+        assert_eq!(snapshot.revision, Revision::new(2));
+        assert_eq!(snapshot.worktree_intents.len(), 1);
+        assert!(snapshot.worktrees.is_empty());
+        assert_eq!(snapshot.projects.len(), 1);
+    }
+
+    #[test]
+    fn worktree_registration_write_failure_preserves_recoverable_intent_atomically() {
+        let fixture = tempfile::tempdir().unwrap();
+        let store_root = fixture.path().join("store");
+        let repository_root = fixture.path().join("repository");
+        let managed_root = fixture.path().join("managed");
+        fs::create_dir(&repository_root).unwrap();
+        fs::create_dir(&managed_root).unwrap();
+        let normal = repository(&store_root);
+        let source = normal
+            .add_project(add_request(id(1), &repository_root, Revision::ZERO))
+            .unwrap();
+        let managed_path = managed_root.join("created-before-store-failure");
+        normal
+            .begin_worktree_intent(
+                worktree_intent(
+                    worktree_id(4),
+                    source.id,
+                    id(5),
+                    &repository_root,
+                    &managed_root,
+                    &managed_path,
+                ),
+                Revision::new(1),
+            )
+            .unwrap();
+        fs::create_dir(&managed_path).unwrap();
+        let prior = fs::read(normal.root().join(PROJECTS_FILE)).unwrap();
+        let failing = ProjectRepository::open_with(
+            &store_root,
+            INSTANCE_ID.to_string(),
+            Arc::new(DiskFullWriter),
+        )
+        .unwrap();
+
+        assert!(matches!(
+            failing.register_worktree_child(worktree_id(4), Revision::new(2)),
+            Err(StoreError::Io {
+                kind: io::ErrorKind::StorageFull,
+                ..
+            })
+        ));
+        assert_eq!(fs::read(normal.root().join(PROJECTS_FILE)).unwrap(), prior);
+        let snapshot = normal.load().unwrap();
+        assert_eq!(snapshot.projects.len(), 1);
+        assert_eq!(snapshot.worktree_intents.len(), 1);
+        assert!(snapshot.worktrees.is_empty());
+        assert!(managed_path.is_dir());
     }
 
     #[test]
@@ -1416,6 +1889,8 @@ mod tests {
             revision: Revision::new(1),
             projects: vec![project.clone(), duplicate],
             groups: Vec::new(),
+            worktree_intents: Vec::new(),
+            worktrees: Vec::new(),
         };
         assert_eq!(
             validate_document(&duplicate_document),
@@ -1428,6 +1903,8 @@ mod tests {
             revision: Revision::new(1),
             projects: vec![project; MAX_PROJECTS + 1],
             groups: Vec::new(),
+            worktree_intents: Vec::new(),
+            worktrees: Vec::new(),
         };
         assert_eq!(
             validate_document(&over_limit),
@@ -1669,6 +2146,9 @@ mod tests {
             br#"{"revision":0,"projects":[]}"#,
         )
         .unwrap();
-        assert!(repo.load().unwrap().groups.is_empty());
+        let snapshot = repo.load().unwrap();
+        assert!(snapshot.groups.is_empty());
+        assert!(snapshot.worktree_intents.is_empty());
+        assert!(snapshot.worktrees.is_empty());
     }
 }

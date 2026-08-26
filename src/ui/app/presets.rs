@@ -1450,7 +1450,8 @@ fn classify_store_failure(error: StoreError) -> PresetStoreFailure {
         | StoreError::Domain(_)
         | StoreError::GroupDomain(_)
         | StoreError::PresetDomain(_)
-        | StoreError::SessionDomain(_) => PresetStoreFailure::Unavailable,
+        | StoreError::SessionDomain(_)
+        | StoreError::WorktreeDomain(_) => PresetStoreFailure::Unavailable,
     }
 }
 

@@ -11,6 +11,7 @@ mod terminal;
 #[cfg(test)]
 mod test_support;
 mod ui;
+mod worktree_launch;
 
 use gpui::*;
 use gpui_component::Root;

@@ -299,16 +299,28 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::Command;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    static NEXT_TEMP_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
     fn temp_directory(label: &str) -> PathBuf {
-        let unique = SystemTime::now()
+        let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = std::env::temp_dir().join(format!("termirust-{label}-{unique}"));
-        fs::create_dir_all(&path).unwrap();
-        path
+        loop {
+            let sequence = NEXT_TEMP_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "termirust-{label}-{}-{timestamp}-{sequence}",
+                std::process::id()
+            ));
+            match fs::create_dir(&path) {
+                Ok(()) => return path,
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => panic!("unable to create isolated test directory: {error}"),
+            }
+        }
     }
 
     fn git(path: &Path, arguments: &[&str]) {

@@ -452,6 +452,73 @@ static_message!(
     transcript_export_unavailable_pending,
     TranscriptExportUnavailablePendingArgs
 );
+static_message!(worktree_new_action, WorktreeNewActionArgs);
+static_message!(worktree_title, WorktreeTitleArgs);
+static_message!(worktree_subtitle, WorktreeSubtitleArgs);
+static_message!(worktree_repository_field, WorktreeRepositoryFieldArgs);
+static_message!(worktree_base_field, WorktreeBaseFieldArgs);
+static_message!(worktree_base_placeholder, WorktreeBasePlaceholderArgs);
+static_message!(worktree_branch_field, WorktreeBranchFieldArgs);
+static_message!(worktree_path_field, WorktreePathFieldArgs);
+static_message!(worktree_preset_field, WorktreePresetFieldArgs);
+static_message!(worktree_fetch_action, WorktreeFetchActionArgs);
+static_message!(worktree_current_action, WorktreeCurrentActionArgs);
+static_message!(worktree_refresh_action, WorktreeRefreshActionArgs);
+static_message!(worktree_create_action, WorktreeCreateActionArgs);
+static_message!(worktree_verify_action, WorktreeVerifyActionArgs);
+static_message!(
+    worktree_start_session_action,
+    WorktreeStartSessionActionArgs
+);
+static_message!(worktree_stage_inspecting, WorktreeStageInspectingArgs);
+static_message!(worktree_stage_ready, WorktreeStageReadyArgs);
+static_message!(worktree_stage_creating, WorktreeStageCreatingArgs);
+static_message!(worktree_stage_verifying, WorktreeStageVerifyingArgs);
+static_message!(worktree_stage_registered, WorktreeStageRegisteredArgs);
+static_message!(worktree_stage_launching, WorktreeStageLaunchingArgs);
+static_message!(worktree_offline_status, WorktreeOfflineStatusArgs);
+static_message!(worktree_fetched_status, WorktreeFetchedStatusArgs);
+static_message!(worktree_current_warning, WorktreeCurrentWarningArgs);
+static_message!(worktree_success, WorktreeSuccessArgs);
+static_message!(worktree_failure_kept, WorktreeFailureKeptArgs);
+static_message!(worktree_recovery_banner, WorktreeRecoveryBannerArgs);
+static_message!(
+    worktree_review_recovery_action,
+    WorktreeReviewRecoveryActionArgs
+);
+static_message!(
+    worktree_forget_recovery_action,
+    WorktreeForgetRecoveryActionArgs
+);
+static_message!(
+    worktree_error_invalid_repository,
+    WorktreeErrorInvalidRepositoryArgs
+);
+static_message!(
+    worktree_error_git_unavailable,
+    WorktreeErrorGitUnavailableArgs
+);
+static_message!(worktree_error_fetch, WorktreeErrorFetchArgs);
+static_message!(worktree_error_permission, WorktreeErrorPermissionArgs);
+static_message!(worktree_error_storage_full, WorktreeErrorStorageFullArgs);
+static_message!(
+    worktree_error_invalid_reference,
+    WorktreeErrorInvalidReferenceArgs
+);
+static_message!(
+    worktree_error_resource_limit,
+    WorktreeErrorResourceLimitArgs
+);
+static_message!(worktree_error_dirty_source, WorktreeErrorDirtySourceArgs);
+static_message!(worktree_error_submodules, WorktreeErrorSubmodulesArgs);
+static_message!(worktree_error_no_base, WorktreeErrorNoBaseArgs);
+static_message!(worktree_error_collision, WorktreeErrorCollisionArgs);
+static_message!(worktree_error_timeout, WorktreeErrorTimeoutArgs);
+static_message!(worktree_error_cancelled, WorktreeErrorCancelledArgs);
+static_message!(worktree_error_verification, WorktreeErrorVerificationArgs);
+static_message!(worktree_error_conflict, WorktreeErrorConflictArgs);
+static_message!(worktree_error_generic, WorktreeErrorGenericArgs);
+static_message!(worktree_create_reason, WorktreeCreateReasonArgs);
 
 pub fn runtime_registry_contract(version: u16) -> String {
     text(&RuntimeRegistryContractArgs::new(Count(u64::from(version))))

@@ -8,6 +8,7 @@ pub mod runtime;
 pub mod search;
 pub mod session;
 pub mod transcript;
+pub mod worktree;
 
 pub use activity::{
     ActivityAggregate, ActivityConfidence, ActivityError, ActivityEvidence, ActivityEvidenceKind,
@@ -20,8 +21,8 @@ pub use group::{
 };
 pub use host::{DurabilityWatermark, HostLifecycle, ProcessToken};
 pub use id::{
-    CommandId, GroupId, HostInstanceId, HostedSessionId, OutputSequence, PositionError,
-    PositionKey, PresetId, ProjectId, Revision,
+    CommandId, GroupId, HostInstanceId, HostedSessionId, ManagedWorktreeId, OutputSequence,
+    PositionError, PositionKey, PresetId, ProjectId, Revision,
 };
 pub use preset::{
     DetectionCandidate, DetectionReport, DetectionStatus, ExecutableSpec, LaunchPreset,
@@ -31,8 +32,8 @@ pub use preset::{
     classify_argument_strings, classify_arguments,
 };
 pub use project::{
-    AddProject, CanonicalPath, FileIdentity, LocalizedUserText, Project, ProjectError,
-    ProjectService, ProjectStatus, ProjectSummary,
+    AddProject, CanonicalPath, FileIdentity, LocalizedUserText, MAX_LABEL_SCALARS, Project,
+    ProjectError, ProjectService, ProjectStatus, ProjectSummary,
 };
 pub use runtime::{
     ExecutableFingerprint, MAX_RUNTIME_CANDIDATES, MAX_RUNTIME_DESCRIPTORS,
@@ -64,4 +65,10 @@ pub use transcript::{
     TranscriptRange, TranscriptRequest, deterministic_content_hash, escape_markdown_text,
     normalize_transcript_content, render_transcript_entry_markdown,
     render_transcript_entry_markdown_with_label,
+};
+pub use worktree::{
+    BaseCandidate, BaseSource, CommitOid, GitReference, MAX_GIT_REF_BYTES,
+    MAX_WORKTREE_REGISTRATIONS, ManagedPath, WorktreeError, WorktreeIntent, WorktreeIntentState,
+    WorktreeLaunchDraft, WorktreeLaunchOutcome, WorktreeLaunchStage, WorktreePlan,
+    WorktreeRegistration,
 };

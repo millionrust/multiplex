@@ -778,6 +778,190 @@ id = "transcript-export-unavailable-pending"
 context = "Visible reason why a fixture-backed transcript contract is disabled pending approval."
 description = "Pending transcript contract reason"
 [[messages]]
+id = "worktree-new-action"
+context = "Project action that opens the managed worktree creation sheet."
+description = "New isolated branch action"
+[[messages]]
+id = "worktree-title"
+context = "Managed worktree sheet title."
+description = "Worktree sheet title"
+[[messages]]
+id = "worktree-subtitle"
+context = "Managed worktree sheet purpose and launch separation."
+description = "Worktree sheet subtitle"
+[[messages]]
+id = "worktree-repository-field"
+context = "Worktree review repository field label."
+description = "Repository field"
+[[messages]]
+id = "worktree-base-field"
+context = "Worktree review base reference field label."
+description = "Base reference field"
+[[messages]]
+id = "worktree-base-placeholder"
+context = "Placeholder for optional explicit Git base reference."
+description = "Base reference placeholder"
+[[messages]]
+id = "worktree-branch-field"
+context = "Worktree review new branch field label."
+description = "Branch field"
+[[messages]]
+id = "worktree-path-field"
+context = "Worktree review managed path field label."
+description = "Managed path field"
+[[messages]]
+id = "worktree-preset-field"
+context = "Optional preset selection field after worktree creation."
+description = "Worktree preset field"
+[[messages]]
+id = "worktree-fetch-action"
+context = "Explicitly fetch remote refs and inspect again."
+description = "Fetch worktree refs action"
+[[messages]]
+id = "worktree-current-action"
+context = "Explicitly allow current branch as worktree base."
+description = "Use current branch action"
+[[messages]]
+id = "worktree-refresh-action"
+context = "Reinspect edited worktree choices."
+description = "Inspect worktree choices action"
+[[messages]]
+id = "worktree-create-action"
+context = "Create the reviewed managed worktree."
+description = "Create worktree action"
+[[messages]]
+id = "worktree-verify-action"
+context = "Verify and register a recovered worktree."
+description = "Verify recovered worktree action"
+[[messages]]
+id = "worktree-start-session-action"
+context = "Start a durable session after worktree registration."
+description = "Start worktree session action"
+[[messages]]
+id = "worktree-stage-inspecting"
+context = "Worktree progress while inspecting Git state."
+description = "Worktree inspecting stage"
+[[messages]]
+id = "worktree-stage-ready"
+context = "Worktree progress when review is valid."
+description = "Worktree ready stage"
+[[messages]]
+id = "worktree-stage-creating"
+context = "Worktree progress while Git creates the tree."
+description = "Worktree creating stage"
+[[messages]]
+id = "worktree-stage-verifying"
+context = "Worktree progress while verifying Git and registration."
+description = "Worktree verifying stage"
+[[messages]]
+id = "worktree-stage-registered"
+context = "Worktree progress after registration succeeds."
+description = "Worktree registered stage"
+[[messages]]
+id = "worktree-stage-launching"
+context = "Worktree progress while handing off to durable session launch."
+description = "Worktree session launching stage"
+[[messages]]
+id = "worktree-offline-status"
+context = "Worktree review states that no fetch was requested."
+description = "Worktree local-only status"
+[[messages]]
+id = "worktree-fetched-status"
+context = "Worktree review states that fetch was explicit."
+description = "Worktree fetched status"
+[[messages]]
+id = "worktree-current-warning"
+context = "Warning for explicit current-branch fallback."
+description = "Current branch confirmation warning"
+[[messages]]
+id = "worktree-success"
+context = "Worktree registration success and retention behavior."
+description = "Worktree success message"
+[[messages]]
+id = "worktree-failure-kept"
+context = "Partial worktree failure says evidence and files were kept."
+description = "Worktree partial failure safety"
+[[messages]]
+id = "worktree-recovery-banner"
+context = "Project view warning for an interrupted worktree intent."
+description = "Worktree recovery banner"
+[[messages]]
+id = "worktree-review-recovery-action"
+context = "Open an interrupted worktree intent for review."
+description = "Review worktree recovery action"
+[[messages]]
+id = "worktree-forget-recovery-action"
+context = "Forget only an empty worktree recovery intent without deleting files."
+description = "Forget empty worktree recovery action"
+[[messages]]
+id = "worktree-error-invalid-repository"
+context = "Worktree error for invalid or unavailable Git repository."
+description = "Invalid worktree repository error"
+[[messages]]
+id = "worktree-error-git-unavailable"
+context = "Worktree error when the Git executable cannot be started."
+description = "Git unavailable error"
+[[messages]]
+id = "worktree-error-fetch"
+context = "Worktree error for an explicit fetch failure with local-only recovery."
+description = "Worktree fetch error"
+[[messages]]
+id = "worktree-error-permission"
+context = "Worktree error for repository or managed-root permission denial."
+description = "Worktree permission error"
+[[messages]]
+id = "worktree-error-storage-full"
+context = "Worktree error for filesystem storage exhaustion."
+description = "Worktree storage full error"
+[[messages]]
+id = "worktree-error-invalid-reference"
+context = "Worktree error for invalid base OID, ref, or branch name."
+description = "Invalid worktree reference error"
+[[messages]]
+id = "worktree-error-resource-limit"
+context = "Worktree error for bounded output or registration quota."
+description = "Worktree resource limit error"
+[[messages]]
+id = "worktree-error-dirty-source"
+context = "Worktree error for source changes."
+description = "Dirty source error"
+[[messages]]
+id = "worktree-error-submodules"
+context = "Worktree error for repositories using submodules."
+description = "Submodule policy error"
+[[messages]]
+id = "worktree-error-no-base"
+context = "Worktree error when no safe base is selected."
+description = "No worktree base error"
+[[messages]]
+id = "worktree-error-collision"
+context = "Worktree error for branch or path collision."
+description = "Worktree collision error"
+[[messages]]
+id = "worktree-error-timeout"
+context = "Worktree error for bounded Git timeout."
+description = "Worktree timeout error"
+[[messages]]
+id = "worktree-error-cancelled"
+context = "Worktree cancellation and partial evidence behavior."
+description = "Worktree cancelled error"
+[[messages]]
+id = "worktree-error-verification"
+context = "Worktree post-create verification failure."
+description = "Worktree verification error"
+[[messages]]
+id = "worktree-error-conflict"
+context = "Worktree store or registration conflict."
+description = "Worktree conflict error"
+[[messages]]
+id = "worktree-error-generic"
+context = "Safe generic Git/worktree failure."
+description = "Generic worktree error"
+[[messages]]
+id = "worktree-create-reason"
+context = "Visible reason why worktree creation is unavailable before a valid review."
+description = "Worktree create disabled reason"
+[[messages]]
 id = "runtime-version-unverified"
 context = "No exact verified runtime version is available."
 description = "Unverified runtime version"
