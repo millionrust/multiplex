@@ -1,0 +1,27 @@
+[package]
+name = "termirust-cli"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Stable one-shot local CLI for TermiRust"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+ctrlc = "3.4"
+dirs = "6.0"
+libc = "0.2"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+termirust-client = { version = "0.1.0", path = "../termirust-client" }
+termirust-domain = { version = "0.1.0", path = "../termirust-domain" }
+termirust-host-protocol = { version = "0.1.0", path = "../termirust-host-protocol" }
+termirust-session-host = { version = "0.1.0", path = "../termirust-session-host" }
+termirust-store = { version = "0.1.0", path = "../termirust-store" }
+tokio = { version = "1", features = ["rt", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+unicode-width = "0.2"
+
+[dev-dependencies]
+tempfile = "3.27"
+uuid = "1.22"

@@ -441,6 +441,23 @@ notification-summary-payload = { $count ->
    *[other] { $count } session updates
     }
 notification-permission-status = OS permission: { $state }
+cli-settings-title = Command Line
+cli-settings-description = Inspect and control local durable sessions from scripts without opening the desktop UI.
+cli-settings-state-available = Available
+cli-settings-state-host-unavailable = Host unavailable
+cli-settings-state-unavailable = Unavailable
+cli-settings-schema = JSON schema v{ $version }
+cli-settings-protocol = Host protocol { $version }
+cli-settings-protocol-unavailable = Host protocol unavailable
+cli-settings-installed-path = Installed path
+cli-settings-path-value = Executable: { $path }
+cli-settings-path-unavailable = Installation path unavailable
+cli-settings-copy-path = Copy Path
+cli-settings-examples = Examples
+cli-settings-example = Copy { $command }
+cli-settings-help-hint = Use --help for lifecycle commands, confirmation rules, stable exit codes, and the local-output privacy warning.
+cli-settings-path-copied = CLI path copied to clipboard.
+cli-settings-example-copied = CLI example copied to clipboard.
 activity-age-just-now = just now
 activity-age-yesterday = yesterday
 activity-age-minutes = { $count ->

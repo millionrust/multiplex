@@ -1,0 +1,186 @@
+{
+  "help": {
+    "data": {
+      "commands": [
+        "status [--json]",
+        "project list [--json]",
+        "preset list --project <ProjectId> [--json]",
+        "session list [--project <id>] [--group <id>] [--state <value>] [--archived] [--json]",
+        "session show <HostedSessionId> [--json]",
+        "session launch --project <id> --preset <id> [--group <id>] [--json]",
+        "session stop <id> [--expected-revision N] --yes [--json]",
+        "session archive <id> [--expected-revision N] [--json]",
+        "session restore <id> [--expected-revision N] [--json]"
+      ],
+      "exit_codes": [
+        "0 success",
+        "2 usage or validation",
+        "3 unavailable or incompatible",
+        "4 permission denied",
+        "5 stale revision or conflict",
+        "6 resource or quota limit",
+        "7 operation failure or timeout",
+        "130 signal cancellation"
+      ],
+      "safety": "Local metadata and authenticated Host commands only. Stop requires --yes. Mutations never silently retry conflicts. Output can contain user-chosen project, preset, and session titles and may be sensitive."
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "preset_list": {
+    "data": {
+      "presets": [{
+        "enabled": true,
+        "favorite": true,
+        "id": "00000000-0000-0000-0000-000000000002",
+        "label": "Counter",
+        "permission_policy": "ask_as_needed",
+        "revision": 1,
+        "risk": "safe"
+      }],
+      "project_id": "00000000-0000-0000-0000-000000000001"
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "project_list": {
+    "data": {
+      "projects": [{
+        "id": "00000000-0000-0000-0000-000000000001",
+        "name": "Example Project",
+        "revision": 1,
+        "status": "available"
+      }]
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_archive": {
+    "data": {
+      "outcome": "archived",
+      "session": {
+        "activity": "unknown",
+        "archived": true,
+        "id": "00000000-0000-0000-0000-000000000003",
+        "preset_id": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000001",
+        "revision": 2,
+        "state": "exited",
+        "title": "Counter session",
+        "unread": false
+      }
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_launch": {
+    "data": {
+      "outcome": "launched",
+      "session": {
+        "activity": "unknown",
+        "archived": false,
+        "id": "00000000-0000-0000-0000-000000000004",
+        "preset_id": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000001",
+        "revision": 6,
+        "state": "live",
+        "title": "Counter",
+        "unread": false
+      }
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_list": {
+    "data": {
+      "sessions": [{
+        "activity": "unknown",
+        "archived": false,
+        "id": "00000000-0000-0000-0000-000000000003",
+        "preset_id": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000001",
+        "revision": 1,
+        "state": "exited",
+        "title": "Counter session",
+        "unread": false
+      }]
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_restore": {
+    "data": {
+      "outcome": "restored",
+      "session": {
+        "activity": "unknown",
+        "archived": false,
+        "id": "00000000-0000-0000-0000-000000000003",
+        "preset_id": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000001",
+        "revision": 3,
+        "state": "exited",
+        "title": "Counter session",
+        "unread": false
+      }
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_show": {
+    "data": {
+      "session": {
+        "activity": "unknown",
+        "archived": false,
+        "id": "00000000-0000-0000-0000-000000000003",
+        "preset_id": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000001",
+        "revision": 1,
+        "state": "exited",
+        "title": "Counter session",
+        "unread": false
+      }
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_stop": {
+    "data": {
+      "outcome": "stopped",
+      "session": {
+        "activity": "unknown",
+        "archived": false,
+        "id": "00000000-0000-0000-0000-000000000004",
+        "preset_id": "00000000-0000-0000-0000-000000000002",
+        "project_id": "00000000-0000-0000-0000-000000000001",
+        "revision": 8,
+        "state": "exited",
+        "title": "Counter",
+        "unread": false
+      }
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "status": {
+    "data": {
+      "cli_version": "0.1.0",
+      "host_control": "host_unavailable",
+      "json_schema_version": 1,
+      "protocol_maximum": "1.0",
+      "protocol_minimum": "1.0",
+      "store": "available"
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  }
+}

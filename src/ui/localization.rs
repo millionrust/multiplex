@@ -101,20 +101,62 @@ pub fn common_run() -> String {
     text(&CommonRunArgs::new())
 }
 
-pub fn common_save() -> String {
-    text(&CommonSaveArgs::new())
-}
-
-pub fn status_connecting(host: impl Into<String>) -> String {
-    text(&StatusConnectingArgs::new(UserData::new(host)))
-}
-
 macro_rules! static_message {
     ($function:ident, $arguments:ty) => {
         pub fn $function() -> String {
             text(&<$arguments>::new())
         }
     };
+}
+
+static_message!(cli_settings_title, CliSettingsTitleArgs);
+static_message!(cli_settings_description, CliSettingsDescriptionArgs);
+static_message!(cli_settings_state_available, CliSettingsStateAvailableArgs);
+static_message!(
+    cli_settings_state_host_unavailable,
+    CliSettingsStateHostUnavailableArgs
+);
+static_message!(
+    cli_settings_state_unavailable,
+    CliSettingsStateUnavailableArgs
+);
+static_message!(
+    cli_settings_protocol_unavailable,
+    CliSettingsProtocolUnavailableArgs
+);
+static_message!(cli_settings_installed_path, CliSettingsInstalledPathArgs);
+static_message!(
+    cli_settings_path_unavailable,
+    CliSettingsPathUnavailableArgs
+);
+static_message!(cli_settings_copy_path, CliSettingsCopyPathArgs);
+static_message!(cli_settings_examples, CliSettingsExamplesArgs);
+static_message!(cli_settings_help_hint, CliSettingsHelpHintArgs);
+static_message!(cli_settings_path_copied, CliSettingsPathCopiedArgs);
+static_message!(cli_settings_example_copied, CliSettingsExampleCopiedArgs);
+
+pub fn cli_settings_schema(version: impl Into<String>) -> String {
+    text(&CliSettingsSchemaArgs::new(Text::new(version)))
+}
+
+pub fn cli_settings_protocol(version: impl Into<String>) -> String {
+    text(&CliSettingsProtocolArgs::new(Text::new(version)))
+}
+
+pub fn cli_settings_path_value(path: impl Into<String>) -> String {
+    text(&CliSettingsPathValueArgs::new(UserData::new(path)))
+}
+
+pub fn cli_settings_example(command: impl Into<String>) -> String {
+    text(&CliSettingsExampleArgs::new(KeyName::new(command)))
+}
+
+pub fn common_save() -> String {
+    text(&CommonSaveArgs::new())
+}
+
+pub fn status_connecting(host: impl Into<String>) -> String {
+    text(&StatusConnectingArgs::new(UserData::new(host)))
 }
 
 static_message!(projects_nav_label, ProjectsNavLabelArgs);

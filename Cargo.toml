@@ -12,6 +12,7 @@ default-run = "termirust"
 
 [workspace]
 members = [
+    "crates/termirust-cli",
     "crates/termirust-client",
     "crates/termirust-domain",
     "crates/termirust-host-protocol",
@@ -65,6 +66,7 @@ sha2 = "0.10"
 termirust-protocol = { version = "0.1.0", path = "crates/termirust-protocol" }
 termirust-domain = { version = "0.1.0", path = "crates/termirust-domain" }
 termirust-client = { version = "0.1.0", path = "crates/termirust-client" }
+termirust-cli = { version = "0.1.0", path = "crates/termirust-cli" }
 termirust-host-protocol = { version = "0.1.0", path = "crates/termirust-host-protocol" }
 termirust-session-host = { version = "0.1.0", path = "crates/termirust-session-host" }
 termirust-store = { version = "0.1.0", path = "crates/termirust-store" }

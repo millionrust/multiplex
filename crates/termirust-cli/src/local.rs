@@ -1,0 +1,1218 @@
+use std::collections::BTreeMap;
+use std::fmt;
+use std::fs;
+use std::io::{BufRead as _, BufReader, Write as _};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use rand::RngCore as _;
+use termirust_client::{ClientError, ClientErrorCode, ConnectOptions, HostClient, LocalEndpoint};
+use termirust_domain::{
+    ActivityAggregate, CommandId, GroupId, HostInstanceId, HostedSession, HostedSessionId,
+    HostedSessionState, OutputSequence, PositionKey, PresetId, PresetRisk, ProjectId, Revision,
+    SessionMutation, SessionStateError, SessionTitle, TitleSource, resolve_launch,
+};
+use termirust_host_protocol::{CURRENT_PROTOCOL, wire};
+use termirust_session_host::{LaunchDescriptor, StopDeadlines};
+use termirust_store::{
+    JournalLimits, PresetRepository, PresetSnapshot, ProjectRepository, ProjectSnapshot,
+    SessionRepository, SessionSnapshot, StoreError, StoreHealth,
+};
+use tokio::runtime::Builder;
+use tokio_util::sync::CancellationToken;
+
+use crate::{
+    CLI_JSON_SCHEMA_VERSION, Cancellation, CliCommand, CliData, CliError, CommandService,
+    ErrorCode, MAX_RESPONSE_RECORDS, PresetListData, PresetView, ProjectListData, ProjectView,
+    SessionData, SessionListData, SessionListFilter, SessionMutationData, SessionView, StatusData,
+};
+
+const STORE_DIR_NAME: &str = "agent-workspace";
+const SESSION_DATA_DIR_NAME: &str = "durable-sessions";
+const FORMAT_FILE_NAME: &str = "format.json";
+const HOST_READY_DEADLINE: Duration = Duration::from_secs(5);
+const READY_POLL_INTERVAL: Duration = Duration::from_millis(25);
+
+#[derive(Clone)]
+pub struct CliPaths {
+    config_root: PathBuf,
+    metadata_root: PathBuf,
+    session_data_root: PathBuf,
+    runtime_parent: PathBuf,
+    host_executable: PathBuf,
+}
+
+impl fmt::Debug for CliPaths {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CliPaths")
+            .field("config_root", &"<redacted>")
+            .field("metadata_root", &"<redacted>")
+            .field("session_data_root", &"<redacted>")
+            .field("runtime_parent", &"<redacted>")
+            .field("host_executable", &"<redacted>")
+            .finish()
+    }
+}
+
+impl CliPaths {
+    pub fn discover() -> Result<Self, CliError> {
+        let config_root = std::env::var_os("TERMIRUST_CONFIG_DIR")
+            .map(PathBuf::from)
+            .or_else(|| dirs::config_dir().map(|root| root.join("termirust")))
+            .ok_or_else(|| {
+                CliError::new(
+                    ErrorCode::Unavailable,
+                    "TermiRust configuration directory is unavailable",
+                    "Set TERMIRUST_CONFIG_DIR to the existing TermiRust data directory.",
+                )
+            })?;
+        let current = std::env::current_exe().map_err(|_| {
+            CliError::new(
+                ErrorCode::Unavailable,
+                "CLI installation path is unavailable",
+                "Reinstall TermiRust and try again.",
+            )
+        })?;
+        let host_executable = std::env::var_os("TERMIRUST_SESSION_HOST_BIN")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| sibling_binary(&current, "termirust-session-host"));
+        Ok(Self::new(config_root, host_executable))
+    }
+
+    pub fn new(config_root: impl Into<PathBuf>, host_executable: impl Into<PathBuf>) -> Self {
+        let config_root = config_root.into();
+        Self {
+            metadata_root: config_root.join(STORE_DIR_NAME),
+            session_data_root: config_root.join(SESSION_DATA_DIR_NAME),
+            runtime_parent: durable_runtime_parent(&config_root),
+            config_root,
+            host_executable: host_executable.into(),
+        }
+    }
+
+    pub fn config_root(&self) -> &Path {
+        &self.config_root
+    }
+
+    pub fn metadata_root(&self) -> &Path {
+        &self.metadata_root
+    }
+
+    pub fn session_data_root(&self) -> &Path {
+        &self.session_data_root
+    }
+
+    fn runtime_root(&self, session_id: HostedSessionId) -> PathBuf {
+        self.runtime_parent.join(session_id.to_string())
+    }
+
+    fn session_dir(&self, session_id: HostedSessionId) -> PathBuf {
+        self.session_data_root.join(session_id.to_string())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CliInstallationStatus {
+    pub path: PathBuf,
+    pub available: bool,
+    pub host_available: bool,
+    pub json_schema_version: u16,
+    pub protocol_version: String,
+}
+
+pub fn cli_installation_status(current_executable: &Path) -> CliInstallationStatus {
+    let path = sibling_binary(current_executable, "termirust-cli");
+    let host_path = sibling_binary(current_executable, "termirust-session-host");
+    CliInstallationStatus {
+        available: path.is_file(),
+        host_available: host_path.is_file(),
+        path,
+        json_schema_version: CLI_JSON_SCHEMA_VERSION,
+        protocol_version: format!(
+            "{}.{}",
+            CURRENT_PROTOCOL.maximum.major, CURRENT_PROTOCOL.maximum.minor
+        ),
+    }
+}
+
+pub trait HostLauncher: Send + Sync {
+    fn launch(
+        &self,
+        descriptor: &LaunchDescriptor,
+        host_executable: &Path,
+        cancellation: &Cancellation,
+    ) -> Result<HostLaunchOutcome, CliError>;
+}
+
+pub trait HostController: Send + Sync {
+    fn stop(
+        &self,
+        runtime_root: &Path,
+        session_id: HostedSessionId,
+        command_id: CommandId,
+        cancellation: &Cancellation,
+    ) -> Result<(), CliError>;
+}
+
+pub trait CliClock: Send + Sync {
+    fn now_millis(&self) -> u64;
+}
+
+pub trait CliIds: Send + Sync {
+    fn session_id(&self) -> HostedSessionId;
+    fn command_id(&self) -> CommandId;
+    fn host_instance_id(&self) -> HostInstanceId;
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HostLaunchOutcome {
+    Ready,
+    ReadyAfterPreReadyCancellation,
+}
+
+pub struct LocalCommandService {
+    paths: CliPaths,
+    launcher: Arc<dyn HostLauncher>,
+    controller: Arc<dyn HostController>,
+    clock: Arc<dyn CliClock>,
+    ids: Arc<dyn CliIds>,
+}
+
+impl LocalCommandService {
+    pub fn open(paths: CliPaths) -> Self {
+        Self::with_adapters(
+            paths,
+            Arc::new(ProcessHostLauncher),
+            Arc::new(LocalHostController),
+            Arc::new(SystemClock),
+            Arc::new(RandomIds),
+        )
+    }
+
+    pub fn with_adapters(
+        paths: CliPaths,
+        launcher: Arc<dyn HostLauncher>,
+        controller: Arc<dyn HostController>,
+        clock: Arc<dyn CliClock>,
+        ids: Arc<dyn CliIds>,
+    ) -> Self {
+        Self {
+            paths,
+            launcher,
+            controller,
+            clock,
+            ids,
+        }
+    }
+
+    fn status(&self) -> Result<CliData, CliError> {
+        self.require_existing_store()?;
+        let projects =
+            ProjectRepository::open(self.paths.metadata_root.clone()).map_err(map_store)?;
+        let project_snapshot = projects.load().map_err(map_store)?;
+        Ok(CliData::Status(StatusData {
+            cli_version: env!("CARGO_PKG_VERSION").to_string(),
+            json_schema_version: CLI_JSON_SCHEMA_VERSION,
+            protocol_minimum: format!(
+                "{}.{}",
+                CURRENT_PROTOCOL.minimum.major, CURRENT_PROTOCOL.minimum.minor
+            ),
+            protocol_maximum: format!(
+                "{}.{}",
+                CURRENT_PROTOCOL.maximum.major, CURRENT_PROTOCOL.maximum.minor
+            ),
+            store: if project_snapshot.health == StoreHealth::Healthy {
+                "available"
+            } else {
+                "recovered_read_only"
+            }
+            .to_string(),
+            host_control: if self.paths.host_executable.is_file() {
+                "available"
+            } else {
+                "host_unavailable"
+            }
+            .to_string(),
+        }))
+    }
+
+    fn project_list(&self) -> Result<CliData, CliError> {
+        let snapshot = self.projects()?.load().map_err(map_store)?;
+        bounded_records(snapshot.projects.len())?;
+        Ok(CliData::Projects(ProjectListData {
+            projects: snapshot.projects.iter().map(ProjectView::from).collect(),
+        }))
+    }
+
+    fn preset_list(&self, project_id: ProjectId) -> Result<CliData, CliError> {
+        let (projects, snapshot) = self.consistent_project_preset_snapshot()?;
+        require_project(&projects.projects, project_id)?;
+        bounded_records(snapshot.presets.len())?;
+        Ok(CliData::Presets(PresetListData {
+            project_id: project_id.to_string(),
+            presets: snapshot.presets.iter().map(PresetView::from).collect(),
+        }))
+    }
+
+    fn session_list(&self, filter: SessionListFilter) -> Result<CliData, CliError> {
+        let (projects, snapshot) = self.consistent_project_session_snapshot()?;
+        if let Some(project_id) = filter.project_id {
+            require_project(&projects.projects, project_id)?;
+        }
+        if let Some(group_id) = filter.group_id {
+            let group = projects
+                .groups
+                .iter()
+                .find(|group| group.id == group_id)
+                .ok_or_else(|| unavailable("group is unavailable"))?;
+            if filter
+                .project_id
+                .is_some_and(|project_id| group.project_id != project_id)
+            {
+                return Err(validation(
+                    "group does not belong to the selected project",
+                    "Choose a group from the same project.",
+                ));
+            }
+        }
+        let sessions = snapshot
+            .sessions
+            .iter()
+            .filter(|session| {
+                filter
+                    .project_id
+                    .is_none_or(|project_id| session.project_id == project_id)
+                    && filter
+                        .group_id
+                        .is_none_or(|group_id| session.group_id == Some(group_id))
+                    && filter.state.is_none_or(|state| session.lifecycle == state)
+                    && (!filter.archived_only || session.archived_at.is_some())
+            })
+            .collect::<Vec<_>>();
+        bounded_records(sessions.len())?;
+        Ok(CliData::Sessions(SessionListData {
+            sessions: sessions.into_iter().map(SessionView::from).collect(),
+        }))
+    }
+
+    fn session_show(&self, session_id: HostedSessionId) -> Result<CliData, CliError> {
+        let snapshot = self.sessions()?.load().map_err(map_store)?;
+        let session = require_session(&snapshot.sessions, session_id)?;
+        Ok(CliData::Session(SessionData {
+            session: SessionView::from(session),
+        }))
+    }
+
+    fn session_archive(
+        &self,
+        session_id: HostedSessionId,
+        expected: Option<Revision>,
+    ) -> Result<CliData, CliError> {
+        let repository = self.sessions()?;
+        let snapshot = repository.load().map_err(map_store)?;
+        let session = require_session(&snapshot.sessions, session_id)?;
+        if !session.lifecycle.is_exited() {
+            return Err(validation(
+                "only an exited session can be archived",
+                "Run session stop <id> --yes first, wait for Exited, then archive.",
+            ));
+        }
+        let revision = mutation_revision(&snapshot, session, expected)?;
+        let session = repository
+            .mutate_session(
+                session_id,
+                revision,
+                SessionMutation::Archive {
+                    at: self.clock.now_millis(),
+                },
+                self.clock.now_millis(),
+            )
+            .map_err(map_store)?;
+        Ok(mutation("archived", &session))
+    }
+
+    fn session_restore(
+        &self,
+        session_id: HostedSessionId,
+        expected: Option<Revision>,
+    ) -> Result<CliData, CliError> {
+        let repository = self.sessions()?;
+        let snapshot = repository.load().map_err(map_store)?;
+        let session = require_session(&snapshot.sessions, session_id)?;
+        let revision = mutation_revision(&snapshot, session, expected)?;
+        let session = repository
+            .mutate_session(
+                session_id,
+                revision,
+                SessionMutation::Restore,
+                self.clock.now_millis(),
+            )
+            .map_err(map_store)?;
+        Ok(mutation("restored", &session))
+    }
+
+    fn session_stop(
+        &self,
+        session_id: HostedSessionId,
+        expected: Option<Revision>,
+        confirmed: bool,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        if !confirmed {
+            return Err(validation(
+                "session stop requires --yes",
+                "Review the session ID, then rerun with --yes.",
+            ));
+        }
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let repository = self.sessions()?;
+        let snapshot = repository.load().map_err(map_store)?;
+        let session = require_session(&snapshot.sessions, session_id)?;
+        if !session.lifecycle.can_stop() {
+            return Err(validation(
+                "session is not in a stoppable state",
+                "Inspect the session and wait for a live or provisioning state.",
+            ));
+        }
+        let revision = mutation_revision(&snapshot, session, expected)?;
+        let runtime_root = self.paths.runtime_root(session_id);
+        let stopping = repository
+            .mutate_session(
+                session_id,
+                revision,
+                SessionMutation::SetLifecycle(HostedSessionState::Stopping),
+                self.clock.now_millis(),
+            )
+            .map_err(map_store)?;
+        let command_id = self.ids.command_id();
+        match self
+            .controller
+            .stop(&runtime_root, session_id, command_id, cancellation)
+        {
+            Ok(()) => {
+                let exited = repository
+                    .mutate_session(
+                        session_id,
+                        stopping.revision,
+                        SessionMutation::SetLifecycle(HostedSessionState::Exited),
+                        self.clock.now_millis(),
+                    )
+                    .map_err(map_store)?;
+                Ok(mutation("stopped", &exited))
+            }
+            Err(error) if error.code == ErrorCode::Cancelled => Err(CliError::new(
+                ErrorCode::OperationFailed,
+                "stop outcome is not yet confirmed",
+                "Inspect the session status. The stop command may still complete.",
+            )
+            .with_revision(stopping.revision)),
+            Err(error) => Err(error.with_revision(stopping.revision)),
+        }
+    }
+
+    fn session_launch(
+        &self,
+        project_id: ProjectId,
+        preset_id: PresetId,
+        group_id: Option<GroupId>,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let project_repository = self.projects()?;
+        let preset_repository = self.presets()?;
+        let session_repository = self.sessions()?;
+        let projects = project_repository.load().map_err(map_store)?;
+        let presets = preset_repository.load().map_err(map_store)?;
+        let sessions = session_repository.load().map_err(map_store)?;
+        let project = require_project(&projects.projects, project_id)?
+            .project
+            .clone();
+        let preset = presets
+            .presets
+            .iter()
+            .find(|preset| preset.id == preset_id)
+            .cloned()
+            .ok_or_else(|| unavailable("preset is unavailable"))?;
+        if matches!(preset.risk, PresetRisk::Risky(_)) {
+            return Err(validation(
+                "risky presets cannot be launched implicitly from CLI v1",
+                "Review and launch this preset from the desktop application.",
+            ));
+        }
+        if let Some(group_id) = group_id {
+            let group = projects
+                .groups
+                .iter()
+                .find(|group| group.id == group_id)
+                .ok_or_else(|| unavailable("group is unavailable"))?;
+            if group.project_id != project_id {
+                return Err(validation(
+                    "group does not belong to the selected project",
+                    "Choose a group from the same project.",
+                ));
+            }
+        }
+        let session_id = self.ids.session_id();
+        let path_snapshot = explicit_path_snapshot();
+        let home = dirs::home_dir();
+        let resolved = resolve_launch(
+            session_id,
+            &project,
+            &preset,
+            &path_snapshot,
+            home.as_deref(),
+        )
+        .map_err(|_| {
+            validation(
+                "session launch validation failed",
+                "Review project availability and the preset executable in the desktop application.",
+            )
+        })?;
+        resolved.revalidate().map_err(|_| {
+            CliError::new(
+                ErrorCode::Conflict,
+                "project or executable changed during launch validation",
+                "Reload projects and presets, then run the command again.",
+            )
+        })?;
+        if project_repository.load().map_err(map_store)?.revision != projects.revision
+            || preset_repository.load().map_err(map_store)?.revision != presets.revision
+        {
+            return Err(CliError::new(
+                ErrorCode::Conflict,
+                "project or preset metadata changed during launch validation",
+                "Reload projects and presets, then run the command again.",
+            ));
+        }
+        create_user_only_directory(&self.paths.runtime_root(session_id))?;
+        create_user_only_directory(&self.paths.session_dir(session_id))?;
+        let now = self.clock.now_millis();
+        let session = HostedSession {
+            id: session_id,
+            project_id,
+            group_id,
+            preset_id: Some(preset_id),
+            title: SessionTitle::new(preset.label.as_str()).map_err(|_| {
+                validation(
+                    "preset label cannot be used as a session title",
+                    "Rename the preset in the desktop application.",
+                )
+            })?,
+            title_source: TitleSource::Default,
+            lifecycle: HostedSessionState::Provisioning,
+            activity: ActivityAggregate::default(),
+            pinned: false,
+            position: PositionKey::FIRST,
+            last_output_sequence: OutputSequence::ZERO,
+            read_through_sequence: OutputSequence::ZERO,
+            unread_sequence: None,
+            archived_at: None,
+            created_at: now,
+            updated_at: now,
+            revision: Revision::ZERO,
+        };
+        let created = session_repository
+            .create_session(session, sessions.revision)
+            .map_err(map_store)?;
+        let descriptor = self.launch_descriptor(&resolved);
+        let outcome = self
+            .launcher
+            .launch(&descriptor, &self.paths.host_executable, cancellation);
+        match outcome {
+            Ok(HostLaunchOutcome::Ready) => {
+                let attaching = session_repository.mutate_session(
+                    session_id,
+                    created.revision,
+                    SessionMutation::SetLifecycle(HostedSessionState::Attaching),
+                    self.clock.now_millis(),
+                );
+                let live = match attaching.and_then(|attaching| {
+                    session_repository.mutate_session(
+                        session_id,
+                        attaching.revision,
+                        SessionMutation::SetLifecycle(HostedSessionState::Live),
+                        self.clock.now_millis(),
+                    )
+                }) {
+                    Ok(session) => return Ok(mutation("launched", &session)),
+                    Err(_) => session_repository.load().ok().and_then(|snapshot| {
+                        snapshot
+                            .sessions
+                            .into_iter()
+                            .find(|session| session.id == session_id)
+                    }),
+                };
+                live.map(|session| mutation("running_reconciliation_pending", &session))
+                    .ok_or_else(|| {
+                        CliError::new(
+                            ErrorCode::OperationFailed,
+                            "Host is ready but session metadata requires reconciliation",
+                            "Run session list and inspect the session before taking another action.",
+                        )
+                    })
+            }
+            Ok(HostLaunchOutcome::ReadyAfterPreReadyCancellation) => {
+                let stop = self.controller.stop(
+                    &self.paths.runtime_root(session_id),
+                    session_id,
+                    self.ids.command_id(),
+                    &Cancellation::default(),
+                );
+                let lifecycle = if stop.is_ok() {
+                    HostedSessionState::Cancelled
+                } else {
+                    HostedSessionState::Offline
+                };
+                let _ = session_repository.mutate_session(
+                    session_id,
+                    created.revision,
+                    SessionMutation::SetLifecycle(lifecycle),
+                    self.clock.now_millis(),
+                );
+                if stop.is_ok() {
+                    Err(cancelled())
+                } else {
+                    Err(CliError::new(
+                        ErrorCode::OperationFailed,
+                        "launch cancellation could not confirm Host shutdown",
+                        "Inspect the session before retrying or stopping it.",
+                    ))
+                }
+            }
+            Err(error) => {
+                let lifecycle = if error.code == ErrorCode::Cancelled {
+                    HostedSessionState::Cancelled
+                } else {
+                    HostedSessionState::Failed
+                };
+                let _ = session_repository.mutate_session(
+                    session_id,
+                    created.revision,
+                    SessionMutation::SetLifecycle(lifecycle),
+                    self.clock.now_millis(),
+                );
+                Err(error)
+            }
+        }
+    }
+
+    fn launch_descriptor(&self, resolved: &termirust_domain::ResolvedLaunch) -> LaunchDescriptor {
+        let mut environment = BTreeMap::new();
+        for name in ["HOME", "LANG", "LC_ALL", "PATH", "SHELL", "TERM"] {
+            if let Ok(value) = std::env::var(name) {
+                environment.insert(name.to_string(), value);
+            }
+        }
+        environment
+            .entry("TERM".to_string())
+            .or_insert_with(|| "xterm-256color".to_string());
+        LaunchDescriptor {
+            format_version: LaunchDescriptor::FORMAT_VERSION,
+            session_id: resolved.session_id,
+            host_instance_id: self.ids.host_instance_id(),
+            runtime_root: self.paths.runtime_root(resolved.session_id),
+            session_dir: self.paths.session_dir(resolved.session_id),
+            executable: resolved.executable().to_path_buf(),
+            runtime_detection: None,
+            arguments: resolved.arguments().to_vec(),
+            environment,
+            cwd: Some(resolved.working_directory().to_path_buf()),
+            columns: 160,
+            rows: 48,
+            journal_limits: JournalLimits::default(),
+            stop_deadlines: StopDeadlines::default(),
+        }
+    }
+
+    fn require_existing_store(&self) -> Result<(), CliError> {
+        if self.paths.metadata_root.join(FORMAT_FILE_NAME).is_file() {
+            Ok(())
+        } else {
+            Err(unavailable("TermiRust metadata store is unavailable"))
+        }
+    }
+
+    fn projects(&self) -> Result<ProjectRepository, CliError> {
+        self.require_existing_store()?;
+        ProjectRepository::open(self.paths.metadata_root.clone()).map_err(map_store)
+    }
+
+    fn presets(&self) -> Result<PresetRepository, CliError> {
+        self.require_existing_store()?;
+        PresetRepository::open(self.paths.metadata_root.clone()).map_err(map_store)
+    }
+
+    fn sessions(&self) -> Result<SessionRepository, CliError> {
+        self.require_existing_store()?;
+        SessionRepository::open(
+            self.paths.metadata_root.clone(),
+            self.paths.session_data_root.clone(),
+        )
+        .map_err(map_store)
+    }
+
+    fn consistent_project_preset_snapshot(
+        &self,
+    ) -> Result<(ProjectSnapshot, PresetSnapshot), CliError> {
+        let projects = self.projects()?;
+        let presets = self.presets()?;
+        for _ in 0..2 {
+            let first_projects = projects.load().map_err(map_store)?;
+            let first_presets = presets.load().map_err(map_store)?;
+            let second_projects = projects.load().map_err(map_store)?;
+            let second_presets = presets.load().map_err(map_store)?;
+            if first_projects.revision == second_projects.revision
+                && first_presets.revision == second_presets.revision
+            {
+                return Ok((second_projects, second_presets));
+            }
+        }
+        Err(temporarily_inconsistent())
+    }
+
+    fn consistent_project_session_snapshot(
+        &self,
+    ) -> Result<(ProjectSnapshot, SessionSnapshot), CliError> {
+        let projects = self.projects()?;
+        let sessions = self.sessions()?;
+        for _ in 0..2 {
+            let first_projects = projects.load().map_err(map_store)?;
+            let first_sessions = sessions.load().map_err(map_store)?;
+            let second_projects = projects.load().map_err(map_store)?;
+            let second_sessions = sessions.load().map_err(map_store)?;
+            if first_projects.revision == second_projects.revision
+                && first_sessions.revision == second_sessions.revision
+            {
+                return Ok((second_projects, second_sessions));
+            }
+        }
+        Err(temporarily_inconsistent())
+    }
+}
+
+impl CommandService for LocalCommandService {
+    fn execute(
+        &mut self,
+        command: CliCommand,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        match command {
+            CliCommand::Help => Ok(crate::help_data()),
+            CliCommand::Status => self.status(),
+            CliCommand::ProjectList => self.project_list(),
+            CliCommand::PresetList { project_id } => self.preset_list(project_id),
+            CliCommand::SessionList(filter) => self.session_list(filter),
+            CliCommand::SessionShow { session_id } => self.session_show(session_id),
+            CliCommand::SessionLaunch {
+                project_id,
+                preset_id,
+                group_id,
+            } => self.session_launch(project_id, preset_id, group_id, cancellation),
+            CliCommand::SessionStop {
+                session_id,
+                expected_revision,
+                confirmed,
+            } => self.session_stop(session_id, expected_revision, confirmed, cancellation),
+            CliCommand::SessionArchive {
+                session_id,
+                expected_revision,
+            } => self.session_archive(session_id, expected_revision),
+            CliCommand::SessionRestore {
+                session_id,
+                expected_revision,
+            } => self.session_restore(session_id, expected_revision),
+        }
+    }
+}
+
+struct ProcessHostLauncher;
+
+impl HostLauncher for ProcessHostLauncher {
+    fn launch(
+        &self,
+        descriptor: &LaunchDescriptor,
+        host_executable: &Path,
+        cancellation: &Cancellation,
+    ) -> Result<HostLaunchOutcome, CliError> {
+        let host_executable = fs::canonicalize(host_executable)
+            .map_err(|_| unavailable("TermiRust session Host companion is unavailable"))?;
+        let mut child = Command::new(host_executable)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(map_process)?;
+        let write_result = child.stdin.as_mut().map_or_else(
+            || Err(()),
+            |stdin| {
+                serde_json::to_writer(&mut *stdin, descriptor)
+                    .and_then(|()| stdin.flush().map_err(serde_json::Error::io))
+                    .map_err(|_| ())
+            },
+        );
+        child.stdin.take();
+        if write_result.is_err() {
+            terminate_host(&mut child);
+            return Err(operation(
+                "unable to send the bounded Host launch descriptor",
+            ));
+        }
+        let stdout = child.stdout.take().ok_or_else(|| {
+            terminate_host(&mut child);
+            operation("session Host readiness pipe is unavailable")
+        })?;
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            let mut line = String::new();
+            let result = BufReader::new(stdout).read_line(&mut line).map(|_| line);
+            let _ = ready_tx.send(result);
+        });
+        let deadline = Instant::now() + HOST_READY_DEADLINE;
+        let mut cancelled_before_ready = false;
+        loop {
+            cancelled_before_ready |= cancellation.is_cancelled();
+            match ready_rx.recv_timeout(READY_POLL_INTERVAL) {
+                Ok(Ok(line)) if line.contains("\"code\":\"host_ready\"") => {
+                    std::thread::spawn(move || {
+                        let _ = child.wait();
+                    });
+                    return Ok(if cancelled_before_ready {
+                        HostLaunchOutcome::ReadyAfterPreReadyCancellation
+                    } else {
+                        HostLaunchOutcome::Ready
+                    });
+                }
+                Ok(_) => {
+                    terminate_host(&mut child);
+                    return Err(if cancelled_before_ready {
+                        cancelled()
+                    } else {
+                        operation("session Host failed before becoming ready")
+                    });
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    terminate_host(&mut child);
+                    return Err(operation("session Host exited before becoming ready"));
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) if Instant::now() >= deadline => {
+                    terminate_host(&mut child);
+                    if cancelled_before_ready {
+                        return Err(cancelled());
+                    }
+                    return Err(CliError::new(
+                        ErrorCode::Timeout,
+                        "session Host did not become ready within five seconds",
+                        "Inspect local Host availability, then retry once.",
+                    ));
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            }
+        }
+    }
+}
+
+struct LocalHostController;
+
+impl HostController for LocalHostController {
+    fn stop(
+        &self,
+        runtime_root: &Path,
+        session_id: HostedSessionId,
+        command_id: CommandId,
+        cancellation: &Cancellation,
+    ) -> Result<(), CliError> {
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| operation("unable to initialize local Host control"))?;
+        let async_cancel = CancellationToken::new();
+        let done = Arc::new(AtomicBool::new(false));
+        let monitor_done = done.clone();
+        let monitor_cancel = async_cancel.clone();
+        let source = cancellation.clone();
+        let monitor = std::thread::spawn(move || {
+            while !monitor_done.load(Ordering::Acquire) {
+                if source.is_cancelled() {
+                    monitor_cancel.cancel();
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
+        let endpoint = LocalEndpoint::new(runtime_root, session_id);
+        let mut nonce = [0_u8; 32];
+        rand::rngs::OsRng.fill_bytes(&mut nonce);
+        let result = runtime.block_on(async {
+            let mut client = HostClient::connect(
+                endpoint,
+                ConnectOptions::local(session_id, nonce),
+                &async_cancel,
+            )
+            .await?;
+            client
+                .stop(command_id, wire::StopMode::Graceful, &async_cancel)
+                .await?;
+            client.disconnect();
+            Ok::<(), ClientError>(())
+        });
+        done.store(true, Ordering::Release);
+        let _ = monitor.join();
+        result.map_err(map_client)
+    }
+}
+
+struct SystemClock;
+
+impl CliClock for SystemClock {
+    fn now_millis(&self) -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .try_into()
+            .unwrap_or(u64::MAX)
+    }
+}
+
+struct RandomIds;
+
+impl CliIds for RandomIds {
+    fn session_id(&self) -> HostedSessionId {
+        HostedSessionId::new()
+    }
+
+    fn command_id(&self) -> CommandId {
+        CommandId::new()
+    }
+
+    fn host_instance_id(&self) -> HostInstanceId {
+        HostInstanceId::new()
+    }
+}
+
+fn mutation(outcome: &str, session: &HostedSession) -> CliData {
+    CliData::Mutation(SessionMutationData {
+        outcome: outcome.to_string(),
+        session: SessionView::from(session),
+    })
+}
+
+fn require_project(
+    projects: &[termirust_domain::ProjectSummary],
+    id: ProjectId,
+) -> Result<&termirust_domain::ProjectSummary, CliError> {
+    projects
+        .iter()
+        .find(|summary| summary.project.id == id)
+        .ok_or_else(|| unavailable("project is unavailable"))
+}
+
+fn require_session(
+    sessions: &[HostedSession],
+    id: HostedSessionId,
+) -> Result<&HostedSession, CliError> {
+    sessions
+        .iter()
+        .find(|session| session.id == id)
+        .ok_or_else(|| unavailable("session is unavailable"))
+}
+
+fn mutation_revision(
+    snapshot: &SessionSnapshot,
+    session: &HostedSession,
+    expected: Option<Revision>,
+) -> Result<Revision, CliError> {
+    if let Some(expected) = expected
+        && expected != session.revision
+    {
+        return Err(CliError::new(
+            ErrorCode::Conflict,
+            "session changed after the expected revision was captured",
+            "Inspect the session and retry with its current revision.",
+        )
+        .with_revision(session.revision));
+    }
+    Ok(snapshot.revision)
+}
+
+fn bounded_records(count: usize) -> Result<(), CliError> {
+    if count > MAX_RESPONSE_RECORDS {
+        Err(CliError::new(
+            ErrorCode::ResourceLimit,
+            "command result exceeds 1,000 records",
+            "Narrow the query with project, group, state, or archived filters.",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn map_store(error: StoreError) -> CliError {
+    match error {
+        StoreError::StoreNewer { .. } => CliError::new(
+            ErrorCode::Incompatible,
+            "TermiRust metadata was written by a newer version",
+            "Upgrade the CLI. The newer metadata was not modified.",
+        ),
+        StoreError::Io {
+            kind: std::io::ErrorKind::PermissionDenied,
+            ..
+        }
+        | StoreError::Domain(termirust_domain::ProjectError::PermissionDenied) => CliError::new(
+            ErrorCode::PermissionDenied,
+            "permission to access local TermiRust metadata was denied",
+            "Check ownership and user-only permissions, then retry.",
+        ),
+        StoreError::Io {
+            operation,
+            kind: std::io::ErrorKind::WouldBlock,
+        } if operation.starts_with("lock ") => CliError::new(
+            ErrorCode::Timeout,
+            "local metadata remained busy for two seconds",
+            "Wait for the current TermiRust operation to finish, then retry once.",
+        ),
+        StoreError::TooLarge { .. }
+        | StoreError::Domain(termirust_domain::ProjectError::ResourceLimit { .. })
+        | StoreError::PresetDomain(termirust_domain::PresetError::ResourceLimit { .. })
+        | StoreError::SessionDomain(SessionStateError::ResourceLimit { .. }) => CliError::new(
+            ErrorCode::ResourceLimit,
+            "a local TermiRust resource limit was reached",
+            "Reduce retained records or use a narrower command.",
+        ),
+        StoreError::SessionDomain(SessionStateError::StaleRevision { actual, .. }) => {
+            CliError::new(
+                ErrorCode::Conflict,
+                "session metadata changed before the command committed",
+                "Reload the session and retry with the current revision.",
+            )
+            .with_revision(actual)
+        }
+        StoreError::GroupDomain(termirust_domain::GroupError::StaleRevision { actual, .. }) => {
+            CliError::new(
+                ErrorCode::Conflict,
+                "group metadata changed before the command committed",
+                "Reload the group and retry with the current revision.",
+            )
+            .with_revision(actual)
+        }
+        StoreError::Corrupt { .. } | StoreError::UnsafeEntry { .. } => CliError::new(
+            ErrorCode::Unavailable,
+            "local TermiRust metadata is unsafe or corrupt",
+            "Open Storage and recovery in the desktop application.",
+        ),
+        StoreError::SessionDomain(SessionStateError::StopRequiredBeforeArchive) => validation(
+            "only an exited session can be archived",
+            "Run session stop <id> --yes first, wait for Exited, then archive.",
+        ),
+        StoreError::SessionDomain(SessionStateError::Unavailable)
+        | StoreError::PresetDomain(termirust_domain::PresetError::Unavailable)
+        | StoreError::Domain(termirust_domain::ProjectError::Unavailable) => {
+            unavailable("requested local record is unavailable")
+        }
+        _ => operation("local metadata operation failed"),
+    }
+}
+
+fn map_client(error: ClientError) -> CliError {
+    match error.code {
+        ClientErrorCode::ProtocolIncompatible => CliError::new(
+            ErrorCode::Incompatible,
+            "local session Host protocol is incompatible",
+            "Upgrade TermiRust and inspect the session again.",
+        ),
+        ClientErrorCode::PermissionDenied | ClientErrorCode::InvalidIdentity => CliError::new(
+            ErrorCode::PermissionDenied,
+            "local session Host rejected this user or identity",
+            "Run the CLI as the same local user that owns the session.",
+        ),
+        ClientErrorCode::ConflictingDuplicate => CliError::new(
+            ErrorCode::Conflict,
+            "local Host command conflicts with an earlier command",
+            "Inspect current session state before issuing another mutation.",
+        ),
+        ClientErrorCode::ResourceLimit | ClientErrorCode::FrameTooLarge => CliError::new(
+            ErrorCode::ResourceLimit,
+            "local session Host resource limit was reached",
+            "Wait for current work to finish, then retry once.",
+        ),
+        ClientErrorCode::Cancelled => cancelled(),
+        _ => operation("local session Host operation failed"),
+    }
+}
+
+fn map_process(error: std::io::Error) -> CliError {
+    if error.kind() == std::io::ErrorKind::PermissionDenied {
+        CliError::new(
+            ErrorCode::PermissionDenied,
+            "permission to start the local session Host was denied",
+            "Check the TermiRust installation permissions.",
+        )
+    } else {
+        unavailable("TermiRust session Host companion is unavailable")
+    }
+}
+
+fn validation(message: &str, hint: &str) -> CliError {
+    CliError::new(ErrorCode::Validation, message, hint)
+}
+
+fn unavailable(message: &str) -> CliError {
+    CliError::new(
+        ErrorCode::Unavailable,
+        message,
+        "Open TermiRust desktop and inspect local status, then retry.",
+    )
+}
+
+fn operation(message: &str) -> CliError {
+    CliError::new(
+        ErrorCode::OperationFailed,
+        message,
+        "Inspect current session status before retrying.",
+    )
+}
+
+fn temporarily_inconsistent() -> CliError {
+    CliError::new(
+        ErrorCode::Conflict,
+        "local metadata changed throughout two snapshot attempts",
+        "Wait for the current metadata operation to finish, then retry once.",
+    )
+}
+
+fn cancelled() -> CliError {
+    CliError::new(
+        ErrorCode::Cancelled,
+        "operation was cancelled",
+        "Inspect current state before running another mutation.",
+    )
+}
+
+fn explicit_path_snapshot() -> Vec<PathBuf> {
+    std::env::var_os("PATH")
+        .map(|value| std::env::split_paths(&value).collect())
+        .unwrap_or_default()
+}
+
+fn sibling_binary(current: &Path, name: &str) -> PathBuf {
+    current
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
+}
+
+#[cfg(target_os = "macos")]
+fn durable_runtime_parent(_: &Path) -> PathBuf {
+    PathBuf::from(format!("/private/tmp/termirust-{}", unsafe {
+        libc::geteuid()
+    }))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn durable_runtime_parent(_: &Path) -> PathBuf {
+    PathBuf::from(format!("/tmp/termirust-{}", unsafe { libc::geteuid() }))
+}
+
+#[cfg(not(unix))]
+fn durable_runtime_parent(config_root: &Path) -> PathBuf {
+    config_root.join("session-host-runtime")
+}
+
+#[cfg(unix)]
+fn create_user_only_directory(path: &Path) -> Result<(), CliError> {
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            return Err(CliError::new(
+                ErrorCode::PermissionDenied,
+                "durable session directory is not a trusted directory",
+                "Inspect local data ownership in the desktop application.",
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir_all(path).map_err(map_directory_io)?;
+        }
+        Err(error) => return Err(map_directory_io(error)),
+    }
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700)).map_err(map_directory_io)?;
+    let metadata = fs::symlink_metadata(path).map_err(map_directory_io)?;
+    if metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.permissions().mode() & 0o777 != 0o700
+    {
+        return Err(CliError::new(
+            ErrorCode::PermissionDenied,
+            "durable session directory has unsafe ownership or permissions",
+            "Inspect local data ownership in the desktop application.",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn create_user_only_directory(path: &Path) -> Result<(), CliError> {
+    fs::create_dir_all(path).map_err(map_directory_io)
+}
+
+fn map_directory_io(error: std::io::Error) -> CliError {
+    if error.kind() == std::io::ErrorKind::PermissionDenied {
+        CliError::new(
+            ErrorCode::PermissionDenied,
+            "permission to prepare durable session storage was denied",
+            "Check local TermiRust data ownership and permissions.",
+        )
+    } else {
+        operation("unable to prepare durable session storage")
+    }
+}
+
+fn terminate_host(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn store_faults_map_to_the_frozen_exit_classes_without_internal_context() {
+        let permission = map_store(StoreError::Io {
+            operation: "read secret path",
+            kind: std::io::ErrorKind::PermissionDenied,
+        });
+        assert_eq!(permission.code, ErrorCode::PermissionDenied);
+        assert!(!permission.message.contains("secret"));
+
+        let resource = map_store(StoreError::TooLarge {
+            name: "private.json",
+            limit: 1,
+        });
+        assert_eq!(resource.code, ErrorCode::ResourceLimit);
+        assert!(!resource.message.contains("private.json"));
+
+        let timeout = map_store(StoreError::Io {
+            operation: "lock project metadata",
+            kind: std::io::ErrorKind::WouldBlock,
+        });
+        assert_eq!(timeout.code, ErrorCode::Timeout);
+        assert!(!timeout.message.contains("project"));
+
+        assert_eq!(
+            bounded_records(MAX_RESPONSE_RECORDS + 1).unwrap_err().code,
+            ErrorCode::ResourceLimit
+        );
+    }
+}

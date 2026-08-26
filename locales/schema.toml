@@ -2080,6 +2080,115 @@ sensitivity = "public"
 bidi = "isolate"
 
 [[messages]]
+id = "cli-settings-title"
+context = "Settings card heading for the local one-shot command line interface."
+description = "CLI settings title"
+
+[[messages]]
+id = "cli-settings-description"
+context = "Settings card description of the local one-shot command line interface."
+description = "CLI settings description"
+
+[[messages]]
+id = "cli-settings-state-available"
+context = "CLI settings status when both the CLI and session Host companion are installed."
+description = "CLI available status"
+
+[[messages]]
+id = "cli-settings-state-host-unavailable"
+context = "CLI settings status when the CLI exists but its session Host companion is missing."
+description = "CLI Host unavailable status"
+
+[[messages]]
+id = "cli-settings-state-unavailable"
+context = "CLI settings status when the CLI binary is not installed."
+description = "CLI unavailable status"
+
+[[messages]]
+id = "cli-settings-schema"
+context = "CLI Settings label for the stable JSON schema version."
+description = "CLI JSON schema version"
+
+[[messages.args]]
+name = "version"
+type = "Text"
+sensitivity = "public"
+bidi = "isolate"
+
+[[messages]]
+id = "cli-settings-protocol"
+context = "CLI Settings label for the local Host protocol version."
+description = "CLI Host protocol version"
+
+[[messages.args]]
+name = "version"
+type = "Text"
+sensitivity = "public"
+bidi = "isolate"
+
+[[messages]]
+id = "cli-settings-protocol-unavailable"
+context = "CLI Settings protocol label when the application executable cannot be inspected."
+description = "CLI Host protocol unavailable"
+
+[[messages]]
+id = "cli-settings-installed-path"
+context = "CLI Settings heading above the installed executable path."
+description = "CLI installed path heading"
+
+[[messages]]
+id = "cli-settings-path-value"
+context = "Directionally isolated installed CLI executable path."
+description = "CLI installed path value"
+
+[[messages.args]]
+name = "path"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "cli-settings-path-unavailable"
+context = "CLI Settings path value when the application executable cannot be inspected."
+description = "CLI installation path unavailable"
+
+[[messages]]
+id = "cli-settings-copy-path"
+context = "Button that copies the installed CLI path."
+description = "Copy CLI path action"
+
+[[messages]]
+id = "cli-settings-examples"
+context = "CLI Settings heading above copyable example commands."
+description = "CLI examples heading"
+
+[[messages]]
+id = "cli-settings-example"
+context = "Directionally isolated CLI example command used as a button label."
+description = "CLI example command"
+
+[[messages.args]]
+name = "command"
+type = "KeyName"
+sensitivity = "public"
+bidi = "isolate"
+
+[[messages]]
+id = "cli-settings-help-hint"
+context = "CLI Settings guidance to open complete safety and lifecycle help."
+description = "CLI help guidance"
+
+[[messages]]
+id = "cli-settings-path-copied"
+context = "Status announcement after copying the CLI path."
+description = "CLI path copied status"
+
+[[messages]]
+id = "cli-settings-example-copied"
+context = "Status announcement after copying a CLI example command."
+description = "CLI example copied status"
+
+[[messages]]
 id = "activity-age-just-now"
 context = "Relative age for Activity Center records less than one minute old."
 description = "Activity age just now"

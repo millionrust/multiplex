@@ -2712,6 +2712,7 @@ impl TermiRustApp {
         );
 
         let notification_card = self.render_notification_settings_card(cx);
+        let cli_card = self.render_cli_settings_card(cx);
 
         v_flex()
             .flex_1()
@@ -2754,6 +2755,7 @@ impl TermiRustApp {
                             .child(sessions_card)
                             .child(notification_card)
                             .child(local_shell_card)
+                            .child(cli_card)
                             .child(shortcuts_card)
                             .child(portable_card)
                             .child(encrypted_card)

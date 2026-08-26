@@ -3,6 +3,8 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read as _};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 #[cfg(unix)]
 use std::os::fd::AsRawFd as _;
@@ -23,6 +25,8 @@ const PRESETS_FILE: &str = "presets.json";
 const PRESETS_BACKUP_FILE: &str = "presets.last-good.json";
 const LOCK_FILE: &str = "metadata.lock";
 const MAX_PRESETS_BYTES: u64 = 8 * 1024 * 1024;
+const INTERACTIVE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
+const LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(10);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PresetSnapshot {
@@ -264,9 +268,21 @@ impl PresetRepository {
             .map_err(|error| io_error("open metadata lock", error))?;
         #[cfg(unix)]
         {
-            let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
-            if result != 0 {
-                return Err(io_error("lock metadata", io::Error::last_os_error()));
+            let deadline = Instant::now() + INTERACTIVE_LOCK_TIMEOUT;
+            loop {
+                let result =
+                    unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+                if result == 0 {
+                    break;
+                }
+                let error = io::Error::last_os_error();
+                let retryable = error
+                    .raw_os_error()
+                    .is_some_and(|code| code == libc::EWOULDBLOCK || code == libc::EAGAIN);
+                if !retryable || Instant::now() >= deadline {
+                    return Err(io_error("lock preset metadata", error));
+                }
+                thread::sleep(LOCK_RETRY_INTERVAL);
             }
         }
         Ok(MetadataLock { file })

@@ -1,6 +1,7 @@
 mod activity_center;
 mod canvas;
 mod chrome;
+mod cli_status;
 mod connect;
 mod editor;
 mod global_search;
