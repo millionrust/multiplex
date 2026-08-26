@@ -2650,3 +2650,109 @@ description = "Artifact decode error"
 id = "artifact-error-unavailable"
 context = "Generic artifact repository or operation unavailable state."
 description = "Artifact unavailable error"
+[[messages]]
+id = "dev-url-chip"
+context = "Terminal header chip for a detected loopback development origin."
+description = "Local development URL chip"
+[[messages.args]]
+name = "origin"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "dev-url-chip-masked"
+context = "Recording-friendly replacement for the local URL chip."
+description = "Masked local development URL chip"
+[[messages]]
+id = "dev-url-count"
+context = "Additional detected local development URL count."
+description = "Local development URL count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "dev-url-inspector-title"
+context = "Session inspector heading for detected local development URLs."
+description = "Local development URLs inspector title"
+[[messages]]
+id = "dev-url-empty"
+context = "Empty state for a session with no detected local URLs."
+description = "No local development URLs"
+[[messages]]
+id = "dev-url-partial"
+context = "State shown when replay had an output gap or snapshot boundary."
+description = "Partial local URL detection state"
+[[messages]]
+id = "dev-url-stale"
+context = "State shown when the exact Host instance is unavailable."
+description = "Stale local URL action state"
+[[messages]]
+id = "dev-url-hidden-parameters"
+context = "Notice that query or fragment data is hidden in normal UI."
+description = "Hidden URL parameters notice"
+[[messages]]
+id = "dev-url-opened"
+context = "Status after one successful browser dispatch."
+description = "Local development URL dispatched"
+[[messages]]
+id = "dev-url-error-invalidated"
+context = "Candidate changed or was dismissed before opening."
+description = "Local development URL invalidated error"
+[[messages]]
+id = "dev-url-error-stale-host"
+context = "Candidate belongs to a replaced Host instance."
+description = "Local development URL stale Host error"
+[[messages]]
+id = "dev-url-error-session-unavailable"
+context = "Session or Host is unavailable when opening."
+description = "Local development URL session unavailable error"
+[[messages]]
+id = "dev-url-error-browser-unavailable"
+context = "No browser handler is available."
+description = "Browser unavailable error"
+[[messages]]
+id = "dev-url-error-permission"
+context = "Operating system denied browser dispatch."
+description = "Browser permission error"
+[[messages]]
+id = "dev-url-error-dispatch"
+context = "Browser dispatch failed without automatic retry."
+description = "Browser dispatch failure"
+[[messages]]
+id = "dev-url-path"
+context = "Sanitized path-only label with query and fragment omitted."
+description = "Local development URL path label"
+[[messages.args]]
+name = "path"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "dev-url-clear-action"
+context = "Action that clears current in-memory local URL candidates."
+description = "Clear local development URLs action"
+[[messages]]
+id = "dev-url-dismiss-action"
+context = "Tooltip for dismissing one detected local development URL."
+description = "Dismiss local development URL action"
+[[messages]]
+id = "dev-url-confirm-title"
+context = "Confirmation heading before opening a path/query/fragment URL."
+description = "Confirm local development URL"
+[[messages]]
+id = "dev-url-confirm-warning"
+context = "Risk disclosure before dispatching a local URL to the browser."
+description = "Local development URL browser warning"
+[[messages]]
+id = "dev-url-confirm-exact"
+context = "Exact escaped sensitive URL displayed only in deliberate confirmation."
+description = "Exact local development URL confirmation value"
+[[messages.args]]
+name = "url"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"

@@ -21,6 +21,7 @@ use crate::models::{
 };
 use crate::storage::{HostKeyDecision, KnownHostStore};
 use crate::terminal::TerminalSize;
+use termirust_domain::{HostInstanceId, OutputSequence};
 
 #[derive(Debug)]
 pub enum SessionCommand {
@@ -41,8 +42,19 @@ pub enum SshEvent {
         session_id: u64,
         data: Vec<u8>,
     },
+    HostedBound {
+        session_id: u64,
+        host_instance_id: HostInstanceId,
+    },
+    HostedOutput {
+        session_id: u64,
+        host_instance_id: HostInstanceId,
+        output_sequence: OutputSequence,
+        data: Vec<u8>,
+    },
     HostedSnapshot {
         session_id: u64,
+        host_instance_id: HostInstanceId,
         data: Vec<u8>,
         boundary_sequence: u64,
     },

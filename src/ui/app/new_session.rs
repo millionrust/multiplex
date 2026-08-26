@@ -430,6 +430,7 @@ impl TermiRustApp {
                 cancel_requested: false,
                 last_sequence: 0,
                 has_writer_lease: false,
+                dev_urls: termirust_client::DevUrlProjection::new(resolved.session_id),
             });
             pane.status = "Provisioning".to_string();
             pane.terminal_focus.focus(window);

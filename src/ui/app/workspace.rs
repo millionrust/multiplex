@@ -636,6 +636,9 @@ impl TermiRustApp {
                         .child(
                             h_flex()
                                 .gap(px(theme::SPACE_2))
+                                .when_some(self.render_dev_url_header(pane, cx), |this, chip| {
+                                    this.child(chip)
+                                })
                                 .when(can_retry, |this| {
                                     this.child(
                                         Button::new(("durable-retry", pane_id))

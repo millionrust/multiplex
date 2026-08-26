@@ -296,6 +296,46 @@ pub fn artifact_preview_dimensions(width: usize, height: usize) -> String {
     ))
 }
 
+pub fn dev_url_chip(origin: impl Into<String>) -> String {
+    text(&DevUrlChipArgs::new(UserData::new(origin)))
+}
+
+pub fn dev_url_count(count: usize) -> String {
+    text(&DevUrlCountArgs::new(Count(count as u64)))
+}
+
+pub fn dev_url_path(path: impl Into<String>) -> String {
+    text(&DevUrlPathArgs::new(UserData::new(path)))
+}
+
+pub fn dev_url_confirm_exact(url: impl Into<String>) -> String {
+    text(&DevUrlConfirmExactArgs::new(UserData::new(url)))
+}
+
+static_message!(dev_url_chip_masked, DevUrlChipMaskedArgs);
+static_message!(dev_url_inspector_title, DevUrlInspectorTitleArgs);
+static_message!(dev_url_empty, DevUrlEmptyArgs);
+static_message!(dev_url_partial, DevUrlPartialArgs);
+static_message!(dev_url_stale, DevUrlStaleArgs);
+static_message!(dev_url_hidden_parameters, DevUrlHiddenParametersArgs);
+static_message!(dev_url_clear_action, DevUrlClearActionArgs);
+static_message!(dev_url_dismiss_action, DevUrlDismissActionArgs);
+static_message!(dev_url_confirm_title, DevUrlConfirmTitleArgs);
+static_message!(dev_url_confirm_warning, DevUrlConfirmWarningArgs);
+static_message!(dev_url_opened, DevUrlOpenedArgs);
+static_message!(dev_url_error_invalidated, DevUrlErrorInvalidatedArgs);
+static_message!(dev_url_error_stale_host, DevUrlErrorStaleHostArgs);
+static_message!(
+    dev_url_error_session_unavailable,
+    DevUrlErrorSessionUnavailableArgs
+);
+static_message!(
+    dev_url_error_browser_unavailable,
+    DevUrlErrorBrowserUnavailableArgs
+);
+static_message!(dev_url_error_permission, DevUrlErrorPermissionArgs);
+static_message!(dev_url_error_dispatch, DevUrlErrorDispatchArgs);
+
 pub fn status_connecting(host: impl Into<String>) -> String {
     text(&StatusConnectingArgs::new(UserData::new(host)))
 }

@@ -1,5 +1,6 @@
 pub mod activity;
 pub mod artifact;
+pub mod dev_url;
 pub mod group;
 pub mod host;
 pub mod id;
@@ -23,6 +24,11 @@ pub use artifact::{
     ArtifactState, MAX_ARTIFACT_BYTES, MAX_ARTIFACT_DISPLAY_NAME_GRAPHEMES,
     MAX_ARTIFACTS_PER_SESSION, MAX_GLOBAL_ARTIFACT_BYTES, MAX_GLOBAL_ARTIFACTS, MAX_RASTER_BYTES,
     MAX_RASTER_PIXELS, MAX_SESSION_ARTIFACT_BYTES, MAX_TEXT_PREVIEW_BYTES,
+};
+pub use dev_url::{
+    DevUrlCancellation, DevUrlCandidate, DevUrlDetector, DevUrlDetectorCounters, DevUrlError,
+    DevUrlPolicy, LocalDevUrl, MAX_DEV_URL_BYTES, MAX_DEV_URL_CANDIDATES, MAX_DEV_URL_CARRY_BYTES,
+    MAX_DEV_URL_PATH_LABEL_BYTES, OpenUrlError,
 };
 pub use group::{
     Group, GroupDestination, GroupError, GroupInverseCommand, GroupMutation, GroupName,

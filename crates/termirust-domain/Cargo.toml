@@ -12,6 +12,7 @@ sha2 = "0.10"
 unicode-segmentation = "1.12"
 unicode-casefold = "0.2"
 unicode-normalization = "0.1"
+url = "2.5"
 uuid = { version = "1.22", features = ["serde", "v4"] }
 
 [dev-dependencies]
@@ -24,4 +25,8 @@ harness = false
 
 [[bench]]
 name = "transcript_normalize"
+harness = false
+
+[[bench]]
+name = "dev_url_scan"
 harness = false

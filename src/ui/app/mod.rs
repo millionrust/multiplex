@@ -4,6 +4,7 @@ mod canvas;
 mod chrome;
 mod cli_status;
 mod connect;
+mod dev_urls;
 mod editor;
 mod global_search;
 mod hosted_session;
@@ -36,6 +37,7 @@ use canvas::{
     CanvasWorkspaceState, ContextHandoffReview, PendingCanvasNodeDelete, PendingCanvasPaneClose,
     PendingTmuxClose, SplitPaneChooser, StructuredAgentRuntime,
 };
+use dev_urls::DevUrlUiState;
 use global_search::GlobalSearchState;
 use hosted_session::{DurableSessionPaths, DurableSessionSpec, spawn_durable_session};
 use new_session::NewSessionState;
@@ -65,6 +67,7 @@ use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{ActiveTheme, Icon, Sizable, StyledExt as _, h_flex, v_flex};
 use rfd::{AsyncFileDialog, FileDialog};
+use termirust_client::DevUrlProjection;
 use termirust_domain::{HostedSessionId, SessionOrigin};
 use termirust_protocol::MobileDevicePairingRequest;
 use vt100::MouseProtocolMode;
@@ -521,6 +524,7 @@ struct AppAttachedPaneState {
     cancel_requested: bool,
     last_sequence: u64,
     has_writer_lease: bool,
+    dev_urls: DevUrlProjection,
 }
 
 #[derive(Clone)]
@@ -929,6 +933,7 @@ pub struct TermiRustApp {
     session_library: SessionLibraryState,
     artifact_gallery: artifact_gallery::ArtifactGalleryState,
     activity_center: ActivityCenterState,
+    dev_url_ui: DevUrlUiState,
     window_active: bool,
     global_search: GlobalSearchState,
     project_list_focus: FocusHandle,
@@ -1191,6 +1196,7 @@ impl TermiRustApp {
             session_library,
             artifact_gallery,
             activity_center,
+            dev_url_ui: DevUrlUiState::open_default(cx),
             window_active: window.is_window_active(),
             global_search: GlobalSearchState::new(),
             project_list_focus,
@@ -5352,6 +5358,7 @@ impl TermiRustApp {
                 cancel_requested: false,
                 last_sequence: 0,
                 has_writer_lease: false,
+                dev_urls: DevUrlProjection::new(saved_session.id),
             });
             pane.status = "Attaching".to_string();
             pane.terminal_focus.focus(window);
@@ -6259,8 +6266,44 @@ impl TermiRustApp {
                         panes_to_refresh.push(session_id);
                     }
                 }
+                SshEvent::HostedBound {
+                    session_id,
+                    host_instance_id,
+                } => {
+                    if let Some(hosted) = self
+                        .pane_mut(session_id)
+                        .and_then(|pane| pane.app_attached.as_mut())
+                    {
+                        hosted.dev_urls.bind_available_host(host_instance_id);
+                    }
+                }
+                SshEvent::HostedOutput {
+                    session_id,
+                    host_instance_id,
+                    output_sequence,
+                    data,
+                } => {
+                    if let Some(workspace_id) = self.pane_workspace_id(session_id) {
+                        self.record_workspace_activity(workspace_id);
+                    }
+                    if let Some(pane) = self.pane_mut(session_id) {
+                        pane.terminal.process_bytes(&data);
+                        if let Some(hosted) = pane.app_attached.as_mut() {
+                            let _ =
+                                hosted
+                                    .dev_urls
+                                    .observe(host_instance_id, output_sequence, &data);
+                        }
+                        if pane.selection.is_some() {
+                            pane.selection = None;
+                            pane.dragging_selection = false;
+                        }
+                        panes_to_refresh.push(session_id);
+                    }
+                }
                 SshEvent::HostedSnapshot {
                     session_id,
+                    host_instance_id,
                     data,
                     boundary_sequence,
                 } => {
@@ -6271,6 +6314,10 @@ impl TermiRustApp {
                         pane.terminal.process_bytes(&data);
                         if let Some(hosted) = pane.app_attached.as_mut() {
                             hosted.last_sequence = boundary_sequence;
+                            hosted.dev_urls.apply_snapshot(
+                                host_instance_id,
+                                termirust_domain::OutputSequence::new(boundary_sequence),
+                            );
                         }
                         pane.selection = None;
                         pane.dragging_selection = false;
@@ -6291,6 +6338,20 @@ impl TermiRustApp {
                         pane.app_attached.as_mut().map(|hosted| {
                             hosted.last_sequence = last_sequence;
                             hosted.has_writer_lease = has_writer_lease;
+                            if matches!(state, termirust_domain::HostedSessionState::Gap) {
+                                hosted.dev_urls.mark_gap();
+                            }
+                            if matches!(
+                                state,
+                                termirust_domain::HostedSessionState::Exited
+                                    | termirust_domain::HostedSessionState::Failed
+                                    | termirust_domain::HostedSessionState::Orphaned
+                                    | termirust_domain::HostedSessionState::Offline
+                                    | termirust_domain::HostedSessionState::PermissionDenied
+                                    | termirust_domain::HostedSessionState::Incompatible
+                            ) {
+                                hosted.dev_urls.mark_host_unavailable();
+                            }
                             hosted.hosted_session_id
                         })
                     });
@@ -6359,6 +6420,9 @@ impl TermiRustApp {
                         pane.connected = false;
                         pane.closed = true;
                         pane.status = "Error".to_string();
+                        if let Some(attached) = pane.app_attached.as_mut() {
+                            attached.dev_urls.mark_host_unavailable();
+                        }
                         let log_id = pane.log_id.clone();
                         self.saved
                             .update_session_log(&log_id, |e| e.mark_error(&message));
@@ -6408,6 +6472,9 @@ impl TermiRustApp {
                     if let Some(pane) = self.pane_mut(session_id) {
                         pane.connected = false;
                         pane.closed = true;
+                        if let Some(hosted) = pane.app_attached.as_mut() {
+                            hosted.dev_urls.mark_host_unavailable();
+                        }
                         if !durable {
                             pane.status = "Closed".to_string();
                         }
@@ -10169,6 +10236,9 @@ impl Render for TermiRustApp {
             .when(self.worktree_launch.is_some(), |this| {
                 this.child(self.render_worktree_launch_sheet(cx))
             })
+            .when(self.dev_url_ui.has_pending(), |this| {
+                this.child(self.render_dev_url_confirmation(cx))
+            })
     }
 }
 
@@ -10206,6 +10276,10 @@ impl TermiRustApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if self.dev_url_ui.has_pending() && event.keystroke.key.as_str() == "escape" {
+            self.cancel_dev_url_open(cx);
+            return true;
+        }
         if self.show_command_palette {
             return self.handle_command_palette_key(event, window, cx);
         }

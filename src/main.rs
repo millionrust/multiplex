@@ -6,6 +6,7 @@ mod local;
 mod models;
 mod platform_mac;
 mod platform_notifications;
+mod platform_open_url;
 mod sftp;
 mod ssh;
 mod storage;

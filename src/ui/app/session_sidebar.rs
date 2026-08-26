@@ -1746,6 +1746,7 @@ impl TermiRustApp {
                                     }),
                             )
                         })
+                        .child(self.render_dev_url_inspector(id, cx))
                         .child(self.render_artifact_gallery(id, cx))
                         .child(
                             h_flex()

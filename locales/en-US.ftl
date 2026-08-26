@@ -559,3 +559,29 @@ artifact-error-cancelled = Artifact operation cancelled. No partial result was c
 artifact-error-timeout = Preview exceeded the two-second safety limit and was stopped.
 artifact-error-decode = The image could not be decoded within the safe PNG/JPEG preview rules.
 artifact-error-unavailable = Artifact storage is unavailable. Existing session data was left unchanged.
+dev-url-chip = Local URL · { $origin }
+dev-url-chip-masked = Local development URL
+dev-url-count = { $count ->
+    [zero] No additional URLs
+    [one] +1 more
+    [many] +{ $count } more
+   *[other] +{ $count } more
+    }
+dev-url-inspector-title = Local development URLs
+dev-url-empty = No local development URLs detected for this live session.
+dev-url-partial = Detection is partial because retained output had a replay gap or snapshot boundary.
+dev-url-stale = This URL is disabled because its exact Host instance is no longer available.
+dev-url-hidden-parameters = Query or fragment hidden
+dev-url-opened = Local development URL sent to the browser once.
+dev-url-error-invalidated = This URL changed or was dismissed. Detect it again before opening.
+dev-url-error-stale-host = This URL belongs to a replaced Host and cannot be opened.
+dev-url-error-session-unavailable = The exact live session and Host are unavailable. The URL was not opened.
+dev-url-error-browser-unavailable = No browser handler is available. Copy the address from the terminal instead.
+dev-url-error-permission = The operating system denied browser access. The URL was not opened.
+dev-url-error-dispatch = The browser could not open this URL. There was no automatic retry.
+dev-url-path = Path: { $path }
+dev-url-clear-action = Clear URLs
+dev-url-dismiss-action = Dismiss URL
+dev-url-confirm-title = Open this local development URL?
+dev-url-confirm-warning = A localhost request can change local application state and will enter browser history. Cancel is the safe default.
+dev-url-confirm-exact = Exact URL: { $url }

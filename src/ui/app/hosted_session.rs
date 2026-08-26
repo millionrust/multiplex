@@ -404,6 +404,15 @@ async fn attach_loop(
         }
     };
     drop(startup_permit);
+    let host_instance_id = client
+        .host_instance_id()
+        .ok_or_else(|| "Durable Host did not provide an instance identity".to_string())?;
+    event_tx
+        .send(SshEvent::HostedBound {
+            session_id: spec.pane_id,
+            host_instance_id,
+        })
+        .map_err(|_| "Application event channel closed".to_string())?;
 
     let mut model = GpuiAttachModel::new(spec.from_sequence);
     event_tx
@@ -510,6 +519,7 @@ async fn attach_loop(
                     if model.apply_snapshot(boundary) {
                         event_tx.send(SshEvent::HostedSnapshot {
                             session_id: spec.pane_id,
+                            host_instance_id,
                             data: snapshot.terminal_bytes,
                             boundary_sequence: boundary.get(),
                         }).map_err(|_| "Application event channel closed".to_string())?;
@@ -518,8 +528,10 @@ async fn attach_loop(
                 for output in outputs {
                     match model.observe_output(output.sequence, output.bytes.len()) {
                         OutputDisposition::Deliver => {
-                            event_tx.send(SshEvent::Output {
+                            event_tx.send(SshEvent::HostedOutput {
                                 session_id: spec.pane_id,
+                                host_instance_id,
+                                output_sequence: output.sequence,
                                 data: output.bytes,
                             }).map_err(|_| "Application event channel closed".to_string())?;
                         }
@@ -668,11 +680,22 @@ fn replay_retained_output(
     if reconciliation == ReconciliationResult::Active {
         return Ok(false);
     }
-    let activity = read_host_metadata(&spec.paths.session_dir)
-        .map(|metadata| metadata.activity)
+    let metadata = read_host_metadata(&spec.paths.session_dir).ok();
+    let activity = metadata
+        .as_ref()
+        .map(|metadata| metadata.activity.clone())
         .unwrap_or_default();
     let lease = HostLease::acquire(&spec.paths.session_dir, HostInstanceId::new())
         .map_err(|error| format!("Unable to open retained session output: {error}"))?;
+    let host_instance_id = metadata
+        .map(|metadata| metadata.host_instance_id)
+        .unwrap_or_else(|| lease.host_instance_id());
+    event_tx
+        .send(SshEvent::HostedBound {
+            session_id: spec.pane_id,
+            host_instance_id,
+        })
+        .map_err(|_| "Application event channel closed".to_string())?;
     let journal = JournalStore::open(&lease, JournalLimits::default())
         .map_err(|error| format!("Unable to read retained session output: {error}"))?;
     let from = match load_snapshot(&spec.paths.session_dir)
@@ -682,6 +705,7 @@ fn replay_retained_output(
             event_tx
                 .send(SshEvent::HostedSnapshot {
                     session_id: spec.pane_id,
+                    host_instance_id,
                     data: snapshot.terminal_bytes,
                     boundary_sequence: snapshot.boundary.get(),
                 })
@@ -696,8 +720,10 @@ fn replay_retained_output(
     for frame in read.frames {
         if frame.kind == JournalKind::Output {
             event_tx
-                .send(SshEvent::Output {
+                .send(SshEvent::HostedOutput {
                     session_id: spec.pane_id,
+                    host_instance_id,
+                    output_sequence: frame.sequence,
                     data: frame.payload,
                 })
                 .map_err(|_| "Application event channel closed".to_string())?;

@@ -140,6 +140,32 @@ common-open = ⁧nepO⁩
 common-retry = ⁧yrteR⁩
 common-run = ⁧nuR⁩
 common-save = ⁧evaS⁩
+dev-url-chip = ⁧ · LRU lacoL⁩{ $origin }
+dev-url-chip-masked = ⁧LRU tnempoleved lacoL⁩
+dev-url-clear-action = ⁧sLRU raelC⁩
+dev-url-confirm-exact = ⁧ :LRU tcaxE⁩{ $url }
+dev-url-confirm-title = ⁧?LRU tnempoleved lacol siht nepO⁩
+dev-url-confirm-warning = ⁧.tluafed efas eht si lecnaC .yrotsih resworb retne lliw dna etats noitacilppa lacol egnahc nac tseuqer tsohlacol A⁩
+dev-url-count = { $count ->
+    [many] ⁧+⁩{ $count }⁧erom ⁩
+    [one] ⁧erom 1+⁩
+   *[other] ⁧+⁩{ $count }⁧erom ⁩
+    [zero] ⁧sLRU lanoitidda oN⁩
+    }
+dev-url-dismiss-action = ⁧LRU ssimsiD⁩
+dev-url-empty = ⁧.noisses evil siht rof detceted sLRU tnempoleved lacol oN⁩
+dev-url-error-browser-unavailable = ⁧.daetsni lanimret eht morf sserdda eht ypoC .elbaliava si reldnah resworb oN⁩
+dev-url-error-dispatch = ⁧.yrter citamotua on saw erehT .LRU siht nepo ton dluoc resworb ehT⁩
+dev-url-error-invalidated = ⁧.gninepo erofeb niaga ti tceteD .dessimsid saw ro degnahc LRU sihT⁩
+dev-url-error-permission = ⁧.denepo ton saw LRU ehT .ssecca resworb deined metsys gnitarepo ehT⁩
+dev-url-error-session-unavailable = ⁧.denepo ton saw LRU ehT .elbaliavanu era tsoH dna noisses evil tcaxe ehT⁩
+dev-url-error-stale-host = ⁧.denepo eb tonnac dna tsoH decalper a ot sgnoleb LRU sihT⁩
+dev-url-hidden-parameters = ⁧neddih tnemgarf ro yreuQ⁩
+dev-url-inspector-title = ⁧sLRU tnempoleved lacoL⁩
+dev-url-opened = ⁧.ecno resworb eht ot tnes LRU tnempoleved lacoL⁩
+dev-url-partial = ⁧.yradnuob tohspans ro pag yalper a dah tuptuo deniater esuaceb laitrap si noitceteD⁩
+dev-url-path = ⁧ :htaP⁩{ $path }
+dev-url-stale = ⁧.elbaliava regnol on si ecnatsni tsoH tcaxe sti esuaceb delbasid si LRU sihT⁩
 development-locale-active = ⁧ :elacol tnempoleved evitcA⁩{ $locale }
 development-localization-hint = ⁧.seulav mrof devas gnignahc tuohtiw sserts tuoyal lanoitceridib dna noisnapxe txet weiverP⁩
 development-localization-title = ⁧selacol-oduesP⁩
