@@ -1,0 +1,1 @@
+Artifact fixture: plain UTF-8 text stays inert.

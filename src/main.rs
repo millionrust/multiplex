@@ -1,4 +1,5 @@
 mod agents;
+mod artifact_preview;
 mod assets;
 mod credentials;
 mod local;
@@ -22,6 +23,7 @@ use crate::storage::{load_local_ssh_hosts, load_saved_state};
 use crate::ui::TermiRustApp;
 
 const SESSION_HOST_MODE: &str = "--session-host";
+const ARTIFACT_PREVIEW_MODE: &str = "--artifact-preview-worker";
 
 fn run_session_host_mode() -> Result<(), termirust_session_host::HostError> {
     use std::io::Write as _;
@@ -138,6 +140,9 @@ fn init_file_logging() {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some(ARTIFACT_PREVIEW_MODE) {
+        std::process::exit(crate::artifact_preview::run_worker_mode());
+    }
     if std::env::args().nth(1).as_deref() == Some(SESSION_HOST_MODE) {
         if let Err(error) = run_session_host_mode() {
             eprintln!(

@@ -53,6 +53,7 @@ base64 = "0.22"
 dirs = "6.0"
 gpui = { version = "0.2.2", features = ["runtime_shaders", "test-support"] }
 gpui-component = "0.5.1"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
 keyring = { version = "3.6.2", default-features = false, features = ["apple-native", "windows-native", "linux-native-sync-persistent", "crypto-rust"] }
 libc = "0.2"
 portable-pty = "0.9"
@@ -63,6 +64,7 @@ russh-sftp = "2.1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
+smallvec = "1.15"
 termirust-protocol = { version = "0.1.0", path = "crates/termirust-protocol" }
 termirust-domain = { version = "0.1.0", path = "crates/termirust-domain" }
 termirust-client = { version = "0.1.0", path = "crates/termirust-client" }

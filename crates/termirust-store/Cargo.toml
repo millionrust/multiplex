@@ -17,3 +17,7 @@ uuid = { version = "1.22", features = ["v4"] }
 
 [dev-dependencies]
 tempfile = "3.27"
+
+[[bench]]
+name = "artifact_ingest"
+harness = false

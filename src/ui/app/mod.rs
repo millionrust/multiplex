@@ -1,4 +1,5 @@
 mod activity_center;
+mod artifact_gallery;
 mod canvas;
 mod chrome;
 mod cli_status;
@@ -926,6 +927,7 @@ pub struct TermiRustApp {
     session_remove_confirm_input: Entity<InputState>,
     session_sidebar: session_sidebar::SessionSidebarState,
     session_library: SessionLibraryState,
+    artifact_gallery: artifact_gallery::ArtifactGalleryState,
     activity_center: ActivityCenterState,
     window_active: bool,
     global_search: GlobalSearchState,
@@ -1115,6 +1117,7 @@ impl TermiRustApp {
             .unwrap_or(AuthMode::Password);
         let project_library = ProjectLibraryState::open_default();
         let session_library = SessionLibraryState::open_default(&mut saved);
+        let artifact_gallery = artifact_gallery::ArtifactGalleryState::open_default();
         let activity_center = ActivityCenterState::open_default();
         let project_label_input = cx
             .new(|cx| InputState::new(window, cx).placeholder(localization::project_label_field()));
@@ -1186,6 +1189,7 @@ impl TermiRustApp {
             session_remove_confirm_input,
             session_sidebar: session_sidebar::SessionSidebarState::default(),
             session_library,
+            artifact_gallery,
             activity_center,
             window_active: window.is_window_active(),
             global_search: GlobalSearchState::new(),
@@ -1336,6 +1340,7 @@ impl TermiRustApp {
                     .update(|window, cx| {
                         let _ = this.update(cx, |app, cx| {
                             app.process_events(cx);
+                            app.process_artifact_progress(cx);
                             app.process_activity_activation(window, cx);
                             app.process_pending_auto_reconnects(window, cx);
                         });

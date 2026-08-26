@@ -2299,3 +2299,354 @@ name = "state"
 type = "Text"
 sensitivity = "public"
 bidi = "isolate"
+[[messages]]
+id = "artifact-gallery-title"
+context = "Heading for the per-session inert artifact gallery."
+description = "Artifact gallery title"
+[[messages]]
+id = "artifact-gallery-description"
+context = "Safety-focused description below the artifact gallery heading."
+description = "Artifact gallery description"
+[[messages]]
+id = "artifact-gallery-empty"
+context = "Empty state for a session with no imported artifacts."
+description = "Artifact gallery empty state"
+[[messages]]
+id = "artifact-gallery-loading"
+context = "Loading state while artifact metadata is read."
+description = "Artifact gallery loading state"
+[[messages]]
+id = "artifact-import-action"
+context = "Action that explicitly chooses a local file for review before import."
+description = "Import artifact action"
+[[messages]]
+id = "artifact-import-picker-title"
+context = "Native file picker title for artifact import."
+description = "Artifact import picker title"
+[[messages]]
+id = "artifact-export-picker-title"
+context = "Native save picker title for a verified artifact copy."
+description = "Artifact export picker title"
+[[messages]]
+id = "artifact-layout-list"
+context = "Tooltip for artifact list layout."
+description = "Artifact list layout"
+[[messages]]
+id = "artifact-layout-grid"
+context = "Tooltip for artifact grid layout."
+description = "Artifact grid layout"
+[[messages]]
+id = "artifact-quota-unavailable"
+context = "Quota label shown before artifact storage becomes available."
+description = "Artifact quota unavailable"
+[[messages]]
+id = "artifact-quota-summary"
+context = "Per-session artifact bytes used and limit."
+description = "Artifact quota summary"
+[[messages.args]]
+name = "used"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "limit"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "artifact-import-review-title"
+context = "Heading for explicit artifact import review."
+description = "Artifact import review title"
+[[messages]]
+id = "artifact-import-review-file"
+context = "Import review summary containing an isolated hostile basename and public size."
+description = "Artifact import file summary"
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "size"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "artifact-import-review-quota"
+context = "Existing per-session artifact usage and limit shown before import."
+description = "Artifact import quota review"
+[[messages.args]]
+name = "used"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "limit"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "artifact-import-source-preserved"
+context = "Clarifies that importing copies and never owns or deletes the source file."
+description = "Artifact source preservation notice"
+[[messages]]
+id = "artifact-import-confirm"
+context = "Confirm action in artifact import review."
+description = "Confirm artifact import"
+[[messages]]
+id = "artifact-import-progress"
+context = "Streaming artifact import progress against the item byte cap."
+description = "Artifact import progress"
+[[messages.args]]
+name = "current"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "limit"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "artifact-operation-importing"
+context = "Artifact import operation before first progress update."
+description = "Importing artifact"
+[[messages]]
+id = "artifact-operation-previewing"
+context = "Bounded artifact preview operation."
+description = "Preparing artifact preview"
+[[messages]]
+id = "artifact-operation-exporting"
+context = "Verified artifact copy export operation."
+description = "Exporting artifact copy"
+[[messages]]
+id = "artifact-operation-quarantining"
+context = "Recoverable artifact quarantine operation."
+description = "Quarantining artifact"
+[[messages]]
+id = "artifact-operation-restoring"
+context = "Artifact restore operation."
+description = "Restoring artifact"
+[[messages]]
+id = "artifact-operation-purging"
+context = "Final artifact purge operation after confirmation."
+description = "Purging artifact"
+[[messages]]
+id = "artifact-card-summary"
+context = "Artifact card type, size, and state summary."
+description = "Artifact card summary"
+[[messages.args]]
+name = "kind"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "size"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "state"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "artifact-position"
+context = "Accessible position of an artifact card in the gallery."
+description = "Artifact card position"
+[[messages.args]]
+name = "position"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "artifact-preview-action"
+context = "Action that creates an inert allowlisted preview."
+description = "Preview artifact action"
+[[messages]]
+id = "artifact-export-action"
+context = "Action that exports a verified copy without overwriting."
+description = "Export artifact copy action"
+[[messages]]
+id = "artifact-show-metadata-action"
+context = "Action that expands safe artifact metadata."
+description = "Show artifact metadata"
+[[messages]]
+id = "artifact-hide-metadata-action"
+context = "Action that collapses artifact metadata."
+description = "Hide artifact metadata"
+[[messages]]
+id = "artifact-quarantine-action"
+context = "Action that recoverably quarantines an artifact."
+description = "Quarantine artifact action"
+[[messages]]
+id = "artifact-restore-action"
+context = "Action that verifies and restores a quarantined artifact."
+description = "Restore artifact action"
+[[messages]]
+id = "artifact-purge-action"
+context = "Action that opens permanent artifact purge review."
+description = "Purge artifact action"
+[[messages]]
+id = "artifact-purge-warning"
+context = "Destructive warning before permanent artifact purge."
+description = "Artifact purge warning"
+[[messages]]
+id = "artifact-purge-confirm"
+context = "Final destructive confirmation for artifact purge."
+description = "Confirm artifact purge"
+[[messages]]
+id = "artifact-origin-label"
+context = "Artifact metadata label for origin."
+description = "Artifact origin label"
+[[messages]]
+id = "artifact-created-label"
+context = "Artifact metadata label for creation time."
+description = "Artifact creation time label"
+[[messages]]
+id = "artifact-hash-label"
+context = "Artifact metadata label for short SHA-256 identifier."
+description = "Artifact hash label"
+[[messages]]
+id = "artifact-origin-import"
+context = "Artifact origin value for explicit local import."
+description = "Explicit import origin"
+[[messages]]
+id = "artifact-type-text"
+context = "Safe UTF-8 plain text artifact type."
+description = "Text artifact type"
+[[messages]]
+id = "artifact-type-png"
+context = "Allowlisted PNG artifact type."
+description = "PNG artifact type"
+[[messages]]
+id = "artifact-type-jpeg"
+context = "Allowlisted JPEG artifact type."
+description = "JPEG artifact type"
+[[messages]]
+id = "artifact-type-file"
+context = "Unsupported inert metadata-only artifact type."
+description = "Generic file artifact type"
+[[messages]]
+id = "artifact-state-staging"
+context = "Artifact staging state."
+description = "Staging artifact state"
+[[messages]]
+id = "artifact-state-ready"
+context = "Artifact ready state."
+description = "Ready artifact state"
+[[messages]]
+id = "artifact-state-quarantined"
+context = "Artifact quarantined state."
+description = "Quarantined artifact state"
+[[messages]]
+id = "artifact-state-corrupt"
+context = "Artifact corrupt state."
+description = "Corrupt artifact state"
+[[messages]]
+id = "artifact-preview-text"
+context = "Artifact preview support label for inert plain text."
+description = "Text preview available"
+[[messages]]
+id = "artifact-preview-raster"
+context = "Artifact preview support label for inert raster pixels."
+description = "Raster preview available"
+[[messages]]
+id = "artifact-preview-metadata-only"
+context = "Artifact preview label for unsupported active or binary content."
+description = "Metadata only artifact"
+[[messages]]
+id = "artifact-preview-corrupt"
+context = "Artifact preview label when bytes or metadata are corrupt."
+description = "Corrupt artifact preview"
+[[messages]]
+id = "artifact-preview-quarantined"
+context = "Artifact preview label while recoverably quarantined."
+description = "Quarantined artifact preview"
+[[messages]]
+id = "artifact-preview-truncated"
+context = "Notice when inert text preview reached its byte cap."
+description = "Text preview truncated"
+[[messages]]
+id = "artifact-preview-dimensions"
+context = "Decoded inert raster dimensions."
+description = "Raster preview dimensions"
+[[messages.args]]
+name = "width"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "height"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "artifact-notice-imported"
+context = "Success status after artifact import."
+description = "Artifact imported notice"
+[[messages]]
+id = "artifact-notice-exported"
+context = "Success status after verified artifact export."
+description = "Artifact exported notice"
+[[messages]]
+id = "artifact-notice-quarantined"
+context = "Success status after artifact quarantine."
+description = "Artifact quarantined notice"
+[[messages]]
+id = "artifact-notice-restored"
+context = "Success status after artifact restore."
+description = "Artifact restored notice"
+[[messages]]
+id = "artifact-notice-purged"
+context = "Success status after permanent artifact purge."
+description = "Artifact purged notice"
+[[messages]]
+id = "artifact-error-quota"
+context = "Artifact import or count quota error."
+description = "Artifact quota error"
+[[messages]]
+id = "artifact-error-source-changed"
+context = "Artifact source changed during streaming import."
+description = "Artifact source changed error"
+[[messages]]
+id = "artifact-error-unsafe-source"
+context = "Artifact source or storage entry is not a safe regular file."
+description = "Unsafe artifact source error"
+[[messages]]
+id = "artifact-error-export-conflict"
+context = "Artifact export destination already exists and was not overwritten."
+description = "Artifact export conflict error"
+[[messages]]
+id = "artifact-error-corrupt"
+context = "Artifact bytes or metadata failed verification."
+description = "Corrupt artifact error"
+[[messages]]
+id = "artifact-error-permission"
+context = "Artifact operation permission error."
+description = "Artifact permission error"
+[[messages]]
+id = "artifact-error-storage-full"
+context = "Artifact operation could not continue because storage is full."
+description = "Artifact storage full error"
+[[messages]]
+id = "artifact-error-cancelled"
+context = "Artifact operation cancellation status."
+description = "Artifact operation cancelled"
+[[messages]]
+id = "artifact-error-timeout"
+context = "Artifact preview exceeded the strict decoder deadline."
+description = "Artifact preview timeout"
+[[messages]]
+id = "artifact-error-decode"
+context = "Allowlisted artifact decoder rejected the bytes."
+description = "Artifact decode error"
+[[messages]]
+id = "artifact-error-unavailable"
+context = "Generic artifact repository or operation unavailable state."
+description = "Artifact unavailable error"

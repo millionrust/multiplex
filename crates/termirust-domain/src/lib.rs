@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod artifact;
 pub mod group;
 pub mod host;
 pub mod id;
@@ -16,14 +17,21 @@ pub use activity::{
     ActivitySourceKind, ActivityState, AttentionReason, HEURISTIC_IDLE_QUIET_NANOS, HostSequence,
     MAX_ACTIVITY_SOURCE_ID_BYTES, ReadWatermark, reduce_activity, refresh_activity_staleness,
 };
+pub use artifact::{
+    ArtifactCancellation, ArtifactDisplayName, ArtifactError, ArtifactLimits, ArtifactMediaType,
+    ArtifactMetadata, ArtifactOrigin, ArtifactPreviewKind, ArtifactScope, ArtifactSha256,
+    ArtifactState, MAX_ARTIFACT_BYTES, MAX_ARTIFACT_DISPLAY_NAME_GRAPHEMES,
+    MAX_ARTIFACTS_PER_SESSION, MAX_GLOBAL_ARTIFACT_BYTES, MAX_GLOBAL_ARTIFACTS, MAX_RASTER_BYTES,
+    MAX_RASTER_PIXELS, MAX_SESSION_ARTIFACT_BYTES, MAX_TEXT_PREVIEW_BYTES,
+};
 pub use group::{
     Group, GroupDestination, GroupError, GroupInverseCommand, GroupMutation, GroupName,
     MAX_GROUP_NAME_SCALARS, MAX_GROUPS_PER_PROJECT, validate_group_set,
 };
 pub use host::{DurabilityWatermark, HostLifecycle, ProcessToken};
 pub use id::{
-    CommandId, GroupId, HostInstanceId, HostedSessionId, ManagedWorktreeId, OutputSequence,
-    PositionError, PositionKey, PresetId, ProjectId, Revision,
+    ArtifactId, CommandId, GroupId, HostInstanceId, HostedSessionId, ManagedWorktreeId,
+    OutputSequence, PositionError, PositionKey, PresetId, ProjectId, Revision,
 };
 pub use notification::{
     ABSOLUTE_OS_NOTIFICATIONS_PER_HOUR, COALESCE_AFTER_EVENTS, DEFAULT_OS_NOTIFICATIONS_PER_HOUR,

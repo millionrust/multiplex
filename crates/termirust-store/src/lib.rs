@@ -1,3 +1,4 @@
+pub mod artifacts;
 mod atomic;
 pub mod journal;
 pub mod lease;
@@ -7,6 +8,10 @@ pub mod projects;
 pub mod sessions;
 pub mod transcript;
 
+pub use artifacts::{
+    ArtifactIngestProgress, ArtifactIngestRequest, ArtifactPayload, ArtifactRepository,
+    ArtifactSnapshot, ArtifactStoreError, ArtifactSweepResult,
+};
 pub use atomic::{AtomicWriter, Durability, SystemAtomicWriter};
 pub use journal::{
     AppendOutcome, JournalError, JournalErrorCode, JournalFrame, JournalKind, JournalLimits,

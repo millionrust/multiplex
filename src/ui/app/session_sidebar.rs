@@ -275,6 +275,9 @@ impl TermiRustApp {
         } else {
             Some(id)
         };
+        if self.session_sidebar.selected_session == Some(id) {
+            self.refresh_artifacts(id, cx);
+        }
         cx.notify();
     }
 
@@ -1743,6 +1746,7 @@ impl TermiRustApp {
                                     }),
                             )
                         })
+                        .child(self.render_artifact_gallery(id, cx))
                         .child(
                             h_flex()
                                 .flex_wrap()

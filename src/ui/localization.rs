@@ -155,6 +155,147 @@ pub fn common_save() -> String {
     text(&CommonSaveArgs::new())
 }
 
+static_message!(artifact_gallery_title, ArtifactGalleryTitleArgs);
+static_message!(artifact_gallery_description, ArtifactGalleryDescriptionArgs);
+static_message!(artifact_gallery_empty, ArtifactGalleryEmptyArgs);
+static_message!(artifact_gallery_loading, ArtifactGalleryLoadingArgs);
+static_message!(artifact_import_action, ArtifactImportActionArgs);
+static_message!(artifact_import_picker_title, ArtifactImportPickerTitleArgs);
+static_message!(artifact_export_picker_title, ArtifactExportPickerTitleArgs);
+static_message!(artifact_layout_list, ArtifactLayoutListArgs);
+static_message!(artifact_layout_grid, ArtifactLayoutGridArgs);
+static_message!(artifact_quota_unavailable, ArtifactQuotaUnavailableArgs);
+static_message!(artifact_import_review_title, ArtifactImportReviewTitleArgs);
+static_message!(
+    artifact_import_source_preserved,
+    ArtifactImportSourcePreservedArgs
+);
+static_message!(artifact_import_confirm, ArtifactImportConfirmArgs);
+static_message!(artifact_operation_importing, ArtifactOperationImportingArgs);
+static_message!(
+    artifact_operation_previewing,
+    ArtifactOperationPreviewingArgs
+);
+static_message!(artifact_operation_exporting, ArtifactOperationExportingArgs);
+static_message!(
+    artifact_operation_quarantining,
+    ArtifactOperationQuarantiningArgs
+);
+static_message!(artifact_operation_restoring, ArtifactOperationRestoringArgs);
+static_message!(artifact_operation_purging, ArtifactOperationPurgingArgs);
+static_message!(artifact_preview_action, ArtifactPreviewActionArgs);
+static_message!(artifact_export_action, ArtifactExportActionArgs);
+static_message!(
+    artifact_show_metadata_action,
+    ArtifactShowMetadataActionArgs
+);
+static_message!(
+    artifact_hide_metadata_action,
+    ArtifactHideMetadataActionArgs
+);
+static_message!(artifact_quarantine_action, ArtifactQuarantineActionArgs);
+static_message!(artifact_restore_action, ArtifactRestoreActionArgs);
+static_message!(artifact_purge_action, ArtifactPurgeActionArgs);
+static_message!(artifact_purge_warning, ArtifactPurgeWarningArgs);
+static_message!(artifact_purge_confirm, ArtifactPurgeConfirmArgs);
+static_message!(artifact_origin_label, ArtifactOriginLabelArgs);
+static_message!(artifact_created_label, ArtifactCreatedLabelArgs);
+static_message!(artifact_hash_label, ArtifactHashLabelArgs);
+static_message!(artifact_origin_import, ArtifactOriginImportArgs);
+static_message!(artifact_type_text, ArtifactTypeTextArgs);
+static_message!(artifact_type_png, ArtifactTypePngArgs);
+static_message!(artifact_type_jpeg, ArtifactTypeJpegArgs);
+static_message!(artifact_type_file, ArtifactTypeFileArgs);
+static_message!(artifact_state_staging, ArtifactStateStagingArgs);
+static_message!(artifact_state_ready, ArtifactStateReadyArgs);
+static_message!(artifact_state_quarantined, ArtifactStateQuarantinedArgs);
+static_message!(artifact_state_corrupt, ArtifactStateCorruptArgs);
+static_message!(artifact_preview_text, ArtifactPreviewTextArgs);
+static_message!(artifact_preview_raster, ArtifactPreviewRasterArgs);
+static_message!(
+    artifact_preview_metadata_only,
+    ArtifactPreviewMetadataOnlyArgs
+);
+static_message!(artifact_preview_corrupt, ArtifactPreviewCorruptArgs);
+static_message!(artifact_preview_quarantined, ArtifactPreviewQuarantinedArgs);
+static_message!(artifact_preview_truncated, ArtifactPreviewTruncatedArgs);
+static_message!(artifact_notice_imported, ArtifactNoticeImportedArgs);
+static_message!(artifact_notice_exported, ArtifactNoticeExportedArgs);
+static_message!(artifact_notice_quarantined, ArtifactNoticeQuarantinedArgs);
+static_message!(artifact_notice_restored, ArtifactNoticeRestoredArgs);
+static_message!(artifact_notice_purged, ArtifactNoticePurgedArgs);
+static_message!(artifact_error_quota, ArtifactErrorQuotaArgs);
+static_message!(
+    artifact_error_source_changed,
+    ArtifactErrorSourceChangedArgs
+);
+static_message!(artifact_error_unsafe_source, ArtifactErrorUnsafeSourceArgs);
+static_message!(
+    artifact_error_export_conflict,
+    ArtifactErrorExportConflictArgs
+);
+static_message!(artifact_error_corrupt, ArtifactErrorCorruptArgs);
+static_message!(artifact_error_permission, ArtifactErrorPermissionArgs);
+static_message!(artifact_error_storage_full, ArtifactErrorStorageFullArgs);
+static_message!(artifact_error_cancelled, ArtifactErrorCancelledArgs);
+static_message!(artifact_error_timeout, ArtifactErrorTimeoutArgs);
+static_message!(artifact_error_decode, ArtifactErrorDecodeArgs);
+static_message!(artifact_error_unavailable, ArtifactErrorUnavailableArgs);
+
+pub fn artifact_quota_summary(used: impl Into<String>, limit: impl Into<String>) -> String {
+    text(&ArtifactQuotaSummaryArgs::new(
+        Text::new(used),
+        Text::new(limit),
+    ))
+}
+
+pub fn artifact_import_review_file(name: impl Into<String>, size: impl Into<String>) -> String {
+    text(&ArtifactImportReviewFileArgs::new(
+        UserData::new(name),
+        Text::new(size),
+    ))
+}
+
+pub fn artifact_import_review_quota(used: impl Into<String>, limit: impl Into<String>) -> String {
+    text(&ArtifactImportReviewQuotaArgs::new(
+        Text::new(used),
+        Text::new(limit),
+    ))
+}
+
+pub fn artifact_import_progress(current: impl Into<String>, limit: impl Into<String>) -> String {
+    text(&ArtifactImportProgressArgs::new(
+        Text::new(current),
+        Text::new(limit),
+    ))
+}
+
+pub fn artifact_card_summary(
+    type_label: impl Into<String>,
+    size: impl Into<String>,
+    state: impl Into<String>,
+) -> String {
+    text(&ArtifactCardSummaryArgs::new(
+        Text::new(type_label),
+        Text::new(size),
+        Text::new(state),
+    ))
+}
+
+pub fn artifact_position(position: usize, count: usize) -> String {
+    text(&ArtifactPositionArgs::new(
+        Count(position as u64),
+        Count(count as u64),
+    ))
+}
+
+pub fn artifact_preview_dimensions(width: usize, height: usize) -> String {
+    text(&ArtifactPreviewDimensionsArgs::new(
+        Count(width as u64),
+        Count(height as u64),
+    ))
+}
+
 pub fn status_connecting(host: impl Into<String>) -> String {
     text(&StatusConnectingArgs::new(UserData::new(host)))
 }
