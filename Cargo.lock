@@ -7360,6 +7360,7 @@ dependencies = [
  "tempfile",
  "termirust-cli",
  "termirust-client",
+ "termirust-controller-security",
  "termirust-domain",
  "termirust-host-protocol",
  "termirust-protocol",
@@ -7368,7 +7369,9 @@ dependencies = [
  "termirust-ui-contract",
  "tokio",
  "tokio-util",
+ "uuid",
  "vt100",
+ "zeroize",
 ]
 
 [[package]]

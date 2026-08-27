@@ -2756,3 +2756,234 @@ name = "url"
 type = "UserData"
 sensitivity = "sensitive"
 bidi = "isolate"
+[[messages]]
+id = "remote-devices-title"
+context = "Settings card title for authenticated Controller trust."
+description = "Remote Devices settings title"
+[[messages]]
+id = "remote-devices-description"
+context = "Settings card summary for Controller trust."
+description = "Remote Devices settings description"
+[[messages]]
+id = "remote-devices-route-label"
+context = "Label for the currently selected Controller route."
+description = "Controller route label"
+[[messages]]
+id = "remote-devices-route-off"
+context = "Controller route state while no route adapter is enabled."
+description = "Controller route off state"
+[[messages]]
+id = "remote-devices-add-action"
+context = "Action to begin pairing a Controller device."
+description = "Add Controller action"
+[[messages]]
+id = "remote-devices-route-required"
+context = "Explanation shown while Controller pairing has no route."
+description = "Controller route required guidance"
+[[messages]]
+id = "remote-devices-identity-label"
+context = "Heading for the desktop Host identity."
+description = "Host identity label"
+[[messages]]
+id = "remote-devices-identity-ready"
+context = "Host identity is loaded and usable."
+description = "Host identity ready state"
+[[messages]]
+id = "remote-devices-identity-locked"
+context = "Host identity cannot be read because the credential store is locked."
+description = "Host identity locked state"
+[[messages]]
+id = "remote-devices-identity-lost"
+context = "Host identity private material is missing or mismatched."
+description = "Host identity lost state"
+[[messages]]
+id = "remote-devices-permission-denied"
+context = "Operating system denied Host identity or metadata access."
+description = "Host identity permission denied state"
+[[messages]]
+id = "remote-devices-reset-required"
+context = "An interrupted Host identity reset requires recovery."
+description = "Host identity reset required state"
+[[messages]]
+id = "remote-devices-store-corrupt"
+context = "Controller metadata is corrupt and authority is disabled."
+description = "Controller metadata corrupt state"
+[[messages]]
+id = "remote-devices-store-newer"
+context = "Controller metadata was written by a newer app."
+description = "Controller metadata newer state"
+[[messages]]
+id = "remote-devices-unavailable"
+context = "Controller metadata or credential infrastructure is unavailable."
+description = "Remote Devices unavailable state"
+[[messages]]
+id = "remote-devices-copy-action"
+context = "Copy the public Host fingerprint."
+description = "Copy fingerprint action"
+[[messages]]
+id = "remote-devices-fingerprint-copied"
+context = "Notice after copying the Host fingerprint."
+description = "Fingerprint copied notice"
+[[messages]]
+id = "remote-devices-fingerprint-explanation"
+context = "Explains how to compare the public Host fingerprint."
+description = "Host fingerprint explanation"
+[[messages]]
+id = "remote-devices-trusted-title"
+context = "Heading above capability-scoped paired devices."
+description = "Trusted Controller devices heading"
+[[messages]]
+id = "remote-devices-empty"
+context = "Empty state when no Controller devices are trusted."
+description = "No trusted Controller devices"
+[[messages]]
+id = "remote-devices-device-detail"
+context = "Public key suffix and trust status shown in a device row."
+description = "Controller device key suffix and status"
+[[messages.args]]
+name = "suffix"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "status"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "remote-devices-last-seen"
+context = "Last activity time for a Controller device."
+description = "Controller device last seen time"
+[[messages.args]]
+name = "time"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "remote-devices-never-seen"
+context = "A paired Controller has not connected after pairing."
+description = "Controller device never seen state"
+[[messages]]
+id = "remote-devices-status-online"
+context = "Controller device currently has an authenticated channel."
+description = "Controller device online state"
+[[messages]]
+id = "remote-devices-status-offline"
+context = "Controller device has no authenticated channel."
+description = "Controller device offline state"
+[[messages]]
+id = "remote-devices-status-revoked"
+context = "Controller device trust was revoked."
+description = "Controller device revoked state"
+[[messages]]
+id = "remote-devices-allow-input-action"
+context = "Grant terminal input and resize capabilities to a Controller."
+description = "Allow Controller input action"
+[[messages]]
+id = "remote-devices-restrict-input-action"
+context = "Remove terminal input and resize capabilities from a Controller."
+description = "Restrict Controller input action"
+[[messages]]
+id = "remote-devices-revoke-action"
+context = "Revoke one Controller device."
+description = "Revoke Controller action"
+[[messages]]
+id = "remote-devices-name-edit-action"
+context = "Open the inline editor for a Controller device local name."
+description = "Edit Controller device name action"
+[[messages]]
+id = "remote-devices-name-placeholder"
+context = "Placeholder for a Controller device local name."
+description = "Controller device name placeholder"
+[[messages]]
+id = "remote-devices-name-save-action"
+context = "Save a Controller device local name."
+description = "Save Controller device name action"
+[[messages]]
+id = "remote-devices-name-saved"
+context = "Notice after a Controller device local name is saved."
+description = "Controller device name saved notice"
+[[messages]]
+id = "remote-devices-revoked-notice"
+context = "Notice after Controller trust is revoked."
+description = "Controller revoked notice"
+[[messages]]
+id = "remote-devices-capabilities-saved"
+context = "Notice after Controller capabilities are changed."
+description = "Controller capabilities saved notice"
+[[messages]]
+id = "remote-devices-operation-failed"
+context = "Generic fail-closed Remote Devices operation error."
+description = "Remote Devices operation failed"
+[[messages]]
+id = "remote-devices-reset-title"
+context = "Danger-zone heading for replacing the Host identity."
+description = "Reset Host identity title"
+[[messages]]
+id = "remote-devices-reset-description"
+context = "Warning that identity reset revokes all Controller devices."
+description = "Reset Host identity warning"
+[[messages]]
+id = "remote-devices-reset-placeholder"
+context = "Type-to-confirm prompt for Host identity reset."
+description = "Reset Host identity confirmation placeholder"
+[[messages]]
+id = "remote-devices-reset-action"
+context = "Destructive action to replace the Host identity."
+description = "Reset Host identity action"
+[[messages]]
+id = "remote-devices-reset-confirmation-required"
+context = "Error when reset confirmation text does not match."
+description = "Reset confirmation required error"
+[[messages]]
+id = "remote-devices-reset-complete"
+context = "Notice after Host identity reset completes."
+description = "Host identity reset complete"
+[[messages]]
+id = "remote-devices-reset-old-key-warning"
+context = "Reset completed but deleting the old OS secret failed."
+description = "Old Host key deletion warning"
+[[messages]]
+id = "remote-devices-pairing-idle"
+context = "No Controller pairing is active."
+description = "Controller pairing idle state"
+[[messages]]
+id = "remote-devices-pairing-generating"
+context = "A Controller pairing offer is being generated."
+description = "Controller pairing generating state"
+[[messages]]
+id = "remote-devices-pairing-waiting"
+context = "Waiting for a Controller to consume the pairing offer."
+description = "Controller pairing waiting state"
+[[messages]]
+id = "remote-devices-pairing-sas-ready"
+context = "Pairing reached the SAS comparison step."
+description = "Controller pairing SAS ready state"
+[[messages]]
+id = "remote-devices-pairing-sas-mismatch"
+context = "Pairing was rejected because security codes differed."
+description = "Controller pairing SAS mismatch state"
+[[messages]]
+id = "remote-devices-pairing-expired"
+context = "Controller pairing offer expired."
+description = "Controller pairing expired state"
+[[messages]]
+id = "remote-devices-pairing-rate-limited"
+context = "Too many Controller pairing attempts occurred."
+description = "Controller pairing rate limited state"
+[[messages]]
+id = "remote-devices-pairing-storage-failure"
+context = "Pairing cannot continue because trust was not durably stored."
+description = "Controller pairing storage failure state"
+[[messages]]
+id = "remote-devices-pairing-uncertain"
+context = "Trust was stored but the final acknowledgement was lost."
+description = "Controller pairing uncertain state"
+[[messages]]
+id = "remote-devices-pairing-paired"
+context = "Controller pairing completed."
+description = "Controller paired state"
+[[messages]]
+id = "remote-devices-pairing-revoked"
+context = "Most recent Controller action revoked trust."
+description = "Controller pairing revoked state"

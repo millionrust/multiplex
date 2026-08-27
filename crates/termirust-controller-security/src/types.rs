@@ -50,8 +50,13 @@ pub struct StaticPrivateKey([u8; 32]);
 
 impl StaticPrivateKey {
     #[must_use]
-    pub fn from_fixture_bytes(bytes: [u8; 32]) -> Self {
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
         Self(bytes)
+    }
+
+    #[must_use]
+    pub fn from_fixture_bytes(bytes: [u8; 32]) -> Self {
+        Self::from_bytes(bytes)
     }
 
     pub(crate) fn as_bytes(&self) -> &[u8; 32] {

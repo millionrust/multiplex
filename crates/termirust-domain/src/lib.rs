@@ -1,5 +1,6 @@
 pub mod activity;
 pub mod artifact;
+pub mod controller_devices;
 pub mod dev_url;
 pub mod group;
 pub mod host;
@@ -24,6 +25,17 @@ pub use artifact::{
     ArtifactState, MAX_ARTIFACT_BYTES, MAX_ARTIFACT_DISPLAY_NAME_GRAPHEMES,
     MAX_ARTIFACTS_PER_SESSION, MAX_GLOBAL_ARTIFACT_BYTES, MAX_GLOBAL_ARTIFACTS, MAX_RASTER_BYTES,
     MAX_RASTER_PIXELS, MAX_SESSION_ARTIFACT_BYTES, MAX_TEXT_PREVIEW_BYTES,
+};
+pub use controller_devices::{
+    AuthorizationDecision as ControllerAuthorizationDecision, AuthorizationDenial,
+    AuthorizationRequest as ControllerAuthorizationRequest, ControllerCapabilities,
+    ControllerCapability, ControllerDeviceAuthority, ControllerDeviceError, ControllerDeviceId,
+    ControllerProtocolRange, DevicePublicKey, DeviceStoreRevision, HostFingerprint,
+    HostIdentityGeneration, HostIdentityPublic, HostIdentitySecretRef, HostIdentityState,
+    HostPublicKey, MAX_DEVICE_NAME_SCALARS, MAX_PAIRED_DEVICES, MAX_PAIRING_OFFER_LIFETIME_SECONDS,
+    MAX_PENDING_PAIRING_OFFERS, PAIRING_ATTEMPT_LIMIT, PAIRING_ATTEMPT_WINDOW_SECONDS,
+    PairedDeviceRecord, PairedDeviceStatus, PairingAttemptLedger, PairingOfferId,
+    PairingOfferRecord, PairingOfferState,
 };
 pub use dev_url::{
     DevUrlCancellation, DevUrlCandidate, DevUrlDetector, DevUrlDetectorCounters, DevUrlError,

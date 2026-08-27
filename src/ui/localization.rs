@@ -135,6 +135,172 @@ static_message!(cli_settings_help_hint, CliSettingsHelpHintArgs);
 static_message!(cli_settings_path_copied, CliSettingsPathCopiedArgs);
 static_message!(cli_settings_example_copied, CliSettingsExampleCopiedArgs);
 
+static_message!(remote_devices_title, RemoteDevicesTitleArgs);
+static_message!(remote_devices_description, RemoteDevicesDescriptionArgs);
+static_message!(remote_devices_route_label, RemoteDevicesRouteLabelArgs);
+static_message!(remote_devices_route_off, RemoteDevicesRouteOffArgs);
+static_message!(remote_devices_add_action, RemoteDevicesAddActionArgs);
+static_message!(
+    remote_devices_route_required,
+    RemoteDevicesRouteRequiredArgs
+);
+static_message!(
+    remote_devices_identity_label,
+    RemoteDevicesIdentityLabelArgs
+);
+static_message!(
+    remote_devices_identity_ready,
+    RemoteDevicesIdentityReadyArgs
+);
+static_message!(
+    remote_devices_identity_locked,
+    RemoteDevicesIdentityLockedArgs
+);
+static_message!(remote_devices_identity_lost, RemoteDevicesIdentityLostArgs);
+static_message!(
+    remote_devices_permission_denied,
+    RemoteDevicesPermissionDeniedArgs
+);
+static_message!(
+    remote_devices_reset_required,
+    RemoteDevicesResetRequiredArgs
+);
+static_message!(remote_devices_store_corrupt, RemoteDevicesStoreCorruptArgs);
+static_message!(remote_devices_store_newer, RemoteDevicesStoreNewerArgs);
+static_message!(remote_devices_unavailable, RemoteDevicesUnavailableArgs);
+static_message!(remote_devices_copy_action, RemoteDevicesCopyActionArgs);
+static_message!(
+    remote_devices_fingerprint_copied,
+    RemoteDevicesFingerprintCopiedArgs
+);
+static_message!(
+    remote_devices_fingerprint_explanation,
+    RemoteDevicesFingerprintExplanationArgs
+);
+static_message!(remote_devices_trusted_title, RemoteDevicesTrustedTitleArgs);
+static_message!(remote_devices_empty, RemoteDevicesEmptyArgs);
+static_message!(remote_devices_never_seen, RemoteDevicesNeverSeenArgs);
+static_message!(remote_devices_status_online, RemoteDevicesStatusOnlineArgs);
+static_message!(
+    remote_devices_status_offline,
+    RemoteDevicesStatusOfflineArgs
+);
+static_message!(
+    remote_devices_status_revoked,
+    RemoteDevicesStatusRevokedArgs
+);
+static_message!(
+    remote_devices_allow_input_action,
+    RemoteDevicesAllowInputActionArgs
+);
+static_message!(
+    remote_devices_restrict_input_action,
+    RemoteDevicesRestrictInputActionArgs
+);
+static_message!(remote_devices_revoke_action, RemoteDevicesRevokeActionArgs);
+static_message!(
+    remote_devices_name_edit_action,
+    RemoteDevicesNameEditActionArgs
+);
+static_message!(
+    remote_devices_name_placeholder,
+    RemoteDevicesNamePlaceholderArgs
+);
+static_message!(
+    remote_devices_name_save_action,
+    RemoteDevicesNameSaveActionArgs
+);
+static_message!(remote_devices_name_saved, RemoteDevicesNameSavedArgs);
+static_message!(
+    remote_devices_revoked_notice,
+    RemoteDevicesRevokedNoticeArgs
+);
+static_message!(
+    remote_devices_capabilities_saved,
+    RemoteDevicesCapabilitiesSavedArgs
+);
+static_message!(
+    remote_devices_operation_failed,
+    RemoteDevicesOperationFailedArgs
+);
+static_message!(remote_devices_reset_title, RemoteDevicesResetTitleArgs);
+static_message!(
+    remote_devices_reset_description,
+    RemoteDevicesResetDescriptionArgs
+);
+static_message!(
+    remote_devices_reset_placeholder,
+    RemoteDevicesResetPlaceholderArgs
+);
+static_message!(remote_devices_reset_action, RemoteDevicesResetActionArgs);
+static_message!(
+    remote_devices_reset_confirmation_required,
+    RemoteDevicesResetConfirmationRequiredArgs
+);
+static_message!(
+    remote_devices_reset_complete,
+    RemoteDevicesResetCompleteArgs
+);
+static_message!(
+    remote_devices_reset_old_key_warning,
+    RemoteDevicesResetOldKeyWarningArgs
+);
+static_message!(remote_devices_pairing_idle, RemoteDevicesPairingIdleArgs);
+static_message!(
+    remote_devices_pairing_generating,
+    RemoteDevicesPairingGeneratingArgs
+);
+static_message!(
+    remote_devices_pairing_waiting,
+    RemoteDevicesPairingWaitingArgs
+);
+static_message!(
+    remote_devices_pairing_sas_ready,
+    RemoteDevicesPairingSasReadyArgs
+);
+static_message!(
+    remote_devices_pairing_sas_mismatch,
+    RemoteDevicesPairingSasMismatchArgs
+);
+static_message!(
+    remote_devices_pairing_expired,
+    RemoteDevicesPairingExpiredArgs
+);
+static_message!(
+    remote_devices_pairing_rate_limited,
+    RemoteDevicesPairingRateLimitedArgs
+);
+static_message!(
+    remote_devices_pairing_storage_failure,
+    RemoteDevicesPairingStorageFailureArgs
+);
+static_message!(
+    remote_devices_pairing_uncertain,
+    RemoteDevicesPairingUncertainArgs
+);
+static_message!(
+    remote_devices_pairing_paired,
+    RemoteDevicesPairingPairedArgs
+);
+static_message!(
+    remote_devices_pairing_revoked,
+    RemoteDevicesPairingRevokedArgs
+);
+
+pub fn remote_devices_device_detail(
+    suffix: impl Into<String>,
+    status: impl Into<String>,
+) -> String {
+    text(&RemoteDevicesDeviceDetailArgs::new(
+        UserData::new(suffix),
+        Text::new(status),
+    ))
+}
+
+pub fn remote_devices_last_seen(time: impl Into<String>) -> String {
+    text(&RemoteDevicesLastSeenArgs::new(Text::new(time)))
+}
+
 pub fn cli_settings_schema(version: impl Into<String>) -> String {
     text(&CliSettingsSchemaArgs::new(Text::new(version)))
 }

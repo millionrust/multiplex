@@ -1,6 +1,7 @@
 mod agents;
 mod artifact_preview;
 mod assets;
+mod controller;
 mod credentials;
 mod local;
 mod models;

@@ -119,6 +119,11 @@ pub(crate) fn project_store_dir() -> Result<PathBuf> {
     Ok(app_dir()?.join("agent-workspace"))
 }
 
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) fn controller_store_dir() -> Result<PathBuf> {
+    Ok(app_dir()?.join("controller"))
+}
+
 #[cfg(test)]
 pub(crate) fn set_test_app_dir_override(path: Option<PathBuf>) -> Option<PathBuf> {
     TEST_APP_DIR_OVERRIDE.with(|override_path| override_path.replace(path))

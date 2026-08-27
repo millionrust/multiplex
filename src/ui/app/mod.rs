@@ -17,6 +17,7 @@ mod palette;
 mod presets;
 mod project;
 mod projects;
+mod remote_devices;
 mod runtimes;
 mod session_library;
 mod session_sidebar;
@@ -48,6 +49,7 @@ use palette::{
 use presets::PresetLibraryState;
 use project::CanvasProjectPanelState;
 use projects::ProjectLibraryState;
+use remote_devices::RemoteDevicesState;
 use session_library::{SessionLibraryFilter, SessionLibraryState, SessionLibraryView};
 use worktree_launch::WorktreeLaunchUiState;
 
@@ -350,6 +352,8 @@ struct SettingsInputs {
     terminal_font_family: Entity<InputState>,
     sync_folder_input: Entity<InputState>,
     mobile_pairing_request: Entity<InputState>,
+    remote_identity_reset: Entity<InputState>,
+    remote_device_name: Entity<InputState>,
 }
 
 struct VaultInputs {
@@ -406,6 +410,14 @@ impl SettingsInputs {
             }),
             mobile_pairing_request: cx.new(|cx| {
                 InputState::new(window, cx).placeholder("Paste mobile pairing request JSON")
+            }),
+            remote_identity_reset: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(localization::remote_devices_reset_placeholder())
+            }),
+            remote_device_name: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(localization::remote_devices_name_placeholder())
             }),
         }
     }
@@ -933,6 +945,7 @@ pub struct TermiRustApp {
     session_library: SessionLibraryState,
     artifact_gallery: artifact_gallery::ArtifactGalleryState,
     activity_center: ActivityCenterState,
+    remote_devices: RemoteDevicesState,
     dev_url_ui: DevUrlUiState,
     window_active: bool,
     global_search: GlobalSearchState,
@@ -1124,6 +1137,7 @@ impl TermiRustApp {
         let session_library = SessionLibraryState::open_default(&mut saved);
         let artifact_gallery = artifact_gallery::ArtifactGalleryState::open_default();
         let activity_center = ActivityCenterState::open_default();
+        let remote_devices = RemoteDevicesState::open_default();
         let project_label_input = cx
             .new(|cx| InputState::new(window, cx).placeholder(localization::project_label_field()));
         let group_name_input =
@@ -1196,6 +1210,7 @@ impl TermiRustApp {
             session_library,
             artifact_gallery,
             activity_center,
+            remote_devices,
             dev_url_ui: DevUrlUiState::open_default(cx),
             window_active: window.is_window_active(),
             global_search: GlobalSearchState::new(),
