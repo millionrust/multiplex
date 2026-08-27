@@ -18,9 +18,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     AuthRateLimiter, BoundedFrameQueue, BridgeAuthorization, ControllerCommandEnvelope,
-    ControllerResponse, InterfaceProvider, ListenerError, ListenerErrorCode, QueueClass,
-    SourceBucket, SourceBucketKey, SystemHandshakeEntropy, authenticate_controller, decode_command,
-    encode_response, read_bounded_frame, resolve_selected_interface, write_bounded_frame,
+    ControllerConnectionPurpose, ControllerPairingAuthority, ControllerResponse, InterfaceProvider,
+    ListenerError, ListenerErrorCode, QueueClass, SourceBucket, SourceBucketKey,
+    SystemHandshakeEntropy, authenticate_controller, decode_command, encode_response,
+    pair_controller, read_bounded_frame, resolve_selected_interface, write_bounded_frame,
 };
 
 const AUTHORITY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
@@ -75,6 +76,38 @@ pub trait ControllerBackendFactory: Send + Sync {
     ) -> Result<Box<dyn ControllerConnectionBackend>, ListenerError>;
 }
 
+pub struct ListenerServices {
+    interfaces: Arc<dyn InterfaceProvider>,
+    authority: Arc<dyn ControllerAuthorityProvider>,
+    pairing: Arc<dyn ControllerPairingAuthority>,
+    backends: Arc<dyn ControllerBackendFactory>,
+}
+
+impl ListenerServices {
+    pub fn new(
+        interfaces: Arc<dyn InterfaceProvider>,
+        authority: Arc<dyn ControllerAuthorityProvider>,
+        pairing: Arc<dyn ControllerPairingAuthority>,
+        backends: Arc<dyn ControllerBackendFactory>,
+    ) -> Self {
+        Self {
+            interfaces,
+            authority,
+            pairing,
+            backends,
+        }
+    }
+}
+
+impl std::fmt::Debug for ListenerServices {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ListenerServices")
+            .field("services", &"[OPAQUE]")
+            .finish()
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ListenerRuntimeReport {
     pub instance_id: ListenerInstanceId,
@@ -115,9 +148,7 @@ impl ListenerRuntime {
         self,
         listener: TcpListener,
         policy: ControllerListenPolicy,
-        interfaces: Arc<dyn InterfaceProvider>,
-        authority: Arc<dyn ControllerAuthorityProvider>,
-        backends: Arc<dyn ControllerBackendFactory>,
+        services: ListenerServices,
         cancel: CancellationToken,
     ) -> Result<ListenerRuntimeReport, ListenerError> {
         let route = policy
@@ -128,7 +159,7 @@ impl ListenerRuntime {
         {
             return Err(ListenerError::new(ListenerErrorCode::InvalidPolicy));
         }
-        resolve_selected_interface(&policy, &interfaces.eligible_interfaces()?)?;
+        resolve_selected_interface(&policy, &services.interfaces.eligible_interfaces()?)?;
 
         let preauth = Arc::new(Semaphore::new(self.budget.max_unauthenticated));
         let authenticated = Arc::new(Semaphore::new(self.budget.max_authenticated_per_host));
@@ -149,7 +180,7 @@ impl ListenerRuntime {
                 biased;
                 _ = cancel.cancelled() => break,
                 _ = interface_refresh.tick() => {
-                    let current = interfaces.eligible_interfaces();
+                    let current = services.interfaces.eligible_interfaces();
                     if current
                         .as_ref()
                         .ok()
@@ -189,8 +220,9 @@ impl ListenerRuntime {
                         drop(stream);
                         continue;
                     }
-                    let authority = Arc::clone(&authority);
-                    let backends = Arc::clone(&backends);
+                    let authority = Arc::clone(&services.authority);
+                    let pairing = Arc::clone(&services.pairing);
+                    let backends = Arc::clone(&services.backends);
                     let authenticated = Arc::clone(&authenticated);
                     let limiter = Arc::clone(&limiter);
                     let connection_cancel = cancel.child_token();
@@ -202,6 +234,7 @@ impl ListenerRuntime {
                             authenticated,
                             limiter,
                             authority,
+                            pairing,
                             backends,
                             connection_cancel,
                         )
@@ -239,9 +272,41 @@ async fn serve_connection(
     authenticated_limit: Arc<Semaphore>,
     limiter: Arc<Mutex<AuthRateLimiter>>,
     authority_provider: Arc<dyn ControllerAuthorityProvider>,
+    pairing_authority: Arc<dyn ControllerPairingAuthority>,
     backend_factory: Arc<dyn ControllerBackendFactory>,
     cancel: CancellationToken,
 ) -> Result<(), ListenerError> {
+    let purpose = tokio::time::timeout(
+        Duration::from_secs(ConnectionBudget::default().handshake_timeout_seconds),
+        ControllerConnectionPurpose::read_from(&mut stream),
+    )
+    .await
+    .map_err(|_| ListenerError::new(ListenerErrorCode::HandshakeTimeout))??;
+    if purpose == ControllerConnectionPurpose::Pair {
+        let result = pair_controller(
+            &mut stream,
+            pairing_authority.as_ref(),
+            &mut SystemHandshakeEntropy,
+            cancel,
+        )
+        .await;
+        match result {
+            Ok(_) => {
+                limiter
+                    .lock()
+                    .map_err(|_| ListenerError::new(ListenerErrorCode::Cancelled))?
+                    .record_success(source);
+                drop(preauth_permit);
+                return Ok(());
+            }
+            Err(error) => {
+                let _ = limiter
+                    .lock()
+                    .map(|mut limiter| limiter.record_failure(source, unix_seconds()));
+                return Err(error);
+            }
+        }
+    }
     let initial = authority_provider.snapshot()?;
     let authenticated = match authenticate_controller(
         &mut stream,

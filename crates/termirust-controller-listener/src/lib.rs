@@ -11,6 +11,7 @@ mod handshake;
 mod host_backend;
 mod interfaces;
 mod launch;
+mod pairing;
 mod pairing_protocol;
 mod protocol;
 mod queue;
@@ -31,6 +32,9 @@ pub use handshake::{
 pub use host_backend::HostBackendFactory;
 pub use interfaces::{InterfaceProvider, SystemInterfaceProvider, resolve_selected_interface};
 pub use launch::{ListenerLaunchDescriptor, run_listener_worker};
+pub use pairing::{
+    ControllerPairingAuthority, HostPairingDecision, PairingAuthoritySnapshot, pair_controller,
+};
 pub use pairing_protocol::{
     ControllerConnectionPurpose, ControllerPairingOffer, PairingConnectRequest,
     PairingDeviceRegistration, PairingHostAck,
@@ -44,4 +48,5 @@ pub use rate_limit::{AuthRateLimiter, SourceBucket, SourceBucketKey};
 pub use runtime::{
     AuthoritySnapshot, ControllerAuthorityProvider, ControllerBackendFactory,
     ControllerConnectionBackend, HostCommandContext, ListenerRuntime, ListenerRuntimeReport,
+    ListenerServices,
 };
