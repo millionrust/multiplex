@@ -46,5 +46,5 @@
     "unknown_capability": "unknown_capability"
   },
   "adr_sha256": "691a2e780d473f31e7d1f48edc23a2964c194a908c67fd7955356f50f43f98b2",
-  "cargo_lock_sha256": "ab7c5879d66261c2bd8b7cec7f90e096a1b0794659c1b7c1b368bad96fb25f79"
+  "cargo_lock_sha256": "f588c5c2cf69500fc19c30bed912671f1a9b3da0ab8c349f5b8755d8437bb547"
 }
