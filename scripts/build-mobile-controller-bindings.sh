@@ -95,6 +95,30 @@ CARGO_TARGET_DIR="$HOST_TARGET" cargo build --locked -p "$CRATE" --release \
   --out-dir "$GENERATED" \
   --no-format
 
+normalize_generated_text() {
+  local source="$1"
+  local normalized="$source.normalized"
+  awk '
+    {
+      sub(/[[:space:]]+$/, "")
+      lines[NR] = $0
+      if ($0 != "") {
+        last = NR
+      }
+    }
+    END {
+      for (line = 1; line <= last; line++) {
+        print lines[line]
+      }
+    }
+  ' "$source" > "$normalized"
+  mv "$normalized" "$source"
+}
+
+while IFS= read -r generated_text; do
+  normalize_generated_text "$generated_text"
+done < <(find "$GENERATED" -type f \( -name '*.h' -o -name '*.kt' -o -name '*.modulemap' -o -name '*.swift' \) | LC_ALL=C sort)
+
 [[ "$("$HOST_TARGET/release/uniffi-bindgen" --version)" == "uniffi-bindgen $UNIFFI_VERSION" ]] || {
   printf 'Expected uniffi-bindgen %s.\n' "$UNIFFI_VERSION" >&2
   exit 1
@@ -143,6 +167,57 @@ build_ios() {
     -library "$libraries/simulator.a" \
     -headers "$headers" \
     -output "$STAGED/ios/TermiRustControllerSecurity.xcframework"
+
+  cat > "$STAGED/ios/TermiRustControllerSecurity.xcframework/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AvailableLibraries</key>
+	<array>
+		<dict>
+			<key>BinaryPath</key>
+			<string>aarch64-apple-ios.a</string>
+			<key>HeadersPath</key>
+			<string>Headers</string>
+			<key>LibraryIdentifier</key>
+			<string>ios-arm64</string>
+			<key>LibraryPath</key>
+			<string>aarch64-apple-ios.a</string>
+			<key>SupportedArchitectures</key>
+			<array>
+				<string>arm64</string>
+			</array>
+			<key>SupportedPlatform</key>
+			<string>ios</string>
+		</dict>
+		<dict>
+			<key>BinaryPath</key>
+			<string>simulator.a</string>
+			<key>HeadersPath</key>
+			<string>Headers</string>
+			<key>LibraryIdentifier</key>
+			<string>ios-arm64_x86_64-simulator</string>
+			<key>LibraryPath</key>
+			<string>simulator.a</string>
+			<key>SupportedArchitectures</key>
+			<array>
+				<string>arm64</string>
+				<string>x86_64</string>
+			</array>
+			<key>SupportedPlatform</key>
+			<string>ios</string>
+			<key>SupportedPlatformVariant</key>
+			<string>simulator</string>
+		</dict>
+	</array>
+	<key>CFBundlePackageType</key>
+	<string>XFWK</string>
+	<key>XCFrameworkFormatVersion</key>
+	<string>1.0</string>
+</dict>
+</plist>
+PLIST
 }
 
 build_android() {
