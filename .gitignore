@@ -1,5 +1,6 @@
 .claude/settings.local.json
 /target
+/tools/browser-engine-spike/target
 .DS_Store
 .antigravitycli/
 experiment.md

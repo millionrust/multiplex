@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "seed": 419504166,
+  "fixtures": [
+    {
+      "id": "redirect",
+      "path": "/redirect",
+      "file": null,
+      "behavior": "redirect",
+      "expected_status": 302,
+      "expected_marker": "fixture-redirect"
+    },
+    {
+      "id": "rebinding",
+      "path": "/rebinding",
+      "file": "rebinding.html",
+      "behavior": "static",
+      "expected_status": 200,
+      "expected_marker": "fixture-rebinding"
+    },
+    {
+      "id": "iframe",
+      "path": "/iframe",
+      "file": "iframe.html",
+      "behavior": "static",
+      "expected_status": 200,
+      "expected_marker": "fixture-iframe"
+    },
+    {
+      "id": "popup",
+      "path": "/popup",
+      "file": "popup.html",
+      "behavior": "static",
+      "expected_status": 200,
+      "expected_marker": "fixture-popup"
+    },
+    {
+      "id": "websocket",
+      "path": "/websocket",
+      "file": "websocket.html",
+      "behavior": "static",
+      "expected_status": 200,
+      "expected_marker": "fixture-websocket"
+    },
+    {
+      "id": "service_worker",
+      "path": "/service-worker",
+      "file": "service-worker.html",
+      "behavior": "static",
+      "expected_status": 200,
+      "expected_marker": "fixture-service-worker"
+    },
+    {
+      "id": "download",
+      "path": "/download",
+      "file": "synthetic-download.bin",
+      "behavior": "download",
+      "expected_status": 200,
+      "expected_marker": "fixture-download"
+    },
+    {
+      "id": "huge_dom",
+      "path": "/huge-dom",
+      "file": "huge-dom.html",
+      "behavior": "static",
+      "expected_status": 200,
+      "expected_marker": "fixture-huge-dom"
+    },
+    {
+      "id": "stalled_response",
+      "path": "/stalled",
+      "file": null,
+      "behavior": "stalled",
+      "expected_status": 200,
+      "expected_marker": "fixture-stalled-response"
+    },
+    {
+      "id": "crash",
+      "path": "/crash",
+      "file": "crash.html",
+      "behavior": "static",
+      "expected_status": 200,
+      "expected_marker": "fixture-crash"
+    },
+    {
+      "id": "stale_element",
+      "path": "/stale",
+      "file": "stale.html",
+      "behavior": "static",
+      "expected_status": 200,
+      "expected_marker": "fixture-stale-element"
+    }
+  ]
+}

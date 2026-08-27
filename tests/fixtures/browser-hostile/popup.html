@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>fixture-popup</title>
+<button data-fixture="fixture-popup" id="open">Synthetic popup</button>
+<script>
+  document.querySelector("#open").addEventListener("click", () => {
+    window.open("http://127.0.0.1:9/popup-fixture", "fixture-popup-window");
+  });
+</script>

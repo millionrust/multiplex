@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>fixture-stale-element</title>
+<button data-fixture="fixture-stale-element" id="generation-one">Generation one</button>
+<script>
+  setTimeout(() => {
+    document.body.innerHTML = '<button id="generation-two">Generation two</button>';
+    history.pushState({}, "", "/stale?generation=2");
+  }, 25);
+</script>
