@@ -7,6 +7,7 @@ description = "Bounded exact-interface LAN/VPN Controller listener for TermiRust
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+async-trait = "0.1"
 if-addrs = "=0.15.0"
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }

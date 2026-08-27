@@ -139,6 +139,10 @@ impl SessionRepository {
         &self.root
     }
 
+    pub fn session_data_path(&self, id: HostedSessionId) -> PathBuf {
+        self.data_root.join(id.to_string())
+    }
+
     pub fn load(&self) -> Result<SessionSnapshot, StoreError> {
         let _lock = self.acquire_lock()?;
         match self.read_document(SESSIONS_FILE) {
@@ -494,10 +498,6 @@ impl SessionRepository {
             }
         }
         Ok(manifest)
-    }
-
-    fn session_data_path(&self, id: HostedSessionId) -> PathBuf {
-        self.data_root.join(id.to_string())
     }
 
     fn read_document(&self, name: &'static str) -> Result<SessionsDocument, StoreError> {

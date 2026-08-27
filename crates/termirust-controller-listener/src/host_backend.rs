@@ -1,0 +1,277 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+use async_trait::async_trait;
+use rand::RngCore as _;
+use termirust_client::{ConnectOptions, HostClient, LocalEndpoint};
+use termirust_domain::{
+    AuthenticatedPeer, HostedSessionId, HostedSessionState, OccupantGeneration,
+};
+use termirust_store::{SessionRepository, read_host_metadata};
+use tokio_util::sync::CancellationToken;
+
+use crate::{
+    ControllerBackendFactory, ControllerCommand, ControllerCommandEnvelope,
+    ControllerConnectionBackend, ControllerResponse, ControllerSessionSummary, HostCommandContext,
+    ListenerError, ListenerErrorCode,
+};
+
+#[derive(Clone)]
+pub struct HostBackendFactory {
+    sessions: SessionRepository,
+    runtime_parent: PathBuf,
+}
+
+impl std::fmt::Debug for HostBackendFactory {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("HostBackendFactory")
+            .field("sessions", &"[REDACTED]")
+            .field("runtime_parent", &"[REDACTED]")
+            .finish()
+    }
+}
+
+impl HostBackendFactory {
+    pub fn new(sessions: SessionRepository, runtime_parent: impl Into<PathBuf>) -> Self {
+        Self {
+            sessions,
+            runtime_parent: runtime_parent.into(),
+        }
+    }
+}
+
+impl ControllerBackendFactory for HostBackendFactory {
+    fn open(
+        &self,
+        _: &AuthenticatedPeer,
+    ) -> Result<Box<dyn ControllerConnectionBackend>, ListenerError> {
+        Ok(Box::new(HostConnectionBackend {
+            sessions: self.sessions.clone(),
+            runtime_parent: self.runtime_parent.clone(),
+            clients: HashMap::new(),
+        }))
+    }
+}
+
+struct HostConnectionBackend {
+    sessions: SessionRepository,
+    runtime_parent: PathBuf,
+    clients: HashMap<HostedSessionId, HostClient>,
+}
+
+#[async_trait]
+impl ControllerConnectionBackend for HostConnectionBackend {
+    async fn command_context(
+        &mut self,
+        command: &ControllerCommandEnvelope,
+        cancel: &CancellationToken,
+    ) -> Result<HostCommandContext, ListenerError> {
+        let Some(session_id) = command.command.session_id() else {
+            return Ok(HostCommandContext::default());
+        };
+        let occupant_generation = self.occupant_generation(session_id)?;
+        let has_writer_lease = if command.command.kind().requires_writer_lease() {
+            let client = self
+                .clients
+                .get_mut(&session_id)
+                .ok_or_else(|| ListenerError::new(ListenerErrorCode::WriterLeaseRequired))?;
+            client
+                .get_state(cancel)
+                .await
+                .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?
+                .has_writer_lease
+        } else {
+            false
+        };
+        Ok(HostCommandContext {
+            occupant_generation: Some(occupant_generation),
+            has_writer_lease,
+        })
+    }
+
+    async fn execute(
+        &mut self,
+        command: ControllerCommandEnvelope,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<ControllerResponse>, ListenerError> {
+        let command_id = command.command_id;
+        match command.command {
+            ControllerCommand::ListSessions => self.list_sessions(command_id),
+            ControllerCommand::Attach {
+                session_id,
+                from_sequence,
+                columns,
+                rows,
+                ..
+            } => {
+                if !self.clients.contains_key(&session_id) {
+                    let endpoint = LocalEndpoint::new(
+                        self.runtime_parent.join(session_id.to_string()),
+                        session_id,
+                    );
+                    let mut nonce = [0; 32];
+                    rand::rngs::OsRng.fill_bytes(&mut nonce);
+                    let client = HostClient::connect(
+                        endpoint,
+                        ConnectOptions::local(session_id, nonce),
+                        cancel,
+                    )
+                    .await
+                    .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+                    self.clients.insert(session_id, client);
+                }
+                let client = self
+                    .clients
+                    .get_mut(&session_id)
+                    .ok_or_else(|| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+                let outputs = client
+                    .attach(from_sequence, columns, rows, cancel)
+                    .await
+                    .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+                let state = client
+                    .take_last_state()
+                    .ok_or_else(|| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+                let mut responses = Vec::with_capacity(outputs.len() + 1);
+                responses.push(ControllerResponse::Attached {
+                    command_id,
+                    has_writer_lease: state.has_writer_lease,
+                });
+                responses.extend(
+                    outputs
+                        .into_iter()
+                        .map(|output| ControllerResponse::Output {
+                            session_id,
+                            sequence: output.sequence,
+                            bytes: output.bytes,
+                        }),
+                );
+                Ok(responses)
+            }
+            ControllerCommand::Input {
+                session_id, bytes, ..
+            } => {
+                let result = self
+                    .client(session_id)?
+                    .input(command_id, bytes, cancel)
+                    .await;
+                Ok(vec![mutation_response(command_id, result)])
+            }
+            ControllerCommand::Resize {
+                session_id,
+                columns,
+                rows,
+                ..
+            } => {
+                let result = self
+                    .client(session_id)?
+                    .resize(command_id, columns, rows, cancel)
+                    .await;
+                Ok(vec![mutation_response(command_id, result)])
+            }
+            ControllerCommand::Approval { .. } => Ok(vec![ControllerResponse::Error {
+                command_id,
+                code: "approval_unavailable".to_owned(),
+                completion_unknown: false,
+            }]),
+            ControllerCommand::Detach { session_id, .. } => {
+                if let Some(mut client) = self.clients.remove(&session_id) {
+                    client
+                        .detach(cancel)
+                        .await
+                        .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+                }
+                Ok(vec![ControllerResponse::Detached { command_id }])
+            }
+        }
+    }
+}
+
+impl HostConnectionBackend {
+    fn list_sessions(
+        &self,
+        command_id: termirust_domain::CommandId,
+    ) -> Result<Vec<ControllerResponse>, ListenerError> {
+        let snapshot = self
+            .sessions
+            .load()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+        let sessions = snapshot
+            .sessions
+            .into_iter()
+            .map(|session| {
+                let occupant_generation = self.occupant_generation(session.id).ok();
+                ControllerSessionSummary {
+                    session_id: session.id,
+                    title: session.title.to_string(),
+                    lifecycle: lifecycle_code(session.lifecycle).to_owned(),
+                    occupant_generation,
+                    last_output_sequence: session.last_output_sequence,
+                    has_writer: false,
+                }
+            })
+            .collect();
+        Ok(vec![ControllerResponse::Sessions {
+            command_id,
+            sessions,
+        }])
+    }
+
+    fn occupant_generation(
+        &self,
+        session_id: HostedSessionId,
+    ) -> Result<OccupantGeneration, ListenerError> {
+        read_host_metadata(&self.sessions.session_data_path(session_id))
+            .ok()
+            .and_then(|metadata| metadata.runtime_recognition)
+            .and_then(|recognition| recognition.occupant)
+            .map(|occupant| occupant.generation)
+            .ok_or_else(|| ListenerError::new(ListenerErrorCode::HostUnavailable))
+    }
+
+    fn client(&mut self, session_id: HostedSessionId) -> Result<&mut HostClient, ListenerError> {
+        self.clients
+            .get_mut(&session_id)
+            .ok_or_else(|| ListenerError::new(ListenerErrorCode::HostUnavailable))
+    }
+}
+
+fn mutation_response(
+    command_id: termirust_domain::CommandId,
+    result: Result<bool, termirust_client::ClientError>,
+) -> ControllerResponse {
+    match result {
+        Ok(applied) => ControllerResponse::Completed {
+            command_id,
+            applied,
+        },
+        Err(_) => ControllerResponse::Error {
+            command_id,
+            code: "completion_unknown".to_owned(),
+            completion_unknown: true,
+        },
+    }
+}
+
+fn lifecycle_code(state: HostedSessionState) -> &'static str {
+    match state {
+        HostedSessionState::Draft => "draft",
+        HostedSessionState::Validating => "validating",
+        HostedSessionState::Starting => "starting",
+        HostedSessionState::Provisioning => "provisioning",
+        HostedSessionState::Attaching => "attaching",
+        HostedSessionState::Replaying => "replaying",
+        HostedSessionState::Live => "live",
+        HostedSessionState::RecordingPaused => "recording_paused",
+        HostedSessionState::Stopping => "stopping",
+        HostedSessionState::Offline => "offline",
+        HostedSessionState::Orphaned => "orphaned",
+        HostedSessionState::Gap => "gap",
+        HostedSessionState::PermissionDenied => "permission_denied",
+        HostedSessionState::Incompatible => "incompatible",
+        HostedSessionState::RunningAppAttached => "running_app_attached",
+        HostedSessionState::Failed => "failed",
+        HostedSessionState::Cancelled => "cancelled",
+        HostedSessionState::Exited => "exited",
+    }
+}
