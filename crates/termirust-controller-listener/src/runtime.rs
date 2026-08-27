@@ -576,7 +576,10 @@ mod tests {
         ) -> Result<Vec<ControllerResponse>, ListenerError> {
             Ok(vec![ControllerResponse::Sessions {
                 command_id: command.command_id,
+                revision: 1,
+                update_sequence: 1,
                 sessions: Vec::new(),
+                next_offset: None,
             }])
         }
     }
@@ -693,7 +696,11 @@ mod tests {
             command_id,
             9,
             unix_millis().saturating_add(10_000),
-            crate::ControllerCommand::ListSessions,
+            crate::ControllerCommand::ListSessions {
+                offset: 0,
+                limit: 1_000,
+                expected_revision: None,
+            },
         );
         let payload = crate::encode_command(&command).unwrap();
         let sealed = connection
@@ -720,7 +727,10 @@ mod tests {
             .unwrap(),
             ControllerResponse::Sessions {
                 command_id,
+                revision: 1,
+                update_sequence: 1,
                 sessions: Vec::new(),
+                next_offset: None,
             }
         );
 

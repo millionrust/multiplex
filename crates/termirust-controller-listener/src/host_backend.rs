@@ -97,7 +97,11 @@ impl ControllerConnectionBackend for HostConnectionBackend {
     ) -> Result<Vec<ControllerResponse>, ListenerError> {
         let command_id = command.command_id;
         match command.command {
-            ControllerCommand::ListSessions => self.list_sessions(command_id),
+            ControllerCommand::ListSessions {
+                offset,
+                limit,
+                expected_revision,
+            } => self.list_sessions(command_id, offset, limit, expected_revision),
             ControllerCommand::Attach {
                 session_id,
                 from_sequence,
@@ -191,14 +195,38 @@ impl HostConnectionBackend {
     fn list_sessions(
         &self,
         command_id: termirust_domain::CommandId,
+        offset: u32,
+        limit: u16,
+        expected_revision: Option<u64>,
     ) -> Result<Vec<ControllerResponse>, ListenerError> {
         let snapshot = self
             .sessions
             .load()
             .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
-        let sessions = snapshot
-            .sessions
-            .into_iter()
+        let revision = snapshot.revision.get().saturating_add(1);
+        if expected_revision.is_some_and(|expected| expected != revision) {
+            return Ok(vec![ControllerResponse::Error {
+                command_id,
+                code: "snapshot_changed".into(),
+                completion_unknown: false,
+            }]);
+        }
+        let start = usize::try_from(offset)
+            .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?;
+        if start > snapshot.sessions.len() {
+            return Ok(vec![ControllerResponse::Error {
+                command_id,
+                code: "page_out_of_range".into(),
+                completion_unknown: false,
+            }]);
+        }
+        let end = start
+            .saturating_add(usize::from(limit))
+            .min(snapshot.sessions.len());
+        let next_offset =
+            (end < snapshot.sessions.len()).then(|| u32::try_from(end).unwrap_or(u32::MAX));
+        let sessions = snapshot.sessions[start..end]
+            .iter()
             .map(|session| {
                 let occupant_generation = self.occupant_generation(session.id).ok();
                 ControllerSessionSummary {
@@ -213,7 +241,10 @@ impl HostConnectionBackend {
             .collect();
         Ok(vec![ControllerResponse::Sessions {
             command_id,
+            revision,
+            update_sequence: revision,
             sessions,
+            next_offset,
         }])
     }
 

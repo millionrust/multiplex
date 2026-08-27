@@ -11,6 +11,7 @@ const CONTROLLER_COMMAND_VERSION: u16 = 1;
 const MAX_INPUT_BYTES: usize = 60 * 1024;
 const MAX_ERROR_CODE_BYTES: usize = 64;
 const MAX_SESSION_TITLE_SCALARS: usize = 256;
+pub const MAX_SESSION_PAGE_RECORDS: u16 = 1_000;
 
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -70,7 +71,11 @@ impl fmt::Debug for ControllerCommandEnvelope {
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ControllerCommand {
-    ListSessions,
+    ListSessions {
+        offset: u32,
+        limit: u16,
+        expected_revision: Option<u64>,
+    },
     Attach {
         session_id: HostedSessionId,
         occupant_generation: OccupantGeneration,
@@ -104,7 +109,7 @@ pub enum ControllerCommand {
 impl ControllerCommand {
     pub const fn kind(&self) -> BridgeCommandKind {
         match self {
-            Self::ListSessions => BridgeCommandKind::ListSessions,
+            Self::ListSessions { .. } => BridgeCommandKind::ListSessions,
             Self::Attach { .. } => BridgeCommandKind::Attach,
             Self::Input { .. } => BridgeCommandKind::Input,
             Self::Resize { .. } => BridgeCommandKind::Resize,
@@ -115,7 +120,7 @@ impl ControllerCommand {
 
     pub const fn session_id(&self) -> Option<HostedSessionId> {
         match self {
-            Self::ListSessions => None,
+            Self::ListSessions { .. } => None,
             Self::Attach { session_id, .. }
             | Self::Input { session_id, .. }
             | Self::Resize { session_id, .. }
@@ -126,7 +131,7 @@ impl ControllerCommand {
 
     pub const fn occupant_generation(&self) -> Option<OccupantGeneration> {
         match self {
-            Self::ListSessions => None,
+            Self::ListSessions { .. } => None,
             Self::Attach {
                 occupant_generation,
                 ..
@@ -152,7 +157,18 @@ impl ControllerCommand {
 
     fn validate(&self) -> Result<(), ListenerError> {
         match self {
-            Self::ListSessions | Self::Detach { .. } | Self::Approval { .. } => Ok(()),
+            Self::ListSessions {
+                offset,
+                limit,
+                expected_revision,
+            } if *limit == 0
+                || *limit > MAX_SESSION_PAGE_RECORDS
+                || usize::try_from(*offset).unwrap_or(usize::MAX) > 10_000
+                || expected_revision == &Some(0) =>
+            {
+                Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
+            }
+            Self::ListSessions { .. } | Self::Detach { .. } | Self::Approval { .. } => Ok(()),
             Self::Attach { columns, rows, .. } | Self::Resize { columns, rows, .. }
                 if *columns == 0 || *rows == 0 || *columns > 1_000 || *rows > 1_000 =>
             {
@@ -178,7 +194,10 @@ pub enum ApprovalDecision {
 pub enum ControllerResponse {
     Sessions {
         command_id: CommandId,
+        revision: u64,
+        update_sequence: u64,
         sessions: Vec<ControllerSessionSummary>,
+        next_offset: Option<u32>,
     },
     Attached {
         command_id: CommandId,
@@ -275,8 +294,17 @@ pub fn encode_response(
 
 fn validate_response(response: &ControllerResponse) -> Result<(), ListenerError> {
     match response {
-        ControllerResponse::Sessions { sessions, .. }
-            if sessions.iter().any(|session| {
+        ControllerResponse::Sessions {
+            revision,
+            update_sequence,
+            sessions,
+            next_offset,
+            ..
+        } if *revision == 0
+            || *update_sequence == 0
+            || sessions.len() > usize::from(MAX_SESSION_PAGE_RECORDS)
+            || next_offset == &Some(0)
+            || sessions.iter().any(|session| {
                 session.title.chars().count() > MAX_SESSION_TITLE_SCALARS
                     || session.lifecycle.len() > MAX_ERROR_CODE_BYTES
             }) =>
@@ -360,5 +388,48 @@ mod tests {
         command.version = 2;
         assert!(encode_command(&command).is_err());
         assert!(decode_command(br#"{"version":1,"unknown":true}"#).is_err());
+    }
+
+    #[test]
+    fn session_pages_are_bounded_and_require_stable_nonzero_revisions() {
+        let command = ControllerCommandEnvelope::new(
+            CommandId::new(),
+            0,
+            2,
+            ControllerCommand::ListSessions {
+                offset: 0,
+                limit: MAX_SESSION_PAGE_RECORDS,
+                expected_revision: None,
+            },
+        );
+        assert_eq!(
+            decode_command(&encode_command(&command).unwrap()).unwrap(),
+            command
+        );
+
+        let invalid = ControllerCommandEnvelope::new(
+            CommandId::new(),
+            0,
+            2,
+            ControllerCommand::ListSessions {
+                offset: 0,
+                limit: MAX_SESSION_PAGE_RECORDS + 1,
+                expected_revision: None,
+            },
+        );
+        assert!(encode_command(&invalid).is_err());
+        assert!(
+            encode_response(
+                &ControllerResponse::Sessions {
+                    command_id: CommandId::new(),
+                    revision: 0,
+                    update_sequence: 1,
+                    sessions: Vec::new(),
+                    next_offset: None,
+                },
+                MAX_CONTROL_PAYLOAD_BYTES,
+            )
+            .is_err()
+        );
     }
 }
