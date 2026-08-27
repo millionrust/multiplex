@@ -9,9 +9,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use termirust_controller_security::{
     AuthorizationDecision as CoreAuthorizationDecision, AuthorizationPolicy, CONTROLLER_V1,
+    CapabilitySet, ConnectionChallenge, ConnectionInitiator, ConnectionPrelude,
     ControllerCapability as CoreCapability, ControllerFrameKind as CoreFrameKind,
-    ControllerSecurityError, ControllerTransport, ErrorCode, MAX_CONTROL_PAYLOAD_BYTES,
-    MAX_TERMINAL_FRAME_BYTES, PairingMachine, RevocationEpoch, StaticPrivateKey, decode_offer,
+    ControllerSecurityError, ControllerTransport, ErrorCode, HostStaticPublicKey,
+    MAX_CONTROL_PAYLOAD_BYTES, MAX_TERMINAL_FRAME_BYTES, PairingMachine, RevocationEpoch,
+    StaticPrivateKey, decode_offer,
 };
 use zeroize::Zeroize;
 
@@ -102,6 +104,27 @@ pub struct PairingPublicResult {
     pub host_static_public_key: Vec<u8>,
     pub device_static_public_key: Vec<u8>,
     pub capability_bits: u16,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, uniffi::Record)]
+pub struct ConnectionStartRequest {
+    pub static_key_id: String,
+    pub ephemeral_private_key: Vec<u8>,
+    pub host_static_public_key: Vec<u8>,
+    pub identity_generation: u64,
+    pub revocation_epoch: u64,
+    pub requested_capability_bits: u16,
+    pub client_nonce: Vec<u8>,
+    pub now_millis: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, uniffi::Record)]
+pub struct ConnectionPublicResult {
+    pub host_static_public_key: Vec<u8>,
+    pub device_static_public_key: Vec<u8>,
+    pub identity_generation: u64,
+    pub revocation_epoch: u64,
+    pub granted_capability_bits: u16,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, uniffi::Record)]
@@ -340,6 +363,57 @@ impl ControllerSecurityEngine {
             Ok(Arc::new(ControllerPairingSession {
                 inner: Mutex::new(SessionInner {
                     machine: Some(machine),
+                    transport: None,
+                    policy: None,
+                    closed: false,
+                }),
+            }))
+        })
+    }
+
+    pub fn connection_prelude(
+        &self,
+        request: ConnectionStartRequest,
+    ) -> Result<Vec<u8>, ControllerBindingError> {
+        boundary(|| {
+            connection_prelude(&request)?
+                .encode()
+                .map(|bytes| bytes.to_vec())
+                .map_err(ControllerBindingError::from)
+        })
+    }
+
+    pub fn connection_start(
+        &self,
+        mut request: ConnectionStartRequest,
+        challenge_bytes: Vec<u8>,
+    ) -> Result<Arc<ControllerConnectionSession>, ControllerBindingError> {
+        boundary(|| {
+            validate_key_id(&request.static_key_id)?;
+            let prelude = connection_prelude(&request)?;
+            let challenge = ConnectionChallenge::decode(&challenge_bytes)
+                .map_err(ControllerBindingError::from)?;
+            let host_key = HostStaticPublicKey(take_fixed_32(
+                &request.host_static_public_key,
+                ControllerBindingError::WrongKey,
+            )?);
+            let requested = CapabilitySet::from_bits(request.requested_capability_bits)
+                .map_err(ControllerBindingError::from)?;
+            let static_private = self.load_private_key(request.static_key_id)?;
+            let ephemeral_private = take_private_key(&mut request.ephemeral_private_key)?;
+            let initiator = ConnectionInitiator::new(
+                prelude,
+                &challenge,
+                host_key,
+                static_private,
+                ephemeral_private,
+                requested,
+                request.now_millis,
+            )
+            .map_err(ControllerBindingError::from)?;
+            Ok(Arc::new(ControllerConnectionSession {
+                inner: Mutex::new(ConnectionSessionInner {
+                    initiator: Some(initiator),
                     transport: None,
                     policy: None,
                     closed: false,
@@ -596,6 +670,161 @@ impl ControllerPairingSession {
     }
 }
 
+#[derive(uniffi::Object)]
+pub struct ControllerConnectionSession {
+    inner: Mutex<ConnectionSessionInner>,
+}
+
+struct ConnectionSessionInner {
+    initiator: Option<ConnectionInitiator>,
+    transport: Option<ControllerTransport>,
+    policy: Option<AuthorizationPolicy>,
+    closed: bool,
+}
+
+#[uniffi::export]
+impl ControllerConnectionSession {
+    pub fn handshake_outbound(&self, now_millis: u64) -> Result<Vec<u8>, ControllerBindingError> {
+        boundary(|| {
+            let mut inner = self.lock()?;
+            ensure_connection_open(&inner)?;
+            inner
+                .initiator
+                .as_mut()
+                .ok_or(ControllerBindingError::WrongState)?
+                .write_hello(now_millis)
+                .map(|message| message.as_bytes().to_vec())
+                .map_err(ControllerBindingError::from)
+        })
+    }
+
+    pub fn handshake_receive_accept(
+        &self,
+        message: Vec<u8>,
+        now_millis: u64,
+    ) -> Result<ConnectionPublicResult, ControllerBindingError> {
+        boundary(|| {
+            if message.len() > MAX_HANDSHAKE_MESSAGE_BYTES {
+                return Err(ControllerBindingError::FrameTooLarge);
+            }
+            let mut inner = self.lock()?;
+            ensure_connection_open(&inner)?;
+            let initiator = inner
+                .initiator
+                .take()
+                .ok_or(ControllerBindingError::WrongState)?;
+            let authenticated = initiator
+                .read_accept(&message, now_millis)
+                .map_err(ControllerBindingError::from)?;
+            let result = ConnectionPublicResult {
+                host_static_public_key: authenticated.host_key.0.to_vec(),
+                device_static_public_key: authenticated.device_key.0.to_vec(),
+                identity_generation: authenticated.identity_generation,
+                revocation_epoch: authenticated.revocation_epoch.0,
+                granted_capability_bits: authenticated.capabilities.bits(),
+            };
+            inner.policy = Some(AuthorizationPolicy::new(
+                authenticated.capabilities,
+                authenticated.revocation_epoch,
+            ));
+            inner.transport = Some(authenticated.transport);
+            Ok(result)
+        })
+    }
+
+    pub fn seal_frame(
+        &self,
+        kind: ControllerFrameKind,
+        capability: ControllerCapability,
+        revocation_epoch: u64,
+        payload: Vec<u8>,
+    ) -> Result<Vec<u8>, ControllerBindingError> {
+        boundary(|| {
+            validate_payload_size(kind, payload.len())?;
+            let mut inner = self.lock()?;
+            ensure_connection_open(&inner)?;
+            inner
+                .transport
+                .as_mut()
+                .ok_or(ControllerBindingError::WrongState)?
+                .seal(
+                    kind.into(),
+                    capability.into(),
+                    RevocationEpoch(revocation_epoch),
+                    &payload,
+                )
+                .map(|frame| frame.as_bytes().to_vec())
+                .map_err(ControllerBindingError::from)
+        })
+    }
+
+    pub fn open_frame(
+        &self,
+        frame: Vec<u8>,
+    ) -> Result<OpenedControllerFrame, ControllerBindingError> {
+        boundary(|| {
+            if frame.len() > MAX_TERMINAL_FRAME_BYTES {
+                return Err(ControllerBindingError::FrameTooLarge);
+            }
+            let mut inner = self.lock()?;
+            ensure_connection_open(&inner)?;
+            let opened = inner
+                .transport
+                .as_mut()
+                .ok_or(ControllerBindingError::WrongState)?
+                .open(&frame)
+                .map_err(ControllerBindingError::from)?;
+            Ok(OpenedControllerFrame {
+                kind: opened.kind.into(),
+                capability: opened.capability.into(),
+                revocation_epoch: opened.revocation_epoch.0,
+                sequence: opened.sequence,
+                payload: opened.payload.clone(),
+            })
+        })
+    }
+
+    pub fn authorize(
+        &self,
+        capability: ControllerCapability,
+        presented_revocation_epoch: u64,
+    ) -> Result<AuthorizationDecision, ControllerBindingError> {
+        boundary(|| {
+            let inner = self.lock()?;
+            ensure_connection_open(&inner)?;
+            let policy = inner.policy.ok_or(ControllerBindingError::WrongState)?;
+            Ok(
+                match policy.evaluate(
+                    capability.into(),
+                    RevocationEpoch(presented_revocation_epoch),
+                ) {
+                    CoreAuthorizationDecision::Allow => AuthorizationDecision::Allow,
+                    CoreAuthorizationDecision::Deny(_) => AuthorizationDecision::Deny,
+                },
+            )
+        })
+    }
+
+    pub fn finish(&self) -> Result<(), ControllerBindingError> {
+        boundary(|| {
+            let mut inner = self.lock()?;
+            inner.initiator = None;
+            inner.transport = None;
+            inner.policy = None;
+            inner.closed = true;
+            Ok(())
+        })
+    }
+}
+
+impl ControllerConnectionSession {
+    fn lock(&self) -> Result<MutexGuard<'_, ConnectionSessionInner>, ControllerBindingError> {
+        self.inner
+            .lock()
+            .map_err(|_| ControllerBindingError::Unexpected)
+    }
+}
+
 impl ControllerPairingSession {
     fn lock(&self) -> Result<MutexGuard<'_, SessionInner>, ControllerBindingError> {
         self.inner
@@ -616,6 +845,42 @@ fn ensure_open(inner: &SessionInner) -> Result<(), ControllerBindingError> {
     } else {
         Ok(())
     }
+}
+
+fn ensure_connection_open(inner: &ConnectionSessionInner) -> Result<(), ControllerBindingError> {
+    if inner.closed {
+        Err(ControllerBindingError::Disposed)
+    } else {
+        Ok(())
+    }
+}
+
+fn connection_prelude(
+    request: &ConnectionStartRequest,
+) -> Result<ConnectionPrelude, ControllerBindingError> {
+    validate_key_id(&request.static_key_id)?;
+    let client_nonce = take_fixed_32(
+        &request.client_nonce,
+        ControllerBindingError::InvalidEncoding,
+    )?;
+    if request.identity_generation == 0 {
+        return Err(ControllerBindingError::InvalidEncoding);
+    }
+    CapabilitySet::from_bits(request.requested_capability_bits)
+        .map_err(ControllerBindingError::from)?;
+    Ok(ConnectionPrelude {
+        version: CONTROLLER_V1,
+        identity_generation: request.identity_generation,
+        revocation_epoch: RevocationEpoch(request.revocation_epoch),
+        client_nonce,
+    })
+}
+
+fn take_fixed_32(
+    bytes: &[u8],
+    error: ControllerBindingError,
+) -> Result<[u8; PRIVATE_KEY_BYTES], ControllerBindingError> {
+    bytes.try_into().map_err(|_| error)
 }
 
 fn validate_key_id(key_id: &str) -> Result<(), ControllerBindingError> {
@@ -834,5 +1099,80 @@ mod tests {
                 .unwrap_or_else(|_| panic!("close thread panicked"));
         }
         assert_eq!(session.sas(), Err(ControllerBindingError::Disposed));
+    }
+
+    #[test]
+    fn connection_binding_interoperates_with_host_responder_and_transport() {
+        use termirust_controller_security::{
+            ConnectionResponder, ControllerCapability as SecurityCapability,
+            ControllerFrameKind as SecurityFrameKind, device_public_key_from_private,
+            host_public_key_from_private,
+        };
+
+        let blobs = Arc::new(MemoryBlobs::default());
+        let device_private = StaticPrivateKey::from_fixture_bytes([2; 32]);
+        blobs
+            .store(
+                "device:controller".into(),
+                device_private.copy_for_process_handoff().to_vec(),
+            )
+            .unwrap();
+        let engine = ControllerSecurityEngine::new(blobs).unwrap();
+        let host_private = StaticPrivateKey::from_fixture_bytes([1; 32]);
+        let host_key = host_public_key_from_private(&host_private);
+        let request = ConnectionStartRequest {
+            static_key_id: "device:controller".into(),
+            ephemeral_private_key: vec![3; 32],
+            host_static_public_key: host_key.0.to_vec(),
+            identity_generation: 7,
+            revocation_epoch: 11,
+            requested_capability_bits: 1,
+            client_nonce: vec![5; 32],
+            now_millis: 100,
+        };
+        let prelude_bytes = engine.connection_prelude(request.clone()).unwrap();
+        let prelude = ConnectionPrelude::decode(&prelude_bytes).unwrap();
+        let challenge = ConnectionChallenge {
+            server_nonce: [6; 32],
+        };
+        let session = engine
+            .connection_start(request, challenge.encode().unwrap().to_vec())
+            .unwrap();
+        let hello = session.handshake_outbound(101).unwrap();
+        let mut responder = ConnectionResponder::new(
+            prelude,
+            &challenge,
+            host_private,
+            StaticPrivateKey::from_fixture_bytes([4; 32]),
+            100,
+        )
+        .unwrap();
+        let claim = responder.read_hello(&hello, 102).unwrap();
+        assert_eq!(
+            claim.device_key,
+            device_public_key_from_private(&device_private)
+        );
+        let granted = CapabilitySet::default().with(SecurityCapability::ObserveSessions);
+        let (accept, mut host_connection) = responder.write_accept(granted, 103).unwrap();
+        let result = session
+            .handshake_receive_accept(accept.as_bytes().to_vec(), 104)
+            .unwrap();
+        assert_eq!(result.granted_capability_bits, 1);
+        let sealed = session
+            .seal_frame(
+                ControllerFrameKind::Control,
+                ControllerCapability::ObserveSessions,
+                11,
+                b"list".to_vec(),
+            )
+            .unwrap();
+        let opened = host_connection.transport.open(&sealed).unwrap();
+        assert_eq!(opened.kind, SecurityFrameKind::Control);
+        assert_eq!(opened.payload, b"list");
+        assert!(session.finish().is_ok());
+        assert_eq!(
+            session.handshake_outbound(105),
+            Err(ControllerBindingError::Disposed)
+        );
     }
 }
