@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::io::{BufRead, Write};
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use rand::RngCore as _;
 use serde::{Deserialize, Serialize};
@@ -10,8 +11,9 @@ use termirust_controller_security::{
     StaticPrivateKey,
 };
 use termirust_domain::{
-    AuthenticatedPeer, ControllerCapabilities, ControllerDeviceId, ControllerListenPolicy,
-    ControllerNetworkRevision, DevicePublicKey, PairingOfferId, PairingOfferState,
+    AddressFamily, AuthenticatedPeer, ControllerCapabilities, ControllerCapability,
+    ControllerDeviceId, ControllerListenPolicy, ControllerNetworkRevision, DevicePublicKey,
+    DiscoveryPolicy, PairingOfferId, PairingOfferState, RouteCandidate,
 };
 use termirust_store::{ControllerDeviceRepository, ControllerNetworkRepository, SessionRepository};
 use tokio_util::sync::CancellationToken;
@@ -19,13 +21,81 @@ use zeroize::Zeroize as _;
 
 use crate::{
     AuthoritySnapshot, ControllerAuthorityProvider, ControllerPairingAuthority, HostBackendFactory,
-    HostPairingDecision, ListenerError, ListenerErrorCode, ListenerRuntime, ListenerServices,
-    PairingAuthoritySnapshot, SourceBucketKey, SystemBinder, SystemGeneratedPortSource,
+    HostPairingDecision, ListenerControlCommand, ListenerError, ListenerErrorCode,
+    ListenerProcessEvent, ListenerRuntime, ListenerServices, PairingAuthoritySnapshot,
+    ProcessPairingDecision, SourceBucketKey, SystemBinder, SystemGeneratedPortSource,
     SystemInterfaceProvider, bind_selected_route,
 };
 
 const LAUNCH_FORMAT_VERSION: u16 = 1;
 const MAX_LAUNCH_DESCRIPTOR_BYTES: u64 = 32 * 1024;
+const PAIRING_OFFER_LIFETIME_SECONDS: u64 = 5 * 60;
+
+#[derive(Clone)]
+struct ListenerEventSink {
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+}
+
+impl ListenerEventSink {
+    fn new(writer: impl Write + Send + 'static) -> Self {
+        Self {
+            writer: Arc::new(Mutex::new(Box::new(writer))),
+        }
+    }
+
+    fn send(&self, event: &ListenerProcessEvent) -> Result<(), ListenerError> {
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?;
+        event.write(&mut *writer)
+    }
+}
+
+#[derive(Clone, Default)]
+struct PairingDecisionBroker {
+    pending: Arc<Mutex<HashMap<PairingOfferId, tokio::sync::oneshot::Sender<HostPairingDecision>>>>,
+}
+
+impl PairingDecisionBroker {
+    fn register(
+        &self,
+        offer_id: PairingOfferId,
+    ) -> Result<tokio::sync::oneshot::Receiver<HostPairingDecision>, ListenerError> {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        let replaced = self
+            .pending
+            .lock()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?
+            .insert(offer_id, sender);
+        if replaced.is_some() {
+            return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
+        }
+        Ok(receiver)
+    }
+
+    fn resolve(
+        &self,
+        offer_id: PairingOfferId,
+        decision: HostPairingDecision,
+    ) -> Result<(), ListenerError> {
+        let sender = self
+            .pending
+            .lock()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?
+            .remove(&offer_id)
+            .ok_or_else(|| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        sender
+            .send(decision)
+            .map_err(|_| ListenerError::new(ListenerErrorCode::Cancelled))
+    }
+
+    fn remove(&self, offer_id: PairingOfferId) {
+        if let Ok(mut pending) = self.pending.lock() {
+            pending.remove(&offer_id);
+        }
+    }
+}
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -146,6 +216,59 @@ impl Drop for ListenerLaunchDescriptor {
 struct RepositoryAuthority {
     repository: ControllerDeviceRepository,
     host_private: StaticPrivateKey,
+    events: ListenerEventSink,
+    decisions: PairingDecisionBroker,
+}
+
+impl RepositoryAuthority {
+    fn create_offer(&self, route: &RouteCandidate) -> Result<ListenerProcessEvent, ListenerError> {
+        let mut nonce = [0; 32];
+        rand::rngs::OsRng
+            .try_fill_bytes(&mut nonce)
+            .map_err(|_| ListenerError::new(ListenerErrorCode::RandomUnavailable))?;
+        let offer_id = PairingOfferId::new();
+        let now = unix_seconds();
+        let expires_at = now.saturating_add(PAIRING_OFFER_LIFETIME_SECONDS);
+        let capabilities = ControllerCapabilities::default()
+            .with(ControllerCapability::ObserveSessions)
+            .with(ControllerCapability::AttachOutput);
+        let snapshot = self
+            .repository
+            .load()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        let mut record = None;
+        self.repository
+            .update(snapshot.revision, |authority| {
+                record = Some(authority.create_offer(
+                    offer_id,
+                    nonce,
+                    now,
+                    expires_at,
+                    capabilities,
+                    vec![format!("{}:{}", route.address, route.port.value())],
+                )?);
+                Ok(())
+            })
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        let record =
+            record.ok_or_else(|| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        let core = PairingOfferCore {
+            version: CONTROLLER_V1,
+            expires_at_unix_seconds: record.expires_at,
+            nonce: PairingNonce(record.nonce),
+            host_static_public_key: termirust_controller_security::HostStaticPublicKey(
+                record.identity.public_key.0,
+            ),
+            capabilities: CapabilitySet::from_bits(record.capabilities.bits())
+                .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?,
+        };
+        let offer = crate::ControllerPairingOffer::new(offer_id, route, &core)?;
+        Ok(ListenerProcessEvent::pairing_offer(
+            offer_id,
+            offer.encode_text()?,
+            expires_at,
+        ))
+    }
 }
 
 impl ControllerAuthorityProvider for RepositoryAuthority {
@@ -224,11 +347,26 @@ impl ControllerPairingAuthority for RepositoryAuthority {
 
     async fn await_host_decision(
         &self,
-        _: PairingOfferId,
-        _: &termirust_controller_security::SasCode,
-        _: &CancellationToken,
+        offer_id: PairingOfferId,
+        sas: &termirust_controller_security::SasCode,
+        cancel: &CancellationToken,
     ) -> Result<HostPairingDecision, ListenerError> {
-        Ok(HostPairingDecision::Reject)
+        let receiver = self.decisions.register(offer_id)?;
+        if let Err(error) = self.events.send(&ListenerProcessEvent::pairing_sas_ready(
+            offer_id,
+            sas.as_str().to_owned(),
+        )) {
+            self.decisions.remove(offer_id);
+            return Err(error);
+        }
+        tokio::select! {
+            _ = cancel.cancelled() => {
+                self.decisions.remove(offer_id);
+                Err(ListenerError::new(ListenerErrorCode::Cancelled))
+            }
+            decision = receiver => decision
+                .map_err(|_| ListenerError::new(ListenerErrorCode::Cancelled)),
+        }
     }
 
     fn persist(
@@ -278,22 +416,33 @@ impl ControllerPairingAuthority for RepositoryAuthority {
             .repository
             .load()
             .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
-        self.repository
+        let saved = self
+            .repository
             .update(snapshot.revision, |authority| {
                 authority
                     .acknowledge_pairing(offer_id, DevicePublicKey(device_key.0))
                     .map(|_| ())
             })
             .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        let device_id = saved
+            .authority
+            .devices
+            .iter()
+            .find(|device| device.source_offer_id == offer_id)
+            .map(|device| device.device_id)
+            .ok_or_else(|| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        self.events
+            .send(&ListenerProcessEvent::pairing_complete(offer_id, device_id))?;
         Ok(())
     }
 }
 
-pub fn run_listener_worker(
-    reader: impl BufRead,
-    mut readiness: impl Write,
-) -> Result<(), ListenerError> {
-    let mut descriptor = ListenerLaunchDescriptor::read(reader)?;
+pub fn run_listener_worker<R, W>(mut reader: R, readiness: W) -> Result<(), ListenerError>
+where
+    R: BufRead + Send + 'static,
+    W: Write + Send + 'static,
+{
+    let mut descriptor = ListenerLaunchDescriptor::read(&mut reader)?;
     let devices = ControllerDeviceRepository::open(&descriptor.controller_root)
         .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
     let network = ControllerNetworkRepository::open(&descriptor.controller_root)
@@ -327,12 +476,16 @@ pub fn run_listener_worker(
         descriptor.session_data_root.clone(),
     )
     .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+    let events = ListenerEventSink::new(readiness);
+    let decisions = PairingDecisionBroker::default();
     let repository_authority = Arc::new(RepositoryAuthority {
         repository: devices,
         host_private: StaticPrivateKey::from_bytes(descriptor.host_private),
+        events: events.clone(),
+        decisions: decisions.clone(),
     });
     let authority: Arc<dyn ControllerAuthorityProvider> = repository_authority.clone();
-    let pairing: Arc<dyn ControllerPairingAuthority> = repository_authority;
+    let pairing: Arc<dyn ControllerPairingAuthority> = repository_authority.clone();
     let backends = Arc::new(HostBackendFactory::new(
         sessions,
         descriptor.runtime_parent.clone(),
@@ -343,20 +496,58 @@ pub fn run_listener_worker(
         .map_err(|_| ListenerError::new(ListenerErrorCode::RandomUnavailable))?;
     let runtime = ListenerRuntime::new(SourceBucketKey::from_random(source_key))?;
     source_key.zeroize();
-    writeln!(
-        readiness,
-        "{{\"schema_version\":1,\"lifecycle\":\"ready\",\"code\":\"controller_listener_ready\",\"port\":{}}}",
-        bound.route.address.port()
-    )
-    .and_then(|()| readiness.flush())
-    .map_err(ListenerError::from)?;
+    events.send(&ListenerProcessEvent::ready(bound.route.address.port()))?;
 
     let cancel = CancellationToken::new();
-    let cancel_on_eof = cancel.clone();
+    let control_cancel = cancel.clone();
+    let control_events = events.clone();
+    let control_authority = repository_authority;
+    let control_route = RouteCandidate {
+        interface_id: bound.route.interface_id.clone(),
+        address_family: if bound.route.address.is_ipv4() {
+            AddressFamily::Ipv4
+        } else {
+            AddressFamily::Ipv6
+        },
+        address: bound.route.address.ip(),
+        port: bound.route.port,
+        discovery: DiscoveryPolicy::Off,
+    };
     std::thread::spawn(move || {
-        let mut byte = [0; 1];
-        let _ = std::io::Read::read(&mut std::io::stdin(), &mut byte);
-        cancel_on_eof.cancel();
+        loop {
+            let command = match ListenerControlCommand::read(&mut reader) {
+                Ok(Some(command)) => command,
+                Ok(None) => break,
+                Err(_) => {
+                    let _ = control_events.send(&ListenerProcessEvent::pairing_failed(
+                        None,
+                        "invalid_control_command",
+                    ));
+                    break;
+                }
+            };
+            let result = match command {
+                ListenerControlCommand::BeginPairing { .. } => control_authority
+                    .create_offer(&control_route)
+                    .and_then(|event| control_events.send(&event)),
+                ListenerControlCommand::DecidePairing {
+                    offer_id, decision, ..
+                } => decisions.resolve(
+                    offer_id,
+                    match decision {
+                        ProcessPairingDecision::Confirm => HostPairingDecision::Confirm,
+                        ProcessPairingDecision::Reject => HostPairingDecision::Reject,
+                    },
+                ),
+            };
+            if let Err(error) = result {
+                let _ = control_events.send(&ListenerProcessEvent::pairing_failed(
+                    None,
+                    error.code.stable_code(),
+                ));
+            }
+        }
+        control_cancel.cancel();
     });
     let tokio_runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -371,6 +562,13 @@ pub fn run_listener_worker(
             .await
     })?;
     Ok(())
+}
+
+fn unix_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 fn safe_absolute_path(path: &Path) -> bool {

@@ -3071,3 +3071,23 @@ description = "Controller paired state"
 id = "remote-devices-pairing-revoked"
 context = "Most recent Controller action revoked trust."
 description = "Controller pairing revoked state"
+[[messages]]
+id = "remote-devices-pairing-offer-help"
+context = "Instructions shown beside a short-lived Controller pairing offer."
+description = "Controller pairing offer instructions"
+[[messages]]
+id = "remote-devices-pairing-offer-copy-action"
+context = "Action that copies a short-lived Controller pairing offer."
+description = "Copy Controller pairing offer action"
+[[messages]]
+id = "remote-devices-pairing-offer-copied"
+context = "Notice after copying a short-lived Controller pairing offer."
+description = "Controller pairing offer copied notice"
+[[messages]]
+id = "remote-devices-pairing-match-action"
+context = "Explicit confirmation that Controller security codes match."
+description = "Controller pairing codes match action"
+[[messages]]
+id = "remote-devices-pairing-reject-action"
+context = "Safe-default action that rejects Controller pairing."
+description = "Reject Controller pairing action"

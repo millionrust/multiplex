@@ -3,15 +3,17 @@ use std::time::{Duration, Instant};
 
 use gpui_component::Disableable as _;
 use termirust_controller_listener::{
-    GeneratedPortSource as _, InterfaceProvider as _, ListenerLaunchDescriptor,
-    SystemGeneratedPortSource, SystemInterfaceProvider,
+    GeneratedPortSource as _, ListenerLaunchDescriptor, ListenerProcessEvent,
+    ProcessPairingDecision, SystemGeneratedPortSource,
 };
+#[cfg(not(test))]
+use termirust_controller_listener::{InterfaceProvider as _, SystemInterfaceProvider};
 use termirust_controller_security::StaticPrivateKey;
 use termirust_domain::{
     ControllerCapabilities, ControllerCapability, ControllerDeviceId, ControllerListenPolicy,
     ControllerNetworkRevision, ControllerPort, DiscoveryPolicy, HostIdentityPublic,
     HostIdentityState, ListenerState, NetworkInterfaceCandidate, PairedDeviceRecord,
-    PairedDeviceStatus,
+    PairedDeviceStatus, PairingOfferId,
 };
 use termirust_store::{
     ControllerDeviceRepository, ControllerDeviceStoreError, ControllerNetworkRepository,
@@ -66,6 +68,9 @@ pub(super) struct RemoteDevicesState {
     listener_last_polled: Instant,
     host_private: Option<StaticPrivateKey>,
     pairing_state: PairingUiState,
+    pairing_offer_id: Option<PairingOfferId>,
+    pairing_offer_text: Option<String>,
+    pairing_sas: Option<String>,
     editing_device_id: Option<ControllerDeviceId>,
 }
 
@@ -118,6 +123,9 @@ impl RemoteDevicesState {
                     listener_last_polled: Instant::now(),
                     host_private,
                     pairing_state: PairingUiState::Idle,
+                    pairing_offer_id: None,
+                    pairing_offer_text: None,
+                    pairing_sas: None,
                     editing_device_id: None,
                 };
                 if state.network_policy.enabled {
@@ -151,6 +159,9 @@ impl RemoteDevicesState {
             listener_last_polled: Instant::now(),
             host_private: Some(StaticPrivateKey::from_fixture_bytes([3; 32])),
             pairing_state: PairingUiState::Idle,
+            pairing_offer_id: None,
+            pairing_offer_text: None,
+            pairing_sas: None,
             editing_device_id: None,
         }
     }
@@ -174,6 +185,9 @@ impl RemoteDevicesState {
             listener_last_polled: Instant::now(),
             host_private: None,
             pairing_state: PairingUiState::StorageFailure,
+            pairing_offer_id: None,
+            pairing_offer_text: None,
+            pairing_sas: None,
             editing_device_id: None,
         }
     }
@@ -325,26 +339,106 @@ impl RemoteDevicesState {
         self.disable_saved_policy()?;
         self.listener_state = ListenerState::Disabled;
         self.route_available = false;
+        self.clear_pairing(PairingUiState::Idle);
         Ok(())
     }
 
-    fn refresh_listener_process(&mut self) -> bool {
-        if self.listener_last_polled.elapsed() < Duration::from_secs(1) {
-            return false;
+    fn begin_pairing(&mut self) -> Result<(), ()> {
+        let process = self.listener_process.as_mut().ok_or(())?;
+        process.begin_pairing().map_err(|_| ())?;
+        self.clear_pairing(PairingUiState::Generating);
+        Ok(())
+    }
+
+    fn decide_pairing(&mut self, decision: ProcessPairingDecision) -> Result<(), ()> {
+        let offer_id = self.pairing_offer_id.ok_or(())?;
+        self.listener_process
+            .as_mut()
+            .ok_or(())?
+            .decide_pairing(offer_id, decision)
+            .map_err(|_| ())?;
+        if decision == ProcessPairingDecision::Reject {
+            self.clear_pairing(PairingUiState::SasMismatch);
+        } else {
+            self.pairing_sas = None;
+            self.pairing_state = PairingUiState::Waiting;
+        }
+        Ok(())
+    }
+
+    fn refresh_listener_process(&mut self) -> Result<bool, ()> {
+        if self.listener_last_polled.elapsed() < Duration::from_millis(100) {
+            return Ok(false);
         }
         self.listener_last_polled = Instant::now();
+        let events = match self.listener_process.as_mut() {
+            Some(process) => process.drain_events().map_err(|_| ())?,
+            None => return Ok(false),
+        };
+        let mut changed = false;
+        for event in events {
+            self.apply_listener_event(event)?;
+            changed = true;
+        }
         let exited = self
             .listener_process
             .as_mut()
             .is_some_and(|process| !process.is_running());
         if !exited {
-            return false;
+            return Ok(changed);
         }
         self.listener_process.take();
         self.listener_state =
             ListenerState::Failed(termirust_domain::ListenerFailureCode::Internal);
         self.route_available = false;
-        true
+        Err(())
+    }
+
+    fn apply_listener_event(&mut self, event: ListenerProcessEvent) -> Result<(), ()> {
+        match event {
+            ListenerProcessEvent::Ready { .. } => return Err(()),
+            ListenerProcessEvent::PairingOffer {
+                offer_id,
+                offer_text,
+                ..
+            } => {
+                self.pairing_offer_id = Some(offer_id);
+                self.pairing_offer_text = Some(offer_text);
+                self.pairing_sas = None;
+                self.pairing_state = PairingUiState::Waiting;
+            }
+            ListenerProcessEvent::PairingSasReady { offer_id, sas, .. } => {
+                if self.pairing_offer_id != Some(offer_id) {
+                    return Err(());
+                }
+                self.pairing_sas = Some(sas);
+                self.pairing_state = PairingUiState::SasReady;
+            }
+            ListenerProcessEvent::PairingComplete { offer_id, .. } => {
+                if self.pairing_offer_id != Some(offer_id) {
+                    return Err(());
+                }
+                self.clear_pairing(PairingUiState::Paired);
+                self.refresh()?;
+            }
+            ListenerProcessEvent::PairingFailed { code, .. } => {
+                let state = match code.as_str() {
+                    "rate_limited" => PairingUiState::RateLimited,
+                    "handshake_timeout" => PairingUiState::Expired,
+                    "io" => PairingUiState::Uncertain,
+                    _ => PairingUiState::StorageFailure,
+                };
+                self.clear_pairing(state);
+            }
+        }
+        Ok(())
+    }
+
+    fn clear_pairing(&mut self, state: PairingUiState) {
+        self.pairing_state = state;
+        self.pairing_offer_id = None;
+        self.pairing_offer_text = None;
+        self.pairing_sas = None;
     }
 
     fn disable_saved_policy(&mut self) -> Result<(), ()> {
@@ -448,14 +542,38 @@ impl TermiRustApp {
                     )
                     .when(ready, |this| {
                         this.child(
-                            Button::new("remote-devices-stop-listener")
-                                .debug_selector(|| "remote-devices-stop-listener".to_string())
-                                .small()
-                                .danger()
-                                .label(localization::remote_devices_listener_stop_action())
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.stop_remote_listener(cx);
-                                })),
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("remote-devices-add-controller")
+                                        .debug_selector(|| {
+                                            "remote-devices-add-controller".to_string()
+                                        })
+                                        .small()
+                                        .icon(IconName::Plus)
+                                        .label(localization::remote_devices_add_action())
+                                        .disabled(matches!(
+                                            self.remote_devices.pairing_state,
+                                            PairingUiState::Generating
+                                                | PairingUiState::Waiting
+                                                | PairingUiState::SasReady
+                                        ))
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.begin_controller_pairing(cx);
+                                        })),
+                                )
+                                .child(
+                                    Button::new("remote-devices-stop-listener")
+                                        .debug_selector(|| {
+                                            "remote-devices-stop-listener".to_string()
+                                        })
+                                        .small()
+                                        .danger()
+                                        .label(localization::remote_devices_listener_stop_action())
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.stop_remote_listener(cx);
+                                        })),
+                                ),
                         )
                     }),
             )
@@ -477,6 +595,93 @@ impl TermiRustApp {
                         .text_size(px(11.))
                         .text_color(theme::text_muted())
                         .child(localization::remote_devices_listener_guidance()),
+                )
+            })
+            .when_some(
+                self.remote_devices.pairing_offer_text.clone(),
+                |this, offer_text| {
+                    let copy_value = offer_text.clone();
+                    this.child(
+                        v_flex()
+                            .gap_2()
+                            .p_3()
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(theme::soft_border())
+                            .bg(theme::library_card())
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(theme::text_muted())
+                                    .child(localization::remote_devices_pairing_offer_help()),
+                            )
+                            .child(
+                                Button::new("remote-devices-copy-pairing-offer")
+                                    .small()
+                                    .icon(IconName::Copy)
+                                    .label(localization::remote_devices_pairing_offer_copy_action())
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        cx.write_to_clipboard(ClipboardItem::new_string(
+                                            copy_value.clone(),
+                                        ));
+                                        this.status_message =
+                                            localization::remote_devices_pairing_offer_copied();
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                },
+            )
+            .when_some(self.remote_devices.pairing_sas.clone(), |this, sas| {
+                this.child(
+                    v_flex()
+                        .gap_2()
+                        .p_3()
+                        .rounded(px(6.))
+                        .border_1()
+                        .border_color(theme::with_alpha(theme::warning(), 0.55))
+                        .bg(theme::with_alpha(theme::warning(), 0.08))
+                        .child(
+                            div()
+                                .text_size(px(11.))
+                                .text_color(theme::text_muted())
+                                .child(localization::remote_devices_pairing_sas_ready()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(24.))
+                                .font_family("monospace")
+                                .font_medium()
+                                .text_color(theme::text_main())
+                                .child(sas),
+                        )
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("remote-devices-reject-pairing")
+                                        .small()
+                                        .danger()
+                                        .label(localization::remote_devices_pairing_reject_action())
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.decide_controller_pairing(
+                                                ProcessPairingDecision::Reject,
+                                                cx,
+                                            );
+                                        })),
+                                )
+                                .child(
+                                    Button::new("remote-devices-confirm-pairing")
+                                        .small()
+                                        .label(localization::remote_devices_pairing_match_action())
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.decide_controller_pairing(
+                                                ProcessPairingDecision::Confirm,
+                                                cx,
+                                            );
+                                        })),
+                                ),
+                        ),
                 )
             });
 
@@ -969,10 +1174,36 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn begin_controller_pairing(&mut self, cx: &mut Context<Self>) {
+        if self.remote_devices.begin_pairing().is_err() {
+            self.error_message = localization::remote_devices_operation_failed();
+        } else {
+            self.error_message.clear();
+        }
+        cx.notify();
+    }
+
+    fn decide_controller_pairing(
+        &mut self,
+        decision: ProcessPairingDecision,
+        cx: &mut Context<Self>,
+    ) {
+        if self.remote_devices.decide_pairing(decision).is_err() {
+            self.error_message = localization::remote_devices_operation_failed();
+        } else {
+            self.error_message.clear();
+        }
+        cx.notify();
+    }
+
     pub(super) fn refresh_remote_listener_process(&mut self, cx: &mut Context<Self>) {
-        if self.remote_devices.refresh_listener_process() {
-            self.error_message = localization::remote_devices_listener_start_failed();
-            cx.notify();
+        match self.remote_devices.refresh_listener_process() {
+            Ok(true) => cx.notify(),
+            Ok(false) => {}
+            Err(()) => {
+                self.error_message = localization::remote_devices_listener_start_failed();
+                cx.notify();
+            }
         }
     }
 

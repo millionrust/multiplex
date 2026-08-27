@@ -159,8 +159,8 @@ fn main() {
     }
     if std::env::args().nth(1).as_deref() == Some(CONTROLLER_LISTENER_MODE) {
         if let Err(error) = termirust_controller_listener::run_listener_worker(
-            std::io::stdin().lock(),
-            std::io::stdout().lock(),
+            std::io::BufReader::new(std::io::stdin()),
+            std::io::stdout(),
         ) {
             eprintln!(
                 "{{\"schema_version\":1,\"lifecycle\":\"failed\",\"code\":\"{:?}\"}}",

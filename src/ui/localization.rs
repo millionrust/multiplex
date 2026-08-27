@@ -347,6 +347,26 @@ static_message!(
     RemoteDevicesPairingSasMismatchArgs
 );
 static_message!(
+    remote_devices_pairing_offer_help,
+    RemoteDevicesPairingOfferHelpArgs
+);
+static_message!(
+    remote_devices_pairing_offer_copy_action,
+    RemoteDevicesPairingOfferCopyActionArgs
+);
+static_message!(
+    remote_devices_pairing_offer_copied,
+    RemoteDevicesPairingOfferCopiedArgs
+);
+static_message!(
+    remote_devices_pairing_match_action,
+    RemoteDevicesPairingMatchActionArgs
+);
+static_message!(
+    remote_devices_pairing_reject_action,
+    RemoteDevicesPairingRejectActionArgs
+);
+static_message!(
     remote_devices_pairing_expired,
     RemoteDevicesPairingExpiredArgs
 );

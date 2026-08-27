@@ -28,6 +28,34 @@ pub enum ListenerErrorCode {
     Io,
 }
 
+impl ListenerErrorCode {
+    pub const fn stable_code(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::InvalidPolicy => "invalid_policy",
+            Self::NoEligibleInterface => "no_eligible_interface",
+            Self::InterfaceGone => "interface_gone",
+            Self::PermissionDenied => "permission_denied",
+            Self::PortConflict => "port_conflict",
+            Self::BindFailed => "bind_failed",
+            Self::RandomUnavailable => "random_unavailable",
+            Self::ConnectionLimit => "connection_limit",
+            Self::RateLimited => "rate_limited",
+            Self::HandshakeTimeout => "handshake_timeout",
+            Self::AuthenticationFailed => "authentication_failed",
+            Self::MalformedFrame => "malformed_frame",
+            Self::FrameTooLarge => "frame_too_large",
+            Self::QueueFull => "queue_full",
+            Self::Unauthorized => "unauthorized",
+            Self::StaleGeneration => "stale_generation",
+            Self::WriterLeaseRequired => "writer_lease_required",
+            Self::HostUnavailable => "host_unavailable",
+            Self::Cancelled => "cancelled",
+            Self::Io => "io",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ListenerError {
     pub code: ListenerErrorCode,

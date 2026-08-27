@@ -13,6 +13,7 @@ mod interfaces;
 mod launch;
 mod pairing;
 mod pairing_protocol;
+mod process_protocol;
 mod protocol;
 mod queue;
 mod rate_limit;
@@ -39,6 +40,7 @@ pub use pairing_protocol::{
     ControllerConnectionPurpose, ControllerPairingOffer, PairingConnectRequest,
     PairingDeviceRegistration, PairingHostAck,
 };
+pub use process_protocol::{ListenerControlCommand, ListenerProcessEvent, ProcessPairingDecision};
 pub use protocol::{
     ApprovalDecision, ControllerCommand, ControllerCommandEnvelope, ControllerResponse,
     ControllerSessionSummary, decode_command, decode_response, encode_command, encode_response,
