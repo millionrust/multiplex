@@ -5,6 +5,7 @@
 
 mod authorization;
 mod codec;
+mod connection;
 mod error;
 mod pairing;
 mod sas;
@@ -13,6 +14,10 @@ mod types;
 
 pub use authorization::{AuthorizationDecision, AuthorizationPolicy};
 pub use codec::{PAIRING_OFFER_BYTES, decode_offer, encode_offer, pairing_prologue};
+pub use connection::{
+    AuthenticatedConnection, AuthenticatedPeerClaim, ConnectionChallenge, ConnectionInitiator,
+    ConnectionPrelude, ConnectionResponder, NOISE_CONNECTION_PROTOCOL_NAME,
+};
 pub use error::{ControllerSecurityError, ErrorCode};
 pub use pairing::{
     ConfirmedPairing, PairingMachine, device_public_key_from_private, host_public_key_from_private,

@@ -15,6 +15,7 @@ members = [
     "crates/termirust-cli",
     "crates/termirust-client",
     "crates/termirust-controller-security",
+    "crates/termirust-controller-listener",
     "crates/termirust-controller-bindings",
     "crates/termirust-domain",
     "crates/termirust-host-protocol",

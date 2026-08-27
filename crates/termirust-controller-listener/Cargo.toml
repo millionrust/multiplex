@@ -1,0 +1,27 @@
+[package]
+name = "termirust-controller-listener"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Bounded exact-interface LAN/VPN Controller listener for TermiRust"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+if-addrs = "=0.15.0"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+termirust-client = { version = "0.1.0", path = "../termirust-client" }
+termirust-controller-security = { version = "0.1.0", path = "../termirust-controller-security" }
+termirust-domain = { version = "0.1.0", path = "../termirust-domain" }
+termirust-host-protocol = { version = "0.1.0", path = "../termirust-host-protocol" }
+termirust-store = { version = "0.1.0", path = "../termirust-store" }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+uuid = { version = "1.22", features = ["serde", "v4"] }
+zeroize = "=1.8.2"
+
+[dev-dependencies]
+proptest = "=1.11.0"
+tempfile = "3.27"

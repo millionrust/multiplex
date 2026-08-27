@@ -3603,6 +3603,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "if-addrs"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0a05c691e1fae256cf7013d99dad472dc52d5543322761f83ec8d47eab40d2b"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "ignore"
 version = "0.4.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7629,6 +7639,28 @@ dependencies = [
  "serde_json",
  "termirust-controller-security",
  "uniffi",
+ "zeroize",
+]
+
+[[package]]
+name = "termirust-controller-listener"
+version = "0.1.0"
+dependencies = [
+ "if-addrs",
+ "proptest",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "termirust-client",
+ "termirust-controller-security",
+ "termirust-domain",
+ "termirust-host-protocol",
+ "termirust-store",
+ "tokio",
+ "tokio-util",
+ "uuid",
  "zeroize",
 ]
 

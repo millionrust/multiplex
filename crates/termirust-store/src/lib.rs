@@ -1,6 +1,7 @@
 pub mod artifacts;
 mod atomic;
 pub mod controller_devices;
+pub mod controller_network;
 pub mod journal;
 pub mod lease;
 pub mod notifications;
@@ -16,6 +17,9 @@ pub use artifacts::{
 pub use atomic::{AtomicWriter, Durability, SystemAtomicWriter};
 pub use controller_devices::{
     ControllerDeviceRepository, ControllerDeviceSnapshot, ControllerDeviceStoreError,
+};
+pub use controller_network::{
+    ControllerNetworkRepository, ControllerNetworkSnapshot, ControllerNetworkStoreError,
 };
 pub use journal::{
     AppendOutcome, JournalError, JournalErrorCode, JournalFrame, JournalKind, JournalLimits,

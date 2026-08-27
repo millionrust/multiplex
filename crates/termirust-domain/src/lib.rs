@@ -1,6 +1,7 @@
 pub mod activity;
 pub mod artifact;
 pub mod controller_devices;
+pub mod controller_network;
 pub mod dev_url;
 pub mod group;
 pub mod host;
@@ -36,6 +37,14 @@ pub use controller_devices::{
     MAX_PENDING_PAIRING_OFFERS, PAIRING_ATTEMPT_LIMIT, PAIRING_ATTEMPT_WINDOW_SECONDS,
     PairedDeviceRecord, PairedDeviceStatus, PairingAttemptLedger, PairingOfferId,
     PairingOfferRecord, PairingOfferState,
+};
+pub use controller_network::{
+    AddressFamily, AuthenticatedPeer, ConnectionBudget, ControllerListenPolicy,
+    ControllerNetworkError, ControllerNetworkRevision, ControllerPort, DiscoveryPolicy,
+    GENERATED_PORT_MIN, ListenerFailureCode, ListenerInstanceId, ListenerState,
+    MAX_GENERATED_PORT_ATTEMPTS, MAX_NETWORK_INTERFACE_ID_BYTES,
+    MAX_NETWORK_INTERFACE_LABEL_SCALARS, NetworkInterfaceCandidate, NetworkInterfaceId,
+    NetworkInterfaceKind, RouteCandidate, USER_FIXED_PORT_MIN, is_private_controller_address,
 };
 pub use dev_url::{
     DevUrlCancellation, DevUrlCandidate, DevUrlDetector, DevUrlDetectorCounters, DevUrlError,
