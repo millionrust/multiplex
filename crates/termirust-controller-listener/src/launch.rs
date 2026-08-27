@@ -63,13 +63,17 @@ impl PairingDecisionBroker {
         offer_id: PairingOfferId,
     ) -> Result<tokio::sync::oneshot::Receiver<HostPairingDecision>, ListenerError> {
         let (sender, receiver) = tokio::sync::oneshot::channel();
-        let replaced = self
+        let mut pending = self
             .pending
             .lock()
-            .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?
-            .insert(offer_id, sender);
-        if replaced.is_some() {
-            return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
+            .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?;
+        match pending.entry(offer_id) {
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(sender);
+            }
+            std::collections::hash_map::Entry::Occupied(_) => {
+                return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
+            }
         }
         Ok(receiver)
     }
@@ -526,23 +530,29 @@ where
                     break;
                 }
             };
-            let result = match command {
-                ListenerControlCommand::BeginPairing { .. } => control_authority
-                    .create_offer(&control_route)
-                    .and_then(|event| control_events.send(&event)),
+            let (offer_id, result) = match command {
+                ListenerControlCommand::BeginPairing { .. } => (
+                    None,
+                    control_authority
+                        .create_offer(&control_route)
+                        .and_then(|event| control_events.send(&event)),
+                ),
                 ListenerControlCommand::DecidePairing {
                     offer_id, decision, ..
-                } => decisions.resolve(
-                    offer_id,
-                    match decision {
-                        ProcessPairingDecision::Confirm => HostPairingDecision::Confirm,
-                        ProcessPairingDecision::Reject => HostPairingDecision::Reject,
-                    },
+                } => (
+                    Some(offer_id),
+                    decisions.resolve(
+                        offer_id,
+                        match decision {
+                            ProcessPairingDecision::Confirm => HostPairingDecision::Confirm,
+                            ProcessPairingDecision::Reject => HostPairingDecision::Reject,
+                        },
+                    ),
                 ),
             };
             if let Err(error) = result {
                 let _ = control_events.send(&ListenerProcessEvent::pairing_failed(
-                    None,
+                    offer_id,
                     error.code.stable_code(),
                 ));
             }

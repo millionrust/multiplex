@@ -486,6 +486,7 @@ remote-devices-pairing-storage-failure = ⟦Ţŕûšţ çøûļð ñøţ ƀé š
 remote-devices-pairing-uncertain = ⟦Ţŕûšţ ŵåš šţøŕéð, ƀûţ åçķñøŵļéðĝéɱéñţ ŵåš ļøšţ. Çĥéçķ ţĥîš ðéṽîçé ļîšţ ƀéƒøŕé ŕéţŕýîñĝ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 remote-devices-pairing-waiting = ⟦Ŵåîţîñĝ ƒøŕ ţĥé Çøñţŕøļļéŕ…~~~~~~~~~⟧
 remote-devices-permission-denied = ⟦Åççéšš ðéñîéð · ŕéɱøţé åûţĥøŕîţý ðîšåƀļéð~~~~~~~~~~~~~~~⟧
+remote-devices-private-address-hidden = ⟦Þŕîṽåţé åððŕéšš ĥîððéñ ŵĥîļé ŕéçøŕðîñĝ-ƒŕîéñðļý ɱøðé îš øñ~~~~~~~~~~~~~~~~~~~~~~⟧
 remote-devices-reset-action = ⟦Ŕéšéţ îðéñţîţý~~~~⟧
 remote-devices-reset-complete = ⟦Ĥøšţ îðéñţîţý ŕéšéţ. Åļļ þŕéṽîøûš Çøñţŕøļļéŕ ţŕûšţ îš îñṽåļîð.~~~~~~~~~~~~~~~~~~~~~~~⟧
 remote-devices-reset-confirmation-required = ⟦Ţýþé ŔÉŠÉŢ éẋåçţļý ƀéƒøŕé ŕéšéţţîñĝ ţĥé Ĥøšţ îðéñţîţý.~~~~~~~~~~~~~~~~~~~~⟧

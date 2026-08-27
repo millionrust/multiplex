@@ -486,6 +486,7 @@ remote-devices-pairing-storage-failure = ⁧.devorppa ton saw rellortnoC ehT .de
 remote-devices-pairing-uncertain = ⁧.gniyrter erofeb tsil ecived siht kcehC .tsol saw tnemegdelwonkca tub ,derots saw tsurT⁩
 remote-devices-pairing-waiting = ⁧…rellortnoC eht rof gnitiaW⁩
 remote-devices-permission-denied = ⁧delbasid ytirohtua etomer · deined sseccA⁩
+remote-devices-private-address-hidden = ⁧no si edom yldneirf-gnidrocer elihw neddih sserdda etavirP⁩
 remote-devices-reset-action = ⁧ytitnedi teseR⁩
 remote-devices-reset-complete = ⁧.dilavni si tsurt rellortnoC suoiverp llA .teser ytitnedi tsoH⁩
 remote-devices-reset-confirmation-required = ⁧.ytitnedi tsoH eht gnitteser erofeb yltcaxe TESER epyT⁩

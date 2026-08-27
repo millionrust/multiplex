@@ -209,6 +209,10 @@ static_message!(
     RemoteDevicesListenerDiscoveryOffArgs
 );
 static_message!(
+    remote_devices_private_address_hidden,
+    RemoteDevicesPrivateAddressHiddenArgs
+);
+static_message!(
     remote_devices_listener_port_invalid,
     RemoteDevicesListenerPortInvalidArgs
 );

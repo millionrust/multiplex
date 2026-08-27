@@ -421,7 +421,10 @@ impl RemoteDevicesState {
                 self.clear_pairing(PairingUiState::Paired);
                 self.refresh()?;
             }
-            ListenerProcessEvent::PairingFailed { code, .. } => {
+            ListenerProcessEvent::PairingFailed { offer_id, code, .. } => {
+                if offer_id.is_some() && offer_id != self.pairing_offer_id {
+                    return Err(());
+                }
                 let state = match code.as_str() {
                     "rate_limited" => PairingUiState::RateLimited,
                     "handshake_timeout" => PairingUiState::Expired,
@@ -495,6 +498,7 @@ impl TermiRustApp {
     }
 
     fn render_remote_route_section(&self, cx: &Context<Self>) -> AnyElement {
+        let recording_friendly = self.activity_center.policy().recording_friendly;
         let ready = matches!(
             self.remote_devices.listener_state,
             ListenerState::Ready { .. }
@@ -508,7 +512,7 @@ impl TermiRustApp {
             .map(|route| {
                 format!(
                     "{}:{} | {}",
-                    route.address,
+                    private_route_display(route.address, recording_friendly),
                     route.port.value(),
                     localization::remote_devices_listener_discovery_off()
                 )
@@ -708,7 +712,9 @@ impl TermiRustApp {
                             .text_color(theme::text_muted())
                             .child(format!(
                                 "{} | {} | {}",
-                                candidate.label, kind, candidate.address
+                                candidate.label,
+                                kind,
+                                private_route_display(candidate.address, recording_friendly)
                             )),
                     )
                     .child(
@@ -788,7 +794,10 @@ impl TermiRustApp {
                                                 .child(format!(
                                                     "{} | {}",
                                                     interface_kind_label(candidate.kind),
-                                                    candidate.address
+                                                    private_route_display(
+                                                        candidate.address,
+                                                        recording_friendly
+                                                    )
                                                 )),
                                         ),
                                 )
@@ -1351,6 +1360,14 @@ fn parse_listener_port(value: &str) -> Result<Option<u16>, ()> {
         .ok_or(())
 }
 
+fn private_route_display(address: std::net::IpAddr, recording_friendly: bool) -> String {
+    if recording_friendly {
+        localization::remote_devices_private_address_hidden()
+    } else {
+        format!("\u{2068}{address}\u{2069}")
+    }
+}
+
 fn remote_device_status(status: PairedDeviceStatus) -> String {
     match status {
         PairedDeviceStatus::Online => localization::remote_devices_status_online(),
@@ -1377,15 +1394,16 @@ fn pairing_ui_status(state: PairingUiState) -> String {
 
 #[cfg(test)]
 mod network_tests {
+    use termirust_controller_listener::ListenerProcessEvent;
     use termirust_domain::{
-        HostIdentityState, ListenerFailureCode, ListenerState, PairedDeviceStatus,
+        HostIdentityState, ListenerFailureCode, ListenerState, PairedDeviceStatus, PairingOfferId,
     };
 
     use crate::ui::localization;
 
     use super::{
         PairingUiState, RemoteDevicesState, listener_state_label, pairing_ui_status,
-        parse_listener_port, remote_device_status, remote_identity_status,
+        parse_listener_port, private_route_display, remote_device_status, remote_identity_status,
     };
 
     #[test]
@@ -1409,6 +1427,17 @@ mod network_tests {
         assert_eq!(parse_listener_port("1023"), Err(()));
         assert_eq!(parse_listener_port("65536"), Err(()));
         assert_eq!(parse_listener_port("not-a-port"), Err(()));
+    }
+
+    #[test]
+    fn route_display_is_bidi_isolated_or_recording_safe() {
+        let address = "192.168.1.20".parse().unwrap();
+        let visible = private_route_display(address, false);
+        assert!(visible.starts_with('\u{2068}'));
+        assert!(visible.ends_with('\u{2069}'));
+        assert!(visible.contains("192.168.1.20"));
+        let hidden = private_route_display(address, true);
+        assert!(!hidden.contains("192.168.1.20"));
     }
 
     #[test]
@@ -1455,6 +1484,51 @@ mod network_tests {
         ] {
             assert!(!remote_identity_status(state, None).is_empty());
         }
+    }
+
+    #[test]
+    fn pairing_events_require_one_matching_offer_and_fail_closed() {
+        let mut state = RemoteDevicesState::open_default();
+        let offer_id = PairingOfferId::new();
+        state
+            .apply_listener_event(ListenerProcessEvent::pairing_offer(
+                offer_id,
+                "bounded-offer".to_owned(),
+                300,
+            ))
+            .unwrap();
+        assert_eq!(state.pairing_state, PairingUiState::Waiting);
+        assert_eq!(state.pairing_offer_text.as_deref(), Some("bounded-offer"));
+
+        assert!(
+            state
+                .apply_listener_event(ListenerProcessEvent::pairing_sas_ready(
+                    PairingOfferId::new(),
+                    "WRONG-000".to_owned(),
+                ))
+                .is_err()
+        );
+        assert!(state.pairing_sas.is_none());
+
+        state
+            .apply_listener_event(ListenerProcessEvent::pairing_sas_ready(
+                offer_id,
+                "ABCD-1234".to_owned(),
+            ))
+            .unwrap();
+        assert_eq!(state.pairing_state, PairingUiState::SasReady);
+        assert_eq!(state.pairing_sas.as_deref(), Some("ABCD-1234"));
+
+        state
+            .apply_listener_event(ListenerProcessEvent::pairing_failed(
+                Some(offer_id),
+                "rate_limited",
+            ))
+            .unwrap();
+        assert_eq!(state.pairing_state, PairingUiState::RateLimited);
+        assert!(state.pairing_offer_id.is_none());
+        assert!(state.pairing_offer_text.is_none());
+        assert!(state.pairing_sas.is_none());
     }
 
     #[test]

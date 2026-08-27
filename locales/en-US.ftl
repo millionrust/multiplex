@@ -607,6 +607,7 @@ remote-devices-listener-enable-action = Enable listener
 remote-devices-listener-no-interface = No active private LAN or VPN interface is available.
 remote-devices-listener-use-network-action = Use this network
 remote-devices-listener-discovery-off = Discovery Off
+remote-devices-private-address-hidden = Private address hidden while recording-friendly mode is on
 remote-devices-listener-port-invalid = Enter a port from 1024 to 65535, or leave it empty.
 remote-devices-listener-ready-notice = Local network Controller access is ready.
 remote-devices-listener-start-failed = Unable to start the local network listener.

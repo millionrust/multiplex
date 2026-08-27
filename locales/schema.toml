@@ -2845,6 +2845,10 @@ id = "remote-devices-listener-discovery-off"
 context = "Privacy label confirming automatic discovery is disabled."
 description = "Controller listener discovery disabled label"
 [[messages]]
+id = "remote-devices-private-address-hidden"
+context = "Recording-friendly replacement for a private Controller route address."
+description = "Private Controller address hidden label"
+[[messages]]
 id = "remote-devices-listener-port-invalid"
 context = "Validation error for an unsafe or malformed fixed listener port."
 description = "Controller listener invalid port error"
