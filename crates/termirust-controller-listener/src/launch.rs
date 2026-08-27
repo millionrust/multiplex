@@ -274,6 +274,7 @@ impl RepositoryAuthority {
             &core,
             record.identity.generation.get(),
             saved.authority.revocation_epoch,
+            saved.authority.session_generation,
         )?;
         Ok(ListenerProcessEvent::pairing_offer(
             offer_id,
@@ -331,6 +332,7 @@ impl ControllerPairingAuthority for RepositoryAuthority {
             host_private: self.host_private.clone(),
             identity_generation: identity.generation,
             revocation_epoch: authority.revocation_epoch,
+            session_generation: authority.session_generation,
         })
     }
 

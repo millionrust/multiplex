@@ -78,6 +78,7 @@ pub struct ControllerPairingOffer {
     pub offer_id: PairingOfferId,
     pub identity_generation: u64,
     pub revocation_epoch: u64,
+    pub session_generation: u64,
     pub address_family: AddressFamily,
     pub address: IpAddr,
     pub port: u16,
@@ -91,12 +92,14 @@ impl ControllerPairingOffer {
         offer: &PairingOfferCore,
         identity_generation: u64,
         revocation_epoch: u64,
+        session_generation: u64,
     ) -> Result<Self, ListenerError> {
         let value = Self {
             schema_version: PAIRING_ENVELOPE_VERSION,
             offer_id,
             identity_generation,
             revocation_epoch,
+            session_generation,
             address_family: route.address_family,
             address: route.address,
             port: route.port.value(),
@@ -173,6 +176,7 @@ impl fmt::Debug for ControllerPairingOffer {
             .field("offer_id", &self.offer_id)
             .field("identity_generation", &self.identity_generation)
             .field("revocation_epoch", &self.revocation_epoch)
+            .field("session_generation", &self.session_generation)
             .field("route", &"[REDACTED]")
             .field("offer_bytes", &"[REDACTED]")
             .finish()
@@ -251,6 +255,7 @@ pub struct PairingHostAck {
     pub device_id: ControllerDeviceId,
     pub identity_generation: u64,
     pub revocation_epoch: u64,
+    pub session_generation: u64,
     pub capability_bits: u16,
 }
 
@@ -350,7 +355,8 @@ mod tests {
     #[test]
     fn pairing_offer_round_trips_without_interface_metadata() {
         let envelope =
-            ControllerPairingOffer::new(PairingOfferId::new(), &route(), &offer(), 1, 3).unwrap();
+            ControllerPairingOffer::new(PairingOfferId::new(), &route(), &offer(), 1, 3, 5)
+                .unwrap();
         let text = envelope.encode_text().unwrap();
         assert!(!text.contains("en0"));
         assert!(!text.contains("4:en0"));
@@ -362,7 +368,7 @@ mod tests {
         assert_eq!(
             format!("{envelope:?}"),
             format!(
-                "ControllerPairingOffer {{ schema_version: 1, offer_id: {:?}, identity_generation: 1, revocation_epoch: 3, route: \"[REDACTED]\", offer_bytes: \"[REDACTED]\" }}",
+                "ControllerPairingOffer {{ schema_version: 1, offer_id: {:?}, identity_generation: 1, revocation_epoch: 3, session_generation: 5, route: \"[REDACTED]\", offer_bytes: \"[REDACTED]\" }}",
                 envelope.offer_id
             )
         );
@@ -373,11 +379,12 @@ mod tests {
         let mut public = route();
         public.address = "8.8.8.8".parse().unwrap();
         assert!(
-            ControllerPairingOffer::new(PairingOfferId::new(), &public, &offer(), 1, 3).is_err()
+            ControllerPairingOffer::new(PairingOfferId::new(), &public, &offer(), 1, 3, 5).is_err()
         );
 
         let envelope =
-            ControllerPairingOffer::new(PairingOfferId::new(), &route(), &offer(), 1, 3).unwrap();
+            ControllerPairingOffer::new(PairingOfferId::new(), &route(), &offer(), 1, 3, 5)
+                .unwrap();
         let mut value: serde_json::Value =
             serde_json::from_str(&envelope.encode_text().unwrap()).unwrap();
         value["unknown"] = serde_json::json!(true);

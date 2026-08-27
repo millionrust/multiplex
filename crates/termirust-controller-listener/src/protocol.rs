@@ -39,10 +39,7 @@ impl ControllerCommandEnvelope {
     }
 
     pub fn validate(&self) -> Result<(), ListenerError> {
-        if self.version != CONTROLLER_COMMAND_VERSION
-            || self.session_generation == 0
-            || self.deadline_millis == 0
-        {
+        if self.version != CONTROLLER_COMMAND_VERSION || self.deadline_millis == 0 {
             return Err(ListenerError::new(ListenerErrorCode::MalformedFrame));
         }
         self.command.validate()

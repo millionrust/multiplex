@@ -26,6 +26,7 @@ pub struct PairingAuthoritySnapshot {
     pub host_private: StaticPrivateKey,
     pub identity_generation: HostIdentityGeneration,
     pub revocation_epoch: u64,
+    pub session_generation: u64,
 }
 
 impl std::fmt::Debug for PairingAuthoritySnapshot {
@@ -36,6 +37,7 @@ impl std::fmt::Debug for PairingAuthoritySnapshot {
             .field("host_private", &"[REDACTED]")
             .field("identity_generation", &self.identity_generation)
             .field("revocation_epoch", &self.revocation_epoch)
+            .field("session_generation", &self.session_generation)
             .finish()
     }
 }
@@ -177,6 +179,7 @@ async fn pair_controller_inner<S: AsyncRead + AsyncWrite + Unpin>(
         device_id: peer.device_id,
         identity_generation: peer.identity_generation.get(),
         revocation_epoch: peer.revocation_epoch,
+        session_generation: initial.session_generation,
         capability_bits: peer.capabilities.bits(),
     };
     let ack = transport

@@ -52,6 +52,7 @@ impl ControllerPairingAuthority for Authority {
             host_private: self.host_private.clone(),
             identity_generation: HostIdentityGeneration::INITIAL,
             revocation_epoch: 3,
+            session_generation: 5,
         })
     }
 
