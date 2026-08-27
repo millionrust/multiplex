@@ -14,6 +14,7 @@ default-run = "termirust"
 members = [
     "crates/termirust-cli",
     "crates/termirust-client",
+    "crates/termirust-controller-security",
     "crates/termirust-domain",
     "crates/termirust-host-protocol",
     "crates/termirust-session-host",
