@@ -17,15 +17,16 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    AuthRateLimiter, BridgeAuthorization, ControllerCommandEnvelope, ControllerResponse,
-    InterfaceProvider, ListenerError, ListenerErrorCode, SourceBucket, SourceBucketKey,
-    SystemHandshakeEntropy, authenticate_controller, decode_command, encode_response,
-    read_bounded_frame, resolve_selected_interface, write_bounded_frame,
+    AuthRateLimiter, BoundedFrameQueue, BridgeAuthorization, ControllerCommandEnvelope,
+    ControllerResponse, InterfaceProvider, ListenerError, ListenerErrorCode, QueueClass,
+    SourceBucket, SourceBucketKey, SystemHandshakeEntropy, authenticate_controller, decode_command,
+    encode_response, read_bounded_frame, resolve_selected_interface, write_bounded_frame,
 };
 
 const AUTHORITY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 const INTERFACE_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
+const SEALED_FRAME_OVERHEAD_BUDGET: usize = 128;
 
 pub struct AuthoritySnapshot {
     pub authority: ControllerDeviceAuthority,
@@ -328,6 +329,7 @@ async fn serve_authenticated_stream<S: AsyncRead + AsyncWrite + Unpin>(
                     context.has_writer_lease,
                 )?;
                 let response_capability = security_capability(command.command.kind().capability());
+                let mut outbound = BoundedFrameQueue::new(ConnectionBudget::default())?;
                 for response in backend.execute(command, &cancel).await? {
                     let (kind, capability, maximum) =
                         response_security(&response, response_capability);
@@ -335,8 +337,10 @@ async fn serve_authenticated_stream<S: AsyncRead + AsyncWrite + Unpin>(
                     let sealed = transport
                         .seal(kind, capability, RevocationEpoch(peer.revocation_epoch), &payload)
                         .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
-                    write_bounded_frame(&mut *stream, sealed.as_bytes(), MAX_TERMINAL_FRAME_BYTES)
-                        .await?;
+                    outbound.push(queue_class(kind), sealed.as_bytes().to_vec())?;
+                }
+                while let Some((class, sealed)) = outbound.pop() {
+                    write_bounded_frame(&mut *stream, &sealed, queue_frame_limit(class)).await?;
                 }
             }
         }
@@ -392,7 +396,7 @@ fn response_security(
         ControllerResponse::Sessions { .. } => (
             ControllerFrameKind::Control,
             SecurityCapability::ObserveSessions,
-            termirust_controller_security::MAX_CONTROL_PAYLOAD_BYTES,
+            control_payload_limit(),
         ),
         ControllerResponse::Output { .. } => (
             ControllerFrameKind::Terminal,
@@ -402,13 +406,33 @@ fn response_security(
         ControllerResponse::Attached { .. } | ControllerResponse::Detached { .. } => (
             ControllerFrameKind::Control,
             SecurityCapability::AttachOutput,
-            termirust_controller_security::MAX_CONTROL_PAYLOAD_BYTES,
+            control_payload_limit(),
         ),
         ControllerResponse::Completed { .. } | ControllerResponse::Error { .. } => (
             ControllerFrameKind::Control,
             command_capability,
-            termirust_controller_security::MAX_CONTROL_PAYLOAD_BYTES,
+            control_payload_limit(),
         ),
+    }
+}
+
+const fn control_payload_limit() -> usize {
+    termirust_controller_security::MAX_CONTROL_PAYLOAD_BYTES
+        .saturating_sub(SEALED_FRAME_OVERHEAD_BUDGET)
+}
+
+const fn queue_class(kind: ControllerFrameKind) -> QueueClass {
+    match kind {
+        ControllerFrameKind::Control => QueueClass::Control,
+        ControllerFrameKind::Terminal => QueueClass::Terminal,
+    }
+}
+
+fn queue_frame_limit(class: QueueClass) -> usize {
+    let budget = ConnectionBudget::default();
+    match class {
+        QueueClass::Control => budget.max_control_frame_bytes,
+        QueueClass::Terminal => budget.max_terminal_frame_bytes,
     }
 }
 

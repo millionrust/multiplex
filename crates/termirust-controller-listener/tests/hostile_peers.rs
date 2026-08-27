@@ -10,9 +10,11 @@ use termirust_domain::ConnectionBudget;
 fn queues_reject_frame_and_count_or_byte_overflow_without_partial_enqueue() {
     let budget = ConnectionBudget::default();
     let mut queue = BoundedFrameQueue::new(budget).unwrap();
-    for _ in 0..64 {
+    for _ in 0..63 {
         queue.push(QueueClass::Control, vec![1]).unwrap();
     }
+    assert_eq!(queue.len(), 63);
+    queue.push(QueueClass::Control, vec![1]).unwrap();
     assert_eq!(queue.len(), 64);
     assert_eq!(
         queue.push(QueueClass::Control, vec![1]).unwrap_err().code,
@@ -20,6 +22,22 @@ fn queues_reject_frame_and_count_or_byte_overflow_without_partial_enqueue() {
     );
     assert_eq!(queue.len(), 64);
     assert_eq!(queue.payload_bytes(), 64);
+
+    let mut queue = BoundedFrameQueue::new(budget).unwrap();
+    for _ in 0..4 {
+        queue
+            .push(
+                QueueClass::Terminal,
+                vec![0; budget.max_terminal_frame_bytes],
+            )
+            .unwrap();
+    }
+    assert_eq!(queue.payload_bytes(), budget.max_queue_payload_bytes);
+    assert_eq!(
+        queue.push(QueueClass::Terminal, vec![1]).unwrap_err().code,
+        ListenerErrorCode::QueueFull
+    );
+    assert_eq!(queue.payload_bytes(), budget.max_queue_payload_bytes);
 
     let mut queue = BoundedFrameQueue::new(budget).unwrap();
     queue
