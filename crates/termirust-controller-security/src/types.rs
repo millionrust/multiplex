@@ -62,6 +62,13 @@ impl StaticPrivateKey {
     pub(crate) fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
+
+    /// Copies the key solely for an inherited pipe handoff to an owned listener process.
+    /// Callers must zeroize the returned bytes after the handoff.
+    #[must_use]
+    pub fn copy_for_process_handoff(&self) -> [u8; 32] {
+        self.0
+    }
 }
 
 impl fmt::Debug for StaticPrivateKey {

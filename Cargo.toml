@@ -73,6 +73,7 @@ termirust-domain = { version = "0.1.0", path = "crates/termirust-domain" }
 termirust-client = { version = "0.1.0", path = "crates/termirust-client" }
 termirust-cli = { version = "0.1.0", path = "crates/termirust-cli" }
 termirust-controller-security = { version = "0.1.0", path = "crates/termirust-controller-security" }
+termirust-controller-listener = { version = "0.1.0", path = "crates/termirust-controller-listener" }
 termirust-host-protocol = { version = "0.1.0", path = "crates/termirust-host-protocol" }
 termirust-session-host = { version = "0.1.0", path = "crates/termirust-session-host" }
 termirust-store = { version = "0.1.0", path = "crates/termirust-store" }

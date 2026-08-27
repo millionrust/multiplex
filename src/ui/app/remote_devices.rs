@@ -1,16 +1,27 @@
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use gpui_component::Disableable as _;
-use termirust_domain::{
-    ControllerCapabilities, ControllerCapability, ControllerDeviceId, HostIdentityPublic,
-    HostIdentityState, PairedDeviceRecord, PairedDeviceStatus,
+use termirust_controller_listener::{
+    GeneratedPortSource as _, InterfaceProvider as _, ListenerLaunchDescriptor,
+    SystemGeneratedPortSource, SystemInterfaceProvider,
 };
-use termirust_store::{ControllerDeviceRepository, ControllerDeviceStoreError};
+use termirust_controller_security::StaticPrivateKey;
+use termirust_domain::{
+    ControllerCapabilities, ControllerCapability, ControllerDeviceId, ControllerListenPolicy,
+    ControllerNetworkRevision, ControllerPort, DiscoveryPolicy, HostIdentityPublic,
+    HostIdentityState, ListenerState, NetworkInterfaceCandidate, PairedDeviceRecord,
+    PairedDeviceStatus,
+};
+use termirust_store::{
+    ControllerDeviceRepository, ControllerDeviceStoreError, ControllerNetworkRepository,
+};
 
 use crate::controller::devices::{ControllerDeviceService, NoControllerChannels};
 use crate::controller::host_identity::{
     HostIdentityService, OldSecretDeletion, OsIdentityEntropy, OsSecretStore,
 };
+use crate::controller::lan::ControllerListenerProcess;
 
 use super::*;
 
@@ -45,6 +56,15 @@ pub(super) struct RemoteDevicesState {
     devices: Vec<PairedDeviceRecord>,
     failure: Option<RemoteDevicesFailure>,
     route_available: bool,
+    network_repository: Option<ControllerNetworkRepository>,
+    network_revision: ControllerNetworkRevision,
+    network_policy: ControllerListenPolicy,
+    interfaces: Vec<NetworkInterfaceCandidate>,
+    pending_interface: Option<NetworkInterfaceCandidate>,
+    listener_state: ListenerState,
+    listener_process: Option<ControllerListenerProcess>,
+    listener_last_polled: Instant,
+    host_private: Option<StaticPrivateKey>,
     pairing_state: PairingUiState,
     editing_device_id: Option<ControllerDeviceId>,
 }
@@ -52,30 +72,59 @@ pub(super) struct RemoteDevicesState {
 impl RemoteDevicesState {
     #[cfg(not(test))]
     pub(super) fn open_default() -> Self {
-        let repository = match crate::storage::controller_store_dir()
-            .map_err(|_| RemoteDevicesFailure::Unavailable)
-            .and_then(|root| ControllerDeviceRepository::open(root).map_err(classify_store_failure))
-        {
-            Ok(repository) => repository,
-            Err(failure) => return Self::failed(failure),
+        let root = match crate::storage::controller_store_dir() {
+            Ok(root) => root,
+            Err(_) => return Self::failed(RemoteDevicesFailure::Unavailable),
         };
+        let repository =
+            match ControllerDeviceRepository::open(root.clone()).map_err(classify_store_failure) {
+                Ok(repository) => repository,
+                Err(failure) => return Self::failed(failure),
+            };
         let identity_service =
             HostIdentityService::new(repository.clone(), OsSecretStore, OsIdentityEntropy);
         let identity = match identity_service.load_or_create() {
             Ok(identity) => identity,
             Err(_) => return Self::failed(RemoteDevicesFailure::Permission),
         };
+        let network_repository = match ControllerNetworkRepository::open(&root) {
+            Ok(repository) => repository,
+            Err(_) => return Self::failed(RemoteDevicesFailure::Unavailable),
+        };
+        let network = match network_repository.load() {
+            Ok(snapshot) => snapshot,
+            Err(_) => return Self::failed(RemoteDevicesFailure::Unavailable),
+        };
+        let interfaces = SystemInterfaceProvider
+            .eligible_interfaces()
+            .unwrap_or_default();
+        let host_private = identity.static_private_key();
         match repository.load() {
-            Ok(snapshot) => Self {
-                repository: Some(repository),
-                identity_state: identity.state,
-                identity: identity.public,
-                devices: snapshot.authority.devices,
-                failure: None,
-                route_available: false,
-                pairing_state: PairingUiState::Idle,
-                editing_device_id: None,
-            },
+            Ok(snapshot) => {
+                let mut state = Self {
+                    repository: Some(repository),
+                    identity_state: identity.state,
+                    identity: identity.public,
+                    devices: snapshot.authority.devices,
+                    failure: None,
+                    route_available: false,
+                    network_repository: Some(network_repository),
+                    network_revision: network.revision,
+                    network_policy: network.policy,
+                    interfaces,
+                    pending_interface: None,
+                    listener_state: ListenerState::Disabled,
+                    listener_process: None,
+                    listener_last_polled: Instant::now(),
+                    host_private,
+                    pairing_state: PairingUiState::Idle,
+                    editing_device_id: None,
+                };
+                if state.network_policy.enabled {
+                    let _ = state.start_listener_process();
+                }
+                state
+            }
             Err(error) => Self::failed(classify_store_failure(error)),
         }
     }
@@ -92,6 +141,15 @@ impl RemoteDevicesState {
             devices: Vec::new(),
             failure: None,
             route_available: false,
+            network_repository: None,
+            network_revision: ControllerNetworkRevision::ZERO,
+            network_policy: ControllerListenPolicy::default(),
+            interfaces: Vec::new(),
+            pending_interface: None,
+            listener_state: ListenerState::Disabled,
+            listener_process: None,
+            listener_last_polled: Instant::now(),
+            host_private: Some(StaticPrivateKey::from_fixture_bytes([3; 32])),
             pairing_state: PairingUiState::Idle,
             editing_device_id: None,
         }
@@ -106,6 +164,15 @@ impl RemoteDevicesState {
             devices: Vec::new(),
             failure: Some(failure),
             route_available: false,
+            network_repository: None,
+            network_revision: ControllerNetworkRevision::ZERO,
+            network_policy: ControllerListenPolicy::default(),
+            interfaces: Vec::new(),
+            pending_interface: None,
+            listener_state: ListenerState::Failed(termirust_domain::ListenerFailureCode::Internal),
+            listener_process: None,
+            listener_last_polled: Instant::now(),
+            host_private: None,
             pairing_state: PairingUiState::StorageFailure,
             editing_device_id: None,
         }
@@ -159,22 +226,167 @@ impl RemoteDevicesState {
     }
 
     fn reset_identity(&mut self) -> Result<OldSecretDeletion, ()> {
+        self.stop_listener()?;
         let repository = self.repository.clone().ok_or(())?;
         let outcome = HostIdentityService::new(repository, OsSecretStore, OsIdentityEntropy)
             .reset()
             .map_err(|_| ())?;
+        self.host_private = outcome.identity.static_private_key();
         self.identity_state = outcome.identity.state;
         self.identity = outcome.identity.public;
         self.refresh()?;
         Ok(outcome.deletion)
     }
+
+    fn begin_listener_setup(&mut self, candidate: NetworkInterfaceCandidate) {
+        self.pending_interface = Some(candidate);
+        self.listener_state = ListenerState::Disabled;
+    }
+
+    fn cancel_listener_setup(&mut self) {
+        self.pending_interface = None;
+    }
+
+    fn enable_listener(&mut self, fixed_port: Option<u16>) -> Result<(), ()> {
+        let candidate = self.pending_interface.clone().ok_or(())?;
+        let port = match fixed_port {
+            Some(port) => ControllerPort::user_fixed(port).map_err(|_| ())?,
+            None => {
+                let mut generator = SystemGeneratedPortSource;
+                ControllerPort::generated(generator.next_port().map_err(|_| ())?).map_err(|_| ())?
+            }
+        };
+        let policy = ControllerListenPolicy {
+            enabled: true,
+            interface_id: Some(candidate.id),
+            address_family: Some(candidate.address_family),
+            selected_address: Some(candidate.address),
+            port: Some(port),
+            discovery: DiscoveryPolicy::Off,
+        };
+        let repository = self.network_repository.clone().ok_or(())?;
+        let saved = repository
+            .save(self.network_revision, policy)
+            .map_err(|_| ())?;
+        self.network_revision = saved.revision;
+        self.network_policy = saved.policy;
+        self.pending_interface = None;
+        if self.start_listener_process().is_err() {
+            let _ = self.disable_saved_policy();
+            return Err(());
+        }
+        Ok(())
+    }
+
+    fn start_listener_process(&mut self) -> Result<(), ()> {
+        self.listener_state = ListenerState::Binding;
+        let host_private = self.host_private.as_ref().ok_or(())?;
+        let app_root = crate::storage::app_dir().map_err(|_| ())?;
+        let descriptor = ListenerLaunchDescriptor::new(
+            crate::storage::controller_store_dir().map_err(|_| ())?,
+            crate::storage::project_store_dir().map_err(|_| ())?,
+            app_root.join("durable-sessions"),
+            durable_runtime_parent(&app_root),
+            self.network_revision,
+            self.network_policy.clone(),
+            host_private,
+        )
+        .map_err(|_| ())?;
+        match ControllerListenerProcess::start(&descriptor) {
+            Ok(process) => {
+                self.listener_process = Some(process);
+                if let Some(repository) = &self.network_repository
+                    && let Ok(snapshot) = repository.load()
+                {
+                    self.network_revision = snapshot.revision;
+                    self.network_policy = snapshot.policy;
+                }
+                self.listener_state = ListenerState::Ready {
+                    authenticated_connections: 0,
+                };
+                self.route_available = true;
+                Ok(())
+            }
+            Err(_) => {
+                self.listener_process = None;
+                self.listener_state =
+                    ListenerState::Failed(termirust_domain::ListenerFailureCode::Internal);
+                self.route_available = false;
+                Err(())
+            }
+        }
+    }
+
+    fn stop_listener(&mut self) -> Result<(), ()> {
+        self.listener_state = ListenerState::ShuttingDown;
+        if let Some(mut process) = self.listener_process.take() {
+            process.stop();
+        }
+        self.disable_saved_policy()?;
+        self.listener_state = ListenerState::Disabled;
+        self.route_available = false;
+        Ok(())
+    }
+
+    fn refresh_listener_process(&mut self) -> bool {
+        if self.listener_last_polled.elapsed() < Duration::from_secs(1) {
+            return false;
+        }
+        self.listener_last_polled = Instant::now();
+        let exited = self
+            .listener_process
+            .as_mut()
+            .is_some_and(|process| !process.is_running());
+        if !exited {
+            return false;
+        }
+        self.listener_process.take();
+        self.listener_state =
+            ListenerState::Failed(termirust_domain::ListenerFailureCode::Internal);
+        self.route_available = false;
+        true
+    }
+
+    fn disable_saved_policy(&mut self) -> Result<(), ()> {
+        if !self.network_policy.enabled {
+            return Ok(());
+        }
+        let mut policy = self.network_policy.clone();
+        policy.enabled = false;
+        let saved = self
+            .network_repository
+            .clone()
+            .ok_or(())?
+            .save(self.network_revision, policy)
+            .map_err(|_| ())?;
+        self.network_revision = saved.revision;
+        self.network_policy = saved.policy;
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn durable_runtime_parent(_: &std::path::Path) -> std::path::PathBuf {
+    std::path::PathBuf::from(format!("/private/tmp/termirust-{}", unsafe {
+        libc::geteuid()
+    }))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn durable_runtime_parent(_: &std::path::Path) -> std::path::PathBuf {
+    std::path::PathBuf::from(format!("/tmp/termirust-{}", unsafe { libc::geteuid() }))
+}
+
+#[cfg(not(unix))]
+fn durable_runtime_parent(app_root: &std::path::Path) -> std::path::PathBuf {
+    app_root.join("session-host-runtime")
 }
 
 impl TermiRustApp {
     pub(super) fn render_remote_devices_settings_card(&self, cx: &Context<Self>) -> Div {
         let content = v_flex()
             .gap_3()
-            .child(self.render_remote_route_section())
+            .child(self.render_remote_route_section(cx))
             .child(self.settings_divider())
             .child(self.render_remote_identity_section(cx))
             .child(self.settings_divider())
@@ -188,9 +400,26 @@ impl TermiRustApp {
         )
     }
 
-    fn render_remote_route_section(&self) -> AnyElement {
-        let add_disabled = !self.remote_devices.route_available;
-        v_flex()
+    fn render_remote_route_section(&self, cx: &Context<Self>) -> AnyElement {
+        let ready = matches!(
+            self.remote_devices.listener_state,
+            ListenerState::Ready { .. }
+        );
+        let route_detail = self
+            .remote_devices
+            .network_policy
+            .route()
+            .ok()
+            .flatten()
+            .map(|route| {
+                format!(
+                    "{}:{} | {}",
+                    route.address,
+                    route.port.value(),
+                    localization::remote_devices_listener_discovery_off()
+                )
+            });
+        let mut content = v_flex()
             .gap_2()
             .child(
                 h_flex()
@@ -212,36 +441,190 @@ impl TermiRustApp {
                                 div()
                                     .text_size(px(12.))
                                     .text_color(theme::text_muted())
-                                    .child(localization::remote_devices_route_off()),
+                                    .child(listener_state_label(
+                                        self.remote_devices.listener_state,
+                                    )),
                             ),
                     )
-                    .child(
-                        Button::new("remote-devices-add")
-                            .debug_selector(|| "remote-devices-add".to_string())
-                            .small()
-                            .icon(IconName::Plus)
-                            .label(localization::remote_devices_add_action())
-                            .disabled(add_disabled),
-                    ),
+                    .when(ready, |this| {
+                        this.child(
+                            Button::new("remote-devices-stop-listener")
+                                .debug_selector(|| "remote-devices-stop-listener".to_string())
+                                .small()
+                                .danger()
+                                .label(localization::remote_devices_listener_stop_action())
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.stop_remote_listener(cx);
+                                })),
+                        )
+                    }),
             )
+            .when_some(route_detail, |this, detail| {
+                this.child(
+                    div()
+                        .px_3()
+                        .py_2()
+                        .rounded(px(6.))
+                        .bg(theme::with_alpha(theme::success(), 0.08))
+                        .text_size(px(12.))
+                        .text_color(theme::text_main())
+                        .child(detail),
+                )
+            })
+            .when(ready, |this| {
+                this.child(
+                    div()
+                        .text_size(px(11.))
+                        .text_color(theme::text_muted())
+                        .child(localization::remote_devices_listener_guidance()),
+                )
+            });
+
+        if let Some(candidate) = self.remote_devices.pending_interface.clone() {
+            let kind = interface_kind_label(candidate.kind);
+            content = content.child(
+                v_flex()
+                    .gap_2()
+                    .p_3()
+                    .rounded(px(6.))
+                    .border_1()
+                    .border_color(theme::with_alpha(theme::warning(), 0.45))
+                    .bg(theme::with_alpha(theme::warning(), 0.06))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child(localization::remote_devices_listener_confirm_title()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .text_color(theme::text_muted())
+                            .child(format!(
+                                "{} | {} | {}",
+                                candidate.label, kind, candidate.address
+                            )),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(11.))
+                            .text_color(theme::text_muted())
+                            .child(localization::remote_devices_listener_port_help()),
+                    )
+                    .child(Input::new(&self.settings_inputs.remote_listener_port))
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("remote-listener-confirm")
+                                    .small()
+                                    .icon(IconName::Globe)
+                                    .label(localization::remote_devices_listener_enable_action())
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.enable_remote_listener(cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("remote-listener-cancel")
+                                    .small()
+                                    .label(localization::common_cancel())
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.remote_devices.cancel_listener_setup();
+                                        cx.notify();
+                                    })),
+                            ),
+                    ),
+            );
+        } else if !ready {
+            content = content
+                .when(self.remote_devices.interfaces.is_empty(), |this| {
+                    this.child(
+                        div()
+                            .px_3()
+                            .py_2()
+                            .rounded(px(6.))
+                            .bg(theme::with_alpha(theme::warning(), 0.08))
+                            .text_size(px(12.))
+                            .text_color(theme::text_muted())
+                            .child(localization::remote_devices_listener_no_interface()),
+                    )
+                })
+                .children(
+                    self.remote_devices
+                        .interfaces
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(index, candidate)| {
+                            let selected = candidate.clone();
+                            h_flex()
+                                .id(("remote-listener-interface", index))
+                                .items_center()
+                                .justify_between()
+                                .gap_3()
+                                .py_2()
+                                .border_t_1()
+                                .border_color(theme::soft_border())
+                                .child(
+                                    v_flex()
+                                        .gap_1()
+                                        .child(
+                                            div()
+                                                .text_size(px(12.))
+                                                .font_medium()
+                                                .text_color(theme::text_main())
+                                                .child(candidate.label),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(11.))
+                                                .text_color(theme::text_muted())
+                                                .child(format!(
+                                                    "{} | {}",
+                                                    interface_kind_label(candidate.kind),
+                                                    candidate.address
+                                                )),
+                                        ),
+                                )
+                                .child(
+                                    Button::new(("remote-listener-select", index))
+                                        .small()
+                                        .label(localization::remote_devices_listener_use_network_action())
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            this.begin_remote_listener_setup(
+                                                selected.clone(),
+                                                window,
+                                                cx,
+                                            );
+                                        })),
+                                )
+                        }),
+                );
+        }
+
+        content
             .child(
                 div()
                     .text_size(px(11.))
                     .text_color(theme::text_muted())
                     .child(pairing_ui_status(self.remote_devices.pairing_state)),
             )
-            .when(add_disabled, |this| {
-                this.child(
-                    div()
-                        .px_3()
-                        .py_2()
-                        .rounded(px(8.))
-                        .bg(theme::with_alpha(theme::warning(), 0.08))
-                        .text_size(px(12.))
-                        .text_color(theme::text_muted())
-                        .child(localization::remote_devices_route_required()),
-                )
-            })
+            .when(
+                !ready && self.remote_devices.interfaces.is_empty(),
+                |this| {
+                    this.child(
+                        div()
+                            .px_3()
+                            .py_2()
+                            .rounded(px(6.))
+                            .bg(theme::with_alpha(theme::warning(), 0.08))
+                            .text_size(px(12.))
+                            .text_color(theme::text_muted())
+                            .child(localization::remote_devices_route_required()),
+                    )
+                },
+            )
             .into_any_element()
     }
 
@@ -532,6 +915,67 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn begin_remote_listener_setup(
+        &mut self,
+        candidate: NetworkInterfaceCandidate,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.remote_devices.begin_listener_setup(candidate);
+        self.settings_inputs
+            .remote_listener_port
+            .update(cx, |state, cx| state.set_value("", window, cx));
+        cx.notify();
+    }
+
+    fn enable_remote_listener(&mut self, cx: &mut Context<Self>) {
+        let port_text = self
+            .settings_inputs
+            .remote_listener_port
+            .read(cx)
+            .value()
+            .trim()
+            .to_owned();
+        let fixed_port = match parse_listener_port(&port_text) {
+            Ok(port) => port,
+            Err(()) => {
+                self.error_message = localization::remote_devices_listener_port_invalid();
+                cx.notify();
+                return;
+            }
+        };
+        match self.remote_devices.enable_listener(fixed_port) {
+            Ok(()) => {
+                self.status_message = localization::remote_devices_listener_ready_notice();
+                self.error_message.clear();
+            }
+            Err(()) => {
+                self.error_message = localization::remote_devices_listener_start_failed();
+            }
+        }
+        cx.notify();
+    }
+
+    fn stop_remote_listener(&mut self, cx: &mut Context<Self>) {
+        match self.remote_devices.stop_listener() {
+            Ok(()) => {
+                self.status_message = localization::remote_devices_listener_stopped_notice();
+                self.error_message.clear();
+            }
+            Err(()) => {
+                self.error_message = localization::remote_devices_listener_stop_failed();
+            }
+        }
+        cx.notify();
+    }
+
+    pub(super) fn refresh_remote_listener_process(&mut self, cx: &mut Context<Self>) {
+        if self.remote_devices.refresh_listener_process() {
+            self.error_message = localization::remote_devices_listener_start_failed();
+            cx.notify();
+        }
+    }
+
     fn save_remote_device_name(&mut self, device_id: ControllerDeviceId, cx: &mut Context<Self>) {
         let display_name = self
             .settings_inputs
@@ -643,6 +1087,39 @@ fn remote_identity_status(
     }
 }
 
+fn listener_state_label(state: ListenerState) -> String {
+    match state {
+        ListenerState::Disabled => localization::remote_devices_route_off(),
+        ListenerState::Binding => localization::remote_devices_listener_binding(),
+        ListenerState::Ready { .. } => localization::remote_devices_listener_ready(),
+        ListenerState::InterfaceGone => localization::remote_devices_listener_interface_gone(),
+        ListenerState::PortConflict => localization::remote_devices_listener_port_conflict(),
+        ListenerState::FirewallBlocked => localization::remote_devices_listener_firewall_blocked(),
+        ListenerState::Failed(_) => localization::remote_devices_listener_failed(),
+        ListenerState::ShuttingDown => localization::remote_devices_listener_stopping(),
+    }
+}
+
+fn interface_kind_label(kind: termirust_domain::NetworkInterfaceKind) -> &'static str {
+    match kind {
+        termirust_domain::NetworkInterfaceKind::Lan => "LAN",
+        termirust_domain::NetworkInterfaceKind::Vpn => "VPN",
+    }
+}
+
+fn parse_listener_port(value: &str) -> Result<Option<u16>, ()> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    value
+        .parse::<u16>()
+        .ok()
+        .filter(|port| *port >= termirust_domain::USER_FIXED_PORT_MIN)
+        .map(Some)
+        .ok_or(())
+}
+
 fn remote_device_status(status: PairedDeviceStatus) -> String {
     match status {
         PairedDeviceStatus::Online => localization::remote_devices_status_online(),
@@ -668,14 +1145,16 @@ fn pairing_ui_status(state: PairingUiState) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use termirust_domain::{HostIdentityState, PairedDeviceStatus};
+mod network_tests {
+    use termirust_domain::{
+        HostIdentityState, ListenerFailureCode, ListenerState, PairedDeviceStatus,
+    };
 
     use crate::ui::localization;
 
     use super::{
-        PairingUiState, RemoteDevicesState, pairing_ui_status, remote_device_status,
-        remote_identity_status,
+        PairingUiState, RemoteDevicesState, listener_state_label, pairing_ui_status,
+        parse_listener_port, remote_device_status, remote_identity_status,
     };
 
     #[test]
@@ -685,8 +1164,38 @@ mod tests {
         assert!(state.devices.is_empty());
         assert_eq!(
             localization::remote_devices_route_required(),
-            "Enable a LAN or SSH route first."
+            "Select an active private LAN or VPN network first."
         );
+    }
+
+    #[test]
+    fn listener_port_input_defaults_to_generated_and_rejects_unsafe_values() {
+        assert_eq!(parse_listener_port(""), Ok(None));
+        assert_eq!(parse_listener_port(" 49152 "), Ok(Some(49_152)));
+        assert_eq!(parse_listener_port("1024"), Ok(Some(1_024)));
+        assert_eq!(parse_listener_port("65535"), Ok(Some(65_535)));
+        assert_eq!(parse_listener_port("0"), Err(()));
+        assert_eq!(parse_listener_port("1023"), Err(()));
+        assert_eq!(parse_listener_port("65536"), Err(()));
+        assert_eq!(parse_listener_port("not-a-port"), Err(()));
+    }
+
+    #[test]
+    fn every_listener_state_has_an_explicit_label() {
+        for state in [
+            ListenerState::Disabled,
+            ListenerState::Binding,
+            ListenerState::Ready {
+                authenticated_connections: 0,
+            },
+            ListenerState::InterfaceGone,
+            ListenerState::PortConflict,
+            ListenerState::FirewallBlocked,
+            ListenerState::Failed(ListenerFailureCode::Internal),
+            ListenerState::ShuttingDown,
+        ] {
+            assert!(!listener_state_label(state).is_empty());
+        }
     }
 
     #[test]

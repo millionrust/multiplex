@@ -2781,6 +2781,90 @@ id = "remote-devices-route-required"
 context = "Explanation shown while Controller pairing has no route."
 description = "Controller route required guidance"
 [[messages]]
+id = "remote-devices-listener-binding"
+context = "Controller listener is binding the selected private network."
+description = "Controller listener binding state"
+[[messages]]
+id = "remote-devices-listener-ready"
+context = "Controller listener is accepting authenticated peers."
+description = "Controller listener ready state"
+[[messages]]
+id = "remote-devices-listener-interface-gone"
+context = "The exact selected network interface disappeared."
+description = "Controller listener interface unavailable state"
+[[messages]]
+id = "remote-devices-listener-port-conflict"
+context = "The selected Controller listener port cannot be bound."
+description = "Controller listener port conflict state"
+[[messages]]
+id = "remote-devices-listener-firewall-blocked"
+context = "Firewall guidance for an unreachable Controller listener."
+description = "Controller listener firewall state"
+[[messages]]
+id = "remote-devices-listener-failed"
+context = "Controller listener failed without changing Host sessions."
+description = "Controller listener failure state"
+[[messages]]
+id = "remote-devices-listener-stopping"
+context = "Controller listener is shutting down."
+description = "Controller listener stopping state"
+[[messages]]
+id = "remote-devices-listener-stop-action"
+context = "Action that stops local network Controller access."
+description = "Stop Controller listener action"
+[[messages]]
+id = "remote-devices-listener-guidance"
+context = "Privacy and firewall disclosure while the listener is ready."
+description = "Controller listener exposure guidance"
+[[messages]]
+id = "remote-devices-listener-confirm-title"
+context = "Safe confirmation heading before enabling local network access."
+description = "Confirm Controller listener access title"
+[[messages]]
+id = "remote-devices-listener-port-help"
+context = "Generated or fixed port and discovery guidance."
+description = "Controller listener port guidance"
+[[messages]]
+id = "remote-devices-listener-port-placeholder"
+context = "Empty listener port input uses a generated private port."
+description = "Controller listener port placeholder"
+[[messages]]
+id = "remote-devices-listener-enable-action"
+context = "Confirmed action that enables the selected network listener."
+description = "Enable Controller listener action"
+[[messages]]
+id = "remote-devices-listener-no-interface"
+context = "No eligible active private LAN or VPN interface exists."
+description = "Controller listener no-interface state"
+[[messages]]
+id = "remote-devices-listener-use-network-action"
+context = "Action that selects one exact network interface."
+description = "Select Controller listener network action"
+[[messages]]
+id = "remote-devices-listener-discovery-off"
+context = "Privacy label confirming automatic discovery is disabled."
+description = "Controller listener discovery disabled label"
+[[messages]]
+id = "remote-devices-listener-port-invalid"
+context = "Validation error for an unsafe or malformed fixed listener port."
+description = "Controller listener invalid port error"
+[[messages]]
+id = "remote-devices-listener-ready-notice"
+context = "Status announcement after the Controller listener becomes ready."
+description = "Controller listener ready notice"
+[[messages]]
+id = "remote-devices-listener-start-failed"
+context = "Error announcement when the Controller listener cannot start."
+description = "Controller listener start failure"
+[[messages]]
+id = "remote-devices-listener-stopped-notice"
+context = "Status announcement after local network access stops."
+description = "Controller listener stopped notice"
+[[messages]]
+id = "remote-devices-listener-stop-failed"
+context = "Error announcement when disabled listener state cannot be saved."
+description = "Controller listener stop failure"
+[[messages]]
 id = "remote-devices-identity-label"
 context = "Heading for the desktop Host identity."
 description = "Host identity label"

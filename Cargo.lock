@@ -7577,6 +7577,7 @@ dependencies = [
  "tempfile",
  "termirust-cli",
  "termirust-client",
+ "termirust-controller-listener",
  "termirust-controller-security",
  "termirust-domain",
  "termirust-host-protocol",

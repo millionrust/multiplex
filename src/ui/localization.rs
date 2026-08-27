@@ -145,6 +145,90 @@ static_message!(
     RemoteDevicesRouteRequiredArgs
 );
 static_message!(
+    remote_devices_listener_binding,
+    RemoteDevicesListenerBindingArgs
+);
+static_message!(
+    remote_devices_listener_ready,
+    RemoteDevicesListenerReadyArgs
+);
+static_message!(
+    remote_devices_listener_interface_gone,
+    RemoteDevicesListenerInterfaceGoneArgs
+);
+static_message!(
+    remote_devices_listener_port_conflict,
+    RemoteDevicesListenerPortConflictArgs
+);
+static_message!(
+    remote_devices_listener_firewall_blocked,
+    RemoteDevicesListenerFirewallBlockedArgs
+);
+static_message!(
+    remote_devices_listener_failed,
+    RemoteDevicesListenerFailedArgs
+);
+static_message!(
+    remote_devices_listener_stopping,
+    RemoteDevicesListenerStoppingArgs
+);
+static_message!(
+    remote_devices_listener_stop_action,
+    RemoteDevicesListenerStopActionArgs
+);
+static_message!(
+    remote_devices_listener_guidance,
+    RemoteDevicesListenerGuidanceArgs
+);
+static_message!(
+    remote_devices_listener_confirm_title,
+    RemoteDevicesListenerConfirmTitleArgs
+);
+static_message!(
+    remote_devices_listener_port_help,
+    RemoteDevicesListenerPortHelpArgs
+);
+static_message!(
+    remote_devices_listener_port_placeholder,
+    RemoteDevicesListenerPortPlaceholderArgs
+);
+static_message!(
+    remote_devices_listener_enable_action,
+    RemoteDevicesListenerEnableActionArgs
+);
+static_message!(
+    remote_devices_listener_no_interface,
+    RemoteDevicesListenerNoInterfaceArgs
+);
+static_message!(
+    remote_devices_listener_use_network_action,
+    RemoteDevicesListenerUseNetworkActionArgs
+);
+static_message!(
+    remote_devices_listener_discovery_off,
+    RemoteDevicesListenerDiscoveryOffArgs
+);
+static_message!(
+    remote_devices_listener_port_invalid,
+    RemoteDevicesListenerPortInvalidArgs
+);
+static_message!(
+    remote_devices_listener_ready_notice,
+    RemoteDevicesListenerReadyNoticeArgs
+);
+static_message!(
+    remote_devices_listener_start_failed,
+    RemoteDevicesListenerStartFailedArgs
+);
+static_message!(
+    remote_devices_listener_stopped_notice,
+    RemoteDevicesListenerStoppedNoticeArgs
+);
+static_message!(
+    remote_devices_listener_stop_failed,
+    RemoteDevicesListenerStopFailedArgs
+);
+static_message!(
     remote_devices_identity_label,
     RemoteDevicesIdentityLabelArgs
 );

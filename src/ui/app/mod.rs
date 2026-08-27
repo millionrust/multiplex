@@ -354,6 +354,7 @@ struct SettingsInputs {
     mobile_pairing_request: Entity<InputState>,
     remote_identity_reset: Entity<InputState>,
     remote_device_name: Entity<InputState>,
+    remote_listener_port: Entity<InputState>,
 }
 
 struct VaultInputs {
@@ -418,6 +419,10 @@ impl SettingsInputs {
             remote_device_name: cx.new(|cx| {
                 InputState::new(window, cx)
                     .placeholder(localization::remote_devices_name_placeholder())
+            }),
+            remote_listener_port: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(localization::remote_devices_listener_port_placeholder())
             }),
         }
     }
@@ -1361,6 +1366,7 @@ impl TermiRustApp {
                     .update(|window, cx| {
                         let _ = this.update(cx, |app, cx| {
                             app.process_events(cx);
+                            app.refresh_remote_listener_process(cx);
                             app.process_artifact_progress(cx);
                             app.process_activity_activation(window, cx);
                             app.process_pending_auto_reconnects(window, cx);

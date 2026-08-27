@@ -25,6 +25,7 @@ use crate::storage::{load_local_ssh_hosts, load_saved_state};
 use crate::ui::TermiRustApp;
 
 const SESSION_HOST_MODE: &str = "--session-host";
+const CONTROLLER_LISTENER_MODE: &str = "--controller-listener";
 const ARTIFACT_PREVIEW_MODE: &str = "--artifact-preview-worker";
 
 fn run_session_host_mode() -> Result<(), termirust_session_host::HostError> {
@@ -151,6 +152,19 @@ fn main() {
                 "{{\"schema_version\":1,\"lifecycle\":\"failed\",\"code\":\"{}\",\"io_kind\":\"{:?}\"}}",
                 error.stable_code(),
                 error.io_kind
+            );
+            std::process::exit(1);
+        }
+        return;
+    }
+    if std::env::args().nth(1).as_deref() == Some(CONTROLLER_LISTENER_MODE) {
+        if let Err(error) = termirust_controller_listener::run_listener_worker(
+            std::io::stdin().lock(),
+            std::io::stdout().lock(),
+        ) {
+            eprintln!(
+                "{{\"schema_version\":1,\"lifecycle\":\"failed\",\"code\":\"{:?}\"}}",
+                error.code
             );
             std::process::exit(1);
         }
