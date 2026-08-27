@@ -242,7 +242,8 @@ impl RepositoryAuthority {
             .load()
             .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
         let mut record = None;
-        self.repository
+        let saved = self
+            .repository
             .update(snapshot.revision, |authority| {
                 record = Some(authority.create_offer(
                     offer_id,
@@ -267,7 +268,13 @@ impl RepositoryAuthority {
             capabilities: CapabilitySet::from_bits(record.capabilities.bits())
                 .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?,
         };
-        let offer = crate::ControllerPairingOffer::new(offer_id, route, &core)?;
+        let offer = crate::ControllerPairingOffer::new(
+            offer_id,
+            route,
+            &core,
+            record.identity.generation.get(),
+            saved.authority.revocation_epoch,
+        )?;
         Ok(ListenerProcessEvent::pairing_offer(
             offer_id,
             offer.encode_text()?,

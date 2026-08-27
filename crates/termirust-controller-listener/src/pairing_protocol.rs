@@ -76,6 +76,8 @@ impl ControllerConnectionPurpose {
 pub struct ControllerPairingOffer {
     pub schema_version: u16,
     pub offer_id: PairingOfferId,
+    pub identity_generation: u64,
+    pub revocation_epoch: u64,
     pub address_family: AddressFamily,
     pub address: IpAddr,
     pub port: u16,
@@ -87,10 +89,14 @@ impl ControllerPairingOffer {
         offer_id: PairingOfferId,
         route: &RouteCandidate,
         offer: &PairingOfferCore,
+        identity_generation: u64,
+        revocation_epoch: u64,
     ) -> Result<Self, ListenerError> {
         let value = Self {
             schema_version: PAIRING_ENVELOPE_VERSION,
             offer_id,
+            identity_generation,
+            revocation_epoch,
             address_family: route.address_family,
             address: route.address,
             port: route.port.value(),
@@ -130,6 +136,7 @@ impl ControllerPairingOffer {
 
     fn validate(&self) -> Result<(), ListenerError> {
         if self.schema_version != PAIRING_ENVELOPE_VERSION
+            || self.identity_generation == 0
             || self.offer_bytes.len() != PAIRING_OFFER_BYTES
         {
             return Err(ListenerError::new(ListenerErrorCode::MalformedFrame));
@@ -164,6 +171,8 @@ impl fmt::Debug for ControllerPairingOffer {
             .debug_struct("ControllerPairingOffer")
             .field("schema_version", &self.schema_version)
             .field("offer_id", &self.offer_id)
+            .field("identity_generation", &self.identity_generation)
+            .field("revocation_epoch", &self.revocation_epoch)
             .field("route", &"[REDACTED]")
             .field("offer_bytes", &"[REDACTED]")
             .finish()
@@ -341,7 +350,7 @@ mod tests {
     #[test]
     fn pairing_offer_round_trips_without_interface_metadata() {
         let envelope =
-            ControllerPairingOffer::new(PairingOfferId::new(), &route(), &offer()).unwrap();
+            ControllerPairingOffer::new(PairingOfferId::new(), &route(), &offer(), 1, 3).unwrap();
         let text = envelope.encode_text().unwrap();
         assert!(!text.contains("en0"));
         assert!(!text.contains("4:en0"));
@@ -353,7 +362,7 @@ mod tests {
         assert_eq!(
             format!("{envelope:?}"),
             format!(
-                "ControllerPairingOffer {{ schema_version: 1, offer_id: {:?}, route: \"[REDACTED]\", offer_bytes: \"[REDACTED]\" }}",
+                "ControllerPairingOffer {{ schema_version: 1, offer_id: {:?}, identity_generation: 1, revocation_epoch: 3, route: \"[REDACTED]\", offer_bytes: \"[REDACTED]\" }}",
                 envelope.offer_id
             )
         );
@@ -363,10 +372,12 @@ mod tests {
     fn pairing_offer_rejects_public_routes_and_unknown_fields() {
         let mut public = route();
         public.address = "8.8.8.8".parse().unwrap();
-        assert!(ControllerPairingOffer::new(PairingOfferId::new(), &public, &offer()).is_err());
+        assert!(
+            ControllerPairingOffer::new(PairingOfferId::new(), &public, &offer(), 1, 3).is_err()
+        );
 
         let envelope =
-            ControllerPairingOffer::new(PairingOfferId::new(), &route(), &offer()).unwrap();
+            ControllerPairingOffer::new(PairingOfferId::new(), &route(), &offer(), 1, 3).unwrap();
         let mut value: serde_json::Value =
             serde_json::from_str(&envelope.encode_text().unwrap()).unwrap();
         value["unknown"] = serde_json::json!(true);
