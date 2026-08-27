@@ -20,11 +20,12 @@ use tokio_util::sync::CancellationToken;
 use zeroize::Zeroize as _;
 
 use crate::{
-    AuthoritySnapshot, ControllerAuthorityProvider, ControllerPairingAuthority, HostBackendFactory,
-    HostPairingDecision, ListenerControlCommand, ListenerError, ListenerErrorCode,
-    ListenerProcessEvent, ListenerRuntime, ListenerServices, PairingAuthoritySnapshot,
-    ProcessPairingDecision, SourceBucketKey, SystemBinder, SystemGeneratedPortSource,
-    SystemInterfaceProvider, bind_selected_route,
+    AuthoritySnapshot, ControllerAuthorityProvider, ControllerPairingAuthority,
+    FirewallObserver as _, HostBackendFactory, HostPairingDecision, ListenerControlCommand,
+    ListenerError, ListenerErrorCode, ListenerProcessEvent, ListenerRuntime, ListenerServices,
+    PairingAuthoritySnapshot, ProcessPairingDecision, SourceBucketKey, SystemBinder,
+    SystemFirewallObserver, SystemGeneratedPortSource, SystemInterfaceProvider,
+    bind_selected_route,
 };
 
 const LAUNCH_FORMAT_VERSION: u16 = 1;
@@ -500,7 +501,15 @@ where
         .map_err(|_| ListenerError::new(ListenerErrorCode::RandomUnavailable))?;
     let runtime = ListenerRuntime::new(SourceBucketKey::from_random(source_key))?;
     source_key.zeroize();
-    events.send(&ListenerProcessEvent::ready(bound.route.address.port()))?;
+    let route = descriptor
+        .policy
+        .route()?
+        .ok_or_else(|| ListenerError::new(ListenerErrorCode::Disabled))?;
+    let firewall = SystemFirewallObserver.observe(&route)?;
+    events.send(&ListenerProcessEvent::ready_with_firewall(
+        bound.route.address.port(),
+        firewall,
+    ))?;
 
     let cancel = CancellationToken::new();
     let control_cancel = cancel.clone();
@@ -591,7 +600,31 @@ fn safe_absolute_path(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use termirust_domain::{AddressFamily, ControllerPort, DiscoveryPolicy, NetworkInterfaceId};
+    use std::io::Cursor;
+
+    use crate::{GeneratedPortSource as _, InterfaceProvider as _};
+    use termirust_controller_security::host_public_key_from_private;
+    use termirust_domain::{
+        AddressFamily, ControllerPort, DiscoveryPolicy, HostIdentityGeneration, HostIdentityPublic,
+        HostIdentitySecretRef, HostIdentityState, HostPublicKey, NetworkInterfaceId,
+    };
+
+    #[derive(Clone, Default)]
+    struct SharedBuffer(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedBuffer {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .map_err(|_| std::io::Error::other("shared buffer poisoned"))?
+                .extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn launch_descriptor_round_trips_bounded_and_redacts_paths_and_secret() {
@@ -628,5 +661,105 @@ mod tests {
         assert!(ListenerLaunchDescriptor::read(oversized.as_slice()).is_err());
         assert!(!safe_absolute_path(Path::new("relative")));
         assert!(!safe_absolute_path(Path::new("/safe/../unsafe")));
+    }
+
+    #[test]
+    fn owned_worker_emits_ready_and_offer_then_stops_on_control_eof() {
+        let Some(interface) = SystemInterfaceProvider
+            .eligible_interfaces()
+            .unwrap()
+            .into_iter()
+            .next()
+        else {
+            return;
+        };
+        let fixture = tempfile::tempdir().unwrap();
+        let controller_root = fixture.path().join("controller");
+        let project_root = fixture.path().join("projects");
+        let session_root = fixture.path().join("sessions");
+        let runtime_root = fixture.path().join("runtime");
+        let private = StaticPrivateKey::from_fixture_bytes([17; 32]);
+        let public = host_public_key_from_private(&private);
+        let devices = ControllerDeviceRepository::open(&controller_root).unwrap();
+        let snapshot = devices.load().unwrap();
+        devices
+            .update(snapshot.revision, |authority| {
+                authority.identity = Some(HostIdentityPublic::new(
+                    HostIdentityGeneration::INITIAL,
+                    HostPublicKey(public.0),
+                ));
+                authority.secret_ref =
+                    Some(HostIdentitySecretRef::new("identity:test-worker").unwrap());
+                authority.state = HostIdentityState::Ready;
+                Ok(())
+            })
+            .unwrap();
+        let port = SystemGeneratedPortSource.next_port().unwrap();
+        let policy = ControllerListenPolicy {
+            enabled: true,
+            interface_id: Some(interface.id),
+            address_family: Some(interface.address_family),
+            selected_address: Some(interface.address),
+            port: Some(ControllerPort::Generated(port)),
+            discovery: DiscoveryPolicy::Off,
+        };
+        let network = ControllerNetworkRepository::open(&controller_root).unwrap();
+        let network_snapshot = network.load().unwrap();
+        let saved = network
+            .save(network_snapshot.revision, policy.clone())
+            .unwrap();
+        let descriptor = ListenerLaunchDescriptor::new(
+            controller_root,
+            project_root,
+            session_root,
+            runtime_root,
+            saved.revision,
+            policy,
+            &private,
+        )
+        .unwrap();
+        let mut control = Vec::new();
+        descriptor.write(&mut control).unwrap();
+        ListenerControlCommand::begin_pairing()
+            .write(&mut control)
+            .unwrap();
+        let output = SharedBuffer::default();
+        run_listener_worker(Cursor::new(control), output.clone()).unwrap();
+
+        let bytes = output.0.lock().unwrap().clone();
+        let mut reader = Cursor::new(bytes);
+        assert!(matches!(
+            ListenerProcessEvent::read(&mut reader).unwrap(),
+            Some(ListenerProcessEvent::Ready { port, .. }) if port >= 49_152
+        ));
+        let offer_text = match ListenerProcessEvent::read(&mut reader).unwrap() {
+            Some(ListenerProcessEvent::PairingOffer { offer_text, .. }) => offer_text,
+            event => panic!("expected redacted pairing offer event, got {event:?}"),
+        };
+        let offer = crate::ControllerPairingOffer::decode_text(&offer_text).unwrap();
+        assert_eq!(offer.address, interface.address);
+        assert_eq!(offer.address_family, interface.address_family);
+    }
+
+    #[tokio::test]
+    async fn decision_broker_accepts_one_explicit_decision_per_offer() {
+        let broker = PairingDecisionBroker::default();
+        let offer_id = PairingOfferId::new();
+        let receiver = broker.register(offer_id).unwrap();
+        assert_eq!(
+            broker.register(offer_id).unwrap_err().code,
+            ListenerErrorCode::AuthenticationFailed
+        );
+        broker
+            .resolve(offer_id, HostPairingDecision::Confirm)
+            .unwrap();
+        assert_eq!(receiver.await.unwrap(), HostPairingDecision::Confirm);
+        assert_eq!(
+            broker
+                .resolve(offer_id, HostPairingDecision::Reject)
+                .unwrap_err()
+                .code,
+            ListenerErrorCode::AuthenticationFailed
+        );
     }
 }

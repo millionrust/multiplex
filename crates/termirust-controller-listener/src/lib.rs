@@ -6,6 +6,7 @@
 mod authorization;
 mod bind;
 mod error;
+mod firewall;
 mod framing;
 mod handshake;
 mod host_backend;
@@ -25,6 +26,7 @@ pub use bind::{
     SystemGeneratedPortSource, bind_selected_route,
 };
 pub use error::{ListenerError, ListenerErrorCode};
+pub use firewall::{FirewallObservation, FirewallObserver, SystemFirewallObserver};
 pub use framing::{read_bounded_frame, write_bounded_frame};
 pub use handshake::{
     AuthenticatedControllerConnection, HandshakeEntropy, SystemHandshakeEntropy,
@@ -40,7 +42,10 @@ pub use pairing_protocol::{
     ControllerConnectionPurpose, ControllerPairingOffer, PairingConnectRequest,
     PairingDeviceRegistration, PairingHostAck,
 };
-pub use process_protocol::{ListenerControlCommand, ListenerProcessEvent, ProcessPairingDecision};
+pub use process_protocol::{
+    ListenerControlCommand, ListenerProcessEvent, ProcessFirewallObservation,
+    ProcessPairingDecision,
+};
 pub use protocol::{
     ApprovalDecision, ControllerCommand, ControllerCommandEnvelope, ControllerResponse,
     ControllerSessionSummary, decode_command, decode_response, encode_command, encode_response,

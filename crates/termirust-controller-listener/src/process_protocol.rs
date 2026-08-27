@@ -3,7 +3,7 @@ use std::io::{BufRead, Read as _, Write};
 use serde::{Deserialize, Serialize};
 use termirust_domain::{ControllerDeviceId, PairingOfferId};
 
-use crate::{ListenerError, ListenerErrorCode};
+use crate::{FirewallObservation, ListenerError, ListenerErrorCode};
 
 const PROCESS_PROTOCOL_VERSION: u16 = 1;
 const MAX_PROCESS_LINE_BYTES: u64 = 16 * 1024;
@@ -77,6 +77,7 @@ pub enum ListenerProcessEvent {
     Ready {
         schema_version: u16,
         port: u16,
+        firewall: ProcessFirewallObservation,
     },
     PairingOffer {
         schema_version: u16,
@@ -103,9 +104,14 @@ pub enum ListenerProcessEvent {
 
 impl ListenerProcessEvent {
     pub fn ready(port: u16) -> Self {
+        Self::ready_with_firewall(port, FirewallObservation::Unknown)
+    }
+
+    pub fn ready_with_firewall(port: u16, firewall: FirewallObservation) -> Self {
         Self::Ready {
             schema_version: PROCESS_PROTOCOL_VERSION,
             port,
+            firewall: firewall.into(),
         }
     }
 
@@ -172,6 +178,24 @@ impl ListenerProcessEvent {
             | Self::PairingSasReady { schema_version, .. }
             | Self::PairingComplete { schema_version, .. }
             | Self::PairingFailed { schema_version, .. } => *schema_version,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessFirewallObservation {
+    Allowed,
+    Blocked,
+    Unknown,
+}
+
+impl From<FirewallObservation> for ProcessFirewallObservation {
+    fn from(value: FirewallObservation) -> Self {
+        match value {
+            FirewallObservation::Allowed => Self::Allowed,
+            FirewallObservation::Blocked => Self::Blocked,
+            FirewallObservation::Unknown => Self::Unknown,
         }
     }
 }
