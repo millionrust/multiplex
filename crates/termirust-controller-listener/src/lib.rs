@@ -11,6 +11,7 @@ mod handshake;
 mod host_backend;
 mod interfaces;
 mod launch;
+mod pairing_protocol;
 mod protocol;
 mod queue;
 mod rate_limit;
@@ -30,6 +31,10 @@ pub use handshake::{
 pub use host_backend::HostBackendFactory;
 pub use interfaces::{InterfaceProvider, SystemInterfaceProvider, resolve_selected_interface};
 pub use launch::{ListenerLaunchDescriptor, run_listener_worker};
+pub use pairing_protocol::{
+    ControllerConnectionPurpose, ControllerPairingOffer, PairingConnectRequest,
+    PairingDeviceRegistration, PairingHostAck,
+};
 pub use protocol::{
     ApprovalDecision, ControllerCommand, ControllerCommandEnvelope, ControllerResponse,
     ControllerSessionSummary, decode_command, decode_response, encode_command, encode_response,
