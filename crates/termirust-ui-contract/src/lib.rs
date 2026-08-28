@@ -3,6 +3,7 @@ pub mod generated;
 pub mod lint;
 pub mod localization_lint;
 pub mod messages;
+pub mod semantics;
 
 pub use contract::{
     ContractError, GenerationArtifacts, TokenManifest, generate_artifacts, load_manifest,
@@ -10,6 +11,7 @@ pub use contract::{
 };
 pub use generated::*;
 pub use messages::*;
+pub use semantics::*;
 
 #[cfg(test)]
 mod tokens_tests {
