@@ -12,6 +12,7 @@ const MAX_INPUT_BYTES: usize = 60 * 1024;
 const MAX_ERROR_CODE_BYTES: usize = 64;
 const MAX_SESSION_TITLE_SCALARS: usize = 256;
 pub const MAX_SESSION_PAGE_RECORDS: u16 = 1_000;
+pub const MAX_SESSION_PAGE_BYTES: usize = MAX_CONTROL_PAYLOAD_BYTES - 256;
 
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -236,10 +237,14 @@ impl fmt::Debug for ControllerResponse {
 pub struct ControllerSessionSummary {
     pub session_id: HostedSessionId,
     pub title: String,
+    pub project: Option<String>,
+    pub group: Option<String>,
     pub lifecycle: String,
+    pub activity: String,
     pub occupant_generation: Option<OccupantGeneration>,
     pub last_output_sequence: OutputSequence,
     pub has_writer: bool,
+    pub unread: bool,
 }
 
 impl fmt::Debug for ControllerSessionSummary {
@@ -248,10 +253,14 @@ impl fmt::Debug for ControllerSessionSummary {
             .debug_struct("ControllerSessionSummary")
             .field("session_id", &self.session_id)
             .field("title", &"[REDACTED]")
+            .field("project", &self.project.as_ref().map(|_| "[REDACTED]"))
+            .field("group", &self.group.as_ref().map(|_| "[REDACTED]"))
             .field("lifecycle", &self.lifecycle)
+            .field("activity", &self.activity)
             .field("occupant_generation", &self.occupant_generation)
             .field("last_output_sequence", &self.last_output_sequence)
             .field("has_writer", &self.has_writer)
+            .field("unread", &self.unread)
             .finish()
     }
 }
@@ -306,7 +315,16 @@ fn validate_response(response: &ControllerResponse) -> Result<(), ListenerError>
             || next_offset == &Some(0)
             || sessions.iter().any(|session| {
                 session.title.chars().count() > MAX_SESSION_TITLE_SCALARS
+                    || session
+                        .project
+                        .as_ref()
+                        .is_some_and(|name| name.chars().count() > MAX_SESSION_TITLE_SCALARS)
+                    || session
+                        .group
+                        .as_ref()
+                        .is_some_and(|name| name.chars().count() > MAX_SESSION_TITLE_SCALARS)
                     || session.lifecycle.len() > MAX_ERROR_CODE_BYTES
+                    || session.activity.len() > MAX_ERROR_CODE_BYTES
             }) =>
         {
             Err(ListenerError::new(ListenerErrorCode::FrameTooLarge))
@@ -430,6 +448,31 @@ mod tests {
                 MAX_CONTROL_PAYLOAD_BYTES,
             )
             .is_err()
+        );
+
+        let summary = ControllerSessionSummary {
+            session_id: HostedSessionId::new(),
+            title: "Deploy".into(),
+            project: Some("Console".into()),
+            group: Some("Release".into()),
+            lifecycle: "live".into(),
+            activity: "needs_input".into(),
+            occupant_generation: Some(OccupantGeneration::new(2)),
+            last_output_sequence: OutputSequence::new(9),
+            has_writer: false,
+            unread: true,
+        };
+        let response = ControllerResponse::Sessions {
+            command_id: CommandId::new(),
+            revision: 4,
+            update_sequence: 4,
+            sessions: vec![summary],
+            next_offset: None,
+        };
+        let encoded = encode_response(&response, MAX_SESSION_PAGE_BYTES).unwrap();
+        assert_eq!(
+            decode_response(&encoded, MAX_SESSION_PAGE_BYTES).unwrap(),
+            response
         );
     }
 }

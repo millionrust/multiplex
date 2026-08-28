@@ -15,7 +15,9 @@ use termirust_domain::{
     ControllerDeviceId, ControllerListenPolicy, ControllerNetworkRevision, DevicePublicKey,
     DiscoveryPolicy, PairingOfferId, PairingOfferState, RouteCandidate,
 };
-use termirust_store::{ControllerDeviceRepository, ControllerNetworkRepository, SessionRepository};
+use termirust_store::{
+    ControllerDeviceRepository, ControllerNetworkRepository, ProjectRepository, SessionRepository,
+};
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroize as _;
 
@@ -524,6 +526,8 @@ where
         descriptor.session_data_root.clone(),
     )
     .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+    let projects = ProjectRepository::open(descriptor.project_root.clone())
+        .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
     let events = ListenerEventSink::new(readiness);
     let decisions = PairingDecisionBroker::default();
     let repository_authority = Arc::new(RepositoryAuthority {
@@ -536,6 +540,7 @@ where
     let pairing: Arc<dyn ControllerPairingAuthority> = repository_authority.clone();
     let backends = Arc::new(HostBackendFactory::new(
         sessions,
+        projects,
         descriptor.runtime_parent.clone(),
     ));
     let mut source_key = [0; 32];

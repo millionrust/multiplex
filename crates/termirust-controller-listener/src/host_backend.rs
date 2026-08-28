@@ -5,20 +5,21 @@ use async_trait::async_trait;
 use rand::RngCore as _;
 use termirust_client::{ConnectOptions, HostClient, LocalEndpoint};
 use termirust_domain::{
-    AuthenticatedPeer, HostedSessionId, HostedSessionState, OccupantGeneration,
+    ActivityState, AuthenticatedPeer, HostedSessionId, HostedSessionState, OccupantGeneration,
 };
-use termirust_store::{SessionRepository, read_host_metadata};
+use termirust_store::{ProjectRepository, SessionRepository, read_host_metadata};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     ControllerBackendFactory, ControllerCommand, ControllerCommandEnvelope,
     ControllerConnectionBackend, ControllerResponse, ControllerSessionSummary, HostCommandContext,
-    ListenerError, ListenerErrorCode,
+    ListenerError, ListenerErrorCode, MAX_SESSION_PAGE_BYTES,
 };
 
 #[derive(Clone)]
 pub struct HostBackendFactory {
     sessions: SessionRepository,
+    projects: ProjectRepository,
     runtime_parent: PathBuf,
 }
 
@@ -27,15 +28,21 @@ impl std::fmt::Debug for HostBackendFactory {
         formatter
             .debug_struct("HostBackendFactory")
             .field("sessions", &"[REDACTED]")
+            .field("projects", &"[REDACTED]")
             .field("runtime_parent", &"[REDACTED]")
             .finish()
     }
 }
 
 impl HostBackendFactory {
-    pub fn new(sessions: SessionRepository, runtime_parent: impl Into<PathBuf>) -> Self {
+    pub fn new(
+        sessions: SessionRepository,
+        projects: ProjectRepository,
+        runtime_parent: impl Into<PathBuf>,
+    ) -> Self {
         Self {
             sessions,
+            projects,
             runtime_parent: runtime_parent.into(),
         }
     }
@@ -48,6 +55,7 @@ impl ControllerBackendFactory for HostBackendFactory {
     ) -> Result<Box<dyn ControllerConnectionBackend>, ListenerError> {
         Ok(Box::new(HostConnectionBackend {
             sessions: self.sessions.clone(),
+            projects: self.projects.clone(),
             runtime_parent: self.runtime_parent.clone(),
             clients: HashMap::new(),
         }))
@@ -56,6 +64,7 @@ impl ControllerBackendFactory for HostBackendFactory {
 
 struct HostConnectionBackend {
     sessions: SessionRepository,
+    projects: ProjectRepository,
     runtime_parent: PathBuf,
     clients: HashMap<HostedSessionId, HostClient>,
 }
@@ -199,11 +208,19 @@ impl HostConnectionBackend {
         limit: u16,
         expected_revision: Option<u64>,
     ) -> Result<Vec<ControllerResponse>, ListenerError> {
-        let snapshot = self
+        let session_snapshot = self
             .sessions
             .load()
             .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
-        let revision = snapshot.revision.get().saturating_add(1);
+        let project_snapshot = self
+            .projects
+            .load()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+        let revision = session_snapshot
+            .revision
+            .get()
+            .saturating_add(project_snapshot.revision.get())
+            .saturating_add(1);
         if expected_revision.is_some_and(|expected| expected != revision) {
             return Ok(vec![ControllerResponse::Error {
                 command_id,
@@ -213,32 +230,63 @@ impl HostConnectionBackend {
         }
         let start = usize::try_from(offset)
             .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?;
-        if start > snapshot.sessions.len() {
+        if start > session_snapshot.sessions.len() {
             return Ok(vec![ControllerResponse::Error {
                 command_id,
                 code: "page_out_of_range".into(),
                 completion_unknown: false,
             }]);
         }
-        let end = start
+        let requested_end = start
             .saturating_add(usize::from(limit))
-            .min(snapshot.sessions.len());
-        let next_offset =
-            (end < snapshot.sessions.len()).then(|| u32::try_from(end).unwrap_or(u32::MAX));
-        let sessions = snapshot.sessions[start..end]
+            .min(session_snapshot.sessions.len());
+        let project_names = project_snapshot
+            .projects
             .iter()
-            .map(|session| {
-                let occupant_generation = self.occupant_generation(session.id).ok();
-                ControllerSessionSummary {
-                    session_id: session.id,
-                    title: session.title.to_string(),
-                    lifecycle: lifecycle_code(session.lifecycle).to_owned(),
-                    occupant_generation,
-                    last_output_sequence: session.last_output_sequence,
-                    has_writer: false,
-                }
+            .map(|summary| {
+                (
+                    summary.project.id,
+                    summary.project.display_name.as_str().to_owned(),
+                )
             })
-            .collect();
+            .collect::<HashMap<_, _>>();
+        let group_names = project_snapshot
+            .groups
+            .iter()
+            .map(|group| (group.id, group.name.to_string()))
+            .collect::<HashMap<_, _>>();
+        let mut encoded_bytes = 512usize;
+        let mut sessions = Vec::new();
+        for session in &session_snapshot.sessions[start..requested_end] {
+            let summary = ControllerSessionSummary {
+                session_id: session.id,
+                title: session.title.to_string(),
+                project: project_names.get(&session.project_id).cloned(),
+                group: session
+                    .group_id
+                    .and_then(|group_id| group_names.get(&group_id).cloned()),
+                lifecycle: lifecycle_code(session.lifecycle).to_owned(),
+                activity: activity_code(session.activity.state).to_owned(),
+                occupant_generation: self.occupant_generation(session.id).ok(),
+                last_output_sequence: session.last_output_sequence,
+                has_writer: false,
+                unread: session.unread(),
+            };
+            let summary_bytes = serde_json::to_vec(&summary)
+                .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?
+                .len()
+                .saturating_add(1);
+            if !sessions.is_empty()
+                && encoded_bytes.saturating_add(summary_bytes) > MAX_SESSION_PAGE_BYTES
+            {
+                break;
+            }
+            encoded_bytes = encoded_bytes.saturating_add(summary_bytes);
+            sessions.push(summary);
+        }
+        let end = start.saturating_add(sessions.len());
+        let next_offset =
+            (end < session_snapshot.sessions.len()).then(|| u32::try_from(end).unwrap_or(u32::MAX));
         Ok(vec![ControllerResponse::Sessions {
             command_id,
             revision,
@@ -304,5 +352,16 @@ fn lifecycle_code(state: HostedSessionState) -> &'static str {
         HostedSessionState::Failed => "failed",
         HostedSessionState::Cancelled => "cancelled",
         HostedSessionState::Exited => "exited",
+    }
+}
+
+fn activity_code(state: ActivityState) -> &'static str {
+    match state {
+        ActivityState::Unknown => "unknown",
+        ActivityState::Idle => "idle",
+        ActivityState::Busy => "busy",
+        ActivityState::NeedsInput => "needs_input",
+        ActivityState::Done => "done",
+        ActivityState::Failed => "failed",
     }
 }
