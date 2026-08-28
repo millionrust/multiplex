@@ -101,6 +101,23 @@ struct SessionsDocument {
     sessions: Vec<HostedSession>,
 }
 
+pub(crate) fn read_session_health_source(
+    root: &Path,
+) -> Result<(Vec<u8>, Revision, Vec<HostedSession>), StoreError> {
+    let bytes = crate::projects::read_regular_bounded(
+        &root.join(SESSIONS_FILE),
+        SESSIONS_FILE,
+        MAX_SESSIONS_BYTES,
+    )?;
+    let mut document: SessionsDocument =
+        serde_json::from_slice(&bytes).map_err(|_| StoreError::Corrupt {
+            name: SESSIONS_FILE,
+        })?;
+    validate_document(&document)?;
+    sort_sessions(&mut document.sessions);
+    Ok((bytes, document.revision, document.sessions))
+}
+
 impl SessionRepository {
     pub fn open(
         root: impl Into<PathBuf>,

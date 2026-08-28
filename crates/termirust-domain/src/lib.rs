@@ -6,6 +6,7 @@ pub mod dev_url;
 pub mod group;
 pub mod host;
 pub mod id;
+pub mod indexes;
 pub mod notification;
 pub mod preset;
 pub mod project;
@@ -59,6 +60,11 @@ pub use host::{DurabilityWatermark, HostLifecycle, ProcessToken};
 pub use id::{
     ArtifactId, CommandId, GroupId, HostInstanceId, HostedSessionId, ManagedWorktreeId,
     OutputSequence, PositionError, PositionKey, PresetId, ProjectId, Revision,
+};
+pub use indexes::{
+    DERIVED_INDEX_VERSION, IndexBuildError, IndexSourceRevisions, PaletteDocumentKind,
+    PaletteDocumentStatus, PaletteIndex, PaletteIndexDocument, ProjectSessionIndex,
+    ProjectSessionIndexEntry, build_palette_index, build_project_session_index,
 };
 pub use notification::{
     ABSOLUTE_OS_NOTIFICATIONS_PER_HOUR, COALESCE_AFTER_EVENTS, DEFAULT_OS_NOTIFICATIONS_PER_HOUR,

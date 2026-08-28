@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "authoritative_files": [
+    "format.json",
+    "projects.json",
+    "sessions.json",
+    "presets.json"
+  ],
+  "derived_indexes": [
+    "project-session-v1.json",
+    "palette-v1.json"
+  ],
+  "maximum_sessions_per_project": 10000,
+  "repair_states": [
+    "planned",
+    "building_temp",
+    "verifying",
+    "publishing",
+    "complete"
+  ],
+  "crash_points": [
+    "after_temp_created",
+    "after_temp_write",
+    "after_temp_sync",
+    "after_journal_sync",
+    "after_publish"
+  ],
+  "forbidden_capabilities": [
+    "network",
+    "process_execution",
+    "project_content_read",
+    "authoritative_metadata_write",
+    "host_control"
+  ]
+}

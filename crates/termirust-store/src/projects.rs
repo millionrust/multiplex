@@ -175,6 +175,35 @@ struct ProjectsDocument {
     worktrees: Vec<WorktreeRegistration>,
 }
 
+pub(crate) struct ProjectHealthSource {
+    pub revision: Revision,
+    pub projects: Vec<Project>,
+    pub groups: Vec<Group>,
+}
+
+pub(crate) fn read_project_health_source(
+    root: &Path,
+) -> Result<(Vec<u8>, ProjectHealthSource), StoreError> {
+    let bytes = read_regular_bounded(&root.join(PROJECTS_FILE), PROJECTS_FILE, MAX_PROJECTS_BYTES)?;
+    let mut document: ProjectsDocument =
+        serde_json::from_slice(&bytes).map_err(|_| StoreError::Corrupt {
+            name: PROJECTS_FILE,
+        })?;
+    validate_document(&document).map_err(|_| StoreError::Corrupt {
+        name: PROJECTS_FILE,
+    })?;
+    sort_projects(&mut document.projects);
+    sort_groups(&mut document.groups);
+    Ok((
+        bytes,
+        ProjectHealthSource {
+            revision: document.revision,
+            projects: document.projects,
+            groups: document.groups,
+        },
+    ))
+}
+
 impl ProjectRepository {
     pub fn open(root: impl Into<PathBuf>) -> Result<Self, StoreError> {
         Self::open_with(
@@ -1044,7 +1073,7 @@ impl Drop for MetadataLock {
     }
 }
 
-fn read_regular_bounded(
+pub(crate) fn read_regular_bounded(
     path: &Path,
     name: &'static str,
     limit: u64,

@@ -50,6 +50,21 @@ struct PresetsDocument {
     presets: Vec<LaunchPreset>,
 }
 
+pub(crate) fn read_preset_health_source(
+    root: &Path,
+) -> Result<(Vec<u8>, Revision, Vec<LaunchPreset>), StoreError> {
+    let bytes = crate::projects::read_regular_bounded(
+        &root.join(PRESETS_FILE),
+        PRESETS_FILE,
+        MAX_PRESETS_BYTES,
+    )?;
+    let mut document: PresetsDocument =
+        serde_json::from_slice(&bytes).map_err(|_| StoreError::Corrupt { name: PRESETS_FILE })?;
+    validate_document(&document).map_err(StoreError::PresetDomain)?;
+    sort_presets(&mut document.presets);
+    Ok((bytes, document.revision, document.presets))
+}
+
 impl PresetRepository {
     pub fn open(root: impl Into<PathBuf>) -> Result<Self, StoreError> {
         Self::open_with(root, Arc::new(SystemAtomicWriter))
