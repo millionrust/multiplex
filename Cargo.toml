@@ -25,6 +25,7 @@ members = [
     "crates/termirust-protocol",
     "crates/termirust-store",
     "crates/termirust-ui-contract",
+    "crates/termirust-update-trust",
 ]
 resolver = "3"
 
