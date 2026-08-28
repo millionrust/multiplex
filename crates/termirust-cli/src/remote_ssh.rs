@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Mutex;
 use std::task::{Context, Poll};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
 use crossterm::event::{
@@ -17,7 +17,8 @@ use rand::RngCore as _;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use termirust_client::{
-    AsyncSshControllerProcess, SshControllerErrorCode, SshControllerTarget, resolve_system_ssh,
+    AsyncSshControllerProcess, SshControllerErrorCode, SshControllerTarget, SshOperationClass,
+    SshReconnectDecision, SshReconnectPolicy, resolve_system_ssh,
 };
 use termirust_controller_listener::{
     ApprovalDecision as WireApprovalDecision, ControllerClientChannel, ControllerCommand,
@@ -49,7 +50,7 @@ const ROUTE_TIMEOUT: Duration = Duration::from_secs(30);
 const COMMAND_TIMEOUT_MILLIS: u64 = 10_000;
 const RESPONSE_LIMIT: usize = 4_096;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct StoredControllerProfile {
     schema_version: u16,
@@ -389,7 +390,7 @@ impl SshControllerCommandExecutor for SystemSshControllerExecutor {
             .enable_all()
             .build()
             .map_err(|_| route_unavailable())?;
-        runtime.block_on(execute_route(
+        runtime.block_on(execute_route_with_reconnect(
             executable,
             command,
             profile,
@@ -398,6 +399,84 @@ impl SshControllerCommandExecutor for SystemSshControllerExecutor {
             cancellation,
         ))
     }
+}
+
+async fn execute_route_with_reconnect(
+    executable: PathBuf,
+    command: ControllerSshCommand,
+    profile: StoredControllerProfile,
+    private_key: StaticPrivateKey,
+    input: Option<Vec<u8>>,
+    cancellation: &Cancellation,
+) -> Result<CliData, CliError> {
+    let operation_class = ssh_operation_class(&command.action);
+    let policy = SshReconnectPolicy::default();
+    let started = Instant::now();
+    let mut attempts_completed = 0_u8;
+    loop {
+        let result = execute_route(
+            executable.clone(),
+            command.clone(),
+            profile.clone(),
+            private_key.clone(),
+            input.clone(),
+            cancellation,
+        )
+        .await;
+        match result {
+            Ok(mut data) => {
+                if attempts_completed > 0
+                    && let CliData::ControllerSsh(route) = &mut data
+                {
+                    route.reconnect_attempt = Some(attempts_completed);
+                }
+                return Ok(data);
+            }
+            Err(error) if !retryable_route_error(&error) => return Err(error),
+            Err(error) => {
+                let mut entropy = [0_u8; 8];
+                rand::rngs::OsRng
+                    .try_fill_bytes(&mut entropy)
+                    .map_err(|_| route_unavailable())?;
+                match policy.decide(
+                    operation_class,
+                    attempts_completed,
+                    started.elapsed(),
+                    u64::from_be_bytes(entropy),
+                ) {
+                    SshReconnectDecision::RetryAfter(delay) => {
+                        attempts_completed = attempts_completed.saturating_add(1);
+                        tokio::select! {
+                            () = tokio::time::sleep(delay) => {}
+                            () = wait_for_cancellation(cancellation) => {
+                                return Err(CliError::new(
+                                    ErrorCode::Cancelled,
+                                    "remote Controller reconnect was cancelled",
+                                    "The remote Host and durable session continue running.",
+                                ));
+                            }
+                        }
+                    }
+                    SshReconnectDecision::Stop => return Err(error),
+                }
+            }
+        }
+    }
+}
+
+fn ssh_operation_class(action: &ControllerSshAction) -> SshOperationClass {
+    match action {
+        ControllerSshAction::Sessions
+        | ControllerSshAction::Attach {
+            request_control: false,
+            ..
+        } => SshOperationClass::IdempotentRead,
+        _ => SshOperationClass::Mutation,
+    }
+}
+
+fn retryable_route_error(error: &CliError) -> bool {
+    matches!(error.code, ErrorCode::Unavailable | ErrorCode::Timeout)
 }
 
 struct ChildDuplex {
@@ -1618,6 +1697,11 @@ fn map_listener(error: ListenerError) -> CliError {
             "authoritative remote Host is unavailable",
             "Keep the remote TermiRust Host running and retry.",
         ),
+        ListenerErrorCode::Io => CliError::new(
+            ErrorCode::Unavailable,
+            "remote Controller connection was interrupted",
+            "Check SSH connectivity; read-only commands retry within the bounded route budget.",
+        ),
         _ => protocol_failure(),
     }
 }
@@ -1855,5 +1939,23 @@ mod tests {
             .code,
             ErrorCode::Conflict
         );
+    }
+
+    #[test]
+    fn production_retry_classification_excludes_every_mutation() {
+        assert_eq!(
+            ssh_operation_class(&ControllerSshAction::Sessions),
+            SshOperationClass::IdempotentRead
+        );
+        assert_eq!(
+            ssh_operation_class(&ControllerSshAction::Pair),
+            SshOperationClass::Mutation
+        );
+        assert!(retryable_route_error(&route_unavailable()));
+        assert!(!retryable_route_error(&CliError::new(
+            ErrorCode::AuthenticationDenied,
+            "denied",
+            "verify credentials",
+        )));
     }
 }
