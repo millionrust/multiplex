@@ -1250,6 +1250,20 @@ impl Localizer {
         }
     }
 
+    pub fn format_static(&self, id: MessageId) -> Result<String, MessageError> {
+        let spec = MESSAGE_SPECS
+            .iter()
+            .find(|spec| spec.id == id)
+            .ok_or_else(|| MessageError::new(format!("unknown MessageId {}", id.key())))?;
+        if !spec.args.is_empty() {
+            return Err(MessageError::new(format!(
+                "MessageId {} requires typed arguments",
+                id.key()
+            )));
+        }
+        self.try_format(id, &[])
+    }
+
     fn try_format(
         &self,
         id: MessageId,

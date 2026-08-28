@@ -1,4 +1,28 @@
 # Generated ar-XB pseudo-catalog. Do not edit; run generate-messages.
+accessibility-lab-bridge-error = ⁧) elbaliavanu egdirb ytilibisseccA⁩{ $reason }⁧.(⁩
+accessibility-lab-confirm-action = ⁧noitca ecnerefer mrifnoC⁩
+accessibility-lab-description = ⁧.atad devas gnignahc tuohtiw scitnames redaer-neercs dna sucof draobyek yfireV⁩
+accessibility-lab-destructive-action = ⁧noitamrifnoc evitcurtsed tseT⁩
+accessibility-lab-destructive-confirm = ⁧noitca ecnerefer mrifnoC⁩
+accessibility-lab-dialog-description = ⁧.noitca efas eht esoohc uoy litnu golaid siht edisni syats sucoF⁩
+accessibility-lab-dialog-title = ⁧golaid ecnerefeR⁩
+accessibility-lab-disabled-action = ⁧noitca ecnerefer elbaliavanU⁩
+accessibility-lab-disabled-reason = ⁧.noitacifirev etats rof yllanoitnetni delbasiD⁩
+accessibility-lab-field = ⁧lebal noisseS⁩
+accessibility-lab-field-error = ⁧.gniunitnoc erofeb lebal a retnE⁩
+accessibility-lab-field-help = ⁧.weiv ecnerefer siht rof lebal yraropmet a retnE⁩
+accessibility-lab-landmark = ⁧slortnoc ecnerefeR⁩
+accessibility-lab-list = ⁧snoisses elpmaxE⁩
+accessibility-lab-list-first = ⁧noisses dliuB⁩
+accessibility-lab-list-second = ⁧noisses weiveR⁩
+accessibility-lab-menu = ⁧snoitca ecnerefeR⁩
+accessibility-lab-menu-item = ⁧sutats tnerruc ecnuonnA⁩
+accessibility-lab-progress = ⁧noitarepo ecnerefeR⁩
+accessibility-lab-progress-value = ⁧ rof ssergorP⁩{ $label }⁧ :⁩{ $value }⁧tnecrep ⁩
+accessibility-lab-safe-default = ⁧atad peeK⁩
+accessibility-lab-skip-action = ⁧slortnoc ecnerefer ot pikS⁩
+accessibility-lab-status-ready = ⁧.ydaer yrotarobal ytilibisseccA⁩
+accessibility-lab-title = ⁧yrotarobal ytilibisseccA⁩
 activity-age-days = { $count ->
     [many] { $count }⁧oga syad ⁩
     [one] ⁧oga yad 1⁩

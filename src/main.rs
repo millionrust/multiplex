@@ -30,6 +30,7 @@ const CONTROLLER_LISTENER_MODE: &str = "--controller-listener";
 const ARTIFACT_PREVIEW_MODE: &str = "--artifact-preview-worker";
 const CONTROLLER_BRIDGE_COMMAND: &str = "controller-bridge";
 const CONTROLLER_BRIDGE_STDIO: &str = "--stdio";
+const ACCESSIBILITY_HARNESS_MODE: &str = "--accessibility-harness";
 
 fn run_session_host_mode() -> Result<(), termirust_session_host::HostError> {
     use std::io::Write as _;
@@ -214,6 +215,11 @@ fn init_file_logging() {
 }
 
 fn main() {
+    #[cfg(target_os = "macos")]
+    if std::env::args().nth(1).as_deref() == Some(ACCESSIBILITY_HARNESS_MODE) {
+        crate::ui::accessibility::harness::run();
+        return;
+    }
     if std::env::args().nth(1).as_deref() == Some(CONTROLLER_BRIDGE_COMMAND) {
         if std::env::args().nth(2).as_deref() != Some(CONTROLLER_BRIDGE_STDIO)
             || std::env::args().nth(3).is_some()

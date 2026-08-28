@@ -178,6 +178,7 @@ pub struct SemanticNode {
     pub role: SemanticRole,
     pub name: Option<SemanticText>,
     pub description: Option<SemanticText>,
+    pub value: Option<SemanticValue>,
     pub bounds: SemanticBounds,
     pub state: SemanticState,
     pub relations: Vec<SemanticRelation>,
@@ -192,11 +193,29 @@ impl SemanticNode {
             role,
             name: None,
             description: None,
+            value: None,
             bounds: SemanticBounds::default(),
             state: SemanticState::default(),
             relations: Vec::new(),
             actions: BTreeSet::new(),
         }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SemanticValue {
+    PublicText(SemanticText),
+    Boolean(bool),
+    Number {
+        current: i64,
+        minimum: i64,
+        maximum: i64,
+    },
+}
+
+impl SemanticValue {
+    pub fn public_user_text(value: impl Into<String>) -> Result<Self, SemanticError> {
+        Ok(Self::PublicText(SemanticText::user_text(value)?))
     }
 }
 
@@ -301,6 +320,20 @@ fn validate_node(
     if let Some(SemanticText::UserText(text)) = &node.description {
         validate_text(text)?;
     }
+    match &node.value {
+        Some(SemanticValue::PublicText(SemanticText::UserText(text))) => validate_text(text)?,
+        Some(SemanticValue::Number {
+            current,
+            minimum,
+            maximum,
+        }) if minimum > maximum || current < minimum || current > maximum => {
+            return Err(SemanticError::new(
+                SemanticErrorCode::InvalidValue,
+                Some(node.id),
+            ));
+        }
+        _ => {}
+    }
     if node.relations.len() > MAX_SEMANTIC_RELATIONS {
         return Err(SemanticError::new(
             SemanticErrorCode::ResourceLimit,
@@ -360,6 +393,7 @@ pub enum SemanticErrorCode {
     StaleNode,
     ReusedNode,
     IdentityChanged,
+    InvalidValue,
     UnsafeText,
     ResourceLimit,
     BridgeUnavailable,

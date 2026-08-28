@@ -3095,3 +3095,115 @@ description = "Controller pairing codes match action"
 id = "remote-devices-pairing-reject-action"
 context = "Safe-default action that rejects Controller pairing."
 description = "Reject Controller pairing action"
+
+[[messages]]
+id = "accessibility-lab-title"
+context = "Development-only title for the accessibility reference laboratory."
+description = "Accessibility laboratory title"
+[[messages]]
+id = "accessibility-lab-description"
+context = "Development-only summary of the accessibility reference laboratory."
+description = "Accessibility laboratory description"
+[[messages]]
+id = "accessibility-lab-landmark"
+context = "Name of the main landmark in the accessibility reference laboratory."
+description = "Accessibility laboratory landmark"
+[[messages]]
+id = "accessibility-lab-skip-action"
+context = "Action that moves focus to the accessibility laboratory's main controls."
+description = "Skip to controls action"
+[[messages]]
+id = "accessibility-lab-list"
+context = "Name of the selectable reference list."
+description = "Reference list label"
+[[messages]]
+id = "accessibility-lab-list-first"
+context = "First non-user reference item in the accessibility laboratory."
+description = "First reference list item"
+[[messages]]
+id = "accessibility-lab-list-second"
+context = "Second non-user reference item in the accessibility laboratory."
+description = "Second reference list item"
+[[messages]]
+id = "accessibility-lab-field"
+context = "Label for the reference text field."
+description = "Reference field label"
+[[messages]]
+id = "accessibility-lab-field-help"
+context = "Help text for the reference text field."
+description = "Reference field help"
+[[messages]]
+id = "accessibility-lab-field-error"
+context = "Validation error for the empty reference text field."
+description = "Reference field validation error"
+[[messages]]
+id = "accessibility-lab-menu"
+context = "Name of the reference actions menu."
+description = "Reference menu label"
+[[messages]]
+id = "accessibility-lab-menu-item"
+context = "Reference menu action that changes no production data."
+description = "Reference menu item"
+[[messages]]
+id = "accessibility-lab-dialog-title"
+context = "Title of the reference modal dialog."
+description = "Reference dialog title"
+[[messages]]
+id = "accessibility-lab-dialog-description"
+context = "Description of the reference modal and safe default."
+description = "Reference dialog description"
+[[messages]]
+id = "accessibility-lab-progress"
+context = "Name of the cancellable reference progress control."
+description = "Reference progress label"
+[[messages]]
+id = "accessibility-lab-status-ready"
+context = "Polite live status after the accessibility laboratory is ready."
+description = "Accessibility laboratory ready status"
+[[messages]]
+id = "accessibility-lab-disabled-action"
+context = "Name of a deliberately disabled reference action."
+description = "Disabled reference action"
+[[messages]]
+id = "accessibility-lab-disabled-reason"
+context = "Reason the reference action is disabled."
+description = "Disabled reference action reason"
+[[messages]]
+id = "accessibility-lab-destructive-action"
+context = "Action that opens the reference destructive confirmation."
+description = "Reference destructive action"
+[[messages]]
+id = "accessibility-lab-destructive-confirm"
+context = "Title of the reference destructive confirmation dialog."
+description = "Reference destructive confirmation title"
+[[messages]]
+id = "accessibility-lab-safe-default"
+context = "Safe-default action in the reference destructive confirmation."
+description = "Reference safe-default action"
+[[messages]]
+id = "accessibility-lab-confirm-action"
+context = "Destructive choice in the reference confirmation; it changes no saved data."
+description = "Reference confirmation action"
+[[messages]]
+id = "accessibility-lab-progress-value"
+context = "Current percentage for the reference progress control."
+description = "Reference progress value"
+[[messages.args]]
+name = "label"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "value"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "accessibility-lab-bridge-error"
+context = "Development-only error when the native accessibility bridge cannot attach."
+description = "Accessibility bridge error"
+[[messages.args]]
+name = "reason"
+type = "Text"
+sensitivity = "public"
+bidi = "none"

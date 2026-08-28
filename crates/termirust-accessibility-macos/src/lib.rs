@@ -96,7 +96,7 @@ mod macos {
         AccessibilityBridge, LiveRegionPoliteness, MessageId, SemanticAction,
         SemanticActionRequest, SemanticActionValue, SemanticChange, SemanticError,
         SemanticErrorCode, SemanticNode, SemanticNodeId, SemanticPatch, SemanticRelationKind,
-        SemanticRole, SemanticText,
+        SemanticRole, SemanticText, SemanticValue,
     };
 
     type Id = *mut Object;
@@ -417,8 +417,36 @@ mod macos {
     ) -> Result<(), SemanticError> {
         let role = ns_string(role_name(node.role));
         let identifier = ns_string(&format!("termirust.ax.{generation}.{}", node.id.get()));
-        let label = resolve_text(node.name.as_ref(), resolver).map(|text| ns_string(&text));
-        let help = resolve_text(node.description.as_ref(), resolver).map(|text| ns_string(&text));
+        let label = node
+            .name
+            .as_ref()
+            .map(|text| {
+                resolve_text(Some(text), resolver)
+                    .map(|text| ns_string(&text))
+                    .ok_or_else(|| {
+                        SemanticError::new(SemanticErrorCode::MissingName, Some(node.id))
+                    })
+            })
+            .transpose()?;
+        let help = node
+            .description
+            .as_ref()
+            .map(|text| {
+                resolve_text(Some(text), resolver)
+                    .map(|text| ns_string(&text))
+                    .ok_or_else(|| {
+                        SemanticError::new(SemanticErrorCode::MissingName, Some(node.id))
+                    })
+            })
+            .transpose()?;
+        let public_text_value = match node.value.as_ref() {
+            Some(SemanticValue::PublicText(text)) => {
+                Some(ns_string(&resolve_text(Some(text), resolver).ok_or_else(
+                    || SemanticError::new(SemanticErrorCode::InvalidValue, Some(node.id)),
+                )?))
+            }
+            _ => None,
+        };
         let bounds = NSRect::new(
             NSPoint::new(f64::from(node.bounds.x), f64::from(node.bounds.y)),
             NSSize::new(f64::from(node.bounds.width), f64::from(node.bounds.height)),
@@ -442,6 +470,29 @@ mod macos {
                 let value: Id =
                     msg_send![class!(NSNumber), numberWithBool: if checked { YES } else { NO }];
                 let _: () = msg_send![element, setAccessibilityValue: value];
+            }
+            match &node.value {
+                Some(SemanticValue::PublicText(_)) => {
+                    let _: () = msg_send![element, setAccessibilityValue: **public_text_value.as_ref().expect("public semantic text was resolved")];
+                }
+                Some(SemanticValue::Boolean(value)) => {
+                    let value: Id =
+                        msg_send![class!(NSNumber), numberWithBool: if *value { YES } else { NO }];
+                    let _: () = msg_send![element, setAccessibilityValue: value];
+                }
+                Some(SemanticValue::Number {
+                    current,
+                    minimum,
+                    maximum,
+                }) => {
+                    let current: Id = msg_send![class!(NSNumber), numberWithLongLong: *current];
+                    let minimum: Id = msg_send![class!(NSNumber), numberWithLongLong: *minimum];
+                    let maximum: Id = msg_send![class!(NSNumber), numberWithLongLong: *maximum];
+                    let _: () = msg_send![element, setAccessibilityValue: current];
+                    let _: () = msg_send![element, setAccessibilityMinValue: minimum];
+                    let _: () = msg_send![element, setAccessibilityMaxValue: maximum];
+                }
+                None => {}
             }
             let _: () = msg_send![element, setAccessibilityLabel: label.as_ref().map_or(nil, |value| **value)];
             let _: () = msg_send![element, setAccessibilityHelp: help.as_ref().map_or(nil, |value| **value)];

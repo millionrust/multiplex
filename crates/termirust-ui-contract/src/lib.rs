@@ -1,3 +1,4 @@
+pub mod accessibility_lab;
 mod contract;
 pub mod generated;
 pub mod lint;
@@ -5,6 +6,7 @@ pub mod localization_lint;
 pub mod messages;
 pub mod semantics;
 
+pub use accessibility_lab::*;
 pub use contract::{
     ContractError, GenerationArtifacts, TokenManifest, generate_artifacts, load_manifest,
     parse_manifest,

@@ -1,4 +1,28 @@
 # Generated en-XA pseudo-catalog. Do not edit; run generate-messages.
+accessibility-lab-bridge-error = ⟦Åççéššîƀîļîţý ƀŕîðĝé ûñåṽåîļåƀļé (~~~~~~~~~~~~⟧{ $reason }⟦).⟧
+accessibility-lab-confirm-action = ⟦Çøñƒîŕɱ ŕéƒéŕéñçé åçţîøñ~~~~~~~~⟧
+accessibility-lab-description = ⟦Ṽéŕîƒý ķéýƀøåŕð ƒøçûš åñð šçŕééñ-ŕéåðéŕ šéɱåñţîçš ŵîţĥøûţ çĥåñĝîñĝ šåṽéð ðåţå.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+accessibility-lab-destructive-action = ⟦Ţéšţ ðéšţŕûçţîṽé çøñƒîŕɱåţîøñ~~~~~~~~~~⟧
+accessibility-lab-destructive-confirm = ⟦Çøñƒîŕɱ ŕéƒéŕéñçé åçţîøñ~~~~~~~~⟧
+accessibility-lab-dialog-description = ⟦Ƒøçûš šţåýš îñšîðé ţĥîš ðîåļøĝ ûñţîļ ýøû çĥøøšé ţĥé šåƒé åçţîøñ.~~~~~~~~~~~~~~~~~~~~~~~~⟧
+accessibility-lab-dialog-title = ⟦Ŕéƒéŕéñçé ðîåļøĝ~~~~~⟧
+accessibility-lab-disabled-action = ⟦Ûñåṽåîļåƀļé ŕéƒéŕéñçé åçţîøñ~~~~~~~~~~⟧
+accessibility-lab-disabled-reason = ⟦Ðîšåƀļéð îñţéñţîøñåļļý ƒøŕ šţåţé ṽéŕîƒîçåţîøñ.~~~~~~~~~~~~~~~~~⟧
+accessibility-lab-field = ⟦Šéššîøñ ļåƀéļ~~~~⟧
+accessibility-lab-field-error = ⟦Éñţéŕ å ļåƀéļ ƀéƒøŕé çøñţîñûîñĝ.~~~~~~~~~~~⟧
+accessibility-lab-field-help = ⟦Éñţéŕ å ţéɱþøŕåŕý ļåƀéļ ƒøŕ ţĥîš ŕéƒéŕéñçé ṽîéŵ.~~~~~~~~~~~~~~~~~~⟧
+accessibility-lab-landmark = ⟦Ŕéƒéŕéñçé çøñţŕøļš~~~~~~⟧
+accessibility-lab-list = ⟦Éẋåɱþļé šéššîøñš~~~~~⟧
+accessibility-lab-list-first = ⟦Ɓûîļð šéššîøñ~~~~⟧
+accessibility-lab-list-second = ⟦Ŕéṽîéŵ šéššîøñ~~~~⟧
+accessibility-lab-menu = ⟦Ŕéƒéŕéñçé åçţîøñš~~~~~⟧
+accessibility-lab-menu-item = ⟦Åññøûñçé çûŕŕéñţ šţåţûš~~~~~~~~⟧
+accessibility-lab-progress = ⟦Ŕéƒéŕéñçé øþéŕåţîøñ~~~~~~⟧
+accessibility-lab-progress-value = ⟦Þŕøĝŕéšš ƒøŕ ~~~~⟧{ $label }⟦: ⟧{ $value }⟦ þéŕçéñţ~~⟧
+accessibility-lab-safe-default = ⟦Ķééþ ðåţå~~⟧
+accessibility-lab-skip-action = ⟦Šķîþ ţø ŕéƒéŕéñçé çøñţŕøļš~~~~~~~~~⟧
+accessibility-lab-status-ready = ⟦Åççéššîƀîļîţý ļåƀøŕåţøŕý ŕéåðý.~~~~~~~~~~~⟧
+accessibility-lab-title = ⟦Åççéššîƀîļîţý ļåƀøŕåţøŕý~~~~~~~~⟧
 activity-age-days = { $count ->
     [many] { $count }⟦ ðåýš åĝø~~⟧
     [one] ⟦1 ðåý åĝø~~⟧
