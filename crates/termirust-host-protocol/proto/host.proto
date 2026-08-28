@@ -22,6 +22,7 @@ enum Capability {
   CAPABILITY_STOP = 5;
   CAPABILITY_INTERRUPT = 6;
   CAPABILITY_ACTIVITY_SNAPSHOT = 7;
+  CAPABILITY_WRITER_LEASE = 8;
 }
 
 message Limits {
@@ -38,6 +39,7 @@ message HandshakeRequest {
   repeated Capability capabilities = 3;
   Limits limits = 4;
   bytes client_nonce = 5;
+  bool request_writer_lease = 6;
 }
 
 message HandshakeResponse {
@@ -140,6 +142,18 @@ message ActivitySnapshotRequest {
 
 message DetachRequest {
   bytes session_id = 1;
+}
+
+message WriterLeaseRequest {
+  bytes session_id = 1;
+  bytes command_id = 2;
+  bool acquire = 3;
+}
+
+message WriterLeaseEvent {
+  bytes session_id = 1;
+  bytes command_id = 2;
+  bool held = 3;
 }
 
 message CommandResult {
@@ -283,5 +297,7 @@ message EnvelopePayload {
     LifecycleEvent lifecycle_event = 19;
     ActivityEvent activity_event = 20;
     WarningEvent warning_event = 21;
+    WriterLeaseRequest writer_lease_request = 22;
+    WriterLeaseEvent writer_lease_event = 23;
   }
 }

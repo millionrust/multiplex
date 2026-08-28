@@ -2,8 +2,8 @@ use serde::Deserialize;
 use termirust_domain::HostedSessionId;
 use termirust_host_protocol::wire::{self, envelope_payload};
 use termirust_host_protocol::{
-    CURRENT_PROTOCOL, CapabilitySet, FrameKind, PreservedPayload, WireEnvelope, encode_payload,
-    encode_session_id, local_limits,
+    CURRENT_PROTOCOL, FrameKind, PreservedPayload, WireEnvelope, encode_payload, encode_session_id,
+    local_limits,
 };
 use uuid::Uuid;
 
@@ -32,9 +32,10 @@ fn expected_frame() -> WireEnvelope {
             wire::HandshakeRequest {
                 session_id: encode_session_id(session_id),
                 protocol: Some(CURRENT_PROTOCOL.into()),
-                capabilities: CapabilitySet::all_local().to_wire(),
+                capabilities: golden_capabilities(),
                 limits: Some(local_limits().into()),
                 client_nonce: vec![0x22; 32],
+                request_writer_lease: false,
             },
         )),
     };
@@ -46,6 +47,10 @@ fn expected_frame() -> WireEnvelope {
         request_id: [0x11; 16],
         payload: encode_payload(&payload),
     }
+}
+
+fn golden_capabilities() -> Vec<i32> {
+    (1..=7).collect()
 }
 
 #[test]
@@ -73,7 +78,7 @@ fn golden_json_manifest_describes_binary_without_user_content() {
     assert_eq!(manifest.frame_bytes, GOLDEN_FRAME.len());
     assert_eq!(manifest.request_id_hex.len(), 32);
     assert_eq!(manifest.session_id, "00000000-0000-0000-0000-000000000001");
-    assert_eq!(manifest.capabilities, CapabilitySet::all_local().to_wire());
+    assert_eq!(manifest.capabilities, golden_capabilities());
     assert!(!GOLDEN_MANIFEST.contains("path"));
     assert!(!GOLDEN_MANIFEST.contains("password"));
     assert!(!GOLDEN_MANIFEST.contains("token"));

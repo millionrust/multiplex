@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{BridgeCommand, BridgeCommandKind, ListenerError, ListenerErrorCode};
 
 const CONTROLLER_COMMAND_VERSION: u16 = 1;
-const MAX_INPUT_BYTES: usize = 60 * 1024;
+const MAX_INPUT_BYTES: usize = 16 * 1024;
 const MAX_ERROR_CODE_BYTES: usize = 64;
 const MAX_SESSION_TITLE_SCALARS: usize = 256;
 pub const MAX_SESSION_PAGE_RECORDS: u16 = 1_000;
@@ -90,6 +90,14 @@ pub enum ControllerCommand {
         occupant_generation: OccupantGeneration,
         bytes: Vec<u8>,
     },
+    AcquireWriter {
+        session_id: HostedSessionId,
+        occupant_generation: OccupantGeneration,
+    },
+    ReleaseWriter {
+        session_id: HostedSessionId,
+        occupant_generation: OccupantGeneration,
+    },
     Resize {
         session_id: HostedSessionId,
         occupant_generation: OccupantGeneration,
@@ -113,6 +121,8 @@ impl ControllerCommand {
         match self {
             Self::ListSessions { .. } => BridgeCommandKind::ListSessions,
             Self::Attach { .. } => BridgeCommandKind::Attach,
+            Self::AcquireWriter { .. } => BridgeCommandKind::AcquireWriter,
+            Self::ReleaseWriter { .. } => BridgeCommandKind::ReleaseWriter,
             Self::Input { .. } => BridgeCommandKind::Input,
             Self::Resize { .. } => BridgeCommandKind::Resize,
             Self::Approval { .. } => BridgeCommandKind::Approval,
@@ -124,6 +134,8 @@ impl ControllerCommand {
         match self {
             Self::ListSessions { .. } => None,
             Self::Attach { session_id, .. }
+            | Self::AcquireWriter { session_id, .. }
+            | Self::ReleaseWriter { session_id, .. }
             | Self::Input { session_id, .. }
             | Self::Resize { session_id, .. }
             | Self::Approval { session_id, .. }
@@ -135,6 +147,14 @@ impl ControllerCommand {
         match self {
             Self::ListSessions { .. } => None,
             Self::Attach {
+                occupant_generation,
+                ..
+            }
+            | Self::AcquireWriter {
+                occupant_generation,
+                ..
+            }
+            | Self::ReleaseWriter {
                 occupant_generation,
                 ..
             }
@@ -170,7 +190,11 @@ impl ControllerCommand {
             {
                 Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
             }
-            Self::ListSessions { .. } | Self::Detach { .. } | Self::Approval { .. } => Ok(()),
+            Self::ListSessions { .. }
+            | Self::Detach { .. }
+            | Self::Approval { .. }
+            | Self::AcquireWriter { .. }
+            | Self::ReleaseWriter { .. } => Ok(()),
             Self::Attach { columns, rows, .. } | Self::Resize { columns, rows, .. }
                 if *columns == 0 || *rows == 0 || *columns > 1_000 || *rows > 1_000 =>
             {
@@ -438,6 +462,35 @@ mod tests {
         command.version = 2;
         assert!(encode_command(&command).is_err());
         assert!(decode_command(br#"{"version":1,"unknown":true}"#).is_err());
+
+        let acquire = ControllerCommandEnvelope::new(
+            CommandId::new(),
+            1,
+            2,
+            ControllerCommand::AcquireWriter {
+                session_id: HostedSessionId::new(),
+                occupant_generation: OccupantGeneration::new(1),
+            },
+        );
+        assert_eq!(
+            decode_command(&encode_command(&acquire).unwrap()).unwrap(),
+            acquire
+        );
+
+        let oversized_input = ControllerCommandEnvelope::new(
+            CommandId::new(),
+            1,
+            2,
+            ControllerCommand::Input {
+                session_id: HostedSessionId::new(),
+                occupant_generation: OccupantGeneration::new(1),
+                bytes: vec![0; MAX_INPUT_BYTES + 1],
+            },
+        );
+        assert_eq!(
+            encode_command(&oversized_input).unwrap_err().code,
+            ListenerErrorCode::FrameTooLarge
+        );
     }
 
     #[test]

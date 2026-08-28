@@ -38,6 +38,7 @@ pub struct ConnectOptions {
     pub limits: NegotiatedLimits,
     pub client_nonce: [u8; HANDSHAKE_NONCE_BYTES],
     pub handshake_timeout: Duration,
+    pub request_writer_lease: bool,
 }
 
 impl ConnectOptions {
@@ -49,6 +50,17 @@ impl ConnectOptions {
             limits: local_limits(),
             client_nonce,
             handshake_timeout: Duration::from_secs(2),
+            request_writer_lease: true,
+        }
+    }
+
+    pub fn local_read_only(
+        session_id: HostedSessionId,
+        client_nonce: [u8; HANDSHAKE_NONCE_BYTES],
+    ) -> Self {
+        Self {
+            request_writer_lease: false,
+            ..Self::local(session_id, client_nonce)
         }
     }
 }
@@ -180,6 +192,7 @@ impl HostClient {
             capabilities: self.options.capabilities.to_wire(),
             limits: Some(self.options.limits.into()),
             client_nonce: self.options.client_nonce.to_vec(),
+            request_writer_lease: self.options.request_writer_lease,
         };
         let request_id = self.next_request_id();
         let response = self
@@ -510,6 +523,42 @@ impl HostClient {
         .await?;
         self.disconnect();
         Ok(())
+    }
+
+    pub async fn set_writer_lease(
+        &mut self,
+        command_id: CommandId,
+        acquire: bool,
+        cancel: &CancellationToken,
+    ) -> Result<bool, ClientError> {
+        self.require_ready()?;
+        self.require_capability(wire::Capability::WriterLease)?;
+        let request_id = command_id.as_uuid().into_bytes();
+        let response = self
+            .exchange(
+                FrameKind::WriterLeaseRequest,
+                request_id,
+                envelope_payload::Message::WriterLeaseRequest(wire::WriterLeaseRequest {
+                    session_id: encode_session_id(self.options.session_id),
+                    command_id: encode_command_id(command_id),
+                    acquire,
+                }),
+                cancel,
+            )
+            .await?;
+        match response.message {
+            Some(envelope_payload::Message::WriterLeaseEvent(event)) => {
+                self.require_session(&event.session_id)?;
+                if event.command_id != encode_command_id(command_id) {
+                    return Err(ClientError::new(ClientErrorCode::MalformedFrame));
+                }
+                Ok(event.held)
+            }
+            Some(envelope_payload::Message::ProtocolError(error)) => {
+                Err(ClientError::protocol(&error))
+            }
+            _ => Err(ClientError::new(ClientErrorCode::MalformedFrame)),
+        }
     }
 
     async fn mutation(

@@ -98,6 +98,7 @@ impl CapabilitySet {
                 wire::Capability::Stop,
                 wire::Capability::Interrupt,
                 wire::Capability::ActivitySnapshot,
+                wire::Capability::WriterLease,
             ]
             .into_iter()
             .map(i32::from)
@@ -320,6 +321,8 @@ pub fn payload_kind(value: &wire::EnvelopePayload) -> Option<FrameKind> {
         envelope_payload::Message::LifecycleEvent(_) => FrameKind::LifecycleEvent,
         envelope_payload::Message::ActivityEvent(_) => FrameKind::ActivityEvent,
         envelope_payload::Message::WarningEvent(_) => FrameKind::WarningEvent,
+        envelope_payload::Message::WriterLeaseRequest(_) => FrameKind::WriterLeaseRequest,
+        envelope_payload::Message::WriterLeaseEvent(_) => FrameKind::WriterLeaseEvent,
     })
 }
 

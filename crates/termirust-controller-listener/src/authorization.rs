@@ -9,6 +9,8 @@ use crate::{ListenerError, ListenerErrorCode};
 pub enum BridgeCommandKind {
     ListSessions,
     Attach,
+    AcquireWriter,
+    ReleaseWriter,
     Input,
     Resize,
     Approval,
@@ -20,14 +22,19 @@ impl BridgeCommandKind {
         match self {
             Self::ListSessions => ControllerCapability::ObserveSessions,
             Self::Attach | Self::Detach => ControllerCapability::AttachOutput,
-            Self::Input => ControllerCapability::SendInput,
+            Self::AcquireWriter | Self::ReleaseWriter | Self::Input => {
+                ControllerCapability::SendInput
+            }
             Self::Resize => ControllerCapability::Resize,
             Self::Approval => ControllerCapability::RespondToApproval,
         }
     }
 
     pub const fn requires_writer_lease(self) -> bool {
-        matches!(self, Self::Input | Self::Resize | Self::Approval)
+        matches!(
+            self,
+            Self::ReleaseWriter | Self::Input | Self::Resize | Self::Approval
+        )
     }
 }
 

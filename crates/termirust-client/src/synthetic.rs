@@ -367,6 +367,7 @@ async fn serve_connection(
         &cancel,
     )
     .await?;
+    let mut writer_held = handshake.request_writer_lease;
 
     loop {
         let envelope = match stream.read(&cancel).await {
@@ -409,7 +410,15 @@ async fn serve_connection(
         match payload.message {
             Some(envelope_payload::Message::GetStateRequest(request)) => {
                 require_session(&request.session_id, config.session_id)?;
-                send_state(&mut stream, envelope.request_id, selected, &config, &cancel).await?;
+                send_state(
+                    &mut stream,
+                    envelope.request_id,
+                    selected,
+                    &config,
+                    writer_held,
+                    &cancel,
+                )
+                .await?;
             }
             Some(envelope_payload::Message::AttachRequest(request)) => {
                 require_session(&request.session_id, config.session_id)?;
@@ -419,6 +428,7 @@ async fn serve_connection(
                     selected,
                     &config,
                     request,
+                    writer_held,
                     &cancel,
                 )
                 .await?;
@@ -553,6 +563,26 @@ async fn serve_connection(
                 )
                 .await?;
             }
+            Some(envelope_payload::Message::WriterLeaseRequest(request)) => {
+                require_session(&request.session_id, config.session_id)?;
+                let command_id = decode_command_id(&request.command_id)?;
+                if command_id.as_uuid().into_bytes() != envelope.request_id {
+                    return Err(ClientError::new(ClientErrorCode::MalformedFrame));
+                }
+                writer_held = request.acquire;
+                send_message(
+                    &mut stream,
+                    envelope.request_id,
+                    selected,
+                    envelope_payload::Message::WriterLeaseEvent(wire::WriterLeaseEvent {
+                        session_id: encode_session_id(config.session_id),
+                        command_id: encode_command_id(command_id),
+                        held: writer_held,
+                    }),
+                    &cancel,
+                )
+                .await?;
+            }
             Some(envelope_payload::Message::DetachRequest(request)) => {
                 require_session(&request.session_id, config.session_id)?;
                 return Ok(());
@@ -585,6 +615,7 @@ fn required_capability(payload: &wire::EnvelopePayload) -> Option<wire::Capabili
         envelope_payload::Message::ActivitySnapshotRequest(_) => {
             Some(wire::Capability::ActivitySnapshot)
         }
+        envelope_payload::Message::WriterLeaseRequest(_) => Some(wire::Capability::WriterLease),
         _ => None,
     }
 }
@@ -596,6 +627,7 @@ async fn serve_attach(
     version: ProtocolVersion,
     config: &SyntheticHostConfig,
     request: wire::AttachRequest,
+    writer_held: bool,
     cancel: &CancellationToken,
 ) -> Result<(), ClientError> {
     if request
@@ -687,7 +719,7 @@ async fn serve_attach(
         )
         .await?;
     }
-    send_state(stream, request_id, version, config, cancel).await
+    send_state(stream, request_id, version, config, writer_held, cancel).await
 }
 
 #[cfg(unix)]
@@ -801,6 +833,7 @@ async fn send_state(
     request_id: [u8; 16],
     version: ProtocolVersion,
     config: &SyntheticHostConfig,
+    writer_held: bool,
     cancel: &CancellationToken,
 ) -> Result<(), ClientError> {
     send_message(
@@ -813,7 +846,7 @@ async fn send_state(
             lifecycle: i32::from(wire::Lifecycle::Ready),
             earliest_sequence: config.first_output_sequence.get(),
             latest_sequence: latest_sequence(config)?.get(),
-            has_writer_lease: true,
+            has_writer_lease: writer_held,
             recording_paused: false,
             durable_sequence: 0,
         }),

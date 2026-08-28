@@ -1026,7 +1026,6 @@ async fn accept_loop(
                 handlers.spawn(async move {
                     let connection_id = state.next_connection.fetch_add(1, Ordering::Relaxed);
                     state.active_connections.fetch_add(1, Ordering::AcqRel);
-                    state.claim_writer(connection_id).await;
                     let result = serve_connection(stream, state.clone(), connection_id, child_cancel).await;
                     state.release_writer(connection_id).await;
                     state.active_connections.fetch_sub(1, Ordering::AcqRel);
@@ -1137,6 +1136,9 @@ async fn serve_connection(
     let limits = local_limits().bounded_with(peer_limits);
     let capabilities =
         CapabilitySet::all_local().intersection(&CapabilitySet::from_wire(&handshake.capabilities));
+    if handshake.request_writer_lease {
+        state.claim_writer(connection_id).await;
+    }
     let host_nonce = state
         .descriptor
         .host_instance_id
@@ -1364,6 +1366,30 @@ async fn serve_connection(
                                 OutputSequence::new(state.latest_sequence.load(Ordering::Acquire))
                             })
                             .get(),
+                    }),
+                    &cancel,
+                )
+                .await?;
+            }
+            Some(envelope_payload::Message::WriterLeaseRequest(request)) => {
+                require_session(&request.session_id, &state)?;
+                let command_id = decode_command_id(&request.command_id)
+                    .map_err(|_| HostError::new(HostErrorCode::Protocol))?;
+                validate_command_request(command_id, envelope.request_id)?;
+                let held = if request.acquire {
+                    state.claim_writer(connection_id).await
+                } else {
+                    state.release_writer(connection_id).await;
+                    false
+                };
+                send_message(
+                    &mut stream,
+                    envelope.request_id,
+                    selected,
+                    envelope_payload::Message::WriterLeaseEvent(wire::WriterLeaseEvent {
+                        session_id: encode_session_id(state.descriptor.session_id),
+                        command_id: encode_command_id(command_id),
+                        held,
                     }),
                     &cancel,
                 )
@@ -1671,6 +1697,7 @@ fn required_capability(payload: &wire::EnvelopePayload) -> Option<wire::Capabili
         envelope_payload::Message::ActivitySnapshotRequest(_) => {
             Some(wire::Capability::ActivitySnapshot)
         }
+        envelope_payload::Message::WriterLeaseRequest(_) => Some(wire::Capability::WriterLease),
         _ => None,
     }
 }

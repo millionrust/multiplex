@@ -29,6 +29,8 @@ pub enum FrameKind {
     LifecycleEvent = 19,
     ActivityEvent = 20,
     WarningEvent = 21,
+    WriterLeaseRequest = 22,
+    WriterLeaseEvent = 23,
 }
 
 impl TryFrom<u16> for FrameKind {
@@ -57,6 +59,8 @@ impl TryFrom<u16> for FrameKind {
             19 => Ok(Self::LifecycleEvent),
             20 => Ok(Self::ActivityEvent),
             21 => Ok(Self::WarningEvent),
+            22 => Ok(Self::WriterLeaseRequest),
+            23 => Ok(Self::WriterLeaseEvent),
             _ => Err(CodecError::UnknownFrameKind),
         }
     }

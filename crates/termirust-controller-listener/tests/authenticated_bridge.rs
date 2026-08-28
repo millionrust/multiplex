@@ -97,6 +97,16 @@ fn every_command_rechecks_capability_epoch_deadline_generation_and_writer_lease(
         bridge
             .authorize(
                 request(device_id, public_key),
+                command(BridgeCommandKind::AcquireWriter),
+                Some(OccupantGeneration::new(9)),
+                false,
+            )
+            .is_ok()
+    );
+    assert!(
+        bridge
+            .authorize(
+                request(device_id, public_key),
                 command(BridgeCommandKind::Input),
                 Some(OccupantGeneration::new(9)),
                 true,
@@ -151,6 +161,18 @@ fn every_command_rechecks_capability_epoch_deadline_generation_and_writer_lease(
             .authorize(
                 request(device_id, public_key),
                 command(BridgeCommandKind::Input),
+                Some(OccupantGeneration::new(9)),
+                false,
+            )
+            .unwrap_err()
+            .code,
+        ListenerErrorCode::WriterLeaseRequired
+    );
+    assert_eq!(
+        bridge
+            .authorize(
+                request(device_id, public_key),
+                command(BridgeCommandKind::ReleaseWriter),
                 Some(OccupantGeneration::new(9)),
                 false,
             )

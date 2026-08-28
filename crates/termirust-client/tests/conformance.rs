@@ -141,6 +141,44 @@ async fn concurrent_duplicate_mutations_apply_exactly_once() {
 }
 
 #[tokio::test]
+async fn read_only_clients_acquire_and_release_writer_explicitly() {
+    let fixture = tempfile::tempdir().unwrap();
+    let session_id = session(0x51);
+    let endpoint = LocalEndpoint::new(fixture.path().join("runtime"), session_id);
+    let server = synthetic::start(
+        endpoint.clone(),
+        SyntheticHostConfig::local(session_id, host(0x52), [9; 32]),
+    )
+    .await
+    .unwrap();
+    let cancel = CancellationToken::new();
+    let mut client = HostClient::connect(
+        endpoint,
+        ConnectOptions::local_read_only(session_id, [8; 32]),
+        &cancel,
+    )
+    .await
+    .unwrap();
+
+    assert!(!client.get_state(&cancel).await.unwrap().has_writer_lease);
+    assert!(
+        client
+            .set_writer_lease(CommandId::new(), true, &cancel)
+            .await
+            .unwrap()
+    );
+    assert!(client.get_state(&cancel).await.unwrap().has_writer_lease);
+    assert!(
+        !client
+            .set_writer_lease(CommandId::new(), false, &cancel)
+            .await
+            .unwrap()
+    );
+    assert!(!client.get_state(&cancel).await.unwrap().has_writer_lease);
+    server.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn raw_peer_cannot_use_an_unnegotiated_capability() {
     let fixture = tempfile::tempdir().unwrap();
     let session_id = session(8);
@@ -163,6 +201,7 @@ async fn raw_peer_cannot_use_an_unnegotiated_capability() {
                 capabilities: CapabilitySet::from_wire(&[]).to_wire(),
                 limits: Some(local_limits().into()),
                 client_nonce: vec![4; 32],
+                request_writer_lease: false,
             },
         )),
     };

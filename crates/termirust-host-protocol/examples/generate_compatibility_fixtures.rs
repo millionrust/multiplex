@@ -5,8 +5,7 @@ use serde::Serialize;
 use termirust_domain::HostedSessionId;
 use termirust_host_protocol::wire::{self, envelope_payload};
 use termirust_host_protocol::{
-    CURRENT_PROTOCOL, CapabilitySet, FrameKind, WireEnvelope, encode_payload, encode_session_id,
-    local_limits,
+    CURRENT_PROTOCOL, FrameKind, WireEnvelope, encode_payload, encode_session_id, local_limits,
 };
 use uuid::Uuid;
 
@@ -26,7 +25,7 @@ struct Manifest {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let session_id = HostedSessionId::from_uuid(Uuid::from_u128(1));
     let request_id = [0x11; 16];
-    let capabilities = CapabilitySet::all_local().to_wire();
+    let capabilities = (1..=7).collect::<Vec<i32>>();
     let payload = wire::EnvelopePayload {
         message: Some(envelope_payload::Message::HandshakeRequest(
             wire::HandshakeRequest {
@@ -35,6 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 capabilities: capabilities.clone(),
                 limits: Some(local_limits().into()),
                 client_nonce: vec![0x22; 32],
+                request_writer_lease: false,
             },
         )),
     };

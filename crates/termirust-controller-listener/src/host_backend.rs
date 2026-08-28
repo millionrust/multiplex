@@ -141,7 +141,7 @@ impl ControllerConnectionBackend for HostConnectionBackend {
                     rand::rngs::OsRng.fill_bytes(&mut nonce);
                     let client = HostClient::connect(
                         endpoint,
-                        ConnectOptions::local(session_id, nonce),
+                        ConnectOptions::local_read_only(session_id, nonce),
                         cancel,
                     )
                     .await
@@ -252,6 +252,31 @@ impl ControllerConnectionBackend for HostConnectionBackend {
                     .input(command_id, bytes, cancel)
                     .await;
                 Ok(vec![mutation_response(command_id, result)])
+            }
+            ControllerCommand::AcquireWriter { session_id, .. } => {
+                let result = self
+                    .client(session_id)?
+                    .set_writer_lease(command_id, true, cancel)
+                    .await;
+                Ok(vec![mutation_response(command_id, result)])
+            }
+            ControllerCommand::ReleaseWriter { session_id, .. } => {
+                let response = match self
+                    .client(session_id)?
+                    .set_writer_lease(command_id, false, cancel)
+                    .await
+                {
+                    Ok(false) => ControllerResponse::Completed {
+                        command_id,
+                        applied: true,
+                    },
+                    Ok(true) | Err(_) => ControllerResponse::Error {
+                        command_id,
+                        code: "completion_unknown".to_owned(),
+                        completion_unknown: true,
+                    },
+                };
+                Ok(vec![response])
             }
             ControllerCommand::Resize {
                 session_id,

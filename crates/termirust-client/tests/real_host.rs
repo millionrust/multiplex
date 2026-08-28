@@ -78,7 +78,7 @@ async fn real_host_survives_detach_replays_output_and_stops_only_owned_group() {
     wait_for_sequence(&mut client, 1, &cancel).await;
     let mut reader = HostClient::connect(
         endpoint.clone(),
-        ConnectOptions::local(session_id, [2; 32]),
+        ConnectOptions::local_read_only(session_id, [2; 32]),
         &cancel,
     )
     .await
@@ -90,6 +90,43 @@ async fn real_host_survives_detach_replays_output_and_stops_only_owned_group() {
             .await
             .is_ok()
     );
+    assert!(
+        !reader
+            .set_writer_lease(CommandId::new(), true, &cancel)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !client
+            .set_writer_lease(CommandId::new(), false, &cancel)
+            .await
+            .unwrap()
+    );
+    assert!(
+        reader
+            .set_writer_lease(CommandId::new(), true, &cancel)
+            .await
+            .unwrap()
+    );
+    assert!(
+        reader
+            .input(CommandId::new(), b"reader-owned\n".to_vec(), &cancel)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !reader
+            .set_writer_lease(CommandId::new(), false, &cancel)
+            .await
+            .unwrap()
+    );
+    assert!(
+        client
+            .set_writer_lease(CommandId::new(), true, &cancel)
+            .await
+            .unwrap()
+    );
+    assert!(client.get_state(&cancel).await.unwrap().has_writer_lease);
     assert_eq!(
         reader
             .input(CommandId::new(), b"denied\n".to_vec(), &cancel)
@@ -98,14 +135,13 @@ async fn real_host_survives_detach_replays_output_and_stops_only_owned_group() {
             .code,
         ClientErrorCode::PermissionDenied
     );
-    assert!(client.get_state(&cancel).await.unwrap().has_writer_lease);
     assert!(
         client
             .input(CommandId::new(), b"first-input\n".to_vec(), &cancel)
             .await
             .unwrap()
     );
-    wait_for_sequence(&mut client, 2, &cancel).await;
+    wait_for_sequence(&mut client, 3, &cancel).await;
     let before_detach = client
         .attach(OutputSequence::ZERO, 80, 24, &cancel)
         .await
