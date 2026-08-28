@@ -18,6 +18,7 @@ pub enum ErrorCode {
     Unavailable,
     Incompatible,
     PermissionDenied,
+    InteractionRequired,
     Conflict,
     ResourceLimit,
     Timeout,
@@ -30,7 +31,7 @@ impl ErrorCode {
         match self {
             Self::Usage | Self::Validation => 2,
             Self::Unavailable | Self::Incompatible => 3,
-            Self::PermissionDenied => 4,
+            Self::PermissionDenied | Self::InteractionRequired => 4,
             Self::Conflict => 5,
             Self::ResourceLimit => 6,
             Self::Timeout | Self::OperationFailed => 7,
@@ -45,6 +46,7 @@ impl ErrorCode {
             Self::Unavailable => "unavailable",
             Self::Incompatible => "incompatible",
             Self::PermissionDenied => "permission_denied",
+            Self::InteractionRequired => "interaction_required",
             Self::Conflict => "conflict",
             Self::ResourceLimit => "resource_limit",
             Self::Timeout => "timeout",
@@ -231,6 +233,25 @@ pub struct HelpData {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ControllerSshData {
+    pub operation: String,
+    pub route_state: String,
+    pub target_label: String,
+    pub ssh_host_key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host_fingerprint_suffix: Option<String>,
+    pub capabilities: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_generation: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub writer_lease: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reconnect_attempt: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reconnect_deadline_millis: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum CliData {
     Status(StatusData),
@@ -239,6 +260,7 @@ pub enum CliData {
     Sessions(SessionListData),
     Session(SessionData),
     Mutation(SessionMutationData),
+    ControllerSsh(ControllerSshData),
     Help(HelpData),
 }
 

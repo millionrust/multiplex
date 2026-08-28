@@ -127,6 +127,36 @@ fn render_human(data: &CliData, warnings: &[String], width: usize) -> String {
             ));
             text
         }
+        CliData::ControllerSsh(data) => {
+            let capabilities = if data.capabilities.is_empty() {
+                "none".to_string()
+            } else {
+                data.capabilities.join(", ")
+            };
+            let mut fields = vec![
+                ("Operation", data.operation.clone()),
+                ("Route", data.route_state.clone()),
+                ("Target", data.target_label.clone()),
+                ("SSH host key", data.ssh_host_key.clone()),
+                ("Capabilities", capabilities),
+            ];
+            if let Some(value) = &data.host_fingerprint_suffix {
+                fields.push(("Host fingerprint suffix", value.clone()));
+            }
+            if let Some(value) = data.session_generation {
+                fields.push(("Session generation", value.to_string()));
+            }
+            if let Some(value) = &data.writer_lease {
+                fields.push(("Writer lease", value.clone()));
+            }
+            if let Some(value) = data.reconnect_attempt {
+                fields.push(("Reconnect attempt", value.to_string()));
+            }
+            if let Some(value) = data.reconnect_deadline_millis {
+                fields.push(("Reconnect deadline", value.to_string()));
+            }
+            render_records("Remote Controller", std::iter::once(fields))
+        }
         CliData::Help(data) => {
             let mut text = "TermiRust one-shot local CLI\n\nCommands:".to_string();
             for command in &data.commands {

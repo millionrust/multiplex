@@ -9,11 +9,14 @@ use std::io::{self, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub use args::{CliCommand, Invocation, SessionListFilter, parse_args};
+pub use args::{
+    ApprovalDecision, CliCommand, ControllerSshAction, ControllerSshCommand, Invocation,
+    SessionListFilter, parse_args,
+};
 pub use contract::*;
 pub use local::{
     CliClock, CliIds, CliInstallationStatus, CliPaths, HostController, HostLaunchOutcome,
-    HostLauncher, LocalCommandService, cli_installation_status,
+    HostLauncher, LocalCommandService, SshControllerCommandExecutor, cli_installation_status,
 };
 pub use render::{RenderOptions, render_failure, render_success};
 
@@ -136,13 +139,20 @@ pub(crate) fn help_data() -> CliData {
             "session stop <id> [--expected-revision N] --yes [--json]".into(),
             "session archive <id> [--expected-revision N] [--json]".into(),
             "session restore <id> [--expected-revision N] [--json]".into(),
+            "controller ssh --host <host> [--user <user>] [--port <port>] pair [--json]".into(),
+            "controller ssh --host <host> [--user <user>] [--port <port>] sessions [--json]".into(),
+            "controller ssh --host <host> [--user <user>] [--port <port>] attach --session <id> --generation N [--from-sequence N] [--columns N] [--rows N] [--write] [--json]".into(),
+            "controller ssh --host <host> [--user <user>] [--port <port>] input --session <id> --generation N [--json] < stdin".into(),
+            "controller ssh --host <host> [--user <user>] [--port <port>] resize --session <id> --generation N --columns N --rows N [--json]".into(),
+            "controller ssh --host <host> [--user <user>] [--port <port>] approval --session <id> --generation N --approval <id> --decision <allow|deny> [--json]".into(),
+            "controller ssh --host <host> [--user <user>] [--port <port>] detach --session <id> --generation N [--json]".into(),
         ],
-        safety: "Local metadata and authenticated Host commands only. Stop requires --yes. Mutations never silently retry conflicts. Output can contain user-chosen project, preset, and session titles and may be sensitive.".into(),
+        safety: "Local metadata and authenticated Host commands only. Stop requires --yes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen project, preset, and session titles and may be sensitive.".into(),
         exit_codes: vec![
             "0 success".into(),
             "2 usage or validation".into(),
             "3 unavailable or incompatible".into(),
-            "4 permission denied".into(),
+            "4 permission denied or interaction required".into(),
             "5 stale revision or conflict".into(),
             "6 resource or quota limit".into(),
             "7 operation failure or timeout".into(),

@@ -21,7 +21,7 @@ termirust-store = { version = "0.1.0", path = "../termirust-store" }
 tokio = { version = "1", features = ["rt", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 unicode-width = "0.2"
+uuid = "1.22"
 
 [dev-dependencies]
 tempfile = "3.27"
-uuid = "1.22"

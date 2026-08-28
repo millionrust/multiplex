@@ -26,8 +26,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     CLI_JSON_SCHEMA_VERSION, Cancellation, CliCommand, CliData, CliError, CommandService,
-    ErrorCode, MAX_RESPONSE_RECORDS, PresetListData, PresetView, ProjectListData, ProjectView,
-    SessionData, SessionListData, SessionListFilter, SessionMutationData, SessionView, StatusData,
+    ControllerSshCommand, ErrorCode, MAX_RESPONSE_RECORDS, PresetListData, PresetView,
+    ProjectListData, ProjectView, SessionData, SessionListData, SessionListFilter,
+    SessionMutationData, SessionView, StatusData,
 };
 
 const STORE_DIR_NAME: &str = "agent-workspace";
@@ -168,6 +169,14 @@ pub trait CliIds: Send + Sync {
     fn host_instance_id(&self) -> HostInstanceId;
 }
 
+pub trait SshControllerCommandExecutor: Send + Sync {
+    fn execute(
+        &self,
+        command: ControllerSshCommand,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError>;
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HostLaunchOutcome {
     Ready,
@@ -180,6 +189,7 @@ pub struct LocalCommandService {
     controller: Arc<dyn HostController>,
     clock: Arc<dyn CliClock>,
     ids: Arc<dyn CliIds>,
+    ssh_controller: Arc<dyn SshControllerCommandExecutor>,
 }
 
 impl LocalCommandService {
@@ -206,7 +216,16 @@ impl LocalCommandService {
             controller,
             clock,
             ids,
+            ssh_controller: Arc::new(UnavailableSshController),
         }
+    }
+
+    pub fn with_ssh_controller(
+        mut self,
+        ssh_controller: Arc<dyn SshControllerCommandExecutor>,
+    ) -> Self {
+        self.ssh_controller = ssh_controller;
+        self
     }
 
     fn status(&self) -> Result<CliData, CliError> {
@@ -729,7 +748,26 @@ impl CommandService for LocalCommandService {
                 session_id,
                 expected_revision,
             } => self.session_restore(session_id, expected_revision),
+            CliCommand::ControllerSsh(command) => {
+                self.ssh_controller.execute(command, cancellation)
+            }
         }
+    }
+}
+
+struct UnavailableSshController;
+
+impl SshControllerCommandExecutor for UnavailableSshController {
+    fn execute(
+        &self,
+        _command: ControllerSshCommand,
+        _cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        Err(CliError::new(
+            ErrorCode::Unavailable,
+            "remote SSH Controller service is unavailable",
+            "Install a compatible TermiRust CLI and session Host, then retry the same route.",
+        ))
     }
 }
 

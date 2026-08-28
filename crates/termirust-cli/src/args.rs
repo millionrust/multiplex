@@ -1,8 +1,13 @@
 use std::collections::HashSet;
 
-use termirust_domain::{
-    GroupId, HostedSessionId, HostedSessionState, PresetId, ProjectId, Revision,
+use termirust_client::{
+    SshControllerTarget, SshControllerTargetId, ValidatedDnsOrIp, ValidatedUser,
 };
+use termirust_domain::{
+    GroupId, HostedSessionId, HostedSessionState, OccupantGeneration, OutputSequence, PresetId,
+    ProjectId, Revision,
+};
+use uuid::Uuid;
 
 use crate::{CliError, ErrorCode};
 
@@ -45,6 +50,53 @@ pub enum CliCommand {
     SessionRestore {
         session_id: HostedSessionId,
         expected_revision: Option<Revision>,
+    },
+    ControllerSsh(ControllerSshCommand),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ControllerSshCommand {
+    pub target: SshControllerTarget,
+    pub action: ControllerSshAction,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ApprovalDecision {
+    Allow,
+    Deny,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ControllerSshAction {
+    Pair,
+    Sessions,
+    Attach {
+        session_id: HostedSessionId,
+        occupant_generation: OccupantGeneration,
+        from_sequence: OutputSequence,
+        columns: u16,
+        rows: u16,
+        request_control: bool,
+    },
+    Input {
+        session_id: HostedSessionId,
+        occupant_generation: OccupantGeneration,
+    },
+    Resize {
+        session_id: HostedSessionId,
+        occupant_generation: OccupantGeneration,
+        columns: u16,
+        rows: u16,
+    },
+    Approval {
+        session_id: HostedSessionId,
+        occupant_generation: OccupantGeneration,
+        approval_id: Uuid,
+        decision: ApprovalDecision,
+    },
+    Detach {
+        session_id: HostedSessionId,
+        occupant_generation: OccupantGeneration,
     },
 }
 
@@ -131,9 +183,182 @@ pub fn parse_args(arguments: Vec<String>) -> Result<Invocation, CliError> {
                 expected_revision: optional_revision(&options)?,
             }
         }
+        [scope, route, rest @ ..] if scope == "controller" && route == "ssh" => {
+            CliCommand::ControllerSsh(parse_controller_ssh(rest)?)
+        }
         _ => return Err(usage("unknown or incomplete command")),
     };
     Ok(Invocation { json, command })
+}
+
+fn parse_controller_ssh(arguments: &[String]) -> Result<ControllerSshCommand, CliError> {
+    const ACTIONS: &[&str] = &[
+        "pair", "sessions", "attach", "input", "resize", "approval", "detach",
+    ];
+    let action_index = arguments
+        .iter()
+        .position(|argument| ACTIONS.contains(&argument.as_str()))
+        .ok_or_else(|| usage("controller SSH action is missing"))?;
+    let target_options = parse_options(
+        &arguments[..action_index],
+        &["--host", "--user", "--port"],
+        &[],
+    )?;
+    let host = ValidatedDnsOrIp::parse(required(&target_options, "--host")?)
+        .map_err(|_| usage("SSH host must be a DNS name or IP address"))?;
+    let user = target_options
+        .value("--user")
+        .map(ValidatedUser::parse)
+        .transpose()
+        .map_err(|_| usage("SSH user contains unsupported characters"))?;
+    let port = target_options
+        .value("--port")
+        .map(|value| {
+            value
+                .parse::<u16>()
+                .ok()
+                .filter(|port| *port != 0)
+                .ok_or_else(|| usage("SSH port must be an integer from 1 to 65535"))
+        })
+        .transpose()?;
+    let target = SshControllerTarget::new(
+        SshControllerTargetId::new("cli-target").expect("constant target ID is valid"),
+        host,
+        user,
+        port,
+    )
+    .map_err(|_| usage("SSH target is invalid"))?;
+    let action_name = arguments[action_index].as_str();
+    let action_arguments = &arguments[action_index + 1..];
+    let action = match action_name {
+        "pair" | "sessions" => {
+            parse_options(action_arguments, &[], &[])?;
+            if action_name == "pair" {
+                ControllerSshAction::Pair
+            } else {
+                ControllerSshAction::Sessions
+            }
+        }
+        "attach" => {
+            let options = parse_options(
+                action_arguments,
+                &[
+                    "--session",
+                    "--generation",
+                    "--from-sequence",
+                    "--columns",
+                    "--rows",
+                ],
+                &["--write"],
+            )?;
+            ControllerSshAction::Attach {
+                session_id: required_session(&options)?,
+                occupant_generation: required_generation(&options)?,
+                from_sequence: options
+                    .value("--from-sequence")
+                    .map(parse_sequence)
+                    .transpose()?
+                    .unwrap_or(OutputSequence::ZERO),
+                columns: optional_dimension(&options, "--columns", 80)?,
+                rows: optional_dimension(&options, "--rows", 24)?,
+                request_control: options.flag("--write"),
+            }
+        }
+        "input" => {
+            let options = parse_options(action_arguments, &["--session", "--generation"], &[])?;
+            ControllerSshAction::Input {
+                session_id: required_session(&options)?,
+                occupant_generation: required_generation(&options)?,
+            }
+        }
+        "resize" => {
+            let options = parse_options(
+                action_arguments,
+                &["--session", "--generation", "--columns", "--rows"],
+                &[],
+            )?;
+            ControllerSshAction::Resize {
+                session_id: required_session(&options)?,
+                occupant_generation: required_generation(&options)?,
+                columns: required_dimension(&options, "--columns")?,
+                rows: required_dimension(&options, "--rows")?,
+            }
+        }
+        "approval" => {
+            let options = parse_options(
+                action_arguments,
+                &["--session", "--generation", "--approval", "--decision"],
+                &[],
+            )?;
+            let approval_id = required(&options, "--approval")?
+                .parse::<Uuid>()
+                .map_err(|_| usage("approval ID must be a canonical UUID"))?;
+            let decision = match required(&options, "--decision")? {
+                "allow" => ApprovalDecision::Allow,
+                "deny" => ApprovalDecision::Deny,
+                _ => return Err(usage("approval decision must be allow or deny")),
+            };
+            ControllerSshAction::Approval {
+                session_id: required_session(&options)?,
+                occupant_generation: required_generation(&options)?,
+                approval_id,
+                decision,
+            }
+        }
+        "detach" => {
+            let options = parse_options(action_arguments, &["--session", "--generation"], &[])?;
+            ControllerSshAction::Detach {
+                session_id: required_session(&options)?,
+                occupant_generation: required_generation(&options)?,
+            }
+        }
+        _ => unreachable!("action was selected from the fixed action set"),
+    };
+    Ok(ControllerSshCommand { target, action })
+}
+
+fn required_session(options: &ParsedOptions<'_>) -> Result<HostedSessionId, CliError> {
+    parse_id(required(options, "--session")?, "session")
+}
+
+fn required_generation(options: &ParsedOptions<'_>) -> Result<OccupantGeneration, CliError> {
+    let value = required(options, "--generation")?
+        .parse::<u64>()
+        .ok()
+        .filter(|value| *value > 0)
+        .ok_or_else(|| usage("occupant generation must be a positive integer"))?;
+    Ok(OccupantGeneration::new(value))
+}
+
+fn parse_sequence(value: &str) -> Result<OutputSequence, CliError> {
+    value
+        .parse::<u64>()
+        .map(OutputSequence::new)
+        .map_err(|_| usage("output sequence must be an unsigned integer"))
+}
+
+fn required_dimension(options: &ParsedOptions<'_>, name: &str) -> Result<u16, CliError> {
+    parse_dimension(required(options, name)?)
+}
+
+fn optional_dimension(
+    options: &ParsedOptions<'_>,
+    name: &str,
+    default: u16,
+) -> Result<u16, CliError> {
+    options
+        .value(name)
+        .map(parse_dimension)
+        .transpose()
+        .map(|value| value.unwrap_or(default))
+}
+
+fn parse_dimension(value: &str) -> Result<u16, CliError> {
+    value
+        .parse::<u16>()
+        .ok()
+        .filter(|value| (1..=1_000).contains(value))
+        .ok_or_else(|| usage("terminal dimensions must be integers from 1 to 1000"))
 }
 
 struct ParsedOptions<'a> {

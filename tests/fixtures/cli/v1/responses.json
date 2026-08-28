@@ -10,19 +10,26 @@
         "session launch --project <id> --preset <id> [--group <id>] [--json]",
         "session stop <id> [--expected-revision N] --yes [--json]",
         "session archive <id> [--expected-revision N] [--json]",
-        "session restore <id> [--expected-revision N] [--json]"
+        "session restore <id> [--expected-revision N] [--json]",
+        "controller ssh --host <host> [--user <user>] [--port <port>] pair [--json]",
+        "controller ssh --host <host> [--user <user>] [--port <port>] sessions [--json]",
+        "controller ssh --host <host> [--user <user>] [--port <port>] attach --session <id> --generation N [--from-sequence N] [--columns N] [--rows N] [--write] [--json]",
+        "controller ssh --host <host> [--user <user>] [--port <port>] input --session <id> --generation N [--json] < stdin",
+        "controller ssh --host <host> [--user <user>] [--port <port>] resize --session <id> --generation N --columns N --rows N [--json]",
+        "controller ssh --host <host> [--user <user>] [--port <port>] approval --session <id> --generation N --approval <id> --decision <allow|deny> [--json]",
+        "controller ssh --host <host> [--user <user>] [--port <port>] detach --session <id> --generation N [--json]"
       ],
       "exit_codes": [
         "0 success",
         "2 usage or validation",
         "3 unavailable or incompatible",
-        "4 permission denied",
+        "4 permission denied or interaction required",
         "5 stale revision or conflict",
         "6 resource or quota limit",
         "7 operation failure or timeout",
         "130 signal cancellation"
       ],
-      "safety": "Local metadata and authenticated Host commands only. Stop requires --yes. Mutations never silently retry conflicts. Output can contain user-chosen project, preset, and session titles and may be sensitive."
+      "safety": "Local metadata and authenticated Host commands only. Stop requires --yes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen project, preset, and session titles and may be sensitive."
     },
     "ok": true,
     "schema_version": 1,
