@@ -3390,3 +3390,123 @@ description = "Diagnostic preview included classes"
 id = "diagnostics-preview-excluded"
 context = "Sensitive data classes excluded from a prepared diagnostics export."
 description = "Diagnostic preview excluded classes"
+[[messages]]
+id = "health-settings-title"
+context = "Settings card heading for read-only store health and derived-index repair."
+description = "Store health settings title"
+[[messages]]
+id = "health-settings-description"
+context = "Settings card description for read-only health scanning and named index rebuilds."
+description = "Store health settings description"
+[[messages]]
+id = "health-not-scanned"
+context = "Store health state before the first explicit scan."
+description = "Health not scanned state"
+[[messages]]
+id = "health-scanning"
+context = "Progress status while the local read-only health scan runs."
+description = "Health scanning status"
+[[messages]]
+id = "health-scan-action"
+context = "Action that explicitly starts a read-only local store health scan."
+description = "Scan health action"
+[[messages]]
+id = "health-cancel-action"
+context = "Action cancelling a health operation before its publish boundary."
+description = "Cancel health operation action"
+[[messages]]
+id = "health-project-session-label"
+context = "Label for the derived project/session library index."
+description = "Project session index label"
+[[messages]]
+id = "health-palette-label"
+context = "Label for the derived global palette index."
+description = "Palette index label"
+[[messages]]
+id = "health-store-readable-label"
+context = "Label for the authoritative metadata readability health check."
+description = "Store readable check label"
+[[messages]]
+id = "health-store-version-label"
+context = "Label for the authoritative metadata format version health check."
+description = "Store version check label"
+[[messages]]
+id = "health-record-hashes-label"
+context = "Label for the authoritative metadata record integrity health check."
+description = "Record hash check label"
+[[messages]]
+id = "health-review-findings"
+context = "Overall health status when one or more findings need review."
+description = "Review health findings status"
+[[messages]]
+id = "health-state-healthy"
+context = "Textual healthy state for a health finding."
+description = "Healthy finding state"
+[[messages]]
+id = "health-state-partial"
+context = "Textual missing or stale state for a derived index finding."
+description = "Partial finding state"
+[[messages]]
+id = "health-state-corrupt"
+context = "Textual corrupt state for a health finding."
+description = "Corrupt finding state"
+[[messages]]
+id = "health-state-newer"
+context = "Textual read-only state for metadata from a newer app version."
+description = "Newer finding state"
+[[messages]]
+id = "health-state-permission"
+context = "Textual permission denied state for a health finding."
+description = "Permission finding state"
+[[messages]]
+id = "health-state-unavailable"
+context = "Textual unavailable state for a health finding."
+description = "Unavailable finding state"
+[[messages]]
+id = "health-rebuild-project-session-action"
+context = "Named action rebuilding only the project/session derived index."
+description = "Rebuild project session index action"
+[[messages]]
+id = "health-rebuild-palette-action"
+context = "Named action rebuilding only the global palette derived index."
+description = "Rebuild palette index action"
+[[messages]]
+id = "health-unaffected-notice"
+context = "Safety statement listing data and processes untouched by index repair."
+description = "Index repair unaffected data notice"
+[[messages]]
+id = "health-scan-complete"
+context = "Status after a read-only health scan completes."
+description = "Health scan complete status"
+[[messages]]
+id = "health-repair-running"
+context = "Progress status while one selected derived index is rebuilt and verified."
+description = "Index repair running status"
+[[messages]]
+id = "health-repair-complete"
+context = "Status after one selected derived index is rebuilt and verified."
+description = "Index repair complete status"
+[[messages]]
+id = "health-operation-cancelled"
+context = "Status after a health operation is cancelled before publish."
+description = "Health operation cancelled status"
+[[messages]]
+id = "health-error-stale"
+context = "Recovery guidance when metadata changes before index publish."
+description = "Stale health repair error"
+[[messages]]
+id = "health-error-newer"
+context = "Safe read-only guidance for metadata from a newer app version."
+description = "Newer metadata health error"
+[[messages]]
+id = "health-error-permission"
+context = "Safe recovery guidance for health metadata permission denial."
+description = "Health permission error"
+[[messages]]
+id = "health-error-corrupt"
+context = "Safe guidance when authoritative metadata cannot be verified."
+description = "Corrupt health source error"
+[[messages]]
+id = "health-error-storage"
+context = "Safe guidance when local metadata storage is unavailable."
+description = "Health storage error"

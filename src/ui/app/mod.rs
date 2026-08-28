@@ -72,6 +72,7 @@ use rfd::{AsyncFileDialog, FileDialog};
 use termirust_client::DevUrlProjection;
 use termirust_domain::{HostedSessionId, SessionOrigin};
 use termirust_protocol::MobileDevicePairingRequest;
+use termirust_store::{HealthReport, HealthRepository, IndexRepairKind, RepairCancellation};
 use vt100::MouseProtocolMode;
 
 use crate::credentials;
@@ -93,7 +94,7 @@ use crate::storage::{
     KnownHostStore, export_encrypted_mobile_vault, export_encrypted_portable_data_bundle,
     export_portable_data_bundle, import_encrypted_portable_data_bundle,
     import_portable_data_bundle, inspect_identity_file, load_local_ssh_identities,
-    save_saved_state,
+    project_store_dir, save_saved_state,
 };
 use crate::terminal::{TerminalSize, TerminalState};
 use crate::ui::autocomplete::{AutocompleteCandidate, AutocompleteSource};
@@ -987,6 +988,8 @@ pub struct TermiRustApp {
     error_message: String,
     diagnostic_preview: Option<termirust_diagnostics::PreparedExport>,
     diagnostic_operation: Option<termirust_diagnostics::ExportCancellation>,
+    health_report: Option<HealthReport>,
+    health_operation: Option<RepairCancellation>,
     draft_identity_id: Option<String>,
     draft_vault_id: Option<String>,
     draft_profile_favorite: bool,
@@ -1142,6 +1145,11 @@ impl TermiRustApp {
             .unwrap_or(AuthMode::Password);
         let project_library = ProjectLibraryState::open_default();
         let session_library = SessionLibraryState::open_default(&mut saved);
+        if let Ok(root) = project_store_dir()
+            && let Ok(repository) = HealthRepository::open(root)
+        {
+            let _ = repository.recover_interrupted_repair();
+        }
         let artifact_gallery = artifact_gallery::ArtifactGalleryState::open_default();
         let activity_center = ActivityCenterState::open_default();
         let remote_devices = RemoteDevicesState::open_default();
@@ -1253,6 +1261,8 @@ impl TermiRustApp {
             error_message: String::new(),
             diagnostic_preview: None,
             diagnostic_operation: None,
+            health_report: None,
+            health_operation: None,
             draft_identity_id: None,
             draft_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             draft_profile_favorite: false,
@@ -3925,6 +3935,136 @@ impl TermiRustApp {
         };
         cancellation.cancel();
         self.status_message = localization::diagnostics_operation_cancelled();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn scan_store_health(&mut self, cx: &mut Context<Self>) {
+        if self.health_operation.is_some() {
+            return;
+        }
+        let cancellation = RepairCancellation::default();
+        let worker_cancellation = cancellation.clone();
+        self.health_operation = Some(cancellation);
+        self.status_message = localization::health_scanning();
+        self.error_message.clear();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    if worker_cancellation.is_cancelled() {
+                        return Err(termirust_store::HealthErrorCode::Cancelled);
+                    }
+                    let root = project_store_dir()
+                        .map_err(|_| termirust_store::HealthErrorCode::Unavailable)?;
+                    let repository = HealthRepository::open(root).map_err(|error| error.code)?;
+                    let report = repository.scan();
+                    if worker_cancellation.is_cancelled() {
+                        Err(termirust_store::HealthErrorCode::Cancelled)
+                    } else {
+                        Ok(report)
+                    }
+                })
+                .await;
+            let _ = this.update(cx, |app, cx| {
+                app.health_operation = None;
+                match result {
+                    Ok(report) => {
+                        app.health_report = Some(report);
+                        app.status_message = localization::health_scan_complete();
+                        app.error_message.clear();
+                        crate::diagnostics::record_state(
+                            termirust_diagnostics::DiagnosticCode::HealthScanCompleted,
+                            termirust_diagnostics::Severity::Info,
+                            termirust_diagnostics::DiagnosticMessageId::StoreHealth,
+                            termirust_diagnostics::Component::Health,
+                            termirust_diagnostics::Operation::Scan,
+                            termirust_diagnostics::DiagnosticState::Completed,
+                        );
+                    }
+                    Err(termirust_store::HealthErrorCode::Cancelled) => {
+                        app.status_message = localization::health_operation_cancelled();
+                        app.error_message.clear();
+                    }
+                    Err(code) => {
+                        app.error_message = crate::ui::settings::health_error_message(code);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn rebuild_derived_index(&mut self, kind: IndexRepairKind, cx: &mut Context<Self>) {
+        if self.health_operation.is_some() {
+            return;
+        }
+        let cancellation = RepairCancellation::default();
+        let worker_cancellation = cancellation.clone();
+        self.health_operation = Some(cancellation);
+        self.status_message = localization::health_repair_running();
+        self.error_message.clear();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let root = project_store_dir()
+                        .map_err(|_| termirust_store::HealthErrorCode::Unavailable)?;
+                    let repository = HealthRepository::open(root).map_err(|error| error.code)?;
+                    let plan = repository.plan_repair(kind).map_err(|error| error.code)?;
+                    repository
+                        .repair(plan, &worker_cancellation)
+                        .map_err(|error| error.code)?;
+                    Ok::<_, termirust_store::HealthErrorCode>(repository.scan())
+                })
+                .await;
+            let _ = this.update(cx, |app, cx| {
+                app.health_operation = None;
+                match result {
+                    Ok(report) => {
+                        app.health_report = Some(report);
+                        app.status_message = localization::health_repair_complete();
+                        app.error_message.clear();
+                        crate::diagnostics::record_state(
+                            termirust_diagnostics::DiagnosticCode::IndexRepairCompleted,
+                            termirust_diagnostics::Severity::Info,
+                            termirust_diagnostics::DiagnosticMessageId::StoreHealth,
+                            termirust_diagnostics::Component::Health,
+                            termirust_diagnostics::Operation::RebuildIndex,
+                            termirust_diagnostics::DiagnosticState::Completed,
+                        );
+                    }
+                    Err(termirust_store::HealthErrorCode::Cancelled) => {
+                        app.status_message = localization::health_operation_cancelled();
+                        app.error_message.clear();
+                    }
+                    Err(code) => {
+                        app.error_message = crate::ui::settings::health_error_message(code);
+                        crate::diagnostics::record_state(
+                            termirust_diagnostics::DiagnosticCode::IndexRepairFailed,
+                            termirust_diagnostics::Severity::Warning,
+                            termirust_diagnostics::DiagnosticMessageId::StoreHealth,
+                            termirust_diagnostics::Component::Health,
+                            termirust_diagnostics::Operation::RebuildIndex,
+                            termirust_diagnostics::DiagnosticState::Failed,
+                        );
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn cancel_health_operation(&mut self, cx: &mut Context<Self>) {
+        let Some(cancellation) = self.health_operation.as_ref() else {
+            return;
+        };
+        cancellation.cancel();
+        self.status_message = localization::health_operation_cancelled();
         self.error_message.clear();
         cx.notify();
     }

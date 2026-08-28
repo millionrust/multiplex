@@ -183,6 +183,42 @@ static_message!(diagnostics_file_limit_label, DiagnosticsFileLimitLabelArgs);
 static_message!(diagnostics_retention_label, DiagnosticsRetentionLabelArgs);
 static_message!(diagnostics_preview_included, DiagnosticsPreviewIncludedArgs);
 static_message!(diagnostics_preview_excluded, DiagnosticsPreviewExcludedArgs);
+static_message!(health_settings_title, HealthSettingsTitleArgs);
+static_message!(health_settings_description, HealthSettingsDescriptionArgs);
+static_message!(health_not_scanned, HealthNotScannedArgs);
+static_message!(health_scanning, HealthScanningArgs);
+static_message!(health_scan_action, HealthScanActionArgs);
+static_message!(health_cancel_action, HealthCancelActionArgs);
+static_message!(health_project_session_label, HealthProjectSessionLabelArgs);
+static_message!(health_palette_label, HealthPaletteLabelArgs);
+static_message!(health_store_readable_label, HealthStoreReadableLabelArgs);
+static_message!(health_store_version_label, HealthStoreVersionLabelArgs);
+static_message!(health_record_hashes_label, HealthRecordHashesLabelArgs);
+static_message!(health_review_findings, HealthReviewFindingsArgs);
+static_message!(health_state_healthy, HealthStateHealthyArgs);
+static_message!(health_state_partial, HealthStatePartialArgs);
+static_message!(health_state_corrupt, HealthStateCorruptArgs);
+static_message!(health_state_newer, HealthStateNewerArgs);
+static_message!(health_state_permission, HealthStatePermissionArgs);
+static_message!(health_state_unavailable, HealthStateUnavailableArgs);
+static_message!(
+    health_rebuild_project_session_action,
+    HealthRebuildProjectSessionActionArgs
+);
+static_message!(
+    health_rebuild_palette_action,
+    HealthRebuildPaletteActionArgs
+);
+static_message!(health_unaffected_notice, HealthUnaffectedNoticeArgs);
+static_message!(health_scan_complete, HealthScanCompleteArgs);
+static_message!(health_repair_running, HealthRepairRunningArgs);
+static_message!(health_repair_complete, HealthRepairCompleteArgs);
+static_message!(health_operation_cancelled, HealthOperationCancelledArgs);
+static_message!(health_error_stale, HealthErrorStaleArgs);
+static_message!(health_error_newer, HealthErrorNewerArgs);
+static_message!(health_error_permission, HealthErrorPermissionArgs);
+static_message!(health_error_corrupt, HealthErrorCorruptArgs);
+static_message!(health_error_storage, HealthErrorStorageArgs);
 
 static_message!(remote_devices_title, RemoteDevicesTitleArgs);
 static_message!(remote_devices_description, RemoteDevicesDescriptionArgs);

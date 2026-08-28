@@ -1834,6 +1834,9 @@ impl TermiRustApp {
                 manifest.redactions,
             )
         });
+        let health_busy = self.health_operation.is_some();
+        let health_model =
+            crate::ui::settings::health_view_model(self.health_report.as_ref(), health_busy);
 
         let appearance_card = self.settings_section_card(
             "Appearance",
@@ -2607,6 +2610,142 @@ impl TermiRustApp {
                 }),
         );
 
+        let health_card = self.settings_section_card(
+            localization::health_settings_title(),
+            localization::health_settings_description(),
+            v_flex()
+                .gap_3()
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Icon::new(if self
+                                .health_report
+                                .as_ref()
+                                .is_some_and(termirust_store::HealthReport::is_healthy)
+                            {
+                                IconName::CircleCheck
+                            } else {
+                                IconName::TriangleAlert
+                            })
+                            .size(px(15.))
+                            .text_color(theme::text_muted()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .font_semibold()
+                                .text_color(theme::text_main())
+                                .child(health_model.status.clone()),
+                        ),
+                )
+                .children(health_model.findings.iter().enumerate().map(|(index, finding)| {
+                    let kind = finding.kind;
+                    let can_rebuild = finding.can_rebuild;
+                    let action_label = match kind {
+                        termirust_store::HealthCheckKind::ProjectSessionIndex => {
+                            localization::health_rebuild_project_session_action()
+                        }
+                        termirust_store::HealthCheckKind::PaletteIndex => {
+                            localization::health_rebuild_palette_action()
+                        }
+                        _ => String::new(),
+                    };
+                    h_flex()
+                        .id(("settings-health-finding", index))
+                        .gap_3()
+                        .items_center()
+                        .justify_between()
+                        .p(px(10.))
+                        .rounded(px(6.))
+                        .bg(theme::hover())
+                        .child(
+                            v_flex()
+                                .min_w_0()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .text_size(px(12.))
+                                        .font_semibold()
+                                        .text_color(theme::text_main())
+                                        .child(finding.label.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(12.))
+                                        .text_color(theme::text_muted())
+                                        .child(finding.state.clone()),
+                                ),
+                        )
+                        .when(can_rebuild, |this| {
+                            this.child(
+                                Button::new(("settings-health-rebuild", index))
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .label(action_label)
+                                    .on_click(cx.listener(move |app, _, _, cx| match kind {
+                                        termirust_store::HealthCheckKind::ProjectSessionIndex => {
+                                            app.rebuild_derived_index(
+                                                termirust_store::IndexRepairKind::ProjectSessionIndex,
+                                                cx,
+                                            );
+                                        }
+                                        termirust_store::HealthCheckKind::PaletteIndex => {
+                                            app.rebuild_derived_index(
+                                                termirust_store::IndexRepairKind::PaletteIndex,
+                                                cx,
+                                            );
+                                        }
+                                        _ => {}
+                                    })),
+                            )
+                        })
+                        .into_any_element()
+                }))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(theme::text_muted())
+                        .child(localization::health_unaffected_notice()),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .flex_wrap()
+                        .child(
+                            Button::new("settings-health-scan")
+                                .small()
+                                .custom(Self::action_button_style(
+                                    theme::ActionTone::Neutral,
+                                    cx,
+                                ))
+                                .label(localization::health_scan_action())
+                                .disabled(!health_model.can_scan)
+                                .on_click(cx.listener(|app, _, _, cx| {
+                                    app.scan_store_health(cx);
+                                })),
+                        )
+                        .when(health_busy, |this| {
+                            this.child(
+                                Button::new("settings-health-cancel")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Danger,
+                                        cx,
+                                    ))
+                                    .label(localization::health_cancel_action())
+                                    .on_click(cx.listener(|app, _, _, cx| {
+                                        app.cancel_health_operation(cx);
+                                    })),
+                            )
+                        }),
+                ),
+        );
+
         let portable_card = self.settings_section_card(
             "Portable Data Bundle",
             "Export or import hosts, vaults, identities, snippets, and known-host trust records as a local JSON bundle. Passwords and system credential-store secrets are intentionally excluded, so this is safe for portability but not a full account sync.",
@@ -2968,6 +3107,7 @@ impl TermiRustApp {
                             .child(startup_card)
                             .child(sessions_card)
                             .child(diagnostics_card)
+                            .child(health_card)
                             .child(notification_card)
                             .child(remote_devices_card)
                             .child(local_shell_card)

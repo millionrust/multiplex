@@ -26,6 +26,9 @@ pub enum DiagnosticCode {
     DiagnosticsCleared,
     ExportPrepared,
     ExportFailed,
+    HealthScanCompleted,
+    IndexRepairCompleted,
+    IndexRepairFailed,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -45,6 +48,7 @@ pub enum DiagnosticMessageId {
     OperationUnavailable,
     DiagnosticsDropping,
     DiagnosticsExport,
+    StoreHealth,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -84,6 +88,7 @@ pub enum Component {
     Controller,
     Updater,
     Diagnostics,
+    Health,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -100,6 +105,8 @@ pub enum Operation {
     Clear,
     PreviewExport,
     PublishExport,
+    Scan,
+    RebuildIndex,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
