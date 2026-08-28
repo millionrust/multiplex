@@ -1,0 +1,14 @@
+Host *
+    Include ~/.ssh/forbidden-include
+    ProxyCommand /usr/bin/false
+    LocalCommand /usr/bin/false
+    PermitLocalCommand yes
+    RemoteCommand /bin/sh
+    ControlMaster auto
+    ControlPath ~/.ssh/forbidden-control
+    ForwardAgent yes
+    ForwardX11 yes
+    LocalForward 127.0.0.1:41000 127.0.0.1:22
+
+Match exec "exit 0"
+    ProxyJump forbidden.example
