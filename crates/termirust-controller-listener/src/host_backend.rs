@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 
 use async_trait::async_trait;
@@ -13,7 +13,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     ControllerBackendFactory, ControllerCommand, ControllerCommandEnvelope,
     ControllerConnectionBackend, ControllerResponse, ControllerSessionSummary, HostCommandContext,
-    ListenerError, ListenerErrorCode, MAX_SESSION_PAGE_BYTES,
+    ListenerError, ListenerErrorCode, MAX_SESSION_PAGE_BYTES, MAX_SNAPSHOT_CHUNK_BYTES,
 };
 
 #[derive(Clone)]
@@ -58,6 +58,8 @@ impl ControllerBackendFactory for HostBackendFactory {
             projects: self.projects.clone(),
             runtime_parent: self.runtime_parent.clone(),
             clients: HashMap::new(),
+            active_attach: None,
+            pending_output: VecDeque::new(),
         }))
     }
 }
@@ -67,6 +69,17 @@ struct HostConnectionBackend {
     projects: ProjectRepository,
     runtime_parent: PathBuf,
     clients: HashMap<HostedSessionId, HostClient>,
+    active_attach: Option<ActiveAttach>,
+    pending_output: VecDeque<ControllerResponse>,
+}
+
+#[derive(Clone, Copy)]
+struct ActiveAttach {
+    session_id: HostedSessionId,
+    occupant_generation: OccupantGeneration,
+    cursor: termirust_domain::OutputSequence,
+    columns: u32,
+    rows: u32,
 }
 
 #[async_trait]
@@ -113,11 +126,12 @@ impl ControllerConnectionBackend for HostConnectionBackend {
             } => self.list_sessions(command_id, offset, limit, expected_revision),
             ControllerCommand::Attach {
                 session_id,
+                occupant_generation,
                 from_sequence,
                 columns,
                 rows,
-                ..
             } => {
+                self.replace_active_session(session_id);
                 if !self.clients.contains_key(&session_id) {
                     let endpoint = LocalEndpoint::new(
                         self.runtime_parent.join(session_id.to_string()),
@@ -145,14 +159,78 @@ impl ControllerConnectionBackend for HostConnectionBackend {
                 let state = client
                     .take_last_state()
                     .ok_or_else(|| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
-                let mut responses = Vec::with_capacity(outputs.len() + 1);
+                let snapshot = client.take_last_snapshot();
+                let replay_through_sequence = outputs
+                    .last()
+                    .map(|output| output.sequence)
+                    .or_else(|| {
+                        snapshot.as_ref().map(|snapshot| {
+                            termirust_domain::OutputSequence::new(snapshot.boundary_sequence)
+                        })
+                    })
+                    .unwrap_or(from_sequence);
+                self.active_attach = Some(ActiveAttach {
+                    session_id,
+                    occupant_generation,
+                    cursor: replay_through_sequence,
+                    columns,
+                    rows,
+                });
+                let snapshot_chunks = snapshot
+                    .as_ref()
+                    .map(|snapshot| {
+                        snapshot
+                            .terminal_bytes
+                            .len()
+                            .max(1)
+                            .div_ceil(MAX_SNAPSHOT_CHUNK_BYTES)
+                    })
+                    .unwrap_or(0);
+                let mut responses = Vec::with_capacity(outputs.len() + snapshot_chunks + 1);
+                if let Some(snapshot) = snapshot {
+                    let chunk_count = u32::try_from(snapshot_chunks)
+                        .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+                    if snapshot.terminal_bytes.is_empty() {
+                        responses.push(ControllerResponse::Snapshot {
+                            command_id,
+                            session_id,
+                            boundary_sequence: termirust_domain::OutputSequence::new(
+                                snapshot.boundary_sequence,
+                            ),
+                            columns,
+                            rows,
+                            chunk_index: 0,
+                            chunk_count: 1,
+                            bytes: Vec::new(),
+                        });
+                    } else {
+                        for (index, bytes) in snapshot
+                            .terminal_bytes
+                            .chunks(MAX_SNAPSHOT_CHUNK_BYTES)
+                            .enumerate()
+                        {
+                            responses.push(ControllerResponse::Snapshot {
+                                command_id,
+                                session_id,
+                                boundary_sequence: termirust_domain::OutputSequence::new(
+                                    snapshot.boundary_sequence,
+                                ),
+                                columns,
+                                rows,
+                                chunk_index: u32::try_from(index).map_err(|_| {
+                                    ListenerError::new(ListenerErrorCode::HostUnavailable)
+                                })?,
+                                chunk_count,
+                                bytes: bytes.to_vec(),
+                            });
+                        }
+                    }
+                }
                 responses.push(ControllerResponse::Attached {
                     command_id,
                     session_id,
                     occupant_generation,
-                    replay_through_sequence: termirust_domain::OutputSequence::new(
-                        state.output_sequence,
-                    ),
+                    replay_through_sequence,
                     has_writer_lease: state.has_writer_lease,
                 });
                 responses.extend(
@@ -194,18 +272,76 @@ impl ControllerConnectionBackend for HostConnectionBackend {
             }]),
             ControllerCommand::Detach { session_id, .. } => {
                 if let Some(mut client) = self.clients.remove(&session_id) {
-                    client
-                        .detach(cancel)
-                        .await
-                        .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+                    client.disconnect();
+                }
+                if self
+                    .active_attach
+                    .is_some_and(|active| active.session_id == session_id)
+                {
+                    self.active_attach = None;
+                    self.pending_output.clear();
                 }
                 Ok(vec![ControllerResponse::Detached { command_id }])
             }
         }
     }
+
+    async fn next_response(
+        &mut self,
+        cancel: &CancellationToken,
+    ) -> Result<Option<ControllerResponse>, ListenerError> {
+        if let Some(response) = self.pending_output.pop_front() {
+            return Ok(Some(response));
+        }
+        let Some(active) = self.active_attach else {
+            return Ok(None);
+        };
+        if self.occupant_generation(active.session_id)? != active.occupant_generation {
+            return Err(ListenerError::new(ListenerErrorCode::HostUnavailable));
+        }
+        let client = self
+            .clients
+            .get_mut(&active.session_id)
+            .ok_or_else(|| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+        let outputs = client
+            .attach(active.cursor, active.columns, active.rows, cancel)
+            .await
+            .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+        if client.take_last_snapshot().is_some() {
+            return Err(ListenerError::new(ListenerErrorCode::HostUnavailable));
+        }
+        if let Some(last) = outputs.last() {
+            self.active_attach = Some(ActiveAttach {
+                cursor: last.sequence,
+                ..active
+            });
+        }
+        self.pending_output.extend(
+            outputs
+                .into_iter()
+                .map(|output| ControllerResponse::Output {
+                    session_id: active.session_id,
+                    sequence: output.sequence,
+                    bytes: output.bytes,
+                }),
+        );
+        Ok(self.pending_output.pop_front())
+    }
 }
 
 impl HostConnectionBackend {
+    fn replace_active_session(&mut self, session_id: HostedSessionId) {
+        if let Some(active) = self.active_attach
+            && active.session_id != session_id
+        {
+            if let Some(mut client) = self.clients.remove(&active.session_id) {
+                client.disconnect();
+            }
+        }
+        self.pending_output.clear();
+        self.active_attach = None;
+    }
+
     fn list_sessions(
         &self,
         command_id: termirust_domain::CommandId,

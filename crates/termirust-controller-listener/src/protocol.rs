@@ -13,6 +13,7 @@ const MAX_ERROR_CODE_BYTES: usize = 64;
 const MAX_SESSION_TITLE_SCALARS: usize = 256;
 pub const MAX_SESSION_PAGE_RECORDS: u16 = 1_000;
 pub const MAX_SESSION_PAGE_BYTES: usize = MAX_CONTROL_PAYLOAD_BYTES - 256;
+pub const MAX_SNAPSHOT_CHUNK_BYTES: usize = 128 * 1024;
 
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -207,6 +208,16 @@ pub enum ControllerResponse {
         replay_through_sequence: OutputSequence,
         has_writer_lease: bool,
     },
+    Snapshot {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        boundary_sequence: OutputSequence,
+        columns: u32,
+        rows: u32,
+        chunk_index: u32,
+        chunk_count: u32,
+        bytes: Vec<u8>,
+    },
     Output {
         session_id: HostedSessionId,
         sequence: OutputSequence,
@@ -335,6 +346,23 @@ fn validate_response(response: &ControllerResponse) -> Result<(), ListenerError>
         ControllerResponse::Output { bytes, .. } if bytes.is_empty() => {
             Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
         }
+        ControllerResponse::Snapshot {
+            columns,
+            rows,
+            chunk_index,
+            chunk_count,
+            bytes,
+            ..
+        } if *columns == 0
+            || *rows == 0
+            || *columns > 400
+            || *rows > 200
+            || *chunk_count == 0
+            || *chunk_index >= *chunk_count
+            || bytes.len() > MAX_SNAPSHOT_CHUNK_BYTES =>
+        {
+            Err(ListenerError::new(ListenerErrorCode::MalformedFrame))
+        }
         ControllerResponse::Error { code, .. }
             if code.is_empty()
                 || code.len() > MAX_ERROR_CODE_BYTES
@@ -361,6 +389,7 @@ fn response_kind(response: &ControllerResponse) -> &'static str {
     match response {
         ControllerResponse::Sessions { .. } => "sessions",
         ControllerResponse::Attached { .. } => "attached",
+        ControllerResponse::Snapshot { .. } => "snapshot",
         ControllerResponse::Output { .. } => "output",
         ControllerResponse::Completed { .. } => "completed",
         ControllerResponse::Detached { .. } => "detached",
@@ -489,6 +518,30 @@ mod tests {
         assert_eq!(
             decode_response(&encoded, MAX_CONTROL_PAYLOAD_BYTES).unwrap(),
             attached
+        );
+
+        let snapshot = ControllerResponse::Snapshot {
+            command_id: CommandId::new(),
+            session_id: HostedSessionId::new(),
+            boundary_sequence: OutputSequence::new(11),
+            columns: 120,
+            rows: 40,
+            chunk_index: 0,
+            chunk_count: 1,
+            bytes: b"retained screen".to_vec(),
+        };
+        let encoded = encode_response(
+            &snapshot,
+            termirust_controller_security::MAX_TERMINAL_FRAME_BYTES,
+        )
+        .unwrap();
+        assert_eq!(
+            decode_response(
+                &encoded,
+                termirust_controller_security::MAX_TERMINAL_FRAME_BYTES
+            )
+            .unwrap(),
+            snapshot
         );
     }
 }

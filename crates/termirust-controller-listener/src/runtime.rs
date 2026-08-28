@@ -26,6 +26,7 @@ use crate::{
 
 const AUTHORITY_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 const INTERFACE_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
+const HOST_OUTPUT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 const SEALED_FRAME_OVERHEAD_BUDGET: usize = 128;
 
@@ -74,6 +75,13 @@ pub trait ControllerConnectionBackend: Send {
         command: ControllerCommandEnvelope,
         cancel: &CancellationToken,
     ) -> Result<Vec<ControllerResponse>, ListenerError>;
+
+    async fn next_response(
+        &mut self,
+        _cancel: &CancellationToken,
+    ) -> Result<Option<ControllerResponse>, ListenerError> {
+        Ok(None)
+    }
 }
 
 pub trait ControllerBackendFactory: Send + Sync {
@@ -365,6 +373,10 @@ async fn serve_authenticated_stream<S: AsyncRead + AsyncWrite + Unpin>(
     let mut backend = backend_factory.open(&peer)?;
     let mut refresh = tokio::time::interval(AUTHORITY_REFRESH_INTERVAL);
     refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut host_output_poll = tokio::time::interval(HOST_OUTPUT_POLL_INTERVAL);
+    host_output_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let (mut reader, mut writer) = tokio::io::split(stream);
+    let mut incoming = Box::pin(read_bounded_frame(&mut reader, MAX_TERMINAL_FRAME_BYTES));
     loop {
         tokio::select! {
             biased;
@@ -372,7 +384,7 @@ async fn serve_authenticated_stream<S: AsyncRead + AsyncWrite + Unpin>(
             _ = refresh.tick() => {
                 require_current_peer(&authority_provider.snapshot()?.authority, &peer)?;
             }
-            sealed = read_bounded_frame(&mut *stream, MAX_TERMINAL_FRAME_BYTES) => {
+            sealed = &mut incoming => {
                 let sealed = sealed?;
                 let opened = transport
                     .open(&sealed)
@@ -413,7 +425,30 @@ async fn serve_authenticated_stream<S: AsyncRead + AsyncWrite + Unpin>(
                     outbound.push(queue_class(kind), sealed.as_bytes().to_vec())?;
                 }
                 while let Some((class, sealed)) = outbound.pop() {
-                    write_bounded_frame(&mut *stream, &sealed, queue_frame_limit(class)).await?;
+                    write_bounded_frame(&mut writer, &sealed, queue_frame_limit(class)).await?;
+                }
+                drop(incoming);
+                incoming = Box::pin(read_bounded_frame(&mut reader, MAX_TERMINAL_FRAME_BYTES));
+            }
+            _ = host_output_poll.tick() => {
+                if let Some(response) = backend.next_response(&cancel).await? {
+                    let (kind, capability, maximum) =
+                        response_security(&response, SecurityCapability::AttachOutput);
+                    let payload = encode_response(&response, maximum)?;
+                    let sealed = transport
+                        .seal(
+                            kind,
+                            capability,
+                            RevocationEpoch(peer.revocation_epoch),
+                            &payload,
+                        )
+                        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+                    let class = queue_class(kind);
+                    let mut outbound = BoundedFrameQueue::new(ConnectionBudget::default())?;
+                    outbound.push(class, sealed.as_bytes().to_vec())?;
+                    while let Some((class, sealed)) = outbound.pop() {
+                        write_bounded_frame(&mut writer, &sealed, queue_frame_limit(class)).await?;
+                    }
                 }
             }
         }
@@ -471,7 +506,7 @@ fn response_security(
             SecurityCapability::ObserveSessions,
             control_payload_limit(),
         ),
-        ControllerResponse::Output { .. } => (
+        ControllerResponse::Snapshot { .. } | ControllerResponse::Output { .. } => (
             ControllerFrameKind::Terminal,
             SecurityCapability::AttachOutput,
             MAX_TERMINAL_FRAME_BYTES.saturating_sub(64),
@@ -555,15 +590,23 @@ mod tests {
         }
     }
 
-    struct Backends;
-    struct Backend;
+    #[derive(Default)]
+    struct Backends {
+        pending: Arc<Mutex<std::collections::VecDeque<ControllerResponse>>>,
+    }
+
+    struct Backend {
+        pending: Arc<Mutex<std::collections::VecDeque<ControllerResponse>>>,
+    }
 
     impl ControllerBackendFactory for Backends {
         fn open(
             &self,
             _: &AuthenticatedPeer,
         ) -> Result<Box<dyn ControllerConnectionBackend>, ListenerError> {
-            Ok(Box::new(Backend))
+            Ok(Box::new(Backend {
+                pending: self.pending.clone(),
+            }))
         }
     }
 
@@ -589,6 +632,13 @@ mod tests {
                 sessions: Vec::new(),
                 next_offset: None,
             }])
+        }
+
+        async fn next_response(
+            &mut self,
+            _: &CancellationToken,
+        ) -> Result<Option<ControllerResponse>, ListenerError> {
+            Ok(self.pending.lock().unwrap().pop_front())
         }
     }
 
@@ -622,7 +672,8 @@ mod tests {
                 public_key: DevicePublicKey(device_public_key_from_private(device_private).0),
                 display_name: "Phone".to_owned(),
                 capabilities: ControllerCapabilities::default()
-                    .with(DomainCapability::ObserveSessions),
+                    .with(DomainCapability::ObserveSessions)
+                    .with(DomainCapability::AttachOutput),
                 protocol_range: ControllerProtocolRange::V1,
                 created_at: 1,
                 last_seen_at: None,
@@ -646,6 +697,8 @@ mod tests {
         });
         let (mut client, mut server) = tokio::io::duplex(8 * 1024);
         let server_authority: Arc<dyn ControllerAuthorityProvider> = authority.clone();
+        let backends = Arc::new(Backends::default());
+        let pending = backends.pending.clone();
         let cancel = CancellationToken::new();
         let server_cancel = cancel.clone();
         let server_task = tokio::spawn(async move {
@@ -662,7 +715,7 @@ mod tests {
                 &mut server,
                 authenticated,
                 server_authority,
-                Arc::new(Backends),
+                backends,
                 server_cancel,
             )
             .await
@@ -688,7 +741,9 @@ mod tests {
             HostStaticPublicKey(host_public_key_from_private(&host_private).0),
             device_private,
             StaticPrivateKey::from_fixture_bytes([6; 32]),
-            CapabilitySet::default().with(SecurityCapability::ObserveSessions),
+            CapabilitySet::default()
+                .with(SecurityCapability::ObserveSessions)
+                .with(SecurityCapability::AttachOutput),
             0,
         )
         .unwrap();
@@ -739,6 +794,34 @@ mod tests {
                 update_sequence: 1,
                 sessions: Vec::new(),
                 next_offset: None,
+            }
+        );
+
+        let session_id = termirust_domain::HostedSessionId::new();
+        pending
+            .lock()
+            .unwrap()
+            .push_back(ControllerResponse::Output {
+                session_id,
+                sequence: termirust_domain::OutputSequence::new(1),
+                bytes: b"live output".to_vec(),
+            });
+        let response = tokio::time::timeout(
+            Duration::from_secs(2),
+            read_bounded_frame(&mut client, MAX_TERMINAL_FRAME_BYTES),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let opened = connection.transport.open(&response).unwrap();
+        assert_eq!(opened.kind, ControllerFrameKind::Terminal);
+        assert_eq!(opened.capability, SecurityCapability::AttachOutput);
+        assert_eq!(
+            crate::decode_response(&opened.payload, MAX_TERMINAL_FRAME_BYTES).unwrap(),
+            ControllerResponse::Output {
+                session_id,
+                sequence: termirust_domain::OutputSequence::new(1),
+                bytes: b"live output".to_vec(),
             }
         );
 
