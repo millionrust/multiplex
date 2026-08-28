@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::fmt;
 use std::io::{BufRead, Write};
 use std::path::{Component, Path, PathBuf};
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 
 use rand::RngCore as _;
 use serde::{Deserialize, Serialize};
@@ -18,6 +20,7 @@ use termirust_domain::{
 use termirust_store::{
     ControllerDeviceRepository, ControllerNetworkRepository, ProjectRepository, SessionRepository,
 };
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroize as _;
 
@@ -27,7 +30,7 @@ use crate::{
     ListenerError, ListenerErrorCode, ListenerProcessEvent, ListenerRuntime, ListenerServices,
     PairingAuthoritySnapshot, ProcessPairingDecision, SourceBucketKey, SystemBinder,
     SystemFirewallObserver, SystemGeneratedPortSource, SystemInterfaceProvider,
-    bind_selected_route,
+    bind_selected_route, serve_authenticated_stdio_stream,
 };
 
 const LAUNCH_FORMAT_VERSION: u16 = 1;
@@ -303,35 +306,69 @@ impl ControllerAuthorityProvider for RepositoryAuthority {
         &self,
         peer: &AuthenticatedPeer,
     ) -> Result<(), ListenerError> {
-        let snapshot = self
+        reconcile_authenticated_pairing(&self.repository, peer)
+    }
+}
+
+struct RepositoryStdioAuthority {
+    repository: ControllerDeviceRepository,
+    host_private: StaticPrivateKey,
+}
+
+impl ControllerAuthorityProvider for RepositoryStdioAuthority {
+    fn snapshot(&self) -> Result<AuthoritySnapshot, ListenerError> {
+        let authority = self
             .repository
             .load()
-            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
-        let Some(device) = snapshot.authority.devices.iter().find(|device| {
-            device.device_id == peer.device_id && device.public_key == peer.public_key
-        }) else {
-            return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
-        };
-        let offer_id = device.source_offer_id;
-        let should_reconcile = snapshot.authority.offers.iter().any(|offer| {
-            offer.offer_id == offer_id
-                && matches!(
-                    offer.state,
-                    PairingOfferState::Persisted | PairingOfferState::Uncertain
-                )
-        });
-        if !should_reconcile {
-            return Ok(());
-        }
-        self.repository
-            .update(snapshot.revision, |authority| {
-                authority
-                    .acknowledge_pairing(offer_id, peer.public_key)
-                    .map(|_| ())
-            })
-            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
-        Ok(())
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?
+            .authority;
+        Ok(AuthoritySnapshot {
+            authority,
+            host_private: self.host_private.clone(),
+        })
     }
+
+    fn reconcile_authenticated_pairing(
+        &self,
+        peer: &AuthenticatedPeer,
+    ) -> Result<(), ListenerError> {
+        reconcile_authenticated_pairing(&self.repository, peer)
+    }
+}
+
+fn reconcile_authenticated_pairing(
+    repository: &ControllerDeviceRepository,
+    peer: &AuthenticatedPeer,
+) -> Result<(), ListenerError> {
+    let snapshot = repository
+        .load()
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    let Some(device) =
+        snapshot.authority.devices.iter().find(|device| {
+            device.device_id == peer.device_id && device.public_key == peer.public_key
+        })
+    else {
+        return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
+    };
+    let offer_id = device.source_offer_id;
+    let should_reconcile = snapshot.authority.offers.iter().any(|offer| {
+        offer.offer_id == offer_id
+            && matches!(
+                offer.state,
+                PairingOfferState::Persisted | PairingOfferState::Uncertain
+            )
+    });
+    if !should_reconcile {
+        return Ok(());
+    }
+    repository
+        .update(snapshot.revision, |authority| {
+            authority
+                .acknowledge_pairing(offer_id, peer.public_key)
+                .map(|_| ())
+        })
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    Ok(())
 }
 
 #[async_trait::async_trait]
@@ -485,6 +522,70 @@ impl ControllerPairingAuthority for RepositoryAuthority {
             .send(&ListenerProcessEvent::pairing_complete(offer_id, device_id))?;
         Ok(())
     }
+}
+
+struct SplitControllerIo<R, W> {
+    reader: R,
+    writer: W,
+}
+
+impl<R: AsyncRead + Unpin, W: Unpin> AsyncRead for SplitControllerIo<R, W> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        context: &mut Context<'_>,
+        buffer: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.get_mut().reader).poll_read(context, buffer)
+    }
+}
+
+impl<R: Unpin, W: AsyncWrite + Unpin> AsyncWrite for SplitControllerIo<R, W> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        context: &mut Context<'_>,
+        bytes: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        Pin::new(&mut self.get_mut().writer).poll_write(context, bytes)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.get_mut().writer).poll_flush(context)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.get_mut().writer).poll_shutdown(context)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn serve_repository_stdio_bridge<R, W>(
+    reader: R,
+    writer: W,
+    controller_root: PathBuf,
+    project_root: PathBuf,
+    session_data_root: PathBuf,
+    runtime_parent: PathBuf,
+    host_private: StaticPrivateKey,
+    cancel: CancellationToken,
+) -> Result<(), ListenerError>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
+    let devices = ControllerDeviceRepository::open(controller_root)
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    let sessions = SessionRepository::open(project_root.clone(), session_data_root)
+        .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+    let projects = ProjectRepository::open(project_root)
+        .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+    let authority: Arc<dyn ControllerAuthorityProvider> = Arc::new(RepositoryStdioAuthority {
+        repository: devices,
+        host_private,
+    });
+    let backends: Arc<dyn crate::ControllerBackendFactory> =
+        Arc::new(HostBackendFactory::new(sessions, projects, runtime_parent));
+    let mut stream = SplitControllerIo { reader, writer };
+    serve_authenticated_stdio_stream(&mut stream, authority, backends, cancel).await
 }
 
 pub fn run_listener_worker<R, W>(mut reader: R, readiness: W) -> Result<(), ListenerError>

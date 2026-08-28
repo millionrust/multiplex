@@ -34,7 +34,7 @@ pub use handshake::{
 };
 pub use host_backend::HostBackendFactory;
 pub use interfaces::{InterfaceProvider, SystemInterfaceProvider, resolve_selected_interface};
-pub use launch::{ListenerLaunchDescriptor, run_listener_worker};
+pub use launch::{ListenerLaunchDescriptor, run_listener_worker, serve_repository_stdio_bridge};
 pub use pairing::{
     ControllerPairingAuthority, HostPairingDecision, PairingAuthoritySnapshot, pair_controller,
 };
@@ -56,5 +56,5 @@ pub use rate_limit::{AuthRateLimiter, SourceBucket, SourceBucketKey};
 pub use runtime::{
     AuthoritySnapshot, ControllerAuthorityProvider, ControllerBackendFactory,
     ControllerConnectionBackend, HostCommandContext, ListenerRuntime, ListenerRuntimeReport,
-    ListenerServices,
+    ListenerServices, serve_authenticated_stdio_stream,
 };

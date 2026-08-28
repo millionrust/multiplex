@@ -18,7 +18,7 @@ termirust-controller-security = { version = "0.1.0", path = "../termirust-contro
 termirust-domain = { version = "0.1.0", path = "../termirust-domain" }
 termirust-host-protocol = { version = "0.1.0", path = "../termirust-host-protocol" }
 termirust-store = { version = "0.1.0", path = "../termirust-store" }
-tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+tokio = { version = "1", features = ["io-std", "io-util", "macros", "net", "rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 uuid = { version = "1.22", features = ["serde", "v4"] }
 zeroize = "=1.8.2"

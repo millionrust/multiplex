@@ -78,7 +78,7 @@ termirust-host-protocol = { version = "0.1.0", path = "crates/termirust-host-pro
 termirust-session-host = { version = "0.1.0", path = "crates/termirust-session-host" }
 termirust-store = { version = "0.1.0", path = "crates/termirust-store" }
 termirust-ui-contract = { version = "0.1.0", path = "crates/termirust-ui-contract" }
-tokio = { version = "1", features = ["io-util", "net", "rt", "sync", "time"] }
+tokio = { version = "1", features = ["io-std", "io-util", "net", "rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 uuid = { version = "1.22", features = ["v4"] }
 vt100 = "0.16.2"

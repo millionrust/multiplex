@@ -19,6 +19,7 @@ mod worktree_launch;
 
 use gpui::*;
 use gpui_component::Root;
+use tokio_util::sync::CancellationToken;
 
 use crate::models::SavedWindowBounds;
 use crate::storage::{load_local_ssh_hosts, load_saved_state};
@@ -27,6 +28,8 @@ use crate::ui::TermiRustApp;
 const SESSION_HOST_MODE: &str = "--session-host";
 const CONTROLLER_LISTENER_MODE: &str = "--controller-listener";
 const ARTIFACT_PREVIEW_MODE: &str = "--artifact-preview-worker";
+const CONTROLLER_BRIDGE_COMMAND: &str = "controller-bridge";
+const CONTROLLER_BRIDGE_STDIO: &str = "--stdio";
 
 fn run_session_host_mode() -> Result<(), termirust_session_host::HostError> {
     use std::io::Write as _;
@@ -53,6 +56,72 @@ fn run_session_host_mode() -> Result<(), termirust_session_host::HostError> {
             .map_err(termirust_session_host::HostError::io)?;
         host.wait().await
     })
+}
+
+fn run_controller_bridge_mode() -> Result<(), termirust_controller_listener::ListenerError> {
+    use std::io::IsTerminal as _;
+    use termirust_controller_listener::{ListenerError, ListenerErrorCode};
+    use termirust_store::ControllerDeviceRepository;
+
+    if std::io::stdin().is_terminal() || std::io::stdout().is_terminal() {
+        return Err(ListenerError::new(ListenerErrorCode::PermissionDenied));
+    }
+    let app_root = crate::storage::app_dir()
+        .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
+    let controller_root = crate::storage::controller_store_dir()
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    let repository = ControllerDeviceRepository::open(controller_root.clone())
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    let snapshot = repository
+        .load()
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    if snapshot.authority.identity.is_none() {
+        return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
+    }
+    let identity = crate::controller::host_identity::HostIdentityService::new(
+        repository,
+        crate::controller::host_identity::OsSecretStore,
+        crate::controller::host_identity::OsIdentityEntropy,
+    )
+    .load_or_create()
+    .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    let host_private = identity
+        .static_private_key()
+        .ok_or_else(|| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?;
+    runtime.block_on(
+        termirust_controller_listener::serve_repository_stdio_bridge(
+            tokio::io::stdin(),
+            tokio::io::stdout(),
+            controller_root,
+            crate::storage::project_store_dir()
+                .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?,
+            app_root.join("durable-sessions"),
+            controller_runtime_parent(&app_root),
+            host_private,
+            CancellationToken::new(),
+        ),
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn controller_runtime_parent(_: &std::path::Path) -> std::path::PathBuf {
+    std::path::PathBuf::from(format!("/private/tmp/termirust-{}", unsafe {
+        libc::geteuid()
+    }))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn controller_runtime_parent(_: &std::path::Path) -> std::path::PathBuf {
+    std::path::PathBuf::from(format!("/tmp/termirust-{}", unsafe { libc::geteuid() }))
+}
+
+#[cfg(not(unix))]
+fn controller_runtime_parent(app_root: &std::path::Path) -> std::path::PathBuf {
+    app_root.join("session-host-runtime")
 }
 
 /// Resolve the bounds and display to open the window at. Restores the last
@@ -143,6 +212,22 @@ fn init_file_logging() {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some(CONTROLLER_BRIDGE_COMMAND) {
+        if std::env::args().nth(2).as_deref() != Some(CONTROLLER_BRIDGE_STDIO)
+            || std::env::args().nth(3).is_some()
+        {
+            eprintln!("error[usage]: controller-bridge requires exactly --stdio");
+            std::process::exit(2);
+        }
+        if let Err(error) = run_controller_bridge_mode() {
+            eprintln!(
+                "error[{}]: remote Controller bridge failed",
+                error.code.stable_code()
+            );
+            std::process::exit(1);
+        }
+        return;
+    }
     if std::env::args().nth(1).as_deref() == Some(ARTIFACT_PREVIEW_MODE) {
         std::process::exit(crate::artifact_preview::run_worker_mode());
     }

@@ -279,6 +279,40 @@ impl ListenerRuntime {
     }
 }
 
+pub async fn serve_authenticated_stdio_stream<S: AsyncRead + AsyncWrite + Unpin>(
+    stream: &mut S,
+    authority_provider: Arc<dyn ControllerAuthorityProvider>,
+    backend_factory: Arc<dyn ControllerBackendFactory>,
+    cancel: CancellationToken,
+) -> Result<(), ListenerError> {
+    let purpose = tokio::time::timeout(
+        Duration::from_secs(ConnectionBudget::default().handshake_timeout_seconds),
+        ControllerConnectionPurpose::read_from(stream),
+    )
+    .await
+    .map_err(|_| ListenerError::new(ListenerErrorCode::HandshakeTimeout))??;
+    if purpose != ControllerConnectionPurpose::Authenticate {
+        return Err(ListenerError::new(ListenerErrorCode::Unauthorized));
+    }
+    let initial = authority_provider.snapshot()?;
+    let authenticated = authenticate_controller(
+        stream,
+        &initial.authority,
+        initial.host_private,
+        &mut SystemHandshakeEntropy,
+    )
+    .await?;
+    authority_provider.reconcile_authenticated_pairing(&authenticated.peer)?;
+    serve_authenticated_stream(
+        stream,
+        authenticated,
+        authority_provider,
+        backend_factory,
+        cancel,
+    )
+    .await
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn serve_connection(
     mut stream: TcpStream,
@@ -642,18 +676,6 @@ mod tests {
         }
     }
 
-    struct Entropy(Vec<[u8; 32]>);
-
-    impl crate::HandshakeEntropy for Entropy {
-        fn nonce(&mut self) -> Result<[u8; 32], ListenerError> {
-            Ok(self.0.remove(0))
-        }
-
-        fn ephemeral_private(&mut self) -> Result<StaticPrivateKey, ListenerError> {
-            Ok(StaticPrivateKey::from_fixture_bytes(self.0.remove(0)))
-        }
-    }
-
     fn authority(
         host_private: &StaticPrivateKey,
         device_private: &StaticPrivateKey,
@@ -688,7 +710,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn authenticated_stream_dispatches_typed_command_and_closes_after_revocation() {
+    async fn authenticated_stdio_dispatches_typed_command_and_closes_after_revocation() {
         let host_private = StaticPrivateKey::from_fixture_bytes([1; 32]);
         let device_private = StaticPrivateKey::from_fixture_bytes([2; 32]);
         let authority = Arc::new(Authority {
@@ -702,25 +724,14 @@ mod tests {
         let cancel = CancellationToken::new();
         let server_cancel = cancel.clone();
         let server_task = tokio::spawn(async move {
-            let initial = server_authority.snapshot().unwrap();
-            let authenticated = authenticate_controller(
-                &mut server,
-                &initial.authority,
-                initial.host_private,
-                &mut Entropy(vec![[4; 32], [5; 32]]),
-            )
-            .await
-            .unwrap();
-            serve_authenticated_stream(
-                &mut server,
-                authenticated,
-                server_authority,
-                backends,
-                server_cancel,
-            )
-            .await
+            serve_authenticated_stdio_stream(&mut server, server_authority, backends, server_cancel)
+                .await
         });
 
+        ControllerConnectionPurpose::Authenticate
+            .write_to(&mut client)
+            .await
+            .unwrap();
         let prelude = ConnectionPrelude {
             version: CONTROLLER_V1,
             identity_generation: 1,
@@ -839,5 +850,33 @@ mod tests {
             ListenerErrorCode::AuthenticationFailed
         );
         cancel.cancel();
+    }
+
+    #[tokio::test]
+    async fn stdio_bridge_rejects_pairing_before_any_security_payload() {
+        let host_private = StaticPrivateKey::from_fixture_bytes([1; 32]);
+        let device_private = StaticPrivateKey::from_fixture_bytes([2; 32]);
+        let authority: Arc<dyn ControllerAuthorityProvider> = Arc::new(Authority {
+            value: Mutex::new(authority(&host_private, &device_private)),
+            host_private,
+        });
+        let (mut client, mut server) = tokio::io::duplex(64);
+        let task = tokio::spawn(async move {
+            serve_authenticated_stdio_stream(
+                &mut server,
+                authority,
+                Arc::new(Backends::default()),
+                CancellationToken::new(),
+            )
+            .await
+        });
+        ControllerConnectionPurpose::Pair
+            .write_to(&mut client)
+            .await
+            .unwrap();
+        assert_eq!(
+            task.await.unwrap().unwrap_err().code,
+            ListenerErrorCode::Unauthorized
+        );
     }
 }
