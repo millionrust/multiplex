@@ -8,6 +8,7 @@ use crate::MessageId;
 pub const MAX_SEMANTIC_NODES: usize = 10_000;
 pub const MAX_SEMANTIC_TEXT_CHARS: usize = 1_024;
 pub const MAX_SEMANTIC_RELATIONS: usize = 32;
+pub const MAX_SEMANTIC_ACTION_VALUE_CHARS: usize = 4_096;
 pub const SEMANTIC_UPDATE_INTERVAL: Duration = Duration::from_micros(16_667);
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -156,6 +157,14 @@ pub struct SemanticState {
     pub live: Option<LiveRegionPoliteness>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SemanticBounds {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LiveRegionPoliteness {
     Polite,
@@ -169,6 +178,7 @@ pub struct SemanticNode {
     pub role: SemanticRole,
     pub name: Option<SemanticText>,
     pub description: Option<SemanticText>,
+    pub bounds: SemanticBounds,
     pub state: SemanticState,
     pub relations: Vec<SemanticRelation>,
     pub actions: BTreeSet<SemanticAction>,
@@ -182,6 +192,7 @@ impl SemanticNode {
             role,
             name: None,
             description: None,
+            bounds: SemanticBounds::default(),
             state: SemanticState::default(),
             relations: Vec::new(),
             actions: BTreeSet::new(),
@@ -348,6 +359,7 @@ pub enum SemanticErrorCode {
     StaleGeneration,
     StaleNode,
     ReusedNode,
+    IdentityChanged,
     UnsafeText,
     ResourceLimit,
     BridgeUnavailable,
@@ -414,6 +426,12 @@ impl SemanticDiffer {
         }
         for (id, node) in &next.nodes {
             match self.previous.as_ref().and_then(|tree| tree.nodes.get(id)) {
+                Some(previous) if previous.role != node.role || previous.parent != node.parent => {
+                    return Err(SemanticError::new(
+                        SemanticErrorCode::IdentityChanged,
+                        Some(*id),
+                    ));
+                }
                 Some(previous) if previous != node => {
                     changes.push(SemanticChange::Updated(node.clone()));
                 }
@@ -491,11 +509,31 @@ impl SemanticUpdateCoalescer {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SemanticActionRequest {
     pub generation: u64,
     pub node: SemanticNodeId,
     pub action: SemanticAction,
+    pub value: Option<SemanticActionValue>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SemanticActionValue {
+    Text(String),
+    Boolean(bool),
+    Number(i64),
+}
+
+impl SemanticActionValue {
+    pub fn text(value: impl Into<String>) -> Result<Self, SemanticError> {
+        let value = value.into();
+        if value.chars().count() > MAX_SEMANTIC_ACTION_VALUE_CHARS
+            || value.chars().any(|character| character == '\0')
+        {
+            return Err(SemanticError::new(SemanticErrorCode::ResourceLimit, None));
+        }
+        Ok(Self::Text(value))
+    }
 }
 
 pub struct SemanticActionRouter<Command> {
@@ -530,6 +568,33 @@ impl<Command> SemanticActionRouter<Command> {
         if request.generation != self.generation {
             return Err(SemanticError::new(
                 SemanticErrorCode::StaleGeneration,
+                Some(request.node),
+            ));
+        }
+        let value_is_valid = matches!(
+            (&request.action, &request.value),
+            (SemanticAction::SetValue, Some(SemanticActionValue::Text(_)))
+                | (
+                    SemanticAction::SetValue,
+                    Some(SemanticActionValue::Boolean(_))
+                )
+                | (
+                    SemanticAction::SetValue,
+                    Some(SemanticActionValue::Number(_))
+                )
+                | (
+                    SemanticAction::Focus
+                        | SemanticAction::Activate
+                        | SemanticAction::Increment
+                        | SemanticAction::Decrement
+                        | SemanticAction::Dismiss
+                        | SemanticAction::Cancel,
+                    None
+                )
+        );
+        if !value_is_valid {
+            return Err(SemanticError::new(
+                SemanticErrorCode::UnsupportedAction,
                 Some(request.node),
             ));
         }
@@ -959,6 +1024,20 @@ mod tests {
     }
 
     #[test]
+    fn deterministic_diff_rejects_stable_id_identity_changes() {
+        let mut differ = SemanticDiffer::default();
+        differ.diff(basic_tree(11, "Run")).unwrap();
+
+        let root = node(1, None, SemanticRole::Application);
+        let changed_role = node(2, Some(1), SemanticRole::Checkbox);
+        let changed = SemanticTree::try_new(11, id(1), [root, changed_role]).unwrap();
+        assert_eq!(
+            differ.diff(changed).unwrap_err().code,
+            SemanticErrorCode::IdentityChanged
+        );
+    }
+
+    #[test]
     fn action_router_fails_closed_for_stale_generation_and_unsupported_action() {
         let tree = basic_tree(4, "Run");
         let router =
@@ -970,6 +1049,7 @@ mod tests {
                     generation: 4,
                     node: id(2),
                     action: SemanticAction::Activate,
+                    value: None,
                 })
                 .unwrap(),
             &"run"
@@ -980,10 +1060,29 @@ mod tests {
                     generation: 3,
                     node: id(2),
                     action: SemanticAction::Activate,
+                    value: None,
                 })
                 .unwrap_err()
                 .code,
             SemanticErrorCode::StaleGeneration
+        );
+        assert_eq!(
+            router
+                .resolve(SemanticActionRequest {
+                    generation: 4,
+                    node: id(2),
+                    action: SemanticAction::Activate,
+                    value: Some(SemanticActionValue::Boolean(true)),
+                })
+                .unwrap_err()
+                .code,
+            SemanticErrorCode::UnsupportedAction
+        );
+        assert_eq!(
+            SemanticActionValue::text("x".repeat(MAX_SEMANTIC_ACTION_VALUE_CHARS + 1))
+                .unwrap_err()
+                .code,
+            SemanticErrorCode::ResourceLimit
         );
     }
 

@@ -7670,6 +7670,7 @@ dependencies = [
  "sha2 0.10.9",
  "smallvec",
  "tempfile",
+ "termirust-accessibility-macos",
  "termirust-cli",
  "termirust-client",
  "termirust-controller-listener",
@@ -7685,6 +7686,15 @@ dependencies = [
  "uuid",
  "vt100",
  "zeroize",
+]
+
+[[package]]
+name = "termirust-accessibility-macos"
+version = "0.1.0"
+dependencies = [
+ "cocoa 0.26.0",
+ "objc",
+ "termirust-ui-contract",
 ]
 
 [[package]]

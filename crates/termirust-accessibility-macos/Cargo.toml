@@ -1,0 +1,18 @@
+[package]
+name = "termirust-accessibility-macos"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+publish = false
+
+[lints.rust]
+# objc 0.2 expands a historical `cargo-clippy` cfg that current rustc cannot
+# validate. Keep this exception isolated to the native adapter crate.
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(cargo_clippy)'] }
+
+[dependencies]
+termirust-ui-contract = { version = "0.1.0", path = "../termirust-ui-contract" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.26"
+objc = "0.2"

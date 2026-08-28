@@ -1,3 +1,4 @@
+pub mod accessibility;
 mod app;
 pub mod autocomplete;
 pub mod keys;
