@@ -7,6 +7,7 @@ mod error;
 mod idempotency;
 mod ipc;
 mod sequence;
+mod ssh_controller;
 mod transport;
 
 pub mod synthetic;
@@ -21,4 +22,10 @@ pub use ipc::{
     WindowsNamedPipeSecurityAdapter,
 };
 pub use sequence::{SequenceDecision, SequenceTracker};
+pub use ssh_controller::{
+    ControllerClientIdentityRef, KnownHostPolicy, RemoteControllerSession, SshControllerError,
+    SshControllerErrorCode, SshControllerProcess, SshControllerTarget, SshControllerTargetId,
+    SshOperationClass, SshReconnectDecision, SshReconnectPolicy, SshRouteState, ValidatedDnsOrIp,
+    ValidatedUser, resolve_system_ssh, strict_ssh_command_argv,
+};
 pub use transport::AsyncEnvelopeStream;
