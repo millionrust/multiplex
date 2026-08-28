@@ -985,6 +985,8 @@ pub struct TermiRustApp {
     next_workspace_id: u64,
     status_message: String,
     error_message: String,
+    diagnostic_preview: Option<termirust_diagnostics::PreparedExport>,
+    diagnostic_operation: Option<termirust_diagnostics::ExportCancellation>,
     draft_identity_id: Option<String>,
     draft_vault_id: Option<String>,
     draft_profile_favorite: bool,
@@ -1249,6 +1251,8 @@ impl TermiRustApp {
             next_workspace_id: 1,
             status_message: initial_status,
             error_message: String::new(),
+            diagnostic_preview: None,
+            diagnostic_operation: None,
             draft_identity_id: None,
             draft_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             draft_profile_favorite: false,
@@ -3620,7 +3624,16 @@ impl TermiRustApp {
 
     fn save_settings(&mut self) {
         self.saved.ensure_settings();
-        let _ = save_saved_state(&self.saved);
+        if save_saved_state(&self.saved).is_err() {
+            crate::diagnostics::record_state(
+                termirust_diagnostics::DiagnosticCode::SettingsWriteFailed,
+                termirust_diagnostics::Severity::Error,
+                termirust_diagnostics::DiagnosticMessageId::LocalStorageUnavailable,
+                termirust_diagnostics::Component::Settings,
+                termirust_diagnostics::Operation::Write,
+                termirust_diagnostics::DiagnosticState::Failed,
+            );
+        }
     }
 
     fn imported_host_count(&self) -> usize {
@@ -3749,6 +3762,169 @@ impl TermiRustApp {
         } else {
             "Auto-copy on selection disabled.".to_string()
         };
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn update_diagnostics_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.saved.settings.diagnostics_enabled = enabled;
+        self.saved.ensure_settings();
+        self.save_settings();
+        self.diagnostic_preview = None;
+        match crate::diagnostics::apply_settings(&self.saved.settings) {
+            Ok(()) => {
+                self.status_message = localization::diagnostics_settings_saved();
+                self.error_message.clear();
+            }
+            Err(_) => {
+                self.error_message = localization::diagnostics_operation_failed();
+            }
+        }
+        cx.notify();
+    }
+
+    fn update_diagnostics_file_limit(&mut self, mebibytes: u8, cx: &mut Context<Self>) {
+        self.saved.settings.diagnostics_max_file_mib = mebibytes;
+        self.saved.ensure_settings();
+        self.save_settings();
+        self.diagnostic_preview = None;
+        if crate::diagnostics::apply_settings(&self.saved.settings).is_err() {
+            self.error_message = localization::diagnostics_operation_failed();
+        } else {
+            self.status_message = localization::diagnostics_settings_saved();
+            self.error_message.clear();
+        }
+        cx.notify();
+    }
+
+    fn update_diagnostics_retention(&mut self, days: u8, cx: &mut Context<Self>) {
+        self.saved.settings.diagnostics_retention_days = days;
+        self.saved.ensure_settings();
+        self.save_settings();
+        self.diagnostic_preview = None;
+        if crate::diagnostics::apply_settings(&self.saved.settings).is_err() {
+            self.error_message = localization::diagnostics_operation_failed();
+        } else {
+            self.status_message = localization::diagnostics_settings_saved();
+            self.error_message.clear();
+        }
+        cx.notify();
+    }
+
+    fn clear_diagnostics(&mut self, cx: &mut Context<Self>) {
+        self.diagnostic_preview = None;
+        match crate::diagnostics::clear() {
+            Ok(()) => {
+                self.status_message = localization::diagnostics_cleared();
+                self.error_message.clear();
+            }
+            Err(_) => self.error_message = localization::diagnostics_operation_failed(),
+        }
+        cx.notify();
+    }
+
+    fn preview_diagnostics_export(&mut self, cx: &mut Context<Self>) {
+        if self.diagnostic_operation.is_some() {
+            return;
+        }
+        self.diagnostic_preview = None;
+        let cancellation = termirust_diagnostics::ExportCancellation::default();
+        let worker_cancellation = cancellation.clone();
+        self.diagnostic_operation = Some(cancellation);
+        self.status_message = localization::diagnostics_operation_running();
+        self.error_message.clear();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    crate::diagnostics::prepare_export_with_cancellation(&worker_cancellation)
+                })
+                .await;
+            let _ = this.update(cx, |app, cx| {
+                app.diagnostic_operation = None;
+                match result {
+                    Ok(preview) => {
+                        app.diagnostic_preview = Some(preview);
+                        app.status_message = localization::diagnostics_preview_ready();
+                        app.error_message.clear();
+                    }
+                    Err(error)
+                        if error.code == termirust_diagnostics::ExportErrorCode::Cancelled =>
+                    {
+                        app.status_message = localization::diagnostics_operation_cancelled();
+                        app.error_message.clear();
+                    }
+                    Err(error) => {
+                        app.error_message =
+                            crate::ui::settings::diagnostics_error_message(error.code);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn export_previewed_diagnostics(&mut self, cx: &mut Context<Self>) {
+        if self.diagnostic_operation.is_some() {
+            return;
+        }
+        let Some(preview) = self.diagnostic_preview.take() else {
+            self.error_message = localization::diagnostics_preview_required();
+            cx.notify();
+            return;
+        };
+        let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
+            FileDialog::new()
+                .add_filter("JSON", &["json"])
+                .set_file_name("termirust-diagnostics.json")
+                .save_file()
+        }) else {
+            self.diagnostic_preview = Some(preview);
+            return;
+        };
+        let cancellation = termirust_diagnostics::ExportCancellation::default();
+        let worker_cancellation = cancellation.clone();
+        self.diagnostic_operation = Some(cancellation);
+        self.status_message = localization::diagnostics_operation_running();
+        self.error_message.clear();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { preview.publish(path, &worker_cancellation) })
+                .await;
+            let _ = this.update(cx, |app, cx| {
+                app.diagnostic_operation = None;
+                match result {
+                    Ok(_) => {
+                        app.status_message = localization::diagnostics_export_saved();
+                        app.error_message.clear();
+                    }
+                    Err(error)
+                        if error.code == termirust_diagnostics::ExportErrorCode::Cancelled =>
+                    {
+                        app.status_message = localization::diagnostics_operation_cancelled();
+                        app.error_message.clear();
+                    }
+                    Err(error) => {
+                        app.error_message =
+                            crate::ui::settings::diagnostics_error_message(error.code);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn cancel_diagnostics_operation(&mut self, cx: &mut Context<Self>) {
+        let Some(cancellation) = self.diagnostic_operation.as_ref() else {
+            return;
+        };
+        cancellation.cancel();
+        self.status_message = localization::diagnostics_operation_cancelled();
         self.error_message.clear();
         cx.notify();
     }
@@ -6238,6 +6414,18 @@ impl TermiRustApp {
                     let local_shell = self
                         .pane(session_id)
                         .is_some_and(|pane| pane.request.is_local_shell());
+                    crate::diagnostics::record_state(
+                        termirust_diagnostics::DiagnosticCode::SessionStateChanged,
+                        termirust_diagnostics::Severity::Info,
+                        termirust_diagnostics::DiagnosticMessageId::AppLifecycle,
+                        if local_shell {
+                            termirust_diagnostics::Component::LocalPty
+                        } else {
+                            termirust_diagnostics::Component::Ssh
+                        },
+                        termirust_diagnostics::Operation::Connect,
+                        termirust_diagnostics::DiagnosticState::Ready,
+                    );
                     let open_files_on_connect = self.pane(session_id).is_some_and(|pane| {
                         pane.request.start_in_files && !pane.request.is_local_shell()
                     });
@@ -6434,6 +6622,25 @@ impl TermiRustApp {
                     message,
                 } => {
                     eprintln!("[app] event: Error session_id={session_id} message={message}");
+                    let local_shell = self
+                        .pane(session_id)
+                        .is_some_and(|pane| pane.request.is_local_shell());
+                    crate::diagnostics::record_state(
+                        if local_shell {
+                            termirust_diagnostics::DiagnosticCode::SessionStateChanged
+                        } else {
+                            termirust_diagnostics::DiagnosticCode::HostOperationFailed
+                        },
+                        termirust_diagnostics::Severity::Error,
+                        termirust_diagnostics::DiagnosticMessageId::OperationUnavailable,
+                        if local_shell {
+                            termirust_diagnostics::Component::LocalPty
+                        } else {
+                            termirust_diagnostics::Component::Ssh
+                        },
+                        termirust_diagnostics::Operation::Connect,
+                        termirust_diagnostics::DiagnosticState::Failed,
+                    );
                     if let Some(workspace_id) = self.pane_workspace_id(session_id) {
                         self.record_workspace_activity(workspace_id);
                     }
@@ -6485,6 +6692,21 @@ impl TermiRustApp {
                         .pane(session_id)
                         .map(|pane| pane.user_closed)
                         .unwrap_or(true);
+                    let local_shell = self
+                        .pane(session_id)
+                        .is_some_and(|pane| pane.request.is_local_shell());
+                    crate::diagnostics::record_state(
+                        termirust_diagnostics::DiagnosticCode::SessionStateChanged,
+                        termirust_diagnostics::Severity::Info,
+                        termirust_diagnostics::DiagnosticMessageId::AppLifecycle,
+                        if local_shell {
+                            termirust_diagnostics::Component::LocalPty
+                        } else {
+                            termirust_diagnostics::Component::Ssh
+                        },
+                        termirust_diagnostics::Operation::Disconnect,
+                        termirust_diagnostics::DiagnosticState::Disconnected,
+                    );
                     let durable = self.pane(session_id).is_some_and(|pane| {
                         pane.app_attached.as_ref().is_some_and(|attached| {
                             attached.route == termirust_domain::SessionLaunchRoute::DurableHost
@@ -6516,10 +6738,7 @@ impl TermiRustApp {
                             .unwrap_or_default()
                     } else if durable {
                         message.clone()
-                    } else if self
-                        .pane(session_id)
-                        .is_some_and(|pane| pane.request.is_local_shell())
-                    {
+                    } else if local_shell {
                         "Local terminal closed.".to_string()
                     } else {
                         "SSH session closed.".to_string()

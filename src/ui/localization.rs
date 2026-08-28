@@ -134,6 +134,55 @@ static_message!(cli_settings_examples, CliSettingsExamplesArgs);
 static_message!(cli_settings_help_hint, CliSettingsHelpHintArgs);
 static_message!(cli_settings_path_copied, CliSettingsPathCopiedArgs);
 static_message!(cli_settings_example_copied, CliSettingsExampleCopiedArgs);
+static_message!(diagnostics_settings_title, DiagnosticsSettingsTitleArgs);
+static_message!(
+    diagnostics_settings_description,
+    DiagnosticsSettingsDescriptionArgs
+);
+static_message!(diagnostics_status_disabled, DiagnosticsStatusDisabledArgs);
+static_message!(diagnostics_status_healthy, DiagnosticsStatusHealthyArgs);
+static_message!(diagnostics_status_dropping, DiagnosticsStatusDroppingArgs);
+static_message!(
+    diagnostics_status_disk_error,
+    DiagnosticsStatusDiskErrorArgs
+);
+static_message!(diagnostics_enable_action, DiagnosticsEnableActionArgs);
+static_message!(diagnostics_disable_action, DiagnosticsDisableActionArgs);
+static_message!(diagnostics_clear_action, DiagnosticsClearActionArgs);
+static_message!(diagnostics_preview_action, DiagnosticsPreviewActionArgs);
+static_message!(diagnostics_export_action, DiagnosticsExportActionArgs);
+static_message!(diagnostics_preview_required, DiagnosticsPreviewRequiredArgs);
+static_message!(diagnostics_privacy_notice, DiagnosticsPrivacyNoticeArgs);
+static_message!(diagnostics_clear_notice, DiagnosticsClearNoticeArgs);
+static_message!(diagnostics_settings_saved, DiagnosticsSettingsSavedArgs);
+static_message!(diagnostics_cleared, DiagnosticsClearedArgs);
+static_message!(diagnostics_preview_ready, DiagnosticsPreviewReadyArgs);
+static_message!(diagnostics_export_saved, DiagnosticsExportSavedArgs);
+static_message!(diagnostics_operation_failed, DiagnosticsOperationFailedArgs);
+static_message!(
+    diagnostics_operation_running,
+    DiagnosticsOperationRunningArgs
+);
+static_message!(
+    diagnostics_operation_cancelled,
+    DiagnosticsOperationCancelledArgs
+);
+static_message!(diagnostics_error_permission, DiagnosticsErrorPermissionArgs);
+static_message!(diagnostics_error_size, DiagnosticsErrorSizeArgs);
+static_message!(diagnostics_error_redaction, DiagnosticsErrorRedactionArgs);
+static_message!(
+    diagnostics_error_source_changed,
+    DiagnosticsErrorSourceChangedArgs
+);
+static_message!(
+    diagnostics_error_destination_exists,
+    DiagnosticsErrorDestinationExistsArgs
+);
+static_message!(diagnostics_error_storage, DiagnosticsErrorStorageArgs);
+static_message!(diagnostics_file_limit_label, DiagnosticsFileLimitLabelArgs);
+static_message!(diagnostics_retention_label, DiagnosticsRetentionLabelArgs);
+static_message!(diagnostics_preview_included, DiagnosticsPreviewIncludedArgs);
+static_message!(diagnostics_preview_excluded, DiagnosticsPreviewExcludedArgs);
 
 static_message!(remote_devices_title, RemoteDevicesTitleArgs);
 static_message!(remote_devices_description, RemoteDevicesDescriptionArgs);
@@ -423,6 +472,34 @@ pub fn cli_settings_path_value(path: impl Into<String>) -> String {
 
 pub fn cli_settings_example(command: impl Into<String>) -> String {
     text(&CliSettingsExampleArgs::new(KeyName::new(command)))
+}
+
+pub fn diagnostics_usage_summary(bytes: u64, files: u8, days: u8) -> String {
+    text(&DiagnosticsUsageSummaryArgs::new(
+        ByteSize(bytes),
+        Count(u64::from(files)),
+        Count(u64::from(days)),
+    ))
+}
+
+pub fn diagnostics_file_limit_option(count: u8) -> String {
+    text(&DiagnosticsFileLimitOptionArgs::new(Count(u64::from(
+        count,
+    ))))
+}
+
+pub fn diagnostics_retention_option(count: u8) -> String {
+    text(&DiagnosticsRetentionOptionArgs::new(Count(u64::from(
+        count,
+    ))))
+}
+
+pub fn diagnostics_preview_summary(entries: u64, bytes: u64, redactions: u64) -> String {
+    text(&DiagnosticsPreviewSummaryArgs::new(
+        Count(entries),
+        ByteSize(bytes),
+        Count(redactions),
+    ))
 }
 
 pub fn common_save() -> String {

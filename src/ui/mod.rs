@@ -5,6 +5,7 @@ pub mod keys;
 pub mod localization;
 pub mod path;
 pub mod render_terminal;
+pub mod settings;
 pub mod sftp_local;
 pub mod shell;
 pub mod snippet;

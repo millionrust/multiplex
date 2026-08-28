@@ -19,6 +19,7 @@ members = [
     "crates/termirust-controller-listener",
     "crates/termirust-controller-bindings",
     "crates/termirust-domain",
+    "crates/termirust-diagnostics",
     "crates/termirust-host-protocol",
     "crates/termirust-session-host",
     "crates/termirust-mobile-ffi",
@@ -72,6 +73,7 @@ sha2 = "0.10"
 smallvec = "1.15"
 termirust-protocol = { version = "0.1.0", path = "crates/termirust-protocol" }
 termirust-domain = { version = "0.1.0", path = "crates/termirust-domain" }
+termirust-diagnostics = { version = "0.1.0", path = "crates/termirust-diagnostics" }
 termirust-client = { version = "0.1.0", path = "crates/termirust-client" }
 termirust-cli = { version = "0.1.0", path = "crates/termirust-cli" }
 termirust-controller-security = { version = "0.1.0", path = "crates/termirust-controller-security" }

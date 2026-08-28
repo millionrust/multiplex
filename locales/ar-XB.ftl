@@ -193,6 +193,46 @@ dev-url-stale = ⁧.elbaliava regnol on si ecnatsni tsoH tcaxe sti esuaceb delba
 development-locale-active = ⁧ :elacol tnempoleved evitcA⁩{ $locale }
 development-localization-hint = ⁧.seulav mrof devas gnignahc tuohtiw sserts tuoyal lanoitceridib dna noisnapxe txet weiverP⁩
 development-localization-title = ⁧selacol-oduesP⁩
+diagnostics-clear-action = ⁧scitsongaid raelC⁩
+diagnostics-clear-notice = ⁧.stohspans metsyselif ro spukcab ecived ni niamer yam seipoC .sisab troffe-tseb a no selif citsongaid denwo-tsuRimreT ylno sevomer raelC⁩
+diagnostics-cleared = ⁧.deraelc sdrocer citsongaid lacoL⁩
+diagnostics-disable-action = ⁧scitsongaid lacol elbasiD⁩
+diagnostics-enable-action = ⁧scitsongaid lacol elbanE⁩
+diagnostics-error-destination-exists = ⁧.degnahc ton saw elif gnitsixe eht ;emanelif wen a esoohC .elif a sniatnoc ydaerla noitanitsed tahT⁩
+diagnostics-error-permission = ⁧.niaga yrt dna snoissimrep kcehC .noitanitsed detceles ro egarots lacol etavirp eht ssecca ton dluoc scitsongaiD⁩
+diagnostics-error-redaction = ⁧.dehsilbup saw eldnub oN .efas eldnub eht evorp ton dluoc nacs ycavirp eht esuaceb deppots tropxE⁩
+diagnostics-error-size = ⁧.niaga weiverp neht ,timil elif lacol eht rewol ro scitsongaid raelC .timil ytefas BiM 05 eht dedeecxe eldnub citsongaid ehT⁩
+diagnostics-error-source-changed = ⁧.tohspans tnetsisnoc a etaerc ot niaga weiverP .deraperp saw weiverp eht elihw degnahc scitsongaiD⁩
+diagnostics-error-storage = ⁧.snoissimrep dna ecaps ksid kcehc ;elbasu niamer snoisses lanimreT .elbaliavanu si egarots scitsongaiD⁩
+diagnostics-export-action = ⁧eldnub deweiverp tropxE⁩
+diagnostics-export-saved = ⁧.yllacol devas eldnub citsongaid deweiverP⁩
+diagnostics-file-limit-label = ⁧elif rep ezis mumixaM⁩
+diagnostics-file-limit-option = { $count }⁧BiM ⁩
+diagnostics-operation-cancelled = ⁧.devas saw eldnub laitrap oN .dellecnac noitarepo scitsongaiD⁩
+diagnostics-operation-failed = ⁧.detceffa ton erew snoisses lanimreT .ylefas deliaf noitarepo scitsongaid ehT⁩
+diagnostics-operation-running = ⁧…eldnub scitsongaid lacol etavirp a gniraperP⁩
+diagnostics-preview-action = ⁧tropxe weiverP⁩
+diagnostics-preview-excluded = ⁧.tnetnoc draobpilc dna ,stcafitra ,seman ecived ,semanresu ,semantsoh ,shtap ,sdnammoc ,tnemnorivne ,slaitnederc ,stpircsnart ,stpmorp ,tuptuo dna tupni lanimret :dedulcxE⁩
+diagnostics-preview-included = ⁧.snoitca yrevocer dna ,snoitisnart etats ,stekcub noitarud ,stnuoc esraoc ,spmatsemit ,ytireves ,sedoc noitarepo detsilwolla :dedulcnI⁩
+diagnostics-preview-ready = ⁧.ydaer si weiverp tropxe citsongaid tcaxE⁩
+diagnostics-preview-required = ⁧.tropxe erofeb eldnub tcaxe eht weiverP⁩
+diagnostics-preview-summary = ⁧ :weiverP⁩{ $entries }⁧ ,seirtne ⁩{ $bytes }⁧ ,⁩{ $redactions }⁧snoitcader ⁩
+diagnostics-privacy-notice = ⁧.dedaolpu si gnihtoN .tnetnoc draobpilc dna ,stcafitra ,seman ecived ,semanresu ,semantsoh ,shtap ,tnemnorivne ,slaitnederc ,stpircsnart ,stpmorp ,tuptuo dna tupni lanimret sedulcxE .ylno stnuoc esraoc dna sedoc lanoitarepo detsilwolla sedulcnI⁩
+diagnostics-retention-label = ⁧noitneter mumixaM⁩
+diagnostics-retention-option = { $count ->
+    [many] { $count }⁧syad ⁩
+    [one] { $count }⁧yad ⁩
+   *[other] { $count }⁧syad ⁩
+    [zero] ⁧noitneter oN⁩
+    }
+diagnostics-settings-description = ⁧.sniatnoc eldnub troppus lacol a tahw yltcaxe weiverp dna ecived siht no atadatem lanoitarepo dednuob peeK⁩
+diagnostics-settings-saved = ⁧.devas sgnittes ycavirp citsongaiD⁩
+diagnostics-settings-title = ⁧scitsongaiD & ycavirP ,egarotS⁩
+diagnostics-status-disabled = ⁧delbasiD⁩
+diagnostics-status-disk-error = ⁧rorre noissimrep ro ksiD⁩
+diagnostics-status-dropping = ⁧lluf si eueuq dednuob eht esuaceb stneve gnipporD⁩
+diagnostics-status-healthy = ⁧yhtlaeH⁩
+diagnostics-usage-summary = { $bytes }⁧ ssorca ⁩{ $files }⁧ tsom ta rof deniater · selif ⁩{ $days }⁧syad ⁩
 field-error = ⁧ :rorrE⁩{ $reason }
 global-palette-add-project-action = ⁧tcejorP ddA⁩
 global-palette-archived-fallback = ⁧.snoisses devihcra gniwohS .dehctam stluser evitca oN⁩

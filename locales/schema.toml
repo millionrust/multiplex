@@ -3207,3 +3207,186 @@ name = "reason"
 type = "Text"
 sensitivity = "public"
 bidi = "none"
+
+[[messages]]
+id = "diagnostics-settings-title"
+context = "Settings card heading for privacy-safe local diagnostics."
+description = "Diagnostics settings title"
+[[messages]]
+id = "diagnostics-settings-description"
+context = "Settings card description explaining bounded local-only diagnostics."
+description = "Diagnostics settings description"
+[[messages]]
+id = "diagnostics-status-disabled"
+context = "Diagnostics runtime status when collection is disabled."
+description = "Diagnostics disabled status"
+[[messages]]
+id = "diagnostics-status-healthy"
+context = "Diagnostics runtime status when local recording works normally."
+description = "Diagnostics healthy status"
+[[messages]]
+id = "diagnostics-status-dropping"
+context = "Diagnostics runtime status when bounded queue events were dropped."
+description = "Diagnostics dropping status"
+[[messages]]
+id = "diagnostics-status-disk-error"
+context = "Diagnostics runtime status when private local storage is unavailable."
+description = "Diagnostics disk error status"
+[[messages]]
+id = "diagnostics-enable-action"
+context = "Action enabling bounded local diagnostics."
+description = "Enable diagnostics action"
+[[messages]]
+id = "diagnostics-disable-action"
+context = "Action disabling bounded local diagnostics."
+description = "Disable diagnostics action"
+[[messages]]
+id = "diagnostics-clear-action"
+context = "Action removing only TermiRust-owned diagnostic records."
+description = "Clear diagnostics action"
+[[messages]]
+id = "diagnostics-preview-action"
+context = "Action preparing and showing the exact diagnostic export manifest."
+description = "Preview diagnostic export action"
+[[messages]]
+id = "diagnostics-export-action"
+context = "Action saving the previously previewed diagnostics bundle locally."
+description = "Export diagnostics action"
+[[messages]]
+id = "diagnostics-preview-required"
+context = "Reason export is unavailable until an exact preview is prepared."
+description = "Diagnostic preview required hint"
+[[messages]]
+id = "diagnostics-privacy-notice"
+context = "Privacy notice listing content classes excluded from diagnostics."
+description = "Diagnostic privacy notice"
+[[messages]]
+id = "diagnostics-clear-notice"
+context = "Honest deletion notice for local diagnostic files."
+description = "Diagnostic clear notice"
+[[messages]]
+id = "diagnostics-settings-saved"
+context = "Status after diagnostic policy is saved."
+description = "Diagnostic settings saved status"
+[[messages]]
+id = "diagnostics-cleared"
+context = "Status after marker-owned diagnostic records are cleared."
+description = "Diagnostics cleared status"
+[[messages]]
+id = "diagnostics-preview-ready"
+context = "Status after an exact diagnostic export preview is prepared."
+description = "Diagnostic preview ready status"
+[[messages]]
+id = "diagnostics-export-saved"
+context = "Status after the previewed diagnostic bundle is saved locally."
+description = "Diagnostic export saved status"
+[[messages]]
+id = "diagnostics-operation-failed"
+context = "Privacy-safe generic error for a failed diagnostics operation."
+description = "Diagnostics operation failed"
+[[messages]]
+id = "diagnostics-operation-running"
+context = "Status while a cancellable diagnostic preview or export is running."
+description = "Diagnostics operation running"
+[[messages]]
+id = "diagnostics-operation-cancelled"
+context = "Status after a diagnostic preview or export is cancelled safely."
+description = "Diagnostics operation cancelled"
+[[messages]]
+id = "diagnostics-error-permission"
+context = "Safe recovery message when private diagnostics storage or a chosen destination is inaccessible."
+description = "Diagnostics permission error"
+[[messages]]
+id = "diagnostics-error-size"
+context = "Safe recovery message when a diagnostics bundle exceeds its fixed size limit."
+description = "Diagnostics size error"
+[[messages]]
+id = "diagnostics-error-redaction"
+context = "Safe recovery message when export privacy cannot be proven."
+description = "Diagnostics privacy scan error"
+[[messages]]
+id = "diagnostics-error-source-changed"
+context = "Safe recovery message when diagnostic source files change during snapshot creation."
+description = "Diagnostics source changed error"
+[[messages]]
+id = "diagnostics-error-destination-exists"
+context = "Safe recovery message when local export would overwrite an existing file."
+description = "Diagnostics destination exists error"
+[[messages]]
+id = "diagnostics-error-storage"
+context = "Safe recovery message when local diagnostics storage is unavailable."
+description = "Diagnostics storage error"
+[[messages]]
+id = "diagnostics-file-limit-label"
+context = "Heading for the maximum size of each rotated diagnostic file."
+description = "Diagnostic file limit label"
+[[messages]]
+id = "diagnostics-retention-label"
+context = "Heading for the maximum local diagnostic retention period."
+description = "Diagnostic retention label"
+[[messages]]
+id = "diagnostics-file-limit-option"
+context = "Selectable maximum size of one rotated diagnostic file."
+description = "Diagnostic file limit option"
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "diagnostics-retention-option"
+context = "Selectable maximum diagnostic retention duration in days."
+description = "Diagnostic retention option"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "diagnostics-usage-summary"
+context = "Diagnostic local storage usage and retention summary."
+description = "Diagnostic usage summary"
+[[messages.args]]
+name = "bytes"
+type = "ByteSize"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "files"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "days"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "diagnostics-preview-summary"
+context = "Exact prepared diagnostic manifest totals."
+description = "Diagnostic preview summary"
+[[messages.args]]
+name = "entries"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "bytes"
+type = "ByteSize"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "redactions"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "diagnostics-preview-included"
+context = "Exact safe data classes represented in a prepared diagnostics export."
+description = "Diagnostic preview included classes"
+[[messages]]
+id = "diagnostics-preview-excluded"
+context = "Sensitive data classes excluded from a prepared diagnostics export."
+description = "Diagnostic preview excluded classes"

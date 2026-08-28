@@ -3,6 +3,7 @@ mod artifact_preview;
 mod assets;
 mod controller;
 mod credentials;
+mod diagnostics;
 mod local;
 mod models;
 mod platform_mac;
@@ -186,34 +187,6 @@ fn restored_window_bounds(
     (bounds, display_id)
 }
 
-/// Redirect stderr — every `eprintln!` line and panic backtrace — to a log
-/// file in the app data directory, so logs are available without a terminal.
-/// The file is truncated on each launch.
-fn init_file_logging() {
-    let Some(data_dir) = dirs::data_dir() else {
-        return;
-    };
-    let log_dir = data_dir.join("termirust");
-    if std::fs::create_dir_all(&log_dir).is_err() {
-        return;
-    }
-    let log_path = log_dir.join("termirust.log");
-    let Ok(file) = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&log_path)
-    else {
-        return;
-    };
-    eprintln!("[main] logging to {}", log_path.display());
-    // Point fd 2 at the log file; all eprintln! output follows it from here.
-    unsafe {
-        libc::dup2(std::os::fd::AsRawFd::as_raw_fd(&file), libc::STDERR_FILENO);
-    }
-    std::mem::forget(file);
-}
-
 fn main() {
     #[cfg(target_os = "macos")]
     if std::env::args().nth(1).as_deref() == Some(ACCESSIBILITY_HARNESS_MODE) {
@@ -263,28 +236,41 @@ fn main() {
         }
         return;
     }
-    init_file_logging();
-
-    std::panic::set_hook(Box::new(|info| {
-        eprintln!("=== PANIC ===");
-        eprintln!("{info}");
-        if let Some(location) = info.location() {
-            eprintln!(
-                "  at {}:{}:{}",
-                location.file(),
-                location.line(),
-                location.column()
-            );
-        }
-        let bt = std::backtrace::Backtrace::force_capture();
-        eprintln!("{bt}");
-        eprintln!("=== END PANIC ===");
-    }));
-
-    eprintln!("[main] starting termirust...");
-    let mut saved_state = load_saved_state().unwrap_or_default();
+    let (mut saved_state, settings_read_failed) = match load_saved_state() {
+        Ok(saved_state) => (saved_state, false),
+        Err(_) => (Default::default(), true),
+    };
     if let Ok(imported_hosts) = load_local_ssh_hosts() {
         saved_state.merge_imported_profiles(imported_hosts);
+    }
+    let _diagnostic_runtime = crate::storage::app_dir().ok().and_then(|root| {
+        crate::diagnostics::initialize(root.join("diagnostics"), &saved_state.settings)
+    });
+    std::panic::set_hook(Box::new(|_| {
+        crate::diagnostics::record(
+            termirust_diagnostics::DiagnosticCode::PanicCaptured,
+            termirust_diagnostics::Severity::Error,
+            termirust_diagnostics::DiagnosticMessageId::UnexpectedFailure,
+            termirust_diagnostics::Component::Application,
+            termirust_diagnostics::Operation::Stop,
+        );
+    }));
+    crate::diagnostics::record(
+        termirust_diagnostics::DiagnosticCode::AppStarted,
+        termirust_diagnostics::Severity::Info,
+        termirust_diagnostics::DiagnosticMessageId::AppLifecycle,
+        termirust_diagnostics::Component::Application,
+        termirust_diagnostics::Operation::Start,
+    );
+    if settings_read_failed {
+        crate::diagnostics::record_state(
+            termirust_diagnostics::DiagnosticCode::SettingsReadFailed,
+            termirust_diagnostics::Severity::Error,
+            termirust_diagnostics::DiagnosticMessageId::LocalStorageUnavailable,
+            termirust_diagnostics::Component::Settings,
+            termirust_diagnostics::Operation::Read,
+            termirust_diagnostics::DiagnosticState::Failed,
+        );
     }
     let app = Application::new().with_assets(crate::assets::Assets);
 
@@ -320,4 +306,11 @@ fn main() {
 
         cx.activate(true);
     });
+    crate::diagnostics::record(
+        termirust_diagnostics::DiagnosticCode::AppStopped,
+        termirust_diagnostics::Severity::Info,
+        termirust_diagnostics::DiagnosticMessageId::AppLifecycle,
+        termirust_diagnostics::Component::Application,
+        termirust_diagnostics::Operation::Stop,
+    );
 }

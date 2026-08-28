@@ -1813,6 +1813,27 @@ impl TermiRustApp {
         let confirm_multiline_paste = self.saved.settings.confirm_multiline_paste;
         let session_log_count = self.saved.session_logs.len();
         let has_default_ssh_dir = self.saved.settings.default_ssh_startup_directory.is_some();
+        let diagnostics_enabled = self.saved.settings.diagnostics_enabled;
+        let diagnostics_file_limit = self.saved.settings.diagnostics_max_file_mib;
+        let diagnostics_retention = self.saved.settings.diagnostics_retention_days;
+        let diagnostics_busy = self.diagnostic_operation.is_some();
+        let diagnostics_usage = crate::diagnostics::usage().unwrap_or_default();
+        let diagnostics_model = crate::ui::settings::diagnostics_view_model(
+            diagnostics_enabled,
+            crate::diagnostics::status(),
+            diagnostics_usage,
+            diagnostics_retention,
+            self.diagnostic_preview.is_some(),
+            diagnostics_busy,
+        );
+        let diagnostics_preview_summary = self.diagnostic_preview.as_ref().map(|preview| {
+            let manifest = preview.manifest();
+            localization::diagnostics_preview_summary(
+                manifest.total_entries,
+                manifest.total_bytes,
+                manifest.redactions,
+            )
+        });
 
         let appearance_card = self.settings_section_card(
             "Appearance",
@@ -2394,6 +2415,198 @@ impl TermiRustApp {
                 ),
         );
 
+        let diagnostics_card = self.settings_section_card(
+            localization::diagnostics_settings_title(),
+            localization::diagnostics_settings_description(),
+            v_flex()
+                .gap_4()
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Icon::new(match crate::diagnostics::status() {
+                                termirust_diagnostics::DiagnosticStatus::Healthy => {
+                                    IconName::CircleCheck
+                                }
+                                termirust_diagnostics::DiagnosticStatus::Dropping => {
+                                    IconName::TriangleAlert
+                                }
+                                termirust_diagnostics::DiagnosticStatus::DiskError => {
+                                    IconName::CircleX
+                                }
+                                termirust_diagnostics::DiagnosticStatus::Disabled => {
+                                    IconName::CircleX
+                                }
+                            })
+                            .size(px(15.))
+                            .text_color(theme::text_muted()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(13.))
+                                .font_semibold()
+                                .text_color(theme::text_main())
+                                .child(diagnostics_model.status.clone()),
+                        ),
+                )
+                .child(
+                    h_flex()
+                        .p(px(3.))
+                        .rounded(px(8.))
+                        .bg(theme::hover())
+                        .children(
+                            [true, false]
+                                .into_iter()
+                                .enumerate()
+                                .map(|(index, enabled)| {
+                                    Button::new(("settings-diagnostics-enabled", index))
+                                        .small()
+                                        .custom(Self::segmented_button_style(
+                                            enabled == diagnostics_enabled,
+                                            cx,
+                                        ))
+                                        .label(if enabled {
+                                            localization::diagnostics_enable_action()
+                                        } else {
+                                            localization::diagnostics_disable_action()
+                                        })
+                                        .disabled(diagnostics_busy)
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.update_diagnostics_enabled(enabled, cx);
+                                        }))
+                                        .into_any_element()
+                                }),
+                        ),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(theme::text_muted())
+                        .child(diagnostics_model.usage.clone()),
+                )
+                .child(self.settings_subhead(
+                    localization::diagnostics_file_limit_label(),
+                    localization::diagnostics_privacy_notice(),
+                ))
+                .child(h_flex().gap_2().flex_wrap().children(
+                    [1_u8, 5, 10].into_iter().enumerate().map(|(index, limit)| {
+                        Button::new(("settings-diagnostics-file-limit", index))
+                            .small()
+                            .custom(Self::action_button_style(
+                                if limit == diagnostics_file_limit {
+                                    theme::ActionTone::Accent
+                                } else {
+                                    theme::ActionTone::Neutral
+                                },
+                                cx,
+                            ))
+                            .label(localization::diagnostics_file_limit_option(limit))
+                            .disabled(diagnostics_busy)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.update_diagnostics_file_limit(limit, cx);
+                            }))
+                            .into_any_element()
+                    }),
+                ))
+                .child(self.settings_subhead(
+                    localization::diagnostics_retention_label(),
+                    localization::diagnostics_clear_notice(),
+                ))
+                .child(h_flex().gap_2().flex_wrap().children(
+                    [1_u8, 7, 14].into_iter().enumerate().map(|(index, days)| {
+                        Button::new(("settings-diagnostics-retention", index))
+                            .small()
+                            .custom(Self::action_button_style(
+                                if days == diagnostics_retention {
+                                    theme::ActionTone::Accent
+                                } else {
+                                    theme::ActionTone::Neutral
+                                },
+                                cx,
+                            ))
+                            .label(localization::diagnostics_retention_option(days))
+                            .disabled(diagnostics_busy)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.update_diagnostics_retention(days, cx);
+                            }))
+                            .into_any_element()
+                    }),
+                ))
+                .child(self.settings_divider())
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .flex_wrap()
+                        .child(
+                            Button::new("settings-diagnostics-clear")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Danger, cx))
+                                .label(localization::diagnostics_clear_action())
+                                .disabled(!diagnostics_model.can_clear)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.clear_diagnostics(cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("settings-diagnostics-preview")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label(localization::diagnostics_preview_action())
+                                .disabled(!diagnostics_model.can_preview)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.preview_diagnostics_export(cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("settings-diagnostics-export")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                                .label(localization::diagnostics_export_action())
+                                .disabled(!diagnostics_model.can_export)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.export_previewed_diagnostics(cx);
+                                })),
+                        )
+                        .when(diagnostics_busy, |this| {
+                            this.child(
+                                Button::new("settings-diagnostics-cancel")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Danger,
+                                        cx,
+                                    ))
+                                    .label(localization::common_cancel())
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.cancel_diagnostics_operation(cx);
+                                    })),
+                            )
+                        }),
+                )
+                .when(diagnostics_busy, |this| {
+                    this.child(
+                        div()
+                            .id("settings-diagnostics-operation-status")
+                            .text_size(px(12.))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child(localization::diagnostics_operation_running()),
+                    )
+                })
+                .when_some(diagnostics_preview_summary, |this, summary| {
+                    this.child(
+                        v_flex()
+                            .id("settings-diagnostics-preview-summary")
+                            .gap_2()
+                            .text_size(px(12.))
+                            .text_color(theme::text_main())
+                            .child(div().font_semibold().child(summary))
+                            .child(localization::diagnostics_preview_included())
+                            .child(localization::diagnostics_preview_excluded()),
+                    )
+                }),
+        );
+
         let portable_card = self.settings_section_card(
             "Portable Data Bundle",
             "Export or import hosts, vaults, identities, snippets, and known-host trust records as a local JSON bundle. Passwords and system credential-store secrets are intentionally excluded, so this is safe for portability but not a full account sync.",
@@ -2754,6 +2967,7 @@ impl TermiRustApp {
                             .child(terminal_card)
                             .child(startup_card)
                             .child(sessions_card)
+                            .child(diagnostics_card)
                             .child(notification_card)
                             .child(remote_devices_card)
                             .child(local_shell_card)

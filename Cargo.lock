@@ -7869,6 +7869,7 @@ dependencies = [
  "termirust-client",
  "termirust-controller-listener",
  "termirust-controller-security",
+ "termirust-diagnostics",
  "termirust-domain",
  "termirust-host-protocol",
  "termirust-protocol",
@@ -7988,6 +7989,17 @@ dependencies = [
  "sha2 0.10.9",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "termirust-diagnostics"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
 ]
 
 [[package]]

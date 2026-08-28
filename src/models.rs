@@ -615,6 +615,12 @@ pub struct AppSettings {
     pub auto_reconnect_delay_secs: u8,
     #[serde(default = "default_ssh_keepalive_secs")]
     pub ssh_keepalive_secs: u16,
+    #[serde(default = "default_diagnostics_enabled")]
+    pub diagnostics_enabled: bool,
+    #[serde(default = "default_diagnostics_max_file_mib")]
+    pub diagnostics_max_file_mib: u8,
+    #[serde(default = "default_diagnostics_retention_days")]
+    pub diagnostics_retention_days: u8,
     #[serde(default)]
     pub sync_folder_path: Option<String>,
     #[serde(default)]
@@ -645,6 +651,18 @@ fn default_ssh_keepalive_secs() -> u16 {
     30
 }
 
+fn default_diagnostics_enabled() -> bool {
+    true
+}
+
+fn default_diagnostics_max_file_mib() -> u8 {
+    10
+}
+
+fn default_diagnostics_retention_days() -> u8 {
+    14
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -661,6 +679,9 @@ impl Default for AppSettings {
             auto_reconnect_attempts: default_auto_reconnect_attempts(),
             auto_reconnect_delay_secs: default_auto_reconnect_delay_secs(),
             ssh_keepalive_secs: default_ssh_keepalive_secs(),
+            diagnostics_enabled: default_diagnostics_enabled(),
+            diagnostics_max_file_mib: default_diagnostics_max_file_mib(),
+            diagnostics_retention_days: default_diagnostics_retention_days(),
             sync_folder_path: None,
             sync_last_pushed_at: None,
             sync_last_pulled_at: None,
@@ -696,6 +717,8 @@ impl AppSettings {
         self.auto_reconnect_attempts = self.auto_reconnect_attempts.min(10);
         self.auto_reconnect_delay_secs = self.auto_reconnect_delay_secs.clamp(1, 60);
         self.ssh_keepalive_secs = self.ssh_keepalive_secs.min(300);
+        self.diagnostics_max_file_mib = self.diagnostics_max_file_mib.clamp(1, 10);
+        self.diagnostics_retention_days = self.diagnostics_retention_days.clamp(1, 14);
         self.sync_folder_path = self
             .sync_folder_path
             .take()
@@ -5188,6 +5211,19 @@ mod tests {
         assert!(from_legacy.confirm_multiline_paste);
         assert!(from_legacy.mobile_devices.is_empty());
         assert!(from_legacy.mobile_device_keys.is_empty());
+        assert!(from_legacy.diagnostics_enabled);
+        assert_eq!(from_legacy.diagnostics_max_file_mib, 10);
+        assert_eq!(from_legacy.diagnostics_retention_days, 14);
+    }
+
+    #[test]
+    fn diagnostic_settings_are_clamped_to_privacy_bounds() {
+        let mut state = SavedState::default();
+        state.settings.diagnostics_max_file_mib = u8::MAX;
+        state.settings.diagnostics_retention_days = u8::MAX;
+        state.ensure_settings();
+        assert_eq!(state.settings.diagnostics_max_file_mib, 10);
+        assert_eq!(state.settings.diagnostics_retention_days, 14);
     }
 
     #[test]

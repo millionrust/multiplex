@@ -690,3 +690,43 @@ accessibility-lab-safe-default = Keep data
 accessibility-lab-confirm-action = Confirm reference action
 accessibility-lab-progress-value = Progress for { $label }: { $value } percent
 accessibility-lab-bridge-error = Accessibility bridge unavailable ({ $reason }).
+diagnostics-settings-title = Storage, Privacy & Diagnostics
+diagnostics-settings-description = Keep bounded operational metadata on this device and preview exactly what a local support bundle contains.
+diagnostics-status-disabled = Disabled
+diagnostics-status-healthy = Healthy
+diagnostics-status-dropping = Dropping events because the bounded queue is full
+diagnostics-status-disk-error = Disk or permission error
+diagnostics-enable-action = Enable local diagnostics
+diagnostics-disable-action = Disable local diagnostics
+diagnostics-clear-action = Clear diagnostics
+diagnostics-preview-action = Preview export
+diagnostics-export-action = Export previewed bundle
+diagnostics-preview-required = Preview the exact bundle before export.
+diagnostics-privacy-notice = Includes allowlisted operational codes and coarse counts only. Excludes terminal input and output, prompts, transcripts, credentials, environment, paths, hostnames, usernames, device names, artifacts, and clipboard content. Nothing is uploaded.
+diagnostics-clear-notice = Clear removes only TermiRust-owned diagnostic files on a best-effort basis. Copies may remain in device backups or filesystem snapshots.
+diagnostics-settings-saved = Diagnostic privacy settings saved.
+diagnostics-cleared = Local diagnostic records cleared.
+diagnostics-preview-ready = Exact diagnostic export preview is ready.
+diagnostics-export-saved = Previewed diagnostic bundle saved locally.
+diagnostics-operation-failed = The diagnostics operation failed safely. Terminal sessions were not affected.
+diagnostics-operation-running = Preparing a private local diagnostics bundle…
+diagnostics-operation-cancelled = Diagnostics operation cancelled. No partial bundle was saved.
+diagnostics-error-permission = Diagnostics could not access the private local storage or selected destination. Check permissions and try again.
+diagnostics-error-size = The diagnostic bundle exceeded the 50 MiB safety limit. Clear diagnostics or lower the local file limit, then preview again.
+diagnostics-error-redaction = Export stopped because the privacy scan could not prove the bundle safe. No bundle was published.
+diagnostics-error-source-changed = Diagnostics changed while the preview was prepared. Preview again to create a consistent snapshot.
+diagnostics-error-destination-exists = That destination already contains a file. Choose a new filename; the existing file was not changed.
+diagnostics-error-storage = Diagnostics storage is unavailable. Terminal sessions remain usable; check disk space and permissions.
+diagnostics-file-limit-label = Maximum size per file
+diagnostics-retention-label = Maximum retention
+diagnostics-file-limit-option = { $count } MiB
+diagnostics-retention-option = { $count ->
+    [zero] No retention
+    [one] { $count } day
+    [many] { $count } days
+   *[other] { $count } days
+    }
+diagnostics-usage-summary = { $bytes } across { $files } files · retained for at most { $days } days
+diagnostics-preview-summary = Preview: { $entries } entries, { $bytes }, { $redactions } redactions
+diagnostics-preview-included = Included: allowlisted operation codes, severity, timestamps, coarse counts, duration buckets, state transitions, and recovery actions.
+diagnostics-preview-excluded = Excluded: terminal input and output, prompts, transcripts, credentials, environment, commands, paths, hostnames, usernames, device names, artifacts, and clipboard content.
