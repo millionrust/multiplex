@@ -46,6 +46,13 @@ impl std::fmt::Debug for AuthoritySnapshot {
 
 pub trait ControllerAuthorityProvider: Send + Sync {
     fn snapshot(&self) -> Result<AuthoritySnapshot, ListenerError>;
+
+    fn reconcile_authenticated_pairing(
+        &self,
+        _peer: &AuthenticatedPeer,
+    ) -> Result<(), ListenerError> {
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -324,6 +331,7 @@ async fn serve_connection(
             return Err(error);
         }
     };
+    authority_provider.reconcile_authenticated_pairing(&authenticated.peer)?;
     limiter
         .lock()
         .map_err(|_| ListenerError::new(ListenerErrorCode::Cancelled))?

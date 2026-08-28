@@ -296,6 +296,40 @@ impl ControllerAuthorityProvider for RepositoryAuthority {
             host_private: self.host_private.clone(),
         })
     }
+
+    fn reconcile_authenticated_pairing(
+        &self,
+        peer: &AuthenticatedPeer,
+    ) -> Result<(), ListenerError> {
+        let snapshot = self
+            .repository
+            .load()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        let Some(device) = snapshot.authority.devices.iter().find(|device| {
+            device.device_id == peer.device_id && device.public_key == peer.public_key
+        }) else {
+            return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
+        };
+        let offer_id = device.source_offer_id;
+        let should_reconcile = snapshot.authority.offers.iter().any(|offer| {
+            offer.offer_id == offer_id
+                && matches!(
+                    offer.state,
+                    PairingOfferState::Persisted | PairingOfferState::Uncertain
+                )
+        });
+        if !should_reconcile {
+            return Ok(());
+        }
+        self.repository
+            .update(snapshot.revision, |authority| {
+                authority
+                    .acknowledge_pairing(offer_id, peer.public_key)
+                    .map(|_| ())
+            })
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
@@ -670,6 +704,88 @@ mod tests {
         assert!(ListenerLaunchDescriptor::read(oversized.as_slice()).is_err());
         assert!(!safe_absolute_path(Path::new("relative")));
         assert!(!safe_absolute_path(Path::new("/safe/../unsafe")));
+    }
+
+    #[test]
+    fn authenticated_reconnect_reconciles_uncertain_pairing_without_duplicate_device() {
+        let fixture = tempfile::tempdir().unwrap();
+        let repository = ControllerDeviceRepository::open(fixture.path()).unwrap();
+        let host_private = StaticPrivateKey::from_fixture_bytes([31; 32]);
+        let host_public = host_public_key_from_private(&host_private);
+        let offer_id = PairingOfferId::new();
+        let device_id = ControllerDeviceId::new();
+        let device_key = DevicePublicKey([32; 32]);
+        let snapshot = repository.load().unwrap();
+        let mut peer = None;
+        repository
+            .update(snapshot.revision, |authority| {
+                authority.identity = Some(HostIdentityPublic::new(
+                    HostIdentityGeneration::INITIAL,
+                    HostPublicKey(host_public.0),
+                ));
+                authority.secret_ref =
+                    Some(HostIdentitySecretRef::new("identity:reconcile-test").unwrap());
+                authority.state = HostIdentityState::Ready;
+                authority.create_offer(
+                    offer_id,
+                    [33; 32],
+                    100,
+                    200,
+                    ControllerCapabilities::default().with(ControllerCapability::ObserveSessions),
+                    vec!["192.168.1.9:55555".into()],
+                )?;
+                authority
+                    .offers
+                    .iter_mut()
+                    .find(|offer| offer.offer_id == offer_id)
+                    .unwrap()
+                    .state = PairingOfferState::SasReady;
+                let device = authority.persist_pairing(
+                    offer_id,
+                    device_id,
+                    device_key,
+                    "Test iPhone".into(),
+                    150,
+                )?;
+                authority
+                    .offers
+                    .iter_mut()
+                    .find(|offer| offer.offer_id == offer_id)
+                    .unwrap()
+                    .state = PairingOfferState::Uncertain;
+                peer = Some(AuthenticatedPeer {
+                    device_id: device.device_id,
+                    public_key: device.public_key,
+                    identity_generation: device.identity_generation,
+                    revocation_epoch: device.revocation_epoch,
+                    capabilities: device.capabilities,
+                });
+                Ok(())
+            })
+            .unwrap();
+        let authority = RepositoryAuthority {
+            repository: repository.clone(),
+            host_private,
+            events: ListenerEventSink::new(Vec::<u8>::new()),
+            decisions: PairingDecisionBroker::default(),
+        };
+
+        authority
+            .reconcile_authenticated_pairing(&peer.unwrap())
+            .unwrap();
+
+        let saved = repository.load().unwrap();
+        assert_eq!(saved.authority.devices.len(), 1);
+        assert_eq!(
+            saved
+                .authority
+                .offers
+                .iter()
+                .find(|offer| offer.offer_id == offer_id)
+                .unwrap()
+                .state,
+            PairingOfferState::Acknowledged
+        );
     }
 
     #[test]
