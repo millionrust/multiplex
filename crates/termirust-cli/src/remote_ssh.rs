@@ -1,5 +1,5 @@
 use std::fs::{self, OpenOptions};
-use std::io::{IsTerminal as _, Read as _, Write as _};
+use std::io::{IsTerminal as _, Read as _, Write};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Mutex;
@@ -7,6 +7,11 @@ use std::task::{Context, Poll};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
+use crossterm::event::{
+    Event as TerminalEvent, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
+};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use futures_util::StreamExt as _;
 use keyring::{Entry, Error as KeyringError};
 use rand::RngCore as _;
 use serde::{Deserialize, Serialize};
@@ -316,6 +321,51 @@ impl SystemSshControllerExecutor {
             sessions: Vec::new(),
         }))
     }
+
+    pub fn execute_interactive_attach(
+        &self,
+        mut command: ControllerSshCommand,
+        cancellation: &Cancellation,
+    ) -> Result<(), CliError> {
+        if !command.allow_interaction
+            || !std::io::stdin().is_terminal()
+            || !std::io::stdout().is_terminal()
+            || !std::io::stderr().is_terminal()
+        {
+            return Err(CliError::new(
+                ErrorCode::InteractionRequired,
+                "interactive SSH Controller attach requires a terminal",
+                "Run attach without --json and without redirecting stdin, stdout, or stderr.",
+            ));
+        }
+        if !matches!(command.action, ControllerSshAction::Attach { .. }) {
+            return Err(CliError::new(
+                ErrorCode::Usage,
+                "interactive execution requires the attach action",
+                "Run termirust-cli controller ssh ... attach with a session and generation.",
+            ));
+        }
+        if let Ok((terminal_columns, terminal_rows)) = crossterm::terminal::size()
+            && let ControllerSshAction::Attach { columns, rows, .. } = &mut command.action
+        {
+            *columns = terminal_columns.max(1);
+            *rows = terminal_rows.max(1);
+        }
+        let profile = StoredControllerProfile::load(&self.config_root, &command.target)?;
+        let private_key = profile.private_key()?;
+        let executable = resolve_system_ssh().map_err(map_spawn)?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| route_unavailable())?;
+        runtime.block_on(execute_interactive_route(
+            executable,
+            command,
+            profile,
+            private_key,
+            cancellation,
+        ))
+    }
 }
 
 impl SshControllerCommandExecutor for SystemSshControllerExecutor {
@@ -444,6 +494,487 @@ where
     process.terminate().await;
     let stderr = stderr_task.await.unwrap_or_default();
     result.map_err(|error| classify_route_error(error, &stderr))
+}
+
+async fn execute_interactive_route(
+    executable: PathBuf,
+    command: ControllerSshCommand,
+    profile: StoredControllerProfile,
+    private_key: StaticPrivateKey,
+    cancellation: &Cancellation,
+) -> Result<(), CliError> {
+    let mut process =
+        AsyncSshControllerProcess::spawn(&executable, &command.target).map_err(map_spawn)?;
+    let reader = process.take_stdout().ok_or_else(route_unavailable)?;
+    let writer = process.take_stdin().ok_or_else(route_unavailable)?;
+    let stderr = process.take_stderr().ok_or_else(route_unavailable)?;
+    let stderr_task = tokio::spawn(read_bounded_stderr(stderr));
+    let stream = ChildDuplex { reader, writer };
+    let connected = tokio::time::timeout(
+        ROUTE_TIMEOUT,
+        ControllerClientChannel::connect(
+            stream,
+            profile.identity_generation,
+            profile.revocation_epoch,
+            profile.session_generation,
+            HostStaticPublicKey(profile.host_public_key),
+            private_key,
+            profile.capabilities(),
+            &mut SystemHandshakeEntropy,
+        ),
+    )
+    .await
+    .map_err(|_| {
+        CliError::new(
+            ErrorCode::Timeout,
+            "remote Controller authentication timed out",
+            "Check SSH connectivity and retry attach.",
+        )
+    })?
+    .map_err(map_listener);
+    let result = match connected {
+        Ok(mut channel) => {
+            run_interactive_attach(&mut channel, &command.action, cancellation).await
+        }
+        Err(error) => Err(error),
+    };
+    process.terminate().await;
+    let stderr = stderr_task.await.unwrap_or_default();
+    result.map_err(|error| classify_route_error(error, &stderr))
+}
+
+async fn run_interactive_attach(
+    channel: &mut ControllerClientChannel<ChildDuplex>,
+    action: &ControllerSshAction,
+    cancellation: &Cancellation,
+) -> Result<(), CliError> {
+    let ControllerSshAction::Attach {
+        session_id,
+        occupant_generation,
+        from_sequence,
+        columns,
+        rows,
+        request_control,
+    } = action
+    else {
+        return Err(protocol_failure());
+    };
+    let mut stdout = std::io::stdout().lock();
+    let attach_id = channel
+        .send(
+            ControllerCommand::Attach {
+                session_id: *session_id,
+                occupant_generation: *occupant_generation,
+                from_sequence: *from_sequence,
+                columns: u32::from(*columns),
+                rows: u32::from(*rows),
+            },
+            deadline(),
+        )
+        .await
+        .map_err(map_listener)?;
+    let mut last_sequence = *from_sequence;
+    wait_for_interactive_response(
+        channel,
+        attach_id,
+        InteractiveExpected::Attached,
+        *session_id,
+        &mut last_sequence,
+        &mut stdout,
+    )
+    .await?;
+    if *request_control {
+        let command_id = channel
+            .send(
+                ControllerCommand::AcquireWriter {
+                    session_id: *session_id,
+                    occupant_generation: *occupant_generation,
+                },
+                deadline(),
+            )
+            .await
+            .map_err(map_listener)?;
+        wait_for_interactive_response(
+            channel,
+            command_id,
+            InteractiveExpected::Completed,
+            *session_id,
+            &mut last_sequence,
+            &mut stdout,
+        )
+        .await?;
+    }
+    let mode = if *request_control {
+        "writer input enabled"
+    } else {
+        "read-only observer"
+    };
+    writeln!(
+        std::io::stderr(),
+        "Attached to the authoritative Host ({mode}). Detach with Ctrl-] then d."
+    )
+    .map_err(|_| output_unavailable())?;
+    enable_raw_mode().map_err(|_| terminal_mode_unavailable())?;
+    let _raw_mode = RawModeGuard;
+    let mut events = EventStream::new();
+    let mut leader = false;
+    let mut input = Vec::new();
+    let mut resize = None;
+    let mut pending_mutation = None;
+    let mut detach_requested = false;
+    loop {
+        if pending_mutation.is_none() && *request_control {
+            let command = if !input.is_empty() {
+                Some(ControllerCommand::Input {
+                    session_id: *session_id,
+                    occupant_generation: *occupant_generation,
+                    bytes: std::mem::take(&mut input),
+                })
+            } else {
+                resize
+                    .take()
+                    .map(|(columns, rows)| ControllerCommand::Resize {
+                        session_id: *session_id,
+                        occupant_generation: *occupant_generation,
+                        columns,
+                        rows,
+                    })
+            };
+            if let Some(command) = command {
+                pending_mutation = Some(
+                    channel
+                        .send(command, deadline())
+                        .await
+                        .map_err(map_listener)?,
+                );
+            }
+        }
+        if detach_requested && pending_mutation.is_none() {
+            break;
+        }
+        tokio::select! {
+            response = channel.read_response() => {
+                match response.map_err(map_listener)? {
+                    ControllerResponse::Output { session_id: response_session, sequence, bytes }
+                        if response_session == *session_id => {
+                            write_live_output(&mut stdout, &mut last_sequence, sequence, &bytes)?;
+                        }
+                    ControllerResponse::Completed { command_id, applied: true }
+                        if pending_mutation == Some(command_id) => {
+                            pending_mutation = None;
+                        }
+                    ControllerResponse::Completed { command_id, applied: false }
+                        if pending_mutation == Some(command_id) => {
+                            return Err(CliError::new(
+                                ErrorCode::Conflict,
+                                "remote terminal input was not applied",
+                                "Detach, refresh the session generation and writer state, then retry.",
+                            ));
+                        }
+                    ControllerResponse::Error { command_id, code, completion_unknown }
+                        if pending_mutation == Some(command_id) => {
+                            return Err(remote_command_error(&code, completion_unknown));
+                        }
+                    _ => return Err(protocol_failure()),
+                }
+            }
+            event = events.next() => {
+                let event = event
+                    .ok_or_else(terminal_mode_unavailable)?
+                    .map_err(|_| terminal_mode_unavailable())?;
+                match event {
+                    TerminalEvent::Key(key) if key.kind != KeyEventKind::Release => {
+                        if is_cancel_key(&key) {
+                            detach_requested = true;
+                            continue;
+                        }
+                        if leader {
+                            leader = false;
+                            if matches!(key.code, KeyCode::Char('d' | 'D'))
+                                && key.modifiers.is_empty()
+                            {
+                                detach_requested = true;
+                                continue;
+                            }
+                            if *request_control {
+                                input.push(0x1d);
+                            }
+                        } else if is_leader_key(&key) {
+                            leader = true;
+                            continue;
+                        }
+                        if *request_control {
+                            append_key_bytes(&mut input, key)?;
+                            if input.len() > INPUT_MAX_BYTES as usize {
+                                return Err(CliError::new(
+                                    ErrorCode::ResourceLimit,
+                                    "interactive terminal input queue is full",
+                                    "Wait for the remote Host to catch up, then reattach.",
+                                ));
+                            }
+                        }
+                    }
+                    TerminalEvent::Paste(bytes) if *request_control => {
+                        if input.len().saturating_add(bytes.len()) > INPUT_MAX_BYTES as usize {
+                            return Err(CliError::new(
+                                ErrorCode::ResourceLimit,
+                                "interactive paste exceeds the 16 KiB input limit",
+                                "Paste a smaller payload or send it in separate chunks.",
+                            ));
+                        }
+                        input.extend_from_slice(bytes.as_bytes());
+                    }
+                    TerminalEvent::Resize(columns, rows) if *request_control => {
+                        resize = Some((u32::from(columns.max(1)), u32::from(rows.max(1))));
+                    }
+                    _ => {}
+                }
+            }
+            () = wait_for_cancellation(cancellation), if !detach_requested => {
+                detach_requested = true;
+            }
+        }
+    }
+    if *request_control {
+        let command_id = channel
+            .send(
+                ControllerCommand::ReleaseWriter {
+                    session_id: *session_id,
+                    occupant_generation: *occupant_generation,
+                },
+                deadline(),
+            )
+            .await
+            .map_err(map_listener)?;
+        wait_for_interactive_response(
+            channel,
+            command_id,
+            InteractiveExpected::Completed,
+            *session_id,
+            &mut last_sequence,
+            &mut stdout,
+        )
+        .await?;
+    }
+    let command_id = channel
+        .send(
+            ControllerCommand::Detach {
+                session_id: *session_id,
+                occupant_generation: *occupant_generation,
+            },
+            deadline(),
+        )
+        .await
+        .map_err(map_listener)?;
+    wait_for_interactive_response(
+        channel,
+        command_id,
+        InteractiveExpected::Detached,
+        *session_id,
+        &mut last_sequence,
+        &mut stdout,
+    )
+    .await
+}
+
+#[derive(Clone, Copy)]
+enum InteractiveExpected {
+    Attached,
+    Completed,
+    Detached,
+}
+
+async fn wait_for_interactive_response(
+    channel: &mut ControllerClientChannel<ChildDuplex>,
+    expected_id: termirust_domain::CommandId,
+    expected: InteractiveExpected,
+    session_id: HostedSessionId,
+    last_sequence: &mut termirust_domain::OutputSequence,
+    stdout: &mut impl Write,
+) -> Result<(), CliError> {
+    let mut snapshot_chunk = 0;
+    let mut snapshot_chunks = None;
+    for _ in 0..RESPONSE_LIMIT {
+        match channel.read_response().await.map_err(map_listener)? {
+            ControllerResponse::Snapshot {
+                command_id,
+                session_id: response_session,
+                boundary_sequence,
+                chunk_index,
+                chunk_count,
+                bytes,
+                ..
+            } if command_id == expected_id
+                && response_session == session_id
+                && matches!(expected, InteractiveExpected::Attached) =>
+            {
+                if chunk_count == 0
+                    || usize::try_from(chunk_count).unwrap_or(usize::MAX) > RESPONSE_LIMIT
+                    || snapshot_chunks.is_some_and(|count| count != chunk_count)
+                    || chunk_index != snapshot_chunk
+                {
+                    return Err(protocol_failure());
+                }
+                snapshot_chunks = Some(chunk_count);
+                snapshot_chunk = snapshot_chunk.saturating_add(1);
+                stdout.write_all(&bytes).map_err(|_| output_unavailable())?;
+                stdout.flush().map_err(|_| output_unavailable())?;
+                *last_sequence = boundary_sequence;
+            }
+            ControllerResponse::Output {
+                session_id: response_session,
+                sequence,
+                bytes,
+            } if response_session == session_id => {
+                write_live_output(stdout, last_sequence, sequence, &bytes)?;
+            }
+            ControllerResponse::Attached { command_id, .. }
+                if command_id == expected_id
+                    && matches!(expected, InteractiveExpected::Attached) =>
+            {
+                if snapshot_chunks.is_some_and(|count| snapshot_chunk != count) {
+                    return Err(protocol_failure());
+                }
+                return Ok(());
+            }
+            ControllerResponse::Completed {
+                command_id,
+                applied: true,
+            } if command_id == expected_id
+                && matches!(expected, InteractiveExpected::Completed) =>
+            {
+                return Ok(());
+            }
+            ControllerResponse::Detached { command_id }
+                if command_id == expected_id
+                    && matches!(expected, InteractiveExpected::Detached) =>
+            {
+                return Ok(());
+            }
+            ControllerResponse::Completed {
+                command_id,
+                applied: false,
+            } if command_id == expected_id => {
+                return Err(CliError::new(
+                    ErrorCode::Conflict,
+                    "remote Controller command was not applied",
+                    "Refresh the session generation and writer state before retrying.",
+                ));
+            }
+            ControllerResponse::Error {
+                command_id,
+                code,
+                completion_unknown,
+            } if command_id == expected_id => {
+                return Err(remote_command_error(&code, completion_unknown));
+            }
+            _ => return Err(protocol_failure()),
+        }
+    }
+    Err(CliError::new(
+        ErrorCode::ResourceLimit,
+        "interactive response limit was exceeded",
+        "Detach and retry after remote output pressure subsides.",
+    ))
+}
+
+fn write_live_output(
+    stdout: &mut impl Write,
+    last_sequence: &mut termirust_domain::OutputSequence,
+    sequence: termirust_domain::OutputSequence,
+    bytes: &[u8],
+) -> Result<(), CliError> {
+    if sequence <= *last_sequence {
+        return Ok(());
+    }
+    if last_sequence.checked_next() != Some(sequence) {
+        return Err(CliError::new(
+            ErrorCode::Conflict,
+            "remote terminal output has a sequence gap",
+            "Detach and reattach from an earlier output sequence to recover the snapshot.",
+        ));
+    }
+    stdout.write_all(bytes).map_err(|_| output_unavailable())?;
+    stdout.flush().map_err(|_| output_unavailable())?;
+    *last_sequence = sequence;
+    Ok(())
+}
+
+struct RawModeGuard;
+
+impl Drop for RawModeGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+    }
+}
+
+fn is_leader_key(key: &KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Char(']')) && key.modifiers == KeyModifiers::CONTROL
+}
+
+fn is_cancel_key(key: &KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Char('c' | 'C')) && key.modifiers == KeyModifiers::CONTROL
+}
+
+fn append_key_bytes(bytes: &mut Vec<u8>, key: KeyEvent) -> Result<(), CliError> {
+    let mut encoded = Vec::with_capacity(8);
+    match key.code {
+        KeyCode::Char(character) if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            if character.is_ascii() {
+                encoded.push((character.to_ascii_uppercase() as u8) & 0x1f);
+            } else {
+                return Ok(());
+            }
+        }
+        KeyCode::Char(character) => {
+            let mut buffer = [0; 4];
+            encoded.extend_from_slice(character.encode_utf8(&mut buffer).as_bytes());
+        }
+        KeyCode::Enter => encoded.push(b'\r'),
+        KeyCode::Tab => encoded.push(b'\t'),
+        KeyCode::BackTab => encoded.extend_from_slice(b"\x1b[Z"),
+        KeyCode::Backspace => encoded.push(0x7f),
+        KeyCode::Esc => encoded.push(0x1b),
+        KeyCode::Left => encoded.extend_from_slice(b"\x1b[D"),
+        KeyCode::Right => encoded.extend_from_slice(b"\x1b[C"),
+        KeyCode::Up => encoded.extend_from_slice(b"\x1b[A"),
+        KeyCode::Down => encoded.extend_from_slice(b"\x1b[B"),
+        KeyCode::Home => encoded.extend_from_slice(b"\x1b[H"),
+        KeyCode::End => encoded.extend_from_slice(b"\x1b[F"),
+        KeyCode::PageUp => encoded.extend_from_slice(b"\x1b[5~"),
+        KeyCode::PageDown => encoded.extend_from_slice(b"\x1b[6~"),
+        KeyCode::Delete => encoded.extend_from_slice(b"\x1b[3~"),
+        KeyCode::Insert => encoded.extend_from_slice(b"\x1b[2~"),
+        KeyCode::F(number) if (1..=4).contains(&number) => {
+            encoded.extend_from_slice([0x1b, b'O', b'P' + number - 1].as_slice());
+        }
+        KeyCode::F(number) if (5..=12).contains(&number) => {
+            let sequence = [15, 17, 18, 19, 20, 21, 23, 24][usize::from(number - 5)];
+            encoded.extend_from_slice(format!("\x1b[{sequence}~").as_bytes());
+        }
+        _ => return Ok(()),
+    }
+    if key.modifiers.contains(KeyModifiers::ALT) {
+        bytes.push(0x1b);
+    }
+    bytes.extend_from_slice(&encoded);
+    Ok(())
+}
+
+fn terminal_mode_unavailable() -> CliError {
+    CliError::new(
+        ErrorCode::Unavailable,
+        "interactive terminal mode is unavailable",
+        "Run attach from a supported local terminal and retry.",
+    )
+}
+
+fn output_unavailable() -> CliError {
+    CliError::new(
+        ErrorCode::OperationFailed,
+        "interactive terminal output is unavailable",
+        "Restore stdout and reattach; the remote Host session continues running.",
+    )
 }
 
 async fn execute_route(
@@ -1267,5 +1798,62 @@ mod tests {
                 0o600
             );
         }
+    }
+
+    #[test]
+    fn interactive_keys_encode_xterm_bytes_and_reserve_the_detach_leader() {
+        let mut bytes = Vec::new();
+        append_key_bytes(
+            &mut bytes,
+            KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
+        )
+        .unwrap();
+        append_key_bytes(&mut bytes, KeyEvent::new(KeyCode::Up, KeyModifiers::NONE)).unwrap();
+        append_key_bytes(
+            &mut bytes,
+            KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL),
+        )
+        .unwrap();
+        assert_eq!(bytes, b"a\x1b[A\x18");
+        assert!(is_leader_key(&KeyEvent::new(
+            KeyCode::Char(']'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(is_cancel_key(&KeyEvent::new(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+        )));
+    }
+
+    #[test]
+    fn interactive_output_drops_duplicates_and_fails_on_gaps() {
+        let mut output = Vec::new();
+        let mut sequence = termirust_domain::OutputSequence::new(4);
+        write_live_output(
+            &mut output,
+            &mut sequence,
+            termirust_domain::OutputSequence::new(5),
+            b"five",
+        )
+        .unwrap();
+        write_live_output(
+            &mut output,
+            &mut sequence,
+            termirust_domain::OutputSequence::new(5),
+            b"duplicate",
+        )
+        .unwrap();
+        assert_eq!(output, b"five");
+        assert_eq!(
+            write_live_output(
+                &mut output,
+                &mut sequence,
+                termirust_domain::OutputSequence::new(7),
+                b"gap",
+            )
+            .unwrap_err()
+            .code,
+            ErrorCode::Conflict
+        );
     }
 }
