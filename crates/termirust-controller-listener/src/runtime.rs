@@ -294,6 +294,23 @@ pub async fn serve_authenticated_stdio_stream<S: AsyncRead + AsyncWrite + Unpin>
     if purpose != ControllerConnectionPurpose::Authenticate {
         return Err(ListenerError::new(ListenerErrorCode::Unauthorized));
     }
+    serve_authenticated_stdio_stream_after_purpose(
+        stream,
+        authority_provider,
+        backend_factory,
+        cancel,
+    )
+    .await
+}
+
+pub(crate) async fn serve_authenticated_stdio_stream_after_purpose<
+    S: AsyncRead + AsyncWrite + Unpin,
+>(
+    stream: &mut S,
+    authority_provider: Arc<dyn ControllerAuthorityProvider>,
+    backend_factory: Arc<dyn ControllerBackendFactory>,
+    cancel: CancellationToken,
+) -> Result<(), ListenerError> {
     let initial = authority_provider.snapshot()?;
     let authenticated = authenticate_controller(
         stream,

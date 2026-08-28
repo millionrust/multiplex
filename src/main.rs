@@ -92,6 +92,7 @@ fn run_controller_bridge_mode() -> Result<(), termirust_controller_listener::Lis
         .enable_all()
         .build()
         .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?;
+    let runtime_parent = controller_runtime_parent(&app_root);
     runtime.block_on(
         termirust_controller_listener::serve_repository_stdio_bridge(
             tokio::io::stdin(),
@@ -100,7 +101,8 @@ fn run_controller_bridge_mode() -> Result<(), termirust_controller_listener::Lis
             crate::storage::project_store_dir()
                 .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?,
             app_root.join("durable-sessions"),
-            controller_runtime_parent(&app_root),
+            runtime_parent.clone(),
+            runtime_parent.join("controller-pairing.sock"),
             host_private,
             CancellationToken::new(),
         ),

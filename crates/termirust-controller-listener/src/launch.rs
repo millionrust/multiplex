@@ -24,13 +24,16 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroize as _;
 
+use crate::runtime::serve_authenticated_stdio_stream_after_purpose;
 use crate::{
-    AuthoritySnapshot, ControllerAuthorityProvider, ControllerPairingAuthority,
-    FirewallObserver as _, HostBackendFactory, HostPairingDecision, ListenerControlCommand,
-    ListenerError, ListenerErrorCode, ListenerProcessEvent, ListenerRuntime, ListenerServices,
-    PairingAuthoritySnapshot, ProcessPairingDecision, SourceBucketKey, SystemBinder,
-    SystemFirewallObserver, SystemGeneratedPortSource, SystemInterfaceProvider,
-    bind_selected_route, serve_authenticated_stdio_stream,
+    AuthoritySnapshot, ControllerAuthorityProvider, ControllerConnectionPurpose,
+    ControllerPairingAuthority, FirewallObserver as _, HostBackendFactory, HostPairingDecision,
+    ListenerControlCommand, ListenerError, ListenerErrorCode, ListenerProcessEvent,
+    ListenerRuntime, ListenerServices, PairingAuthoritySnapshot, ProcessPairingDecision,
+    SourceBucketKey, SshControllerPairingOffer, SshHostPairingPrompt, SystemBinder,
+    SystemFirewallObserver, SystemGeneratedPortSource, SystemHandshakeEntropy,
+    SystemInterfaceProvider, bind_selected_route, pair_controller,
+    request_ssh_host_pairing_decision,
 };
 
 const LAUNCH_FORMAT_VERSION: u16 = 1;
@@ -313,6 +316,60 @@ impl ControllerAuthorityProvider for RepositoryAuthority {
 struct RepositoryStdioAuthority {
     repository: ControllerDeviceRepository,
     host_private: StaticPrivateKey,
+    pairing_broker_path: PathBuf,
+}
+
+impl RepositoryStdioAuthority {
+    fn create_offer(&self) -> Result<SshControllerPairingOffer, ListenerError> {
+        let mut nonce = [0; 32];
+        rand::rngs::OsRng
+            .try_fill_bytes(&mut nonce)
+            .map_err(|_| ListenerError::new(ListenerErrorCode::RandomUnavailable))?;
+        let offer_id = PairingOfferId::new();
+        let now = unix_seconds();
+        let expires_at = now.saturating_add(PAIRING_OFFER_LIFETIME_SECONDS);
+        let capabilities = ControllerCapabilities::default()
+            .with(ControllerCapability::ObserveSessions)
+            .with(ControllerCapability::AttachOutput);
+        let snapshot = self
+            .repository
+            .load()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        let mut record = None;
+        let saved = self
+            .repository
+            .update(snapshot.revision, |authority| {
+                record = Some(authority.create_offer(
+                    offer_id,
+                    nonce,
+                    now,
+                    expires_at,
+                    capabilities,
+                    vec!["ssh-controller-v1".into()],
+                )?);
+                Ok(())
+            })
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        let record =
+            record.ok_or_else(|| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        let offer = PairingOfferCore {
+            version: CONTROLLER_V1,
+            expires_at_unix_seconds: record.expires_at,
+            nonce: PairingNonce(record.nonce),
+            host_static_public_key: termirust_controller_security::HostStaticPublicKey(
+                record.identity.public_key.0,
+            ),
+            capabilities: CapabilitySet::from_bits(record.capabilities.bits())
+                .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?,
+        };
+        SshControllerPairingOffer::new(
+            offer_id,
+            &offer,
+            record.identity.generation.get(),
+            saved.authority.revocation_epoch,
+            saved.authority.session_generation,
+        )
+    }
 }
 
 impl ControllerAuthorityProvider for RepositoryStdioAuthority {
@@ -333,6 +390,148 @@ impl ControllerAuthorityProvider for RepositoryStdioAuthority {
         peer: &AuthenticatedPeer,
     ) -> Result<(), ListenerError> {
         reconcile_authenticated_pairing(&self.repository, peer)
+    }
+}
+
+#[async_trait::async_trait]
+impl ControllerPairingAuthority for RepositoryStdioAuthority {
+    fn snapshot(
+        &self,
+        offer_id: PairingOfferId,
+    ) -> Result<PairingAuthoritySnapshot, ListenerError> {
+        let authority = self
+            .repository
+            .load()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?
+            .authority;
+        let offer = authority
+            .offers
+            .iter()
+            .find(|offer| offer.offer_id == offer_id && offer.is_pending())
+            .ok_or_else(|| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        let identity = authority
+            .identity
+            .as_ref()
+            .ok_or_else(|| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        Ok(PairingAuthoritySnapshot {
+            offer: PairingOfferCore {
+                version: CONTROLLER_V1,
+                expires_at_unix_seconds: offer.expires_at,
+                nonce: PairingNonce(offer.nonce),
+                host_static_public_key: termirust_controller_security::HostStaticPublicKey(
+                    identity.public_key.0,
+                ),
+                capabilities: CapabilitySet::from_bits(offer.capabilities.bits())
+                    .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?,
+            },
+            host_private: self.host_private.clone(),
+            identity_generation: identity.generation,
+            revocation_epoch: authority.revocation_epoch,
+            session_generation: authority.session_generation,
+        })
+    }
+
+    fn set_offer_state(
+        &self,
+        offer_id: PairingOfferId,
+        state: PairingOfferState,
+    ) -> Result<(), ListenerError> {
+        let snapshot = self
+            .repository
+            .load()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        self.repository
+            .update(snapshot.revision, |authority| {
+                let offer = authority
+                    .offers
+                    .iter_mut()
+                    .find(|offer| offer.offer_id == offer_id)
+                    .ok_or(termirust_domain::ControllerDeviceError::OfferNotFound)?;
+                offer.state = state;
+                Ok(())
+            })
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        Ok(())
+    }
+
+    async fn await_host_decision(
+        &self,
+        offer_id: PairingOfferId,
+        sas: &termirust_controller_security::SasCode,
+        cancel: &CancellationToken,
+    ) -> Result<HostPairingDecision, ListenerError> {
+        let expires_at = self
+            .repository
+            .load()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?
+            .authority
+            .offers
+            .iter()
+            .find(|offer| offer.offer_id == offer_id)
+            .map(|offer| offer.expires_at)
+            .ok_or_else(|| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        let prompt = SshHostPairingPrompt::new(offer_id, sas.as_str().to_owned(), expires_at)?;
+        tokio::select! {
+            _ = cancel.cancelled() => Err(ListenerError::new(ListenerErrorCode::Cancelled)),
+            decision = request_ssh_host_pairing_decision(&self.pairing_broker_path, &prompt) => decision,
+        }
+    }
+
+    fn persist(
+        &self,
+        offer_id: PairingOfferId,
+        device_id: ControllerDeviceId,
+        device_key: DeviceStaticPublicKey,
+        display_name: String,
+        now_unix_seconds: u64,
+    ) -> Result<AuthenticatedPeer, ListenerError> {
+        let snapshot = self
+            .repository
+            .load()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        let mut record = None;
+        let saved = self
+            .repository
+            .update(snapshot.revision, |authority| {
+                record = Some(authority.persist_pairing(
+                    offer_id,
+                    device_id,
+                    DevicePublicKey(device_key.0),
+                    display_name,
+                    now_unix_seconds,
+                )?);
+                Ok(())
+            })
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        let record =
+            record.ok_or_else(|| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        Ok(AuthenticatedPeer {
+            device_id: record.device_id,
+            public_key: record.public_key,
+            identity_generation: record.identity_generation,
+            revocation_epoch: saved.authority.revocation_epoch,
+            capabilities: ControllerCapabilities::from_bits(record.capabilities.bits())
+                .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?,
+        })
+    }
+
+    fn acknowledge(
+        &self,
+        offer_id: PairingOfferId,
+        device_key: DeviceStaticPublicKey,
+    ) -> Result<(), ListenerError> {
+        let snapshot = self
+            .repository
+            .load()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        self.repository
+            .update(snapshot.revision, |authority| {
+                authority
+                    .acknowledge_pairing(offer_id, DevicePublicKey(device_key.0))
+                    .map(|_| ())
+            })
+            .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+        Ok(())
     }
 }
 
@@ -565,6 +764,7 @@ pub async fn serve_repository_stdio_bridge<R, W>(
     project_root: PathBuf,
     session_data_root: PathBuf,
     runtime_parent: PathBuf,
+    pairing_broker_path: PathBuf,
     host_private: StaticPrivateKey,
     cancel: CancellationToken,
 ) -> Result<(), ListenerError>
@@ -578,14 +778,41 @@ where
         .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
     let projects = ProjectRepository::open(project_root)
         .map_err(|_| ListenerError::new(ListenerErrorCode::HostUnavailable))?;
-    let authority: Arc<dyn ControllerAuthorityProvider> = Arc::new(RepositoryStdioAuthority {
+    let authority = Arc::new(RepositoryStdioAuthority {
         repository: devices,
         host_private,
+        pairing_broker_path,
     });
     let backends: Arc<dyn crate::ControllerBackendFactory> =
         Arc::new(HostBackendFactory::new(sessions, projects, runtime_parent));
     let mut stream = SplitControllerIo { reader, writer };
-    serve_authenticated_stdio_stream(&mut stream, authority, backends, cancel).await
+    let purpose = tokio::time::timeout(
+        std::time::Duration::from_secs(
+            termirust_domain::ConnectionBudget::default().handshake_timeout_seconds,
+        ),
+        ControllerConnectionPurpose::read_from(&mut stream),
+    )
+    .await
+    .map_err(|_| ListenerError::new(ListenerErrorCode::HandshakeTimeout))??;
+    match purpose {
+        ControllerConnectionPurpose::Authenticate => {
+            let provider: Arc<dyn ControllerAuthorityProvider> = authority;
+            serve_authenticated_stdio_stream_after_purpose(&mut stream, provider, backends, cancel)
+                .await
+        }
+        ControllerConnectionPurpose::Pair => {
+            let offer = authority.create_offer()?;
+            offer.write_to(&mut stream).await?;
+            pair_controller(
+                &mut stream,
+                authority.as_ref(),
+                &mut SystemHandshakeEntropy,
+                cancel,
+            )
+            .await
+            .map(|_| ())
+        }
+    }
 }
 
 pub fn run_listener_worker<R, W>(mut reader: R, readiness: W) -> Result<(), ListenerError>

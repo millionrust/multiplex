@@ -20,6 +20,7 @@ mod protocol;
 mod queue;
 mod rate_limit;
 mod runtime;
+mod ssh_pairing_broker;
 
 pub use authorization::{BridgeAuthorization, BridgeCommand, BridgeCommandKind};
 pub use bind::{
@@ -42,7 +43,7 @@ pub use pairing::{
 };
 pub use pairing_protocol::{
     ControllerConnectionPurpose, ControllerPairingOffer, PairingConnectRequest,
-    PairingDeviceRegistration, PairingHostAck,
+    PairingDeviceRegistration, PairingHostAck, SshControllerPairingOffer,
 };
 pub use process_protocol::{
     ListenerControlCommand, ListenerProcessEvent, ProcessFirewallObservation,
@@ -59,4 +60,8 @@ pub use runtime::{
     AuthoritySnapshot, ControllerAuthorityProvider, ControllerBackendFactory,
     ControllerConnectionBackend, HostCommandContext, ListenerRuntime, ListenerRuntimeReport,
     ListenerServices, serve_authenticated_stdio_stream,
+};
+pub use ssh_pairing_broker::{
+    SshHostPairingDecision, SshHostPairingDecisionValue, SshHostPairingPrompt,
+    request_ssh_host_pairing_decision,
 };

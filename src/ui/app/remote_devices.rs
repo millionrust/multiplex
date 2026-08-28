@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use gpui_component::Disableable as _;
 use termirust_controller_listener::{
     GeneratedPortSource as _, ListenerLaunchDescriptor, ListenerProcessEvent,
-    ProcessPairingDecision, SystemGeneratedPortSource,
+    ProcessPairingDecision, SshHostPairingDecisionValue, SystemGeneratedPortSource,
 };
 #[cfg(not(test))]
 use termirust_controller_listener::{InterfaceProvider as _, SystemInterfaceProvider};
@@ -24,6 +24,7 @@ use crate::controller::host_identity::{
     HostIdentityService, OldSecretDeletion, OsIdentityEntropy, OsSecretStore,
 };
 use crate::controller::lan::ControllerListenerProcess;
+use crate::controller::ssh_pairing::SshPairingBroker;
 
 use super::*;
 
@@ -71,6 +72,10 @@ pub(super) struct RemoteDevicesState {
     pairing_offer_id: Option<PairingOfferId>,
     pairing_offer_text: Option<String>,
     pairing_sas: Option<String>,
+    ssh_pairing_broker: Option<SshPairingBroker>,
+    ssh_pairing_active: bool,
+    ssh_pairing_expires_at: Option<u64>,
+    ssh_pairing_device_count: usize,
     editing_device_id: Option<ControllerDeviceId>,
 }
 
@@ -104,13 +109,18 @@ impl RemoteDevicesState {
             .eligible_interfaces()
             .unwrap_or_default();
         let host_private = identity.static_private_key();
+        let ssh_pairing_broker =
+            SshPairingBroker::bind(durable_runtime_parent(&root).join("controller-pairing.sock"))
+                .ok();
         match repository.load() {
             Ok(snapshot) => {
+                let devices = snapshot.authority.devices;
+                let device_count = devices.len();
                 let mut state = Self {
                     repository: Some(repository),
                     identity_state: identity.state,
                     identity: identity.public,
-                    devices: snapshot.authority.devices,
+                    devices,
                     failure: None,
                     route_available: false,
                     network_repository: Some(network_repository),
@@ -126,6 +136,10 @@ impl RemoteDevicesState {
                     pairing_offer_id: None,
                     pairing_offer_text: None,
                     pairing_sas: None,
+                    ssh_pairing_broker,
+                    ssh_pairing_active: false,
+                    ssh_pairing_expires_at: None,
+                    ssh_pairing_device_count: device_count,
                     editing_device_id: None,
                 };
                 if state.network_policy.enabled {
@@ -162,6 +176,10 @@ impl RemoteDevicesState {
             pairing_offer_id: None,
             pairing_offer_text: None,
             pairing_sas: None,
+            ssh_pairing_broker: None,
+            ssh_pairing_active: false,
+            ssh_pairing_expires_at: None,
+            ssh_pairing_device_count: 0,
             editing_device_id: None,
         }
     }
@@ -188,6 +206,10 @@ impl RemoteDevicesState {
             pairing_offer_id: None,
             pairing_offer_text: None,
             pairing_sas: None,
+            ssh_pairing_broker: None,
+            ssh_pairing_active: false,
+            ssh_pairing_expires_at: None,
+            ssh_pairing_device_count: 0,
             editing_device_id: None,
         }
     }
@@ -352,11 +374,23 @@ impl RemoteDevicesState {
 
     fn decide_pairing(&mut self, decision: ProcessPairingDecision) -> Result<(), ()> {
         let offer_id = self.pairing_offer_id.ok_or(())?;
-        self.listener_process
-            .as_mut()
-            .ok_or(())?
-            .decide_pairing(offer_id, decision)
-            .map_err(|_| ())?;
+        if self.ssh_pairing_active {
+            let broker_decision = match decision {
+                ProcessPairingDecision::Confirm => SshHostPairingDecisionValue::Confirm,
+                ProcessPairingDecision::Reject => SshHostPairingDecisionValue::Reject,
+            };
+            self.ssh_pairing_broker
+                .as_mut()
+                .ok_or(())?
+                .decide(offer_id, broker_decision)
+                .map_err(|_| ())?;
+        } else {
+            self.listener_process
+                .as_mut()
+                .ok_or(())?
+                .decide_pairing(offer_id, decision)
+                .map_err(|_| ())?;
+        }
         if decision == ProcessPairingDecision::Reject {
             self.clear_pairing(PairingUiState::SasMismatch);
         } else {
@@ -371,11 +405,44 @@ impl RemoteDevicesState {
             return Ok(false);
         }
         self.listener_last_polled = Instant::now();
+        let mut changed = false;
+        if let Some(prompt) = self
+            .ssh_pairing_broker
+            .as_mut()
+            .and_then(SshPairingBroker::poll)
+        {
+            if self.pairing_offer_id.is_some() {
+                if let Some(broker) = self.ssh_pairing_broker.as_mut() {
+                    let _ = broker.decide(prompt.offer_id, SshHostPairingDecisionValue::Reject);
+                }
+            } else {
+                self.pairing_offer_id = Some(prompt.offer_id);
+                self.pairing_offer_text = None;
+                self.pairing_sas = Some(prompt.sas);
+                self.pairing_state = PairingUiState::SasReady;
+                self.ssh_pairing_active = true;
+                self.ssh_pairing_expires_at = Some(prompt.expires_at_unix_seconds);
+                self.ssh_pairing_device_count = self.devices.len();
+                changed = true;
+            }
+        }
+        if self.ssh_pairing_active && self.pairing_state == PairingUiState::Waiting {
+            self.refresh()?;
+            if self.devices.len() > self.ssh_pairing_device_count {
+                self.clear_pairing(PairingUiState::Paired);
+                changed = true;
+            } else if self
+                .ssh_pairing_expires_at
+                .is_some_and(|expires_at| unix_seconds() > expires_at)
+            {
+                self.clear_pairing(PairingUiState::Expired);
+                changed = true;
+            }
+        }
         let events = match self.listener_process.as_mut() {
             Some(process) => process.drain_events().map_err(|_| ())?,
-            None => return Ok(false),
+            None => return Ok(changed),
         };
-        let mut changed = false;
         for event in events {
             self.apply_listener_event(event)?;
             changed = true;
@@ -438,10 +505,20 @@ impl RemoteDevicesState {
     }
 
     fn clear_pairing(&mut self, state: PairingUiState) {
+        if self.ssh_pairing_active
+            && let (Some(offer_id), Some(broker)) =
+                (self.pairing_offer_id, self.ssh_pairing_broker.as_mut())
+            && broker.pending_offer_id() == Some(offer_id)
+        {
+            let _ = broker.decide(offer_id, SshHostPairingDecisionValue::Reject);
+        }
         self.pairing_state = state;
         self.pairing_offer_id = None;
         self.pairing_offer_text = None;
         self.pairing_sas = None;
+        self.ssh_pairing_active = false;
+        self.ssh_pairing_expires_at = None;
+        self.ssh_pairing_device_count = self.devices.len();
     }
 
     fn disable_saved_policy(&mut self) -> Result<(), ()> {
@@ -477,6 +554,13 @@ fn durable_runtime_parent(_: &std::path::Path) -> std::path::PathBuf {
 #[cfg(not(unix))]
 fn durable_runtime_parent(app_root: &std::path::Path) -> std::path::PathBuf {
     app_root.join("session-host-runtime")
+}
+
+fn unix_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 impl TermiRustApp {
