@@ -2,8 +2,9 @@ use std::time::{Duration, Instant};
 
 use rand::RngCore as _;
 use termirust_controller_security::{
-    AuthenticatedConnection, CapabilitySet, ConnectionChallenge, ConnectionPrelude,
-    ConnectionResponder, DeviceStaticPublicKey, StaticPrivateKey, host_public_key_from_private,
+    AuthenticatedConnection, CONTROLLER_V1, CapabilitySet, ConnectionChallenge,
+    ConnectionInitiator, ConnectionPrelude, ConnectionResponder, DeviceStaticPublicKey,
+    HostStaticPublicKey, RevocationEpoch, StaticPrivateKey, host_public_key_from_private,
 };
 use termirust_domain::{
     AuthenticatedPeer, ControllerCapabilities, ControllerDeviceAuthority, DevicePublicKey,
@@ -11,7 +12,10 @@ use termirust_domain::{
 };
 use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
 
-use crate::{ListenerError, ListenerErrorCode, read_bounded_frame, write_bounded_frame};
+use crate::{
+    ControllerConnectionPurpose, ListenerError, ListenerErrorCode, read_bounded_frame,
+    write_bounded_frame,
+};
 
 const MAX_HANDSHAKE_MESSAGE_BYTES: usize = 1_024;
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -37,6 +41,86 @@ impl HandshakeEntropy for SystemHandshakeEntropy {
 pub struct AuthenticatedControllerConnection {
     pub peer: AuthenticatedPeer,
     pub connection: AuthenticatedConnection,
+}
+
+pub async fn initiate_controller<S: AsyncRead + AsyncWrite + Unpin>(
+    stream: &mut S,
+    identity_generation: u64,
+    revocation_epoch: u64,
+    host_key: HostStaticPublicKey,
+    device_private: StaticPrivateKey,
+    requested_capabilities: CapabilitySet,
+    entropy: &mut impl HandshakeEntropy,
+) -> Result<AuthenticatedConnection, ListenerError> {
+    tokio::time::timeout(
+        HANDSHAKE_TIMEOUT,
+        initiate_controller_inner(
+            stream,
+            identity_generation,
+            revocation_epoch,
+            host_key,
+            device_private,
+            requested_capabilities,
+            entropy,
+        ),
+    )
+    .await
+    .map_err(|_| ListenerError::new(ListenerErrorCode::HandshakeTimeout))?
+}
+
+async fn initiate_controller_inner<S: AsyncRead + AsyncWrite + Unpin>(
+    stream: &mut S,
+    identity_generation: u64,
+    revocation_epoch: u64,
+    host_key: HostStaticPublicKey,
+    device_private: StaticPrivateKey,
+    requested_capabilities: CapabilitySet,
+    entropy: &mut impl HandshakeEntropy,
+) -> Result<AuthenticatedConnection, ListenerError> {
+    let started = Instant::now();
+    ControllerConnectionPurpose::Authenticate
+        .write_to(stream)
+        .await?;
+    let prelude = ConnectionPrelude {
+        version: CONTROLLER_V1,
+        identity_generation,
+        revocation_epoch: RevocationEpoch(revocation_epoch),
+        client_nonce: entropy.nonce()?,
+    };
+    stream
+        .write_all(
+            &prelude
+                .encode()
+                .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?,
+        )
+        .await
+        .map_err(ListenerError::from)?;
+    stream.flush().await.map_err(ListenerError::from)?;
+    let mut challenge_bytes = [0; ConnectionChallenge::ENCODED_BYTES];
+    stream
+        .read_exact(&mut challenge_bytes)
+        .await
+        .map_err(ListenerError::from)?;
+    let challenge = ConnectionChallenge::decode(&challenge_bytes)
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    let mut initiator = ConnectionInitiator::new(
+        prelude,
+        &challenge,
+        host_key,
+        device_private,
+        entropy.ephemeral_private()?,
+        requested_capabilities,
+        elapsed_millis(started),
+    )
+    .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    let hello = initiator
+        .write_hello(elapsed_millis(started))
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    write_bounded_frame(stream, hello.as_bytes(), MAX_HANDSHAKE_MESSAGE_BYTES).await?;
+    let accept = read_bounded_frame(stream, MAX_HANDSHAKE_MESSAGE_BYTES).await?;
+    initiator
+        .read_accept(&accept, elapsed_millis(started))
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))
 }
 
 impl std::fmt::Debug for AuthenticatedControllerConnection {
@@ -185,10 +269,7 @@ fn random_bytes() -> Result<[u8; 32], ListenerError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use termirust_controller_security::{
-        CONTROLLER_V1, ConnectionInitiator, ControllerCapability as SecurityCapability,
-        HostStaticPublicKey, RevocationEpoch,
-    };
+    use termirust_controller_security::ControllerCapability as SecurityCapability;
     use termirust_domain::{
         ControllerCapabilities, ControllerDeviceId, ControllerProtocolRange,
         HostIdentityGeneration, HostIdentityPublic, HostIdentitySecretRef, PairingAttemptLedger,
@@ -311,6 +392,56 @@ mod tests {
             authority.devices[0].public_key
         );
         assert_eq!(authenticated.peer.capabilities.bits(), 0b11);
+    }
+
+    #[tokio::test]
+    async fn reusable_client_handshake_matches_the_authoritative_responder() {
+        let host_private = StaticPrivateKey::from_fixture_bytes([11; 32]);
+        let device_private = StaticPrivateKey::from_fixture_bytes([12; 32]);
+        let authority = authority(&host_private, &device_private);
+        let (mut client, mut server) = tokio::io::duplex(4_096);
+        let server_authority = authority.clone();
+        let server_host_private = host_private.clone();
+        let server_task = tokio::spawn(async move {
+            ControllerConnectionPurpose::read_from(&mut server)
+                .await
+                .unwrap();
+            authenticate_controller(
+                &mut server,
+                &server_authority,
+                server_host_private,
+                &mut Entropy(vec![[14; 32], [15; 32]]),
+            )
+            .await
+            .unwrap()
+        });
+        let requested = CapabilitySet::default()
+            .with(SecurityCapability::ObserveSessions)
+            .with(SecurityCapability::AttachOutput)
+            .with(SecurityCapability::SendInput);
+        let authenticated = initiate_controller(
+            &mut client,
+            1,
+            7,
+            HostStaticPublicKey(host_public_key_from_private(&host_private).0),
+            device_private,
+            requested,
+            &mut Entropy(vec![[13; 32], [16; 32]]),
+        )
+        .await
+        .unwrap();
+        assert!(
+            authenticated
+                .capabilities
+                .contains(SecurityCapability::ObserveSessions)
+        );
+        assert!(
+            !authenticated
+                .capabilities
+                .contains(SecurityCapability::SendInput)
+        );
+        let server = server_task.await.unwrap();
+        assert_eq!(server.connection.capabilities, authenticated.capabilities);
     }
 
     #[tokio::test]

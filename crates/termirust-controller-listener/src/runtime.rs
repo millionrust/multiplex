@@ -853,6 +853,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reusable_client_channel_round_trips_a_bounded_command() {
+        let host_private = StaticPrivateKey::from_fixture_bytes([21; 32]);
+        let device_private = StaticPrivateKey::from_fixture_bytes([22; 32]);
+        let authority: Arc<dyn ControllerAuthorityProvider> = Arc::new(Authority {
+            value: Mutex::new(authority(&host_private, &device_private)),
+            host_private: host_private.clone(),
+        });
+        let (client, mut server) = tokio::io::duplex(8 * 1024);
+        let server_task = tokio::spawn(async move {
+            serve_authenticated_stdio_stream(
+                &mut server,
+                authority,
+                Arc::new(Backends::default()),
+                CancellationToken::new(),
+            )
+            .await
+        });
+        let mut channel = crate::ControllerClientChannel::connect(
+            client,
+            1,
+            2,
+            9,
+            HostStaticPublicKey(host_public_key_from_private(&host_private).0),
+            device_private,
+            CapabilitySet::default().with(SecurityCapability::ObserveSessions),
+            &mut crate::SystemHandshakeEntropy,
+        )
+        .await
+        .unwrap();
+        let command_id = channel
+            .send(
+                crate::ControllerCommand::ListSessions {
+                    offset: 0,
+                    limit: 100,
+                    expected_revision: None,
+                },
+                unix_millis().saturating_add(10_000),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            channel.read_response().await.unwrap(),
+            ControllerResponse::Sessions {
+                command_id,
+                revision: 1,
+                update_sequence: 1,
+                sessions: Vec::new(),
+                next_offset: None,
+            }
+        );
+        drop(channel);
+        assert!(server_task.await.unwrap().is_err());
+    }
+
+    #[tokio::test]
     async fn stdio_bridge_rejects_pairing_before_any_security_payload() {
         let host_private = StaticPrivateKey::from_fixture_bytes([1; 32]);
         let device_private = StaticPrivateKey::from_fixture_bytes([2; 32]);

@@ -12,7 +12,7 @@ libc = "0.2"
 prost = "0.14"
 termirust-domain = { version = "0.1.0", path = "../termirust-domain" }
 termirust-host-protocol = { version = "0.1.0", path = "../termirust-host-protocol" }
-tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 
 [dev-dependencies]

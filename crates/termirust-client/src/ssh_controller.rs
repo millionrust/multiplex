@@ -7,6 +7,10 @@ use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitSta
 use std::thread;
 use std::time::{Duration, Instant};
 
+use tokio::process::{
+    Child as AsyncChild, ChildStderr as AsyncChildStderr, ChildStdin as AsyncChildStdin,
+    ChildStdout as AsyncChildStdout,
+};
 use tokio_util::sync::CancellationToken;
 
 const DEFAULT_SSH_PORT: u16 = 22;
@@ -369,6 +373,130 @@ pub struct SshControllerProcess {
     state: SshRouteState,
 }
 
+pub struct AsyncSshControllerProcess {
+    child: AsyncChild,
+    state: SshRouteState,
+}
+
+impl AsyncSshControllerProcess {
+    pub fn spawn(
+        executable: &Path,
+        target: &SshControllerTarget,
+    ) -> Result<Self, SshControllerError> {
+        if !executable.is_absolute() || !executable.is_file() {
+            return Err(SshControllerError::new(
+                SshControllerErrorCode::MissingExecutable,
+            ));
+        }
+        let argv = strict_ssh_command_argv(target);
+        let mut command = Command::new(executable);
+        command
+            .args(&argv[1..])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        configure_owned_process_group(&mut command);
+        let child = tokio::process::Command::from(command)
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|_| SshControllerError::new(SshControllerErrorCode::SpawnFailed))?;
+        Ok(Self {
+            child,
+            state: SshRouteState::Connecting,
+        })
+    }
+
+    pub fn state(&self) -> SshRouteState {
+        self.state
+    }
+
+    pub fn set_state(&mut self, state: SshRouteState) {
+        self.state = state;
+    }
+
+    pub fn take_stdin(&mut self) -> Option<AsyncChildStdin> {
+        self.child.stdin.take()
+    }
+
+    pub fn take_stdout(&mut self) -> Option<AsyncChildStdout> {
+        self.child.stdout.take()
+    }
+
+    pub fn take_stderr(&mut self) -> Option<AsyncChildStderr> {
+        self.child.stderr.take()
+    }
+
+    pub fn id(&self) -> Option<u32> {
+        self.child.id()
+    }
+
+    pub async fn wait_with_cancellation(
+        &mut self,
+        cancellation: &CancellationToken,
+    ) -> Result<ExitStatus, SshControllerError> {
+        tokio::select! {
+            _ = cancellation.cancelled() => {
+                self.terminate().await;
+                self.state = SshRouteState::Disconnected;
+                Err(SshControllerError::new(SshControllerErrorCode::Cancelled))
+            }
+            status = self.child.wait() => {
+                let status = status
+                    .map_err(|_| SshControllerError::new(SshControllerErrorCode::Io))?;
+                self.state = if status.success() {
+                    SshRouteState::Disconnected
+                } else {
+                    SshRouteState::Failed
+                };
+                if status.success() {
+                    Ok(status)
+                } else {
+                    Err(SshControllerError::new(SshControllerErrorCode::ChildExited))
+                }
+            }
+        }
+    }
+
+    pub async fn terminate(&mut self) {
+        if matches!(self.child.try_wait(), Ok(Some(_))) {
+            return;
+        }
+        if let Some(id) = self.child.id() {
+            terminate_process_group_id(id);
+        }
+        if tokio::time::timeout(CANCEL_GRACE, self.child.wait())
+            .await
+            .is_ok()
+        {
+            return;
+        }
+        if let Some(id) = self.child.id() {
+            kill_process_group_id(id);
+        }
+        let _ = self.child.start_kill();
+        let _ = self.child.wait().await;
+    }
+}
+
+impl fmt::Debug for AsyncSshControllerProcess {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AsyncSshControllerProcess")
+            .field("state", &self.state)
+            .field("process", &"[OWNED]")
+            .finish()
+    }
+}
+
+impl Drop for AsyncSshControllerProcess {
+    fn drop(&mut self) {
+        if let Some(id) = self.child.id() {
+            kill_process_group_id(id);
+        }
+        let _ = self.child.start_kill();
+    }
+}
+
 impl SshControllerProcess {
     pub fn spawn(
         executable: &Path,
@@ -577,6 +705,30 @@ fn kill_process_group(child: &mut Child) {
         }
     }
 }
+
+#[cfg(unix)]
+fn terminate_process_group_id(id: u32) {
+    if let Ok(id) = i32::try_from(id) {
+        unsafe {
+            libc::kill(-id, libc::SIGTERM);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn terminate_process_group_id(_id: u32) {}
+
+#[cfg(unix)]
+fn kill_process_group_id(id: u32) {
+    if let Ok(id) = i32::try_from(id) {
+        unsafe {
+            libc::kill(-id, libc::SIGKILL);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn kill_process_group_id(_id: u32) {}
 
 #[cfg(windows)]
 fn kill_process_group(child: &mut Child) {

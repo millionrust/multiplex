@@ -5,6 +5,7 @@
 
 mod authorization;
 mod bind;
+mod client_channel;
 mod error;
 mod firewall;
 mod framing;
@@ -25,12 +26,13 @@ pub use bind::{
     BoundControllerListener, BoundRoute, ControllerBinder, GeneratedPortSource, SystemBinder,
     SystemGeneratedPortSource, bind_selected_route,
 };
+pub use client_channel::ControllerClientChannel;
 pub use error::{ListenerError, ListenerErrorCode};
 pub use firewall::{FirewallObservation, FirewallObserver, SystemFirewallObserver};
 pub use framing::{read_bounded_frame, write_bounded_frame};
 pub use handshake::{
     AuthenticatedControllerConnection, HandshakeEntropy, SystemHandshakeEntropy,
-    authenticate_controller,
+    authenticate_controller, initiate_controller,
 };
 pub use host_backend::HostBackendFactory;
 pub use interfaces::{InterfaceProvider, SystemInterfaceProvider, resolve_selected_interface};
