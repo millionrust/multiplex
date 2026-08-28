@@ -69,6 +69,13 @@ impl StaticPrivateKey {
     pub fn copy_for_process_handoff(&self) -> [u8; 32] {
         self.0
     }
+
+    /// Copies the key solely for immediate encoding into an operating-system secret store.
+    /// The caller must zeroize the returned bytes and any encoded representation.
+    #[must_use]
+    pub fn copy_for_secret_storage(&self) -> [u8; 32] {
+        self.0
+    }
 }
 
 impl fmt::Debug for StaticPrivateKey {

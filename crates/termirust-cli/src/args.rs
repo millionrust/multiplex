@@ -58,6 +58,7 @@ pub enum CliCommand {
 pub struct ControllerSshCommand {
     pub target: SshControllerTarget,
     pub action: ControllerSshAction,
+    pub allow_interaction: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -184,14 +185,17 @@ pub fn parse_args(arguments: Vec<String>) -> Result<Invocation, CliError> {
             }
         }
         [scope, route, rest @ ..] if scope == "controller" && route == "ssh" => {
-            CliCommand::ControllerSsh(parse_controller_ssh(rest)?)
+            CliCommand::ControllerSsh(parse_controller_ssh(rest, !json)?)
         }
         _ => return Err(usage("unknown or incomplete command")),
     };
     Ok(Invocation { json, command })
 }
 
-fn parse_controller_ssh(arguments: &[String]) -> Result<ControllerSshCommand, CliError> {
+fn parse_controller_ssh(
+    arguments: &[String],
+    allow_interaction: bool,
+) -> Result<ControllerSshCommand, CliError> {
     const ACTIONS: &[&str] = &[
         "pair", "sessions", "attach", "input", "resize", "approval", "detach",
     ];
@@ -314,7 +318,11 @@ fn parse_controller_ssh(arguments: &[String]) -> Result<ControllerSshCommand, Cl
         }
         _ => unreachable!("action was selected from the fixed action set"),
     };
-    Ok(ControllerSshCommand { target, action })
+    Ok(ControllerSshCommand {
+        target,
+        action,
+        allow_interaction,
+    })
 }
 
 fn required_session(options: &ParsedOptions<'_>) -> Result<HostedSessionId, CliError> {
@@ -519,5 +527,26 @@ mod tests {
             parse_args(oversized).unwrap_err().code,
             ErrorCode::ResourceLimit
         );
+    }
+
+    #[test]
+    fn json_pairing_is_marked_noninteractive_before_execution() {
+        let base = ["controller", "ssh", "--host", "host.example", "pair"];
+        let human = parse_args(base.into_iter().map(str::to_string).collect()).unwrap();
+        let json = parse_args(
+            base.into_iter()
+                .chain(["--json"])
+                .map(str::to_string)
+                .collect(),
+        )
+        .unwrap();
+        let CliCommand::ControllerSsh(human) = human.command else {
+            panic!("expected SSH Controller command");
+        };
+        let CliCommand::ControllerSsh(json) = json.command else {
+            panic!("expected SSH Controller command");
+        };
+        assert!(human.allow_interaction);
+        assert!(!json.allow_interaction);
     }
 }

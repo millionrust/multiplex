@@ -39,7 +39,8 @@ pub use host_backend::HostBackendFactory;
 pub use interfaces::{InterfaceProvider, SystemInterfaceProvider, resolve_selected_interface};
 pub use launch::{ListenerLaunchDescriptor, run_listener_worker, serve_repository_stdio_bridge};
 pub use pairing::{
-    ControllerPairingAuthority, HostPairingDecision, PairingAuthoritySnapshot, pair_controller,
+    ControllerClientPairingResult, ControllerPairingAuthority, HostPairingDecision,
+    PairingAuthoritySnapshot, pair_controller, pair_controller_client,
 };
 pub use pairing_protocol::{
     ControllerConnectionPurpose, ControllerPairingOffer, PairingConnectRequest,

@@ -4,13 +4,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use termirust_controller_listener::{
     ControllerPairingAuthority, HandshakeEntropy, HostPairingDecision, ListenerError,
-    PairingAuthoritySnapshot, PairingConnectRequest, PairingDeviceRegistration, PairingHostAck,
-    pair_controller, read_bounded_frame, write_bounded_frame,
+    PairingAuthoritySnapshot, PairingConnectRequest, SshControllerPairingOffer, pair_controller,
+    pair_controller_client, read_bounded_frame, write_bounded_frame,
 };
 use termirust_controller_security::{
-    CONTROLLER_V1, CapabilitySet, ControllerCapability, ControllerFrameKind, DeviceStaticPublicKey,
-    PairingMachine, PairingNonce, PairingOfferCore, RevocationEpoch, SasCode, StaticPrivateKey,
-    device_public_key_from_private, host_public_key_from_private,
+    CONTROLLER_V1, CapabilitySet, ControllerCapability, DeviceStaticPublicKey, PairingMachine,
+    PairingNonce, PairingOfferCore, SasCode, StaticPrivateKey, device_public_key_from_private,
+    host_public_key_from_private,
 };
 use termirust_domain::{
     AuthenticatedPeer, ControllerCapabilities, ControllerDeviceId, DevicePublicKey,
@@ -144,51 +144,19 @@ async fn synthetic_controller_pairs_only_after_matching_host_confirmation() {
     let mut host_entropy = Entropy(Some(StaticPrivateKey::from_fixture_bytes([4; 32])));
     let host = pair_controller(&mut host_stream, &authority, &mut host_entropy, cancel);
     let device = async {
-        PairingConnectRequest::new(offer_id)
-            .write_to(&mut device_stream)
-            .await
-            .unwrap();
-        let mut machine = PairingMachine::new_device_initiator(
-            offer,
+        let envelope = SshControllerPairingOffer::new(offer_id, &offer, 1, 3, 5).unwrap();
+        pair_controller_client(
+            &mut device_stream,
+            envelope,
             device_private.clone(),
             StaticPrivateKey::from_fixture_bytes([5; 32]),
-            0,
-            now,
+            ControllerDeviceId::new(),
+            "Test iPhone".into(),
+            |_| Ok(true),
+            |_| Ok(()),
         )
-        .unwrap();
-        let hello = machine.write_next(0).unwrap();
-        write_bounded_frame(&mut device_stream, hello.as_bytes(), 1_024)
-            .await
-            .unwrap();
-        let proof = read_bounded_frame(&mut device_stream, 1_024).await.unwrap();
-        machine.read_next(&proof, 0).unwrap();
-        let proof = machine.write_next(0).unwrap();
-        write_bounded_frame(&mut device_stream, proof.as_bytes(), 1_024)
-            .await
-            .unwrap();
-        let sas = machine.sas().cloned().unwrap();
-        let mut confirmed = machine.confirm(&sas, RevocationEpoch(3)).unwrap();
-        let device_id = ControllerDeviceId::new();
-        let registration = PairingDeviceRegistration::new(device_id, "Test iPhone".into())
-            .encode()
-            .unwrap();
-        let sealed = confirmed
-            .transport
-            .seal(
-                ControllerFrameKind::Control,
-                ControllerCapability::ObserveSessions,
-                RevocationEpoch(3),
-                &registration,
-            )
-            .unwrap();
-        write_bounded_frame(&mut device_stream, sealed.as_bytes(), 64 * 1024)
-            .await
-            .unwrap();
-        let ack = read_bounded_frame(&mut device_stream, 64 * 1024)
-            .await
-            .unwrap();
-        let ack = confirmed.transport.open(&ack).unwrap();
-        PairingHostAck::decode(&ack.payload).unwrap()
+        .await
+        .unwrap()
     };
 
     let (peer, ack) = tokio::join!(host, device);

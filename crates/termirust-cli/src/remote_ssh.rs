@@ -1,5 +1,5 @@
-use std::fs;
-use std::io::Read as _;
+use std::fs::{self, OpenOptions};
+use std::io::{IsTerminal as _, Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Mutex;
@@ -8,20 +8,23 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
 use keyring::{Entry, Error as KeyringError};
-use serde::Deserialize;
+use rand::RngCore as _;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use termirust_client::{
     AsyncSshControllerProcess, SshControllerErrorCode, SshControllerTarget, resolve_system_ssh,
 };
 use termirust_controller_listener::{
     ApprovalDecision as WireApprovalDecision, ControllerClientChannel, ControllerCommand,
-    ControllerResponse, ControllerSessionSummary, ListenerError, ListenerErrorCode,
-    SystemHandshakeEntropy,
+    ControllerConnectionPurpose, ControllerResponse, ControllerSessionSummary, ListenerError,
+    ListenerErrorCode, SshControllerPairingOffer, SystemHandshakeEntropy, pair_controller_client,
 };
 use termirust_controller_security::{
     CapabilitySet, ControllerCapability, HostStaticPublicKey, StaticPrivateKey,
 };
-use termirust_domain::{HostFingerprint, HostPublicKey, HostedSessionId, OccupantGeneration};
+use termirust_domain::{
+    ControllerDeviceId, HostFingerprint, HostPublicKey, HostedSessionId, OccupantGeneration,
+};
 use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite};
 use zeroize::Zeroize as _;
 
@@ -41,7 +44,7 @@ const ROUTE_TIMEOUT: Duration = Duration::from_secs(30);
 const COMMAND_TIMEOUT_MILLIS: u64 = 10_000;
 const RESPONSE_LIMIT: usize = 4_096;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct StoredControllerProfile {
     schema_version: u16,
@@ -100,6 +103,65 @@ impl StoredControllerProfile {
         CapabilitySet::from_bits(self.capability_bits)
             .expect("stored profile capability bits were validated")
     }
+
+    fn from_pairing(
+        target: &SshControllerTarget,
+        result: &termirust_controller_listener::ControllerClientPairingResult,
+    ) -> Self {
+        Self {
+            schema_version: PROFILE_SCHEMA_VERSION,
+            host_public_key: result.host_public_key.0,
+            identity_generation: result.identity_generation,
+            revocation_epoch: result.revocation_epoch,
+            session_generation: result.session_generation,
+            capability_bits: result.capability_bits,
+            secret_ref: format!("controller.client.{}", route_key(target)),
+        }
+    }
+
+    fn save_new(
+        &self,
+        config_root: &Path,
+        target: &SshControllerTarget,
+        private_key: &StaticPrivateKey,
+    ) -> Result<(), CliError> {
+        let directory = config_root.join(PROFILE_DIR);
+        prepare_profile_directory(&directory)?;
+        let route_key = route_key(target);
+        let path = directory.join(format!("{route_key}.json"));
+        if path.exists() {
+            return Err(CliError::new(
+                ErrorCode::Conflict,
+                "this SSH target already has a Controller pairing",
+                "Use the existing pairing, or revoke and remove it before pairing again.",
+            ));
+        }
+        let entry =
+            Entry::new(SECRET_SERVICE, &self.secret_ref).map_err(|_| secret_unavailable())?;
+        let mut private_bytes = private_key.copy_for_secret_storage();
+        let mut encoded = base64::engine::general_purpose::STANDARD_NO_PAD.encode(private_bytes);
+        private_bytes.zeroize();
+        let secret_result = entry.set_password(&encoded).map_err(map_keyring);
+        encoded.zeroize();
+        secret_result?;
+
+        if let Err(error) = write_profile_atomically(&directory, &path, self) {
+            let _ = entry.delete_credential();
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn remove_new(config_root: &Path, target: &SshControllerTarget) {
+        let route_key = route_key(target);
+        let path = config_root
+            .join(PROFILE_DIR)
+            .join(format!("{route_key}.json"));
+        let _ = fs::remove_file(path);
+        if let Ok(entry) = Entry::new(SECRET_SERVICE, &format!("controller.client.{route_key}")) {
+            let _ = entry.delete_credential();
+        }
+    }
 }
 
 pub struct SystemSshControllerExecutor {
@@ -145,6 +207,115 @@ impl SystemSshControllerExecutor {
         }
         Ok(bytes)
     }
+
+    fn confirm_pairing(
+        &self,
+        sas: &termirust_controller_security::SasCode,
+    ) -> Result<bool, ListenerError> {
+        let _guard = self
+            .stdin_lock
+            .lock()
+            .map_err(|_| ListenerError::new(ListenerErrorCode::Io))?;
+        let mut stderr = std::io::stderr().lock();
+        writeln!(stderr, "SSH Controller pairing code: {}", sas.as_str())
+            .map_err(ListenerError::from)?;
+        writeln!(
+            stderr,
+            "Compare this exact code with Settings > Remote Devices on the remote Host."
+        )
+        .map_err(ListenerError::from)?;
+        write!(stderr, "Codes match? Type yes to confirm [no]: ").map_err(ListenerError::from)?;
+        stderr.flush().map_err(ListenerError::from)?;
+        let mut answer = String::new();
+        std::io::stdin()
+            .read_line(&mut answer)
+            .map_err(ListenerError::from)?;
+        Ok(answer.trim().eq_ignore_ascii_case("yes"))
+    }
+
+    fn pair(
+        &self,
+        command: ControllerSshCommand,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        if !command.allow_interaction
+            || !std::io::stdin().is_terminal()
+            || !std::io::stderr().is_terminal()
+        {
+            return Err(CliError::new(
+                ErrorCode::InteractionRequired,
+                "SSH Controller pairing requires an interactive terminal",
+                "Run the pair command without --json in a terminal, keep Remote Devices open on the Host, and confirm only matching codes.",
+            ));
+        }
+        let profile_path = self
+            .config_root
+            .join(PROFILE_DIR)
+            .join(format!("{}.json", route_key(&command.target)));
+        if profile_path.exists() {
+            return Err(CliError::new(
+                ErrorCode::Conflict,
+                "this SSH target already has a Controller pairing",
+                "Use the existing pairing, or revoke and remove it before pairing again.",
+            ));
+        }
+        let private_key = random_private_key()?;
+        let ephemeral_key = random_private_key()?;
+        let device_id = ControllerDeviceId::new();
+        let executable = resolve_system_ssh().map_err(map_spawn)?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| route_unavailable())?;
+        let storage_error = std::cell::RefCell::new(None);
+        let local_identity_saved = std::cell::Cell::new(false);
+        let route_result = runtime.block_on(execute_pair_route(
+            executable,
+            &command,
+            private_key.clone(),
+            ephemeral_key,
+            device_id,
+            |sas| self.confirm_pairing(sas),
+            |result| {
+                let profile = StoredControllerProfile::from_pairing(&command.target, result);
+                profile
+                    .save_new(&self.config_root, &command.target, &private_key)
+                    .map_err(|error| {
+                        *storage_error.borrow_mut() = Some(error);
+                        ListenerError::new(ListenerErrorCode::PermissionDenied)
+                    })?;
+                local_identity_saved.set(true);
+                Ok(())
+            },
+            cancellation,
+        ));
+        let result = match route_result {
+            Ok(result) => result,
+            Err(error) => {
+                if local_identity_saved.get() {
+                    StoredControllerProfile::remove_new(&self.config_root, &command.target);
+                }
+                return Err(storage_error.into_inner().unwrap_or(error));
+            }
+        };
+        Ok(CliData::ControllerSsh(ControllerSshData {
+            operation: "pair".into(),
+            route_state: "ready".into(),
+            target_label: "SSH target".into(),
+            ssh_host_key: "matched".into(),
+            host_fingerprint_suffix: Some(
+                HostFingerprint::derive(HostPublicKey(result.host_public_key.0)).row_suffix(),
+            ),
+            capabilities: capability_names(
+                CapabilitySet::from_bits(result.capability_bits).map_err(|_| protocol_failure())?,
+            ),
+            session_generation: Some(result.session_generation),
+            writer_lease: None,
+            reconnect_attempt: None,
+            reconnect_deadline_millis: None,
+            sessions: Vec::new(),
+        }))
+    }
 }
 
 impl SshControllerCommandExecutor for SystemSshControllerExecutor {
@@ -154,11 +325,7 @@ impl SshControllerCommandExecutor for SystemSshControllerExecutor {
         cancellation: &Cancellation,
     ) -> Result<CliData, CliError> {
         if matches!(command.action, ControllerSshAction::Pair) {
-            return Err(CliError::new(
-                ErrorCode::InteractionRequired,
-                "SSH Controller pairing requires confirmation on the Host",
-                "Open Remote Devices on the Host and start an SSH pairing request there. JSON mode never prompts or auto-confirms.",
-            ));
+            return self.pair(command, cancellation);
         }
         let input = if matches!(command.action, ControllerSshAction::Input { .. }) {
             Some(self.read_input()?)
@@ -214,6 +381,69 @@ impl AsyncWrite for ChildDuplex {
     fn poll_shutdown(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         Pin::new(&mut self.get_mut().writer).poll_shutdown(context)
     }
+}
+
+async fn execute_pair_route<F, G>(
+    executable: PathBuf,
+    command: &ControllerSshCommand,
+    private_key: StaticPrivateKey,
+    ephemeral_key: StaticPrivateKey,
+    device_id: ControllerDeviceId,
+    confirm_sas: F,
+    prepare_registration: G,
+    cancellation: &Cancellation,
+) -> Result<termirust_controller_listener::ControllerClientPairingResult, CliError>
+where
+    F: FnOnce(&termirust_controller_security::SasCode) -> Result<bool, ListenerError>,
+    G: FnOnce(
+        &termirust_controller_listener::ControllerClientPairingResult,
+    ) -> Result<(), ListenerError>,
+{
+    let mut process =
+        AsyncSshControllerProcess::spawn(&executable, &command.target).map_err(map_spawn)?;
+    let reader = process.take_stdout().ok_or_else(route_unavailable)?;
+    let writer = process.take_stdin().ok_or_else(route_unavailable)?;
+    let stderr = process.take_stderr().ok_or_else(route_unavailable)?;
+    let stderr_task = tokio::spawn(read_bounded_stderr(stderr));
+    let mut stream = ChildDuplex { reader, writer };
+    let route = async {
+        ControllerConnectionPurpose::Pair
+            .write_to(&mut stream)
+            .await
+            .map_err(map_listener)?;
+        let offer = SshControllerPairingOffer::read_from(&mut stream)
+            .await
+            .map_err(map_listener)?;
+        pair_controller_client(
+            &mut stream,
+            offer,
+            private_key,
+            ephemeral_key,
+            device_id,
+            "TermiRust CLI".into(),
+            confirm_sas,
+            prepare_registration,
+        )
+        .await
+        .map_err(map_listener)
+    };
+    let result = tokio::select! {
+        result = tokio::time::timeout(ROUTE_TIMEOUT, route) => {
+            result.map_err(|_| CliError::new(
+                ErrorCode::Timeout,
+                "SSH Controller pairing timed out",
+                "Keep Remote Devices open on the Host and retry the pair command.",
+            ))?
+        }
+        () = wait_for_cancellation(cancellation) => Err(CliError::new(
+            ErrorCode::Cancelled,
+            "SSH Controller pairing was cancelled",
+            "No pairing was saved; the remote Host and its sessions continue running.",
+        )),
+    };
+    process.terminate().await;
+    let stderr = stderr_task.await.unwrap_or_default();
+    result.map_err(|error| classify_route_error(error, &stderr))
 }
 
 async fn execute_route(
@@ -610,6 +840,113 @@ fn unix_millis() -> u64 {
     .unwrap_or(u64::MAX)
 }
 
+fn random_private_key() -> Result<StaticPrivateKey, CliError> {
+    let mut bytes = [0_u8; 32];
+    rand::rngs::OsRng.try_fill_bytes(&mut bytes).map_err(|_| {
+        CliError::new(
+            ErrorCode::Unavailable,
+            "secure random generation is unavailable",
+            "Restore operating-system randomness and retry pairing.",
+        )
+    })?;
+    if bytes == [0; 32] {
+        return Err(CliError::new(
+            ErrorCode::Unavailable,
+            "secure random generation returned an invalid key",
+            "Restart the operating system before retrying pairing.",
+        ));
+    }
+    let key = StaticPrivateKey::from_bytes(bytes);
+    bytes.zeroize();
+    Ok(key)
+}
+
+#[cfg(unix)]
+fn prepare_profile_directory(path: &Path) -> Result<(), CliError> {
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            return Err(profile_storage_denied());
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir_all(path).map_err(|_| profile_storage_denied())?;
+        }
+        Err(_) => return Err(profile_storage_denied()),
+    }
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+        .map_err(|_| profile_storage_denied())?;
+    let metadata = fs::symlink_metadata(path).map_err(|_| profile_storage_denied())?;
+    if metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.permissions().mode() & 0o777 != 0o700
+    {
+        return Err(profile_storage_denied());
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn prepare_profile_directory(path: &Path) -> Result<(), CliError> {
+    fs::create_dir_all(path).map_err(|_| profile_storage_denied())
+}
+
+fn write_profile_atomically(
+    directory: &Path,
+    path: &Path,
+    profile: &StoredControllerProfile,
+) -> Result<(), CliError> {
+    let bytes = serde_json::to_vec_pretty(profile).map_err(|_| invalid_profile())?;
+    if bytes.is_empty() || bytes.len() as u64 > PROFILE_MAX_BYTES {
+        return Err(invalid_profile());
+    }
+    let temporary = directory.join(format!(".pairing-{}.tmp", uuid::Uuid::new_v4()));
+    let result = (|| {
+        let mut file = open_private_profile(&temporary)?;
+        file.write_all(&bytes)
+            .and_then(|()| file.write_all(b"\n"))
+            .and_then(|()| file.sync_all())
+            .map_err(|_| profile_storage_denied())?;
+        fs::rename(&temporary, path).map_err(|_| profile_storage_denied())?;
+        fs::File::open(directory)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|_| profile_storage_denied())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
+#[cfg(unix)]
+fn open_private_profile(path: &Path) -> Result<fs::File, CliError> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+        .map_err(|_| profile_storage_denied())
+}
+
+#[cfg(not(unix))]
+fn open_private_profile(path: &Path) -> Result<fs::File, CliError> {
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|_| profile_storage_denied())
+}
+
+fn profile_storage_denied() -> CliError {
+    CliError::new(
+        ErrorCode::PermissionDenied,
+        "unable to save the SSH Controller profile securely",
+        "Check the TermiRust configuration directory permissions and retry pairing.",
+    )
+}
+
 fn route_key(target: &SshControllerTarget) -> String {
     let mut digest = Sha256::new();
     digest.update(b"termirust-ssh-controller-target-v1\0");
@@ -888,6 +1225,47 @@ mod tests {
             assert_eq!(error.code, code);
             assert!(!error.message.contains("private.example"));
             assert!(!error.hint.contains("private.example"));
+        }
+    }
+
+    #[test]
+    fn public_pairing_profile_is_atomic_bounded_and_contains_no_private_key() {
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join(PROFILE_DIR);
+        prepare_profile_directory(&directory).unwrap();
+        let result = termirust_controller_listener::ControllerClientPairingResult {
+            device_id: ControllerDeviceId::new(),
+            host_public_key: HostStaticPublicKey([7; 32]),
+            identity_generation: 3,
+            revocation_epoch: 4,
+            session_generation: 5,
+            capability_bits: CapabilitySet::default()
+                .with(ControllerCapability::ObserveSessions)
+                .bits(),
+        };
+        let profile = StoredControllerProfile::from_pairing(&target(), &result);
+        let path = directory.join(format!("{}.json", route_key(&target())));
+        write_profile_atomically(&directory, &path, &profile).unwrap();
+        let bytes = fs::read(&path).unwrap();
+        assert!(bytes.len() as u64 <= PROFILE_MAX_BYTES);
+        assert!(!bytes.windows(32).any(|window| window == [9; 32]));
+        let loaded = StoredControllerProfile::load(temp.path(), &target()).unwrap();
+        assert_eq!(loaded.host_public_key, [7; 32]);
+        assert_eq!(loaded.secret_ref, profile.secret_ref);
+        assert!(
+            !directory
+                .read_dir()
+                .unwrap()
+                .flatten()
+                .any(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
         }
     }
 }

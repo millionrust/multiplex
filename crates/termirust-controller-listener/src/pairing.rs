@@ -14,7 +14,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     HandshakeEntropy, ListenerError, ListenerErrorCode, PairingConnectRequest,
-    PairingDeviceRegistration, PairingHostAck, read_bounded_frame, write_bounded_frame,
+    PairingDeviceRegistration, PairingHostAck, SshControllerPairingOffer, read_bounded_frame,
+    write_bounded_frame,
 };
 
 const MAX_PAIRING_HANDSHAKE_BYTES: usize = 1_024;
@@ -46,6 +47,16 @@ impl std::fmt::Debug for PairingAuthoritySnapshot {
 pub enum HostPairingDecision {
     Confirm,
     Reject,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ControllerClientPairingResult {
+    pub device_id: ControllerDeviceId,
+    pub host_public_key: termirust_controller_security::HostStaticPublicKey,
+    pub identity_generation: u64,
+    pub revocation_epoch: u64,
+    pub session_generation: u64,
+    pub capability_bits: u16,
 }
 
 #[async_trait]
@@ -94,6 +105,146 @@ pub async fn pair_controller<S: AsyncRead + AsyncWrite + Unpin>(
     )
     .await
     .map_err(|_| ListenerError::new(ListenerErrorCode::HandshakeTimeout))?
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn pair_controller_client<S, F, G>(
+    stream: &mut S,
+    envelope: SshControllerPairingOffer,
+    device_static_private: StaticPrivateKey,
+    device_ephemeral_private: StaticPrivateKey,
+    device_id: ControllerDeviceId,
+    display_name: String,
+    confirm_sas: F,
+    prepare_registration: G,
+) -> Result<ControllerClientPairingResult, ListenerError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    F: FnOnce(&SasCode) -> Result<bool, ListenerError>,
+    G: FnOnce(&ControllerClientPairingResult) -> Result<(), ListenerError>,
+{
+    tokio::time::timeout(
+        PAIRING_TIMEOUT,
+        pair_controller_client_inner(
+            stream,
+            envelope,
+            device_static_private,
+            device_ephemeral_private,
+            device_id,
+            display_name,
+            confirm_sas,
+            prepare_registration,
+        ),
+    )
+    .await
+    .map_err(|_| ListenerError::new(ListenerErrorCode::HandshakeTimeout))?
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn pair_controller_client_inner<S, F, G>(
+    stream: &mut S,
+    envelope: SshControllerPairingOffer,
+    device_static_private: StaticPrivateKey,
+    device_ephemeral_private: StaticPrivateKey,
+    device_id: ControllerDeviceId,
+    display_name: String,
+    confirm_sas: F,
+    prepare_registration: G,
+) -> Result<ControllerClientPairingResult, ListenerError>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+    F: FnOnce(&SasCode) -> Result<bool, ListenerError>,
+    G: FnOnce(&ControllerClientPairingResult) -> Result<(), ListenerError>,
+{
+    let started = Instant::now();
+    let now = unix_seconds();
+    let offer = envelope.offer()?;
+    let expected_host_public_key = offer.host_static_public_key;
+    let expected_capability_bits = offer.capabilities.bits();
+    PairingConnectRequest::new(envelope.offer_id)
+        .write_to(stream)
+        .await?;
+    let mut machine = PairingMachine::new_device_initiator(
+        offer,
+        device_static_private,
+        device_ephemeral_private,
+        elapsed_millis(started),
+        now,
+    )
+    .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    let device_hello = machine
+        .write_next(elapsed_millis(started))
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    write_bounded_frame(stream, device_hello.as_bytes(), MAX_PAIRING_HANDSHAKE_BYTES).await?;
+    let host_proof = read_bounded_frame(stream, MAX_PAIRING_HANDSHAKE_BYTES).await?;
+    machine
+        .read_next(&host_proof, elapsed_millis(started))
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    let device_proof = machine
+        .write_next(elapsed_millis(started))
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    write_bounded_frame(stream, device_proof.as_bytes(), MAX_PAIRING_HANDSHAKE_BYTES).await?;
+    if machine.state() != PairingState::SasReady {
+        return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
+    }
+    let sas = machine
+        .sas()
+        .cloned()
+        .ok_or_else(|| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    if !confirm_sas(&sas)? {
+        let _ = machine.reject();
+        return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
+    }
+    let mut confirmed = machine
+        .confirm(&sas, RevocationEpoch(envelope.revocation_epoch))
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    let result = ControllerClientPairingResult {
+        device_id,
+        host_public_key: expected_host_public_key,
+        identity_generation: envelope.identity_generation,
+        revocation_epoch: envelope.revocation_epoch,
+        session_generation: envelope.session_generation,
+        capability_bits: expected_capability_bits,
+    };
+    prepare_registration(&result)?;
+    let registration = PairingDeviceRegistration::new(device_id, display_name).encode()?;
+    let registration = confirmed
+        .transport
+        .seal(
+            ControllerFrameKind::Control,
+            ControllerCapability::ObserveSessions,
+            RevocationEpoch(envelope.revocation_epoch),
+            &registration,
+        )
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    write_bounded_frame(
+        stream,
+        registration.as_bytes(),
+        MAX_PAIRING_SECURE_FRAME_BYTES,
+    )
+    .await?;
+    let ack = read_bounded_frame(stream, MAX_PAIRING_SECURE_FRAME_BYTES).await?;
+    let ack = confirmed
+        .transport
+        .open(&ack)
+        .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
+    if ack.kind != ControllerFrameKind::Control
+        || ack.capability != ControllerCapability::ObserveSessions
+        || ack.revocation_epoch.0 != envelope.revocation_epoch
+    {
+        return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
+    }
+    let ack = PairingHostAck::decode(&ack.payload)?;
+    if ack.device_id != device_id
+        || ack.identity_generation != envelope.identity_generation
+        || ack.revocation_epoch != envelope.revocation_epoch
+        || ack.session_generation != envelope.session_generation
+        || ack.capability_bits != result.capability_bits
+        || confirmed.host_key != result.host_public_key
+    {
+        return Err(ListenerError::new(ListenerErrorCode::AuthenticationFailed));
+    }
+    Ok(result)
 }
 
 async fn pair_controller_inner<S: AsyncRead + AsyncWrite + Unpin>(
