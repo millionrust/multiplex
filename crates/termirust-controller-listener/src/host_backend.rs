@@ -148,6 +148,11 @@ impl ControllerConnectionBackend for HostConnectionBackend {
                 let mut responses = Vec::with_capacity(outputs.len() + 1);
                 responses.push(ControllerResponse::Attached {
                     command_id,
+                    session_id,
+                    occupant_generation,
+                    replay_through_sequence: termirust_domain::OutputSequence::new(
+                        state.output_sequence,
+                    ),
                     has_writer_lease: state.has_writer_lease,
                 });
                 responses.extend(

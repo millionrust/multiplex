@@ -202,6 +202,9 @@ pub enum ControllerResponse {
     },
     Attached {
         command_id: CommandId,
+        session_id: HostedSessionId,
+        occupant_generation: OccupantGeneration,
+        replay_through_sequence: OutputSequence,
         has_writer_lease: bool,
     },
     Output {
@@ -473,6 +476,19 @@ mod tests {
         assert_eq!(
             decode_response(&encoded, MAX_SESSION_PAGE_BYTES).unwrap(),
             response
+        );
+
+        let attached = ControllerResponse::Attached {
+            command_id: CommandId::new(),
+            session_id: HostedSessionId::new(),
+            occupant_generation: OccupantGeneration::new(3),
+            replay_through_sequence: OutputSequence::new(12),
+            has_writer_lease: false,
+        };
+        let encoded = encode_response(&attached, MAX_CONTROL_PAYLOAD_BYTES).unwrap();
+        assert_eq!(
+            decode_response(&encoded, MAX_CONTROL_PAYLOAD_BYTES).unwrap(),
+            attached
         );
     }
 }
