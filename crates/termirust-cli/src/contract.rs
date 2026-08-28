@@ -19,6 +19,11 @@ pub enum ErrorCode {
     Incompatible,
     PermissionDenied,
     InteractionRequired,
+    HostKeyUnknown,
+    HostKeyChanged,
+    AuthenticationDenied,
+    BridgeUnavailable,
+    UnknownCompletion,
     Conflict,
     ResourceLimit,
     Timeout,
@@ -30,11 +35,15 @@ impl ErrorCode {
     pub const fn exit_code(self) -> i32 {
         match self {
             Self::Usage | Self::Validation => 2,
-            Self::Unavailable | Self::Incompatible => 3,
-            Self::PermissionDenied | Self::InteractionRequired => 4,
+            Self::Unavailable | Self::Incompatible | Self::BridgeUnavailable => 3,
+            Self::PermissionDenied
+            | Self::InteractionRequired
+            | Self::HostKeyUnknown
+            | Self::HostKeyChanged
+            | Self::AuthenticationDenied => 4,
             Self::Conflict => 5,
             Self::ResourceLimit => 6,
-            Self::Timeout | Self::OperationFailed => 7,
+            Self::Timeout | Self::OperationFailed | Self::UnknownCompletion => 7,
             Self::Cancelled => 130,
         }
     }
@@ -47,6 +56,11 @@ impl ErrorCode {
             Self::Incompatible => "incompatible",
             Self::PermissionDenied => "permission_denied",
             Self::InteractionRequired => "interaction_required",
+            Self::HostKeyUnknown => "host_key_unknown",
+            Self::HostKeyChanged => "host_key_changed",
+            Self::AuthenticationDenied => "authentication_denied",
+            Self::BridgeUnavailable => "bridge_unavailable",
+            Self::UnknownCompletion => "unknown_completion",
             Self::Conflict => "conflict",
             Self::ResourceLimit => "resource_limit",
             Self::Timeout => "timeout",
@@ -249,6 +263,21 @@ pub struct ControllerSshData {
     pub reconnect_attempt: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reconnect_deadline_millis: Option<u64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sessions: Vec<ControllerRemoteSessionView>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ControllerRemoteSessionView {
+    pub id: String,
+    pub title: String,
+    pub lifecycle: String,
+    pub activity: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub occupant_generation: Option<u64>,
+    pub last_output_sequence: u64,
+    pub has_writer: bool,
+    pub unread: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]

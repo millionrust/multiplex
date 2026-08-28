@@ -50,6 +50,7 @@ impl SshControllerCommandExecutor for FakeRemoteController {
             writer_lease: Some("observer".into()),
             reconnect_attempt: None,
             reconnect_deadline_millis: None,
+            sessions: Vec::new(),
         }))
     }
 }

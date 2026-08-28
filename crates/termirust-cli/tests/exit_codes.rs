@@ -29,10 +29,16 @@ fn exit_codes_are_stable_and_json_errors_are_complete() {
         (ErrorCode::Unavailable, 3),
         (ErrorCode::Incompatible, 3),
         (ErrorCode::PermissionDenied, 4),
+        (ErrorCode::InteractionRequired, 4),
+        (ErrorCode::HostKeyUnknown, 4),
+        (ErrorCode::HostKeyChanged, 4),
+        (ErrorCode::AuthenticationDenied, 4),
+        (ErrorCode::BridgeUnavailable, 3),
         (ErrorCode::Conflict, 5),
         (ErrorCode::ResourceLimit, 6),
         (ErrorCode::Timeout, 7),
         (ErrorCode::OperationFailed, 7),
+        (ErrorCode::UnknownCompletion, 7),
         (ErrorCode::Cancelled, 130),
     ] {
         let mut service = FailingService {

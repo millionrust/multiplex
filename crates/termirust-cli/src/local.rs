@@ -194,6 +194,9 @@ pub struct LocalCommandService {
 
 impl LocalCommandService {
     pub fn open(paths: CliPaths) -> Self {
+        let ssh_controller = Arc::new(crate::SystemSshControllerExecutor::new(
+            paths.config_root.clone(),
+        ));
         Self::with_adapters(
             paths,
             Arc::new(ProcessHostLauncher),
@@ -201,6 +204,7 @@ impl LocalCommandService {
             Arc::new(SystemClock),
             Arc::new(RandomIds),
         )
+        .with_ssh_controller(ssh_controller)
     }
 
     pub fn with_adapters(

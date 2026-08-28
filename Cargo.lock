@@ -7596,14 +7596,19 @@ dependencies = [
 name = "termirust-cli"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "ctrlc",
  "dirs 6.0.0",
+ "keyring",
  "libc",
  "rand 0.8.6",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "termirust-client",
+ "termirust-controller-listener",
+ "termirust-controller-security",
  "termirust-domain",
  "termirust-host-protocol",
  "termirust-session-host",
@@ -7612,6 +7617,7 @@ dependencies = [
  "tokio-util",
  "unicode-width",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -7745,6 +7751,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "termirust-client",
+ "termirust-controller-listener",
  "termirust-domain",
  "termirust-host-protocol",
  "termirust-store",

@@ -155,7 +155,33 @@ fn render_human(data: &CliData, warnings: &[String], width: usize) -> String {
             if let Some(value) = data.reconnect_deadline_millis {
                 fields.push(("Reconnect deadline", value.to_string()));
             }
-            render_records("Remote Controller", std::iter::once(fields))
+            let mut text = render_records("Remote Controller", std::iter::once(fields));
+            if !data.sessions.is_empty() {
+                text.push_str(&render_records(
+                    "\nSessions",
+                    data.sessions.iter().map(|session| {
+                        vec![
+                            ("ID", session.id.clone()),
+                            ("Title", session.title.clone()),
+                            ("Lifecycle", session.lifecycle.clone()),
+                            ("Activity", session.activity.clone()),
+                            (
+                                "Generation",
+                                session
+                                    .occupant_generation
+                                    .map_or_else(|| "-".into(), |value| value.to_string()),
+                            ),
+                            ("Last output", session.last_output_sequence.to_string()),
+                            (
+                                "Writer active",
+                                if session.has_writer { "yes" } else { "no" }.into(),
+                            ),
+                            ("Unread", if session.unread { "yes" } else { "no" }.into()),
+                        ]
+                    }),
+                ));
+            }
+            text
         }
         CliData::Help(data) => {
             let mut text = "TermiRust one-shot local CLI\n\nCommands:".to_string();

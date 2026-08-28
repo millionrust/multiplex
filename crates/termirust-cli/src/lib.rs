@@ -3,6 +3,7 @@
 mod args;
 mod contract;
 mod local;
+mod remote_ssh;
 mod render;
 
 use std::io::{self, Write};
@@ -18,6 +19,7 @@ pub use local::{
     CliClock, CliIds, CliInstallationStatus, CliPaths, HostController, HostLaunchOutcome,
     HostLauncher, LocalCommandService, SshControllerCommandExecutor, cli_installation_status,
 };
+pub use remote_ssh::SystemSshControllerExecutor;
 pub use render::{RenderOptions, render_failure, render_success};
 
 #[derive(Clone, Default)]

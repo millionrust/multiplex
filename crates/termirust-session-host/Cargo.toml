@@ -23,4 +23,5 @@ vt100 = "0.16"
 [dev-dependencies]
 tempfile = "3.27"
 termirust-client = { version = "0.1.0", path = "../termirust-client" }
+termirust-controller-listener = { version = "0.1.0", path = "../termirust-controller-listener" }
 uuid = "1.22"

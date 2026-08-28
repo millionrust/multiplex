@@ -7,21 +7,27 @@ description = "Stable one-shot local CLI for TermiRust"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+base64 = "0.22"
 ctrlc = "3.4"
 dirs = "6.0"
+keyring = { version = "3.6.2", default-features = false, features = ["apple-native", "windows-native", "linux-native-sync-persistent", "crypto-rust"] }
 libc = "0.2"
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.10"
 termirust-client = { version = "0.1.0", path = "../termirust-client" }
+termirust-controller-listener = { version = "0.1.0", path = "../termirust-controller-listener" }
+termirust-controller-security = { version = "0.1.0", path = "../termirust-controller-security" }
 termirust-domain = { version = "0.1.0", path = "../termirust-domain" }
 termirust-host-protocol = { version = "0.1.0", path = "../termirust-host-protocol" }
 termirust-session-host = { version = "0.1.0", path = "../termirust-session-host" }
 termirust-store = { version = "0.1.0", path = "../termirust-store" }
-tokio = { version = "1", features = ["rt", "time"] }
+tokio = { version = "1", features = ["io-util", "rt", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 unicode-width = "0.2"
 uuid = "1.22"
+zeroize = "=1.8.2"
 
 [dev-dependencies]
 tempfile = "3.27"
