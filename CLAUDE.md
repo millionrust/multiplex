@@ -22,7 +22,7 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
 - Multi-line clipboard pastes are held behind a confirmation banner by default to prevent accidental script execution.
 - Per-workspace Broadcast Input toggle that fans typed/pasted bytes out to every connected pane.
 - Window size and position — including which monitor — persist across launches.
-- Diagnostic logging (all stderr output and panic traces) is written to a log file in the app data directory.
+- Bounded local diagnostics store only allowlisted operational metadata; raw terminal content, stderr, panic text, and backtraces are excluded. Users can preview an exact privacy-scanned bundle before saving it locally.
 - Encrypted-vault shared-folder sync through Dropbox / iCloud Drive / Google Drive / Syncthing, plus portable and passphrase-encrypted JSON export/import.
 - Keyboard shortcuts: Cmd+D / Cmd+Shift+B / Cmd+Shift+L / Cmd+Alt+arrow, library/section switching, search focus, and new-host flow.
 - Terminal surface supports:
@@ -109,8 +109,8 @@ cargo run            # debug build; use --release for performance testing
 
 On macOS, GPUI may need access to the system shader cache during first compile/run.
 
-Runtime logs (all `eprintln!` output and panic backtraces) are written to
-`<data dir>/termirust/termirust.log`, truncated on each launch.
+Structured diagnostics are stored under `<data dir>/termirust/diagnostics` with
+bounded rotation and retention. See [docs/diagnostics.md](docs/diagnostics.md).
 
 ## UI behavior details
 
