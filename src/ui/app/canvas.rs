@@ -47,6 +47,7 @@ use crate::{storage::managed_agent_worktree_dir, ui::util::current_unix_millis};
 
 use super::canvas_coordinator::{
     CanvasCoordinator, CanvasLinkCreationError, CanvasLinkCreationRequest, CanvasLinkEdgeSummary,
+    CanvasLinkMutation, CanvasLinkMutationDecision, CanvasLinkMutationRequest,
     CanvasLinkNodeSummary, CanvasSelectionDecision, CanvasSelectionRequest,
 };
 use super::project::{
@@ -1263,18 +1264,44 @@ impl CanvasWorkspaceState {
         }
     }
 
-    pub(super) fn set_edge_enabled(&mut self, edge_id: &CanvasEdgeId, enabled: bool) -> bool {
-        let Some(edge) = self.edges.iter_mut().find(|edge| &edge.id == edge_id) else {
-            return false;
-        };
-        edge.enabled = enabled;
-        true
-    }
-
-    pub(super) fn remove_edge(&mut self, edge_id: &CanvasEdgeId) -> bool {
-        let previous_len = self.edges.len();
-        self.edges.retain(|edge| &edge.id != edge_id);
-        self.edges.len() != previous_len
+    pub(super) fn mutate_edge(
+        &mut self,
+        edge_id: CanvasEdgeId,
+        operation: CanvasLinkMutation,
+        reviewed_edge_id: Option<&CanvasEdgeId>,
+        canvas_coordinator: &CanvasCoordinator,
+    ) -> CanvasLinkMutationDecision {
+        let edges = self
+            .edges
+            .iter()
+            .map(|edge| CanvasLinkEdgeSummary {
+                id: edge.id.clone(),
+                source: edge.source.clone(),
+                target: edge.target.clone(),
+                kind: edge.kind,
+                enabled: edge.enabled,
+            })
+            .collect::<Vec<_>>();
+        let decision = canvas_coordinator.mutate_link(CanvasLinkMutationRequest {
+            edges: &edges,
+            edge_id,
+            operation,
+            reviewed_edge_id,
+        });
+        if let CanvasLinkMutationDecision::Apply {
+            edge_id, operation, ..
+        } = &decision
+        {
+            match operation {
+                CanvasLinkMutation::SetEnabled(enabled) => {
+                    if let Some(edge) = self.edges.iter_mut().find(|edge| &edge.id == edge_id) {
+                        edge.enabled = *enabled;
+                    }
+                }
+                CanvasLinkMutation::Remove => self.edges.retain(|edge| &edge.id != edge_id),
+            }
+        }
+        decision
     }
 
     pub(super) fn add_context_edge(
@@ -5842,27 +5869,33 @@ impl TermiRustApp {
         enabled: bool,
         cx: &mut Context<Self>,
     ) {
-        let dependency_changed = self.active_workspace().is_some_and(|workspace| {
-            workspace
-                .canvas
-                .edges
-                .iter()
-                .any(|edge| edge.id == edge_id && edge.kind == CanvasEdgeKind::Dependency)
-        });
-        let changed = self
+        let reviewed_edge_id = self
+            .context_handoff_review
+            .as_ref()
+            .map(|review| review.edge_id.clone());
+        let canvas_coordinator = self.canvas_coordinator.clone();
+        let decision = self
             .active_workspace_mut()
-            .is_some_and(|workspace| workspace.canvas.set_edge_enabled(&edge_id, enabled));
-        if !changed {
+            .map(|workspace| {
+                workspace.canvas.mutate_edge(
+                    edge_id,
+                    CanvasLinkMutation::SetEnabled(enabled),
+                    reviewed_edge_id.as_ref(),
+                    &canvas_coordinator,
+                )
+            })
+            .unwrap_or(CanvasLinkMutationDecision::Missing);
+        let CanvasLinkMutationDecision::Apply {
+            dependency_changed,
+            clear_context_review,
+            ..
+        } = decision
+        else {
             self.error_message = "That canvas link no longer exists.".to_string();
             cx.notify();
             return;
-        }
-        if !enabled
-            && self
-                .context_handoff_review
-                .as_ref()
-                .is_some_and(|review| review.edge_id == edge_id)
-        {
+        };
+        if clear_context_review {
             self.context_handoff_review = None;
         }
         self.persist_runtime_state();
@@ -5880,26 +5913,33 @@ impl TermiRustApp {
     }
 
     fn remove_canvas_edge(&mut self, edge_id: CanvasEdgeId, cx: &mut Context<Self>) {
-        let dependency_removed = self.active_workspace().is_some_and(|workspace| {
-            workspace
-                .canvas
-                .edges
-                .iter()
-                .any(|edge| edge.id == edge_id && edge.kind == CanvasEdgeKind::Dependency)
-        });
-        let removed = self
+        let reviewed_edge_id = self
+            .context_handoff_review
+            .as_ref()
+            .map(|review| review.edge_id.clone());
+        let canvas_coordinator = self.canvas_coordinator.clone();
+        let decision = self
             .active_workspace_mut()
-            .is_some_and(|workspace| workspace.canvas.remove_edge(&edge_id));
-        if !removed {
+            .map(|workspace| {
+                workspace.canvas.mutate_edge(
+                    edge_id,
+                    CanvasLinkMutation::Remove,
+                    reviewed_edge_id.as_ref(),
+                    &canvas_coordinator,
+                )
+            })
+            .unwrap_or(CanvasLinkMutationDecision::Missing);
+        let CanvasLinkMutationDecision::Apply {
+            dependency_changed: dependency_removed,
+            clear_context_review,
+            ..
+        } = decision
+        else {
             self.error_message = "That canvas link no longer exists.".to_string();
             cx.notify();
             return;
-        }
-        if self
-            .context_handoff_review
-            .as_ref()
-            .is_some_and(|review| review.edge_id == edge_id)
-        {
+        };
+        if clear_context_review {
             self.context_handoff_review = None;
         }
         self.persist_runtime_state();
@@ -10194,8 +10234,9 @@ fn agent_state_after_queue(state: AgentRunState) -> Option<AgentRunState> {
 mod tests {
     use super::{
         AgentExecutableStatus, AgentRunState, CANVAS_DEFAULT_NODE_HEIGHT,
-        CANVAS_DEFAULT_NODE_WIDTH, CanvasCoordinator, CanvasNode, CanvasNodeKind, CanvasPoint,
-        CanvasRect, CanvasTransform, CanvasWorkspaceState, TermiRustApp, agent_creation_can_launch,
+        CANVAS_DEFAULT_NODE_WIDTH, CanvasCoordinator, CanvasLinkMutation,
+        CanvasLinkMutationDecision, CanvasNode, CanvasNodeKind, CanvasPoint, CanvasRect,
+        CanvasTransform, CanvasWorkspaceState, TermiRustApp, agent_creation_can_launch,
         agent_state_after_queue, agent_state_needs_attention, canvas_minimap_geometry,
         canvas_node_render_rect, canvas_orchestration_scope, canvas_rect_is_visible,
         canvas_reveal_delta, compact_activity_detail, default_agent_backend,
@@ -10780,12 +10821,31 @@ mod tests {
             .add_context_edge(CanvasNodeId::new("a"), CanvasNodeId::new("b"), &coordinator)
             .expect("edge should be created");
 
-        assert!(canvas.set_edge_enabled(&edge_id, false));
+        assert!(matches!(
+            canvas.mutate_edge(
+                edge_id.clone(),
+                CanvasLinkMutation::SetEnabled(false),
+                None,
+                &coordinator,
+            ),
+            CanvasLinkMutationDecision::Apply { .. }
+        ));
         assert!(!canvas.edges[0].enabled);
-        assert!(canvas.remove_edge(&edge_id));
+        assert!(matches!(
+            canvas.mutate_edge(
+                edge_id.clone(),
+                CanvasLinkMutation::Remove,
+                None,
+                &coordinator,
+            ),
+            CanvasLinkMutationDecision::Apply { .. }
+        ));
         assert!(canvas.edges.is_empty());
         assert_eq!(canvas.nodes.len(), 2);
-        assert!(!canvas.remove_edge(&edge_id));
+        assert_eq!(
+            canvas.mutate_edge(edge_id, CanvasLinkMutation::Remove, None, &coordinator,),
+            CanvasLinkMutationDecision::Missing
+        );
     }
 
     #[test]

@@ -26,6 +26,30 @@ pub(super) struct CanvasLinkCreationRequest<'a> {
     pub kind: CanvasEdgeKind,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum CanvasLinkMutation {
+    SetEnabled(bool),
+    Remove,
+}
+
+pub(super) struct CanvasLinkMutationRequest<'a> {
+    pub edges: &'a [CanvasLinkEdgeSummary],
+    pub edge_id: CanvasEdgeId,
+    pub operation: CanvasLinkMutation,
+    pub reviewed_edge_id: Option<&'a CanvasEdgeId>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum CanvasLinkMutationDecision {
+    Missing,
+    Apply {
+        edge_id: CanvasEdgeId,
+        operation: CanvasLinkMutation,
+        dependency_changed: bool,
+        clear_context_review: bool,
+    },
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct CanvasLinkPlan {
     pub id: CanvasEdgeId,
@@ -85,6 +109,25 @@ pub(super) enum CanvasSelectionDecision {
 pub(super) struct CanvasCoordinator;
 
 impl CanvasCoordinator {
+    pub fn mutate_link(
+        &self,
+        request: CanvasLinkMutationRequest<'_>,
+    ) -> CanvasLinkMutationDecision {
+        let Some(edge) = request.edges.iter().find(|edge| edge.id == request.edge_id) else {
+            return CanvasLinkMutationDecision::Missing;
+        };
+        CanvasLinkMutationDecision::Apply {
+            edge_id: request.edge_id,
+            operation: request.operation,
+            dependency_changed: edge.kind == CanvasEdgeKind::Dependency,
+            clear_context_review: request.reviewed_edge_id == Some(&edge.id)
+                && matches!(
+                    request.operation,
+                    CanvasLinkMutation::SetEnabled(false) | CanvasLinkMutation::Remove
+                ),
+        }
+    }
+
     pub fn create_link(
         &self,
         request: CanvasLinkCreationRequest<'_>,
@@ -304,6 +347,75 @@ mod tests {
                 enabled: true,
                 context_policy: None,
             }
+        );
+    }
+
+    #[test]
+    fn canvas_coordinator_classifies_link_mutations_and_review_invalidation() {
+        let context = link_edge("context-edge-1", "a", "b", CanvasEdgeKind::Context, true);
+        let dependency = link_edge(
+            "dependency-edge-2",
+            "b",
+            "c",
+            CanvasEdgeKind::Dependency,
+            true,
+        );
+        let edges = [context.clone(), dependency.clone()];
+
+        assert_eq!(
+            CanvasCoordinator.mutate_link(CanvasLinkMutationRequest {
+                edges: &edges,
+                edge_id: context.id.clone(),
+                operation: CanvasLinkMutation::SetEnabled(true),
+                reviewed_edge_id: Some(&context.id),
+            }),
+            CanvasLinkMutationDecision::Apply {
+                edge_id: context.id.clone(),
+                operation: CanvasLinkMutation::SetEnabled(true),
+                dependency_changed: false,
+                clear_context_review: false,
+            }
+        );
+        assert_eq!(
+            CanvasCoordinator.mutate_link(CanvasLinkMutationRequest {
+                edges: &edges,
+                edge_id: context.id.clone(),
+                operation: CanvasLinkMutation::SetEnabled(false),
+                reviewed_edge_id: Some(&context.id),
+            }),
+            CanvasLinkMutationDecision::Apply {
+                edge_id: context.id.clone(),
+                operation: CanvasLinkMutation::SetEnabled(false),
+                dependency_changed: false,
+                clear_context_review: true,
+            }
+        );
+        assert_eq!(
+            CanvasCoordinator.mutate_link(CanvasLinkMutationRequest {
+                edges: &edges,
+                edge_id: dependency.id.clone(),
+                operation: CanvasLinkMutation::Remove,
+                reviewed_edge_id: Some(&dependency.id),
+            }),
+            CanvasLinkMutationDecision::Apply {
+                edge_id: dependency.id,
+                operation: CanvasLinkMutation::Remove,
+                dependency_changed: true,
+                clear_context_review: true,
+            }
+        );
+    }
+
+    #[test]
+    fn canvas_coordinator_rejects_missing_link_mutations_without_side_effects() {
+        assert_eq!(
+            CanvasCoordinator.mutate_link(CanvasLinkMutationRequest {
+                edges: &[],
+                edge_id: CanvasEdgeId::new("missing"),
+                operation: CanvasLinkMutation::Remove,
+                reviewed_edge_id: Some(&CanvasEdgeId::new("missing")),
+            }),
+            CanvasLinkMutationDecision::Missing
         );
     }
 
@@ -548,6 +660,7 @@ mod tests {
         let canvas_source = include_str!("canvas.rs");
         assert!(canvas_source.contains("canvas_coordinator.select_adjacent"));
         assert!(canvas_source.contains("canvas_coordinator.create_link"));
+        assert!(canvas_source.contains("canvas_coordinator.mutate_link"));
         assert!(!canvas_source.contains("rem_euclid(self.nodes.len()"));
         assert!(!canvas_source.contains("unwrap_or_else(|| if delta < 0"));
         assert!(!canvas_source.contains("Both context-link nodes must exist"));
