@@ -2,7 +2,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use termirust_controller_security::MAX_CONTROL_PAYLOAD_BYTES;
-use termirust_domain::{CommandId, HostedSessionId, OccupantGeneration, OutputSequence};
+use termirust_domain::{
+    CommandId, HostInstanceId, HostedSessionId, OccupantGeneration, OutputSequence,
+};
 use uuid::Uuid;
 
 use crate::{BridgeCommand, BridgeCommandKind, ListenerError, ListenerErrorCode};
@@ -274,6 +276,14 @@ impl fmt::Debug for ControllerResponse {
 #[serde(deny_unknown_fields)]
 pub struct ControllerSessionSummary {
     pub session_id: HostedSessionId,
+    #[serde(default)]
+    pub host_instance_id: Option<HostInstanceId>,
+    #[serde(default)]
+    pub origin: ControllerSessionOrigin,
+    #[serde(default)]
+    pub runtime: Option<String>,
+    #[serde(default)]
+    pub capabilities: Vec<ControllerSessionCapability>,
     pub title: String,
     pub project: Option<String>,
     pub group: Option<String>,
@@ -285,11 +295,35 @@ pub struct ControllerSessionSummary {
     pub unread: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ControllerSessionOrigin {
+    Terminal,
+    ManagedAgent,
+    ObservedAgent,
+    #[default]
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ControllerSessionCapability {
+    ObserveSessions,
+    AttachOutput,
+    SendInput,
+    Resize,
+    RespondToApproval,
+}
+
 impl fmt::Debug for ControllerSessionSummary {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("ControllerSessionSummary")
             .field("session_id", &self.session_id)
+            .field("host_instance_id", &self.host_instance_id)
+            .field("origin", &self.origin)
+            .field("runtime", &self.runtime)
+            .field("capabilities", &self.capabilities)
             .field("title", &"[REDACTED]")
             .field("project", &self.project.as_ref().map(|_| "[REDACTED]"))
             .field("group", &self.group.as_ref().map(|_| "[REDACTED]"))
@@ -353,6 +387,18 @@ fn validate_response(response: &ControllerResponse) -> Result<(), ListenerError>
             || next_offset == &Some(0)
             || sessions.iter().any(|session| {
                 session.title.chars().count() > MAX_SESSION_TITLE_SCALARS
+                    || session.runtime.as_ref().is_some_and(|runtime| {
+                        runtime.is_empty()
+                            || runtime.len() > 128
+                            || !runtime.bytes().all(|byte| {
+                                byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_')
+                            })
+                    })
+                    || session.capabilities.len() > 5
+                    || session
+                        .capabilities
+                        .windows(2)
+                        .any(|pair| pair[0] >= pair[1])
                     || session
                         .project
                         .as_ref()
@@ -440,6 +486,28 @@ mod tests {
         let encoded = encode_command(&command).unwrap();
         assert_eq!(decode_command(&encoded).unwrap(), command);
         assert!(!format!("{command:?}").contains("TOP-SECRET"));
+    }
+
+    #[test]
+    fn legacy_session_summaries_default_new_identity_and_capability_fields() {
+        let session_id = HostedSessionId::new();
+        let legacy = serde_json::json!({
+            "session_id": session_id,
+            "title": "Legacy",
+            "project": null,
+            "group": null,
+            "lifecycle": "live",
+            "activity": "idle",
+            "occupant_generation": 1,
+            "last_output_sequence": 2,
+            "has_writer": false,
+            "unread": false
+        });
+        let summary: ControllerSessionSummary = serde_json::from_value(legacy).unwrap();
+        assert_eq!(summary.host_instance_id, None);
+        assert_eq!(summary.origin, ControllerSessionOrigin::Unknown);
+        assert_eq!(summary.runtime, None);
+        assert!(summary.capabilities.is_empty());
     }
 
     #[test]
@@ -537,6 +605,13 @@ mod tests {
 
         let summary = ControllerSessionSummary {
             session_id: HostedSessionId::new(),
+            host_instance_id: Some(HostInstanceId::new()),
+            origin: ControllerSessionOrigin::ManagedAgent,
+            runtime: Some("codex".into()),
+            capabilities: vec![
+                ControllerSessionCapability::ObserveSessions,
+                ControllerSessionCapability::AttachOutput,
+            ],
             title: "Deploy".into(),
             project: Some("Console".into()),
             group: Some("Release".into()),

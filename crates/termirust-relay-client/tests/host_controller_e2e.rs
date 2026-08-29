@@ -6,8 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use termirust_controller_listener::{
     ApprovalDecision, AuthoritySnapshot, ControllerAuthorityProvider, ControllerBackendFactory,
     ControllerClientChannel, ControllerCommand, ControllerCommandEnvelope,
-    ControllerConnectionBackend, ControllerResponse, ControllerSessionSummary, HostCommandContext,
-    ListenerError, SystemHandshakeEntropy, serve_authenticated_stdio_stream,
+    ControllerConnectionBackend, ControllerResponse, ControllerSessionOrigin,
+    ControllerSessionSummary, HostCommandContext, ListenerError, SystemHandshakeEntropy,
+    serve_authenticated_stdio_stream,
 };
 use termirust_controller_security::{
     CapabilitySet, ControllerCapability as SecurityCapability, HostStaticPublicKey,
@@ -87,6 +88,10 @@ impl ControllerConnectionBackend for Backend {
                 update_sequence: 1,
                 sessions: vec![ControllerSessionSummary {
                     session_id: self.session_id,
+                    host_instance_id: None,
+                    origin: ControllerSessionOrigin::Unknown,
+                    runtime: None,
+                    capabilities: Vec::new(),
                     title: "Authoritative fixture".to_owned(),
                     project: None,
                     group: None,

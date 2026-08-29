@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use termirust_controller_listener::{
     BridgeAuthorization, BridgeCommand, BridgeCommandKind, ListenerErrorCode,
 };
@@ -7,20 +8,44 @@ use termirust_domain::{
     HostIdentityGeneration, HostIdentityPublic, HostIdentitySecretRef, HostIdentityState,
     HostPublicKey, OccupantGeneration, PairedDeviceRecord, PairedDeviceStatus, PairingOfferId,
 };
+use uuid::Uuid;
+
+#[derive(Deserialize)]
+struct GoldenFixture {
+    session: GoldenSession,
+    controller: GoldenController,
+    scenarios: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct GoldenSession {
+    session_generation: u64,
+}
+
+#[derive(Deserialize)]
+struct GoldenController {
+    device_id: Uuid,
+    revocation_epoch: u64,
+    capability_bits: u16,
+}
+
+fn golden() -> GoldenFixture {
+    serde_json::from_slice(include_bytes!(
+        "../../../tests/fixtures/universal-session-v1/golden.json"
+    ))
+    .unwrap()
+}
 
 fn authority() -> (
     ControllerDeviceAuthority,
     ControllerDeviceId,
     DevicePublicKey,
 ) {
-    let device_id = ControllerDeviceId::new();
+    let golden = golden();
+    let device_id = ControllerDeviceId::from_uuid(golden.controller.device_id);
     let public_key = DevicePublicKey([8; 32]);
-    let capabilities = ControllerCapabilities::default()
-        .with(ControllerCapability::ObserveSessions)
-        .with(ControllerCapability::AttachOutput)
-        .with(ControllerCapability::SendInput)
-        .with(ControllerCapability::Resize)
-        .with(ControllerCapability::RespondToApproval);
+    let capabilities =
+        ControllerCapabilities::from_bits(golden.controller.capability_bits).unwrap();
     (
         ControllerDeviceAuthority {
             identity: Some(HostIdentityPublic::new(
@@ -29,8 +54,8 @@ fn authority() -> (
             )),
             secret_ref: Some(HostIdentitySecretRef::new("identity:test").unwrap()),
             state: HostIdentityState::Ready,
-            revocation_epoch: 3,
-            session_generation: 5,
+            revocation_epoch: golden.controller.revocation_epoch,
+            session_generation: golden.session.session_generation,
             devices: vec![PairedDeviceRecord {
                 device_id,
                 public_key,
@@ -39,7 +64,7 @@ fn authority() -> (
                 protocol_range: ControllerProtocolRange::V1,
                 created_at: 1,
                 last_seen_at: None,
-                revocation_epoch: 3,
+                revocation_epoch: golden.controller.revocation_epoch,
                 identity_generation: HostIdentityGeneration::INITIAL,
                 status: PairedDeviceStatus::Online,
                 source_offer_id: PairingOfferId::new(),
@@ -56,13 +81,14 @@ fn request(
     device_id: ControllerDeviceId,
     public_key: DevicePublicKey,
 ) -> ControllerAuthorizationRequest {
+    let golden = golden();
     ControllerAuthorizationRequest {
         device_id,
         public_key,
         identity_generation: HostIdentityGeneration::INITIAL,
         capability: ControllerCapability::ObserveSessions,
-        revocation_epoch: 3,
-        session_generation: 5,
+        revocation_epoch: golden.controller.revocation_epoch,
+        session_generation: golden.session.session_generation,
         now_millis: 100,
         deadline_millis: 200,
     }
@@ -74,7 +100,7 @@ fn command(kind: BridgeCommandKind) -> BridgeCommand {
         session_id: None,
         occupant_generation: (kind != BridgeCommandKind::ListSessions)
             .then_some(OccupantGeneration::new(9)),
-        session_generation: 5,
+        session_generation: golden().session.session_generation,
         deadline_millis: 200,
     }
 }
@@ -184,6 +210,12 @@ fn every_command_rechecks_capability_epoch_deadline_generation_and_writer_lease(
 
 #[test]
 fn revocation_immediately_invalidates_existing_peer_claims() {
+    assert!(
+        golden()
+            .scenarios
+            .iter()
+            .any(|scenario| scenario == "revocation_stops_mutation")
+    );
     let (mut authority, device_id, public_key) = authority();
     authority.revoke_device(device_id).unwrap();
     let bridge = BridgeAuthorization::new(&authority);

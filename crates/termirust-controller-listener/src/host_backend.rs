@@ -5,15 +5,17 @@ use async_trait::async_trait;
 use rand::RngCore as _;
 use termirust_client::{ConnectOptions, HostClient, LocalEndpoint};
 use termirust_domain::{
-    ActivityState, AuthenticatedPeer, HostedSessionId, HostedSessionState, OccupantGeneration,
+    ActivityState, AuthenticatedPeer, ControllerCapabilities, ControllerCapability,
+    HostedSessionId, HostedSessionState, OccupantGeneration, OccupantOwnership,
 };
 use termirust_store::{ProjectRepository, SessionRepository, read_host_metadata};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     ControllerBackendFactory, ControllerCommand, ControllerCommandEnvelope,
-    ControllerConnectionBackend, ControllerResponse, ControllerSessionSummary, HostCommandContext,
-    ListenerError, ListenerErrorCode, MAX_SESSION_PAGE_BYTES, MAX_SNAPSHOT_CHUNK_BYTES,
+    ControllerConnectionBackend, ControllerResponse, ControllerSessionCapability,
+    ControllerSessionOrigin, ControllerSessionSummary, HostCommandContext, ListenerError,
+    ListenerErrorCode, MAX_SESSION_PAGE_BYTES, MAX_SNAPSHOT_CHUNK_BYTES,
 };
 
 #[derive(Clone)]
@@ -51,12 +53,13 @@ impl HostBackendFactory {
 impl ControllerBackendFactory for HostBackendFactory {
     fn open(
         &self,
-        _: &AuthenticatedPeer,
+        peer: &AuthenticatedPeer,
     ) -> Result<Box<dyn ControllerConnectionBackend>, ListenerError> {
         Ok(Box::new(HostConnectionBackend {
             sessions: self.sessions.clone(),
             projects: self.projects.clone(),
             runtime_parent: self.runtime_parent.clone(),
+            capabilities: peer.capabilities,
             clients: HashMap::new(),
             active_attach: None,
             pending_output: VecDeque::new(),
@@ -68,6 +71,7 @@ struct HostConnectionBackend {
     sessions: SessionRepository,
     projects: ProjectRepository,
     runtime_parent: PathBuf,
+    capabilities: ControllerCapabilities,
     clients: HashMap<HostedSessionId, HostClient>,
     active_attach: Option<ActiveAttach>,
     pending_output: VecDeque<ControllerResponse>,
@@ -423,8 +427,24 @@ impl HostConnectionBackend {
         let mut encoded_bytes = 512usize;
         let mut sessions = Vec::new();
         for session in &session_snapshot.sessions[start..requested_end] {
+            let metadata = read_host_metadata(&self.sessions.session_data_path(session.id)).ok();
+            let occupant = metadata
+                .as_ref()
+                .and_then(|metadata| metadata.runtime_recognition.as_ref())
+                .and_then(|recognition| recognition.occupant.as_ref());
+            let origin = match occupant.map(|occupant| &occupant.ownership) {
+                Some(OccupantOwnership::Managed { .. }) => ControllerSessionOrigin::ManagedAgent,
+                Some(OccupantOwnership::Observed { .. }) => ControllerSessionOrigin::ObservedAgent,
+                Some(OccupantOwnership::Ambiguous) => ControllerSessionOrigin::Unknown,
+                None if metadata.is_some() => ControllerSessionOrigin::Terminal,
+                None => ControllerSessionOrigin::Unknown,
+            };
             let summary = ControllerSessionSummary {
                 session_id: session.id,
+                host_instance_id: metadata.as_ref().map(|metadata| metadata.host_instance_id),
+                origin,
+                runtime: occupant.map(|occupant| occupant.runtime_id.as_str().to_owned()),
+                capabilities: controller_session_capabilities(self.capabilities),
                 title: session.title.to_string(),
                 project: project_names.get(&session.project_id).cloned(),
                 group: session
@@ -432,7 +452,7 @@ impl HostConnectionBackend {
                     .and_then(|group_id| group_names.get(&group_id).cloned()),
                 lifecycle: lifecycle_code(session.lifecycle).to_owned(),
                 activity: activity_code(session.activity.state).to_owned(),
-                occupant_generation: self.occupant_generation(session.id).ok(),
+                occupant_generation: occupant.map(|occupant| occupant.generation),
                 last_output_sequence: session.last_output_sequence,
                 has_writer: false,
                 unread: session.unread(),
@@ -478,6 +498,36 @@ impl HostConnectionBackend {
             .get_mut(&session_id)
             .ok_or_else(|| ListenerError::new(ListenerErrorCode::HostUnavailable))
     }
+}
+
+fn controller_session_capabilities(
+    capabilities: ControllerCapabilities,
+) -> Vec<ControllerSessionCapability> {
+    [
+        (
+            ControllerCapability::ObserveSessions,
+            ControllerSessionCapability::ObserveSessions,
+        ),
+        (
+            ControllerCapability::AttachOutput,
+            ControllerSessionCapability::AttachOutput,
+        ),
+        (
+            ControllerCapability::SendInput,
+            ControllerSessionCapability::SendInput,
+        ),
+        (
+            ControllerCapability::Resize,
+            ControllerSessionCapability::Resize,
+        ),
+        (
+            ControllerCapability::RespondToApproval,
+            ControllerSessionCapability::RespondToApproval,
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(permission, summary)| capabilities.contains(permission).then_some(summary))
+    .collect()
 }
 
 fn mutation_response(

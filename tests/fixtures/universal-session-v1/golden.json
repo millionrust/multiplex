@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "session": {
+    "session_id": "10000000-0000-4000-8000-000000000001",
+    "host_instance_id": "20000000-0000-4000-8000-000000000001",
+    "occupant_generation": 7,
+    "session_generation": 11,
+    "origin": "managed_agent",
+    "runtime": "codex",
+    "capabilities": [
+      "observe_sessions",
+      "attach_output",
+      "send_input",
+      "resize",
+      "respond_to_approval"
+    ],
+    "last_output_sequence": 40
+  },
+  "controller": {
+    "device_id": "30000000-0000-4000-8000-000000000001",
+    "identity_generation": 1,
+    "revocation_epoch": 3,
+    "capability_bits": 31
+  },
+  "commands": {
+    "first_writer": "40000000-0000-4000-8000-000000000001",
+    "second_writer": "40000000-0000-4000-8000-000000000002",
+    "input": "40000000-0000-4000-8000-000000000003",
+    "release": "40000000-0000-4000-8000-000000000004"
+  },
+  "input_bytes": [112, 119, 100, 10],
+  "viewport": {
+    "columns": 120,
+    "rows": 40
+  },
+  "scenarios": [
+    "same_identity_and_capabilities",
+    "single_writer",
+    "background_releases_writer",
+    "acknowledged_input_not_replayed",
+    "revocation_stops_mutation"
+  ]
+}

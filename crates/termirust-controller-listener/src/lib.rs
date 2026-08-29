@@ -52,8 +52,9 @@ pub use process_protocol::{
 };
 pub use protocol::{
     ApprovalDecision, ControllerCommand, ControllerCommandEnvelope, ControllerResponse,
-    ControllerSessionSummary, MAX_SESSION_PAGE_BYTES, MAX_SNAPSHOT_CHUNK_BYTES, decode_command,
-    decode_response, encode_command, encode_response,
+    ControllerSessionCapability, ControllerSessionOrigin, ControllerSessionSummary,
+    MAX_SESSION_PAGE_BYTES, MAX_SNAPSHOT_CHUNK_BYTES, decode_command, decode_response,
+    encode_command, encode_response,
 };
 pub use queue::{BoundedFrameQueue, QueueClass};
 pub use rate_limit::{AuthRateLimiter, SourceBucket, SourceBucketKey};
