@@ -5149,8 +5149,11 @@ impl TermiRustApp {
                 .as_ref()
                 .and_then(|node| saved_to_split_node(node, &pane_ids))
                 .or_else(|| flat_split(&pane_ids, SplitAxis::Horizontal));
-            let canvas =
-                CanvasWorkspaceState::from_saved(saved_workspace.canvas.as_ref(), &pane_ids);
+            let canvas = CanvasWorkspaceState::from_saved(
+                saved_workspace.canvas.as_ref(),
+                &pane_ids,
+                &self.canvas_coordinator,
+            );
 
             self.workspaces.push(WorkspaceTab {
                 id: workspace_id,
@@ -6101,7 +6104,7 @@ impl TermiRustApp {
             unread_events: 0,
             layout: Some(SplitNode::Leaf(pane_id)),
             layout_mode: WorkspaceLayoutMode::Split,
-            canvas: CanvasWorkspaceState::from_saved(None, &[pane_id]),
+            canvas: CanvasWorkspaceState::from_saved(None, &[pane_id], &self.canvas_coordinator),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
             search_visible: false,
@@ -6151,7 +6154,11 @@ impl TermiRustApp {
                     unread_events: 0,
                     layout: Some(SplitNode::Leaf(pane_id)),
                     layout_mode: WorkspaceLayoutMode::Split,
-                    canvas: CanvasWorkspaceState::from_saved(None, &[pane_id]),
+                    canvas: CanvasWorkspaceState::from_saved(
+                        None,
+                        &[pane_id],
+                        &self.canvas_coordinator,
+                    ),
                     view_mode: WorkspaceViewMode::Terminal,
                     sftp: None,
                     search_visible: false,
@@ -6413,7 +6420,7 @@ impl TermiRustApp {
             unread_events: 0,
             layout: Some(SplitNode::Leaf(pane_id)),
             layout_mode: WorkspaceLayoutMode::Split,
-            canvas: CanvasWorkspaceState::from_saved(None, &[pane_id]),
+            canvas: CanvasWorkspaceState::from_saved(None, &[pane_id], &self.canvas_coordinator),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
             search_visible: false,
@@ -7627,7 +7634,7 @@ impl TermiRustApp {
             unread_events: 0,
             layout: Some(SplitNode::Leaf(pane_id)),
             layout_mode: WorkspaceLayoutMode::Split,
-            canvas: CanvasWorkspaceState::from_saved(None, &[pane_id]),
+            canvas: CanvasWorkspaceState::from_saved(None, &[pane_id], &self.canvas_coordinator),
             view_mode: WorkspaceViewMode::Terminal,
             sftp: None,
             search_visible: false,
@@ -13245,6 +13252,7 @@ mod tests {
         let (workspace_id, source_id, target_id) = window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
+                    let canvas_coordinator = app.canvas_coordinator.clone();
                     let (workspace_id, _) = app
                         .open_request_workspace(request, window, cx)
                         .expect("local workspace should open");
@@ -13260,6 +13268,7 @@ mod tests {
                         None,
                         crate::models::SavedAgentDefinition::default(),
                         crate::ui::app::canvas::CanvasPoint::new(800.0, 100.0),
+                        &canvas_coordinator,
                     );
                     cx.notify();
                     (workspace_id, source_id, target_id)

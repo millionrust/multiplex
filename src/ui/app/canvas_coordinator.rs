@@ -49,6 +49,17 @@ pub(super) struct CanvasRevealRequest {
     pub padding: f32,
 }
 
+pub(super) struct CanvasPlacementRequest<'a> {
+    pub occupied: &'a [CanvasGeometryRect],
+    pub width: f32,
+    pub height: f32,
+    pub center: CanvasGeometryPoint,
+    pub step_x: f32,
+    pub step_y: f32,
+    pub gutter: f32,
+    pub max_rings: i32,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct CanvasLinkNodeSummary {
     pub id: CanvasNodeId,
@@ -156,6 +167,58 @@ pub(super) enum CanvasSelectionDecision {
 pub(super) struct CanvasCoordinator;
 
 impl CanvasCoordinator {
+    pub fn place_node(&self, request: CanvasPlacementRequest<'_>) -> CanvasGeometryPoint {
+        let origin = CanvasGeometryPoint {
+            x: request.center.x - request.width / 2.0,
+            y: request.center.y - request.height / 2.0,
+        };
+        let candidate_rect = |column: i32, row: i32| CanvasGeometryRect {
+            x: origin.x + column as f32 * request.step_x,
+            y: origin.y + row as f32 * request.step_y,
+            width: request.width,
+            height: request.height,
+        };
+        let is_free = |candidate: CanvasGeometryRect| {
+            request
+                .occupied
+                .iter()
+                .all(|occupied| !rects_intersect_with_gutter(candidate, *occupied, request.gutter))
+        };
+
+        if is_free(candidate_rect(0, 0)) {
+            return origin;
+        }
+        for ring in 1..=request.max_rings {
+            for column in -ring..=ring {
+                for row in [-ring, ring] {
+                    let candidate = candidate_rect(column, row);
+                    if is_free(candidate) {
+                        return CanvasGeometryPoint {
+                            x: candidate.x,
+                            y: candidate.y,
+                        };
+                    }
+                }
+            }
+            for row in (-ring + 1)..=(ring - 1) {
+                for column in [-ring, ring] {
+                    let candidate = candidate_rect(column, row);
+                    if is_free(candidate) {
+                        return CanvasGeometryPoint {
+                            x: candidate.x,
+                            y: candidate.y,
+                        };
+                    }
+                }
+            }
+        }
+
+        CanvasGeometryPoint {
+            x: origin.x + request.occupied.len() as f32 * request.step_x,
+            y: origin.y,
+        }
+    }
+
     pub fn fit_content(&self, request: CanvasFitRequest<'_>) -> CanvasViewportTransform {
         let Some(first) = request.rects.first() else {
             return CanvasViewportTransform::default();
@@ -336,6 +399,17 @@ impl CanvasCoordinator {
     }
 }
 
+fn rects_intersect_with_gutter(
+    left: CanvasGeometryRect,
+    right: CanvasGeometryRect,
+    gutter: f32,
+) -> bool {
+    left.x < right.x + right.width + gutter
+        && left.x + left.width + gutter > right.x
+        && left.y < right.y + right.height + gutter
+        && left.y + left.height + gutter > right.y
+}
+
 fn dependency_path_exists(
     edges: &[CanvasLinkEdgeSummary],
     start: &CanvasNodeId,
@@ -500,6 +574,65 @@ mod tests {
             ..CanvasGeometryRect::default()
         }];
         assert_eq!(coordinator.fit_content(request(&huge)).zoom, 0.35);
+    }
+
+    #[test]
+    fn canvas_coordinator_places_empty_and_occupied_canvases_deterministically() {
+        let coordinator = CanvasCoordinator;
+        let request = |occupied| CanvasPlacementRequest {
+            occupied,
+            width: 760.0,
+            height: 480.0,
+            center: CanvasGeometryPoint { x: 500.0, y: 400.0 },
+            step_x: 788.0,
+            step_y: 508.0,
+            gutter: 28.0,
+            max_rings: 64,
+        };
+        let origin = CanvasGeometryPoint { x: 120.0, y: 160.0 };
+        assert_eq!(coordinator.place_node(request(&[])), origin);
+
+        let occupied = [CanvasGeometryRect {
+            x: origin.x,
+            y: origin.y,
+            width: 760.0,
+            height: 480.0,
+        }];
+        let expected = CanvasGeometryPoint {
+            x: origin.x - 788.0,
+            y: origin.y - 508.0,
+        };
+        assert_eq!(coordinator.place_node(request(&occupied)), expected);
+        assert_eq!(coordinator.place_node(request(&occupied)), expected);
+    }
+
+    #[test]
+    fn canvas_coordinator_placement_honors_gutter_and_bounded_fallback() {
+        let coordinator = CanvasCoordinator;
+        let occupied = [CanvasGeometryRect {
+            x: 20.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        }];
+        let request = |max_rings| CanvasPlacementRequest {
+            occupied: &occupied,
+            width: 10.0,
+            height: 10.0,
+            center: CanvasGeometryPoint { x: 15.0, y: 5.0 },
+            step_x: 20.0,
+            step_y: 20.0,
+            gutter: 1.0,
+            max_rings,
+        };
+        assert_eq!(
+            coordinator.place_node(request(1)),
+            CanvasGeometryPoint { x: -10.0, y: -20.0 }
+        );
+        assert_eq!(
+            coordinator.place_node(request(0)),
+            CanvasGeometryPoint { x: 30.0, y: 0.0 }
+        );
     }
 
     #[test]
@@ -855,6 +988,7 @@ mod tests {
         assert!(canvas_source.contains("canvas_coordinator.mutate_link"));
         assert!(canvas_source.contains("canvas_coordinator.fit_content"));
         assert!(canvas_source.contains("canvas_coordinator.reveal_in_viewport"));
+        assert!(canvas_source.contains("canvas_coordinator.place_node"));
         assert!(!canvas_source.contains("rem_euclid(self.nodes.len()"));
         assert!(!canvas_source.contains("unwrap_or_else(|| if delta < 0"));
         assert!(!canvas_source.contains("Both context-link nodes must exist"));
@@ -862,6 +996,7 @@ mod tests {
         assert!(!canvas_source.contains("format!(\"context-edge-{ordinal}\")"));
         assert!(!canvas_source.contains("let content_width ="));
         assert!(!canvas_source.contains("fn axis_delta("));
+        assert!(!canvas_source.contains("for ring in 1..=64"));
 
         let forbidden_crate = ["gp", "ui"].concat();
         assert!(!include_str!("canvas_coordinator.rs").contains(&forbidden_crate));

@@ -49,7 +49,7 @@ use super::canvas_coordinator::{
     CanvasCoordinator, CanvasFitRequest, CanvasGeometryRect, CanvasLinkCreationError,
     CanvasLinkCreationRequest, CanvasLinkEdgeSummary, CanvasLinkMutation,
     CanvasLinkMutationDecision, CanvasLinkMutationRequest, CanvasLinkNodeSummary,
-    CanvasRevealRequest, CanvasSelectionDecision, CanvasSelectionRequest,
+    CanvasPlacementRequest, CanvasRevealRequest, CanvasSelectionDecision, CanvasSelectionRequest,
 };
 use super::project::{
     CanvasProjectPanelState, git_snapshot as canvas_project_git_snapshot,
@@ -415,13 +415,6 @@ impl CanvasRect {
             && point.y >= self.y
             && point.x <= self.x + self.width
             && point.y <= self.y + self.height
-    }
-
-    fn intersects_with_gutter(self, other: Self, gutter: f32) -> bool {
-        self.x < other.x + other.width + gutter
-            && self.x + self.width + gutter > other.x
-            && self.y < other.y + other.height + gutter
-            && self.y + self.height + gutter > other.y
     }
 }
 
@@ -870,10 +863,14 @@ impl CanvasWorkspaceState {
         true
     }
 
-    pub(super) fn from_saved(saved: Option<&SavedCanvasState>, pane_ids: &[u64]) -> Self {
+    pub(super) fn from_saved(
+        saved: Option<&SavedCanvasState>,
+        pane_ids: &[u64],
+        canvas_coordinator: &CanvasCoordinator,
+    ) -> Self {
         let Some(saved) = saved else {
             let mut state = Self::default();
-            state.ensure_terminal_nodes(pane_ids, CanvasPoint::default());
+            state.ensure_terminal_nodes(pane_ids, CanvasPoint::default(), canvas_coordinator);
             return state;
         };
 
@@ -945,7 +942,7 @@ impl CanvasWorkspaceState {
             undo_layout: Vec::new(),
             redo_layout: Vec::new(),
         };
-        state.ensure_terminal_nodes(pane_ids, CanvasPoint::default());
+        state.ensure_terminal_nodes(pane_ids, CanvasPoint::default(), canvas_coordinator);
         state
     }
 
@@ -1011,7 +1008,12 @@ impl CanvasWorkspaceState {
         }
     }
 
-    pub(super) fn ensure_terminal_nodes(&mut self, pane_ids: &[u64], viewport_center: CanvasPoint) {
+    pub(super) fn ensure_terminal_nodes(
+        &mut self,
+        pane_ids: &[u64],
+        viewport_center: CanvasPoint,
+        canvas_coordinator: &CanvasCoordinator,
+    ) {
         let existing: HashSet<u64> = self
             .nodes
             .iter()
@@ -1021,7 +1023,7 @@ impl CanvasWorkspaceState {
             if existing.contains(&pane_id) {
                 continue;
             }
-            self.add_terminal_node(pane_id, viewport_center);
+            self.add_terminal_node(pane_id, viewport_center, canvas_coordinator);
         }
     }
 
@@ -1029,6 +1031,7 @@ impl CanvasWorkspaceState {
         &mut self,
         pane_id: u64,
         viewport_center: CanvasPoint,
+        canvas_coordinator: &CanvasCoordinator,
     ) -> CanvasNodeId {
         let id = unique_node_id(&self.nodes, format!("canvas-node-{pane_id}"));
         let position = find_non_overlapping_position(
@@ -1036,6 +1039,7 @@ impl CanvasWorkspaceState {
             CANVAS_DEFAULT_NODE_WIDTH,
             CANVAS_DEFAULT_NODE_HEIGHT,
             viewport_center,
+            canvas_coordinator,
         );
         self.nodes.push(CanvasNode {
             id: id.clone(),
@@ -1059,6 +1063,7 @@ impl CanvasWorkspaceState {
         pane_id: Option<u64>,
         definition: SavedAgentDefinition,
         viewport_center: CanvasPoint,
+        canvas_coordinator: &CanvasCoordinator,
     ) -> CanvasNodeId {
         let id = unique_node_id(
             &self.nodes,
@@ -1071,6 +1076,7 @@ impl CanvasWorkspaceState {
             CANVAS_DEFAULT_NODE_WIDTH,
             CANVAS_DEFAULT_NODE_HEIGHT,
             viewport_center,
+            canvas_coordinator,
         );
         let title = Some(definition.provider.label().to_string());
         self.nodes.push(CanvasNode {
@@ -1093,13 +1099,18 @@ impl CanvasWorkspaceState {
         id
     }
 
-    pub(super) fn add_note_node(&mut self, viewport_center: CanvasPoint) -> CanvasNodeId {
+    pub(super) fn add_note_node(
+        &mut self,
+        viewport_center: CanvasPoint,
+        canvas_coordinator: &CanvasCoordinator,
+    ) -> CanvasNodeId {
         let id = unique_node_id(&self.nodes, format!("note-node-{}", current_unix_millis()));
         let position = find_non_overlapping_position(
             &self.nodes,
             CANVAS_NOTE_WIDTH,
             CANVAS_NOTE_HEIGHT,
             viewport_center,
+            canvas_coordinator,
         );
         self.nodes.push(CanvasNode {
             id: id.clone(),
@@ -1121,13 +1132,18 @@ impl CanvasWorkspaceState {
         id
     }
 
-    pub(super) fn add_group_node(&mut self, viewport_center: CanvasPoint) -> CanvasNodeId {
+    pub(super) fn add_group_node(
+        &mut self,
+        viewport_center: CanvasPoint,
+        canvas_coordinator: &CanvasCoordinator,
+    ) -> CanvasNodeId {
         let id = unique_node_id(&self.nodes, format!("group-node-{}", current_unix_millis()));
         let position = find_non_overlapping_position(
             &self.nodes,
             CANVAS_GROUP_WIDTH,
             CANVAS_GROUP_HEIGHT,
             viewport_center,
+            canvas_coordinator,
         );
         self.nodes.push(CanvasNode {
             id: id.clone(),
@@ -1474,46 +1490,31 @@ pub(super) fn find_non_overlapping_position(
     width: f32,
     height: f32,
     center: CanvasPoint,
+    canvas_coordinator: &CanvasCoordinator,
 ) -> CanvasPoint {
-    let origin = CanvasPoint::new(center.x - width / 2.0, center.y - height / 2.0);
-    let candidate_rect = |column: i32, row: i32| CanvasRect {
-        x: origin.x + column as f32 * CANVAS_PLACEMENT_STEP_X,
-        y: origin.y + row as f32 * CANVAS_PLACEMENT_STEP_Y,
+    let occupied = nodes
+        .iter()
+        .map(|node| CanvasGeometryRect {
+            x: node.rect.x,
+            y: node.rect.y,
+            width: node.rect.width,
+            height: node.rect.height,
+        })
+        .collect::<Vec<_>>();
+    let point = canvas_coordinator.place_node(CanvasPlacementRequest {
+        occupied: &occupied,
         width,
         height,
-    };
-    let is_free = |candidate: CanvasRect| {
-        nodes
-            .iter()
-            .all(|node| !candidate.intersects_with_gutter(node.rect, CANVAS_NODE_GUTTER))
-    };
-
-    if is_free(candidate_rect(0, 0)) {
-        return origin;
-    }
-    for ring in 1..=64 {
-        for column in -ring..=ring {
-            for row in [-ring, ring] {
-                let candidate = candidate_rect(column, row);
-                if is_free(candidate) {
-                    return CanvasPoint::new(candidate.x, candidate.y);
-                }
-            }
-        }
-        for row in (-ring + 1)..=(ring - 1) {
-            for column in [-ring, ring] {
-                let candidate = candidate_rect(column, row);
-                if is_free(candidate) {
-                    return CanvasPoint::new(candidate.x, candidate.y);
-                }
-            }
-        }
-    }
-
-    CanvasPoint::new(
-        origin.x + nodes.len() as f32 * CANVAS_PLACEMENT_STEP_X,
-        origin.y,
-    )
+        center: super::canvas_coordinator::CanvasGeometryPoint {
+            x: center.x,
+            y: center.y,
+        },
+        step_x: CANVAS_PLACEMENT_STEP_X,
+        step_y: CANVAS_PLACEMENT_STEP_Y,
+        gutter: CANVAS_NODE_GUTTER,
+        max_rings: 64,
+    });
+    CanvasPoint::new(point.x, point.y)
 }
 
 pub(super) fn fit_transform(
@@ -2021,6 +2022,7 @@ impl TermiRustApp {
             viewport_width / 2.0,
             (viewport_height - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT).max(1.0) / 2.0,
         );
+        let canvas_coordinator = self.canvas_coordinator.clone();
 
         let Some(workspace) = self.workspace_mut(workspace_id) else {
             return;
@@ -2030,7 +2032,7 @@ impl TermiRustApp {
             let pane_ids = workspace.pane_ids.clone();
             workspace
                 .canvas
-                .ensure_terminal_nodes(&pane_ids, world_center);
+                .ensure_terminal_nodes(&pane_ids, world_center, &canvas_coordinator);
             workspace.search_visible = false;
         } else {
             let split_ids = workspace
@@ -2495,16 +2497,22 @@ impl TermiRustApp {
             f32::from(viewport.width) / 2.0,
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
         );
+        let canvas_coordinator = self.canvas_coordinator.clone();
         if let Some(workspace) = self.workspace_mut(workspace_id) {
             let world_center = workspace.canvas.transform.screen_to_world(screen_center);
             workspace.pane_ids.push(pane_id);
             workspace.active_pane_id = pane_id;
             let node_id = if let Some(definition) = agent_definition {
+                workspace.canvas.add_agent_node(
+                    Some(pane_id),
+                    definition,
+                    world_center,
+                    &canvas_coordinator,
+                )
+            } else {
                 workspace
                     .canvas
-                    .add_agent_node(Some(pane_id), definition, world_center)
-            } else {
-                workspace.canvas.add_terminal_node(pane_id, world_center)
+                    .add_terminal_node(pane_id, world_center, &canvas_coordinator)
             };
             workspace.canvas.select_and_raise(&node_id);
         }
@@ -2607,11 +2615,14 @@ impl TermiRustApp {
         let Some(world_center) = self.active_canvas_world_center(window) else {
             return;
         };
+        let canvas_coordinator = self.canvas_coordinator.clone();
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
         workspace.canvas.record_layout_history();
-        let node_id = workspace.canvas.add_note_node(world_center);
+        let node_id = workspace
+            .canvas
+            .add_note_node(world_center, &canvas_coordinator);
         workspace.canvas.select_and_raise(&node_id);
         self.persist_runtime_state();
         self.start_canvas_note_edit(node_id, window, cx);
@@ -2621,6 +2632,7 @@ impl TermiRustApp {
         let Some(world_center) = self.active_canvas_world_center(window) else {
             return;
         };
+        let canvas_coordinator = self.canvas_coordinator.clone();
         let Some(workspace) = self.active_workspace_mut() else {
             return;
         };
@@ -2635,7 +2647,9 @@ impl TermiRustApp {
                     .and_then(|node| (!node.kind.is_group()).then_some((selected_id, node.rect)))
             });
         workspace.canvas.record_layout_history();
-        let node_id = workspace.canvas.add_group_node(world_center);
+        let node_id = workspace
+            .canvas
+            .add_group_node(world_center, &canvas_coordinator);
         if let Some((selected_id, selected_rect)) = selected
             && let Some(group) = workspace.canvas.node_mut(&node_id)
         {
@@ -3781,15 +3795,17 @@ impl TermiRustApp {
             f32::from(viewport.width) / 2.0,
             (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT) / 2.0,
         );
+        let canvas_coordinator = self.canvas_coordinator.clone();
         let Some(workspace) = self.workspace_mut(workspace_id) else {
             self.agent_creation = Some(creation);
             return;
         };
         let world_center = workspace.canvas.transform.screen_to_world(screen_center);
         let provider_label = definition.provider.label();
-        let node_id = workspace
-            .canvas
-            .add_agent_node(None, definition, world_center);
+        let node_id =
+            workspace
+                .canvas
+                .add_agent_node(None, definition, world_center, &canvas_coordinator);
         workspace.canvas.select_and_raise(&node_id);
         let transcript_focus = cx.focus_handle().tab_stop(true);
         self.structured_agents.insert(
@@ -10542,12 +10558,14 @@ mod tests {
 
     #[test]
     fn placement_is_deterministic_and_non_overlapping() {
+        let coordinator = CanvasCoordinator;
         let center = CanvasPoint::new(500.0, 400.0);
         let first_position = find_non_overlapping_position(
             &[],
             CANVAS_DEFAULT_NODE_WIDTH,
             CANVAS_DEFAULT_NODE_HEIGHT,
             center,
+            &coordinator,
         );
         let first = terminal_node("a", 1, first_position.x, first_position.y);
         let second_position = find_non_overlapping_position(
@@ -10555,12 +10573,14 @@ mod tests {
             CANVAS_DEFAULT_NODE_WIDTH,
             CANVAS_DEFAULT_NODE_HEIGHT,
             center,
+            &coordinator,
         );
         let repeated = find_non_overlapping_position(
             &[first],
             CANVAS_DEFAULT_NODE_WIDTH,
             CANVAS_DEFAULT_NODE_HEIGHT,
             center,
+            &coordinator,
         );
         assert_eq!(second_position, repeated);
         assert_ne!(second_position, first_position);
@@ -10618,7 +10638,7 @@ mod tests {
             nodes: vec![terminal_node("target", 1, 800.0, 0.0)],
             ..CanvasWorkspaceState::default()
         };
-        let note_id = canvas.add_note_node(CanvasPoint::new(200.0, 200.0));
+        let note_id = canvas.add_note_node(CanvasPoint::new(200.0, 200.0), &coordinator);
         assert!(canvas.set_note_text(&note_id, "Review the auth boundary".to_string()));
 
         canvas
@@ -10642,12 +10662,13 @@ mod tests {
 
     #[test]
     fn groups_capture_dropped_nodes_move_members_and_restore_membership() {
+        let coordinator = CanvasCoordinator;
         let mut canvas = CanvasWorkspaceState {
             nodes: vec![terminal_node("terminal", 1, 100.0, 100.0)],
             ..CanvasWorkspaceState::default()
         };
-        let note_id = canvas.add_note_node(CanvasPoint::new(500.0, 300.0));
-        let group_id = canvas.add_group_node(CanvasPoint::new(450.0, 300.0));
+        let note_id = canvas.add_note_node(CanvasPoint::new(500.0, 300.0), &coordinator);
+        let group_id = canvas.add_group_node(CanvasPoint::new(450.0, 300.0), &coordinator);
         canvas.node_mut(&note_id).unwrap().rect.x = 400.0;
         canvas.node_mut(&note_id).unwrap().rect.y = 100.0;
         canvas.node_mut(&group_id).unwrap().rect = CanvasRect {
@@ -10681,7 +10702,7 @@ mod tests {
 
         let pane_indices = [(1, 0)].into_iter().collect();
         let saved = canvas.to_saved(&pane_indices);
-        let restored = CanvasWorkspaceState::from_saved(Some(&saved), &[99]);
+        let restored = CanvasWorkspaceState::from_saved(Some(&saved), &[99], &coordinator);
         let CanvasNodeKind::Group { member_ids } = &restored.node(&group_id).unwrap().kind else {
             panic!("expected restored group node");
         };
@@ -10915,7 +10936,8 @@ mod tests {
 
     #[test]
     fn runtime_saved_round_trip_preserves_node_identity_and_viewport() {
-        let mut state = CanvasWorkspaceState::from_saved(None, &[11, 12]);
+        let coordinator = CanvasCoordinator;
+        let mut state = CanvasWorkspaceState::from_saved(None, &[11, 12], &coordinator);
         state.transform = CanvasTransform {
             pan_x: 10.0,
             pan_y: 20.0,
@@ -10924,7 +10946,7 @@ mod tests {
         let indices = [(11, 0), (12, 1)].into_iter().collect();
         let mut saved = state.to_saved(&indices);
         saved.normalize(2);
-        let restored = CanvasWorkspaceState::from_saved(Some(&saved), &[101, 102]);
+        let restored = CanvasWorkspaceState::from_saved(Some(&saved), &[101, 102], &coordinator);
 
         assert_eq!(restored.transform, state.transform);
         assert_eq!(restored.nodes.len(), 2);
@@ -10935,7 +10957,11 @@ mod tests {
 
     #[test]
     fn future_saved_state_is_not_required_for_default_runtime() {
-        let state = CanvasWorkspaceState::from_saved(Some(&SavedCanvasState::default()), &[]);
+        let state = CanvasWorkspaceState::from_saved(
+            Some(&SavedCanvasState::default()),
+            &[],
+            &CanvasCoordinator,
+        );
         assert!(state.nodes.is_empty());
         assert_eq!(state.transform, CanvasTransform::default());
     }
