@@ -1,5 +1,6 @@
 pub mod artifacts;
 mod atomic;
+pub mod continuity;
 pub mod controller_devices;
 pub mod controller_network;
 pub mod health;
@@ -17,6 +18,9 @@ pub use artifacts::{
     ArtifactSnapshot, ArtifactStoreError, ArtifactSweepResult,
 };
 pub use atomic::{AtomicWriter, Durability, SystemAtomicWriter};
+pub use continuity::{
+    ContinuityRepository, ContinuitySnapshot, ContinuityStoreError, MAX_CONTINUITY_LINKS,
+};
 pub use controller_devices::{
     ControllerDeviceRepository, ControllerDeviceSnapshot, ControllerDeviceStoreError,
 };
