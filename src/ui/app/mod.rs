@@ -19,6 +19,7 @@ mod project;
 mod projects;
 mod remote_devices;
 mod runtimes;
+mod session_coordinator;
 mod session_library;
 mod session_resume;
 mod session_sidebar;
@@ -41,7 +42,7 @@ use canvas::{
 };
 use dev_urls::DevUrlUiState;
 use global_search::GlobalSearchState;
-use hosted_session::{DurableSessionPaths, DurableSessionSpec, spawn_durable_session};
+use hosted_session::DurableSessionPaths;
 use new_session::NewSessionState;
 use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PaletteAction, PathSuggestionContext,
@@ -51,6 +52,7 @@ use presets::PresetLibraryState;
 use project::CanvasProjectPanelState;
 use projects::ProjectLibraryState;
 use remote_devices::RemoteDevicesState;
+use session_coordinator::{SessionCoordinator, SessionStartRequest};
 use session_library::{SessionLibraryFilter, SessionLibraryState, SessionLibraryView};
 use session_resume::SessionResumeState;
 use worktree_launch::WorktreeLaunchUiState;
@@ -981,6 +983,7 @@ pub struct TermiRustApp {
     worktree_branch_input: Entity<InputState>,
     nav_section: NavSection,
     show_editor_panel: bool,
+    session_coordinator: SessionCoordinator,
     event_tx: Sender<SshEvent>,
     event_rx: Receiver<SshEvent>,
     sftp_event_tx: Sender<SftpEvent>,
@@ -1106,6 +1109,7 @@ impl TermiRustApp {
         let vault_inputs = VaultInputs::new(window, cx);
         let vault_member_inputs = VaultMemberInputs::new(window, cx);
         let (event_tx, event_rx) = mpsc::channel();
+        let session_coordinator = SessionCoordinator::new(event_tx.clone());
         let (sftp_event_tx, sftp_event_rx) = mpsc::channel();
         let canvas_project_editor_input = cx.new(|cx| {
             InputState::new(window, cx)
@@ -1265,6 +1269,7 @@ impl TermiRustApp {
             worktree_branch_input,
             nav_section: NavSection::Hosts,
             show_editor_panel: false,
+            session_coordinator,
             event_tx,
             event_rx,
             sftp_event_tx,
@@ -5816,21 +5821,15 @@ impl TermiRustApp {
             shell.cwd = host.working_directory.clone();
         }
         let pane_id = request.session_id;
-        let runtime = spawn_durable_session(
-            DurableSessionSpec {
-                pane_id,
-                session_id: saved_session.id,
-                paths: DurableSessionPaths {
-                    runtime_root: host.runtime_root.clone().into(),
-                    session_dir: host.session_dir.clone().into(),
-                },
-                launch: None,
-                from_sequence: termirust_domain::OutputSequence::ZERO,
-                expected_occupant_generation: None,
-                continuity: None,
+        let runtime = self.session_coordinator.start(SessionStartRequest::attach(
+            pane_id,
+            saved_session.id,
+            DurableSessionPaths {
+                runtime_root: host.runtime_root.clone().into(),
+                session_dir: host.session_dir.clone().into(),
             },
-            self.event_tx.clone(),
-        );
+            termirust_domain::OutputSequence::ZERO,
+        ));
         let terminal_focus = cx.focus_handle().tab_stop(true);
         self.register_pane(request, runtime, terminal_focus);
         if let Some(pane) = self.pane_mut(pane_id) {
@@ -5940,21 +5939,15 @@ impl TermiRustApp {
             cx.notify();
             return;
         };
-        let runtime = spawn_durable_session(
-            DurableSessionSpec {
-                pane_id,
-                session_id,
-                paths: DurableSessionPaths {
-                    runtime_root: host.runtime_root.into(),
-                    session_dir: host.session_dir.into(),
-                },
-                launch: None,
-                from_sequence: termirust_domain::OutputSequence::ZERO,
-                expected_occupant_generation: None,
-                continuity: None,
+        let runtime = self.session_coordinator.start(SessionStartRequest::attach(
+            pane_id,
+            session_id,
+            DurableSessionPaths {
+                runtime_root: host.runtime_root.into(),
+                session_dir: host.session_dir.into(),
             },
-            self.event_tx.clone(),
-        );
+            termirust_domain::OutputSequence::ZERO,
+        ));
         if let Some(pane) = self.pane_mut(pane_id) {
             let size = pane.terminal.size();
             pane.runtime = runtime;

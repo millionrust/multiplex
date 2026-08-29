@@ -16,10 +16,8 @@ use termirust_domain::{
 };
 use termirust_store::ContinuityRepository;
 
-use super::hosted_session::{
-    DurableContinuityCommit, DurableLaunch, DurableSessionPaths, DurableSessionSpec,
-    spawn_durable_session,
-};
+use super::hosted_session::{DurableContinuityCommit, DurableLaunch, DurableSessionPaths};
+use super::session_coordinator::SessionStartRequest;
 use super::{AppAttachedPaneState, TermiRustApp, theme};
 use crate::agents::{
     ResumeValidationCancellation, build_codex_resume_plan, discover_codex_conversation_handle,
@@ -408,27 +406,23 @@ impl TermiRustApp {
         };
         let mut request = ConnectRequest::local_shell_with_config(pane_id, local_config);
         request.title = localization::session_resume_workspace_title(&source.title);
-        let runtime = spawn_durable_session(
-            DurableSessionSpec {
-                pane_id,
-                session_id: plan.replacement_session_id,
-                paths,
-                launch: Some(DurableLaunch {
-                    executable: plan.executable.clone(),
-                    arguments: plan.arguments.clone(),
-                    cwd: plan.working_directory.clone(),
-                    runtime_detection: Some(detection),
-                }),
-                from_sequence: OutputSequence::ZERO,
-                expected_occupant_generation: Some(replacement_generation),
-                continuity: Some(DurableContinuityCommit {
-                    store_root,
-                    expected_revision: continuity.revision,
-                    link,
-                }),
+        let runtime = self.session_coordinator.start(SessionStartRequest::launch(
+            pane_id,
+            plan.replacement_session_id,
+            paths,
+            DurableLaunch {
+                executable: plan.executable.clone(),
+                arguments: plan.arguments.clone(),
+                cwd: plan.working_directory.clone(),
+                runtime_detection: Some(detection),
             },
-            self.event_tx.clone(),
-        );
+            Some(replacement_generation),
+            Some(DurableContinuityCommit {
+                store_root,
+                expected_revision: continuity.revision,
+                link,
+            }),
+        ));
         let terminal_focus = cx.focus_handle().tab_stop(true);
         self.register_pane(request.clone(), runtime, terminal_focus);
         self.open_spawned_pane_workspace(&request, pane_id);

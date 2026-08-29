@@ -17,9 +17,8 @@ use termirust_domain::{
 };
 use termirust_store::read_host_metadata;
 
-use super::hosted_session::{
-    DurableLaunch, DurableSessionPaths, DurableSessionSpec, spawn_durable_session,
-};
+use super::hosted_session::{DurableLaunch, DurableSessionPaths};
+use super::session_coordinator::SessionStartRequest;
 use super::{AppAttachedPaneState, PendingPaste, TermiRustApp, theme};
 use crate::agents::build_app_attached_launch_config;
 use crate::models::{ConnectRequest, SavedAppAttachedSession, SavedDurableHost};
@@ -412,18 +411,14 @@ impl TermiRustApp {
             project.display_name.as_str(),
             preset.label.as_str(),
         );
-        let runtime = spawn_durable_session(
-            DurableSessionSpec {
-                pane_id,
-                session_id: resolved.session_id,
-                paths,
-                launch: Some(launch),
-                from_sequence: termirust_domain::OutputSequence::ZERO,
-                expected_occupant_generation: None,
-                continuity: None,
-            },
-            self.event_tx.clone(),
-        );
+        let runtime = self.session_coordinator.start(SessionStartRequest::launch(
+            pane_id,
+            resolved.session_id,
+            paths,
+            launch,
+            None,
+            None,
+        ));
         let terminal_focus = cx.focus_handle().tab_stop(true);
         self.register_pane(request.clone(), runtime, terminal_focus);
         self.open_spawned_pane_workspace(&request, pane_id);
