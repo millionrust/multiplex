@@ -1,8 +1,8 @@
 use std::sync::mpsc::Sender;
 
 use termirust_domain::{
-    ActivityAggregate, HostedSession, HostedSessionId, HostedSessionState, OccupantGeneration,
-    OutputSequence,
+    ActivityAggregate, HostInstanceId, HostedSession, HostedSessionId, HostedSessionState,
+    OccupantGeneration, OutputSequence,
 };
 use termirust_store::StoreError;
 
@@ -82,6 +82,75 @@ pub(super) trait SessionActivityObserver {
         current: &HostedSession,
         visibly_focused: bool,
     ) -> Result<(), String>;
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum HostedStreamInput {
+    Bound {
+        pane_id: u64,
+        host_instance_id: HostInstanceId,
+    },
+    Output {
+        pane_id: u64,
+        host_instance_id: HostInstanceId,
+        output_sequence: OutputSequence,
+        data: Vec<u8>,
+    },
+    Snapshot {
+        pane_id: u64,
+        host_instance_id: HostInstanceId,
+        boundary_sequence: OutputSequence,
+        data: Vec<u8>,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum HostedTerminalAction {
+    Preserve,
+    Append(Vec<u8>),
+    ReplaceWithSnapshot(Vec<u8>),
+}
+
+impl HostedTerminalAction {
+    pub fn bytes(&self) -> &[u8] {
+        match self {
+            Self::Preserve => &[],
+            Self::Append(data) | Self::ReplaceWithSnapshot(data) => data,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum HostedDevUrlStreamAction {
+    Bind {
+        host_instance_id: HostInstanceId,
+    },
+    Observe {
+        host_instance_id: HostInstanceId,
+        output_sequence: OutputSequence,
+    },
+    ApplySnapshot {
+        host_instance_id: HostInstanceId,
+        boundary_sequence: OutputSequence,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum HostedSelectionAction {
+    Preserve,
+    ClearIfSelected,
+    Clear,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct HostedStreamProjection {
+    pub pane_id: u64,
+    pub terminal: HostedTerminalAction,
+    pub dev_urls: HostedDevUrlStreamAction,
+    pub selection: HostedSelectionAction,
+    pub record_workspace_activity: bool,
+    pub refresh_pane: bool,
+    pub last_sequence: Option<OutputSequence>,
 }
 
 pub(super) enum SessionStartRequest {
@@ -238,6 +307,57 @@ impl SessionCoordinator {
             },
         })
     }
+
+    pub fn project_hosted_stream(input: HostedStreamInput) -> HostedStreamProjection {
+        match input {
+            HostedStreamInput::Bound {
+                pane_id,
+                host_instance_id,
+            } => HostedStreamProjection {
+                pane_id,
+                terminal: HostedTerminalAction::Preserve,
+                dev_urls: HostedDevUrlStreamAction::Bind { host_instance_id },
+                selection: HostedSelectionAction::Preserve,
+                record_workspace_activity: false,
+                refresh_pane: false,
+                last_sequence: None,
+            },
+            HostedStreamInput::Output {
+                pane_id,
+                host_instance_id,
+                output_sequence,
+                data,
+            } => HostedStreamProjection {
+                pane_id,
+                terminal: HostedTerminalAction::Append(data),
+                dev_urls: HostedDevUrlStreamAction::Observe {
+                    host_instance_id,
+                    output_sequence,
+                },
+                selection: HostedSelectionAction::ClearIfSelected,
+                record_workspace_activity: true,
+                refresh_pane: true,
+                last_sequence: None,
+            },
+            HostedStreamInput::Snapshot {
+                pane_id,
+                host_instance_id,
+                boundary_sequence,
+                data,
+            } => HostedStreamProjection {
+                pane_id,
+                terminal: HostedTerminalAction::ReplaceWithSnapshot(data),
+                dev_urls: HostedDevUrlStreamAction::ApplySnapshot {
+                    host_instance_id,
+                    boundary_sequence,
+                },
+                selection: HostedSelectionAction::Clear,
+                record_workspace_activity: false,
+                refresh_pane: true,
+                last_sequence: Some(boundary_sequence),
+            },
+        }
+    }
 }
 
 fn hosted_state_marks_host_unavailable(state: HostedSessionState) -> bool {
@@ -285,15 +405,16 @@ mod tests {
     use std::sync::mpsc;
 
     use termirust_domain::{
-        ActivityAggregate, CommandId, ContinuityLink, HostedSession, HostedSessionId,
-        HostedSessionState, OccupantGeneration, OutputSequence, PositionKey, PresetId, ProjectId,
-        Revision, RuntimeId, SessionLaunchRoute, SessionOrigin, TitleSource,
+        ActivityAggregate, CommandId, ContinuityLink, HostInstanceId, HostedSession,
+        HostedSessionId, HostedSessionState, OccupantGeneration, OutputSequence, PositionKey,
+        PresetId, ProjectId, Revision, RuntimeId, SessionLaunchRoute, SessionOrigin, TitleSource,
     };
     use termirust_store::SessionRepository;
 
     use super::{
         DurableContinuityCommit, DurableLaunch, DurableSessionPaths, HostedDevUrlAction,
-        HostedStatusInput, PendingArchiveAction, SessionActivityObserver, SessionCoordinator,
+        HostedDevUrlStreamAction, HostedSelectionAction, HostedStatusInput, HostedStreamInput,
+        HostedTerminalAction, PendingArchiveAction, SessionActivityObserver, SessionCoordinator,
         SessionStartRequest,
     };
     use crate::models::{SavedAppAttachedSession, SavedDurableHost, SavedState};
@@ -637,6 +758,83 @@ mod tests {
     }
 
     #[test]
+    fn hosted_bound_projects_only_dev_url_binding() {
+        let host_instance_id = HostInstanceId::new();
+        let projection = SessionCoordinator::project_hosted_stream(HostedStreamInput::Bound {
+            pane_id: 17,
+            host_instance_id,
+        });
+
+        assert_eq!(projection.pane_id, 17);
+        assert_eq!(projection.terminal, HostedTerminalAction::Preserve);
+        assert_eq!(
+            projection.dev_urls,
+            HostedDevUrlStreamAction::Bind { host_instance_id }
+        );
+        assert_eq!(projection.selection, HostedSelectionAction::Preserve);
+        assert!(!projection.record_workspace_activity);
+        assert!(!projection.refresh_pane);
+        assert_eq!(projection.last_sequence, None);
+    }
+
+    #[test]
+    fn hosted_output_preserves_binary_payload_and_projects_append_side_effects() {
+        let host_instance_id = HostInstanceId::new();
+        let data = vec![0, 0xff, b'\n', 0x1b, b'[', b'2', b'J'];
+        let projection = SessionCoordinator::project_hosted_stream(HostedStreamInput::Output {
+            pane_id: 18,
+            host_instance_id,
+            output_sequence: OutputSequence::new(44),
+            data: data.clone(),
+        });
+
+        assert_eq!(
+            projection.terminal,
+            HostedTerminalAction::Append(data.clone())
+        );
+        assert_eq!(projection.terminal.bytes(), data);
+        assert_eq!(
+            projection.dev_urls,
+            HostedDevUrlStreamAction::Observe {
+                host_instance_id,
+                output_sequence: OutputSequence::new(44),
+            }
+        );
+        assert_eq!(projection.selection, HostedSelectionAction::ClearIfSelected);
+        assert!(projection.record_workspace_activity);
+        assert!(projection.refresh_pane);
+        assert_eq!(projection.last_sequence, None);
+    }
+
+    #[test]
+    fn hosted_snapshot_preserves_empty_payload_and_projects_replay_boundary() {
+        let host_instance_id = HostInstanceId::new();
+        let projection = SessionCoordinator::project_hosted_stream(HostedStreamInput::Snapshot {
+            pane_id: 19,
+            host_instance_id,
+            boundary_sequence: OutputSequence::new(91),
+            data: Vec::new(),
+        });
+
+        assert_eq!(
+            projection.terminal,
+            HostedTerminalAction::ReplaceWithSnapshot(Vec::new())
+        );
+        assert!(projection.terminal.bytes().is_empty());
+        assert_eq!(
+            projection.dev_urls,
+            HostedDevUrlStreamAction::ApplySnapshot {
+                host_instance_id,
+                boundary_sequence: OutputSequence::new(91),
+            }
+        );
+        assert_eq!(projection.selection, HostedSelectionAction::Clear);
+        assert!(!projection.record_workspace_activity);
+        assert!(projection.refresh_pane);
+        assert_eq!(projection.last_sequence, Some(OutputSequence::new(91)));
+    }
+
+    #[test]
     fn session_coordinator_is_the_only_ui_durable_worker_boundary() {
         let app_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ui/app");
         for entry in fs::read_dir(app_dir).unwrap() {
@@ -661,6 +859,20 @@ mod tests {
         let app_source = include_str!("mod.rs");
         assert!(!app_source.contains(".session_library.reconcile("));
         assert!(!app_source.contains(".activity_center.observe_transition("));
+    }
+
+    #[test]
+    fn hosted_stream_semantics_do_not_drift_back_into_app_event_loop() {
+        let app_source = include_str!("mod.rs");
+        let process_events = app_source.split("fn process_events").nth(1).unwrap();
+        let stream_start = process_events.find("SshEvent::HostedBound").unwrap();
+        let status_start = process_events.find("SshEvent::HostedStatus").unwrap();
+        let stream_branches = &process_events[stream_start..status_start];
+
+        assert!(stream_branches.contains("apply_hosted_stream_projection"));
+        assert!(!stream_branches.contains("terminal.process_bytes"));
+        assert!(!stream_branches.contains(".dev_urls."));
+        assert!(!stream_branches.contains("selection.is_some"));
     }
 
     #[test]

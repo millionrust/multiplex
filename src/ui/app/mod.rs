@@ -53,7 +53,9 @@ use project::CanvasProjectPanelState;
 use projects::ProjectLibraryState;
 use remote_devices::RemoteDevicesState;
 use session_coordinator::{
-    HostedDevUrlAction, HostedStatusInput, SessionCoordinator, SessionStartRequest,
+    HostedDevUrlAction, HostedDevUrlStreamAction, HostedSelectionAction, HostedStatusInput,
+    HostedStreamInput, HostedStreamProjection, HostedTerminalAction, SessionCoordinator,
+    SessionStartRequest,
 };
 use session_library::{SessionLibraryFilter, SessionLibraryState, SessionLibraryView};
 use session_resume::SessionResumeState;
@@ -6662,6 +6664,75 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    fn apply_hosted_stream_projection(
+        &mut self,
+        projection: HostedStreamProjection,
+        panes_to_refresh: &mut Vec<u64>,
+    ) {
+        let pane_id = projection.pane_id;
+        if projection.record_workspace_activity
+            && let Some(workspace_id) = self.pane_workspace_id(pane_id)
+        {
+            self.record_workspace_activity(workspace_id);
+        }
+        let Some(pane) = self.pane_mut(pane_id) else {
+            return;
+        };
+
+        match &projection.terminal {
+            HostedTerminalAction::Preserve => {}
+            HostedTerminalAction::Append(data) => pane.terminal.process_bytes(data),
+            HostedTerminalAction::ReplaceWithSnapshot(data) => {
+                let size = pane.terminal.size();
+                pane.terminal = TerminalState::new(size, pane.request.terminal_scrollback_rows);
+                pane.terminal.process_bytes(data);
+            }
+        }
+        if let Some(hosted) = pane.app_attached.as_mut() {
+            match projection.dev_urls {
+                HostedDevUrlStreamAction::Bind { host_instance_id } => {
+                    hosted.dev_urls.bind_available_host(host_instance_id);
+                }
+                HostedDevUrlStreamAction::Observe {
+                    host_instance_id,
+                    output_sequence,
+                } => {
+                    let _ = hosted.dev_urls.observe(
+                        host_instance_id,
+                        output_sequence,
+                        projection.terminal.bytes(),
+                    );
+                }
+                HostedDevUrlStreamAction::ApplySnapshot {
+                    host_instance_id,
+                    boundary_sequence,
+                } => {
+                    hosted
+                        .dev_urls
+                        .apply_snapshot(host_instance_id, boundary_sequence);
+                }
+            }
+            if let Some(last_sequence) = projection.last_sequence {
+                hosted.last_sequence = last_sequence.get();
+            }
+        }
+        match projection.selection {
+            HostedSelectionAction::Preserve => {}
+            HostedSelectionAction::ClearIfSelected if pane.selection.is_some() => {
+                pane.selection = None;
+                pane.dragging_selection = false;
+            }
+            HostedSelectionAction::Clear => {
+                pane.selection = None;
+                pane.dragging_selection = false;
+            }
+            HostedSelectionAction::ClearIfSelected => {}
+        }
+        if projection.refresh_pane {
+            panes_to_refresh.push(pane_id);
+        }
+    }
+
     fn process_events(&mut self, cx: &mut Context<Self>) {
         let mut changed = self.process_structured_agent_events();
         changed |= self.process_project_undo_expiry();
@@ -6763,12 +6834,12 @@ impl TermiRustApp {
                     session_id,
                     host_instance_id,
                 } => {
-                    if let Some(hosted) = self
-                        .pane_mut(session_id)
-                        .and_then(|pane| pane.app_attached.as_mut())
-                    {
-                        hosted.dev_urls.bind_available_host(host_instance_id);
-                    }
+                    let projection =
+                        SessionCoordinator::project_hosted_stream(HostedStreamInput::Bound {
+                            pane_id: session_id,
+                            host_instance_id,
+                        });
+                    self.apply_hosted_stream_projection(projection, &mut panes_to_refresh);
                 }
                 SshEvent::HostedOutput {
                     session_id,
@@ -6776,23 +6847,14 @@ impl TermiRustApp {
                     output_sequence,
                     data,
                 } => {
-                    if let Some(workspace_id) = self.pane_workspace_id(session_id) {
-                        self.record_workspace_activity(workspace_id);
-                    }
-                    if let Some(pane) = self.pane_mut(session_id) {
-                        pane.terminal.process_bytes(&data);
-                        if let Some(hosted) = pane.app_attached.as_mut() {
-                            let _ =
-                                hosted
-                                    .dev_urls
-                                    .observe(host_instance_id, output_sequence, &data);
-                        }
-                        if pane.selection.is_some() {
-                            pane.selection = None;
-                            pane.dragging_selection = false;
-                        }
-                        panes_to_refresh.push(session_id);
-                    }
+                    let projection =
+                        SessionCoordinator::project_hosted_stream(HostedStreamInput::Output {
+                            pane_id: session_id,
+                            host_instance_id,
+                            output_sequence,
+                            data,
+                        });
+                    self.apply_hosted_stream_projection(projection, &mut panes_to_refresh);
                 }
                 SshEvent::HostedSnapshot {
                     session_id,
@@ -6800,22 +6862,16 @@ impl TermiRustApp {
                     data,
                     boundary_sequence,
                 } => {
-                    if let Some(pane) = self.pane_mut(session_id) {
-                        let size = pane.terminal.size();
-                        pane.terminal =
-                            TerminalState::new(size, pane.request.terminal_scrollback_rows);
-                        pane.terminal.process_bytes(&data);
-                        if let Some(hosted) = pane.app_attached.as_mut() {
-                            hosted.last_sequence = boundary_sequence;
-                            hosted.dev_urls.apply_snapshot(
-                                host_instance_id,
-                                termirust_domain::OutputSequence::new(boundary_sequence),
-                            );
-                        }
-                        pane.selection = None;
-                        pane.dragging_selection = false;
-                        panes_to_refresh.push(session_id);
-                    }
+                    let projection =
+                        SessionCoordinator::project_hosted_stream(HostedStreamInput::Snapshot {
+                            pane_id: session_id,
+                            host_instance_id,
+                            boundary_sequence: termirust_domain::OutputSequence::new(
+                                boundary_sequence,
+                            ),
+                            data,
+                        });
+                    self.apply_hosted_stream_projection(projection, &mut panes_to_refresh);
                 }
                 SshEvent::HostedStatus {
                     session_id,
