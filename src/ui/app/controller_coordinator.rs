@@ -1,11 +1,16 @@
 use std::sync::Arc;
 
-use termirust_controller_listener::ListenerLaunchDescriptor;
-use termirust_domain::{ControllerCapabilities, ControllerCapability, ControllerDeviceId};
+use termirust_controller_listener::{
+    ListenerLaunchDescriptor, ProcessPairingDecision, SshHostPairingDecisionValue,
+};
+use termirust_domain::{
+    ControllerCapabilities, ControllerCapability, ControllerDeviceId, PairingOfferId,
+};
 use termirust_store::ControllerDeviceRepository;
 
 use crate::controller::devices::{ControllerDeviceService, NoControllerChannels};
 use crate::controller::lan::{ControllerListenerProcess, ListenerProcessError};
+use crate::controller::ssh_pairing::SshPairingBroker;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ControllerDeviceMutation {
@@ -30,6 +35,23 @@ struct ControllerDeviceMutationRequest {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ControllerDeviceMutationError {
     Service,
+}
+
+#[derive(Debug)]
+pub(super) enum ControllerPairingCommandError {
+    Listener(ListenerProcessError),
+    Ssh(std::io::Error),
+}
+
+impl std::fmt::Display for ControllerPairingCommandError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Listener(error) => {
+                write!(formatter, "listener pairing command failed: {error:?}")
+            }
+            Self::Ssh(error) => write!(formatter, "SSH pairing command failed: {error}"),
+        }
+    }
 }
 
 trait ControllerDeviceMutator: Send + Sync {
@@ -147,6 +169,37 @@ impl ControllerCoordinator {
     pub fn stop_listener(&self, process: &mut ControllerListenerProcess) {
         process.stop();
     }
+
+    pub fn begin_pairing(
+        &self,
+        process: &mut ControllerListenerProcess,
+    ) -> Result<(), ControllerPairingCommandError> {
+        process
+            .begin_pairing()
+            .map_err(ControllerPairingCommandError::Listener)
+    }
+
+    pub fn decide_listener_pairing(
+        &self,
+        process: &mut ControllerListenerProcess,
+        offer_id: PairingOfferId,
+        decision: ProcessPairingDecision,
+    ) -> Result<(), ControllerPairingCommandError> {
+        process
+            .decide_pairing(offer_id, decision)
+            .map_err(ControllerPairingCommandError::Listener)
+    }
+
+    pub fn decide_ssh_pairing(
+        &self,
+        broker: &mut SshPairingBroker,
+        offer_id: PairingOfferId,
+        decision: ProcessPairingDecision,
+    ) -> Result<(), ControllerPairingCommandError> {
+        broker
+            .decide(offer_id, ssh_pairing_decision(decision))
+            .map_err(ControllerPairingCommandError::Ssh)
+    }
 }
 
 fn toggled_input_capabilities(current: ControllerCapabilities) -> ControllerCapabilities {
@@ -161,12 +214,30 @@ fn toggled_input_capabilities(current: ControllerCapabilities) -> ControllerCapa
     }
 }
 
+fn ssh_pairing_decision(decision: ProcessPairingDecision) -> SshHostPairingDecisionValue {
+    match decision {
+        ProcessPairingDecision::Confirm => SshHostPairingDecisionValue::Confirm,
+        ProcessPairingDecision::Reject => SshHostPairingDecisionValue::Reject,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use std::io::BufReader;
+    #[cfg(unix)]
+    use std::os::unix::net::UnixStream;
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
+    #[cfg(unix)]
+    use std::thread;
+    #[cfg(unix)]
+    use std::time::{Duration, Instant};
 
-    use termirust_controller_listener::ListenerLaunchDescriptor;
+    use termirust_controller_listener::{
+        ListenerLaunchDescriptor, ProcessPairingDecision, SshHostPairingDecision,
+        SshHostPairingDecisionValue, SshHostPairingPrompt,
+    };
     use termirust_controller_security::StaticPrivateKey;
     use termirust_domain::{
         AddressFamily, ControllerCapabilities, ControllerCapability, ControllerDeviceAuthority,
@@ -180,9 +251,11 @@ mod tests {
     use super::{
         ControllerCoordinator, ControllerDeviceMutation, ControllerDeviceMutationError,
         ControllerDeviceMutationRequest, ControllerDeviceMutator, ControllerListenerSpawner,
-        SystemControllerListenerSpawner, toggled_input_capabilities,
+        SystemControllerListenerSpawner, ssh_pairing_decision, toggled_input_capabilities,
     };
     use crate::controller::lan::{ControllerListenerProcess, ListenerProcessError};
+    #[cfg(unix)]
+    use crate::controller::ssh_pairing::SshPairingBroker;
 
     #[derive(Clone, Debug, Eq, PartialEq)]
     struct MutationCall {
@@ -441,13 +514,61 @@ mod tests {
     }
 
     #[test]
+    fn ssh_pairing_decision_mapping_is_exact() {
+        assert_eq!(
+            ssh_pairing_decision(ProcessPairingDecision::Confirm),
+            SshHostPairingDecisionValue::Confirm
+        );
+        assert_eq!(
+            ssh_pairing_decision(ProcessPairingDecision::Reject),
+            SshHostPairingDecisionValue::Reject
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn coordinator_dispatches_one_matching_ssh_pairing_decision() {
+        let fixture = tempfile::tempdir().unwrap();
+        let socket_path = fixture.path().join("pairing.sock");
+        let mut broker = SshPairingBroker::bind(socket_path.clone()).unwrap();
+        let offer_id = PairingOfferId::new();
+        let client = thread::spawn(move || {
+            let mut stream = UnixStream::connect(socket_path).unwrap();
+            SshHostPairingPrompt::new(offer_id, "ABCD-1234".to_owned(), 500)
+                .unwrap()
+                .write(&mut stream)
+                .unwrap();
+            SshHostPairingDecision::read(&mut BufReader::new(stream)).unwrap()
+        });
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            if broker.poll().is_some() {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "pairing prompt was not delivered"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        ControllerCoordinator::default()
+            .decide_ssh_pairing(&mut broker, offer_id, ProcessPairingDecision::Confirm)
+            .unwrap();
+
+        let decision = client.join().unwrap();
+        assert_eq!(decision.offer_id, offer_id);
+        assert_eq!(decision.decision, SshHostPairingDecisionValue::Confirm);
+    }
+
+    #[test]
     fn coordinator_module_has_no_ui_framework_dependency() {
         let forbidden_crate = ["gp", "ui"].concat();
         assert!(!include_str!("controller_coordinator.rs").contains(&forbidden_crate));
     }
 
     #[test]
-    fn controller_coordinator_is_the_only_ui_device_service_boundary() {
+    fn controller_coordinator_is_the_only_ui_controller_runtime_boundary() {
         let app_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/ui/app");
         for entry in std::fs::read_dir(app_dir).unwrap() {
             let path = entry.unwrap().path();
@@ -471,6 +592,21 @@ mod tests {
             assert!(
                 !source.contains("process.stop()"),
                 "{} bypasses ControllerCoordinator listener stop",
+                path.display()
+            );
+            assert!(
+                !source.contains("process.begin_pairing()"),
+                "{} bypasses ControllerCoordinator pairing begin",
+                path.display()
+            );
+            assert!(
+                !source.contains(".decide_pairing(offer_id, decision)"),
+                "{} bypasses ControllerCoordinator listener pairing decision",
+                path.display()
+            );
+            assert!(
+                !source.contains("broker.decide("),
+                "{} bypasses ControllerCoordinator SSH pairing decision",
                 path.display()
             );
         }

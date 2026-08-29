@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use gpui_component::Disableable as _;
 use termirust_controller_listener::{
     GeneratedPortSource as _, ListenerLaunchDescriptor, ListenerProcessEvent,
-    ProcessPairingDecision, SshHostPairingDecisionValue, SystemGeneratedPortSource,
+    ProcessPairingDecision, SystemGeneratedPortSource,
 };
 #[cfg(not(test))]
 use termirust_controller_listener::{InterfaceProvider as _, SystemInterfaceProvider};
@@ -333,38 +333,44 @@ impl RemoteDevicesState {
         self.disable_saved_policy()?;
         self.listener_state = ListenerState::Disabled;
         self.route_available = false;
-        self.clear_pairing(PairingUiState::Idle);
+        self.clear_pairing(PairingUiState::Idle, controller_coordinator);
         Ok(())
     }
 
-    fn begin_pairing(&mut self) -> Result<(), ()> {
+    fn begin_pairing(&mut self, controller_coordinator: &ControllerCoordinator) -> Result<(), ()> {
         let process = self.listener_process.as_mut().ok_or(())?;
-        process.begin_pairing().map_err(|_| ())?;
-        self.clear_pairing(PairingUiState::Generating);
+        controller_coordinator
+            .begin_pairing(process)
+            .map_err(|_| ())?;
+        self.clear_pairing(PairingUiState::Generating, controller_coordinator);
         Ok(())
     }
 
-    fn decide_pairing(&mut self, decision: ProcessPairingDecision) -> Result<(), ()> {
+    fn decide_pairing(
+        &mut self,
+        decision: ProcessPairingDecision,
+        controller_coordinator: &ControllerCoordinator,
+    ) -> Result<(), ()> {
         let offer_id = self.pairing_offer_id.ok_or(())?;
         if self.ssh_pairing_active {
-            let broker_decision = match decision {
-                ProcessPairingDecision::Confirm => SshHostPairingDecisionValue::Confirm,
-                ProcessPairingDecision::Reject => SshHostPairingDecisionValue::Reject,
-            };
-            self.ssh_pairing_broker
-                .as_mut()
-                .ok_or(())?
-                .decide(offer_id, broker_decision)
+            controller_coordinator
+                .decide_ssh_pairing(
+                    self.ssh_pairing_broker.as_mut().ok_or(())?,
+                    offer_id,
+                    decision,
+                )
                 .map_err(|_| ())?;
         } else {
-            self.listener_process
-                .as_mut()
-                .ok_or(())?
-                .decide_pairing(offer_id, decision)
+            controller_coordinator
+                .decide_listener_pairing(
+                    self.listener_process.as_mut().ok_or(())?,
+                    offer_id,
+                    decision,
+                )
                 .map_err(|_| ())?;
         }
         if decision == ProcessPairingDecision::Reject {
-            self.clear_pairing(PairingUiState::SasMismatch);
+            self.clear_pairing(PairingUiState::SasMismatch, controller_coordinator);
         } else {
             self.pairing_sas = None;
             self.pairing_state = PairingUiState::Waiting;
@@ -372,7 +378,10 @@ impl RemoteDevicesState {
         Ok(())
     }
 
-    fn refresh_listener_process(&mut self) -> Result<bool, ()> {
+    fn refresh_listener_process(
+        &mut self,
+        controller_coordinator: &ControllerCoordinator,
+    ) -> Result<bool, ()> {
         if self.listener_last_polled.elapsed() < Duration::from_millis(100) {
             return Ok(false);
         }
@@ -385,7 +394,11 @@ impl RemoteDevicesState {
         {
             if self.pairing_offer_id.is_some() {
                 if let Some(broker) = self.ssh_pairing_broker.as_mut() {
-                    let _ = broker.decide(prompt.offer_id, SshHostPairingDecisionValue::Reject);
+                    let _ = controller_coordinator.decide_ssh_pairing(
+                        broker,
+                        prompt.offer_id,
+                        ProcessPairingDecision::Reject,
+                    );
                 }
             } else {
                 self.pairing_offer_id = Some(prompt.offer_id);
@@ -401,13 +414,13 @@ impl RemoteDevicesState {
         if self.ssh_pairing_active && self.pairing_state == PairingUiState::Waiting {
             self.refresh()?;
             if self.devices.len() > self.ssh_pairing_device_count {
-                self.clear_pairing(PairingUiState::Paired);
+                self.clear_pairing(PairingUiState::Paired, controller_coordinator);
                 changed = true;
             } else if self
                 .ssh_pairing_expires_at
                 .is_some_and(|expires_at| unix_seconds() > expires_at)
             {
-                self.clear_pairing(PairingUiState::Expired);
+                self.clear_pairing(PairingUiState::Expired, controller_coordinator);
                 changed = true;
             }
         }
@@ -416,7 +429,7 @@ impl RemoteDevicesState {
             None => return Ok(changed),
         };
         for event in events {
-            self.apply_listener_event(event)?;
+            self.apply_listener_event(event, controller_coordinator)?;
             changed = true;
         }
         let exited = self
@@ -433,7 +446,11 @@ impl RemoteDevicesState {
         Err(())
     }
 
-    fn apply_listener_event(&mut self, event: ListenerProcessEvent) -> Result<(), ()> {
+    fn apply_listener_event(
+        &mut self,
+        event: ListenerProcessEvent,
+        controller_coordinator: &ControllerCoordinator,
+    ) -> Result<(), ()> {
         match event {
             ListenerProcessEvent::Ready { .. } => return Err(()),
             ListenerProcessEvent::PairingOffer {
@@ -457,7 +474,7 @@ impl RemoteDevicesState {
                 if self.pairing_offer_id != Some(offer_id) {
                     return Err(());
                 }
-                self.clear_pairing(PairingUiState::Paired);
+                self.clear_pairing(PairingUiState::Paired, controller_coordinator);
                 self.refresh()?;
             }
             ListenerProcessEvent::PairingFailed { offer_id, code, .. } => {
@@ -470,19 +487,27 @@ impl RemoteDevicesState {
                     "io" => PairingUiState::Uncertain,
                     _ => PairingUiState::StorageFailure,
                 };
-                self.clear_pairing(state);
+                self.clear_pairing(state, controller_coordinator);
             }
         }
         Ok(())
     }
 
-    fn clear_pairing(&mut self, state: PairingUiState) {
+    fn clear_pairing(
+        &mut self,
+        state: PairingUiState,
+        controller_coordinator: &ControllerCoordinator,
+    ) {
         if self.ssh_pairing_active
             && let (Some(offer_id), Some(broker)) =
                 (self.pairing_offer_id, self.ssh_pairing_broker.as_mut())
             && broker.pending_offer_id() == Some(offer_id)
         {
-            let _ = broker.decide(offer_id, SshHostPairingDecisionValue::Reject);
+            let _ = controller_coordinator.decide_ssh_pairing(
+                broker,
+                offer_id,
+                ProcessPairingDecision::Reject,
+            );
         }
         self.pairing_state = state;
         self.pairing_offer_id = None;
@@ -1246,7 +1271,11 @@ impl TermiRustApp {
     }
 
     fn begin_controller_pairing(&mut self, cx: &mut Context<Self>) {
-        if self.remote_devices.begin_pairing().is_err() {
+        if self
+            .remote_devices
+            .begin_pairing(&self.controller_coordinator)
+            .is_err()
+        {
             self.error_message = localization::remote_devices_operation_failed();
         } else {
             self.error_message.clear();
@@ -1259,7 +1288,11 @@ impl TermiRustApp {
         decision: ProcessPairingDecision,
         cx: &mut Context<Self>,
     ) {
-        if self.remote_devices.decide_pairing(decision).is_err() {
+        if self
+            .remote_devices
+            .decide_pairing(decision, &self.controller_coordinator)
+            .is_err()
+        {
             self.error_message = localization::remote_devices_operation_failed();
         } else {
             self.error_message.clear();
@@ -1268,7 +1301,10 @@ impl TermiRustApp {
     }
 
     pub(super) fn refresh_remote_listener_process(&mut self, cx: &mut Context<Self>) {
-        match self.remote_devices.refresh_listener_process() {
+        match self
+            .remote_devices
+            .refresh_listener_process(&self.controller_coordinator)
+        {
             Ok(true) => cx.notify(),
             Ok(false) => {}
             Err(()) => {
@@ -1588,42 +1624,45 @@ mod network_tests {
 
     #[test]
     fn pairing_events_require_one_matching_offer_and_fail_closed() {
-        let mut state = RemoteDevicesState::open_default(&ControllerCoordinator::default());
+        let coordinator = ControllerCoordinator::default();
+        let mut state = RemoteDevicesState::open_default(&coordinator);
         let offer_id = PairingOfferId::new();
         state
-            .apply_listener_event(ListenerProcessEvent::pairing_offer(
-                offer_id,
-                "bounded-offer".to_owned(),
-                300,
-            ))
+            .apply_listener_event(
+                ListenerProcessEvent::pairing_offer(offer_id, "bounded-offer".to_owned(), 300),
+                &coordinator,
+            )
             .unwrap();
         assert_eq!(state.pairing_state, PairingUiState::Waiting);
         assert_eq!(state.pairing_offer_text.as_deref(), Some("bounded-offer"));
 
         assert!(
             state
-                .apply_listener_event(ListenerProcessEvent::pairing_sas_ready(
-                    PairingOfferId::new(),
-                    "WRONG-000".to_owned(),
-                ))
+                .apply_listener_event(
+                    ListenerProcessEvent::pairing_sas_ready(
+                        PairingOfferId::new(),
+                        "WRONG-000".to_owned(),
+                    ),
+                    &coordinator,
+                )
                 .is_err()
         );
         assert!(state.pairing_sas.is_none());
 
         state
-            .apply_listener_event(ListenerProcessEvent::pairing_sas_ready(
-                offer_id,
-                "ABCD-1234".to_owned(),
-            ))
+            .apply_listener_event(
+                ListenerProcessEvent::pairing_sas_ready(offer_id, "ABCD-1234".to_owned()),
+                &coordinator,
+            )
             .unwrap();
         assert_eq!(state.pairing_state, PairingUiState::SasReady);
         assert_eq!(state.pairing_sas.as_deref(), Some("ABCD-1234"));
 
         state
-            .apply_listener_event(ListenerProcessEvent::pairing_failed(
-                Some(offer_id),
-                "rate_limited",
-            ))
+            .apply_listener_event(
+                ListenerProcessEvent::pairing_failed(Some(offer_id), "rate_limited"),
+                &coordinator,
+            )
             .unwrap();
         assert_eq!(state.pairing_state, PairingUiState::RateLimited);
         assert!(state.pairing_offer_id.is_none());
