@@ -266,6 +266,7 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .id("sftp-local-list")
+                    .debug_selector(|| "sftp-local-list".to_string())
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()

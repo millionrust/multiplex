@@ -668,7 +668,11 @@ impl TermiRustApp {
                     if let Some((wid, pid)) = active {
                         this.open_workspace_files_for_pane(wid, pid, cx);
                     } else {
-                        this.activate_library_section(NavSection::Sftp, window, cx);
+                        this.open_files_library(
+                            super::artifact_gallery::FilesLibraryTab::Sftp,
+                            window,
+                            cx,
+                        );
                     }
                 })),
             )
@@ -1017,6 +1021,7 @@ impl TermiRustApp {
                         NavSection::Projects,
                         NavSection::Hosts,
                         NavSection::Sessions,
+                        NavSection::Sftp,
                         NavSection::Devices,
                         NavSection::Settings,
                     ]
@@ -1024,13 +1029,16 @@ impl TermiRustApp {
                     .map(|section| {
                         let active = self.nav_section == section;
                         self.nav_card(("nav-card", nav_section_key(section)), section, active, cx)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                if this.nav_section != section {
-                                    this.show_editor_panel = false;
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                if section == NavSection::Sftp {
+                                    this.open_files_library(
+                                        super::artifact_gallery::FilesLibraryTab::Artifacts,
+                                        window,
+                                        cx,
+                                    );
+                                } else {
+                                    this.activate_library_section(section, window, cx);
                                 }
-                                this.nav_section = section;
-                                this.error_message.clear();
-                                cx.notify();
                             }))
                             .into_any_element()
                     }),

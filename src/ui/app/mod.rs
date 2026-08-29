@@ -220,7 +220,7 @@ impl NavSection {
             Self::Devices => localization::remote_devices_title(),
             Self::Presets => localization::presets_nav_label(),
             Self::Hosts => "Connections".to_string(),
-            Self::Sftp => "SFTP".to_string(),
+            Self::Sftp => "Files / Artifacts".to_string(),
             Self::Vaults => "Vaults".to_string(),
             Self::Keychain => "Keys".to_string(),
             Self::Snippets => "Snippets".to_string(),
@@ -10657,7 +10657,7 @@ impl TermiRustApp {
             NavSection::Devices => self.render_devices_view(cx).into_any_element(),
             NavSection::Presets => self.render_presets_view(cx).into_any_element(),
             NavSection::Hosts => self.render_hosts_view(window, cx).into_any_element(),
-            NavSection::Sftp => self.render_sftp_view(cx).into_any_element(),
+            NavSection::Sftp => self.render_files_artifacts_view(cx),
             NavSection::Vaults => self.render_vaults_view(cx).into_any_element(),
             NavSection::Keychain => self.render_keychain_view(cx).into_any_element(),
             NavSection::Snippets => self.render_snippets_view(cx).into_any_element(),
@@ -10668,7 +10668,7 @@ impl TermiRustApp {
     }
 
     fn render_library_shell(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let sidebar_visible = self.nav_section != NavSection::Sftp;
+        let sidebar_visible = true;
         div()
             .flex()
             .flex_row()
@@ -11214,6 +11214,7 @@ fn nav_section_key(section: NavSection) -> u64 {
         NavSection::Activity => 10,
         NavSection::Sessions => 11,
         NavSection::Devices => 12,
+        NavSection::Sftp => 13,
         NavSection::Presets => 9,
         NavSection::Hosts => 1,
         NavSection::Vaults => 2,
@@ -11222,7 +11223,6 @@ fn nav_section_key(section: NavSection) -> u64 {
         NavSection::Settings => 5,
         NavSection::KnownHosts => 6,
         NavSection::Logs => 7,
-        NavSection::Sftp => 8,
     }
 }
 
@@ -20794,6 +20794,7 @@ sleep 1
             ("nav-card-0", NavSection::Projects),
             ("nav-card-1", NavSection::Hosts),
             ("nav-card-11", NavSection::Sessions),
+            ("nav-card-13", NavSection::Sftp),
             ("nav-card-12", NavSection::Devices),
             ("nav-card-5", NavSection::Settings),
             ("nav-card-9", NavSection::Presets),
@@ -20815,6 +20816,7 @@ sleep 1
 
             if let Some(page_selector) = match expected {
                 NavSection::Sessions => Some("sessions-view"),
+                NavSection::Sftp => Some("files-artifacts-view"),
                 NavSection::Devices => Some("devices-view"),
                 _ => None,
             } {
@@ -20920,6 +20922,92 @@ sleep 1
             assert_eq!(visible.len(), 1);
             assert_eq!(visible[0].id, archived_id);
         });
+    }
+
+    #[gpui::test]
+    fn e2e_files_artifacts_show_cross_project_origin_and_switch_to_sftp(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let make_session = |label: &str| crate::models::SavedAppAttachedSession {
+            id: termirust_domain::HostedSessionId::new(),
+            route: termirust_domain::SessionLaunchRoute::LegacyAppAttached,
+            origin: termirust_domain::SessionOrigin {
+                project_id: termirust_domain::ProjectId::new(),
+                preset_id: termirust_domain::PresetId::new(),
+            },
+            state: termirust_domain::HostedSessionState::Exited,
+            project_label: label.to_string(),
+            preset_label: "Codex".to_string(),
+            title: format!("{label} task"),
+            title_source: termirust_domain::TitleSource::Manual,
+            activity: termirust_domain::ActivityAggregate::default(),
+            pinned: false,
+            read_through_sequence: 0,
+            unread_sequence: None,
+            archived_at: None,
+            revision: termirust_domain::Revision::ZERO,
+            durable_host: None,
+            group_id: None,
+            position: termirust_domain::PositionKey::FIRST,
+            started_at: 1,
+            updated_at: 1,
+        };
+        let alpha = make_session("Alpha");
+        let beta = make_session("Beta");
+        let make_snapshot =
+            |session_id, name: &str, digest: u8| termirust_store::ArtifactSnapshot {
+                scope: termirust_domain::ArtifactScope { session_id },
+                artifacts: vec![termirust_domain::ArtifactMetadata {
+                    id: termirust_domain::ArtifactId::new(),
+                    scope: termirust_domain::ArtifactScope { session_id },
+                    display_name: termirust_domain::ArtifactDisplayName::new(name)
+                        .expect("artifact name should be valid"),
+                    origin: termirust_domain::ArtifactOrigin::ExplicitImport,
+                    media_type: termirust_domain::ArtifactMediaType::TextPlainUtf8,
+                    byte_len: 4,
+                    sha256: termirust_domain::ArtifactSha256::new([digest; 32]),
+                    created_at: u64::from(digest),
+                    preview_kind: termirust_domain::ArtifactPreviewKind::Text,
+                    state: termirust_domain::ArtifactState::Ready,
+                }],
+                session_bytes: 4,
+                session_limit: 1024,
+                global_bytes: 8,
+                global_limit: 2048,
+                durability: termirust_store::Durability::Full,
+            };
+        let snapshots = vec![
+            make_snapshot(alpha.id, "alpha.txt", 1),
+            make_snapshot(beta.id, "beta.txt", 2),
+        ];
+        let saved = SavedState {
+            app_attached_sessions: vec![alpha, beta],
+            ..SavedState::default()
+        };
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.artifact_gallery.install_test_snapshots(snapshots);
+                    app.activate_library_section(NavSection::Sftp, window, cx);
+                })
+            })
+            .expect("Files / Artifacts should activate");
+
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        assert!(visual.debug_bounds("files-artifacts-view").is_some());
+        assert!(visual.debug_bounds("global-artifact-index").is_some());
+        assert!(visual.debug_bounds("global-artifact-row").is_some());
+        assert!(visual.debug_bounds("global-artifact-origin").is_some());
+        assert!(visual.debug_bounds("global-artifact-project").is_some());
+        assert!(visual.debug_bounds("global-artifact-preset").is_some());
+        assert!(visual.debug_bounds("artifact-gallery").is_some());
+
+        let sftp_tab = selector_click_center(window, cx, "files-tab-sftp");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(sftp_tab, gpui::Modifiers::none());
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        assert!(visual.debug_bounds("sftp-local-list").is_some());
     }
 
     #[gpui::test]
