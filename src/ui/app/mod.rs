@@ -4,6 +4,7 @@ mod canvas;
 mod chrome;
 mod cli_status;
 mod connect;
+mod connection_coordinator;
 mod dev_urls;
 mod editor;
 mod global_search;
@@ -40,6 +41,7 @@ use canvas::{
     CanvasWorkspaceState, ContextHandoffReview, PendingCanvasNodeDelete, PendingCanvasPaneClose,
     PendingTmuxClose, SplitPaneChooser, StructuredAgentRuntime,
 };
+use connection_coordinator::ConnectionCoordinator;
 use dev_urls::DevUrlUiState;
 use global_search::GlobalSearchState;
 use hosted_session::DurableSessionPaths;
@@ -88,7 +90,6 @@ use tokio_util::sync::CancellationToken;
 use vt100::MouseProtocolMode;
 
 use crate::credentials;
-use crate::local::spawn_local_session;
 use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
     HostColorTag, HostProfile, JumpHostConnection, PortForwardKind, PortForwardRule, ProfileSource,
@@ -101,7 +102,7 @@ use crate::sftp::{
     RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
     spawn_upload_file,
 };
-use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent, spawn_session};
+use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent};
 use crate::storage::{
     KnownHostStore, export_encrypted_mobile_vault, export_encrypted_portable_data_bundle,
     export_portable_data_bundle, import_encrypted_portable_data_bundle,
@@ -987,6 +988,7 @@ pub struct TermiRustApp {
     worktree_branch_input: Entity<InputState>,
     nav_section: NavSection,
     show_editor_panel: bool,
+    connection_coordinator: ConnectionCoordinator,
     session_coordinator: SessionCoordinator,
     event_tx: Sender<SshEvent>,
     event_rx: Receiver<SshEvent>,
@@ -1152,6 +1154,11 @@ impl TermiRustApp {
         );
         let known_hosts =
             Arc::new(KnownHostStore::load().expect("unable to initialize known host storage"));
+        let connection_coordinator = ConnectionCoordinator::new(
+            event_tx.clone(),
+            known_hosts.clone(),
+            saved.settings.ssh_keepalive_secs,
+        );
         saved.merge_imported_identities(load_local_ssh_identities().unwrap_or_default());
         saved.ensure_vaults();
         theme::set_theme_preset(saved.settings.theme_preset);
@@ -1273,6 +1280,7 @@ impl TermiRustApp {
             worktree_branch_input,
             nav_section: NavSection::Hosts,
             show_editor_panel: false,
+            connection_coordinator,
             session_coordinator,
             event_tx,
             event_rx,
@@ -3755,6 +3763,8 @@ impl TermiRustApp {
     fn update_ssh_keepalive_secs(&mut self, secs: u16, cx: &mut Context<Self>) {
         self.saved.settings.ssh_keepalive_secs = secs;
         self.saved.ensure_settings();
+        self.connection_coordinator
+            .set_ssh_keepalive_secs(self.saved.settings.ssh_keepalive_secs);
         self.save_settings();
         self.status_message = if secs == 0 {
             "SSH keep-alive disabled.".to_string()
@@ -5799,16 +5809,7 @@ impl TermiRustApp {
         let title = request.title.clone();
         eprintln!("[app] spawn_pane: pane_id={pane_id} title='{title}' endpoint={endpoint}");
         let terminal_focus = cx.focus_handle().tab_stop(true);
-        let runtime = if request.kind == ConnectionKind::LocalShell {
-            spawn_local_session(request.clone(), self.event_tx.clone())
-        } else {
-            spawn_session(
-                request.clone(),
-                self.known_hosts.clone(),
-                self.event_tx.clone(),
-                self.saved.settings.ssh_keepalive_secs,
-            )
-        };
+        let runtime = self.connection_coordinator.start(request.clone());
         self.register_pane(request, runtime, terminal_focus)
     }
 
