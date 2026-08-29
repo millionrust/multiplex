@@ -41,6 +41,11 @@ struct GoldenCommands {
     second_writer: Uuid,
     input: Uuid,
     release: Uuid,
+    second_after_release: Uuid,
+    denied_input: Uuid,
+    reconnect_writer: Uuid,
+    resize: Uuid,
+    stop: Uuid,
 }
 
 #[derive(Deserialize)]
@@ -207,13 +212,21 @@ async fn universal_session_fixture_proves_identity_writer_and_reconnect_contract
     );
     assert!(
         second
-            .set_writer_lease(CommandId::new(), true, &cancel)
+            .set_writer_lease(
+                command(fixture.commands.second_after_release),
+                true,
+                &cancel,
+            )
             .await
             .unwrap()
     );
     assert_eq!(
         first
-            .input(CommandId::new(), b"denied\n".to_vec(), &cancel)
+            .input(
+                command(fixture.commands.denied_input),
+                b"denied\n".to_vec(),
+                &cancel,
+            )
             .await
             .unwrap_err()
             .code,
@@ -245,14 +258,14 @@ async fn universal_session_fixture_proves_identity_writer_and_reconnect_contract
     );
     assert!(
         reconnected
-            .set_writer_lease(CommandId::new(), true, &cancel)
+            .set_writer_lease(command(fixture.commands.reconnect_writer), true, &cancel,)
             .await
             .unwrap()
     );
     assert!(
         reconnected
             .resize(
-                CommandId::new(),
+                command(fixture.commands.resize),
                 u32::from(fixture.viewport.columns),
                 u32::from(fixture.viewport.rows),
                 &cancel,
@@ -262,7 +275,11 @@ async fn universal_session_fixture_proves_identity_writer_and_reconnect_contract
     );
     assert!(
         reconnected
-            .stop(CommandId::new(), wire::StopMode::Graceful, &cancel)
+            .stop(
+                command(fixture.commands.stop),
+                wire::StopMode::Graceful,
+                &cancel,
+            )
             .await
             .unwrap()
     );
