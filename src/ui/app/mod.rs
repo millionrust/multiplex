@@ -17,6 +17,7 @@ mod overlay;
 mod palette;
 mod presets;
 mod project;
+mod project_coordinator;
 mod projects;
 mod remote_devices;
 mod runtimes;
@@ -55,6 +56,7 @@ use palette::{
 };
 use presets::PresetLibraryState;
 use project::CanvasProjectPanelState;
+use project_coordinator::ProjectCoordinator;
 use projects::ProjectLibraryState;
 use remote_devices::RemoteDevicesState;
 use session_coordinator::{
@@ -960,6 +962,7 @@ pub struct TermiRustApp {
     vault_inputs: VaultInputs,
     vault_member_inputs: VaultMemberInputs,
     draft_auth_mode: AuthMode,
+    project_coordinator: ProjectCoordinator,
     project_library: ProjectLibraryState,
     project_label_input: Entity<InputState>,
     group_name_input: Entity<InputState>,
@@ -1254,6 +1257,7 @@ impl TermiRustApp {
             vault_inputs,
             vault_member_inputs,
             draft_auth_mode,
+            project_coordinator: ProjectCoordinator::default(),
             project_library,
             project_label_input,
             group_name_input,

@@ -13,11 +13,14 @@ use gpui_component::{
 };
 use termirust_domain::{
     HostedSessionId, HostedSessionState, LaunchPreset, PermissionPolicy, PresetId, Project,
-    ProjectId, ResolvedLaunch, Revision, WorkingDirectoryRule, resolve_launch,
+    ProjectId, Revision, WorkingDirectoryRule,
 };
 use termirust_store::read_host_metadata;
 
 use super::hosted_session::{DurableLaunch, DurableSessionPaths};
+use super::project_coordinator::{
+    ProjectLaunchResolution, ProjectLaunchReviewError, ProjectLaunchReviewInput,
+};
 use super::session_coordinator::SessionStartRequest;
 use super::{AppAttachedPaneState, PendingPaste, TermiRustApp, theme};
 use crate::agents::build_app_attached_launch_config;
@@ -183,39 +186,28 @@ impl TermiRustApp {
         let Some(state) = self.new_session.as_ref() else {
             return;
         };
-        let Some(preset_id) = state.selected_preset_id else {
-            if let Some(state) = self.new_session.as_mut() {
-                state.error = Some(localization::new_session_preset_required());
+        let review = self
+            .project_coordinator
+            .review_session_launch(ProjectLaunchReviewInput {
+                project_id: state.project_id,
+                selected_preset_id: state.selected_preset_id,
+                project_store_revision: state.project_store_revision,
+                preset_store_revision: state.preset_store_revision,
+                project_snapshot: self.project_library.snapshot.as_ref(),
+                preset_snapshot: self.preset_library.snapshot.as_ref(),
+            });
+        let reviewed = match review {
+            Ok(reviewed) => reviewed,
+            Err(ProjectLaunchReviewError::PresetRequired) => {
+                if let Some(state) = self.new_session.as_mut() {
+                    state.error = Some(localization::new_session_preset_required());
+                }
+                cx.notify();
+                return;
             }
-            cx.notify();
-            return;
-        };
-        let Some(project_snapshot) = self.project_library.snapshot.as_ref() else {
-            return self.fail_new_session(&localization::project_store_unavailable(), cx);
-        };
-        let Some(preset_snapshot) = self.preset_library.snapshot.as_ref() else {
-            return self.fail_new_session(&localization::preset_store_unavailable(), cx);
-        };
-        if project_snapshot.revision != state.project_store_revision
-            || preset_snapshot.revision != state.preset_store_revision
-        {
-            return self.fail_new_session(&localization::new_session_review_stale(), cx);
-        }
-        let Some(project) = project_snapshot
-            .projects
-            .iter()
-            .find(|summary| summary.project.id == state.project_id)
-            .map(|summary| summary.project.clone())
-        else {
-            return self.fail_new_session(&localization::new_session_project_missing(), cx);
-        };
-        let Some(preset) = preset_snapshot
-            .presets
-            .iter()
-            .find(|preset| preset.id == preset_id)
-            .cloned()
-        else {
-            return self.fail_new_session(&localization::new_session_preset_missing(), cx);
+            Err(error) => {
+                return self.fail_new_session(&project_launch_review_error_message(error), cx);
+            }
         };
 
         let state = self
@@ -231,20 +223,19 @@ impl TermiRustApp {
         state.error = None;
         let path_snapshot = explicit_path_snapshot();
         let home = dirs::home_dir();
+        let project_coordinator = self.project_coordinator.clone();
         cx.notify();
 
         cx.spawn_in(window, async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    resolve_launch(
+                    project_coordinator.resolve_session_launch(
+                        reviewed,
                         hosted_session_id,
-                        &project,
-                        &preset,
-                        &path_snapshot,
-                        home.as_deref(),
+                        path_snapshot,
+                        home,
                     )
-                    .map(|resolved| (resolved, project, preset))
                 })
                 .await;
             let _ = cx.update(|window, cx| {
@@ -259,10 +250,7 @@ impl TermiRustApp {
     fn finish_new_session_validation(
         &mut self,
         generation: u64,
-        result: Result<
-            (ResolvedLaunch, Project, LaunchPreset),
-            termirust_domain::LaunchResolutionError,
-        >,
+        result: Result<ProjectLaunchResolution, termirust_domain::LaunchResolutionError>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -272,7 +260,11 @@ impl TermiRustApp {
         if state.generation != generation || state.phase != HostedSessionState::Validating {
             return;
         }
-        let (resolved, project, preset) = match result {
+        let ProjectLaunchResolution {
+            resolved,
+            project,
+            preset,
+        } = match result {
             Ok(value) => value,
             Err(error) => {
                 return self.fail_new_session(
@@ -874,6 +866,21 @@ fn explicit_path_snapshot() -> Vec<PathBuf> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn project_launch_review_error_message(error: ProjectLaunchReviewError) -> String {
+    match error {
+        ProjectLaunchReviewError::PresetRequired => localization::new_session_preset_required(),
+        ProjectLaunchReviewError::ProjectStoreUnavailable => {
+            localization::project_store_unavailable()
+        }
+        ProjectLaunchReviewError::PresetStoreUnavailable => {
+            localization::preset_store_unavailable()
+        }
+        ProjectLaunchReviewError::ReviewStale => localization::new_session_review_stale(),
+        ProjectLaunchReviewError::ProjectMissing => localization::new_session_project_missing(),
+        ProjectLaunchReviewError::PresetMissing => localization::new_session_preset_missing(),
+    }
 }
 
 fn new_session_busy(state: HostedSessionState) -> bool {
