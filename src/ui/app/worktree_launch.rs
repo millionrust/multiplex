@@ -17,12 +17,11 @@ use termirust_domain::{
 };
 use termirust_store::StoreError;
 
+use super::project_coordinator::{WorktreeInspectionRequest, WorktreePlanRequest};
 use super::{TermiRustApp, theme};
 use crate::storage::managed_agent_worktree_dir;
 use crate::ui::localization;
-use crate::worktree_launch::{
-    GitRunner, WorktreeCancellation, WorktreeInspection, generated_worktree_branch,
-};
+use crate::worktree_launch::{WorktreeCancellation, WorktreeInspection, generated_worktree_branch};
 
 pub(super) struct WorktreeLaunchUiState {
     pub source_project_id: ProjectId,
@@ -179,20 +178,21 @@ impl TermiRustApp {
             branch,
             preset_id: state.selected_preset_id,
         };
+        let project_coordinator = self.project_coordinator.clone();
         cx.notify();
 
         cx.spawn_in(window, async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    GitRunner::default().inspect(
-                        project.canonical_root.as_path(),
-                        &managed_root,
+                    project_coordinator.inspect_worktree(WorktreeInspectionRequest {
+                        project_root: project.canonical_root.as_path().to_path_buf(),
+                        managed_root,
                         worktree_id,
                         child_project_id,
-                        &draft,
-                        &cancellation,
-                    )
+                        draft,
+                        cancellation,
+                    })
                 })
                 .await;
             let _ = cx.update(|window, cx| {
@@ -304,11 +304,14 @@ impl TermiRustApp {
         let generation = state.generation;
         let cancellation = state.cancellation.clone();
         let plan = inspection.plan;
+        let project_coordinator = self.project_coordinator.clone();
         cx.notify();
         cx.spawn_in(window, async move |this, cx| {
             let result = cx
                 .background_executor()
-                .spawn(async move { GitRunner::default().create(&plan, &cancellation) })
+                .spawn(async move {
+                    project_coordinator.create_worktree(WorktreePlanRequest { plan, cancellation })
+                })
                 .await;
             let _ = cx.update(|window, cx| {
                 let _ = this.update(cx, |app, cx| {
@@ -355,12 +358,16 @@ impl TermiRustApp {
         state.error = None;
         let cancellation = state.cancellation.clone();
         let plan = intent.plan.clone();
+        let project_coordinator = self.project_coordinator.clone();
         cx.notify();
         cx.spawn_in(window, async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    GitRunner::default().verify(&plan, &cancellation)?;
+                    project_coordinator.verify_worktree(WorktreePlanRequest {
+                        plan: plan.clone(),
+                        cancellation,
+                    })?;
                     repository
                         .register_worktree_child(plan.id, intent.revision)
                         .map_err(store_worktree_error)

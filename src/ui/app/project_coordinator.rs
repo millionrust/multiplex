@@ -3,9 +3,11 @@ use std::sync::Arc;
 
 use termirust_domain::{
     HostedSessionId, LaunchPreset, LaunchResolutionError, PresetId, Project, ProjectId,
-    ResolvedLaunch, Revision, resolve_launch,
+    ResolvedLaunch, Revision, WorktreeError, WorktreeLaunchDraft, WorktreePlan, resolve_launch,
 };
 use termirust_store::{PresetSnapshot, ProjectSnapshot};
+
+use crate::worktree_launch::{GitRunner, WorktreeCancellation, WorktreeInspection};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ProjectLaunchReviewError {
@@ -39,6 +41,20 @@ pub(super) struct ProjectLaunchResolution {
     pub preset: LaunchPreset,
 }
 
+pub(super) struct WorktreeInspectionRequest {
+    pub project_root: PathBuf,
+    pub managed_root: PathBuf,
+    pub worktree_id: termirust_domain::ManagedWorktreeId,
+    pub child_project_id: ProjectId,
+    pub draft: WorktreeLaunchDraft,
+    pub cancellation: WorktreeCancellation,
+}
+
+pub(super) struct WorktreePlanRequest {
+    pub plan: WorktreePlan,
+    pub cancellation: WorktreeCancellation,
+}
+
 trait ProjectLaunchResolver: Send + Sync {
     fn resolve(
         &self,
@@ -51,6 +67,19 @@ trait ProjectLaunchResolver: Send + Sync {
 }
 
 struct SystemProjectLaunchResolver;
+
+trait ProjectWorktreeWorker: Send + Sync {
+    fn inspect(
+        &self,
+        request: WorktreeInspectionRequest,
+    ) -> Result<WorktreeInspection, WorktreeError>;
+
+    fn create(&self, request: WorktreePlanRequest) -> Result<(), WorktreeError>;
+
+    fn verify(&self, request: WorktreePlanRequest) -> Result<(), WorktreeError>;
+}
+
+struct SystemProjectWorktreeWorker;
 
 impl ProjectLaunchResolver for SystemProjectLaunchResolver {
     fn resolve(
@@ -65,15 +94,41 @@ impl ProjectLaunchResolver for SystemProjectLaunchResolver {
     }
 }
 
+impl ProjectWorktreeWorker for SystemProjectWorktreeWorker {
+    fn inspect(
+        &self,
+        request: WorktreeInspectionRequest,
+    ) -> Result<WorktreeInspection, WorktreeError> {
+        GitRunner::default().inspect(
+            &request.project_root,
+            &request.managed_root,
+            request.worktree_id,
+            request.child_project_id,
+            &request.draft,
+            &request.cancellation,
+        )
+    }
+
+    fn create(&self, request: WorktreePlanRequest) -> Result<(), WorktreeError> {
+        GitRunner::default().create(&request.plan, &request.cancellation)
+    }
+
+    fn verify(&self, request: WorktreePlanRequest) -> Result<(), WorktreeError> {
+        GitRunner::default().verify(&request.plan, &request.cancellation)
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct ProjectCoordinator {
     resolver: Arc<dyn ProjectLaunchResolver>,
+    worktree_worker: Arc<dyn ProjectWorktreeWorker>,
 }
 
 impl Default for ProjectCoordinator {
     fn default() -> Self {
         Self {
             resolver: Arc::new(SystemProjectLaunchResolver),
+            worktree_worker: Arc::new(SystemProjectWorktreeWorker),
         }
     }
 }
@@ -132,6 +187,21 @@ impl ProjectCoordinator {
             preset: reviewed.preset,
         })
     }
+
+    pub fn inspect_worktree(
+        &self,
+        request: WorktreeInspectionRequest,
+    ) -> Result<WorktreeInspection, WorktreeError> {
+        self.worktree_worker.inspect(request)
+    }
+
+    pub fn create_worktree(&self, request: WorktreePlanRequest) -> Result<(), WorktreeError> {
+        self.worktree_worker.create(request)
+    }
+
+    pub fn verify_worktree(&self, request: WorktreePlanRequest) -> Result<(), WorktreeError> {
+        self.worktree_worker.verify(request)
+    }
 }
 
 #[cfg(test)]
@@ -140,16 +210,20 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use termirust_domain::{
-        CanonicalPath, HostedSessionId, LaunchPreset, LaunchResolutionError, LocalizedUserText,
+        BaseCandidate, BaseSource, CanonicalPath, CommitOid, GitReference, HostedSessionId,
+        LaunchPreset, LaunchResolutionError, LocalizedUserText, ManagedPath, ManagedWorktreeId,
         PermissionPolicy, PositionKey, PresetDraft, PresetId, PresetOrigin, Project, ProjectId,
-        ResolvedLaunch, Revision, WorkingDirectoryRule,
+        ResolvedLaunch, Revision, WorkingDirectoryRule, WorktreeError, WorktreeLaunchDraft,
+        WorktreePlan,
     };
     use termirust_store::{Durability, PresetSnapshot, ProjectSnapshot, StoreHealth};
 
     use super::{
         ProjectCoordinator, ProjectLaunchResolver, ProjectLaunchReviewError,
-        ProjectLaunchReviewInput, ReviewedProjectLaunch,
+        ProjectLaunchReviewInput, ProjectWorktreeWorker, ReviewedProjectLaunch,
+        SystemProjectWorktreeWorker, WorktreeInspectionRequest, WorktreePlanRequest,
     };
+    use crate::worktree_launch::{WorktreeCancellation, WorktreeInspection};
 
     #[derive(Clone, Debug, Eq, PartialEq)]
     struct ResolveCall {
@@ -162,6 +236,62 @@ mod tests {
 
     struct RecordingResolver {
         calls: Arc<Mutex<Vec<ResolveCall>>>,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    enum WorktreeCall {
+        Inspect {
+            project_root: PathBuf,
+            managed_root: PathBuf,
+            worktree_id: ManagedWorktreeId,
+            child_project_id: ProjectId,
+            draft: WorktreeLaunchDraft,
+        },
+        Create {
+            plan: WorktreePlan,
+        },
+        Verify {
+            plan: WorktreePlan,
+        },
+    }
+
+    struct RecordingWorktreeWorker {
+        calls: Arc<Mutex<Vec<WorktreeCall>>>,
+    }
+
+    impl ProjectWorktreeWorker for RecordingWorktreeWorker {
+        fn inspect(
+            &self,
+            request: WorktreeInspectionRequest,
+        ) -> Result<WorktreeInspection, WorktreeError> {
+            self.calls.lock().unwrap().push(WorktreeCall::Inspect {
+                project_root: request.project_root,
+                managed_root: request.managed_root,
+                worktree_id: request.worktree_id,
+                child_project_id: request.child_project_id,
+                draft: request.draft,
+            });
+            request.cancellation.cancel();
+            Err(WorktreeError::DirtySource)
+        }
+
+        fn create(&self, request: WorktreePlanRequest) -> Result<(), WorktreeError> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(WorktreeCall::Create { plan: request.plan });
+            request.cancellation.cancel();
+            Err(WorktreeError::PathCollision)
+        }
+
+        fn verify(&self, request: WorktreePlanRequest) -> Result<(), WorktreeError> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(WorktreeCall::Verify { plan: request.plan });
+            request.cancellation.cancel();
+            Err(WorktreeError::VerificationMismatch)
+        }
     }
 
     impl ProjectLaunchResolver for RecordingResolver {
@@ -330,6 +460,7 @@ mod tests {
             resolver: Arc::new(RecordingResolver {
                 calls: calls.clone(),
             }),
+            worktree_worker: Arc::new(SystemProjectWorktreeWorker),
         };
         let session_id = HostedSessionId::new();
         let path_snapshot = vec![PathBuf::from("/exact/one"), PathBuf::from("/exact/two")];
@@ -381,6 +512,109 @@ mod tests {
         assert_eq!(result.preset, preset);
     }
 
+    fn worktree_plan(
+        repository: &Path,
+        managed_root: &Path,
+        worktree_id: ManagedWorktreeId,
+        source_project_id: ProjectId,
+        child_project_id: ProjectId,
+    ) -> WorktreePlan {
+        let repository_root = CanonicalPath::resolve(repository).unwrap();
+        let managed_root = CanonicalPath::resolve(managed_root).unwrap();
+        WorktreePlan::new(
+            worktree_id,
+            source_project_id,
+            child_project_id,
+            repository_root,
+            managed_root.clone(),
+            BaseCandidate {
+                ref_name: GitReference::new("main").unwrap(),
+                commit_oid: CommitOid::new(&"a".repeat(40)).unwrap(),
+                source: BaseSource::ConfiguredMainline,
+            },
+            GitReference::new("termirust/worktree/exact").unwrap(),
+            ManagedPath::new(managed_root.as_path().join("child")).unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn worktree_operations_preserve_exact_inputs_shared_cancellation_and_errors() {
+        let repository = tempfile::tempdir().unwrap();
+        let managed_root = tempfile::tempdir().unwrap();
+        let worktree_id = ManagedWorktreeId::new();
+        let source_project_id = ProjectId::new();
+        let child_project_id = ProjectId::new();
+        let plan = worktree_plan(
+            repository.path(),
+            managed_root.path(),
+            worktree_id,
+            source_project_id,
+            child_project_id,
+        );
+        let draft = WorktreeLaunchDraft {
+            source_project_id,
+            requested_base: Some(GitReference::new("origin/main").unwrap()),
+            fetch: true,
+            confirm_current_branch: false,
+            branch: plan.generated_branch.clone(),
+            preset_id: Some(PresetId::new()),
+        };
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let coordinator = ProjectCoordinator {
+            resolver: Arc::new(super::SystemProjectLaunchResolver),
+            worktree_worker: Arc::new(RecordingWorktreeWorker {
+                calls: calls.clone(),
+            }),
+        };
+        let inspect_cancellation = WorktreeCancellation::default();
+        let create_cancellation = WorktreeCancellation::default();
+        let verify_cancellation = WorktreeCancellation::default();
+
+        assert_eq!(
+            coordinator.inspect_worktree(WorktreeInspectionRequest {
+                project_root: repository.path().to_path_buf(),
+                managed_root: managed_root.path().to_path_buf(),
+                worktree_id,
+                child_project_id,
+                draft: draft.clone(),
+                cancellation: inspect_cancellation.clone(),
+            }),
+            Err(WorktreeError::DirtySource)
+        );
+        assert_eq!(
+            coordinator.create_worktree(WorktreePlanRequest {
+                plan: plan.clone(),
+                cancellation: create_cancellation.clone(),
+            }),
+            Err(WorktreeError::PathCollision)
+        );
+        assert_eq!(
+            coordinator.verify_worktree(WorktreePlanRequest {
+                plan: plan.clone(),
+                cancellation: verify_cancellation.clone(),
+            }),
+            Err(WorktreeError::VerificationMismatch)
+        );
+        assert!(inspect_cancellation.is_cancelled());
+        assert!(create_cancellation.is_cancelled());
+        assert!(verify_cancellation.is_cancelled());
+        assert_eq!(
+            calls.lock().unwrap().as_slice(),
+            [
+                WorktreeCall::Inspect {
+                    project_root: repository.path().to_path_buf(),
+                    managed_root: managed_root.path().to_path_buf(),
+                    worktree_id,
+                    child_project_id,
+                    draft,
+                },
+                WorktreeCall::Create { plan: plan.clone() },
+                WorktreeCall::Verify { plan },
+            ]
+        );
+    }
+
     #[test]
     fn coordinator_module_has_no_ui_framework_dependency() {
         let forbidden_crate = ["gp", "ui"].concat();
@@ -402,6 +636,11 @@ mod tests {
             assert!(
                 !source.contains("resolve_launch("),
                 "{} bypasses ProjectCoordinator launch resolution",
+                path.display()
+            );
+            assert!(
+                !source.contains("GitRunner::default()"),
+                "{} bypasses ProjectCoordinator worktree operations",
                 path.display()
             );
         }
