@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui_component::Disableable as _;
@@ -10,16 +9,14 @@ use termirust_controller_listener::{
 use termirust_controller_listener::{InterfaceProvider as _, SystemInterfaceProvider};
 use termirust_controller_security::StaticPrivateKey;
 use termirust_domain::{
-    ControllerCapabilities, ControllerCapability, ControllerDeviceId, ControllerListenPolicy,
-    ControllerNetworkRevision, ControllerPort, DiscoveryPolicy, HostIdentityPublic,
-    HostIdentityState, ListenerState, NetworkInterfaceCandidate, PairedDeviceRecord,
-    PairedDeviceStatus, PairingOfferId,
+    ControllerCapability, ControllerDeviceId, ControllerListenPolicy, ControllerNetworkRevision,
+    ControllerPort, DiscoveryPolicy, HostIdentityPublic, HostIdentityState, ListenerState,
+    NetworkInterfaceCandidate, PairedDeviceRecord, PairedDeviceStatus, PairingOfferId,
 };
 use termirust_store::{
     ControllerDeviceRepository, ControllerDeviceStoreError, ControllerNetworkRepository,
 };
 
-use crate::controller::devices::{ControllerDeviceService, NoControllerChannels};
 use crate::controller::host_identity::{
     HostIdentityService, OldSecretDeletion, OsIdentityEntropy, OsSecretStore,
 };
@@ -224,41 +221,6 @@ impl RemoteDevicesState {
         self.devices = snapshot.authority.devices;
         self.failure = None;
         Ok(())
-    }
-
-    fn revoke(&mut self, device_id: ControllerDeviceId) -> Result<(), ()> {
-        let repository = self.repository.clone().ok_or(())?;
-        ControllerDeviceService::new(repository, Arc::new(NoControllerChannels))
-            .revoke(device_id)
-            .map_err(|_| ())?;
-        self.pairing_state = PairingUiState::Revoked;
-        self.refresh()
-    }
-
-    fn toggle_input(&mut self, device_id: ControllerDeviceId) -> Result<(), ()> {
-        let device = self
-            .devices
-            .iter()
-            .find(|device| device.device_id == device_id)
-            .ok_or(())?;
-        let next = if device
-            .capabilities
-            .contains(ControllerCapability::SendInput)
-        {
-            ControllerCapabilities::default()
-                .with(ControllerCapability::ObserveSessions)
-                .with(ControllerCapability::AttachOutput)
-        } else {
-            device
-                .capabilities
-                .with(ControllerCapability::SendInput)
-                .with(ControllerCapability::Resize)
-        };
-        let repository = self.repository.clone().ok_or(())?;
-        ControllerDeviceService::new(repository, Arc::new(NoControllerChannels))
-            .set_capabilities(device_id, next)
-            .map_err(|_| ())?;
-        self.refresh()
     }
 
     fn reset_identity(&mut self) -> Result<OldSecretDeletion, ()> {
@@ -1313,8 +1275,8 @@ impl TermiRustApp {
             .clone()
             .ok_or(())
             .and_then(|repository| {
-                ControllerDeviceService::new(repository, Arc::new(NoControllerChannels))
-                    .rename(device_id, display_name)
+                self.controller_coordinator
+                    .rename_device(repository, device_id, display_name)
                     .map_err(|_| ())
             })
             .and_then(|()| self.remote_devices.refresh());
@@ -1328,7 +1290,21 @@ impl TermiRustApp {
     }
 
     fn revoke_remote_device(&mut self, device_id: ControllerDeviceId, cx: &mut Context<Self>) {
-        if self.remote_devices.revoke(device_id).is_ok() {
+        let result = self
+            .remote_devices
+            .repository
+            .clone()
+            .ok_or(())
+            .and_then(|repository| {
+                self.controller_coordinator
+                    .revoke_device(repository, device_id)
+                    .map_err(|_| ())
+            })
+            .and_then(|()| {
+                self.remote_devices.pairing_state = PairingUiState::Revoked;
+                self.remote_devices.refresh()
+            });
+        if result.is_ok() {
             self.status_message = localization::remote_devices_revoked_notice();
         } else {
             self.error_message = localization::remote_devices_operation_failed();
@@ -1341,7 +1317,27 @@ impl TermiRustApp {
         device_id: ControllerDeviceId,
         cx: &mut Context<Self>,
     ) {
-        if self.remote_devices.toggle_input(device_id).is_ok() {
+        let result = self
+            .remote_devices
+            .devices
+            .iter()
+            .find(|device| device.device_id == device_id)
+            .map(|device| device.capabilities)
+            .ok_or(())
+            .and_then(|capabilities| {
+                self.remote_devices
+                    .repository
+                    .clone()
+                    .ok_or(())
+                    .map(|repository| (repository, capabilities))
+            })
+            .and_then(|(repository, capabilities)| {
+                self.controller_coordinator
+                    .toggle_input(repository, device_id, capabilities)
+                    .map_err(|_| ())
+            })
+            .and_then(|()| self.remote_devices.refresh());
+        if result.is_ok() {
             self.status_message = localization::remote_devices_capabilities_saved();
         } else {
             self.error_message = localization::remote_devices_operation_failed();

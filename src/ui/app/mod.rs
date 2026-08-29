@@ -5,6 +5,7 @@ mod chrome;
 mod cli_status;
 mod connect;
 mod connection_coordinator;
+mod controller_coordinator;
 mod dev_urls;
 mod editor;
 mod global_search;
@@ -46,6 +47,7 @@ use connection_coordinator::{
     ConnectionCoordinator, ReconnectScheduleDecision, ReconnectScheduleInput,
     ReconnectTickDecision, ReconnectTickInput, SftpEventProjection, SftpOperationRequest,
 };
+use controller_coordinator::ControllerCoordinator;
 use dev_urls::DevUrlUiState;
 use global_search::GlobalSearchState;
 use hosted_session::DurableSessionPaths;
@@ -963,6 +965,7 @@ pub struct TermiRustApp {
     vault_member_inputs: VaultMemberInputs,
     draft_auth_mode: AuthMode,
     project_coordinator: ProjectCoordinator,
+    controller_coordinator: ControllerCoordinator,
     project_library: ProjectLibraryState,
     project_label_input: Entity<InputState>,
     group_name_input: Entity<InputState>,
@@ -1258,6 +1261,7 @@ impl TermiRustApp {
             vault_member_inputs,
             draft_auth_mode,
             project_coordinator: ProjectCoordinator::default(),
+            controller_coordinator: ControllerCoordinator::default(),
             project_library,
             project_label_input,
             group_name_input,
