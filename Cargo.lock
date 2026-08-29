@@ -7994,6 +7994,7 @@ dependencies = [
  "termirust-domain",
  "termirust-host-protocol",
  "termirust-protocol",
+ "termirust-relay-client",
  "termirust-session-host",
  "termirust-store",
  "termirust-ui-contract",
@@ -8175,6 +8176,32 @@ dependencies = [
  "rand 0.8.6",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "termirust-relay-client"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "rand_core 0.6.4",
+ "rcgen",
+ "rustls",
+ "rustls-native-certs",
+ "sha2 0.10.9",
+ "tempfile",
+ "termirust-controller-listener",
+ "termirust-controller-security",
+ "termirust-domain",
+ "termirust-relay-protocol",
+ "termirust-relay-server",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "url",
+ "uuid",
+ "x509-parser",
+ "zeroize",
 ]
 
 [[package]]
@@ -8525,7 +8552,11 @@ checksum = "d25a406cddcc431a75d3d9afc6a7c0f7428d4891dd973e4d54c56b46127bf857"
 dependencies = [
  "futures-util",
  "log",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pki-types",
  "tokio",
+ "tokio-rustls",
  "tungstenite",
 ]
 
@@ -8816,6 +8847,8 @@ dependencies = [
  "httparse",
  "log",
  "rand 0.9.3",
+ "rustls",
+ "rustls-pki-types",
  "sha1 0.10.6",
  "thiserror 2.0.18",
  "utf-8",

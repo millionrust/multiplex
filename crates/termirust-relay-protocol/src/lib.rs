@@ -344,6 +344,14 @@ impl RelayAdmissionCredential {
         Self { secret }
     }
 
+    /// Reconstructs a credential loaded from a protected credential store.
+    ///
+    /// The caller remains responsible for zeroizing the source bytes. This type deliberately
+    /// provides no inverse operation and implements neither `Clone` nor serialization.
+    pub fn from_secret_bytes(secret: [u8; 32]) -> Self {
+        Self { secret }
+    }
+
     pub fn verifier(&self) -> RelayCredentialVerifier {
         RelayCredentialVerifier(
             SigningKey::from_bytes(&self.secret)

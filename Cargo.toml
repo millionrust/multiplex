@@ -25,6 +25,7 @@ members = [
     "crates/termirust-mobile-ffi",
     "crates/termirust-protocol",
     "crates/termirust-relay-protocol",
+    "crates/termirust-relay-client",
     "crates/termirust-relay-server",
     "crates/termirust-store",
     "crates/termirust-ui-contract",
@@ -81,6 +82,7 @@ termirust-cli = { version = "0.1.0", path = "crates/termirust-cli" }
 termirust-controller-security = { version = "0.1.0", path = "crates/termirust-controller-security" }
 termirust-controller-listener = { version = "0.1.0", path = "crates/termirust-controller-listener" }
 termirust-host-protocol = { version = "0.1.0", path = "crates/termirust-host-protocol" }
+termirust-relay-client = { version = "0.1.0", path = "crates/termirust-relay-client" }
 termirust-session-host = { version = "0.1.0", path = "crates/termirust-session-host" }
 termirust-store = { version = "0.1.0", path = "crates/termirust-store" }
 termirust-ui-contract = { version = "0.1.0", path = "crates/termirust-ui-contract" }

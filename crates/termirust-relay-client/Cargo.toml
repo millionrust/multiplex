@@ -1,0 +1,31 @@
+[package]
+name = "termirust-relay-client"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Bounded outbound WSS client for the optional TermiRust ciphertext relay"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+futures-util = { version = "=0.3.32", features = ["sink"] }
+rand_core = { version = "=0.6.4", features = ["getrandom"] }
+rustls = { version = "=0.23.37", default-features = false, features = ["ring", "std"] }
+rustls-native-certs = "=0.8.3"
+sha2 = "=0.10.9"
+termirust-relay-protocol = { version = "0.1.0", path = "../termirust-relay-protocol" }
+tokio = { version = "=1.50.0", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-tungstenite = { version = "=0.28.0", default-features = false, features = ["connect", "handshake", "rustls-tls-native-roots"] }
+tokio-util = { version = "=0.7.18", features = ["rt"] }
+url = "=2.5.8"
+x509-parser = "=0.18.1"
+zeroize = { version = "=1.8.2", features = ["zeroize_derive"] }
+
+[dev-dependencies]
+async-trait = "=0.1.89"
+rcgen = { version = "=0.14.10", default-features = false, features = ["crypto", "ring"] }
+tempfile = "=3.27.0"
+termirust-controller-listener = { version = "0.1.0", path = "../termirust-controller-listener" }
+termirust-controller-security = { version = "0.1.0", path = "../termirust-controller-security" }
+termirust-domain = { version = "0.1.0", path = "../termirust-domain" }
+termirust-relay-server = { version = "0.1.0", path = "../termirust-relay-server" }
+uuid = { version = "=1.22.0", features = ["v4"] }
