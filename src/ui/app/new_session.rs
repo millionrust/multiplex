@@ -1158,7 +1158,9 @@ mod tests {
 
     #[cfg(unix)]
     #[gpui::test]
-    fn reviewed_launch_sends_literal_input_and_stop_keeps_the_tab(cx: &mut TestAppContext) {
+    fn cross_entry_reviewed_launch_creates_one_session_and_sends_literal_input(
+        cx: &mut TestAppContext,
+    ) {
         use std::os::unix::fs::PermissionsExt as _;
 
         let _isolation = TestIsolation::acquire();
@@ -1251,6 +1253,7 @@ mod tests {
         app.read_with(cx, |app, _| {
             assert!(app.new_session.is_none());
             assert!(!injection_marker.exists());
+            assert_eq!(app.saved.app_attached_sessions.len(), 1);
             assert_eq!(
                 app.saved
                     .app_attached_sessions

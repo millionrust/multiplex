@@ -2112,7 +2112,7 @@ impl TermiRustApp {
                                                 .icon(IconName::SquareTerminal)
                                                 .label(localization::common_open())
                                                 .on_click(cx.listener(move |this, _, window, cx| {
-                                                    this.reattach_saved_session(id, window, cx);
+                                                    this.open_session_from_entry(id, window, cx);
                                                 })),
                                         )
                                     },

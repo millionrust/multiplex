@@ -712,9 +712,11 @@ impl TermiRustApp {
             },
         };
         match self.activity_center.resolve(link, state) {
-            Ok(session_id) => self.reattach_saved_session(session_id, window, cx),
+            Ok(session_id) => {
+                self.open_session_from_entry(session_id, window, cx);
+            }
             Err(_) => {
-                self.activate_library_section(NavSection::Projects, window, cx);
+                self.activate_library_section(NavSection::Sessions, window, cx);
                 self.error_message = localization::activity_center_link_stale();
                 cx.notify();
             }

@@ -5881,12 +5881,39 @@ impl TermiRustApp {
         Some(pane_id)
     }
 
+    pub(super) fn open_session_from_entry(
+        &mut self,
+        session_id: HostedSessionId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(archived) = self
+            .session_library
+            .session(session_id)
+            .map(|session| session.archived_at.is_some())
+        else {
+            self.error_message = localization::session_library_store_unavailable();
+            cx.notify();
+            return false;
+        };
+        if archived {
+            self.activate_library_section(NavSection::Sessions, window, cx);
+            self.session_library.view = SessionLibraryView::Archive;
+            self.session_library.filter = SessionLibraryFilter::All;
+            self.session_sidebar.selected_session = Some(session_id);
+            self.project_list_focus.focus(window);
+            cx.notify();
+            return true;
+        }
+        self.reattach_saved_session(session_id, window, cx)
+    }
+
     pub(super) fn reattach_saved_session(
         &mut self,
         session_id: HostedSessionId,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
+    ) -> bool {
         if let Some((pane_id, closed)) = self.panes.iter().find_map(|pane| {
             pane.app_attached.as_ref().and_then(|hosted| {
                 (hosted.hosted_session_id == session_id).then_some((pane.id, pane.closed))
@@ -5894,7 +5921,7 @@ impl TermiRustApp {
         }) {
             if closed {
                 self.retry_durable_pane(pane_id, window, cx);
-                return;
+                return true;
             }
             if let Some(workspace_id) = self.pane_workspace_id(pane_id) {
                 self.active_workspace_id = Some(workspace_id);
@@ -5906,7 +5933,7 @@ impl TermiRustApp {
                 }
                 cx.notify();
             }
-            return;
+            return true;
         }
         let Some(saved_session) = self
             .saved
@@ -5915,14 +5942,16 @@ impl TermiRustApp {
             .find(|session| session.id == session_id)
             .cloned()
         else {
-            return;
+            self.error_message = localization::session_library_store_unavailable();
+            cx.notify();
+            return false;
         };
         if saved_session.route != termirust_domain::SessionLaunchRoute::DurableHost {
             self.error_message =
                 "Legacy app-attached sessions cannot be reopened after their process exits."
                     .to_string();
             cx.notify();
-            return;
+            return false;
         }
         let mut request = ConnectRequest::local_shell_with_config(
             0,
@@ -5937,13 +5966,14 @@ impl TermiRustApp {
         else {
             self.error_message = "This durable session has no valid Host metadata.".to_string();
             cx.notify();
-            return;
+            return false;
         };
         self.open_spawned_pane_workspace(&request, pane_id);
         self.status_message = "Attaching to durable session...".to_string();
         self.error_message.clear();
         self.persist_runtime_state();
         cx.notify();
+        true
     }
 
     pub(super) fn retry_durable_pane(
@@ -8011,28 +8041,11 @@ impl TermiRustApp {
 
         match action {
             SearchAction::OpenSession(id) => {
-                let Some((archived, project_id)) =
-                    self.session_library.snapshot.as_ref().and_then(|snapshot| {
-                        snapshot
-                            .sessions
-                            .iter()
-                            .find(|session| session.id == id)
-                            .map(|session| (session.archived_at.is_some(), session.project_id))
-                    })
-                else {
+                if self.session_library.session(id).is_none() {
                     return self.reject_stale_global_palette_result(cx);
-                };
-                if archived {
+                }
+                if self.open_session_from_entry(id, window, cx) {
                     self.close_command_palette(window, cx);
-                    self.activate_library_section(NavSection::Projects, window, cx);
-                    self.session_library.view = SessionLibraryView::Archive;
-                    self.session_library.filter = SessionLibraryFilter::All;
-                    self.session_sidebar.selected_session = Some(id);
-                    self.project_library.selected_id = Some(project_id);
-                    self.project_list_focus.focus(window);
-                } else {
-                    self.close_command_palette(window, cx);
-                    self.reattach_saved_session(id, window, cx);
                 }
                 true
             }
@@ -8128,7 +8141,7 @@ impl TermiRustApp {
             }
             SearchAction::ShowArchive => {
                 self.close_command_palette(window, cx);
-                self.activate_library_section(NavSection::Projects, window, cx);
+                self.activate_library_section(NavSection::Sessions, window, cx);
                 self.session_library.view = SessionLibraryView::Archive;
                 self.session_library.filter = SessionLibraryFilter::All;
                 self.session_sidebar.selected_session = None;
@@ -11344,8 +11357,8 @@ mod tests {
     use super::{
         AutocompleteSource, ConnectDialogMode, ConnectProtocol, DropZone, HostsSort, HostsViewMode,
         KeychainTab, MAX_SPLIT_PANES, NavSection, OutputSuggestionContext, PathSuggestionContext,
-        SplitNode, TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone, WorkspaceViewMode,
-        apply_group_defaults_to_draft, collect_autocomplete_candidates,
+        SessionLibraryView, SplitNode, TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone,
+        WorkspaceViewMode, apply_group_defaults_to_draft, collect_autocomplete_candidates,
         collect_command_palette_candidates, extract_snippet_prompt_names,
         shell_command_requires_continuation, startup_bytes_for_request,
         substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
@@ -20921,6 +20934,191 @@ sleep 1
             let visible = app.session_library.visible_sessions_all();
             assert_eq!(visible.len(), 1);
             assert_eq!(visible[0].id, archived_id);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_cross_entry_archived_palette_open_uses_sessions_without_creating_a_record(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let session_id = termirust_domain::HostedSessionId::new();
+        let saved = SavedState {
+            app_attached_sessions: vec![crate::models::SavedAppAttachedSession {
+                id: session_id,
+                route: termirust_domain::SessionLaunchRoute::DurableHost,
+                origin: termirust_domain::SessionOrigin {
+                    project_id: termirust_domain::ProjectId::new(),
+                    preset_id: termirust_domain::PresetId::new(),
+                },
+                state: termirust_domain::HostedSessionState::Exited,
+                project_label: "Cross-entry project".to_string(),
+                preset_label: "Cross-entry preset".to_string(),
+                title: "Archived cross-entry session".to_string(),
+                title_source: termirust_domain::TitleSource::Manual,
+                activity: termirust_domain::ActivityAggregate::default(),
+                pinned: false,
+                read_through_sequence: 0,
+                unread_sequence: None,
+                archived_at: Some(9),
+                revision: termirust_domain::Revision::ZERO,
+                durable_host: Some(crate::models::SavedDurableHost::default()),
+                group_id: None,
+                position: termirust_domain::PositionKey::FIRST,
+                started_at: 1,
+                updated_at: 9,
+            }],
+            ..SavedState::default()
+        };
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.show_command_palette = true;
+                    assert!(app.activate_global_palette_action(
+                        termirust_domain::SearchAction::OpenSession(session_id),
+                        window,
+                        cx,
+                    ));
+                })
+            })
+            .expect("palette action should update");
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.nav_section, NavSection::Sessions);
+            assert_eq!(app.session_library.view, SessionLibraryView::Archive);
+            assert_eq!(app.session_sidebar.selected_session, Some(session_id));
+            assert_eq!(app.saved.app_attached_sessions.len(), 1);
+            assert_eq!(app.saved.app_attached_sessions[0].id, session_id);
+            assert!(app.panes.is_empty());
+            assert!(!app.show_command_palette);
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Projects, window, cx);
+                    app.session_library.view = SessionLibraryView::Active;
+                    app.show_command_palette = true;
+                    assert!(app.activate_global_palette_action(
+                        termirust_domain::SearchAction::ShowArchive,
+                        window,
+                        cx,
+                    ));
+                })
+            })
+            .expect("archive action should update");
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.nav_section, NavSection::Sessions);
+            assert_eq!(app.session_library.view, SessionLibraryView::Archive);
+            assert_eq!(app.session_sidebar.selected_session, None);
+            assert_eq!(app.saved.app_attached_sessions.len(), 1);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_cross_entry_active_session_open_is_identity_preserving_and_idempotent(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let host_root = tempfile::tempdir().expect("durable host fixture should be created");
+        let session_id = termirust_domain::HostedSessionId::new();
+        let saved = SavedState {
+            app_attached_sessions: vec![crate::models::SavedAppAttachedSession {
+                id: session_id,
+                route: termirust_domain::SessionLaunchRoute::DurableHost,
+                origin: termirust_domain::SessionOrigin {
+                    project_id: termirust_domain::ProjectId::new(),
+                    preset_id: termirust_domain::PresetId::new(),
+                },
+                state: termirust_domain::HostedSessionState::Offline,
+                project_label: "Cross-entry project".to_string(),
+                preset_label: "Cross-entry preset".to_string(),
+                title: "Recoverable cross-entry session".to_string(),
+                title_source: termirust_domain::TitleSource::Manual,
+                activity: termirust_domain::ActivityAggregate::default(),
+                pinned: false,
+                read_through_sequence: 0,
+                unread_sequence: None,
+                archived_at: None,
+                revision: termirust_domain::Revision::ZERO,
+                durable_host: Some(crate::models::SavedDurableHost {
+                    runtime_root: host_root.path().display().to_string(),
+                    session_dir: host_root.path().join("session").display().to_string(),
+                    ..crate::models::SavedDurableHost::default()
+                }),
+                group_id: None,
+                position: termirust_domain::PositionKey::FIRST,
+                started_at: 1,
+                updated_at: 9,
+            }],
+            ..SavedState::default()
+        };
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.open_session_from_entry(session_id, window, cx));
+                    assert!(app.open_session_from_entry(session_id, window, cx));
+                })
+            })
+            .expect("session opens should update");
+
+        app.read_with(cx, |app, _| {
+            let matching_panes = app
+                .panes
+                .iter()
+                .filter(|pane| {
+                    pane.app_attached
+                        .as_ref()
+                        .is_some_and(|attached| attached.hosted_session_id == session_id)
+                })
+                .count();
+            assert_eq!(matching_panes, 1);
+            assert_eq!(app.saved.app_attached_sessions.len(), 1);
+            assert_eq!(app.saved.app_attached_sessions[0].id, session_id);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_cross_entry_connection_stages_one_profile_without_a_fake_session(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let profile_id = "cross-entry-connection";
+        let saved = SavedState {
+            profiles: vec![HostProfile {
+                id: profile_id.to_string(),
+                label: "Cross-entry connection".to_string(),
+                host: "connection.example".to_string(),
+                port: 22,
+                username: "operator".to_string(),
+                source: ProfileSource::User,
+                ..HostProfile::default()
+            }],
+            ..SavedState::default()
+        };
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_connect_dialog_tab(profile_id, window, cx);
+                })
+            })
+            .expect("connection entry should update");
+
+        app.read_with(cx, |app, _| {
+            assert_eq!(app.workspaces.len(), 1);
+            let pending = app.workspaces[0]
+                .pending_connect
+                .as_ref()
+                .expect("saved profile should be staged for review");
+            assert_eq!(pending.id, profile_id);
+            assert!(app.workspaces[0].pane_ids.is_empty());
+            assert!(app.saved.app_attached_sessions.is_empty());
         });
     }
 

@@ -834,7 +834,7 @@ mod resume_tests {
     }
 
     #[test]
-    fn exact_exited_codex_contract_is_visible_and_can_discover_its_handle() {
+    fn session_resume_exact_exited_codex_contract_is_visible_and_can_discover_its_handle() {
         let saved = saved_session(
             HostedSessionState::Exited,
             "codex",
@@ -851,7 +851,7 @@ mod resume_tests {
     }
 
     #[test]
-    fn live_observed_and_unsupported_occurrences_are_visible_with_exact_reasons() {
+    fn session_resume_live_observed_and_unsupported_have_exact_reasons() {
         let live = saved_session(
             HostedSessionState::Live,
             "codex",
@@ -899,7 +899,7 @@ mod resume_tests {
     }
 
     #[test]
-    fn unrelated_runtime_does_not_advertise_resume() {
+    fn session_resume_unrelated_runtime_does_not_advertise_resume() {
         let saved = saved_session(
             HostedSessionState::Exited,
             "claude",
