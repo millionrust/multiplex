@@ -675,6 +675,13 @@ mod tests {
         ] {
             assert!(manifest.contains(scenario), "missing scenario {scenario}");
         }
-        assert!(!manifest.contains("release_enabled\": true"));
+        let manifest: serde_json::Value = serde_json::from_str(&manifest).unwrap();
+        let transcript_contracts = manifest["transcript_contracts"].as_array().unwrap();
+        assert!(!transcript_contracts.is_empty());
+        assert!(
+            transcript_contracts
+                .iter()
+                .all(|contract| contract["release_enabled"].as_bool() == Some(false))
+        );
     }
 }
