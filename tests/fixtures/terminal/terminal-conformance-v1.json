@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "split_utf8_and_cursor_motion",
+      "columns": 12,
+      "rows": 3,
+      "scrollback": 4,
+      "chunks": [[65, 195], [169, 66, 13, 90], [27, 91, 50, 67], [88]],
+      "expected": {
+        "lines": ["ZéBX", "", ""],
+        "cursor_row": 0,
+        "cursor_column": 4,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "alternate_screen": false,
+        "bracketed_paste": false,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 0
+      }
+    },
+    {
+      "name": "inert_osc_and_scrollback",
+      "columns": 12,
+      "rows": 2,
+      "scrollback": 3,
+      "chunks": [
+        [111, 110, 101, 13, 10, 116, 119, 111, 13, 10],
+        [27, 93, 53, 50, 59, 99, 59, 115, 101, 99, 114, 101, 116],
+        [7, 116, 104, 114, 101, 101, 13, 10, 102, 111, 117, 114]
+      ],
+      "expected": {
+        "lines": ["one", "two", "three", "four"],
+        "cursor_row": 1,
+        "cursor_column": 4,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "alternate_screen": false,
+        "bracketed_paste": false,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 2
+      }
+    },
+    {
+      "name": "save_erase_restore_cursor",
+      "columns": 10,
+      "rows": 2,
+      "scrollback": 2,
+      "chunks": [
+        [97, 98, 99, 100, 101, 102],
+        [27, 91, 51, 68, 27, 91, 115, 27, 91, 50, 75, 27, 91, 117, 88]
+      ],
+      "expected": {
+        "lines": ["   X", ""],
+        "cursor_row": 0,
+        "cursor_column": 4,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "alternate_screen": false,
+        "bracketed_paste": false,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 0
+      }
+    },
+    {
+      "name": "private_modes_inside_alternate_screen",
+      "columns": 12,
+      "rows": 3,
+      "scrollback": 4,
+      "chunks": [
+        [27, 91, 63, 49, 104, 27, 91, 63, 50, 53, 108],
+        [27, 91, 63, 50, 48, 48, 52, 104, 27, 91, 63, 49, 48, 48, 50, 104],
+        [27, 91, 63, 49, 48, 48, 54, 104, 109, 97, 105, 110],
+        [27, 91, 63, 49, 48, 52, 57, 104, 97, 108, 116]
+      ],
+      "expected": {
+        "lines": ["alt", "", ""],
+        "cursor_row": 0,
+        "cursor_column": 3,
+        "cursor_visible": false,
+        "application_cursor": true,
+        "alternate_screen": true,
+        "bracketed_paste": true,
+        "mouse_mode": "button_motion",
+        "mouse_encoding": "sgr",
+        "scrollback_rows": 0
+      }
+    },
+    {
+      "name": "alternate_screen_restores_primary_and_modes_reset",
+      "columns": 12,
+      "rows": 3,
+      "scrollback": 4,
+      "chunks": [
+        [109, 97, 105, 110, 27, 91, 63, 49, 104, 27, 91, 63, 50, 53, 108],
+        [27, 91, 63, 50, 48, 48, 52, 104, 27, 91, 63, 49, 48, 48, 51, 104],
+        [27, 91, 63, 49, 48, 48, 53, 104, 27, 91, 63, 49, 48, 52, 57, 104, 97, 108, 116],
+        [27, 91, 63, 49, 48, 52, 57, 108, 27, 91, 63, 49, 108, 27, 91, 63, 50, 53, 104],
+        [27, 91, 63, 50, 48, 48, 52, 108, 27, 91, 63, 49, 48, 48, 51, 108, 27, 91, 63, 49, 48, 48, 53, 108]
+      ],
+      "expected": {
+        "lines": ["main", "", ""],
+        "cursor_row": 0,
+        "cursor_column": 4,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "alternate_screen": false,
+        "bracketed_paste": false,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 0
+      }
+    },
+    {
+      "name": "absolute_cursor_and_erase_to_end",
+      "columns": 10,
+      "rows": 2,
+      "scrollback": 2,
+      "chunks": [
+        [111, 110, 101, 13, 10, 115, 101, 99, 111, 110, 100],
+        [27, 91, 50, 59, 51, 72, 27, 91, 75, 88]
+      ],
+      "expected": {
+        "lines": ["one", "seX"],
+        "cursor_row": 1,
+        "cursor_column": 3,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "alternate_screen": false,
+        "bracketed_paste": false,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 0
+      }
+    }
+  ]
+}

@@ -103,6 +103,16 @@ impl TerminalState {
         self.parser.screen().bracketed_paste()
     }
 
+    #[cfg(test)]
+    pub fn cursor_position(&self) -> (u16, u16) {
+        self.parser.screen().cursor_position()
+    }
+
+    #[cfg(test)]
+    pub fn cursor_visible(&self) -> bool {
+        !self.parser.screen().hide_cursor()
+    }
+
     pub fn mouse_protocol_mode(&self) -> MouseProtocolMode {
         self.parser.screen().mouse_protocol_mode()
     }
@@ -331,4 +341,191 @@ fn hex_color(hex: u32) -> Hsla {
 
 fn rgb_color(r: u8, g: u8, b: u8) -> Hsla {
     hex_color(((r as u32) << 16) | ((g as u32) << 8) | (b as u32))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde::Deserialize;
+
+    use super::*;
+
+    #[derive(Debug, Deserialize)]
+    struct TerminalConformanceFixture {
+        schema_version: u32,
+        cases: Vec<TerminalConformanceCase>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct TerminalConformanceCase {
+        name: String,
+        columns: u16,
+        rows: u16,
+        scrollback: usize,
+        chunks: Vec<Vec<u8>>,
+        expected: TerminalConformanceExpected,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct TerminalConformanceExpected {
+        lines: Vec<String>,
+        cursor_row: u16,
+        cursor_column: u16,
+        cursor_visible: bool,
+        application_cursor: bool,
+        alternate_screen: bool,
+        bracketed_paste: bool,
+        mouse_mode: String,
+        mouse_encoding: String,
+        scrollback_rows: usize,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct TerminalSignature {
+        lines: Vec<String>,
+        cursor: (u16, u16),
+        cursor_visible: bool,
+        application_cursor: bool,
+        alternate_screen: bool,
+        bracketed_paste: bool,
+        mouse_mode: String,
+        mouse_encoding: String,
+        scrollback_rows: usize,
+    }
+
+    #[test]
+    fn terminal_conformance_v1_matches_canonical_fixture() {
+        let fixture: TerminalConformanceFixture = serde_json::from_str(include_str!(
+            "../tests/fixtures/terminal/terminal-conformance-v1.json"
+        ))
+        .expect("terminal conformance fixture should decode");
+        assert_eq!(fixture.schema_version, 1);
+
+        for case in fixture.cases {
+            let mut terminal = TerminalState::new(
+                TerminalSize::new(case.columns, case.rows, 0, 0),
+                case.scrollback,
+            );
+            for chunk in &case.chunks {
+                terminal.process_bytes(chunk);
+            }
+
+            let lines = terminal
+                .all_rows_text()
+                .into_iter()
+                .map(|line| line.trim_end().to_string())
+                .collect::<Vec<_>>();
+            assert_eq!(lines, case.expected.lines, "{} lines", case.name);
+            assert_eq!(
+                terminal.cursor_position(),
+                (case.expected.cursor_row, case.expected.cursor_column),
+                "{} cursor",
+                case.name
+            );
+            assert_eq!(
+                terminal.cursor_visible(),
+                case.expected.cursor_visible,
+                "{} cursor visibility",
+                case.name
+            );
+            assert_eq!(
+                terminal.application_cursor(),
+                case.expected.application_cursor,
+                "{} application cursor",
+                case.name
+            );
+            assert_eq!(
+                terminal.alternate_screen(),
+                case.expected.alternate_screen,
+                "{} alternate screen",
+                case.name
+            );
+            assert_eq!(
+                terminal.bracketed_paste(),
+                case.expected.bracketed_paste,
+                "{} bracketed paste",
+                case.name
+            );
+            assert_eq!(
+                mouse_mode_name(terminal.mouse_protocol_mode()),
+                case.expected.mouse_mode,
+                "{} mouse mode",
+                case.name
+            );
+            assert_eq!(
+                mouse_encoding_name(terminal.mouse_protocol_encoding()),
+                case.expected.mouse_encoding,
+                "{} mouse encoding",
+                case.name
+            );
+            assert_eq!(
+                terminal.max_scrollback(),
+                case.expected.scrollback_rows,
+                "{} scrollback",
+                case.name
+            );
+        }
+    }
+
+    #[test]
+    fn terminal_conformance_v1_is_chunk_boundary_invariant() {
+        let fixture: TerminalConformanceFixture = serde_json::from_str(include_str!(
+            "../tests/fixtures/terminal/terminal-conformance-v1.json"
+        ))
+        .expect("terminal conformance fixture should decode");
+
+        for case in fixture.cases {
+            let bytes = case.chunks.concat();
+            let expected = terminal_signature(&case, [&bytes[..]]);
+            for split in 0..=bytes.len() {
+                let actual = terminal_signature(&case, [&bytes[..split], &bytes[split..]]);
+                assert_eq!(actual, expected, "{} split at {split}", case.name);
+            }
+        }
+    }
+
+    fn terminal_signature<'a>(
+        case: &TerminalConformanceCase,
+        chunks: impl IntoIterator<Item = &'a [u8]>,
+    ) -> TerminalSignature {
+        let mut terminal = TerminalState::new(
+            TerminalSize::new(case.columns, case.rows, 0, 0),
+            case.scrollback,
+        );
+        for chunk in chunks {
+            terminal.process_bytes(chunk);
+        }
+        TerminalSignature {
+            lines: terminal
+                .all_rows_text()
+                .into_iter()
+                .map(|line| line.trim_end().to_string())
+                .collect(),
+            cursor: terminal.cursor_position(),
+            cursor_visible: terminal.cursor_visible(),
+            application_cursor: terminal.application_cursor(),
+            alternate_screen: terminal.alternate_screen(),
+            bracketed_paste: terminal.bracketed_paste(),
+            mouse_mode: mouse_mode_name(terminal.mouse_protocol_mode()).to_string(),
+            mouse_encoding: mouse_encoding_name(terminal.mouse_protocol_encoding()).to_string(),
+            scrollback_rows: terminal.max_scrollback(),
+        }
+    }
+
+    fn mouse_mode_name(mode: MouseProtocolMode) -> &'static str {
+        match mode {
+            MouseProtocolMode::None => "none",
+            MouseProtocolMode::Press => "press",
+            MouseProtocolMode::PressRelease => "press_release",
+            MouseProtocolMode::ButtonMotion => "button_motion",
+            MouseProtocolMode::AnyMotion => "any_motion",
+        }
+    }
+
+    fn mouse_encoding_name(encoding: MouseProtocolEncoding) -> &'static str {
+        match encoding {
+            MouseProtocolEncoding::Default => "default",
+            MouseProtocolEncoding::Utf8 => "utf8",
+            MouseProtocolEncoding::Sgr => "sgr",
+        }
+    }
 }
