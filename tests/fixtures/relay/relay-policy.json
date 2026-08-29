@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "fixture_only": true,
+  "local_only": true,
+  "route_id_bytes": 32,
+  "admission_algorithm": "Ed25519 challenge signature",
+  "envelope_version": 1,
+  "max_routes": 1024,
+  "max_ciphertext_bytes": 1048576,
+  "max_queue_bytes_per_direction": 2097152,
+  "max_queue_frames_per_direction": 32,
+  "max_total_queue_bytes": 67108864,
+  "max_pending_challenges": 4096,
+  "challenge_lifetime_ticks": 30,
+  "benchmark_pairs": [1, 10, 100, 1000],
+  "benchmark_runs": 10,
+  "duty_cycles": ["idle", "interactive", "burst"],
+  "persistent_ciphertext_bytes": 0,
+  "offline_queue": false,
+  "public_listener": false
+}

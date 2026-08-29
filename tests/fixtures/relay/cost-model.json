@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "currency": "USD",
+  "accessed": "2026-08-29",
+  "termirust_license_usd": 0,
+  "sources": [
+    {
+      "label": "DigitalOcean Basic Droplet pricing",
+      "url": "https://www.digitalocean.com/pricing/droplets",
+      "accessed": "2026-08-29",
+      "evidence": "1 GiB, 1 vCPU, 25 GiB SSD, 1000 GiB transfer: USD 6.00/month"
+    },
+    {
+      "label": "AWS API Gateway WebSocket pricing",
+      "url": "https://aws.amazon.com/api-gateway/pricing/",
+      "accessed": "2026-08-29",
+      "evidence": "US East example: USD 1.00/million metered messages and USD 0.25/million connection-minutes; 128 KiB message maximum and 32 KiB metering increments"
+    }
+  ],
+  "self_host_example": {
+    "provider": "DigitalOcean",
+    "plan": "Basic 1 GiB Droplet",
+    "monthly_compute_usd": 6.0,
+    "included_transfer_gib": 1000,
+    "assumptions": "Single tenant, one region, no redundancy, taxes excluded, operator supplies domain/TLS/monitoring/backups/security response. Capacity is not proven by provider plan size; use measured RSS/CPU before selection."
+  },
+  "aws_websocket_assumptions": {
+    "region": "US East (N. Virginia pricing example)",
+    "active_hours_per_day": 12,
+    "days_per_month": 30,
+    "one_kib_frames_per_pair_per_day": 600,
+    "sixty_four_kib_frames_per_pair_per_day": 20,
+    "one_mib_frames_per_pair_per_day": 2,
+    "message_price_per_million_usd": 1.0,
+    "connection_minute_price_per_million_usd": 0.25,
+    "free_tier_applied": false,
+    "one_mib_fragment_note": "A 1 MiB relay envelope exceeds the 128 KiB API Gateway message maximum and must be split into at least eight transport messages; 32 metered 32 KiB units are modeled."
+  },
+  "aws_websocket_examples": [
+    {"pairs": 1, "connection_usd": 0.0108, "one_kib_usd": 0.018, "sixty_four_kib_usd": 0.0012, "one_mib_usd": 0.00192, "subtotal_usd": 0.03192},
+    {"pairs": 10, "connection_usd": 0.108, "one_kib_usd": 0.18, "sixty_four_kib_usd": 0.012, "one_mib_usd": 0.0192, "subtotal_usd": 0.3192},
+    {"pairs": 100, "connection_usd": 1.08, "one_kib_usd": 1.8, "sixty_four_kib_usd": 0.12, "one_mib_usd": 0.192, "subtotal_usd": 3.192},
+    {"pairs": 1000, "connection_usd": 10.8, "one_kib_usd": 18.0, "sixty_four_kib_usd": 1.2, "one_mib_usd": 1.92, "subtotal_usd": 31.92}
+  ],
+  "excluded_costs": [
+    "Managed backend compute and state coordination",
+    "Internet data transfer and regional transfer",
+    "Domain registration and certificate operations",
+    "Monitoring, log ingestion, alerting, backups, and restore drills",
+    "High availability, DDoS/WAF, abuse handling, incident response, and on-call",
+    "Taxes, support plans, currency movement, and price changes"
+  ]
+}
