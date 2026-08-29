@@ -383,6 +383,10 @@ impl TermiRustApp {
                 last_sequence: 0,
                 durable_sequence: 0,
                 runtime_recognition: None,
+                conversation_handle: None,
+                executable: Some(config.program.clone()),
+                permission_policy: resolved.permission_policy,
+                continuity_source_id: None,
             }),
             group_id: None,
             position,
@@ -415,6 +419,8 @@ impl TermiRustApp {
                 paths,
                 launch: Some(launch),
                 from_sequence: termirust_domain::OutputSequence::ZERO,
+                expected_occupant_generation: None,
+                continuity: None,
             },
             self.event_tx.clone(),
         );
@@ -553,6 +559,7 @@ impl TermiRustApp {
         {
             self.new_session = None;
         }
+        self.complete_session_resume_ready(session_id);
         self.error_message.clear();
         cx.notify();
     }
@@ -630,6 +637,14 @@ impl TermiRustApp {
             session_id,
             termirust_domain::SessionMutation::SetLifecycle(state),
         );
+        let resume_error = if cancelled {
+            termirust_domain::ResumeError::Cancelled
+        } else if message.contains("continuity") {
+            termirust_domain::ResumeError::ContinuityConflict
+        } else {
+            termirust_domain::ResumeError::ProviderUnavailable
+        };
+        self.fail_active_session_resume(session_id, resume_error);
         if let Some(sheet) = self.new_session.as_mut()
             && sheet.hosted_session_id == Some(session_id)
         {

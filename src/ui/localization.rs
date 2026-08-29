@@ -1527,6 +1527,74 @@ static_message!(
     session_library_resume_unavailable,
     SessionLibraryResumeUnavailableArgs
 );
+static_message!(session_resume_title, SessionResumeTitleArgs);
+static_message!(session_resume_notice, SessionResumeNoticeArgs);
+static_message!(session_resume_source_field, SessionResumeSourceFieldArgs);
+static_message!(
+    session_resume_successor_field,
+    SessionResumeSuccessorFieldArgs
+);
+static_message!(
+    session_resume_provider_field,
+    SessionResumeProviderFieldArgs
+);
+pub fn session_resume_provider_value(version: impl Into<String>) -> String {
+    text(&SessionResumeProviderValueArgs::new(KeyName::new(version)))
+}
+static_message!(
+    session_resume_conversation_field,
+    SessionResumeConversationFieldArgs
+);
+static_message!(
+    session_resume_confirm_action,
+    SessionResumeConfirmActionArgs
+);
+static_message!(
+    session_resume_phase_validating,
+    SessionResumePhaseValidatingArgs
+);
+static_message!(session_resume_phase_review, SessionResumePhaseReviewArgs);
+static_message!(
+    session_resume_phase_starting,
+    SessionResumePhaseStartingArgs
+);
+static_message!(session_resume_phase_failed, SessionResumePhaseFailedArgs);
+static_message!(session_resume_cancelled, SessionResumeCancelledArgs);
+static_message!(session_resume_ready, SessionResumeReadyArgs);
+pub fn session_resume_workspace_title(title: impl Into<String>) -> String {
+    text(&SessionResumeWorkspaceTitleArgs::new(UserData::new(title)))
+}
+static_message!(
+    session_resume_error_still_running,
+    SessionResumeErrorStillRunningArgs
+);
+static_message!(
+    session_resume_error_ownership,
+    SessionResumeErrorOwnershipArgs
+);
+static_message!(session_resume_error_stale, SessionResumeErrorStaleArgs);
+static_message!(
+    session_resume_error_unsupported,
+    SessionResumeErrorUnsupportedArgs
+);
+static_message!(session_resume_error_missing, SessionResumeErrorMissingArgs);
+static_message!(
+    session_resume_error_malformed,
+    SessionResumeErrorMalformedArgs
+);
+static_message!(
+    session_resume_error_permission,
+    SessionResumeErrorPermissionArgs
+);
+static_message!(
+    session_resume_error_provider,
+    SessionResumeErrorProviderArgs
+);
+static_message!(session_resume_error_limit, SessionResumeErrorLimitArgs);
+static_message!(
+    session_resume_error_conflict,
+    SessionResumeErrorConflictArgs
+);
 static_message!(
     session_library_remove_action,
     SessionLibraryRemoveActionArgs

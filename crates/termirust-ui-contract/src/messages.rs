@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 const SUPPORTED_SCHEMA_VERSION: u16 = 1;
 const MAX_SCHEMA_BYTES: usize = 256 * 1024;
 const MAX_CATALOG_BYTES: usize = 512 * 1024;
-const MAX_MESSAGES: usize = 700;
+const MAX_MESSAGES: usize = 750;
 const MAX_ARGS_PER_MESSAGE: usize = 16;
 const MAX_MESSAGE_CHARS: usize = 8 * 1024;
 const FSI: char = '\u{2068}';

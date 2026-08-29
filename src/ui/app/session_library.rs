@@ -693,3 +693,161 @@ mod activity_tests {
         assert_eq!(session.unread_sequence, Some(OutputSequence::new(6)));
     }
 }
+
+#[cfg(test)]
+mod resume_tests {
+    use super::super::session_resume::session_resume_projection;
+    use crate::models::{SavedAppAttachedSession, SavedDurableHost};
+    use termirust_domain::{
+        ActivityAggregate, ExecutableFingerprint, HostInstanceId, HostedSessionId,
+        HostedSessionState, OccupantGeneration, OccupantOwnership, PositionKey, PresetId,
+        ProcessToken, ProjectId, RecognitionConfidence, ResumeError, Revision, RuntimeCapability,
+        RuntimeCapabilitySet, RuntimeId, RuntimeOccupant, RuntimeRecognition, SessionLaunchRoute,
+        SessionOrigin, TitleSource,
+    };
+
+    fn saved_session(
+        lifecycle: HostedSessionState,
+        runtime: &str,
+        version: &str,
+        ownership: OccupantOwnership,
+    ) -> SavedAppAttachedSession {
+        SavedAppAttachedSession {
+            id: HostedSessionId::new(),
+            route: SessionLaunchRoute::DurableHost,
+            origin: SessionOrigin {
+                project_id: ProjectId::new(),
+                preset_id: PresetId::new(),
+            },
+            state: lifecycle,
+            project_label: "Project".to_string(),
+            preset_label: "Agent".to_string(),
+            title: "Resume fixture".to_string(),
+            title_source: TitleSource::Default,
+            activity: ActivityAggregate::default(),
+            pinned: false,
+            read_through_sequence: 0,
+            unread_sequence: None,
+            archived_at: None,
+            revision: Revision::new(4),
+            durable_host: Some(SavedDurableHost {
+                runtime_recognition: Some(RuntimeRecognition {
+                    occupant: Some(RuntimeOccupant {
+                        runtime_id: RuntimeId::new(runtime).unwrap(),
+                        descriptor_version: 1,
+                        safe_version: Some(version.to_string()),
+                        executable_fingerprint: Some(ExecutableFingerprint {
+                            file_identity: 1,
+                            size: 1,
+                            modified_nanos: 1,
+                            bounded_content_hash: 1,
+                        }),
+                        generation: OccupantGeneration::new(3),
+                        ownership,
+                        capabilities: RuntimeCapabilitySet::new([
+                            RuntimeCapability::InteractivePty,
+                            RuntimeCapability::Resume,
+                        ]),
+                        stale: false,
+                    }),
+                    confidence: RecognitionConfidence::Verified,
+                    observed_at_nanos: 1,
+                }),
+                ..SavedDurableHost::default()
+            }),
+            group_id: None,
+            position: PositionKey::FIRST,
+            started_at: 1,
+            updated_at: 1,
+        }
+    }
+
+    fn managed_ownership() -> OccupantOwnership {
+        let host = HostInstanceId::new();
+        OccupantOwnership::Managed {
+            host_instance: host,
+            child_token: ProcessToken::new(host, 7, 1),
+        }
+    }
+
+    #[test]
+    fn exact_exited_codex_contract_is_visible_and_can_discover_its_handle() {
+        let saved = saved_session(
+            HostedSessionState::Exited,
+            "codex",
+            "0.150.1",
+            managed_ownership(),
+        );
+        let metadata = saved.to_hosted_session().unwrap();
+
+        let projection = session_resume_projection(&saved, &metadata);
+
+        assert!(projection.visible);
+        assert!(projection.enabled);
+        assert_eq!(projection.reason, None);
+    }
+
+    #[test]
+    fn live_observed_and_unsupported_occurrences_are_visible_with_exact_reasons() {
+        let live = saved_session(
+            HostedSessionState::Live,
+            "codex",
+            "0.150.1",
+            managed_ownership(),
+        );
+        let observed = saved_session(
+            HostedSessionState::Exited,
+            "codex",
+            "0.150.1",
+            OccupantOwnership::Observed {
+                executable: ExecutableFingerprint {
+                    file_identity: 1,
+                    size: 1,
+                    modified_nanos: 1,
+                    bounded_content_hash: 1,
+                },
+            },
+        );
+        let unsupported = saved_session(
+            HostedSessionState::Exited,
+            "codex",
+            "0.151.0",
+            managed_ownership(),
+        );
+
+        let live_projection = session_resume_projection(&live, &live.to_hosted_session().unwrap());
+        let observed_projection =
+            session_resume_projection(&observed, &observed.to_hosted_session().unwrap());
+        let unsupported_projection =
+            session_resume_projection(&unsupported, &unsupported.to_hosted_session().unwrap());
+
+        assert_eq!(live_projection.reason, Some(ResumeError::StillRunning));
+        assert_eq!(
+            observed_projection.reason,
+            Some(ResumeError::OwnershipUnproven)
+        );
+        assert_eq!(
+            unsupported_projection.reason,
+            Some(ResumeError::UnsupportedVersion)
+        );
+        assert!(!live_projection.enabled);
+        assert!(!observed_projection.enabled);
+        assert!(!unsupported_projection.enabled);
+    }
+
+    #[test]
+    fn unrelated_runtime_does_not_advertise_resume() {
+        let saved = saved_session(
+            HostedSessionState::Exited,
+            "claude",
+            "1.0.0",
+            managed_ownership(),
+        );
+
+        let projection = session_resume_projection(&saved, &saved.to_hosted_session().unwrap());
+
+        assert!(!projection.visible);
+        assert!(!projection.enabled);
+        assert_eq!(projection.reason, None);
+    }
+}

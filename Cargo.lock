@@ -7968,6 +7968,7 @@ dependencies = [
  "argon2",
  "base64",
  "block",
+ "chrono",
  "dirs 6.0.0",
  "gpui",
  "gpui-component",

@@ -20,6 +20,7 @@ mod projects;
 mod remote_devices;
 mod runtimes;
 mod session_library;
+mod session_resume;
 mod session_sidebar;
 mod sftp;
 mod transcript_export;
@@ -51,6 +52,7 @@ use project::CanvasProjectPanelState;
 use projects::ProjectLibraryState;
 use remote_devices::RemoteDevicesState;
 use session_library::{SessionLibraryFilter, SessionLibraryState, SessionLibraryView};
+use session_resume::SessionResumeState;
 use worktree_launch::WorktreeLaunchUiState;
 
 use std::collections::{HashMap, HashSet};
@@ -973,6 +975,7 @@ pub struct TermiRustApp {
     preset_list_focus: FocusHandle,
     new_session: Option<NewSessionState>,
     new_session_initial_input: Entity<InputState>,
+    session_resume: Option<SessionResumeState>,
     worktree_launch: Option<WorktreeLaunchUiState>,
     worktree_base_input: Entity<InputState>,
     worktree_branch_input: Entity<InputState>,
@@ -1256,6 +1259,7 @@ impl TermiRustApp {
             preset_list_focus,
             new_session: None,
             new_session_initial_input,
+            session_resume: None,
             worktree_launch: None,
             worktree_base_input,
             worktree_branch_input,
@@ -5822,6 +5826,8 @@ impl TermiRustApp {
                 },
                 launch: None,
                 from_sequence: termirust_domain::OutputSequence::ZERO,
+                expected_occupant_generation: None,
+                continuity: None,
             },
             self.event_tx.clone(),
         );
@@ -5944,6 +5950,8 @@ impl TermiRustApp {
                 },
                 launch: None,
                 from_sequence: termirust_domain::OutputSequence::ZERO,
+                expected_occupant_generation: None,
+                continuity: None,
             },
             self.event_tx.clone(),
         );
@@ -10754,6 +10762,9 @@ impl Render for TermiRustApp {
             .when(self.new_session.is_some(), |this| {
                 this.child(self.render_new_session_sheet(cx))
             })
+            .when(self.session_resume.is_some(), |this| {
+                this.child(self.render_session_resume_sheet(cx))
+            })
             .when(self.worktree_launch.is_some(), |this| {
                 this.child(self.render_worktree_launch_sheet(cx))
             })
@@ -10810,6 +10821,10 @@ impl TermiRustApp {
         }
 
         if event.keystroke.key.as_str() == "escape" {
+            if self.session_resume.is_some() {
+                self.cancel_session_resume(cx);
+                return true;
+            }
             if self.worktree_launch.is_some() {
                 self.close_worktree_launch(cx);
                 return true;

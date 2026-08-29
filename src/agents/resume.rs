@@ -65,6 +65,7 @@ impl Default for CodexResumeLimits {
 
 #[derive(Deserialize)]
 struct CodexMetadataRecord {
+    timestamp: Option<String>,
     #[serde(rename = "type")]
     kind: String,
     payload: CodexMetadataPayload,
@@ -87,6 +88,43 @@ struct ScanState<'a> {
     entries: usize,
     metadata_bytes: usize,
     match_count: usize,
+}
+
+struct DiscoveryState<'a> {
+    expected_working_directory: &'a Path,
+    not_before_millis: u64,
+    limits: CodexResumeLimits,
+    cancel: &'a ResumeValidationCancellation,
+    started: Instant,
+    entries: usize,
+    metadata_bytes: usize,
+    handles: Vec<ConversationHandle>,
+}
+
+pub fn discover_codex_conversation_handle(
+    conversation_root: &Path,
+    expected_working_directory: &Path,
+    not_before_millis: u64,
+    cancel: &ResumeValidationCancellation,
+) -> Result<ConversationHandle, ResumeError> {
+    let root = canonical_regular_directory(conversation_root)?;
+    let working_directory = canonical_regular_directory(expected_working_directory)?;
+    let mut state = DiscoveryState {
+        expected_working_directory: &working_directory,
+        not_before_millis,
+        limits: CodexResumeLimits::default(),
+        cancel,
+        started: Instant::now(),
+        entries: 0,
+        metadata_bytes: 0,
+        handles: Vec::new(),
+    };
+    discover_directory(&root, 0, &mut state)?;
+    match state.handles.len() {
+        0 => Err(ResumeError::ConversationMissing),
+        1 => Ok(state.handles.remove(0)),
+        _ => Err(ResumeError::ConversationMalformed),
+    }
 }
 
 pub fn build_codex_resume_plan(
@@ -233,6 +271,15 @@ fn inspect_metadata(path: &Path, state: &mut ScanState<'_>) -> Result<(), Resume
     if record.kind != "session_meta" {
         return Ok(());
     }
+    if matches!(
+        (
+            record.payload.id.as_deref(),
+            record.payload.session_id.as_deref(),
+        ),
+        (Some(id), Some(session_id)) if id != session_id
+    ) {
+        return Err(ResumeError::ConversationMalformed);
+    }
     let handle = state.handle.expose_to_provider();
     let matches = record.payload.id.as_deref() == Some(handle)
         || record.payload.session_id.as_deref() == Some(handle);
@@ -247,6 +294,91 @@ fn inspect_metadata(path: &Path, state: &mut ScanState<'_>) -> Result<(), Resume
         return Err(ResumeError::ConversationMalformed);
     }
     state.match_count = state.match_count.saturating_add(1);
+    Ok(())
+}
+
+fn discover_directory(
+    path: &Path,
+    depth: usize,
+    state: &mut DiscoveryState<'_>,
+) -> Result<(), ResumeError> {
+    check_discovery_budget(state)?;
+    if depth > state.limits.max_depth {
+        return Err(ResumeError::ResourceLimit);
+    }
+    for entry in fs::read_dir(path).map_err(map_io)? {
+        check_discovery_budget(state)?;
+        state.entries = state.entries.saturating_add(1);
+        if state.entries > state.limits.max_entries {
+            return Err(ResumeError::ResourceLimit);
+        }
+        let entry = entry.map_err(map_io)?;
+        let metadata = fs::symlink_metadata(entry.path()).map_err(map_io)?;
+        if metadata.file_type().is_symlink() {
+            return Err(ResumeError::ConversationMalformed);
+        }
+        if metadata.is_dir() {
+            discover_directory(&entry.path(), depth.saturating_add(1), state)?;
+        } else if metadata.is_file()
+            && entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "jsonl")
+        {
+            discover_metadata(&entry.path(), state)?;
+        }
+    }
+    Ok(())
+}
+
+fn discover_metadata(path: &Path, state: &mut DiscoveryState<'_>) -> Result<(), ResumeError> {
+    let file = File::open(path).map_err(map_io)?;
+    let mut line = Vec::new();
+    BufReader::new(file)
+        .take((MAX_METADATA_LINE_BYTES + 1) as u64)
+        .read_until(b'\n', &mut line)
+        .map_err(map_io)?;
+    if line.len() > MAX_METADATA_LINE_BYTES {
+        return Err(ResumeError::ResourceLimit);
+    }
+    state.metadata_bytes = state.metadata_bytes.saturating_add(line.len());
+    if state.metadata_bytes > state.limits.max_metadata_bytes {
+        return Err(ResumeError::ResourceLimit);
+    }
+    let Ok(record) = serde_json::from_slice::<CodexMetadataRecord>(&line) else {
+        return Ok(());
+    };
+    if record.kind != "session_meta" || record.payload.cli_version != CODEX_VERSION {
+        return Ok(());
+    }
+    let cwd = canonical_regular_directory(&record.payload.cwd)?;
+    if cwd != state.expected_working_directory {
+        return Ok(());
+    }
+    let timestamp = record
+        .timestamp
+        .as_deref()
+        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        .and_then(|value| u64::try_from(value.timestamp_millis()).ok())
+        .ok_or(ResumeError::ConversationMalformed)?;
+    if timestamp < state.not_before_millis {
+        return Ok(());
+    }
+    let raw = match (
+        record.payload.id.as_deref(),
+        record.payload.session_id.as_deref(),
+    ) {
+        (Some(id), Some(session_id)) if id != session_id => {
+            return Err(ResumeError::ConversationMalformed);
+        }
+        (Some(value), _) | (_, Some(value)) => value,
+        (None, None) => return Err(ResumeError::ConversationMalformed),
+    };
+    let handle = ConversationHandle::codex(raw)?;
+    if state.handles.iter().any(|existing| existing == &handle) {
+        return Err(ResumeError::ConversationMalformed);
+    }
+    state.handles.push(handle);
     Ok(())
 }
 
@@ -275,6 +407,14 @@ fn canonical_regular_executable(path: &Path) -> Result<PathBuf, ResumeError> {
 }
 
 fn check_budget(state: &ScanState<'_>) -> Result<(), ResumeError> {
+    check_cancel(state.cancel)?;
+    if state.started.elapsed() > state.limits.deadline {
+        return Err(ResumeError::ResourceLimit);
+    }
+    Ok(())
+}
+
+fn check_discovery_budget(state: &DiscoveryState<'_>) -> Result<(), ResumeError> {
     check_cancel(state.cancel)?;
     if state.started.elapsed() > state.limits.deadline {
         return Err(ResumeError::ResourceLimit);
@@ -356,6 +496,69 @@ mod tests {
         });
         fs::write(&path, format!("{value}\n")).unwrap();
         path
+    }
+
+    #[test]
+    fn runtime_resume_contracts_match_the_frozen_release_manifest() {
+        let manifest: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/runtimes/contract-manifest.json"
+        ))
+        .unwrap();
+        let contracts = manifest["resume_contracts"].as_array().unwrap();
+
+        assert_eq!(contracts.len(), 1);
+        assert_eq!(contracts[0]["runtime"], "codex");
+        assert_eq!(contracts[0]["version"], CODEX_VERSION);
+        assert_eq!(contracts[0]["release_enabled"], true);
+        assert_eq!(
+            contracts[0]["route"],
+            serde_json::json!([
+                "resume",
+                "--cd",
+                "<canonical-project>",
+                "[--sandbox <effective-policy>]",
+                "<conversation-uuid>"
+            ])
+        );
+        assert_eq!(contracts[0]["conversation_root"], "$CODEX_HOME/sessions");
+    }
+
+    #[test]
+    fn discovery_requires_one_recent_exact_version_canonical_project_match() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path().join("sessions");
+        let cwd = fixture.path().join("project");
+        fs::create_dir_all(&cwd).unwrap();
+        let handle = "019cf76d-0493-77d1-8572-3fb4ac801ac8";
+        write_metadata(&root, &cwd, handle, CODEX_VERSION);
+        assert_eq!(
+            discover_codex_conversation_handle(
+                &root,
+                &cwd,
+                0,
+                &ResumeValidationCancellation::new(),
+            )
+            .unwrap()
+            .expose_to_provider(),
+            handle
+        );
+
+        let duplicate = root.join("2026/08/30");
+        fs::create_dir_all(&duplicate).unwrap();
+        fs::copy(
+            root.join("2026/08/29/rollout.jsonl"),
+            duplicate.join("other.jsonl"),
+        )
+        .unwrap();
+        assert_eq!(
+            discover_codex_conversation_handle(
+                &root,
+                &cwd,
+                0,
+                &ResumeValidationCancellation::new(),
+            ),
+            Err(ResumeError::ConversationMalformed)
+        );
     }
 
     fn build(
@@ -490,6 +693,66 @@ mod tests {
                 &ResumeValidationCancellation::new(),
             ),
             Err(ResumeError::ProviderUnavailable)
+        );
+    }
+
+    #[test]
+    fn version_project_identity_and_permission_errors_are_exact() {
+        let wrong_version = tempfile::tempdir().unwrap();
+        let root = wrong_version.path().join("sessions");
+        let cwd = wrong_version.path().join("project");
+        fs::create_dir_all(&cwd).unwrap();
+        let (wrong_version_executable, fingerprint) = executable(wrong_version.path());
+        write_metadata(
+            &root,
+            &cwd,
+            "019cf76d-0493-77d1-8572-3fb4ac801ac8",
+            "0.150.0",
+        );
+        assert_eq!(
+            build_codex_resume_plan(
+                candidate(fingerprint),
+                &root,
+                ProjectId::new(),
+                &cwd,
+                PermissionPolicy::AskAsNeeded,
+                &wrong_version_executable,
+                HostedSessionId::new(),
+                &ResumeValidationCancellation::new(),
+            ),
+            Err(ResumeError::UnsupportedVersion)
+        );
+
+        let wrong_project = tempfile::tempdir().unwrap();
+        let root = wrong_project.path().join("sessions");
+        let expected_cwd = wrong_project.path().join("expected");
+        let recorded_cwd = wrong_project.path().join("recorded");
+        fs::create_dir_all(&expected_cwd).unwrap();
+        fs::create_dir_all(&recorded_cwd).unwrap();
+        let (wrong_project_executable, fingerprint) = executable(wrong_project.path());
+        write_metadata(
+            &root,
+            &recorded_cwd,
+            "019cf76d-0493-77d1-8572-3fb4ac801ac8",
+            CODEX_VERSION,
+        );
+        assert_eq!(
+            build_codex_resume_plan(
+                candidate(fingerprint),
+                &root,
+                ProjectId::new(),
+                &expected_cwd,
+                PermissionPolicy::AskAsNeeded,
+                &wrong_project_executable,
+                HostedSessionId::new(),
+                &ResumeValidationCancellation::new(),
+            ),
+            Err(ResumeError::ConversationMalformed)
+        );
+
+        assert_eq!(
+            map_io(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+            ResumeError::PermissionDenied
         );
     }
 }

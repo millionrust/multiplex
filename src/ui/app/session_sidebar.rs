@@ -22,6 +22,7 @@ use termirust_store::{RecoveryResult, SessionRemovalPlan, StoreError};
 
 use super::runtimes::runtime_inspector_projection;
 use super::session_library::{SessionLibraryFilter, SessionLibraryRecovery, SessionLibraryView};
+use super::session_resume::{resume_error_message, session_resume_projection};
 use super::transcript_export::transcript_export_projection;
 use super::{TermiRustApp, theme};
 use crate::models::{SavedAppAttachedSession, SavedSessionPlacement};
@@ -1685,6 +1686,30 @@ impl TermiRustApp {
             .then(|| runtime_inspector_projection(recognition));
         let transcript = (session.route == termirust_domain::SessionLaunchRoute::DurableHost)
             .then(|| transcript_export_projection(recognition));
+        let resume = session_resume_projection(session, metadata);
+        let continuity_source = session
+            .durable_host
+            .as_ref()
+            .and_then(|host| host.continuity_source_id)
+            .and_then(|source_id| {
+                self.saved
+                    .app_attached_sessions
+                    .iter()
+                    .find(|candidate| candidate.id == source_id)
+                    .map(|candidate| candidate.title.clone())
+            });
+        let continuity_successor = self
+            .saved
+            .app_attached_sessions
+            .iter()
+            .find(|candidate| {
+                candidate
+                    .durable_host
+                    .as_ref()
+                    .and_then(|host| host.continuity_source_id)
+                    == Some(id)
+            })
+            .map(|candidate| candidate.title.clone());
         let host_recovery_target = self
             .host_recovery_plan
             .as_ref()
@@ -1831,7 +1856,19 @@ impl TermiRustApp {
                                 .child(inspector_row(
                                     localization::session_library_position_label(),
                                     format!("{} / {}", index + 1, count),
-                                )),
+                                ))
+                                .when_some(continuity_source, |this, source| {
+                                    this.child(inspector_row(
+                                        localization::session_resume_source_field(),
+                                        source,
+                                    ))
+                                })
+                                .when_some(continuity_successor, |this, successor| {
+                                    this.child(inspector_row(
+                                        localization::session_resume_successor_field(),
+                                        successor,
+                                    ))
+                                }),
                         )
                         .when_some(runtime, |this, runtime| {
                             let confidence = if runtime.stale {
@@ -2000,6 +2037,19 @@ impl TermiRustApp {
                                             .label(localization::new_session_stop_action())
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 this.stop_session_only(id, cx);
+                                        })),
+                                    )
+                                })
+                                .when(resume.visible, |this| {
+                                    this.child(
+                                        Button::new(("session-resume", key))
+                                            .debug_selector(|| "session-resume".to_string())
+                                            .small()
+                                            .icon(IconName::Redo2)
+                                            .disabled(!resume.enabled)
+                                            .label(localization::session_library_resume_action())
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.open_session_resume(id, cx);
                                             })),
                                     )
                                 })
@@ -2033,13 +2083,6 @@ impl TermiRustApp {
                                             })),
                                     )
                                     .child(
-                                        Button::new(("session-resume", key))
-                                            .debug_selector(|| "session-resume".to_string())
-                                            .small()
-                                            .disabled(true)
-                                            .label(localization::session_library_resume_action()),
-                                    )
-                                    .child(
                                         Button::new(("session-remove", key))
                                             .debug_selector(|| "session-remove".to_string())
                                             .small()
@@ -2052,13 +2095,13 @@ impl TermiRustApp {
                                             })),
                                     )
                                 })
-                                .when(metadata.archived_at.is_some(), |this| {
+                                .when_some(resume.reason, |this, reason| {
                                     this.child(
                                         div()
                                             .w_full()
                                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                                             .text_color(theme::text_muted())
-                                            .child(localization::session_library_resume_unavailable()),
+                                            .child(resume_error_message(reason)),
                                     )
                                 }),
                         )

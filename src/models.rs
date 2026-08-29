@@ -1141,6 +1141,14 @@ pub struct SavedDurableHost {
     pub durable_sequence: u64,
     #[serde(default)]
     pub runtime_recognition: Option<termirust_domain::RuntimeRecognition>,
+    #[serde(skip)]
+    pub conversation_handle: Option<termirust_domain::ConversationHandle>,
+    #[serde(default)]
+    pub executable: Option<String>,
+    #[serde(default)]
+    pub permission_policy: termirust_domain::PermissionPolicy,
+    #[serde(default)]
+    pub continuity_source_id: Option<HostedSessionId>,
 }
 
 fn default_session_organization_position() -> PositionKey {
@@ -3637,6 +3645,15 @@ mod tests {
                 last_sequence: 41,
                 durable_sequence: 39,
                 runtime_recognition: None,
+                conversation_handle: Some(
+                    termirust_domain::ConversationHandle::codex(
+                        "019cf76d-0493-77d1-8572-3fb4ac801ac8",
+                    )
+                    .unwrap(),
+                ),
+                executable: None,
+                permission_policy: termirust_domain::PermissionPolicy::default(),
+                continuity_source_id: None,
             }),
             group_id: None,
             position: termirust_domain::PositionKey::FIRST,
@@ -3651,6 +3668,7 @@ mod tests {
             HostedSessionState::Live
         );
         let json = serde_json::to_string(&state).unwrap();
+        assert!(!json.contains("019cf76d-0493-77d1-8572-3fb4ac801ac8"));
         let restored: SavedState = serde_json::from_str(&json).unwrap();
         let host = restored.app_attached_sessions[0]
             .durable_host
@@ -3658,6 +3676,7 @@ mod tests {
             .unwrap();
         assert_eq!(host.last_sequence, 41);
         assert_eq!(host.durable_sequence, 39);
+        assert_eq!(host.conversation_handle, None);
         assert_eq!(restored.app_attached_sessions[0].id, id);
     }
 

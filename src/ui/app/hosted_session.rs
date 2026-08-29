@@ -13,12 +13,15 @@ use termirust_client::{
     ClientError, ClientErrorCode, ConnectOptions, GpuiAttachModel, HostClient,
     HostReconciliationService, LocalEndpoint, OutputDisposition,
 };
-use termirust_domain::{CommandId, HostInstanceId, HostedSessionId, OutputSequence};
+use termirust_domain::{
+    CommandId, ContinuityLink, HostInstanceId, HostedSessionId, OccupantGeneration, OutputSequence,
+    Revision,
+};
 use termirust_host_protocol::wire;
 use termirust_session_host::{LaunchDescriptor, StopDeadlines};
 use termirust_store::{
-    HostLease, HostLeaseState, JournalKind, JournalLimits, JournalStore, RecoveryResult,
-    load_snapshot, read_host_metadata,
+    ContinuityRepository, HostLease, HostLeaseState, JournalKind, JournalLimits, JournalStore,
+    RecoveryResult, load_snapshot, read_host_metadata,
 };
 use tokio::runtime::Builder;
 use tokio::sync::mpsc::{self, UnboundedReceiver};
@@ -137,6 +140,14 @@ pub(super) struct DurableSessionSpec {
     pub paths: DurableSessionPaths,
     pub launch: Option<DurableLaunch>,
     pub from_sequence: OutputSequence,
+    pub expected_occupant_generation: Option<OccupantGeneration>,
+    pub continuity: Option<DurableContinuityCommit>,
+}
+
+pub(super) struct DurableContinuityCommit {
+    pub store_root: PathBuf,
+    pub expected_revision: Revision,
+    pub link: ContinuityLink,
 }
 
 pub(super) struct DurableLaunch {
@@ -220,7 +231,15 @@ fn launch_host_process(
     let host_executable = fs::canonicalize(default_host_executable()?)
         .map_err(|error| format!("Unable to verify durable Host executable: {error}"))?;
     let mut environment = BTreeMap::new();
-    for name in ["HOME", "LANG", "LC_ALL", "PATH", "SHELL", "TERM"] {
+    for name in [
+        "CODEX_HOME",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "PATH",
+        "SHELL",
+        "TERM",
+    ] {
         if let Ok(value) = std::env::var(name) {
             environment.insert(name.to_string(), value);
         }
@@ -232,7 +251,7 @@ fn launch_host_process(
         format_version: LaunchDescriptor::FORMAT_VERSION,
         session_id: spec.session_id,
         host_instance_id: HostInstanceId::new(),
-        expected_occupant_generation: None,
+        expected_occupant_generation: spec.expected_occupant_generation,
         runtime_root: spec.paths.runtime_root.clone(),
         session_dir: spec.paths.session_dir.clone(),
         executable: launch.executable,
@@ -317,10 +336,58 @@ fn launch_host_process(
             Err(RecvTimeoutError::Timeout) => {}
         }
     }
+    if let Some(commit) = spec.continuity.as_ref() {
+        let result = ContinuityRepository::open(&commit.store_root).and_then(|repository| {
+            repository.record(commit.expected_revision, commit.link.clone())
+        });
+        if let Err(error) = result {
+            stop_ready_host(spec, &mut process);
+            return Err(format!(
+                "Unable to commit durable session continuity: {error}"
+            ));
+        }
+    }
     thread::spawn(move || {
         let _ = process.wait();
     });
     Ok(true)
+}
+
+fn stop_ready_host(spec: &DurableSessionSpec, process: &mut Child) {
+    let result = Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .and_then(|runtime| {
+            runtime.block_on(async {
+                let cancel = CancellationToken::new();
+                let mut nonce = [0_u8; 32];
+                rand::rngs::OsRng.fill_bytes(&mut nonce);
+                let endpoint = LocalEndpoint::new(&spec.paths.runtime_root, spec.session_id);
+                let mut client = HostClient::connect(
+                    endpoint,
+                    ConnectOptions::local(spec.session_id, nonce),
+                    &cancel,
+                )
+                .await
+                .map_err(std::io::Error::other)?;
+                client
+                    .stop(CommandId::new(), wire::StopMode::Force, &cancel)
+                    .await
+                    .map_err(std::io::Error::other)?;
+                Ok(())
+            })
+        });
+    if result.is_err() {
+        let _ = process.kill();
+    }
+    let deadline = Instant::now() + Duration::from_secs(6);
+    while process.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(20));
+    }
+    if process.try_wait().ok().flatten().is_none() {
+        let _ = process.kill();
+    }
+    let _ = process.wait();
 }
 
 fn read_host_failure_code(process: &mut Child) -> Option<String> {

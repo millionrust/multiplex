@@ -1335,6 +1335,141 @@ context = "Reason provider-specific resume is unavailable in this version."
 description = "Resume unavailable explanation"
 
 [[messages]]
+id = "session-resume-title"
+context = "Heading for the exact provider conversation resume review."
+description = "Resume conversation heading"
+
+[[messages]]
+id = "session-resume-notice"
+context = "Explains that resume creates a replacement Host and keeps prior output read-only."
+description = "Resume continuity notice"
+
+[[messages]]
+id = "session-resume-source-field"
+context = "Label for the prior session in the resume review."
+description = "Resume source label"
+
+[[messages]]
+id = "session-resume-successor-field"
+context = "Label for the successfully resumed successor session in the prior session inspector."
+description = "Resume successor label"
+
+[[messages]]
+id = "session-resume-provider-field"
+context = "Label for the exact provider and version in the resume review."
+description = "Resume provider label"
+
+[[messages]]
+id = "session-resume-provider-value"
+context = "Exact Codex provider version approved for resume."
+description = "Resume provider value"
+[[messages.args]]
+name = "version"
+type = "KeyName"
+sensitivity = "public"
+bidi = "isolate"
+
+[[messages]]
+id = "session-resume-conversation-field"
+context = "Label for the redacted safe conversation name."
+description = "Resume conversation label"
+
+[[messages]]
+id = "session-resume-confirm-action"
+context = "Action that starts the reviewed replacement Host."
+description = "Confirm resume action"
+
+[[messages]]
+id = "session-resume-phase-validating"
+context = "Progress while bounded provider metadata validation runs."
+description = "Resume validating phase"
+
+[[messages]]
+id = "session-resume-phase-review"
+context = "Progress after validation while awaiting explicit confirmation."
+description = "Resume review phase"
+
+[[messages]]
+id = "session-resume-phase-starting"
+context = "Progress while the replacement Host starts."
+description = "Resume starting phase"
+
+[[messages]]
+id = "session-resume-phase-failed"
+context = "Progress label after a resume failure."
+description = "Resume failed phase"
+
+[[messages]]
+id = "session-resume-cancelled"
+context = "Status after resume validation or pre-ready launch is cancelled."
+description = "Resume cancelled status"
+
+[[messages]]
+id = "session-resume-ready"
+context = "Status after the replacement Host and continuity link are ready."
+description = "Resume ready status"
+
+[[messages]]
+id = "session-resume-workspace-title"
+context = "Workspace title for a resumed session without exposing a provider handle."
+description = "Resumed workspace title"
+[[messages.args]]
+name = "title"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "session-resume-error-still-running"
+context = "Disabled reason when the source process is still live."
+description = "Resume still-running error"
+
+[[messages]]
+id = "session-resume-error-ownership"
+context = "Disabled reason when managed runtime ownership cannot be proven."
+description = "Resume ownership error"
+
+[[messages]]
+id = "session-resume-error-stale"
+context = "Failure reason when source revision or generation changed."
+description = "Resume stale state error"
+
+[[messages]]
+id = "session-resume-error-unsupported"
+context = "Disabled reason for an unsupported provider version."
+description = "Resume unsupported version error"
+
+[[messages]]
+id = "session-resume-error-missing"
+context = "Failure reason when the provider conversation cannot be found."
+description = "Resume missing conversation error"
+
+[[messages]]
+id = "session-resume-error-malformed"
+context = "Failure reason for ambiguous or invalid provider metadata."
+description = "Resume malformed conversation error"
+
+[[messages]]
+id = "session-resume-error-permission"
+context = "Failure reason when provider metadata cannot be read safely."
+description = "Resume permission error"
+
+[[messages]]
+id = "session-resume-error-provider"
+context = "Failure reason when the exact provider executable changed or is unavailable."
+description = "Resume provider unavailable error"
+
+[[messages]]
+id = "session-resume-error-limit"
+context = "Failure reason when bounded validation exceeds a safety limit."
+description = "Resume resource limit error"
+
+[[messages]]
+id = "session-resume-error-conflict"
+context = "Failure reason when another replacement already committed continuity."
+description = "Resume continuity conflict error"
+
+[[messages]]
 id = "session-library-remove-action"
 context = "Action opening the guarded retained-data removal review."
 description = "Remove archived session action"
