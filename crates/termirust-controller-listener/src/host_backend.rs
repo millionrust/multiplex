@@ -358,10 +358,9 @@ impl HostConnectionBackend {
     fn replace_active_session(&mut self, session_id: HostedSessionId) {
         if let Some(active) = self.active_attach
             && active.session_id != session_id
+            && let Some(mut client) = self.clients.remove(&active.session_id)
         {
-            if let Some(mut client) = self.clients.remove(&active.session_id) {
-                client.disconnect();
-            }
+            client.disconnect();
         }
         self.pending_output.clear();
         self.active_attach = None;

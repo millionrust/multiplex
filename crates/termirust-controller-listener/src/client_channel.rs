@@ -126,10 +126,8 @@ impl<S: AsyncRead + AsyncWrite + Unpin> ControllerClientChannel<S> {
         if opened.kind != expected_kind || opened.capability != expected_capability {
             return Err(ListenerError::new(ListenerErrorCode::Unauthorized));
         }
-        if complete {
-            if let Some(command_id) = response_command_id(&response) {
-                self.pending.remove(&command_id);
-            }
+        if complete && let Some(command_id) = response_command_id(&response) {
+            self.pending.remove(&command_id);
         }
         Ok(response)
     }
