@@ -8,6 +8,9 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
 - Workflow navigation surfaces Activity, Projects, Connections, Sessions, Devices, and
   Settings as primary destinations; specialized presets, vaults, keys, snippets, known
   hosts, and logs remain available as advanced tools.
+- Sessions presents the authoritative active or archived typed Session library across
+  all Projects and both app-attached and durable ownership routes, with Project, preset,
+  and ownership context on each row.
 - Single-row top chrome with custom in-app traffic lights (close / minimize / zoom); the macOS OS title-bar drag is taken over so the chrome stays draggable from its empty area.
 - Draggable workspace tabs that scroll horizontally when they overflow; double-click a tab to rename it; right-click a tab for Duplicate / Duplicate in a new window / Rename / Split / Close.
 - Each workspace tab can contain split panes arranged as a recursive binary tree: dropping a tab onto a pane splits that pane, with arbitrary nesting and resizable dividers.
