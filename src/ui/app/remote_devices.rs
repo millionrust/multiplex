@@ -78,7 +78,7 @@ pub(super) struct RemoteDevicesState {
 
 impl RemoteDevicesState {
     #[cfg(not(test))]
-    pub(super) fn open_default() -> Self {
+    pub(super) fn open_default(controller_coordinator: &ControllerCoordinator) -> Self {
         let root = match crate::storage::controller_store_dir() {
             Ok(root) => root,
             Err(_) => return Self::failed(RemoteDevicesFailure::Unavailable),
@@ -140,7 +140,7 @@ impl RemoteDevicesState {
                     editing_device_id: None,
                 };
                 if state.network_policy.enabled {
-                    let _ = state.start_listener_process();
+                    let _ = state.start_listener_process(controller_coordinator);
                 }
                 state
             }
@@ -149,7 +149,7 @@ impl RemoteDevicesState {
     }
 
     #[cfg(test)]
-    pub(super) fn open_default() -> Self {
+    pub(super) fn open_default(_controller_coordinator: &ControllerCoordinator) -> Self {
         Self {
             repository: None,
             identity_state: HostIdentityState::Ready,
@@ -223,8 +223,11 @@ impl RemoteDevicesState {
         Ok(())
     }
 
-    fn reset_identity(&mut self) -> Result<OldSecretDeletion, ()> {
-        self.stop_listener()?;
+    fn reset_identity(
+        &mut self,
+        controller_coordinator: &ControllerCoordinator,
+    ) -> Result<OldSecretDeletion, ()> {
+        self.stop_listener(controller_coordinator)?;
         let repository = self.repository.clone().ok_or(())?;
         let outcome = HostIdentityService::new(repository, OsSecretStore, OsIdentityEntropy)
             .reset()
@@ -245,7 +248,11 @@ impl RemoteDevicesState {
         self.pending_interface = None;
     }
 
-    fn enable_listener(&mut self, fixed_port: Option<u16>) -> Result<(), ()> {
+    fn enable_listener(
+        &mut self,
+        fixed_port: Option<u16>,
+        controller_coordinator: &ControllerCoordinator,
+    ) -> Result<(), ()> {
         let candidate = self.pending_interface.clone().ok_or(())?;
         let port = match fixed_port {
             Some(port) => ControllerPort::user_fixed(port).map_err(|_| ())?,
@@ -269,14 +276,17 @@ impl RemoteDevicesState {
         self.network_revision = saved.revision;
         self.network_policy = saved.policy;
         self.pending_interface = None;
-        if self.start_listener_process().is_err() {
+        if self.start_listener_process(controller_coordinator).is_err() {
             let _ = self.disable_saved_policy();
             return Err(());
         }
         Ok(())
     }
 
-    fn start_listener_process(&mut self) -> Result<(), ()> {
+    fn start_listener_process(
+        &mut self,
+        controller_coordinator: &ControllerCoordinator,
+    ) -> Result<(), ()> {
         self.listener_state = ListenerState::Binding;
         let host_private = self.host_private.as_ref().ok_or(())?;
         let app_root = crate::storage::app_dir().map_err(|_| ())?;
@@ -290,7 +300,7 @@ impl RemoteDevicesState {
             host_private,
         )
         .map_err(|_| ())?;
-        match ControllerListenerProcess::start(&descriptor) {
+        match controller_coordinator.start_listener(&descriptor) {
             Ok(process) => {
                 self.listener_process = Some(process);
                 if let Some(repository) = &self.network_repository
@@ -315,10 +325,10 @@ impl RemoteDevicesState {
         }
     }
 
-    fn stop_listener(&mut self) -> Result<(), ()> {
+    fn stop_listener(&mut self, controller_coordinator: &ControllerCoordinator) -> Result<(), ()> {
         self.listener_state = ListenerState::ShuttingDown;
         if let Some(mut process) = self.listener_process.take() {
-            process.stop();
+            controller_coordinator.stop_listener(&mut process);
         }
         self.disable_saved_policy()?;
         self.listener_state = ListenerState::Disabled;
@@ -1204,7 +1214,10 @@ impl TermiRustApp {
                 return;
             }
         };
-        match self.remote_devices.enable_listener(fixed_port) {
+        match self
+            .remote_devices
+            .enable_listener(fixed_port, &self.controller_coordinator)
+        {
             Ok(()) => {
                 self.status_message = localization::remote_devices_listener_ready_notice();
                 self.error_message.clear();
@@ -1217,7 +1230,10 @@ impl TermiRustApp {
     }
 
     fn stop_remote_listener(&mut self, cx: &mut Context<Self>) {
-        match self.remote_devices.stop_listener() {
+        match self
+            .remote_devices
+            .stop_listener(&self.controller_coordinator)
+        {
             Ok(()) => {
                 self.status_message = localization::remote_devices_listener_stopped_notice();
                 self.error_message.clear();
@@ -1358,7 +1374,10 @@ impl TermiRustApp {
             cx.notify();
             return;
         }
-        match self.remote_devices.reset_identity() {
+        match self
+            .remote_devices
+            .reset_identity(&self.controller_coordinator)
+        {
             Ok(OldSecretDeletion::Failed(_)) => {
                 self.status_message = localization::remote_devices_reset_old_key_warning();
             }
@@ -1482,13 +1501,14 @@ mod network_tests {
     use crate::ui::localization;
 
     use super::{
-        PairingUiState, RemoteDevicesState, listener_state_label, pairing_ui_status,
-        parse_listener_port, private_route_display, remote_device_status, remote_identity_status,
+        ControllerCoordinator, PairingUiState, RemoteDevicesState, listener_state_label,
+        pairing_ui_status, parse_listener_port, private_route_display, remote_device_status,
+        remote_identity_status,
     };
 
     #[test]
     fn remote_devices_add_controller_is_disabled_without_route() {
-        let state = RemoteDevicesState::open_default();
+        let state = RemoteDevicesState::open_default(&ControllerCoordinator::default());
         assert!(!state.route_available);
         assert!(state.devices.is_empty());
         assert_eq!(
@@ -1568,7 +1588,7 @@ mod network_tests {
 
     #[test]
     fn pairing_events_require_one_matching_offer_and_fail_closed() {
-        let mut state = RemoteDevicesState::open_default();
+        let mut state = RemoteDevicesState::open_default(&ControllerCoordinator::default());
         let offer_id = PairingOfferId::new();
         state
             .apply_listener_event(ListenerProcessEvent::pairing_offer(

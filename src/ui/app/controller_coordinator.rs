@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
+use termirust_controller_listener::ListenerLaunchDescriptor;
 use termirust_domain::{ControllerCapabilities, ControllerCapability, ControllerDeviceId};
 use termirust_store::ControllerDeviceRepository;
 
 use crate::controller::devices::{ControllerDeviceService, NoControllerChannels};
+use crate::controller::lan::{ControllerListenerProcess, ListenerProcessError};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ControllerDeviceMutation {
@@ -37,7 +39,15 @@ trait ControllerDeviceMutator: Send + Sync {
     ) -> Result<(), ControllerDeviceMutationError>;
 }
 
+trait ControllerListenerSpawner: Send + Sync {
+    fn start(
+        &self,
+        descriptor: &ListenerLaunchDescriptor,
+    ) -> Result<ControllerListenerProcess, ListenerProcessError>;
+}
+
 struct SystemControllerDeviceMutator;
+struct SystemControllerListenerSpawner;
 
 impl ControllerDeviceMutator for SystemControllerDeviceMutator {
     fn mutate(
@@ -61,15 +71,26 @@ impl ControllerDeviceMutator for SystemControllerDeviceMutator {
     }
 }
 
+impl ControllerListenerSpawner for SystemControllerListenerSpawner {
+    fn start(
+        &self,
+        descriptor: &ListenerLaunchDescriptor,
+    ) -> Result<ControllerListenerProcess, ListenerProcessError> {
+        ControllerListenerProcess::start(descriptor)
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct ControllerCoordinator {
     device_mutator: Arc<dyn ControllerDeviceMutator>,
+    listener_spawner: Arc<dyn ControllerListenerSpawner>,
 }
 
 impl Default for ControllerCoordinator {
     fn default() -> Self {
         Self {
             device_mutator: Arc::new(SystemControllerDeviceMutator),
+            listener_spawner: Arc::new(SystemControllerListenerSpawner),
         }
     }
 }
@@ -115,6 +136,17 @@ impl ControllerCoordinator {
             mutation: ControllerDeviceMutation::Revoke { device_id },
         })
     }
+
+    pub fn start_listener(
+        &self,
+        descriptor: &ListenerLaunchDescriptor,
+    ) -> Result<ControllerListenerProcess, ListenerProcessError> {
+        self.listener_spawner.start(descriptor)
+    }
+
+    pub fn stop_listener(&self, process: &mut ControllerListenerProcess) {
+        process.stop();
+    }
 }
 
 fn toggled_input_capabilities(current: ControllerCapabilities) -> ControllerCapabilities {
@@ -134,18 +166,23 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
 
+    use termirust_controller_listener::ListenerLaunchDescriptor;
+    use termirust_controller_security::StaticPrivateKey;
     use termirust_domain::{
-        ControllerCapabilities, ControllerCapability, ControllerDeviceAuthority,
-        ControllerDeviceId, ControllerProtocolRange, DevicePublicKey, DeviceStoreRevision,
+        AddressFamily, ControllerCapabilities, ControllerCapability, ControllerDeviceAuthority,
+        ControllerDeviceId, ControllerListenPolicy, ControllerNetworkRevision, ControllerPort,
+        ControllerProtocolRange, DevicePublicKey, DeviceStoreRevision, DiscoveryPolicy,
         HostIdentityGeneration, HostIdentityPublic, HostIdentitySecretRef, HostIdentityState,
-        HostPublicKey, PairedDeviceRecord, PairedDeviceStatus, PairingOfferId,
+        HostPublicKey, NetworkInterfaceId, PairedDeviceRecord, PairedDeviceStatus, PairingOfferId,
     };
     use termirust_store::ControllerDeviceRepository;
 
     use super::{
         ControllerCoordinator, ControllerDeviceMutation, ControllerDeviceMutationError,
-        ControllerDeviceMutationRequest, ControllerDeviceMutator, toggled_input_capabilities,
+        ControllerDeviceMutationRequest, ControllerDeviceMutator, ControllerListenerSpawner,
+        SystemControllerListenerSpawner, toggled_input_capabilities,
     };
+    use crate::controller::lan::{ControllerListenerProcess, ListenerProcessError};
 
     #[derive(Clone, Debug, Eq, PartialEq)]
     struct MutationCall {
@@ -156,6 +193,38 @@ mod tests {
     struct RecordingMutator {
         calls: Arc<Mutex<Vec<MutationCall>>>,
         fail: bool,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    struct ListenerStartCall {
+        controller_root: PathBuf,
+        project_root: PathBuf,
+        session_data_root: PathBuf,
+        runtime_parent: PathBuf,
+        network_revision: ControllerNetworkRevision,
+        policy: ControllerListenPolicy,
+    }
+
+    struct RecordingListenerSpawner {
+        calls: Arc<Mutex<Vec<ListenerStartCall>>>,
+        error: ListenerProcessError,
+    }
+
+    impl ControllerListenerSpawner for RecordingListenerSpawner {
+        fn start(
+            &self,
+            descriptor: &ListenerLaunchDescriptor,
+        ) -> Result<ControllerListenerProcess, ListenerProcessError> {
+            self.calls.lock().unwrap().push(ListenerStartCall {
+                controller_root: descriptor.controller_root.clone(),
+                project_root: descriptor.project_root.clone(),
+                session_data_root: descriptor.session_data_root.clone(),
+                runtime_parent: descriptor.runtime_parent.clone(),
+                network_revision: descriptor.network_revision,
+                policy: descriptor.policy.clone(),
+            });
+            Err(self.error)
+        }
     }
 
     impl ControllerDeviceMutator for RecordingMutator {
@@ -178,6 +247,7 @@ mod tests {
     fn coordinator(calls: Arc<Mutex<Vec<MutationCall>>>, fail: bool) -> ControllerCoordinator {
         ControllerCoordinator {
             device_mutator: Arc::new(RecordingMutator { calls, fail }),
+            listener_spawner: Arc::new(SystemControllerListenerSpawner),
         }
     }
 
@@ -321,6 +391,56 @@ mod tests {
     }
 
     #[test]
+    fn listener_start_forwards_the_exact_descriptor_and_typed_error() {
+        let fixture = tempfile::tempdir().unwrap();
+        let policy = ControllerListenPolicy {
+            enabled: true,
+            interface_id: Some(NetworkInterfaceId::new("en-test").unwrap()),
+            address_family: Some(AddressFamily::Ipv4),
+            selected_address: Some("192.168.1.20".parse().unwrap()),
+            port: Some(ControllerPort::user_fixed(49_152).unwrap()),
+            discovery: DiscoveryPolicy::Off,
+        };
+        let descriptor = ListenerLaunchDescriptor::new(
+            fixture.path().join("controller"),
+            fixture.path().join("projects"),
+            fixture.path().join("sessions"),
+            fixture.path().join("runtime"),
+            ControllerNetworkRevision::ZERO,
+            policy.clone(),
+            &StaticPrivateKey::from_fixture_bytes([7; 32]),
+        )
+        .unwrap();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let coordinator = ControllerCoordinator {
+            device_mutator: Arc::new(RecordingMutator {
+                calls: Arc::new(Mutex::new(Vec::new())),
+                fail: false,
+            }),
+            listener_spawner: Arc::new(RecordingListenerSpawner {
+                calls: calls.clone(),
+                error: ListenerProcessError::ReadinessTimeout,
+            }),
+        };
+
+        assert!(matches!(
+            coordinator.start_listener(&descriptor),
+            Err(ListenerProcessError::ReadinessTimeout)
+        ));
+        assert_eq!(
+            calls.lock().unwrap().as_slice(),
+            [ListenerStartCall {
+                controller_root: fixture.path().join("controller"),
+                project_root: fixture.path().join("projects"),
+                session_data_root: fixture.path().join("sessions"),
+                runtime_parent: fixture.path().join("runtime"),
+                network_revision: ControllerNetworkRevision::ZERO,
+                policy,
+            }]
+        );
+    }
+
+    #[test]
     fn coordinator_module_has_no_ui_framework_dependency() {
         let forbidden_crate = ["gp", "ui"].concat();
         assert!(!include_str!("controller_coordinator.rs").contains(&forbidden_crate));
@@ -341,6 +461,16 @@ mod tests {
             assert!(
                 !source.contains("ControllerDeviceService::new"),
                 "{} bypasses ControllerCoordinator device mutations",
+                path.display()
+            );
+            assert!(
+                !source.contains("ControllerListenerProcess::start"),
+                "{} bypasses ControllerCoordinator listener start",
+                path.display()
+            );
+            assert!(
+                !source.contains("process.stop()"),
+                "{} bypasses ControllerCoordinator listener stop",
                 path.display()
             );
         }

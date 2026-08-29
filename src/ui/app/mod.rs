@@ -1196,7 +1196,8 @@ impl TermiRustApp {
         }
         let artifact_gallery = artifact_gallery::ArtifactGalleryState::open_default();
         let activity_center = ActivityCenterState::open_default();
-        let remote_devices = RemoteDevicesState::open_default();
+        let controller_coordinator = ControllerCoordinator::default();
+        let remote_devices = RemoteDevicesState::open_default(&controller_coordinator);
         let project_label_input = cx
             .new(|cx| InputState::new(window, cx).placeholder(localization::project_label_field()));
         let group_name_input =
@@ -1261,7 +1262,7 @@ impl TermiRustApp {
             vault_member_inputs,
             draft_auth_mode,
             project_coordinator: ProjectCoordinator::default(),
-            controller_coordinator: ControllerCoordinator::default(),
+            controller_coordinator,
             project_library,
             project_label_input,
             group_name_input,
