@@ -993,6 +993,126 @@ impl TermiRustApp {
             .count()
     }
 
+    pub(super) fn render_global_session_library(&self, cx: &Context<Self>) -> AnyElement {
+        let sessions = self.session_library.visible_sessions_all();
+        let records = sessions
+            .iter()
+            .filter_map(|metadata| {
+                self.saved
+                    .app_attached_sessions
+                    .iter()
+                    .find(|record| record.id == metadata.id)
+                    .cloned()
+            })
+            .collect::<Vec<_>>();
+
+        v_flex()
+            .id("global-session-library")
+            .debug_selector(|| "global-session-library".to_string())
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .bg(theme::library_bg())
+            .child(self.render_session_library_controls(cx))
+            .when_some(self.session_library.recovery_state(), |this, recovery| {
+                this.child(
+                    div()
+                        .mx(px(theme::SPACE_4))
+                        .mt(px(theme::SPACE_3))
+                        .p(px(theme::SPACE_3))
+                        .border_1()
+                        .border_color(theme::warning())
+                        .rounded(px(theme::CARD_RADIUS))
+                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                        .text_color(theme::text_main())
+                        .child(session_recovery_label(recovery)),
+                )
+            })
+            .when_some(
+                self.session_library.pending_stop_archive_review,
+                |this, id| this.child(self.render_stop_archive_review(id, cx)),
+            )
+            .when(self.session_sidebar.pending_undo.is_some(), |this| {
+                this.child(
+                    h_flex()
+                        .id("global-session-undo-banner")
+                        .justify_end()
+                        .px(px(theme::SPACE_5))
+                        .pt(px(theme::SPACE_3))
+                        .child(
+                            Button::new("global-session-undo")
+                                .debug_selector(|| "global-session-undo".to_string())
+                                .small()
+                                .icon(IconName::Undo2)
+                                .label(localization::group_undo_action())
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.undo_organization(cx);
+                                })),
+                        ),
+                )
+            })
+            .when_some(
+                self.session_library.pending_removal.as_ref(),
+                |this, plan| this.child(self.render_session_removal(plan, cx)),
+            )
+            .child(
+                v_flex()
+                    .id("global-session-list")
+                    .debug_selector(|| "global-session-list".to_string())
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scrollbar()
+                    .p(px(theme::SPACE_4))
+                    .when(!records.is_empty(), |this| {
+                        this.child(
+                            v_flex()
+                                .w_full()
+                                .border_1()
+                                .border_color(theme::border())
+                                .rounded(px(theme::CARD_RADIUS))
+                                .overflow_hidden()
+                                .children(records.iter().map(|session| {
+                                    let destination = self.sessions_in_destination(
+                                        session.origin.project_id,
+                                        session.group_id,
+                                    );
+                                    let index = destination
+                                        .iter()
+                                        .position(|candidate| candidate.id == session.id)
+                                        .unwrap_or(0);
+                                    self.render_session_row(
+                                        session,
+                                        index,
+                                        destination.len().max(1),
+                                        cx,
+                                    )
+                                })),
+                        )
+                    })
+                    .when(records.is_empty(), |this| {
+                        this.child(
+                            div()
+                                .p(px(theme::SPACE_5))
+                                .text_center()
+                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                .text_color(theme::text_muted())
+                                .child(
+                                    if self.session_library.filter != SessionLibraryFilter::All {
+                                        localization::session_library_filter_empty()
+                                    } else if self.session_library.view
+                                        == SessionLibraryView::Archive
+                                    {
+                                        localization::session_library_archive_empty()
+                                    } else {
+                                        localization::session_sidebar_empty()
+                                    },
+                                ),
+                        )
+                    }),
+            )
+            .into_any_element()
+    }
+
     pub(super) fn render_session_sidebar(
         &self,
         project_id: Option<ProjectId>,
@@ -1068,71 +1188,7 @@ impl TermiRustApp {
                             })),
                     ),
             )
-            .child(
-                v_flex()
-                    .px(px(theme::SPACE_5))
-                    .py(px(theme::SPACE_3))
-                    .gap(px(theme::SPACE_2))
-                    .border_b_1()
-                    .border_color(theme::border())
-                    .child(
-                        h_flex()
-                            .gap(px(theme::SPACE_2))
-                            .child(
-                                Button::new("session-view-active")
-                                    .debug_selector(|| "session-view-active".to_string())
-                                    .small()
-                                    .selected(
-                                        self.session_library.view == SessionLibraryView::Active,
-                                    )
-                                    .label(localization::session_library_active_view())
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.set_session_library_view(
-                                            SessionLibraryView::Active,
-                                            cx,
-                                        );
-                                    })),
-                            )
-                            .child(
-                                Button::new("session-view-archive")
-                                    .debug_selector(|| "session-view-archive".to_string())
-                                    .small()
-                                    .selected(
-                                        self.session_library.view == SessionLibraryView::Archive,
-                                    )
-                                    .label(localization::session_library_archive_view())
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.set_session_library_view(
-                                            SessionLibraryView::Archive,
-                                            cx,
-                                        );
-                                    })),
-                            ),
-                    )
-                    .child(
-                        h_flex()
-                            .flex_wrap()
-                            .gap(px(theme::SPACE_2))
-                            .child(self.render_session_filter_button(
-                                SessionLibraryFilter::All,
-                                "session-filter-all",
-                                localization::session_library_filter_all(),
-                                cx,
-                            ))
-                            .child(self.render_session_filter_button(
-                                SessionLibraryFilter::Unread,
-                                "session-filter-unread",
-                                localization::session_library_filter_unread(),
-                                cx,
-                            ))
-                            .child(self.render_session_filter_button(
-                                SessionLibraryFilter::Pinned,
-                                "session-filter-pinned",
-                                localization::session_library_filter_pinned(),
-                                cx,
-                            )),
-                    ),
-            )
+            .child(self.render_session_library_controls(cx))
             .when_some(self.session_library.recovery_state(), |this, recovery| {
                 this.child(
                     div()
@@ -1245,6 +1301,63 @@ impl TermiRustApp {
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.set_session_library_filter(filter, cx);
             }))
+    }
+
+    fn render_session_library_controls(&self, cx: &Context<Self>) -> AnyElement {
+        v_flex()
+            .px(px(theme::SPACE_5))
+            .py(px(theme::SPACE_3))
+            .gap(px(theme::SPACE_2))
+            .border_b_1()
+            .border_color(theme::border())
+            .child(
+                h_flex()
+                    .gap(px(theme::SPACE_2))
+                    .child(
+                        Button::new("session-view-active")
+                            .debug_selector(|| "session-view-active".to_string())
+                            .small()
+                            .selected(self.session_library.view == SessionLibraryView::Active)
+                            .label(localization::session_library_active_view())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.set_session_library_view(SessionLibraryView::Active, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("session-view-archive")
+                            .debug_selector(|| "session-view-archive".to_string())
+                            .small()
+                            .selected(self.session_library.view == SessionLibraryView::Archive)
+                            .label(localization::session_library_archive_view())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.set_session_library_view(SessionLibraryView::Archive, cx);
+                            })),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .flex_wrap()
+                    .gap(px(theme::SPACE_2))
+                    .child(self.render_session_filter_button(
+                        SessionLibraryFilter::All,
+                        "session-filter-all",
+                        localization::session_library_filter_all(),
+                        cx,
+                    ))
+                    .child(self.render_session_filter_button(
+                        SessionLibraryFilter::Unread,
+                        "session-filter-unread",
+                        localization::session_library_filter_unread(),
+                        cx,
+                    ))
+                    .child(self.render_session_filter_button(
+                        SessionLibraryFilter::Pinned,
+                        "session-filter-pinned",
+                        localization::session_library_filter_pinned(),
+                        cx,
+                    )),
+            )
+            .into_any_element()
     }
 
     fn render_stop_archive_review(&self, _id: HostedSessionId, cx: &Context<Self>) -> AnyElement {
@@ -1767,6 +1880,32 @@ impl TermiRustApp {
                                             .text_color(theme::text_muted())
                                             .child(session_state_label(metadata.lifecycle))
                                             .child(activity_label(&metadata.activity))
+                                            .child(
+                                                div()
+                                                    .debug_selector(|| {
+                                                        "session-origin-project".to_string()
+                                                    })
+                                                    .child(session.project_label.clone()),
+                                            )
+                                            .when(
+                                                !session.preset_label.trim().is_empty(),
+                                                |this| {
+                                                    this.child(
+                                                        div()
+                                                            .debug_selector(|| {
+                                                                "session-origin-preset".to_string()
+                                                            })
+                                                            .child(session.preset_label.clone()),
+                                                    )
+                                                },
+                                            )
+                                            .child(
+                                                div()
+                                                    .debug_selector(|| {
+                                                        "session-origin-ownership".to_string()
+                                                    })
+                                                    .child(session_ownership_label(session.route)),
+                                            )
                                             .when(metadata.pinned, |this| {
                                                 this.child(
                                                     div()
@@ -2319,6 +2458,13 @@ fn activity_label(activity: &termirust_domain::ActivityAggregate) -> String {
         localization::session_library_activity_estimated()
     };
     format!("{state} ({confidence})")
+}
+
+fn session_ownership_label(route: termirust_domain::SessionLaunchRoute) -> String {
+    match route {
+        termirust_domain::SessionLaunchRoute::LegacyAppAttached => "App-attached".to_string(),
+        termirust_domain::SessionLaunchRoute::DurableHost => "Durable".to_string(),
+    }
 }
 
 fn session_recovery_label(recovery: SessionLibraryRecovery) -> String {

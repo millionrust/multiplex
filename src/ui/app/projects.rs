@@ -160,19 +160,7 @@ impl TermiRustApp {
                         })),
                 )
                 .into_any_element(),
-            ProjectLibraryLoadState::Ready => h_flex()
-                .flex_1()
-                .min_h_0()
-                .child(
-                    div()
-                        .w(px(360.))
-                        .max_w(px(420.))
-                        .min_w(px(280.))
-                        .h_full()
-                        .child(self.render_project_list(cx)),
-                )
-                .child(self.render_session_sidebar(self.project_library.selected_id, cx))
-                .into_any_element(),
+            ProjectLibraryLoadState::Ready => self.render_global_session_library(cx),
         };
 
         v_flex()

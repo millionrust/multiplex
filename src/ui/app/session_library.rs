@@ -334,6 +334,39 @@ impl SessionLibraryState {
         sessions
     }
 
+    pub fn visible_sessions_all(&self) -> Vec<HostedSession> {
+        let mut sessions = self
+            .snapshot
+            .as_ref()
+            .map(|snapshot| {
+                snapshot
+                    .sessions
+                    .iter()
+                    .filter(|session| {
+                        (match self.view {
+                            SessionLibraryView::Active => session.archived_at.is_none(),
+                            SessionLibraryView::Archive => session.archived_at.is_some(),
+                        }) && match self.filter {
+                            SessionLibraryFilter::All => true,
+                            SessionLibraryFilter::Unread => session.unread(),
+                            SessionLibraryFilter::Pinned => session.pinned,
+                        }
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        sessions.sort_by_key(|session| {
+            (
+                session.project_id,
+                !session.pinned,
+                session.position,
+                session.id,
+            )
+        });
+        sessions
+    }
+
     pub fn recovery_state(&self) -> Option<SessionLibraryRecovery> {
         match self.load_state {
             SessionLibraryLoadState::Ready => self
@@ -573,6 +606,36 @@ mod tests {
         library.view = SessionLibraryView::Archive;
         assert_eq!(library.visible_sessions(project_id, None)[0].id, first_id);
         assert!(library.session(first_id).unwrap().unread());
+    }
+
+    #[test]
+    fn unified_sessions_query_spans_projects_and_keeps_archive_orthogonal() {
+        let fixture = tempfile::tempdir().unwrap();
+        let mut saved = SavedState::default();
+        let first = record(HostedSessionState::Live);
+        let first_id = first.id;
+        let first_project = first.origin.project_id;
+        let mut second = record(HostedSessionState::RunningAppAttached);
+        second.route = SessionLaunchRoute::LegacyAppAttached;
+        second.durable_host = None;
+        let second_id = second.id;
+        let second_project = second.origin.project_id;
+        let mut archived = record(HostedSessionState::Exited);
+        archived.archived_at = Some(9);
+        let archived_id = archived.id;
+        saved.app_attached_sessions = vec![first, second, archived];
+
+        let mut library = state_with_repository(&mut saved, fixture.path());
+        let active = library.visible_sessions_all();
+        assert_eq!(active.len(), 2);
+        assert!(active.iter().any(|session| session.id == first_id));
+        assert!(active.iter().any(|session| session.id == second_id));
+        assert_ne!(first_project, second_project);
+
+        library.view = SessionLibraryView::Archive;
+        let archived = library.visible_sessions_all();
+        assert_eq!(archived.len(), 1);
+        assert_eq!(archived[0].id, archived_id);
     }
 }
 

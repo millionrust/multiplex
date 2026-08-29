@@ -20825,6 +20825,104 @@ sleep 1
     }
 
     #[gpui::test]
+    fn e2e_unified_sessions_show_projects_ownership_and_archive(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let make_session = |route, label: &str, archived: bool| {
+            let durable = route == termirust_domain::SessionLaunchRoute::DurableHost;
+            crate::models::SavedAppAttachedSession {
+                id: termirust_domain::HostedSessionId::new(),
+                route,
+                origin: termirust_domain::SessionOrigin {
+                    project_id: termirust_domain::ProjectId::new(),
+                    preset_id: termirust_domain::PresetId::new(),
+                },
+                state: if archived {
+                    termirust_domain::HostedSessionState::Exited
+                } else if durable {
+                    termirust_domain::HostedSessionState::Live
+                } else {
+                    termirust_domain::HostedSessionState::RunningAppAttached
+                },
+                project_label: label.to_string(),
+                preset_label: format!("{label} preset"),
+                title: format!("{label} session"),
+                title_source: termirust_domain::TitleSource::Manual,
+                activity: termirust_domain::ActivityAggregate::default(),
+                pinned: false,
+                read_through_sequence: 0,
+                unread_sequence: None,
+                archived_at: archived.then_some(9),
+                revision: termirust_domain::Revision::ZERO,
+                durable_host: durable.then(crate::models::SavedDurableHost::default),
+                group_id: None,
+                position: termirust_domain::PositionKey::FIRST,
+                started_at: 1,
+                updated_at: 1,
+            }
+        };
+        let active_durable = make_session(
+            termirust_domain::SessionLaunchRoute::DurableHost,
+            "Alpha",
+            false,
+        );
+        let active_attached = make_session(
+            termirust_domain::SessionLaunchRoute::LegacyAppAttached,
+            "Beta",
+            false,
+        );
+        let archived = make_session(
+            termirust_domain::SessionLaunchRoute::DurableHost,
+            "Archive",
+            true,
+        );
+        let archived_id = archived.id;
+        let saved = SavedState {
+            app_attached_sessions: vec![active_durable, active_attached, archived],
+            ..SavedState::default()
+        };
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Sessions, window, cx);
+                })
+            })
+            .expect("Sessions should activate");
+        app.read_with(cx, |app, _| {
+            let visible = app.session_library.visible_sessions_all();
+            assert_eq!(visible.len(), 2);
+            let routes = visible
+                .iter()
+                .filter_map(|metadata| {
+                    app.saved
+                        .app_attached_sessions
+                        .iter()
+                        .find(|record| record.id == metadata.id)
+                        .map(|record| record.route)
+                })
+                .collect::<Vec<_>>();
+            assert!(routes.contains(&termirust_domain::SessionLaunchRoute::DurableHost));
+            assert!(routes.contains(&termirust_domain::SessionLaunchRoute::LegacyAppAttached));
+        });
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        assert!(visual.debug_bounds("global-session-library").is_some());
+        assert!(visual.debug_bounds("project-session-row").is_some());
+        assert!(visual.debug_bounds("session-origin-project").is_some());
+        assert!(visual.debug_bounds("session-origin-preset").is_some());
+        assert!(visual.debug_bounds("session-origin-ownership").is_some());
+
+        let archive_tab = selector_click_center(window, cx, "session-view-archive");
+        VisualTestContext::from_window(window.into(), cx)
+            .simulate_click(archive_tab, gpui::Modifiers::none());
+        app.read_with(cx, |app, _| {
+            let visible = app.session_library.visible_sessions_all();
+            assert_eq!(visible.len(), 1);
+            assert_eq!(visible[0].id, archived_id);
+        });
+    }
+
+    #[gpui::test]
     fn e2e_projects_add_restart_unavailable_remove_and_undo_preserve_files(
         cx: &mut TestAppContext,
     ) {
