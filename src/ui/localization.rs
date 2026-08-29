@@ -219,6 +219,43 @@ static_message!(health_error_newer, HealthErrorNewerArgs);
 static_message!(health_error_permission, HealthErrorPermissionArgs);
 static_message!(health_error_corrupt, HealthErrorCorruptArgs);
 static_message!(health_error_storage, HealthErrorStorageArgs);
+static_message!(recovery_title, RecoveryTitleArgs);
+static_message!(recovery_description, RecoveryDescriptionArgs);
+static_message!(recovery_safety_notice, RecoverySafetyNoticeArgs);
+static_message!(recovery_prepare_action, RecoveryPrepareActionArgs);
+static_message!(recovery_confirm_action, RecoveryConfirmActionArgs);
+
+pub fn recovery_inspecting() -> String {
+    health_scanning()
+}
+
+pub fn recovery_confirmation_required() -> String {
+    health_review_findings()
+}
+
+pub fn recovery_running() -> String {
+    health_repair_running()
+}
+
+pub fn recovery_complete() -> String {
+    health_repair_complete()
+}
+
+pub fn recovery_cancelled() -> String {
+    health_operation_cancelled()
+}
+
+pub fn recovery_no_change() -> String {
+    health_state_healthy()
+}
+
+pub fn recovery_error_no_backup() -> String {
+    health_error_corrupt()
+}
+
+pub fn recovery_error_verification() -> String {
+    health_error_storage()
+}
 
 static_message!(remote_devices_title, RemoteDevicesTitleArgs);
 static_message!(remote_devices_description, RemoteDevicesDescriptionArgs);
@@ -515,6 +552,22 @@ pub fn diagnostics_usage_summary(bytes: u64, files: u8, days: u8) -> String {
         ByteSize(bytes),
         Count(u64::from(files)),
         Count(u64::from(days)),
+    ))
+}
+
+pub fn recovery_impact(changed: usize, unchanged: usize, bytes: u64) -> String {
+    text(&RecoveryImpactArgs::new(
+        Count(changed as u64),
+        Count(unchanged as u64),
+        ByteSize(bytes),
+    ))
+}
+
+pub fn host_recovery_impact(result: impl Into<String>, peers: usize, bytes: u64) -> String {
+    text(&HostRecoveryImpactArgs::new(
+        UserData::new(result),
+        Count(peers as u64),
+        ByteSize(bytes),
     ))
 }
 

@@ -93,6 +93,12 @@ pub enum ReconciliationResult {
     Exited,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HostLeaseState {
+    Available,
+    Held,
+}
+
 impl HostMetadata {
     pub const FORMAT_VERSION: u16 = 1;
 
@@ -203,6 +209,12 @@ impl HostLease {
 }
 
 pub fn read_host_metadata(session_dir: &Path) -> Result<HostMetadata, LeaseError> {
+    read_host_metadata_snapshot(session_dir).map(|(_, metadata)| metadata)
+}
+
+pub fn read_host_metadata_snapshot(
+    session_dir: &Path,
+) -> Result<(Vec<u8>, HostMetadata), LeaseError> {
     let path = session_dir.join(HOST_FILE);
     let metadata = fs::symlink_metadata(&path).map_err(LeaseError::io)?;
     if metadata.file_type().is_symlink()
@@ -215,7 +227,29 @@ pub fn read_host_metadata(session_dir: &Path) -> Result<HostMetadata, LeaseError
     let host: HostMetadata = serde_json::from_slice(&bytes)
         .map_err(|_| LeaseError::new(LeaseErrorCode::InvalidMetadata))?;
     host.validate(host.host_instance_id)?;
-    Ok(host)
+    Ok((bytes, host))
+}
+
+pub fn probe_host_lease(session_dir: &Path) -> Result<HostLeaseState, LeaseError> {
+    let metadata = fs::symlink_metadata(session_dir).map_err(LeaseError::io)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(LeaseError::new(LeaseErrorCode::UnsafeEntry));
+    }
+    let lock_path = session_dir.join(LOCK_FILE);
+    reject_unsafe_file_if_present(&lock_path)?;
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(lock_path)
+        .map_err(LeaseError::io)?;
+    match lock_exclusive_nonblocking(&file) {
+        Ok(()) => {
+            unlock(&file);
+            Ok(HostLeaseState::Available)
+        }
+        Err(error) if error.code == LeaseErrorCode::Busy => Ok(HostLeaseState::Held),
+        Err(error) => Err(error),
+    }
 }
 
 pub fn reconcile_host(session_dir: &Path) -> Result<ReconciliationResult, LeaseError> {

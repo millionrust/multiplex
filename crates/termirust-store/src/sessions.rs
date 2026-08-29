@@ -118,6 +118,15 @@ pub(crate) fn read_session_health_source(
     Ok((bytes, document.revision, document.sessions))
 }
 
+pub(crate) fn validate_session_metadata_bytes(bytes: &[u8]) -> Result<Revision, StoreError> {
+    let document: SessionsDocument =
+        serde_json::from_slice(bytes).map_err(|_| StoreError::Corrupt {
+            name: SESSIONS_FILE,
+        })?;
+    validate_document(&document)?;
+    Ok(document.revision)
+}
+
 impl SessionRepository {
     pub fn open(
         root: impl Into<PathBuf>,

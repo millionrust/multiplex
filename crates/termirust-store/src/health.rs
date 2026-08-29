@@ -745,16 +745,16 @@ impl HealthRepository {
     }
 }
 
-struct MetadataLock {
+pub(crate) struct MetadataLock {
     file: File,
 }
 
 impl MetadataLock {
-    fn shared(root: &Path) -> Result<Self, StoreError> {
+    pub(crate) fn shared(root: &Path) -> Result<Self, StoreError> {
         Self::acquire(root, false)
     }
 
-    fn exclusive(root: &Path) -> Result<Self, StoreError> {
+    pub(crate) fn exclusive(root: &Path) -> Result<Self, StoreError> {
         Self::acquire(root, true)
     }
 

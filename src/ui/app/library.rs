@@ -1834,9 +1834,15 @@ impl TermiRustApp {
                 manifest.redactions,
             )
         });
-        let health_busy = self.health_operation.is_some();
+        let health_busy =
+            self.health_operation.is_some() || self.metadata_recovery_operation.is_some();
         let health_model =
             crate::ui::settings::health_view_model(self.health_report.as_ref(), health_busy);
+        let recovery_model = crate::ui::settings::recovery_view_model(
+            self.health_report.as_ref(),
+            self.metadata_recovery_plan.as_ref(),
+            self.metadata_recovery_operation.is_some(),
+        );
 
         let appearance_card = self.settings_section_card(
             "Appearance",
@@ -2706,6 +2712,97 @@ impl TermiRustApp {
                         })
                         .into_any_element()
                 }))
+                .when(recovery_model.visible, |this| {
+                    this.child(
+                        v_flex()
+                            .id("settings-metadata-recovery")
+                            .gap_2()
+                            .p_3()
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(theme::with_alpha(theme::warning(), 0.55))
+                            .bg(theme::with_alpha(theme::warning(), 0.08))
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child(localization::recovery_title()),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(theme::text_muted())
+                                    .child(localization::recovery_description()),
+                            )
+                            .when(self.metadata_recovery_plan.is_some(), |this| {
+                                this.child(
+                                    div()
+                                        .id("settings-metadata-recovery-impact")
+                                        .text_size(px(12.))
+                                        .text_color(theme::text_main())
+                                        .child(localization::recovery_impact(
+                                            recovery_model.changed_files,
+                                            recovery_model.unchanged_files,
+                                            recovery_model.backup_bytes,
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(12.))
+                                        .text_color(theme::text_muted())
+                                        .child(localization::recovery_safety_notice()),
+                                )
+                            })
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .flex_wrap()
+                                    .when(health_model.can_prepare_restore, |this| {
+                                        this.child(
+                                            Button::new("settings-recovery-prepare")
+                                                .small()
+                                                .custom(Self::action_button_style(
+                                                    theme::ActionTone::Neutral,
+                                                    cx,
+                                                ))
+                                                .label(localization::recovery_prepare_action())
+                                                .on_click(cx.listener(|app, _, _, cx| {
+                                                    app.prepare_metadata_recovery(cx);
+                                                })),
+                                        )
+                                    })
+                                    .when(recovery_model.can_confirm, |this| {
+                                        this.child(
+                                            Button::new("settings-recovery-confirm")
+                                                .small()
+                                                .custom(Self::action_button_style(
+                                                    theme::ActionTone::Danger,
+                                                    cx,
+                                                ))
+                                                .label(localization::recovery_confirm_action())
+                                                .on_click(cx.listener(|app, _, _, cx| {
+                                                    app.confirm_metadata_recovery(cx);
+                                                })),
+                                        )
+                                    })
+                                    .when(recovery_model.can_cancel, |this| {
+                                        this.child(
+                                            Button::new("settings-recovery-cancel")
+                                                .small()
+                                                .custom(Self::action_button_style(
+                                                    theme::ActionTone::Neutral,
+                                                    cx,
+                                                ))
+                                                .label(localization::common_cancel())
+                                                .on_click(cx.listener(|app, _, _, cx| {
+                                                    app.cancel_metadata_recovery(cx);
+                                                })),
+                                        )
+                                    }),
+                            ),
+                    )
+                })
                 .child(
                     div()
                         .text_size(px(12.))

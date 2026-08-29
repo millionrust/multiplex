@@ -10,15 +10,15 @@ use std::time::{Duration, Instant};
 
 use rand::RngCore as _;
 use termirust_client::{
-    ClientError, ClientErrorCode, ConnectOptions, GpuiAttachModel, HostClient, LocalEndpoint,
-    OutputDisposition,
+    ClientError, ClientErrorCode, ConnectOptions, GpuiAttachModel, HostClient,
+    HostReconciliationService, LocalEndpoint, OutputDisposition,
 };
 use termirust_domain::{CommandId, HostInstanceId, HostedSessionId, OutputSequence};
 use termirust_host_protocol::wire;
 use termirust_session_host::{LaunchDescriptor, StopDeadlines};
 use termirust_store::{
-    HostLease, JournalKind, JournalLimits, JournalStore, ReconciliationResult, load_snapshot,
-    read_host_metadata, reconcile_host,
+    HostLease, HostLeaseState, JournalKind, JournalLimits, JournalStore, RecoveryResult,
+    load_snapshot, read_host_metadata,
 };
 use tokio::runtime::Builder;
 use tokio::sync::mpsc::{self, UnboundedReceiver};
@@ -395,7 +395,7 @@ async fn attach_loop(
                 rand::rngs::OsRng.fill_bytes(&mut nonce);
             }
             Err(error) => {
-                if replay_retained_output(&spec, &event_tx)? {
+                if replay_retained_output(&spec, &event_tx, &cancel).await? {
                     return Ok(());
                 }
                 report_client_failure(&spec, &event_tx, error, spec.from_sequence)?;
@@ -669,15 +669,28 @@ fn report_recovery_state(
     Ok(())
 }
 
-fn replay_retained_output(
+async fn replay_retained_output(
     spec: &DurableSessionSpec,
     event_tx: &Sender<SshEvent>,
+    cancel: &CancellationToken,
 ) -> Result<bool, String> {
-    let reconciliation = match reconcile_host(&spec.paths.session_dir) {
-        Ok(value) => value,
+    let recovery = HostReconciliationService::new(&spec.paths.runtime_root);
+    let plan = match recovery.plan(&spec.paths.session_dir).await {
+        Ok(plan) => plan,
         Err(_) => return Ok(false),
     };
-    if reconciliation == ReconciliationResult::Active {
+    if plan.lease_state == HostLeaseState::Held || plan.preview_result == RecoveryResult::Ambiguous
+    {
+        return Ok(false);
+    }
+    let prior_lifecycle = plan.lifecycle;
+    let reconciliation = recovery
+        .reconcile(plan, cancel)
+        .map_err(|error| format!("Unable to reconcile retained session output: {error}"))?;
+    if !matches!(
+        reconciliation.result,
+        RecoveryResult::Reconciled | RecoveryResult::NoChange
+    ) {
         return Ok(false);
     }
     let metadata = read_host_metadata(&spec.paths.session_dir).ok();
@@ -729,7 +742,9 @@ fn replay_retained_output(
                 .map_err(|_| "Application event channel closed".to_string())?;
         }
     }
-    let state = if reconciliation == ReconciliationResult::Orphaned {
+    let state = if reconciliation.result == RecoveryResult::Reconciled
+        || prior_lifecycle == termirust_domain::HostLifecycle::Orphaned
+    {
         termirust_domain::HostedSessionState::Orphaned
     } else {
         termirust_domain::HostedSessionState::Exited

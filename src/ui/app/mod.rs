@@ -69,10 +69,14 @@ use gpui_component::input::{Input, InputEvent, InputState};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{ActiveTheme, Icon, Sizable, StyledExt as _, h_flex, v_flex};
 use rfd::{AsyncFileDialog, FileDialog};
-use termirust_client::DevUrlProjection;
+use termirust_client::{DevUrlProjection, HostReconciliationPlan};
 use termirust_domain::{HostedSessionId, SessionOrigin};
 use termirust_protocol::MobileDevicePairingRequest;
-use termirust_store::{HealthReport, HealthRepository, IndexRepairKind, RepairCancellation};
+use termirust_store::{
+    HealthReport, HealthRepository, IndexRepairKind, MetadataRecoveryService, RecoveryCancellation,
+    RecoveryPlan, RepairCancellation,
+};
+use tokio_util::sync::CancellationToken;
 use vt100::MouseProtocolMode;
 
 use crate::credentials;
@@ -933,6 +937,11 @@ impl Render for WorkspaceTabDragPreview {
     }
 }
 
+struct HostRecoveryOperation {
+    session_id: HostedSessionId,
+    cancellation: CancellationToken,
+}
+
 pub struct TermiRustApp {
     saved: SavedState,
     inputs: DraftInputs,
@@ -990,6 +999,10 @@ pub struct TermiRustApp {
     diagnostic_operation: Option<termirust_diagnostics::ExportCancellation>,
     health_report: Option<HealthReport>,
     health_operation: Option<RepairCancellation>,
+    metadata_recovery_plan: Option<RecoveryPlan>,
+    metadata_recovery_operation: Option<RecoveryCancellation>,
+    host_recovery_plan: Option<HostReconciliationPlan>,
+    host_recovery_operation: Option<HostRecoveryOperation>,
     draft_identity_id: Option<String>,
     draft_vault_id: Option<String>,
     draft_profile_favorite: bool,
@@ -1150,6 +1163,11 @@ impl TermiRustApp {
         {
             let _ = repository.recover_interrupted_repair();
         }
+        if let Ok(root) = project_store_dir()
+            && let Ok(recovery) = MetadataRecoveryService::open(root)
+        {
+            let _ = recovery.recover_interrupted_restore();
+        }
         let artifact_gallery = artifact_gallery::ArtifactGalleryState::open_default();
         let activity_center = ActivityCenterState::open_default();
         let remote_devices = RemoteDevicesState::open_default();
@@ -1263,6 +1281,10 @@ impl TermiRustApp {
             diagnostic_operation: None,
             health_report: None,
             health_operation: None,
+            metadata_recovery_plan: None,
+            metadata_recovery_operation: None,
+            host_recovery_plan: None,
+            host_recovery_operation: None,
             draft_identity_id: None,
             draft_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             draft_profile_favorite: false,
@@ -4057,6 +4079,125 @@ impl TermiRustApp {
             });
         })
         .detach();
+    }
+
+    fn prepare_metadata_recovery(&mut self, cx: &mut Context<Self>) {
+        if self.health_operation.is_some()
+            || self.metadata_recovery_operation.is_some()
+            || !crate::ui::settings::metadata_restore_allowed(self.health_report.as_ref(), false)
+        {
+            return;
+        }
+        let cancellation = RecoveryCancellation::default();
+        let worker_cancellation = cancellation.clone();
+        self.metadata_recovery_operation = Some(cancellation);
+        self.metadata_recovery_plan = None;
+        self.status_message = localization::recovery_inspecting();
+        self.error_message.clear();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    if worker_cancellation.is_cancelled() {
+                        return Err(termirust_store::RecoveryErrorCode::Cancelled);
+                    }
+                    let root = project_store_dir()
+                        .map_err(|_| termirust_store::RecoveryErrorCode::StorageUnavailable)?;
+                    MetadataRecoveryService::open(root)
+                        .map_err(|error| error.code)?
+                        .plan_restore_last_good()
+                        .map_err(|error| error.code)
+                })
+                .await;
+            let _ = this.update(cx, |app, cx| {
+                app.metadata_recovery_operation = None;
+                match result {
+                    Ok(plan) if plan.files.is_empty() => {
+                        app.status_message = localization::recovery_no_change();
+                        app.metadata_recovery_plan = None;
+                        app.error_message.clear();
+                    }
+                    Ok(plan) => {
+                        app.status_message = localization::recovery_confirmation_required();
+                        app.metadata_recovery_plan = Some(plan);
+                        app.error_message.clear();
+                    }
+                    Err(code) => {
+                        app.metadata_recovery_plan = None;
+                        app.error_message = crate::ui::settings::recovery_error_message(code);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn confirm_metadata_recovery(&mut self, cx: &mut Context<Self>) {
+        if self.metadata_recovery_operation.is_some() || self.health_operation.is_some() {
+            return;
+        }
+        let Some(plan) = self.metadata_recovery_plan.take() else {
+            return;
+        };
+        let cancellation = RecoveryCancellation::default();
+        let worker_cancellation = cancellation.clone();
+        self.metadata_recovery_operation = Some(cancellation);
+        self.status_message = localization::recovery_running();
+        self.error_message.clear();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let root = project_store_dir()
+                        .map_err(|_| termirust_store::RecoveryErrorCode::StorageUnavailable)?;
+                    let recovery =
+                        MetadataRecoveryService::open(&root).map_err(|error| error.code)?;
+                    recovery
+                        .restore(plan, &worker_cancellation)
+                        .map_err(|error| error.code)?;
+                    let report = HealthRepository::open(root)
+                        .map_err(|error| match error.code {
+                            termirust_store::HealthErrorCode::PermissionDenied => {
+                                termirust_store::RecoveryErrorCode::PermissionDenied
+                            }
+                            termirust_store::HealthErrorCode::NewerSource => {
+                                termirust_store::RecoveryErrorCode::NewerFormat
+                            }
+                            _ => termirust_store::RecoveryErrorCode::VerificationFailed,
+                        })?
+                        .scan();
+                    Ok::<_, termirust_store::RecoveryErrorCode>(report)
+                })
+                .await;
+            let _ = this.update(cx, |app, cx| {
+                app.metadata_recovery_operation = None;
+                match result {
+                    Ok(report) => {
+                        app.health_report = Some(report);
+                        app.status_message = localization::recovery_complete();
+                        app.error_message.clear();
+                    }
+                    Err(code) => {
+                        app.error_message = crate::ui::settings::recovery_error_message(code);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn cancel_metadata_recovery(&mut self, cx: &mut Context<Self>) {
+        if let Some(cancellation) = self.metadata_recovery_operation.as_ref() {
+            cancellation.cancel();
+        }
+        self.metadata_recovery_plan = None;
+        self.status_message = localization::recovery_cancelled();
+        self.error_message.clear();
+        cx.notify();
     }
 
     fn cancel_health_operation(&mut self, cx: &mut Context<Self>) {

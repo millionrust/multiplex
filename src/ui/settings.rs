@@ -1,5 +1,10 @@
+use termirust_client::HostReconciliationErrorCode;
 use termirust_diagnostics::{DiagnosticStatus, DiagnosticUsage, ExportErrorCode};
-use termirust_store::{HealthCheckKind, HealthErrorCode, HealthFindingState, HealthReport};
+use termirust_domain::{HostedSessionState, SessionLaunchRoute};
+use termirust_store::{
+    HealthCheckKind, HealthErrorCode, HealthEvidenceCode, HealthFindingState, HealthReport,
+    RecoveryErrorCode, RecoveryResult,
+};
 
 use crate::ui::localization;
 
@@ -25,6 +30,128 @@ pub struct HealthViewModel {
     pub status: String,
     pub findings: Vec<HealthFindingView>,
     pub can_scan: bool,
+    pub can_prepare_restore: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecoveryViewModel {
+    pub visible: bool,
+    pub can_confirm: bool,
+    pub can_cancel: bool,
+    pub changed_files: usize,
+    pub unchanged_files: usize,
+    pub backup_bytes: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct HostRecoveryViewModel {
+    pub visible: bool,
+    pub can_confirm: bool,
+    pub can_cancel: bool,
+    pub evidence: String,
+}
+
+pub fn metadata_restore_allowed(report: Option<&HealthReport>, busy: bool) -> bool {
+    !busy
+        && report
+            .and_then(|report| report.finding(HealthCheckKind::StoreReadable))
+            .is_some_and(|finding| {
+                finding.state == HealthFindingState::Corrupt
+                    && finding.evidence == HealthEvidenceCode::StoreMalformed
+            })
+}
+
+pub fn recovery_view_model(
+    report: Option<&HealthReport>,
+    plan: Option<&termirust_store::RecoveryPlan>,
+    busy: bool,
+) -> RecoveryViewModel {
+    RecoveryViewModel {
+        visible: metadata_restore_allowed(report, busy) || plan.is_some(),
+        can_confirm: plan.is_some() && !busy,
+        can_cancel: plan.is_some() || busy,
+        changed_files: plan.map_or(0, |plan| plan.files.len()),
+        unchanged_files: plan.map_or(0, |plan| plan.unchanged_files.len()),
+        backup_bytes: plan.map_or(0, |plan| plan.estimated_backup_bytes),
+    }
+}
+
+pub fn recovery_error_message(code: RecoveryErrorCode) -> String {
+    match code {
+        RecoveryErrorCode::Cancelled => localization::recovery_cancelled(),
+        RecoveryErrorCode::NoLastGood => localization::recovery_error_no_backup(),
+        RecoveryErrorCode::CorruptLastGood
+        | RecoveryErrorCode::VerificationFailed
+        | RecoveryErrorCode::RecoveryRequired => localization::recovery_error_verification(),
+        RecoveryErrorCode::NewerFormat => localization::health_error_newer(),
+        RecoveryErrorCode::StaleRevision => localization::health_error_stale(),
+        RecoveryErrorCode::PermissionDenied => localization::health_error_permission(),
+        RecoveryErrorCode::UnsafeEntry
+        | RecoveryErrorCode::SizeLimit
+        | RecoveryErrorCode::StorageUnavailable
+        | RecoveryErrorCode::InjectedCrash => localization::health_error_storage(),
+    }
+}
+
+pub fn host_recovery_allowed(
+    route: SessionLaunchRoute,
+    state: HostedSessionState,
+    busy: bool,
+) -> bool {
+    !busy
+        && route == SessionLaunchRoute::DurableHost
+        && matches!(
+            state,
+            HostedSessionState::Offline | HostedSessionState::Orphaned
+        )
+}
+
+pub fn host_recovery_view_model(
+    route: SessionLaunchRoute,
+    state: HostedSessionState,
+    plan: Option<&termirust_client::HostReconciliationPlan>,
+    busy: bool,
+) -> HostRecoveryViewModel {
+    let result = plan.map(|plan| plan.preview_result);
+    HostRecoveryViewModel {
+        visible: host_recovery_allowed(route, state, busy) || plan.is_some() || busy,
+        can_confirm: result == Some(RecoveryResult::Reconciled) && !busy,
+        can_cancel: plan.is_some() || busy,
+        evidence: plan.map_or_else(String::new, |plan| {
+            localization::host_recovery_impact(
+                host_recovery_result_label(plan.preview_result),
+                plan.authenticated_peers.len(),
+                plan.current_bytes,
+            )
+        }),
+    }
+}
+
+pub fn host_recovery_error_message(code: HostReconciliationErrorCode) -> String {
+    match code {
+        HostReconciliationErrorCode::Cancelled => localization::recovery_cancelled(),
+        HostReconciliationErrorCode::PeerUnavailable => localization::new_session_phase_offline(),
+        HostReconciliationErrorCode::StaleEvidence => localization::health_error_stale(),
+        HostReconciliationErrorCode::PermissionDenied => localization::health_error_permission(),
+        HostReconciliationErrorCode::UnsafeEntry
+        | HostReconciliationErrorCode::StorageUnavailable
+        | HostReconciliationErrorCode::VerificationFailed
+        | HostReconciliationErrorCode::InjectedCrash
+        | HostReconciliationErrorCode::RecoveryRequired => {
+            localization::recovery_error_verification()
+        }
+    }
+}
+
+fn host_recovery_result_label(result: RecoveryResult) -> String {
+    match result {
+        RecoveryResult::Reconciled => localization::recovery_confirm_action(),
+        RecoveryResult::NoChange => localization::health_state_healthy(),
+        RecoveryResult::Ambiguous => localization::runtime_ownership_ambiguous(),
+        RecoveryResult::Restored => localization::recovery_complete(),
+        RecoveryResult::RolledBack => localization::recovery_cancelled(),
+        RecoveryResult::RecoveryRequired => localization::recovery_error_verification(),
+    }
 }
 
 pub fn health_error_message(code: HealthErrorCode) -> String {
@@ -53,6 +180,7 @@ pub fn health_view_model(report: Option<&HealthReport>, busy: bool) -> HealthVie
             },
             findings: Vec::new(),
             can_scan: !busy,
+            can_prepare_restore: false,
         };
     };
     let source_healthy = [
@@ -103,6 +231,7 @@ pub fn health_view_model(report: Option<&HealthReport>, busy: bool) -> HealthVie
         },
         findings,
         can_scan: !busy,
+        can_prepare_restore: metadata_restore_allowed(Some(report), busy),
     }
 }
 
@@ -317,5 +446,116 @@ mod health {
         );
         assert!(!health_error_message(HealthErrorCode::NewerSource).is_empty());
         assert!(!health_error_message(HealthErrorCode::PermissionDenied).contains('/'));
+    }
+}
+
+#[cfg(test)]
+mod recovery {
+    use super::*;
+    use termirust_store::{HealthEvidenceCode, HealthFinding};
+
+    fn report(state: HealthFindingState, evidence: HealthEvidenceCode) -> HealthReport {
+        let json = r#"{"id":"00000000-0000-0000-0000-000000000001","findings":[],"source_revisions":null,"authoritative_records":0}"#;
+        let mut report: HealthReport = serde_json::from_str(json).unwrap();
+        report.findings.push(HealthFinding {
+            kind: HealthCheckKind::StoreReadable,
+            state,
+            evidence,
+            actual_digest: None,
+            expected_digest: None,
+        });
+        report
+    }
+
+    #[test]
+    fn restore_is_offered_only_for_exact_malformed_authoritative_metadata() {
+        assert!(metadata_restore_allowed(
+            Some(&report(
+                HealthFindingState::Corrupt,
+                HealthEvidenceCode::StoreMalformed,
+            )),
+            false,
+        ));
+        for (state, evidence) in [
+            (HealthFindingState::Newer, HealthEvidenceCode::StoreNewer),
+            (HealthFindingState::Corrupt, HealthEvidenceCode::StoreUnsafe),
+            (
+                HealthFindingState::Corrupt,
+                HealthEvidenceCode::StoreTooLarge,
+            ),
+            (
+                HealthFindingState::Unavailable,
+                HealthEvidenceCode::IoUnavailable,
+            ),
+        ] {
+            assert!(!metadata_restore_allowed(
+                Some(&report(state, evidence)),
+                false
+            ));
+        }
+        assert!(!metadata_restore_allowed(
+            Some(&report(
+                HealthFindingState::Corrupt,
+                HealthEvidenceCode::StoreMalformed,
+            )),
+            true,
+        ));
+    }
+
+    #[test]
+    fn recovery_failures_have_content_free_closed_copy() {
+        for code in [
+            RecoveryErrorCode::NoLastGood,
+            RecoveryErrorCode::CorruptLastGood,
+            RecoveryErrorCode::StaleRevision,
+            RecoveryErrorCode::RecoveryRequired,
+        ] {
+            let message = recovery_error_message(code);
+            assert!(!message.is_empty());
+            assert!(!message.contains('/'));
+        }
+    }
+
+    #[test]
+    fn host_recovery_is_guarded_to_offline_durable_sessions() {
+        assert!(host_recovery_allowed(
+            SessionLaunchRoute::DurableHost,
+            HostedSessionState::Offline,
+            false,
+        ));
+        assert!(host_recovery_allowed(
+            SessionLaunchRoute::DurableHost,
+            HostedSessionState::Orphaned,
+            false,
+        ));
+        assert!(!host_recovery_allowed(
+            SessionLaunchRoute::DurableHost,
+            HostedSessionState::Live,
+            false,
+        ));
+        assert!(!host_recovery_allowed(
+            SessionLaunchRoute::LegacyAppAttached,
+            HostedSessionState::Offline,
+            false,
+        ));
+        assert!(!host_recovery_allowed(
+            SessionLaunchRoute::DurableHost,
+            HostedSessionState::Offline,
+            true,
+        ));
+    }
+
+    #[test]
+    fn host_recovery_failures_have_content_free_closed_copy() {
+        for code in [
+            HostReconciliationErrorCode::PeerUnavailable,
+            HostReconciliationErrorCode::StaleEvidence,
+            HostReconciliationErrorCode::UnsafeEntry,
+            HostReconciliationErrorCode::RecoveryRequired,
+        ] {
+            let message = host_recovery_error_message(code);
+            assert!(!message.is_empty());
+            assert!(!message.contains('/'));
+        }
     }
 }

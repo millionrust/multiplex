@@ -204,6 +204,17 @@ pub(crate) fn read_project_health_source(
     ))
 }
 
+pub(crate) fn validate_project_metadata_bytes(bytes: &[u8]) -> Result<Revision, StoreError> {
+    let document: ProjectsDocument =
+        serde_json::from_slice(bytes).map_err(|_| StoreError::Corrupt {
+            name: PROJECTS_FILE,
+        })?;
+    validate_document(&document).map_err(|_| StoreError::Corrupt {
+        name: PROJECTS_FILE,
+    })?;
+    Ok(document.revision)
+}
+
 impl ProjectRepository {
     pub fn open(root: impl Into<PathBuf>) -> Result<Self, StoreError> {
         Self::open_with(

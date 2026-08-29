@@ -65,6 +65,13 @@ pub(crate) fn read_preset_health_source(
     Ok((bytes, document.revision, document.presets))
 }
 
+pub(crate) fn validate_preset_metadata_bytes(bytes: &[u8]) -> Result<Revision, StoreError> {
+    let document: PresetsDocument =
+        serde_json::from_slice(bytes).map_err(|_| StoreError::Corrupt { name: PRESETS_FILE })?;
+    validate_document(&document).map_err(StoreError::PresetDomain)?;
+    Ok(document.revision)
+}
+
 impl PresetRepository {
     pub fn open(root: impl Into<PathBuf>) -> Result<Self, StoreError> {
         Self::open_with(root, Arc::new(SystemAtomicWriter))

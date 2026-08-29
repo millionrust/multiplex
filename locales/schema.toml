@@ -3510,3 +3510,62 @@ description = "Corrupt health source error"
 id = "health-error-storage"
 context = "Safe guidance when local metadata storage is unavailable."
 description = "Health storage error"
+[[messages]]
+id = "recovery-title"
+context = "Guarded recovery panel title shown only for malformed authoritative metadata."
+description = "Metadata recovery title"
+[[messages]]
+id = "recovery-description"
+context = "Explanation shown before planning a last-good metadata restore."
+description = "Metadata recovery description"
+[[messages]]
+id = "recovery-impact"
+context = "Exact metadata restore plan impact and current backup size."
+description = "Metadata recovery impact"
+[[messages.args]]
+name = "changed"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "unchanged"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "bytes"
+type = "ByteSize"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "recovery-safety-notice"
+context = "Safety and cancellation boundary for metadata recovery."
+description = "Metadata recovery safety notice"
+[[messages]]
+id = "recovery-prepare-action"
+context = "Action that inspects last-good metadata and prepares a restore plan."
+description = "Prepare metadata recovery action"
+[[messages]]
+id = "recovery-confirm-action"
+context = "Explicit confirmation action that activates a planned metadata restore."
+description = "Confirm metadata recovery action"
+
+[[messages]]
+id = "host-recovery-impact"
+context = "Proof and private-backup impact shown before Host lease reconciliation."
+description = "Host lease recovery impact"
+[[messages.args]]
+name = "result"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "peers"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "bytes"
+type = "ByteSize"
+sensitivity = "public"
+bidi = "none"

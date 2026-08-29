@@ -12,12 +12,13 @@ use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{
     Disableable as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt as _, h_flex, v_flex,
 };
+use termirust_client::HostReconciliationService;
 use termirust_domain::{
     Group, GroupDestination, GroupError, GroupId, GroupInverseCommand, HostedSessionId,
     HostedSessionState, OutputSequence, ProjectError, ProjectId, SessionMutation,
     SessionStateError, SessionTitle,
 };
-use termirust_store::{SessionRemovalPlan, StoreError};
+use termirust_store::{RecoveryResult, SessionRemovalPlan, StoreError};
 
 use super::runtimes::runtime_inspector_projection;
 use super::session_library::{SessionLibraryFilter, SessionLibraryRecovery, SessionLibraryView};
@@ -436,6 +437,165 @@ impl TermiRustApp {
             return;
         };
         self.stop_app_attached_session(pane_id, cx);
+    }
+
+    fn prepare_host_recovery(&mut self, id: HostedSessionId, cx: &mut Context<Self>) {
+        if self.host_recovery_operation.is_some() || self.host_recovery_plan.is_some() {
+            return;
+        }
+        let Some(session) = self
+            .saved
+            .app_attached_sessions
+            .iter()
+            .find(|session| session.id == id)
+        else {
+            return;
+        };
+        if !crate::ui::settings::host_recovery_allowed(session.route, session.state, false) {
+            return;
+        }
+        let Some(host) = session.durable_host.as_ref() else {
+            self.error_message = localization::recovery_error_verification();
+            cx.notify();
+            return;
+        };
+        let runtime_root = std::path::PathBuf::from(&host.runtime_root);
+        let session_dir = std::path::PathBuf::from(&host.session_dir);
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        self.host_recovery_operation = Some(super::HostRecoveryOperation {
+            session_id: id,
+            cancellation: cancellation.clone(),
+        });
+        self.status_message = localization::recovery_inspecting();
+        self.error_message.clear();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let service = HostReconciliationService::new(runtime_root);
+                    if cancellation.is_cancelled() {
+                        return Err(termirust_client::HostReconciliationError {
+                            code: termirust_client::HostReconciliationErrorCode::Cancelled,
+                        });
+                    }
+                    service.recover_interrupted_reconciliation(&session_dir)?;
+                    if cancellation.is_cancelled() {
+                        return Err(termirust_client::HostReconciliationError {
+                            code: termirust_client::HostReconciliationErrorCode::Cancelled,
+                        });
+                    }
+                    let plan = service.plan(session_dir).await?;
+                    if cancellation.is_cancelled() {
+                        return Err(termirust_client::HostReconciliationError {
+                            code: termirust_client::HostReconciliationErrorCode::Cancelled,
+                        });
+                    }
+                    Ok(plan)
+                })
+                .await;
+            let _ = this.update(cx, |app, cx| {
+                app.host_recovery_operation = None;
+                match result {
+                    Ok(plan) => {
+                        app.host_recovery_plan = Some(plan);
+                        app.status_message = localization::recovery_confirmation_required();
+                        app.error_message.clear();
+                    }
+                    Err(error) => {
+                        app.host_recovery_plan = None;
+                        app.error_message =
+                            crate::ui::settings::host_recovery_error_message(error.code);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn confirm_host_recovery(&mut self, id: HostedSessionId, cx: &mut Context<Self>) {
+        if self.host_recovery_operation.is_some() {
+            return;
+        }
+        let Some(plan) = self.host_recovery_plan.take() else {
+            return;
+        };
+        if plan.session_id != id || plan.preview_result != RecoveryResult::Reconciled {
+            self.host_recovery_plan = Some(plan);
+            return;
+        }
+        let Some(runtime_root) = self
+            .saved
+            .app_attached_sessions
+            .iter()
+            .find(|session| session.id == id)
+            .and_then(|session| session.durable_host.as_ref())
+            .map(|host| std::path::PathBuf::from(&host.runtime_root))
+        else {
+            self.host_recovery_plan = Some(plan);
+            self.error_message = localization::recovery_error_verification();
+            cx.notify();
+            return;
+        };
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        self.host_recovery_operation = Some(super::HostRecoveryOperation {
+            session_id: id,
+            cancellation: cancellation.clone(),
+        });
+        self.status_message = localization::recovery_running();
+        self.error_message.clear();
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    HostReconciliationService::new(runtime_root).reconcile(plan, &cancellation)
+                })
+                .await;
+            let _ = this.update(cx, |app, cx| {
+                app.host_recovery_operation = None;
+                match result {
+                    Ok(receipt) if receipt.result == RecoveryResult::Reconciled => {
+                        if app.mutate_session(
+                            id,
+                            SessionMutation::SetLifecycle(HostedSessionState::Orphaned),
+                        ) {
+                            app.status_message = localization::recovery_complete();
+                            app.error_message.clear();
+                        }
+                    }
+                    Ok(_) => {
+                        app.status_message = localization::recovery_no_change();
+                        app.error_message.clear();
+                    }
+                    Err(error) => {
+                        app.error_message =
+                            crate::ui::settings::host_recovery_error_message(error.code);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn cancel_host_recovery(&mut self, id: HostedSessionId, cx: &mut Context<Self>) {
+        if let Some(operation) = self.host_recovery_operation.as_ref()
+            && operation.session_id == id
+        {
+            operation.cancellation.cancel();
+        }
+        if self
+            .host_recovery_plan
+            .as_ref()
+            .is_some_and(|plan| plan.session_id == id)
+        {
+            self.host_recovery_plan = None;
+        }
+        self.status_message = localization::recovery_cancelled();
+        self.error_message.clear();
+        cx.notify();
     }
 
     fn confirm_stop_and_archive(&mut self, cx: &mut Context<Self>) {
@@ -1525,6 +1685,19 @@ impl TermiRustApp {
             .then(|| runtime_inspector_projection(recognition));
         let transcript = (session.route == termirust_domain::SessionLaunchRoute::DurableHost)
             .then(|| transcript_export_projection(recognition));
+        let host_recovery_target = self
+            .host_recovery_plan
+            .as_ref()
+            .is_some_and(|plan| plan.session_id == id)
+            || self
+                .host_recovery_operation
+                .as_ref()
+                .is_some_and(|operation| operation.session_id == id);
+        let host_recovery_available = crate::ui::settings::host_recovery_allowed(
+            session.route,
+            session.state,
+            self.host_recovery_operation.is_some() || self.host_recovery_plan.is_some(),
+        );
         v_flex()
             .id(("project-session-row", key))
             .debug_selector(|| "project-session-row".to_string())
@@ -1746,6 +1919,9 @@ impl TermiRustApp {
                                     }),
                             )
                         })
+                        .when(host_recovery_available || host_recovery_target, |this| {
+                            this.child(self.render_host_recovery_panel(session, cx))
+                        })
                         .child(self.render_dev_url_inspector(id, cx))
                         .child(self.render_artifact_gallery(id, cx))
                         .child(
@@ -1946,6 +2122,108 @@ impl TermiRustApp {
                         ),
                 )
             })
+            .into_any_element()
+    }
+
+    fn render_host_recovery_panel(
+        &self,
+        session: &SavedAppAttachedSession,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let id = session.id;
+        let key = session_key(id);
+        let plan = self
+            .host_recovery_plan
+            .as_ref()
+            .filter(|plan| plan.session_id == id);
+        let busy = self
+            .host_recovery_operation
+            .as_ref()
+            .is_some_and(|operation| operation.session_id == id);
+        let view =
+            crate::ui::settings::host_recovery_view_model(session.route, session.state, plan, busy);
+        v_flex()
+            .id(("session-host-recovery", key))
+            .debug_selector(|| "session-host-recovery".to_string())
+            .gap(px(theme::SPACE_2))
+            .p(px(theme::SPACE_3))
+            .border_1()
+            .border_color(theme::warning())
+            .rounded(px(theme::CARD_RADIUS))
+            .child(
+                h_flex()
+                    .items_center()
+                    .gap(px(theme::SPACE_2))
+                    .text_color(theme::warning())
+                    .child(Icon::new(IconName::TriangleAlert).size(px(theme::SPACE_4)))
+                    .child(
+                        div()
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child(localization::recovery_title()),
+                    ),
+            )
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                    .text_color(theme::text_muted())
+                    .child(localization::recovery_description()),
+            )
+            .when(!view.evidence.is_empty(), |this| {
+                this.child(
+                    div()
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .text_color(theme::text_main())
+                        .child(view.evidence.clone()),
+                )
+            })
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                    .text_color(theme::warning())
+                    .child(localization::recovery_safety_notice()),
+            )
+            .child(
+                h_flex()
+                    .flex_wrap()
+                    .gap(px(theme::SPACE_2))
+                    .when(plan.is_none() && !busy, |this| {
+                        this.child(
+                            Button::new(("session-host-recovery-prepare", key))
+                                .debug_selector(|| "session-host-recovery-prepare".to_string())
+                                .small()
+                                .primary()
+                                .label(localization::recovery_prepare_action())
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.prepare_host_recovery(id, cx);
+                                })),
+                        )
+                    })
+                    .when(plan.is_some(), |this| {
+                        this.child(
+                            Button::new(("session-host-recovery-confirm", key))
+                                .debug_selector(|| "session-host-recovery-confirm".to_string())
+                                .small()
+                                .primary()
+                                .disabled(!view.can_confirm)
+                                .label(localization::recovery_confirm_action())
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.confirm_host_recovery(id, cx);
+                                })),
+                        )
+                    })
+                    .when(view.can_cancel, |this| {
+                        this.child(
+                            Button::new(("session-host-recovery-cancel", key))
+                                .debug_selector(|| "session-host-recovery-cancel".to_string())
+                                .small()
+                                .label(localization::common_cancel())
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.cancel_host_recovery(id, cx);
+                                })),
+                        )
+                    }),
+            )
             .into_any_element()
     }
 }
