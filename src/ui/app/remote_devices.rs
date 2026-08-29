@@ -23,6 +23,10 @@ use crate::controller::host_identity::{
 use crate::controller::lan::ControllerListenerProcess;
 use crate::controller::ssh_pairing::SshPairingBroker;
 
+use super::controller_coordinator::{
+    ControllerListenerEventProjection, ControllerPairingFailureKind,
+};
+
 use super::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -390,7 +394,7 @@ impl RemoteDevicesState {
         if let Some(prompt) = self
             .ssh_pairing_broker
             .as_mut()
-            .and_then(SshPairingBroker::poll)
+            .and_then(|broker| controller_coordinator.poll_ssh_pairing(broker))
         {
             if self.pairing_offer_id.is_some() {
                 if let Some(broker) = self.ssh_pairing_broker.as_mut() {
@@ -425,7 +429,9 @@ impl RemoteDevicesState {
             }
         }
         let events = match self.listener_process.as_mut() {
-            Some(process) => process.drain_events().map_err(|_| ())?,
+            Some(process) => controller_coordinator
+                .drain_listener_events(process)
+                .map_err(|_| ())?,
             None => return Ok(changed),
         };
         for event in events {
@@ -435,7 +441,7 @@ impl RemoteDevicesState {
         let exited = self
             .listener_process
             .as_mut()
-            .is_some_and(|process| !process.is_running());
+            .is_some_and(|process| !controller_coordinator.listener_is_running(process));
         if !exited {
             return Ok(changed);
         }
@@ -451,41 +457,33 @@ impl RemoteDevicesState {
         event: ListenerProcessEvent,
         controller_coordinator: &ControllerCoordinator,
     ) -> Result<(), ()> {
-        match event {
-            ListenerProcessEvent::Ready { .. } => return Err(()),
-            ListenerProcessEvent::PairingOffer {
+        let projection = controller_coordinator
+            .project_listener_event(self.pairing_offer_id, event)
+            .map_err(|_| ())?;
+        match projection {
+            ControllerListenerEventProjection::Offer {
                 offer_id,
                 offer_text,
-                ..
             } => {
                 self.pairing_offer_id = Some(offer_id);
                 self.pairing_offer_text = Some(offer_text);
                 self.pairing_sas = None;
                 self.pairing_state = PairingUiState::Waiting;
             }
-            ListenerProcessEvent::PairingSasReady { offer_id, sas, .. } => {
-                if self.pairing_offer_id != Some(offer_id) {
-                    return Err(());
-                }
+            ControllerListenerEventProjection::SasReady { sas } => {
                 self.pairing_sas = Some(sas);
                 self.pairing_state = PairingUiState::SasReady;
             }
-            ListenerProcessEvent::PairingComplete { offer_id, .. } => {
-                if self.pairing_offer_id != Some(offer_id) {
-                    return Err(());
-                }
+            ControllerListenerEventProjection::Complete => {
                 self.clear_pairing(PairingUiState::Paired, controller_coordinator);
                 self.refresh()?;
             }
-            ListenerProcessEvent::PairingFailed { offer_id, code, .. } => {
-                if offer_id.is_some() && offer_id != self.pairing_offer_id {
-                    return Err(());
-                }
-                let state = match code.as_str() {
-                    "rate_limited" => PairingUiState::RateLimited,
-                    "handshake_timeout" => PairingUiState::Expired,
-                    "io" => PairingUiState::Uncertain,
-                    _ => PairingUiState::StorageFailure,
+            ControllerListenerEventProjection::Failed { failure } => {
+                let state = match failure {
+                    ControllerPairingFailureKind::RateLimited => PairingUiState::RateLimited,
+                    ControllerPairingFailureKind::Expired => PairingUiState::Expired,
+                    ControllerPairingFailureKind::Uncertain => PairingUiState::Uncertain,
+                    ControllerPairingFailureKind::Storage => PairingUiState::StorageFailure,
                 };
                 self.clear_pairing(state, controller_coordinator);
             }

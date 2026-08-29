@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use termirust_controller_listener::{
-    ListenerLaunchDescriptor, ProcessPairingDecision, SshHostPairingDecisionValue,
+    ListenerLaunchDescriptor, ListenerProcessEvent, ProcessPairingDecision,
+    SshHostPairingDecisionValue, SshHostPairingPrompt,
 };
 use termirust_domain::{
     ControllerCapabilities, ControllerCapability, ControllerDeviceId, PairingOfferId,
@@ -41,6 +42,35 @@ pub(super) enum ControllerDeviceMutationError {
 pub(super) enum ControllerPairingCommandError {
     Listener(ListenerProcessError),
     Ssh(std::io::Error),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ControllerPairingFailureKind {
+    RateLimited,
+    Expired,
+    Uncertain,
+    Storage,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum ControllerListenerEventProjection {
+    Offer {
+        offer_id: PairingOfferId,
+        offer_text: String,
+    },
+    SasReady {
+        sas: String,
+    },
+    Complete,
+    Failed {
+        failure: ControllerPairingFailureKind,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ControllerListenerEventProjectionError {
+    UnexpectedReady,
+    OfferMismatch,
 }
 
 impl std::fmt::Display for ControllerPairingCommandError {
@@ -200,6 +230,61 @@ impl ControllerCoordinator {
             .decide(offer_id, ssh_pairing_decision(decision))
             .map_err(ControllerPairingCommandError::Ssh)
     }
+
+    pub fn poll_ssh_pairing(&self, broker: &mut SshPairingBroker) -> Option<SshHostPairingPrompt> {
+        broker.poll()
+    }
+
+    pub fn drain_listener_events(
+        &self,
+        process: &mut ControllerListenerProcess,
+    ) -> Result<Vec<ListenerProcessEvent>, ListenerProcessError> {
+        process.drain_events()
+    }
+
+    pub fn listener_is_running(&self, process: &mut ControllerListenerProcess) -> bool {
+        process.is_running()
+    }
+
+    pub fn project_listener_event(
+        &self,
+        current_offer_id: Option<PairingOfferId>,
+        event: ListenerProcessEvent,
+    ) -> Result<ControllerListenerEventProjection, ControllerListenerEventProjectionError> {
+        match event {
+            ListenerProcessEvent::Ready { .. } => {
+                Err(ControllerListenerEventProjectionError::UnexpectedReady)
+            }
+            ListenerProcessEvent::PairingOffer {
+                offer_id,
+                offer_text,
+                ..
+            } => Ok(ControllerListenerEventProjection::Offer {
+                offer_id,
+                offer_text,
+            }),
+            ListenerProcessEvent::PairingSasReady { offer_id, sas, .. } => {
+                require_matching_offer(current_offer_id, offer_id)?;
+                Ok(ControllerListenerEventProjection::SasReady { sas })
+            }
+            ListenerProcessEvent::PairingComplete { offer_id, .. } => {
+                require_matching_offer(current_offer_id, offer_id)?;
+                Ok(ControllerListenerEventProjection::Complete)
+            }
+            ListenerProcessEvent::PairingFailed { offer_id, code, .. } => {
+                if let Some(offer_id) = offer_id {
+                    require_matching_offer(current_offer_id, offer_id)?;
+                }
+                let failure = match code.as_str() {
+                    "rate_limited" => ControllerPairingFailureKind::RateLimited,
+                    "handshake_timeout" => ControllerPairingFailureKind::Expired,
+                    "io" => ControllerPairingFailureKind::Uncertain,
+                    _ => ControllerPairingFailureKind::Storage,
+                };
+                Ok(ControllerListenerEventProjection::Failed { failure })
+            }
+        }
+    }
 }
 
 fn toggled_input_capabilities(current: ControllerCapabilities) -> ControllerCapabilities {
@@ -221,6 +306,17 @@ fn ssh_pairing_decision(decision: ProcessPairingDecision) -> SshHostPairingDecis
     }
 }
 
+fn require_matching_offer(
+    current_offer_id: Option<PairingOfferId>,
+    event_offer_id: PairingOfferId,
+) -> Result<(), ControllerListenerEventProjectionError> {
+    if current_offer_id == Some(event_offer_id) {
+        Ok(())
+    } else {
+        Err(ControllerListenerEventProjectionError::OfferMismatch)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[cfg(unix)]
@@ -235,8 +331,8 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use termirust_controller_listener::{
-        ListenerLaunchDescriptor, ProcessPairingDecision, SshHostPairingDecision,
-        SshHostPairingDecisionValue, SshHostPairingPrompt,
+        ListenerLaunchDescriptor, ListenerProcessEvent, ProcessPairingDecision,
+        SshHostPairingDecision, SshHostPairingDecisionValue, SshHostPairingPrompt,
     };
     use termirust_controller_security::StaticPrivateKey;
     use termirust_domain::{
@@ -250,8 +346,10 @@ mod tests {
 
     use super::{
         ControllerCoordinator, ControllerDeviceMutation, ControllerDeviceMutationError,
-        ControllerDeviceMutationRequest, ControllerDeviceMutator, ControllerListenerSpawner,
-        SystemControllerListenerSpawner, ssh_pairing_decision, toggled_input_capabilities,
+        ControllerDeviceMutationRequest, ControllerDeviceMutator,
+        ControllerListenerEventProjection, ControllerListenerEventProjectionError,
+        ControllerListenerSpawner, ControllerPairingFailureKind, SystemControllerListenerSpawner,
+        ssh_pairing_decision, toggled_input_capabilities,
     };
     use crate::controller::lan::{ControllerListenerProcess, ListenerProcessError};
     #[cfg(unix)]
@@ -562,6 +660,80 @@ mod tests {
     }
 
     #[test]
+    fn listener_events_project_every_variant_failure_and_offer_fence() {
+        let coordinator = ControllerCoordinator::default();
+        let offer_id = PairingOfferId::new();
+        let stale_offer_id = PairingOfferId::new();
+
+        assert_eq!(
+            coordinator.project_listener_event(None, ListenerProcessEvent::ready(49_152)),
+            Err(ControllerListenerEventProjectionError::UnexpectedReady)
+        );
+        assert_eq!(
+            coordinator.project_listener_event(
+                None,
+                ListenerProcessEvent::pairing_offer(offer_id, "bounded-offer".to_owned(), 300),
+            ),
+            Ok(ControllerListenerEventProjection::Offer {
+                offer_id,
+                offer_text: "bounded-offer".to_owned(),
+            })
+        );
+        assert_eq!(
+            coordinator.project_listener_event(
+                Some(offer_id),
+                ListenerProcessEvent::pairing_sas_ready(stale_offer_id, "WRONG".to_owned()),
+            ),
+            Err(ControllerListenerEventProjectionError::OfferMismatch)
+        );
+        assert_eq!(
+            coordinator.project_listener_event(
+                Some(offer_id),
+                ListenerProcessEvent::pairing_sas_ready(offer_id, "ABCD-1234".to_owned()),
+            ),
+            Ok(ControllerListenerEventProjection::SasReady {
+                sas: "ABCD-1234".to_owned(),
+            })
+        );
+        assert_eq!(
+            coordinator.project_listener_event(
+                Some(stale_offer_id),
+                ListenerProcessEvent::pairing_complete(offer_id, ControllerDeviceId::new()),
+            ),
+            Err(ControllerListenerEventProjectionError::OfferMismatch)
+        );
+        assert_eq!(
+            coordinator.project_listener_event(
+                Some(offer_id),
+                ListenerProcessEvent::pairing_complete(offer_id, ControllerDeviceId::new()),
+            ),
+            Ok(ControllerListenerEventProjection::Complete)
+        );
+
+        for (code, failure) in [
+            ("rate_limited", ControllerPairingFailureKind::RateLimited),
+            ("handshake_timeout", ControllerPairingFailureKind::Expired),
+            ("io", ControllerPairingFailureKind::Uncertain),
+            ("unknown", ControllerPairingFailureKind::Storage),
+        ] {
+            assert_eq!(
+                coordinator.project_listener_event(
+                    Some(offer_id),
+                    ListenerProcessEvent::pairing_failed(Some(offer_id), code),
+                ),
+                Ok(ControllerListenerEventProjection::Failed { failure })
+            );
+        }
+        assert_eq!(
+            coordinator.project_listener_event(
+                Some(offer_id),
+                ListenerProcessEvent::pairing_failed(Some(stale_offer_id), "io"),
+            ),
+            Err(ControllerListenerEventProjectionError::OfferMismatch)
+        );
+    }
+
+    #[test]
     fn coordinator_module_has_no_ui_framework_dependency() {
         let forbidden_crate = ["gp", "ui"].concat();
         assert!(!include_str!("controller_coordinator.rs").contains(&forbidden_crate));
@@ -607,6 +779,21 @@ mod tests {
             assert!(
                 !source.contains("broker.decide("),
                 "{} bypasses ControllerCoordinator SSH pairing decision",
+                path.display()
+            );
+            assert!(
+                !source.contains("SshPairingBroker::poll"),
+                "{} bypasses ControllerCoordinator SSH pairing polling",
+                path.display()
+            );
+            assert!(
+                !source.contains("process.drain_events()"),
+                "{} bypasses ControllerCoordinator listener event polling",
+                path.display()
+            );
+            assert!(
+                !source.contains("process.is_running()"),
+                "{} bypasses ControllerCoordinator listener liveness polling",
                 path.display()
             );
         }
