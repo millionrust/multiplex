@@ -191,6 +191,8 @@ fn ssh_config_path_label() -> &'static str {
 enum NavSection {
     Projects,
     Activity,
+    Sessions,
+    Devices,
     Presets,
     Hosts,
     Sftp,
@@ -214,8 +216,10 @@ impl NavSection {
         match self {
             Self::Projects => localization::projects_nav_label(),
             Self::Activity => localization::activity_center_nav_label(),
+            Self::Sessions => localization::session_sidebar_title(),
+            Self::Devices => localization::remote_devices_title(),
             Self::Presets => localization::presets_nav_label(),
-            Self::Hosts => "Hosts".to_string(),
+            Self::Hosts => "Connections".to_string(),
             Self::Sftp => "SFTP".to_string(),
             Self::Vaults => "Vaults".to_string(),
             Self::Keychain => "Keys".to_string(),
@@ -230,6 +234,8 @@ impl NavSection {
         match self {
             Self::Projects => IconName::Folder.into(),
             Self::Activity => IconName::Bell.into(),
+            Self::Sessions => IconName::SquareTerminal.into(),
+            Self::Devices => IconName::Globe.into(),
             Self::Presets => IconName::SquareTerminal.into(),
             Self::Hosts => IconName::SquareTerminal.into(),
             Self::Sftp => IconName::Folder.into(),
@@ -4258,7 +4264,7 @@ impl TermiRustApp {
     fn reset_onboarding_panel(&mut self, cx: &mut Context<Self>) {
         self.saved.settings.onboarding_dismissed = false;
         self.save_settings();
-        self.status_message = "Welcome panel reset. Open Hosts to see it again.".to_string();
+        self.status_message = "Welcome panel reset. Open Connections to see it again.".to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -10647,6 +10653,8 @@ impl TermiRustApp {
         match self.nav_section {
             NavSection::Projects => self.render_projects_view(cx).into_any_element(),
             NavSection::Activity => self.render_activity_center_view(cx).into_any_element(),
+            NavSection::Sessions => self.render_sessions_view(cx).into_any_element(),
+            NavSection::Devices => self.render_devices_view(cx).into_any_element(),
             NavSection::Presets => self.render_presets_view(cx).into_any_element(),
             NavSection::Hosts => self.render_hosts_view(window, cx).into_any_element(),
             NavSection::Sftp => self.render_sftp_view(cx).into_any_element(),
@@ -11204,6 +11212,8 @@ fn nav_section_key(section: NavSection) -> u64 {
     match section {
         NavSection::Projects => 0,
         NavSection::Activity => 10,
+        NavSection::Sessions => 11,
+        NavSection::Devices => 12,
         NavSection::Presets => 9,
         NavSection::Hosts => 1,
         NavSection::Vaults => 2,
@@ -20780,13 +20790,16 @@ sleep 1
             .expect("window update should succeed");
 
         for (selector, expected) in [
-            ("nav-card-0", NavSection::Projects),
             ("nav-card-10", NavSection::Activity),
+            ("nav-card-0", NavSection::Projects),
             ("nav-card-1", NavSection::Hosts),
+            ("nav-card-11", NavSection::Sessions),
+            ("nav-card-12", NavSection::Devices),
+            ("nav-card-5", NavSection::Settings),
+            ("nav-card-9", NavSection::Presets),
             ("nav-card-2", NavSection::Vaults),
             ("nav-card-3", NavSection::Keychain),
             ("nav-card-4", NavSection::Snippets),
-            ("nav-card-5", NavSection::Settings),
             ("nav-card-6", NavSection::KnownHosts),
             ("nav-card-7", NavSection::Logs),
         ] {
@@ -20799,6 +20812,15 @@ sleep 1
                 assert!(!app.show_editor_panel);
                 assert!(app.error_message.is_empty());
             });
+
+            if let Some(page_selector) = match expected {
+                NavSection::Sessions => Some("sessions-view"),
+                NavSection::Devices => Some("devices-view"),
+                _ => None,
+            } {
+                let mut visual = VisualTestContext::from_window(window.into(), cx);
+                assert!(visual.debug_bounds(page_selector).is_some());
+            }
         }
     }
 
@@ -22604,7 +22626,7 @@ sleep 1
             assert!(!app.saved.settings.onboarding_dismissed);
             assert_eq!(
                 app.status_message,
-                "Welcome panel reset. Open Hosts to see it again."
+                "Welcome panel reset. Open Connections to see it again."
             );
             assert!(app.error_message.is_empty());
         });

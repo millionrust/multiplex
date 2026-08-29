@@ -5,6 +5,9 @@ Native desktop SSH client built with `gpui`, `gpui-component`, `russh`, and `vt1
 ## Current product shape
 
 - Host library UI inspired by Terminus-style launchers, with groups, tags, vaults, batch selection, and bulk actions.
+- Workflow navigation surfaces Activity, Projects, Connections, Sessions, Devices, and
+  Settings as primary destinations; specialized presets, vaults, keys, snippets, known
+  hosts, and logs remain available as advanced tools.
 - Single-row top chrome with custom in-app traffic lights (close / minimize / zoom); the macOS OS title-bar drag is taken over so the chrome stays draggable from its empty area.
 - Draggable workspace tabs that scroll horizontally when they overflow; double-click a tab to rename it; right-click a tab for Duplicate / Duplicate in a new window / Rename / Split / Close.
 - Each workspace tab can contain split panes arranged as a recursive binary tree: dropping a tab onto a pane splits that pane, with arbitrary nesting and resizable dividers.

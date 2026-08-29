@@ -132,6 +132,82 @@ impl ProjectLibraryState {
 }
 
 impl TermiRustApp {
+    pub(super) fn render_sessions_view(&self, cx: &Context<Self>) -> AnyElement {
+        let content = match &self.project_library.load_state {
+            ProjectLibraryLoadState::Loading => v_flex()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .child(localization::projects_loading())
+                .into_any_element(),
+            ProjectLibraryLoadState::Failed(_) => v_flex()
+                .flex_1()
+                .items_center()
+                .justify_center()
+                .gap(px(theme::SPACE_4))
+                .child(
+                    self.project_library
+                        .error_message()
+                        .unwrap_or_else(localization::project_store_unavailable),
+                )
+                .child(
+                    Button::new("sessions-store-retry")
+                        .debug_selector(|| "sessions-store-retry".to_string())
+                        .icon(IconName::Redo2)
+                        .label(localization::common_retry())
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.retry_project_library(window, cx);
+                        })),
+                )
+                .into_any_element(),
+            ProjectLibraryLoadState::Ready => h_flex()
+                .flex_1()
+                .min_h_0()
+                .child(
+                    div()
+                        .w(px(360.))
+                        .max_w(px(420.))
+                        .min_w(px(280.))
+                        .h_full()
+                        .child(self.render_project_list(cx)),
+                )
+                .child(self.render_session_sidebar(self.project_library.selected_id, cx))
+                .into_any_element(),
+        };
+
+        v_flex()
+            .id("sessions-view")
+            .debug_selector(|| "sessions-view".to_string())
+            .track_focus(&self.project_list_focus)
+            .flex_1()
+            .min_h_0()
+            .bg(theme::library_bg())
+            .child(
+                v_flex()
+                    .flex_none()
+                    .gap(px(theme::SPACE_2))
+                    .px(px(theme::SPACE_6))
+                    .py(px(theme::SPACE_5))
+                    .border_b_1()
+                    .border_color(theme::border())
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_HEADING_SIZE))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child(localization::session_sidebar_title()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(localization::session_sidebar_subtitle()),
+                    ),
+            )
+            .child(content)
+            .into_any_element()
+    }
+
     pub(super) fn choose_project_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         #[cfg(test)]
         if let Some(selection) = crate::test_support::take_dialog_selection() {

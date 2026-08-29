@@ -1672,7 +1672,7 @@ impl TermiRustApp {
                                         .text_size(px(13.))
                                         .font_semibold()
                                         .text_color(theme::text_main())
-                                        .child("Hosts"),
+                                        .child("Connections"),
                                 )
                             })
                             .child(self.render_host_grid(window, cx)),

@@ -997,25 +997,27 @@ impl TermiRustApp {
             )
     }
 
-    pub(super) fn render_library_sidebar(&self, cx: &Context<Self>) -> Div {
+    pub(super) fn render_library_sidebar(&self, cx: &Context<Self>) -> AnyElement {
         v_flex()
+            .id("library-sidebar")
+            .debug_selector(|| "library-sidebar".to_string())
             .w(px(theme::HOST_SIDEBAR_WIDTH))
             .flex_none()
             .h_full()
+            .min_h_0()
             .px(px(12.))
             .pt(px(16.))
             .pb(px(16.))
             .bg(theme::library_sidebar())
+            .overflow_y_scroll()
             .child(
                 v_flex().gap(px(2.)).children(
                     [
-                        NavSection::Projects,
                         NavSection::Activity,
-                        NavSection::Presets,
+                        NavSection::Projects,
                         NavSection::Hosts,
-                        NavSection::Vaults,
-                        NavSection::Keychain,
-                        NavSection::Snippets,
+                        NavSection::Sessions,
+                        NavSection::Devices,
                         NavSection::Settings,
                     ]
                     .into_iter()
@@ -1043,16 +1045,18 @@ impl TermiRustApp {
             )
             .child(
                 v_flex().gap(px(2.)).children(
-                    [NavSection::KnownHosts, NavSection::Logs]
-                        .into_iter()
-                        .map(|section| {
-                            let active = self.nav_section == section;
-                            self.nav_card(
-                                ("nav-card", nav_section_key(section)),
-                                section,
-                                active,
-                                cx,
-                            )
+                    [
+                        NavSection::Presets,
+                        NavSection::Vaults,
+                        NavSection::Keychain,
+                        NavSection::Snippets,
+                        NavSection::KnownHosts,
+                        NavSection::Logs,
+                    ]
+                    .into_iter()
+                    .map(|section| {
+                        let active = self.nav_section == section;
+                        self.nav_card(("nav-card", nav_section_key(section)), section, active, cx)
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 if this.nav_section != section {
                                     this.show_editor_panel = false;
@@ -1062,8 +1066,9 @@ impl TermiRustApp {
                                 cx.notify();
                             }))
                             .into_any_element()
-                        }),
+                    }),
                 ),
             )
+            .into_any_element()
     }
 }

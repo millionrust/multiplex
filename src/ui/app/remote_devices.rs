@@ -559,8 +559,8 @@ fn unix_seconds() -> u64 {
 }
 
 impl TermiRustApp {
-    pub(super) fn render_remote_devices_settings_card(&self, cx: &Context<Self>) -> Div {
-        let content = v_flex()
+    fn render_remote_devices_content(&self, cx: &Context<Self>) -> AnyElement {
+        v_flex()
             .gap_3()
             .child(self.render_remote_route_section(cx))
             .child(self.settings_divider())
@@ -568,12 +568,58 @@ impl TermiRustApp {
             .child(self.settings_divider())
             .child(self.render_trusted_remote_devices(cx))
             .child(self.settings_divider())
-            .child(self.render_remote_identity_reset_section(cx));
+            .child(self.render_remote_identity_reset_section(cx))
+            .into_any_element()
+    }
+
+    pub(super) fn render_remote_devices_settings_card(&self, cx: &Context<Self>) -> Div {
         self.settings_section_card(
             localization::remote_devices_title(),
             localization::remote_devices_description(),
-            content.into_any_element(),
+            self.render_remote_devices_content(cx),
         )
+    }
+
+    pub(super) fn render_devices_view(&self, cx: &Context<Self>) -> AnyElement {
+        v_flex()
+            .id("devices-view")
+            .debug_selector(|| "devices-view".to_string())
+            .flex_1()
+            .min_h_0()
+            .bg(theme::library_bg())
+            .child(
+                v_flex()
+                    .flex_none()
+                    .gap(px(theme::SPACE_2))
+                    .px(px(theme::SPACE_6))
+                    .py(px(theme::SPACE_5))
+                    .border_b_1()
+                    .border_color(theme::border())
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_HEADING_SIZE))
+                            .font_semibold()
+                            .text_color(theme::text_main())
+                            .child(localization::remote_devices_title()),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                            .text_color(theme::text_muted())
+                            .child(localization::remote_devices_description()),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .id("devices-scroll")
+                    .debug_selector(|| "devices-scroll".to_string())
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .p(px(theme::SPACE_6))
+                    .child(self.render_remote_devices_content(cx)),
+            )
+            .into_any_element()
     }
 
     fn render_remote_route_section(&self, cx: &Context<Self>) -> AnyElement {

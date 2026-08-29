@@ -1081,7 +1081,7 @@ impl TermiRustApp {
                                                 theme::ActionTone::Accent,
                                                 cx,
                                             ))
-                                            .label("Open Hosts")
+                                            .label("Open Connections")
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.nav_section = NavSection::Hosts;
                                                 cx.notify();
@@ -1283,7 +1283,7 @@ impl TermiRustApp {
                                                 theme::ActionTone::Accent,
                                                 _cx,
                                             ))
-                                            .label("Open Hosts")
+                                            .label("Open Connections")
                                             .on_click(_cx.listener(|this, _, _, cx| {
                                                 this.nav_section = NavSection::Hosts;
                                                 cx.notify();
@@ -2184,9 +2184,9 @@ impl TermiRustApp {
                                 .text_size(px(12.))
                                 .text_color(theme::text_muted())
                                 .child(if onboarding_dismissed {
-                                    "Bring the first-run Hosts guide back after you have dismissed it."
+                                    "Bring the first-run Connections guide back after you have dismissed it."
                                 } else {
-                                    "The first-run Hosts guide is already available in the library."
+                                    "The first-run Connections guide is already available in the library."
                                 }),
                         ),
                 ),
