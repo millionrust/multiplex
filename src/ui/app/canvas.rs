@@ -46,9 +46,10 @@ use crate::ui::theme;
 use crate::{storage::managed_agent_worktree_dir, ui::util::current_unix_millis};
 
 use super::canvas_coordinator::{
-    CanvasCoordinator, CanvasLinkCreationError, CanvasLinkCreationRequest, CanvasLinkEdgeSummary,
-    CanvasLinkMutation, CanvasLinkMutationDecision, CanvasLinkMutationRequest,
-    CanvasLinkNodeSummary, CanvasSelectionDecision, CanvasSelectionRequest,
+    CanvasCoordinator, CanvasFitRequest, CanvasGeometryRect, CanvasLinkCreationError,
+    CanvasLinkCreationRequest, CanvasLinkEdgeSummary, CanvasLinkMutation,
+    CanvasLinkMutationDecision, CanvasLinkMutationRequest, CanvasLinkNodeSummary,
+    CanvasRevealRequest, CanvasSelectionDecision, CanvasSelectionRequest,
 };
 use super::project::{
     CanvasProjectPanelState, git_snapshot as canvas_project_git_snapshot,
@@ -452,27 +453,20 @@ fn canvas_reveal_delta(
     viewport_width: f32,
     viewport_height: f32,
     padding: f32,
+    canvas_coordinator: &CanvasCoordinator,
 ) -> CanvasPoint {
-    fn axis_delta(start: f32, extent: f32, viewport_extent: f32, padding: f32) -> f32 {
-        let available = (viewport_extent - padding * 2.0).max(1.0);
-        if extent > available {
-            return viewport_extent / 2.0 - (start + extent / 2.0);
-        }
-        if start < padding {
-            return padding - start;
-        }
-        let end = start + extent;
-        let maximum = viewport_extent - padding;
-        if end > maximum {
-            return maximum - end;
-        }
-        0.0
-    }
-
-    CanvasPoint::new(
-        axis_delta(rect.x, rect.width, viewport_width, padding),
-        axis_delta(rect.y, rect.height, viewport_height, padding),
-    )
+    let point = canvas_coordinator.reveal_in_viewport(CanvasRevealRequest {
+        rect: CanvasGeometryRect {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+        },
+        viewport_width,
+        viewport_height,
+        padding,
+    });
+    CanvasPoint::new(point.x, point.y)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1444,12 +1438,18 @@ impl CanvasWorkspaceState {
             .max_by_key(|node| node.z_index)
     }
 
-    pub(super) fn fit_to_content(&mut self, viewport_width: f32, viewport_height: f32) {
+    pub(super) fn fit_to_content(
+        &mut self,
+        viewport_width: f32,
+        viewport_height: f32,
+        canvas_coordinator: &CanvasCoordinator,
+    ) {
         self.transform = fit_transform(
             &self.nodes,
             viewport_width,
             viewport_height,
             CANVAS_FIT_PADDING,
+            canvas_coordinator,
         );
     }
 }
@@ -1521,35 +1521,29 @@ pub(super) fn fit_transform(
     viewport_width: f32,
     viewport_height: f32,
     padding: f32,
+    canvas_coordinator: &CanvasCoordinator,
 ) -> CanvasTransform {
-    let Some(first) = nodes.first() else {
-        return CanvasTransform::default();
-    };
-    let mut min_x = first.rect.x;
-    let mut min_y = first.rect.y;
-    let mut max_x = first.rect.x + first.rect.width;
-    let mut max_y = first.rect.y + first.rect.height;
-    for node in &nodes[1..] {
-        min_x = min_x.min(node.rect.x);
-        min_y = min_y.min(node.rect.y);
-        max_x = max_x.max(node.rect.x + node.rect.width);
-        max_y = max_y.max(node.rect.y + node.rect.height);
-    }
-
-    let content_width = (max_x - min_x).max(1.0);
-    let content_height = (max_y - min_y).max(1.0);
-    let available_width = (viewport_width - padding * 2.0).max(1.0);
-    let available_height = (viewport_height - padding * 2.0).max(1.0);
-    let zoom = (available_width / content_width)
-        .min(available_height / content_height)
-        .clamp(CANVAS_MIN_ZOOM, CANVAS_MAX_ZOOM);
-    let rendered_width = content_width * zoom;
-    let rendered_height = content_height * zoom;
-
+    let rects = nodes
+        .iter()
+        .map(|node| CanvasGeometryRect {
+            x: node.rect.x,
+            y: node.rect.y,
+            width: node.rect.width,
+            height: node.rect.height,
+        })
+        .collect::<Vec<_>>();
+    let transform = canvas_coordinator.fit_content(CanvasFitRequest {
+        rects: &rects,
+        viewport_width,
+        viewport_height,
+        padding,
+        min_zoom: CANVAS_MIN_ZOOM,
+        max_zoom: CANVAS_MAX_ZOOM,
+    });
     CanvasTransform {
-        pan_x: (viewport_width - rendered_width) / 2.0 - min_x * zoom,
-        pan_y: (viewport_height - rendered_height) / 2.0 - min_y * zoom,
-        zoom,
+        pan_x: transform.pan_x,
+        pan_y: transform.pan_y,
+        zoom: transform.zoom,
     }
 }
 
@@ -1849,6 +1843,7 @@ impl TermiRustApp {
                     viewport_width,
                     viewport_height,
                     CANVAS_KEYBOARD_REVEAL_PADDING,
+                    &canvas_coordinator,
                 );
                 workspace.canvas.transform.pan_x += reveal.x;
                 workspace.canvas.transform.pan_y += reveal.y;
@@ -2197,6 +2192,7 @@ impl TermiRustApp {
             .workspace(workspace_id)
             .and_then(|workspace| workspace.canvas.node(&node_id))
             .and_then(|node| node.kind.pane_id());
+        let canvas_coordinator = self.canvas_coordinator.clone();
         let mut found = false;
         if let Some(workspace) = self.workspace_mut(workspace_id)
             && workspace.canvas.node(&node_id).is_some()
@@ -2209,6 +2205,7 @@ impl TermiRustApp {
                     viewport_width,
                     viewport_height,
                     CANVAS_KEYBOARD_REVEAL_PADDING,
+                    &canvas_coordinator,
                 );
                 workspace.canvas.transform.pan_x += reveal.x;
                 workspace.canvas.transform.pan_y += reveal.y;
@@ -2462,11 +2459,13 @@ impl TermiRustApp {
 
     pub(super) fn fit_canvas(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let viewport = window.viewport_size();
+        let canvas_coordinator = self.canvas_coordinator.clone();
         if let Some(workspace) = self.active_workspace_mut() {
             workspace.canvas.fit_to_content(
                 f32::from(viewport.width),
                 (f32::from(viewport.height) - theme::CHROME_HEIGHT - CANVAS_TOOLBAR_HEIGHT)
                     .max(1.0),
+                &canvas_coordinator,
             );
         }
         self.sync_terminal_layout(window, cx);
@@ -10466,6 +10465,7 @@ mod tests {
 
     #[test]
     fn keyboard_reveal_moves_only_the_axes_outside_the_viewport() {
+        let coordinator = CanvasCoordinator;
         assert_eq!(
             canvas_reveal_delta(
                 CanvasRect {
@@ -10477,6 +10477,7 @@ mod tests {
                 1000.0,
                 700.0,
                 24.0,
+                &coordinator,
             ),
             CanvasPoint::new(0.0, -174.0)
         );
@@ -10491,6 +10492,7 @@ mod tests {
                 1000.0,
                 700.0,
                 24.0,
+                &coordinator,
             ),
             CanvasPoint::new(0.0, 0.0)
         );
@@ -10850,13 +10852,20 @@ mod tests {
 
     #[test]
     fn fit_transform_handles_empty_single_and_multiple_nodes() {
+        let coordinator = CanvasCoordinator;
         assert_eq!(
-            fit_transform(&[], 1200.0, 800.0, 48.0),
+            fit_transform(&[], 1200.0, 800.0, 48.0, &coordinator),
             CanvasTransform::default()
         );
 
         let first = terminal_node("a", 1, 0.0, 0.0);
-        let single = fit_transform(std::slice::from_ref(&first), 1200.0, 800.0, 48.0);
+        let single = fit_transform(
+            std::slice::from_ref(&first),
+            1200.0,
+            800.0,
+            48.0,
+            &coordinator,
+        );
         let center = single.world_to_screen(CanvasPoint::new(
             CANVAS_DEFAULT_NODE_WIDTH / 2.0,
             CANVAS_DEFAULT_NODE_HEIGHT / 2.0,
@@ -10865,7 +10874,7 @@ mod tests {
         assert!((center.y - 400.0).abs() < 0.001);
 
         let second = terminal_node("b", 2, 1200.0, 900.0);
-        let many = fit_transform(&[first, second], 1200.0, 800.0, 48.0);
+        let many = fit_transform(&[first, second], 1200.0, 800.0, 48.0, &coordinator);
         assert!((0.35..=2.0).contains(&many.zoom));
     }
 
@@ -10898,7 +10907,7 @@ mod tests {
 
         assert_eq!(canvas.nodes.len(), super::CANVAS_V1_SUPPORTED_NODE_COUNT);
         assert_eq!(canvas.edges.len(), super::CANVAS_V1_SUPPORTED_EDGE_COUNT);
-        let fitted = fit_transform(&canvas.nodes, 1440.0, 900.0, 48.0);
+        let fitted = fit_transform(&canvas.nodes, 1440.0, 900.0, 48.0, &coordinator);
         assert!(fitted.pan_x.is_finite());
         assert!(fitted.pan_y.is_finite());
         assert!((0.35..=2.0).contains(&fitted.zoom));

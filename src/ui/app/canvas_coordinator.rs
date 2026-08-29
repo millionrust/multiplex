@@ -2,6 +2,53 @@ use std::collections::{HashMap, HashSet};
 
 use crate::models::{CanvasEdgeId, CanvasEdgeKind, CanvasNodeId, SavedContextPolicy};
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct CanvasGeometryRect {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct CanvasGeometryPoint {
+    pub x: f32,
+    pub y: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct CanvasViewportTransform {
+    pub pan_x: f32,
+    pub pan_y: f32,
+    pub zoom: f32,
+}
+
+impl Default for CanvasViewportTransform {
+    fn default() -> Self {
+        Self {
+            pan_x: 0.0,
+            pan_y: 0.0,
+            zoom: 1.0,
+        }
+    }
+}
+
+pub(super) struct CanvasFitRequest<'a> {
+    pub rects: &'a [CanvasGeometryRect],
+    pub viewport_width: f32,
+    pub viewport_height: f32,
+    pub padding: f32,
+    pub min_zoom: f32,
+    pub max_zoom: f32,
+}
+
+pub(super) struct CanvasRevealRequest {
+    pub rect: CanvasGeometryRect,
+    pub viewport_width: f32,
+    pub viewport_height: f32,
+    pub padding: f32,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct CanvasLinkNodeSummary {
     pub id: CanvasNodeId,
@@ -109,6 +156,71 @@ pub(super) enum CanvasSelectionDecision {
 pub(super) struct CanvasCoordinator;
 
 impl CanvasCoordinator {
+    pub fn fit_content(&self, request: CanvasFitRequest<'_>) -> CanvasViewportTransform {
+        let Some(first) = request.rects.first() else {
+            return CanvasViewportTransform::default();
+        };
+        let mut min_x = first.x;
+        let mut min_y = first.y;
+        let mut max_x = first.x + first.width;
+        let mut max_y = first.y + first.height;
+        for rect in &request.rects[1..] {
+            min_x = min_x.min(rect.x);
+            min_y = min_y.min(rect.y);
+            max_x = max_x.max(rect.x + rect.width);
+            max_y = max_y.max(rect.y + rect.height);
+        }
+
+        let content_width = (max_x - min_x).max(1.0);
+        let content_height = (max_y - min_y).max(1.0);
+        let available_width = (request.viewport_width - request.padding * 2.0).max(1.0);
+        let available_height = (request.viewport_height - request.padding * 2.0).max(1.0);
+        let zoom = (available_width / content_width)
+            .min(available_height / content_height)
+            .clamp(request.min_zoom, request.max_zoom);
+        let rendered_width = content_width * zoom;
+        let rendered_height = content_height * zoom;
+
+        CanvasViewportTransform {
+            pan_x: (request.viewport_width - rendered_width) / 2.0 - min_x * zoom,
+            pan_y: (request.viewport_height - rendered_height) / 2.0 - min_y * zoom,
+            zoom,
+        }
+    }
+
+    pub fn reveal_in_viewport(&self, request: CanvasRevealRequest) -> CanvasGeometryPoint {
+        fn axis_delta(start: f32, extent: f32, viewport_extent: f32, padding: f32) -> f32 {
+            let available = (viewport_extent - padding * 2.0).max(1.0);
+            if extent > available {
+                return viewport_extent / 2.0 - (start + extent / 2.0);
+            }
+            if start < padding {
+                return padding - start;
+            }
+            let end = start + extent;
+            let maximum = viewport_extent - padding;
+            if end > maximum {
+                return maximum - end;
+            }
+            0.0
+        }
+
+        CanvasGeometryPoint {
+            x: axis_delta(
+                request.rect.x,
+                request.rect.width,
+                request.viewport_width,
+                request.padding,
+            ),
+            y: axis_delta(
+                request.rect.y,
+                request.rect.height,
+                request.viewport_height,
+                request.padding,
+            ),
+        }
+    }
+
     pub fn mutate_link(
         &self,
         request: CanvasLinkMutationRequest<'_>,
@@ -347,6 +459,86 @@ mod tests {
                 enabled: true,
                 context_policy: None,
             }
+        );
+    }
+
+    #[test]
+    fn canvas_coordinator_fits_empty_single_and_zoom_clamped_content() {
+        let coordinator = CanvasCoordinator;
+        let request = |rects| CanvasFitRequest {
+            rects,
+            viewport_width: 1200.0,
+            viewport_height: 800.0,
+            padding: 48.0,
+            min_zoom: 0.35,
+            max_zoom: 2.0,
+        };
+        assert_eq!(
+            coordinator.fit_content(request(&[])),
+            CanvasViewportTransform::default()
+        );
+
+        let single = [CanvasGeometryRect {
+            x: 0.0,
+            y: 0.0,
+            width: 760.0,
+            height: 480.0,
+        }];
+        let fitted = coordinator.fit_content(request(&single));
+        assert!((fitted.pan_x + 380.0 * fitted.zoom - 600.0).abs() < 0.001);
+        assert!((fitted.pan_y + 240.0 * fitted.zoom - 400.0).abs() < 0.001);
+
+        let tiny = [CanvasGeometryRect {
+            width: 1.0,
+            height: 1.0,
+            ..CanvasGeometryRect::default()
+        }];
+        assert_eq!(coordinator.fit_content(request(&tiny)).zoom, 2.0);
+        let huge = [CanvasGeometryRect {
+            width: 100_000.0,
+            height: 100_000.0,
+            ..CanvasGeometryRect::default()
+        }];
+        assert_eq!(coordinator.fit_content(request(&huge)).zoom, 0.35);
+    }
+
+    #[test]
+    fn canvas_coordinator_reveals_each_axis_and_centers_oversized_content() {
+        let coordinator = CanvasCoordinator;
+        let reveal = |rect| {
+            coordinator.reveal_in_viewport(CanvasRevealRequest {
+                rect,
+                viewport_width: 1000.0,
+                viewport_height: 700.0,
+                padding: 24.0,
+            })
+        };
+        assert_eq!(
+            reveal(CanvasGeometryRect {
+                x: 120.0,
+                y: 120.0,
+                width: 300.0,
+                height: 200.0,
+            }),
+            CanvasGeometryPoint::default()
+        );
+        assert_eq!(
+            reveal(CanvasGeometryRect {
+                x: 120.0,
+                y: 650.0,
+                width: 300.0,
+                height: 200.0,
+            }),
+            CanvasGeometryPoint { x: 0.0, y: -174.0 }
+        );
+        assert_eq!(
+            reveal(CanvasGeometryRect {
+                x: -200.0,
+                y: -100.0,
+                width: 1200.0,
+                height: 900.0,
+            }),
+            CanvasGeometryPoint { x: 100.0, y: 0.0 }
         );
     }
 
@@ -661,11 +853,15 @@ mod tests {
         assert!(canvas_source.contains("canvas_coordinator.select_adjacent"));
         assert!(canvas_source.contains("canvas_coordinator.create_link"));
         assert!(canvas_source.contains("canvas_coordinator.mutate_link"));
+        assert!(canvas_source.contains("canvas_coordinator.fit_content"));
+        assert!(canvas_source.contains("canvas_coordinator.reveal_in_viewport"));
         assert!(!canvas_source.contains("rem_euclid(self.nodes.len()"));
         assert!(!canvas_source.contains("unwrap_or_else(|| if delta < 0"));
         assert!(!canvas_source.contains("Both context-link nodes must exist"));
         assert!(!canvas_source.contains("That dependency would create a cycle"));
         assert!(!canvas_source.contains("format!(\"context-edge-{ordinal}\")"));
+        assert!(!canvas_source.contains("let content_width ="));
+        assert!(!canvas_source.contains("fn axis_delta("));
 
         let forbidden_crate = ["gp", "ui"].concat();
         assert!(!include_str!("canvas_coordinator.rs").contains(&forbidden_crate));
