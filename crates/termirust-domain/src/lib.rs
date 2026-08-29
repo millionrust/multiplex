@@ -2,6 +2,7 @@ pub mod activity;
 pub mod artifact;
 pub mod controller_devices;
 pub mod controller_network;
+pub mod controller_route;
 pub mod dev_url;
 pub mod group;
 pub mod host;
@@ -47,6 +48,12 @@ pub use controller_network::{
     MAX_GENERATED_PORT_ATTEMPTS, MAX_NETWORK_INTERFACE_ID_BYTES,
     MAX_NETWORK_INTERFACE_LABEL_SCALARS, NetworkInterfaceCandidate, NetworkInterfaceId,
     NetworkInterfaceKind, RouteCandidate, USER_FIXED_PORT_MIN, is_private_controller_address,
+};
+pub use controller_route::{
+    ControllerPlatform, RemoteRouteCapability, RemoteRouteConfigRequirement, RemoteRouteEvent,
+    RemoteRouteKind, RemoteRouteMutationCompletion, RemoteRouteMutationDisposition,
+    RemoteRoutePhase, RemoteRoutePolicy, RemoteRouteState, RemoteRouteTransition,
+    RemoteRouteTransitionError, RemoteRouteTrustLayer, RouteSwitchDecision,
 };
 pub use dev_url::{
     DevUrlCancellation, DevUrlCandidate, DevUrlDetector, DevUrlDetectorCounters, DevUrlError,
