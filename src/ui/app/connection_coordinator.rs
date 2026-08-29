@@ -5,7 +5,8 @@ use std::sync::mpsc::Sender;
 use crate::local::spawn_local_session;
 use crate::models::{ConnectRequest, ConnectionKind};
 use crate::sftp::{
-    SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory, spawn_upload_file,
+    RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
+    spawn_upload_file,
 };
 use crate::ssh::{SessionRuntimeHandle, SshEvent, spawn_session};
 use crate::storage::KnownHostStore;
@@ -51,6 +52,32 @@ pub(super) enum ReconnectTickDecision {
     Ignore,
     Waiting { status: String, changed: bool },
     Due,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct SftpEventContext {
+    pub workspace_id: u64,
+    pub operation_id: u64,
+}
+
+#[derive(Debug)]
+pub(super) enum SftpEventProjection {
+    IgnoreStale,
+    DirectoryLoaded {
+        context: SftpEventContext,
+        path: String,
+        entries: Vec<RemoteFileEntry>,
+        status: String,
+    },
+    Complete {
+        context: SftpEventContext,
+        status: String,
+        refresh_directory: bool,
+    },
+    Failed {
+        context: SftpEventContext,
+        message: String,
+    },
 }
 
 impl ConnectionWorkerKind {
@@ -276,6 +303,83 @@ impl ConnectionCoordinator {
         );
     }
 
+    pub fn sftp_event_context(event: &SftpEvent) -> SftpEventContext {
+        let (workspace_id, operation_id) = match event {
+            SftpEvent::DirectoryLoaded {
+                workspace_id,
+                operation_id,
+                ..
+            }
+            | SftpEvent::UploadComplete {
+                workspace_id,
+                operation_id,
+                ..
+            }
+            | SftpEvent::DownloadComplete {
+                workspace_id,
+                operation_id,
+                ..
+            }
+            | SftpEvent::DeleteComplete {
+                workspace_id,
+                operation_id,
+                ..
+            }
+            | SftpEvent::Error {
+                workspace_id,
+                operation_id,
+                ..
+            } => (*workspace_id, *operation_id),
+        };
+        SftpEventContext {
+            workspace_id,
+            operation_id,
+        }
+    }
+
+    pub fn project_sftp_event(
+        &self,
+        event: SftpEvent,
+        pending_operation_id: Option<u64>,
+    ) -> SftpEventProjection {
+        let context = Self::sftp_event_context(&event);
+        if pending_operation_id != Some(context.operation_id) {
+            return SftpEventProjection::IgnoreStale;
+        }
+
+        match event {
+            SftpEvent::DirectoryLoaded { path, entries, .. } => {
+                let status = format!("Loaded remote files for {path}.");
+                SftpEventProjection::DirectoryLoaded {
+                    context,
+                    path,
+                    entries,
+                    status,
+                }
+            }
+            SftpEvent::UploadComplete { remote_path, .. } => SftpEventProjection::Complete {
+                context,
+                status: format!("Uploaded {remote_path}."),
+                refresh_directory: true,
+            },
+            SftpEvent::DownloadComplete {
+                remote_path,
+                local_path,
+                ..
+            } => SftpEventProjection::Complete {
+                context,
+                status: format!("Downloaded {remote_path} to {local_path}."),
+                refresh_directory: false,
+            },
+            SftpEvent::DeleteComplete { remote_path, .. } => SftpEventProjection::Complete {
+                context,
+                status: format!("Deleted {remote_path}."),
+                refresh_directory: true,
+            },
+            SftpEvent::Error { message, .. } => SftpEventProjection::Failed { context, message },
+        }
+    }
+
     pub fn schedule_reconnect(&self, input: ReconnectScheduleInput) -> ReconnectScheduleDecision {
         if self.auto_reconnect_attempts == 0 {
             return ReconnectScheduleDecision::Disabled;
@@ -341,11 +445,11 @@ mod tests {
 
     use super::{
         ConnectionCoordinator, ConnectionWorkerSpawner, ReconnectScheduleDecision,
-        ReconnectScheduleInput, ReconnectTickDecision, ReconnectTickInput, SftpOperationRequest,
-        SftpWorkerSpawner,
+        ReconnectScheduleInput, ReconnectTickDecision, ReconnectTickInput, SftpEventContext,
+        SftpEventProjection, SftpOperationRequest, SftpWorkerSpawner,
     };
     use crate::models::{ConnectRequest, ConnectionKind};
-    use crate::sftp::SftpEvent;
+    use crate::sftp::{RemoteFileEntry, SftpEvent};
     use crate::ssh::{SessionRuntimeHandle, SshEvent};
     use crate::storage::KnownHostStore;
 
@@ -852,6 +956,272 @@ mod tests {
     }
 
     #[test]
+    fn sftp_event_context_is_exact_for_every_worker_event() {
+        let events = [
+            SftpEvent::DirectoryLoaded {
+                workspace_id: 11,
+                operation_id: 21,
+                path: "/srv".to_string(),
+                entries: Vec::new(),
+            },
+            SftpEvent::UploadComplete {
+                workspace_id: 12,
+                operation_id: 22,
+                remote_path: "/srv/upload".to_string(),
+            },
+            SftpEvent::DownloadComplete {
+                workspace_id: 13,
+                operation_id: 23,
+                remote_path: "/srv/download".to_string(),
+                local_path: "/tmp/download".to_string(),
+            },
+            SftpEvent::DeleteComplete {
+                workspace_id: 14,
+                operation_id: 24,
+                remote_path: "/srv/delete".to_string(),
+            },
+            SftpEvent::Error {
+                workspace_id: 15,
+                operation_id: 25,
+                message: "denied".to_string(),
+            },
+        ];
+
+        for (event, expected) in events.into_iter().zip([
+            SftpEventContext {
+                workspace_id: 11,
+                operation_id: 21,
+            },
+            SftpEventContext {
+                workspace_id: 12,
+                operation_id: 22,
+            },
+            SftpEventContext {
+                workspace_id: 13,
+                operation_id: 23,
+            },
+            SftpEventContext {
+                workspace_id: 14,
+                operation_id: 24,
+            },
+            SftpEventContext {
+                workspace_id: 15,
+                operation_id: 25,
+            },
+        ]) {
+            assert_eq!(ConnectionCoordinator::sftp_event_context(&event), expected);
+        }
+    }
+
+    #[test]
+    fn sftp_event_projection_rejects_missing_and_stale_operations_for_every_variant() {
+        let (coordinator, _, _) = coordinator_fixture();
+        let events = [
+            SftpEvent::DirectoryLoaded {
+                workspace_id: 1,
+                operation_id: 7,
+                path: "/srv".to_string(),
+                entries: Vec::new(),
+            },
+            SftpEvent::UploadComplete {
+                workspace_id: 1,
+                operation_id: 7,
+                remote_path: "/srv/upload".to_string(),
+            },
+            SftpEvent::DownloadComplete {
+                workspace_id: 1,
+                operation_id: 7,
+                remote_path: "/srv/download".to_string(),
+                local_path: "/tmp/download".to_string(),
+            },
+            SftpEvent::DeleteComplete {
+                workspace_id: 1,
+                operation_id: 7,
+                remote_path: "/srv/delete".to_string(),
+            },
+            SftpEvent::Error {
+                workspace_id: 1,
+                operation_id: 7,
+                message: "late failure".to_string(),
+            },
+        ];
+
+        for event in events {
+            assert!(matches!(
+                coordinator.project_sftp_event(event, Some(8)),
+                SftpEventProjection::IgnoreStale
+            ));
+        }
+        assert!(matches!(
+            coordinator.project_sftp_event(
+                SftpEvent::Error {
+                    workspace_id: 1,
+                    operation_id: 7,
+                    message: "orphaned".to_string(),
+                },
+                None,
+            ),
+            SftpEventProjection::IgnoreStale
+        ));
+    }
+
+    #[test]
+    fn current_directory_event_preserves_path_entries_selection_order_and_status() {
+        let (coordinator, _, _) = coordinator_fixture();
+        let projection = coordinator.project_sftp_event(
+            SftpEvent::DirectoryLoaded {
+                workspace_id: 31,
+                operation_id: 41,
+                path: "/srv/exact path".to_string(),
+                entries: vec![
+                    RemoteFileEntry {
+                        name: "folder".to_string(),
+                        path: "/srv/exact path/folder".to_string(),
+                        is_dir: true,
+                        is_symlink: false,
+                        size: Some(0),
+                    },
+                    RemoteFileEntry {
+                        name: "link".to_string(),
+                        path: "/srv/exact path/link".to_string(),
+                        is_dir: false,
+                        is_symlink: true,
+                        size: None,
+                    },
+                ],
+            },
+            Some(41),
+        );
+
+        let SftpEventProjection::DirectoryLoaded {
+            context,
+            path,
+            entries,
+            status,
+        } = projection
+        else {
+            panic!("expected directory projection");
+        };
+        assert_eq!(
+            context,
+            SftpEventContext {
+                workspace_id: 31,
+                operation_id: 41,
+            }
+        );
+        assert_eq!(path, "/srv/exact path");
+        assert_eq!(status, "Loaded remote files for /srv/exact path.");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "folder");
+        assert_eq!(entries[0].path, "/srv/exact path/folder");
+        assert!(entries[0].is_dir);
+        assert!(!entries[0].is_symlink);
+        assert_eq!(entries[0].size, Some(0));
+        assert_eq!(entries[1].name, "link");
+        assert_eq!(entries[1].path, "/srv/exact path/link");
+        assert!(!entries[1].is_dir);
+        assert!(entries[1].is_symlink);
+        assert_eq!(entries[1].size, None);
+    }
+
+    #[test]
+    fn current_transfer_events_have_exact_status_and_refresh_policy() {
+        let (coordinator, _, _) = coordinator_fixture();
+        let cases = [
+            (
+                SftpEvent::UploadComplete {
+                    workspace_id: 1,
+                    operation_id: 9,
+                    remote_path: "/srv/up load".to_string(),
+                },
+                "Uploaded /srv/up load.",
+                true,
+            ),
+            (
+                SftpEvent::DownloadComplete {
+                    workspace_id: 1,
+                    operation_id: 9,
+                    remote_path: "/srv/down load".to_string(),
+                    local_path: "/tmp/local file".to_string(),
+                },
+                "Downloaded /srv/down load to /tmp/local file.",
+                false,
+            ),
+            (
+                SftpEvent::DeleteComplete {
+                    workspace_id: 1,
+                    operation_id: 9,
+                    remote_path: "/srv/old file".to_string(),
+                },
+                "Deleted /srv/old file.",
+                true,
+            ),
+        ];
+
+        for (event, expected_status, expected_refresh) in cases {
+            let SftpEventProjection::Complete {
+                context,
+                status,
+                refresh_directory,
+            } = coordinator.project_sftp_event(event, Some(9))
+            else {
+                panic!("expected completion projection");
+            };
+            assert_eq!(
+                context,
+                SftpEventContext {
+                    workspace_id: 1,
+                    operation_id: 9,
+                }
+            );
+            assert_eq!(status, expected_status);
+            assert_eq!(refresh_directory, expected_refresh);
+        }
+    }
+
+    #[test]
+    fn current_error_and_empty_payloads_are_preserved_without_normalization() {
+        let (coordinator, _, _) = coordinator_fixture();
+        let SftpEventProjection::Failed { context, message } = coordinator.project_sftp_event(
+            SftpEvent::Error {
+                workspace_id: 4,
+                operation_id: 5,
+                message: String::new(),
+            },
+            Some(5),
+        ) else {
+            panic!("expected failure projection");
+        };
+        assert_eq!(
+            context,
+            SftpEventContext {
+                workspace_id: 4,
+                operation_id: 5,
+            }
+        );
+        assert!(message.is_empty());
+
+        let SftpEventProjection::Complete {
+            status,
+            refresh_directory,
+            ..
+        } = coordinator.project_sftp_event(
+            SftpEvent::DownloadComplete {
+                workspace_id: 4,
+                operation_id: 5,
+                remote_path: String::new(),
+                local_path: String::new(),
+            },
+            Some(5),
+        )
+        else {
+            panic!("expected completion projection");
+        };
+        assert_eq!(status, "Downloaded  to .");
+        assert!(!refresh_directory);
+    }
+
+    #[test]
     fn connection_coordinator_is_the_only_ui_worker_start_boundary() {
         let app_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ui/app");
         for entry in fs::read_dir(app_dir).unwrap() {
@@ -885,6 +1255,11 @@ mod tests {
                     path.display()
                 );
             }
+            assert!(
+                !source.contains("SftpEvent::"),
+                "{} interprets raw SFTP worker events outside ConnectionCoordinator",
+                path.display()
+            );
         }
     }
 

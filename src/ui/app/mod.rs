@@ -43,7 +43,7 @@ use canvas::{
 };
 use connection_coordinator::{
     ConnectionCoordinator, ReconnectScheduleDecision, ReconnectScheduleInput,
-    ReconnectTickDecision, ReconnectTickInput, SftpOperationRequest,
+    ReconnectTickDecision, ReconnectTickInput, SftpEventProjection, SftpOperationRequest,
 };
 use dev_urls::DevUrlUiState;
 use global_search::GlobalSearchState;
@@ -7093,23 +7093,28 @@ impl TermiRustApp {
         }
 
         while let Ok(event) = self.sftp_event_rx.try_recv() {
-            changed = true;
+            let context = ConnectionCoordinator::sftp_event_context(&event);
+            let pending_operation_id = self
+                .workspace(context.workspace_id)
+                .and_then(|workspace| workspace.sftp.as_ref())
+                .and_then(|browser| browser.pending_operation_id);
+            let projection = self
+                .connection_coordinator
+                .project_sftp_event(event, pending_operation_id);
 
-            match event {
-                SftpEvent::DirectoryLoaded {
-                    workspace_id,
-                    operation_id,
+            match projection {
+                SftpEventProjection::IgnoreStale => continue,
+                SftpEventProjection::DirectoryLoaded {
+                    context,
                     path,
                     entries,
+                    status,
                 } => {
+                    changed = true;
                     if let Some(browser) = self
-                        .workspace_mut(workspace_id)
+                        .workspace_mut(context.workspace_id)
                         .and_then(|workspace| workspace.sftp.as_mut())
                     {
-                        if browser.pending_operation_id != Some(operation_id) {
-                            continue;
-                        }
-
                         browser.current_path = path.clone();
                         browser.entries = entries;
                         browser.loading = false;
@@ -7118,79 +7123,37 @@ impl TermiRustApp {
                             browser.entries.first().map(|entry| entry.path.clone());
                     }
 
-                    self.status_message = format!("Loaded remote files for {path}.");
+                    self.status_message = status;
                     self.error_message.clear();
                 }
-                SftpEvent::UploadComplete {
-                    workspace_id,
-                    operation_id,
-                    remote_path,
+                SftpEventProjection::Complete {
+                    context,
+                    status,
+                    refresh_directory,
                 } => {
+                    changed = true;
                     if let Some(browser) = self
-                        .workspace_mut(workspace_id)
+                        .workspace_mut(context.workspace_id)
                         .and_then(|workspace| workspace.sftp.as_mut())
                     {
-                        if browser.pending_operation_id == Some(operation_id) {
-                            browser.loading = false;
-                            browser.pending_operation_id = None;
-                        }
+                        browser.loading = false;
+                        browser.pending_operation_id = None;
                     }
 
-                    self.status_message = format!("Uploaded {remote_path}.");
+                    self.status_message = status;
                     self.error_message.clear();
-                    sftp_directories_to_refresh.insert(workspace_id);
-                }
-                SftpEvent::DownloadComplete {
-                    workspace_id,
-                    operation_id,
-                    remote_path,
-                    local_path,
-                } => {
-                    if let Some(browser) = self
-                        .workspace_mut(workspace_id)
-                        .and_then(|workspace| workspace.sftp.as_mut())
-                    {
-                        if browser.pending_operation_id == Some(operation_id) {
-                            browser.loading = false;
-                            browser.pending_operation_id = None;
-                        }
+                    if refresh_directory {
+                        sftp_directories_to_refresh.insert(context.workspace_id);
                     }
-
-                    self.status_message = format!("Downloaded {remote_path} to {local_path}.");
-                    self.error_message.clear();
                 }
-                SftpEvent::DeleteComplete {
-                    workspace_id,
-                    operation_id,
-                    remote_path,
-                } => {
+                SftpEventProjection::Failed { context, message } => {
+                    changed = true;
                     if let Some(browser) = self
-                        .workspace_mut(workspace_id)
+                        .workspace_mut(context.workspace_id)
                         .and_then(|workspace| workspace.sftp.as_mut())
                     {
-                        if browser.pending_operation_id == Some(operation_id) {
-                            browser.loading = false;
-                            browser.pending_operation_id = None;
-                        }
-                    }
-
-                    self.status_message = format!("Deleted {remote_path}.");
-                    self.error_message.clear();
-                    sftp_directories_to_refresh.insert(workspace_id);
-                }
-                SftpEvent::Error {
-                    workspace_id,
-                    operation_id,
-                    message,
-                } => {
-                    if let Some(browser) = self
-                        .workspace_mut(workspace_id)
-                        .and_then(|workspace| workspace.sftp.as_mut())
-                    {
-                        if browser.pending_operation_id == Some(operation_id) {
-                            browser.loading = false;
-                            browser.pending_operation_id = None;
-                        }
+                        browser.loading = false;
+                        browser.pending_operation_id = None;
                     }
 
                     self.error_message = message;
