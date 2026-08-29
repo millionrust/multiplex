@@ -363,12 +363,24 @@ pub async fn start_with_cancel(
     let journal = JournalStore::open(&lease, descriptor.journal_limits)?;
     let latest_sequence = journal.latest_sequence();
     let recording_paused = journal.recording_paused();
-    let occupant_generation = read_host_metadata(&descriptor.session_dir)
+    let prior_occupant_generation = read_host_metadata(&descriptor.session_dir)
         .ok()
         .filter(|metadata| metadata.session_id == descriptor.session_id)
-        .map_or(OccupantGeneration::new(1), |metadata| {
-            metadata.activity.generation.next()
-        });
+        .map(|metadata| metadata.activity.generation);
+    let inferred_occupant_generation = prior_occupant_generation
+        .map(OccupantGeneration::next)
+        .unwrap_or(OccupantGeneration::new(1));
+    let occupant_generation = match (
+        descriptor.expected_occupant_generation,
+        prior_occupant_generation,
+    ) {
+        (Some(expected), Some(_)) if expected != inferred_occupant_generation => {
+            return Err(HostError::new(HostErrorCode::DescriptorInvalid)
+                .at_stage("occupant_generation_fence"));
+        }
+        (Some(expected), _) => expected,
+        (None, _) => inferred_occupant_generation,
+    };
 
     if launch_cancel.is_cancelled() {
         return Err(HostError::new(HostErrorCode::Cancelled));
@@ -1892,6 +1904,7 @@ mod tests {
             format_version: LaunchDescriptor::FORMAT_VERSION,
             session_id,
             host_instance_id,
+            expected_occupant_generation: None,
             runtime_root: fixture.join("runtime"),
             session_dir: fixture.join("session"),
             executable,

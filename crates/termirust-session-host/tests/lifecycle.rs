@@ -33,6 +33,7 @@ async fn activity_lifecycle_stop_archive_restore_requires_confirmed_host_exit() 
         format_version: LaunchDescriptor::FORMAT_VERSION,
         session_id,
         host_instance_id: HostInstanceId::new(),
+        expected_occupant_generation: None,
         runtime_root: fixture.path().join("runtime"),
         session_dir: session_dir.clone(),
         executable: "/bin/sh".into(),

@@ -10,7 +10,8 @@ use std::os::unix::fs::MetadataExt as _;
 
 use serde::{Deserialize, Serialize};
 use termirust_domain::{
-    HostInstanceId, HostedSessionId, RuntimeDetectionResult, RuntimeDetectionStatus,
+    HostInstanceId, HostedSessionId, OccupantGeneration, RuntimeDetectionResult,
+    RuntimeDetectionStatus,
 };
 use termirust_store::JournalLimits;
 
@@ -69,6 +70,8 @@ pub struct LaunchDescriptor {
     pub format_version: u16,
     pub session_id: HostedSessionId,
     pub host_instance_id: HostInstanceId,
+    #[serde(default)]
+    pub expected_occupant_generation: Option<OccupantGeneration>,
     pub runtime_root: PathBuf,
     pub session_dir: PathBuf,
     pub executable: PathBuf,
@@ -90,6 +93,10 @@ impl fmt::Debug for LaunchDescriptor {
             .field("format_version", &self.format_version)
             .field("session_id", &self.session_id)
             .field("host_instance_id", &self.host_instance_id)
+            .field(
+                "expected_occupant_generation",
+                &self.expected_occupant_generation,
+            )
             .field("runtime_root", &"[REDACTED]")
             .field("session_dir", &"[REDACTED]")
             .field("executable", &"[REDACTED]")
@@ -129,6 +136,9 @@ impl LaunchDescriptor {
             || self.rows == 0
             || self.columns > 1_000
             || self.rows > 1_000
+            || self
+                .expected_occupant_generation
+                .is_some_and(|generation| generation == OccupantGeneration::ZERO)
             || self.arguments.len() > MAX_ARGUMENTS
             || self.environment.len() > MAX_ENVIRONMENT_ENTRIES
             || !self.runtime_root.is_absolute()
@@ -265,6 +275,7 @@ mod tests {
             format_version: LaunchDescriptor::FORMAT_VERSION,
             session_id: HostedSessionId::new(),
             host_instance_id: HostInstanceId::new(),
+            expected_occupant_generation: None,
             runtime_root: fixture.path().join("runtime"),
             session_dir: fixture.path().join("session"),
             executable: PathBuf::from("/bin/sh"),

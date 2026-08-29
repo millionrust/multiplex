@@ -232,6 +232,7 @@ fn launch_host_process(
         format_version: LaunchDescriptor::FORMAT_VERSION,
         session_id: spec.session_id,
         host_instance_id: HostInstanceId::new(),
+        expected_occupant_generation: None,
         runtime_root: spec.paths.runtime_root.clone(),
         session_dir: spec.paths.session_dir.clone(),
         executable: launch.executable,

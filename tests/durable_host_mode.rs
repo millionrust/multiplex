@@ -20,6 +20,7 @@ async fn packaged_binary_host_mode_survives_gui_client_disconnect() {
         format_version: LaunchDescriptor::FORMAT_VERSION,
         session_id,
         host_instance_id: HostInstanceId::new(),
+        expected_occupant_generation: None,
         runtime_root: fixture.path().join("runtime"),
         session_dir: fixture.path().join("session"),
         executable: "/bin/sh".into(),

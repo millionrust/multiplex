@@ -20,6 +20,7 @@ fn descriptor(root: &Path, session_id: HostedSessionId, executable: &str) -> Lau
         format_version: LaunchDescriptor::FORMAT_VERSION,
         session_id,
         host_instance_id: HostInstanceId::new(),
+        expected_occupant_generation: None,
         runtime_root: root.join(format!("r{runtime}")),
         session_dir: root.join(format!("session-{session_id}")),
         executable: executable.into(),

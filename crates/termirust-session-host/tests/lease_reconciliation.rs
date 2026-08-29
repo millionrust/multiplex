@@ -185,6 +185,7 @@ async fn production_probe_authenticates_the_running_host_instance() {
         format_version: LaunchDescriptor::FORMAT_VERSION,
         session_id,
         host_instance_id,
+        expected_occupant_generation: None,
         runtime_root: runtime_root.clone(),
         session_dir: session_dir.clone(),
         executable: "/bin/sh".into(),

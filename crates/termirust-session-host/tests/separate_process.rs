@@ -19,6 +19,7 @@ fn descriptor(fixture: &tempfile::TempDir, session_id: HostedSessionId) -> Launc
         format_version: LaunchDescriptor::FORMAT_VERSION,
         session_id,
         host_instance_id: HostInstanceId::new(),
+        expected_occupant_generation: None,
         runtime_root: fixture.path().join("runtime"),
         session_dir: fixture.path().join("session"),
         executable: "/bin/sh".into(),

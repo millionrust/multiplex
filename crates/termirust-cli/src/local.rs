@@ -641,6 +641,7 @@ impl LocalCommandService {
             format_version: LaunchDescriptor::FORMAT_VERSION,
             session_id: resolved.session_id,
             host_instance_id: self.ids.host_instance_id(),
+            expected_occupant_generation: None,
             runtime_root: self.paths.runtime_root(resolved.session_id),
             session_dir: self.paths.session_dir(resolved.session_id),
             executable: resolved.executable().to_path_buf(),
