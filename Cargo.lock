@@ -8001,6 +8001,7 @@ dependencies = [
  "termirust-ui-contract",
  "tokio",
  "tokio-util",
+ "unicode-width",
  "uuid",
  "vt100",
  "zeroize",

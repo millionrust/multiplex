@@ -379,6 +379,72 @@ mod tests {
         scrollback_rows: usize,
     }
 
+    #[derive(Debug, Deserialize)]
+    struct TerminalConformanceV2Fixture {
+        schema_version: u32,
+        unicode_width_version: String,
+        styles: Vec<TerminalConformanceV2Style>,
+        cases: Vec<TerminalConformanceV2Case>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct TerminalConformanceV2Case {
+        name: String,
+        columns: u16,
+        rows: u16,
+        scrollback: usize,
+        operations: Vec<TerminalConformanceV2Operation>,
+        expected: TerminalConformanceV2Expected,
+    }
+
+    #[derive(Clone, Debug, Deserialize)]
+    #[serde(tag = "kind", rename_all = "snake_case")]
+    enum TerminalConformanceV2Operation {
+        Process { bytes: Vec<u8> },
+        Resize { columns: u16, rows: u16 },
+    }
+
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+    struct TerminalConformanceV2Expected {
+        lines: Vec<String>,
+        cells: Vec<Vec<TerminalConformanceV2Cell>>,
+        cursor_row: u16,
+        cursor_column: u16,
+        cursor_visible: bool,
+        application_cursor: bool,
+        alternate_screen: bool,
+        bracketed_paste: bool,
+        mouse_mode: String,
+        mouse_encoding: String,
+        scrollback_rows: usize,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+    struct TerminalConformanceV2Cell {
+        text: String,
+        width: u8,
+        style: usize,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
+    struct TerminalConformanceV2Style {
+        foreground: TerminalConformanceV2Color,
+        background: TerminalConformanceV2Color,
+        bold: bool,
+        dim: bool,
+        italic: bool,
+        underline: bool,
+        inverse: bool,
+    }
+
+    #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
+    #[serde(tag = "kind", rename_all = "snake_case")]
+    enum TerminalConformanceV2Color {
+        Default,
+        Indexed { value: u8 },
+        Rgb { red: u8, green: u8, blue: u8 },
+    }
+
     #[derive(Debug, PartialEq, Eq)]
     struct TerminalSignature {
         lines: Vec<String>,
@@ -480,6 +546,145 @@ mod tests {
                 let actual = terminal_signature(&case, [&bytes[..split], &bytes[split..]]);
                 assert_eq!(actual, expected, "{} split at {split}", case.name);
             }
+        }
+    }
+
+    #[test]
+    fn terminal_conformance_v2_matches_styles_widths_and_resize_operations() {
+        let fixture = terminal_conformance_v2_fixture();
+        assert_eq!(fixture.schema_version, 2);
+        assert_eq!(fixture.unicode_width_version, "0.2.2");
+
+        for case in &fixture.cases {
+            let actual = terminal_conformance_v2_signature(case, &fixture.styles, None);
+            assert_eq!(actual, case.expected, "{} configured operations", case.name);
+        }
+    }
+
+    #[test]
+    fn terminal_conformance_v2_process_steps_are_chunk_boundary_invariant() {
+        let fixture = terminal_conformance_v2_fixture();
+        for case in &fixture.cases {
+            for (operation_index, operation) in case.operations.iter().enumerate() {
+                let TerminalConformanceV2Operation::Process { bytes } = operation else {
+                    continue;
+                };
+                for split in 0..=bytes.len() {
+                    let actual = terminal_conformance_v2_signature(
+                        case,
+                        &fixture.styles,
+                        Some((operation_index, split)),
+                    );
+                    assert_eq!(
+                        actual, case.expected,
+                        "{} operation {operation_index} split at {split}",
+                        case.name
+                    );
+                }
+            }
+        }
+    }
+
+    fn terminal_conformance_v2_fixture() -> TerminalConformanceV2Fixture {
+        serde_json::from_str(include_str!(
+            "../tests/fixtures/terminal/terminal-conformance-v2.json"
+        ))
+        .expect("terminal conformance v2 fixture should decode")
+    }
+
+    fn terminal_conformance_v2_signature(
+        case: &TerminalConformanceV2Case,
+        styles: &[TerminalConformanceV2Style],
+        split: Option<(usize, usize)>,
+    ) -> TerminalConformanceV2Expected {
+        let mut terminal = TerminalState::new(
+            TerminalSize::new(case.columns, case.rows, 0, 0),
+            case.scrollback,
+        );
+        for (operation_index, operation) in case.operations.iter().enumerate() {
+            match operation {
+                TerminalConformanceV2Operation::Process { bytes } => {
+                    if let Some((split_operation, split_at)) = split
+                        && split_operation == operation_index
+                    {
+                        terminal.process_bytes(&bytes[..split_at]);
+                        terminal.process_bytes(&bytes[split_at..]);
+                    } else {
+                        terminal.process_bytes(bytes);
+                    }
+                }
+                TerminalConformanceV2Operation::Resize { columns, rows } => {
+                    terminal.resize(TerminalSize::new(*columns, *rows, 0, 0));
+                }
+            }
+        }
+
+        let screen = terminal.parser.screen();
+        let (rows, columns) = screen.size();
+        let (cursor_row, cursor_column) = screen.cursor_position();
+        TerminalConformanceV2Expected {
+            lines: screen
+                .rows(0, columns)
+                .map(|line| line.trim_end().to_string())
+                .collect(),
+            cells: (0..rows)
+                .map(|row| {
+                    (0..columns)
+                        .map(|column| {
+                            let cell = screen.cell(row, column).expect("fixture cell exists");
+                            let style = terminal_conformance_v2_style(cell);
+                            TerminalConformanceV2Cell {
+                                text: if cell.is_wide_continuation() {
+                                    String::new()
+                                } else if cell.has_contents() {
+                                    cell.contents().to_string()
+                                } else {
+                                    " ".to_string()
+                                },
+                                width: if cell.is_wide_continuation() {
+                                    0
+                                } else if cell.is_wide() {
+                                    2
+                                } else {
+                                    1
+                                },
+                                style: styles
+                                    .binary_search(&style)
+                                    .expect("fixture style should be registered"),
+                            }
+                        })
+                        .collect()
+                })
+                .collect(),
+            cursor_row,
+            cursor_column,
+            cursor_visible: !screen.hide_cursor(),
+            application_cursor: screen.application_cursor(),
+            alternate_screen: screen.alternate_screen(),
+            bracketed_paste: screen.bracketed_paste(),
+            mouse_mode: mouse_mode_name(screen.mouse_protocol_mode()).to_string(),
+            mouse_encoding: mouse_encoding_name(screen.mouse_protocol_encoding()).to_string(),
+            scrollback_rows: terminal.max_scrollback(),
+        }
+    }
+
+    fn terminal_conformance_v2_style(cell: &vt100::Cell) -> TerminalConformanceV2Style {
+        TerminalConformanceV2Style {
+            foreground: terminal_conformance_v2_color(cell.fgcolor()),
+            background: terminal_conformance_v2_color(cell.bgcolor()),
+            bold: cell.bold(),
+            dim: cell.dim(),
+            italic: cell.italic(),
+            underline: cell.underline(),
+            inverse: cell.inverse(),
+        }
+    }
+
+    fn terminal_conformance_v2_color(color: Color) -> TerminalConformanceV2Color {
+        match color {
+            Color::Default => TerminalConformanceV2Color::Default,
+            Color::Idx(value) => TerminalConformanceV2Color::Indexed { value },
+            Color::Rgb(red, green, blue) => TerminalConformanceV2Color::Rgb { red, green, blue },
         }
     }
 
