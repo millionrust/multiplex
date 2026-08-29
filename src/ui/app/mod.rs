@@ -43,7 +43,7 @@ use canvas::{
 };
 use connection_coordinator::{
     ConnectionCoordinator, ReconnectScheduleDecision, ReconnectScheduleInput,
-    ReconnectTickDecision, ReconnectTickInput,
+    ReconnectTickDecision, ReconnectTickInput, SftpOperationRequest,
 };
 use dev_urls::DevUrlUiState;
 use global_search::GlobalSearchState;
@@ -101,10 +101,7 @@ use crate::models::{
     SessionLogEntry, SplitAxis, ThemePreset, VaultKind, VaultMemberRole, WorkspaceLayoutMode,
     default_persistent_session_name_from_id,
 };
-use crate::sftp::{
-    RemoteFileEntry, SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory,
-    spawn_upload_file,
-};
+use crate::sftp::{RemoteFileEntry, SftpEvent};
 use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent};
 use crate::storage::{
     KnownHostStore, export_encrypted_mobile_vault, export_encrypted_portable_data_bundle,
@@ -995,7 +992,6 @@ pub struct TermiRustApp {
     session_coordinator: SessionCoordinator,
     event_tx: Sender<SshEvent>,
     event_rx: Receiver<SshEvent>,
-    sftp_event_tx: Sender<SftpEvent>,
     sftp_event_rx: Receiver<SftpEvent>,
     panes: Vec<SessionPane>,
     workspaces: Vec<WorkspaceTab>,
@@ -1159,6 +1155,7 @@ impl TermiRustApp {
             Arc::new(KnownHostStore::load().expect("unable to initialize known host storage"));
         let connection_coordinator = ConnectionCoordinator::new(
             event_tx.clone(),
+            sftp_event_tx,
             known_hosts.clone(),
             saved.settings.ssh_keepalive_secs,
             saved.settings.auto_reconnect_attempts,
@@ -1289,7 +1286,6 @@ impl TermiRustApp {
             session_coordinator,
             event_tx,
             event_rx,
-            sftp_event_tx,
             sftp_event_rx,
             panes: Vec::new(),
             workspaces: Vec::new(),
@@ -5567,14 +5563,13 @@ impl TermiRustApp {
             return;
         };
 
-        spawn_list_directory(
-            workspace_id,
-            operation_id,
-            request,
-            self.known_hosts.clone(),
-            load_path,
-            self.sftp_event_tx.clone(),
-        );
+        self.connection_coordinator
+            .start_sftp(SftpOperationRequest::List {
+                workspace_id,
+                operation_id,
+                request,
+                path: load_path,
+            });
     }
 
     fn refresh_workspace_files(&mut self, workspace_id: u64) {
@@ -5671,15 +5666,14 @@ impl TermiRustApp {
 
         self.status_message = format!("Uploading {}...", local_path.display());
         self.error_message.clear();
-        spawn_upload_file(
-            workspace_id,
-            operation_id,
-            request,
-            self.known_hosts.clone(),
-            current_path,
-            local_path,
-            self.sftp_event_tx.clone(),
-        );
+        self.connection_coordinator
+            .start_sftp(SftpOperationRequest::Upload {
+                workspace_id,
+                operation_id,
+                request,
+                remote_dir: current_path,
+                local_path,
+            });
         let _ = window;
         cx.notify();
     }
@@ -5723,15 +5717,14 @@ impl TermiRustApp {
 
         self.status_message = format!("Downloading {}...", entry.path);
         self.error_message.clear();
-        spawn_download_file(
-            workspace_id,
-            operation_id,
-            request,
-            self.known_hosts.clone(),
-            entry.path,
-            local_path,
-            self.sftp_event_tx.clone(),
-        );
+        self.connection_coordinator
+            .start_sftp(SftpOperationRequest::Download {
+                workspace_id,
+                operation_id,
+                request,
+                remote_path: entry.path,
+                local_path,
+            });
         cx.notify();
     }
 
@@ -5763,15 +5756,14 @@ impl TermiRustApp {
 
         self.status_message = format!("Deleting {}...", entry.path);
         self.error_message.clear();
-        spawn_delete_path(
-            workspace_id,
-            operation_id,
-            request,
-            self.known_hosts.clone(),
-            entry.path,
-            entry.is_dir,
-            self.sftp_event_tx.clone(),
-        );
+        self.connection_coordinator
+            .start_sftp(SftpOperationRequest::Delete {
+                workspace_id,
+                operation_id,
+                request,
+                remote_path: entry.path,
+                is_dir: entry.is_dir,
+            });
         cx.notify();
     }
 

@@ -1,8 +1,12 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 use crate::local::spawn_local_session;
 use crate::models::{ConnectRequest, ConnectionKind};
+use crate::sftp::{
+    SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory, spawn_upload_file,
+};
 use crate::ssh::{SessionRuntimeHandle, SshEvent, spawn_session};
 use crate::storage::KnownHostStore;
 
@@ -74,7 +78,50 @@ trait ConnectionWorkerSpawner: Send + Sync {
     ) -> SessionRuntimeHandle;
 }
 
+// Transfer handlers are retained for the existing Files workflows and focused tests,
+// even where the current production UI does not yet expose their commands.
+#[allow(dead_code)]
+pub(super) enum SftpOperationRequest {
+    List {
+        workspace_id: u64,
+        operation_id: u64,
+        request: ConnectRequest,
+        path: String,
+    },
+    Upload {
+        workspace_id: u64,
+        operation_id: u64,
+        request: ConnectRequest,
+        remote_dir: String,
+        local_path: PathBuf,
+    },
+    Download {
+        workspace_id: u64,
+        operation_id: u64,
+        request: ConnectRequest,
+        remote_path: String,
+        local_path: PathBuf,
+    },
+    Delete {
+        workspace_id: u64,
+        operation_id: u64,
+        request: ConnectRequest,
+        remote_path: String,
+        is_dir: bool,
+    },
+}
+
+trait SftpWorkerSpawner: Send + Sync {
+    fn spawn(
+        &self,
+        operation: SftpOperationRequest,
+        known_hosts: Arc<KnownHostStore>,
+        event_tx: Sender<SftpEvent>,
+    );
+}
+
 struct SystemConnectionWorkerSpawner;
+struct SystemSftpWorkerSpawner;
 
 impl ConnectionWorkerSpawner for SystemConnectionWorkerSpawner {
     fn spawn_local(
@@ -96,18 +143,91 @@ impl ConnectionWorkerSpawner for SystemConnectionWorkerSpawner {
     }
 }
 
+impl SftpWorkerSpawner for SystemSftpWorkerSpawner {
+    fn spawn(
+        &self,
+        operation: SftpOperationRequest,
+        known_hosts: Arc<KnownHostStore>,
+        event_tx: Sender<SftpEvent>,
+    ) {
+        match operation {
+            SftpOperationRequest::List {
+                workspace_id,
+                operation_id,
+                request,
+                path,
+            } => spawn_list_directory(
+                workspace_id,
+                operation_id,
+                request,
+                known_hosts,
+                path,
+                event_tx,
+            ),
+            SftpOperationRequest::Upload {
+                workspace_id,
+                operation_id,
+                request,
+                remote_dir,
+                local_path,
+            } => spawn_upload_file(
+                workspace_id,
+                operation_id,
+                request,
+                known_hosts,
+                remote_dir,
+                local_path,
+                event_tx,
+            ),
+            SftpOperationRequest::Download {
+                workspace_id,
+                operation_id,
+                request,
+                remote_path,
+                local_path,
+            } => spawn_download_file(
+                workspace_id,
+                operation_id,
+                request,
+                known_hosts,
+                remote_path,
+                local_path,
+                event_tx,
+            ),
+            SftpOperationRequest::Delete {
+                workspace_id,
+                operation_id,
+                request,
+                remote_path,
+                is_dir,
+            } => spawn_delete_path(
+                workspace_id,
+                operation_id,
+                request,
+                known_hosts,
+                remote_path,
+                is_dir,
+                event_tx,
+            ),
+        }
+    }
+}
+
 pub(super) struct ConnectionCoordinator {
     event_tx: Sender<SshEvent>,
+    sftp_event_tx: Sender<SftpEvent>,
     known_hosts: Arc<KnownHostStore>,
     ssh_keepalive_secs: u16,
     auto_reconnect_attempts: u8,
     auto_reconnect_delay_secs: u8,
     worker_spawner: Box<dyn ConnectionWorkerSpawner>,
+    sftp_worker_spawner: Box<dyn SftpWorkerSpawner>,
 }
 
 impl ConnectionCoordinator {
     pub fn new(
         event_tx: Sender<SshEvent>,
+        sftp_event_tx: Sender<SftpEvent>,
         known_hosts: Arc<KnownHostStore>,
         ssh_keepalive_secs: u16,
         auto_reconnect_attempts: u8,
@@ -115,11 +235,13 @@ impl ConnectionCoordinator {
     ) -> Self {
         Self {
             event_tx,
+            sftp_event_tx,
             known_hosts,
             ssh_keepalive_secs,
             auto_reconnect_attempts,
             auto_reconnect_delay_secs,
             worker_spawner: Box::new(SystemConnectionWorkerSpawner),
+            sftp_worker_spawner: Box::new(SystemSftpWorkerSpawner),
         }
     }
 
@@ -144,6 +266,14 @@ impl ConnectionCoordinator {
                 self.ssh_keepalive_secs,
             ),
         }
+    }
+
+    pub fn start_sftp(&self, operation: SftpOperationRequest) {
+        self.sftp_worker_spawner.spawn(
+            operation,
+            self.known_hosts.clone(),
+            self.sftp_event_tx.clone(),
+        );
     }
 
     pub fn schedule_reconnect(&self, input: ReconnectScheduleInput) -> ReconnectScheduleDecision {
@@ -203,7 +333,7 @@ fn reconnect_status(remaining_secs: u64, attempts: u8, max_attempts: u8) -> Stri
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::sync::mpsc::{self, Sender};
     use std::sync::{Arc, Mutex};
 
@@ -211,9 +341,11 @@ mod tests {
 
     use super::{
         ConnectionCoordinator, ConnectionWorkerSpawner, ReconnectScheduleDecision,
-        ReconnectScheduleInput, ReconnectTickDecision, ReconnectTickInput,
+        ReconnectScheduleInput, ReconnectTickDecision, ReconnectTickInput, SftpOperationRequest,
+        SftpWorkerSpawner,
     };
     use crate::models::{ConnectRequest, ConnectionKind};
+    use crate::sftp::SftpEvent;
     use crate::ssh::{SessionRuntimeHandle, SshEvent};
     use crate::storage::KnownHostStore;
 
@@ -232,6 +364,137 @@ mod tests {
     struct RecordingSpawner {
         calls: Arc<Mutex<Vec<WorkerCall>>>,
         expected_known_hosts: Arc<KnownHostStore>,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    enum SftpCall {
+        List {
+            workspace_id: u64,
+            operation_id: u64,
+            request: String,
+            path: String,
+            shared_known_hosts: bool,
+        },
+        Upload {
+            workspace_id: u64,
+            operation_id: u64,
+            request: String,
+            remote_dir: String,
+            local_path: PathBuf,
+            shared_known_hosts: bool,
+        },
+        Download {
+            workspace_id: u64,
+            operation_id: u64,
+            request: String,
+            remote_path: String,
+            local_path: PathBuf,
+            shared_known_hosts: bool,
+        },
+        Delete {
+            workspace_id: u64,
+            operation_id: u64,
+            request: String,
+            remote_path: String,
+            is_dir: bool,
+            shared_known_hosts: bool,
+        },
+    }
+
+    struct RecordingSftpSpawner {
+        calls: Arc<Mutex<Vec<SftpCall>>>,
+        expected_known_hosts: Arc<KnownHostStore>,
+    }
+
+    impl SftpWorkerSpawner for RecordingSftpSpawner {
+        fn spawn(
+            &self,
+            operation: SftpOperationRequest,
+            known_hosts: Arc<KnownHostStore>,
+            event_tx: Sender<SftpEvent>,
+        ) {
+            let shared_known_hosts = Arc::ptr_eq(&known_hosts, &self.expected_known_hosts);
+            let (workspace_id, operation_id, call) = match operation {
+                SftpOperationRequest::List {
+                    workspace_id,
+                    operation_id,
+                    request,
+                    path,
+                } => (
+                    workspace_id,
+                    operation_id,
+                    SftpCall::List {
+                        workspace_id,
+                        operation_id,
+                        request: format!("{request:?}"),
+                        path,
+                        shared_known_hosts,
+                    },
+                ),
+                SftpOperationRequest::Upload {
+                    workspace_id,
+                    operation_id,
+                    request,
+                    remote_dir,
+                    local_path,
+                } => (
+                    workspace_id,
+                    operation_id,
+                    SftpCall::Upload {
+                        workspace_id,
+                        operation_id,
+                        request: format!("{request:?}"),
+                        remote_dir,
+                        local_path,
+                        shared_known_hosts,
+                    },
+                ),
+                SftpOperationRequest::Download {
+                    workspace_id,
+                    operation_id,
+                    request,
+                    remote_path,
+                    local_path,
+                } => (
+                    workspace_id,
+                    operation_id,
+                    SftpCall::Download {
+                        workspace_id,
+                        operation_id,
+                        request: format!("{request:?}"),
+                        remote_path,
+                        local_path,
+                        shared_known_hosts,
+                    },
+                ),
+                SftpOperationRequest::Delete {
+                    workspace_id,
+                    operation_id,
+                    request,
+                    remote_path,
+                    is_dir,
+                } => (
+                    workspace_id,
+                    operation_id,
+                    SftpCall::Delete {
+                        workspace_id,
+                        operation_id,
+                        request: format!("{request:?}"),
+                        remote_path,
+                        is_dir,
+                        shared_known_hosts,
+                    },
+                ),
+            };
+            self.calls.lock().unwrap().push(call);
+            event_tx
+                .send(SftpEvent::Error {
+                    workspace_id,
+                    operation_id,
+                    message: "synthetic SFTP event".to_string(),
+                })
+                .unwrap();
+        }
     }
 
     impl RecordingSpawner {
@@ -292,13 +555,20 @@ mod tests {
             calls: calls.clone(),
             expected_known_hosts: known_hosts.clone(),
         };
+        let (sftp_event_tx, _sftp_event_rx) = mpsc::channel();
+        let sftp_worker_spawner = RecordingSftpSpawner {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            expected_known_hosts: known_hosts.clone(),
+        };
         let coordinator = ConnectionCoordinator {
             event_tx,
+            sftp_event_tx,
             known_hosts,
             ssh_keepalive_secs: 12,
             auto_reconnect_attempts: 3,
             auto_reconnect_delay_secs: 4,
             worker_spawner: Box::new(worker_spawner),
+            sftp_worker_spawner: Box::new(sftp_worker_spawner),
         };
         (coordinator, event_rx, calls)
     }
@@ -478,6 +748,110 @@ mod tests {
     }
 
     #[test]
+    fn sftp_operations_preserve_requests_paths_shared_store_and_event_sink() {
+        let (event_tx, _event_rx) = mpsc::channel();
+        let (sftp_event_tx, sftp_event_rx) = mpsc::channel();
+        let known_hosts = Arc::new(KnownHostStore::load().unwrap());
+        let connection_calls = Arc::new(Mutex::new(Vec::new()));
+        let sftp_calls = Arc::new(Mutex::new(Vec::new()));
+        let mut request = ConnectRequest::local_shell(77);
+        request.title = "Exact request".to_string();
+        request.environment = vec![("TERMIRUST_TEST".to_string(), "exact".to_string())];
+        let request_debug = format!("{request:?}");
+        let coordinator = ConnectionCoordinator {
+            event_tx,
+            sftp_event_tx,
+            known_hosts: known_hosts.clone(),
+            ssh_keepalive_secs: 12,
+            auto_reconnect_attempts: 3,
+            auto_reconnect_delay_secs: 4,
+            worker_spawner: Box::new(RecordingSpawner {
+                calls: connection_calls,
+                expected_known_hosts: known_hosts.clone(),
+            }),
+            sftp_worker_spawner: Box::new(RecordingSftpSpawner {
+                calls: sftp_calls.clone(),
+                expected_known_hosts: known_hosts,
+            }),
+        };
+
+        coordinator.start_sftp(SftpOperationRequest::List {
+            workspace_id: 1,
+            operation_id: 11,
+            request: request.clone(),
+            path: "/srv/project".to_string(),
+        });
+        coordinator.start_sftp(SftpOperationRequest::Upload {
+            workspace_id: 2,
+            operation_id: 12,
+            request: request.clone(),
+            remote_dir: "/srv/upload".to_string(),
+            local_path: PathBuf::from("/synthetic/local/upload.txt"),
+        });
+        coordinator.start_sftp(SftpOperationRequest::Download {
+            workspace_id: 3,
+            operation_id: 13,
+            request: request.clone(),
+            remote_path: "/srv/download.txt".to_string(),
+            local_path: PathBuf::from("/synthetic/local/download.txt"),
+        });
+        coordinator.start_sftp(SftpOperationRequest::Delete {
+            workspace_id: 4,
+            operation_id: 14,
+            request,
+            remote_path: "/srv/old".to_string(),
+            is_dir: true,
+        });
+
+        assert_eq!(
+            *sftp_calls.lock().unwrap(),
+            vec![
+                SftpCall::List {
+                    workspace_id: 1,
+                    operation_id: 11,
+                    request: request_debug.clone(),
+                    path: "/srv/project".to_string(),
+                    shared_known_hosts: true,
+                },
+                SftpCall::Upload {
+                    workspace_id: 2,
+                    operation_id: 12,
+                    request: request_debug.clone(),
+                    remote_dir: "/srv/upload".to_string(),
+                    local_path: PathBuf::from("/synthetic/local/upload.txt"),
+                    shared_known_hosts: true,
+                },
+                SftpCall::Download {
+                    workspace_id: 3,
+                    operation_id: 13,
+                    request: request_debug.clone(),
+                    remote_path: "/srv/download.txt".to_string(),
+                    local_path: PathBuf::from("/synthetic/local/download.txt"),
+                    shared_known_hosts: true,
+                },
+                SftpCall::Delete {
+                    workspace_id: 4,
+                    operation_id: 14,
+                    request: request_debug,
+                    remote_path: "/srv/old".to_string(),
+                    is_dir: true,
+                    shared_known_hosts: true,
+                },
+            ]
+        );
+        for (workspace_id, operation_id) in [(1, 11), (2, 12), (3, 13), (4, 14)] {
+            assert!(matches!(
+                sftp_event_rx.recv().unwrap(),
+                SftpEvent::Error {
+                    workspace_id: actual_workspace_id,
+                    operation_id: actual_operation_id,
+                    ..
+                } if actual_workspace_id == workspace_id && actual_operation_id == operation_id
+            ));
+        }
+    }
+
+    #[test]
     fn connection_coordinator_is_the_only_ui_worker_start_boundary() {
         let app_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ui/app");
         for entry in fs::read_dir(app_dir).unwrap() {
@@ -499,6 +873,18 @@ mod tests {
                 "{} bypasses ConnectionCoordinator",
                 path.display()
             );
+            for worker in [
+                "spawn_list_directory(",
+                "spawn_upload_file(",
+                "spawn_download_file(",
+                "spawn_delete_path(",
+            ] {
+                assert!(
+                    !source.contains(worker),
+                    "{} bypasses ConnectionCoordinator via {worker}",
+                    path.display()
+                );
+            }
         }
     }
 
