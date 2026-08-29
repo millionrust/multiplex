@@ -41,7 +41,10 @@ use canvas::{
     CanvasWorkspaceState, ContextHandoffReview, PendingCanvasNodeDelete, PendingCanvasPaneClose,
     PendingTmuxClose, SplitPaneChooser, StructuredAgentRuntime,
 };
-use connection_coordinator::ConnectionCoordinator;
+use connection_coordinator::{
+    ConnectionCoordinator, ReconnectScheduleDecision, ReconnectScheduleInput,
+    ReconnectTickDecision, ReconnectTickInput,
+};
 use dev_urls::DevUrlUiState;
 use global_search::GlobalSearchState;
 use hosted_session::DurableSessionPaths;
@@ -1158,6 +1161,8 @@ impl TermiRustApp {
             event_tx.clone(),
             known_hosts.clone(),
             saved.settings.ssh_keepalive_secs,
+            saved.settings.auto_reconnect_attempts,
+            saved.settings.auto_reconnect_delay_secs,
         );
         saved.merge_imported_identities(load_local_ssh_identities().unwrap_or_default());
         saved.ensure_vaults();
@@ -3778,6 +3783,10 @@ impl TermiRustApp {
     fn update_auto_reconnect_attempts(&mut self, attempts: u8, cx: &mut Context<Self>) {
         self.saved.settings.auto_reconnect_attempts = attempts;
         self.saved.ensure_settings();
+        self.connection_coordinator.set_auto_reconnect_policy(
+            self.saved.settings.auto_reconnect_attempts,
+            self.saved.settings.auto_reconnect_delay_secs,
+        );
         self.save_settings();
         self.status_message = if attempts == 0 {
             "Auto-reconnect disabled.".to_string()
@@ -3791,6 +3800,10 @@ impl TermiRustApp {
     fn update_auto_reconnect_delay(&mut self, delay_secs: u8, cx: &mut Context<Self>) {
         self.saved.settings.auto_reconnect_delay_secs = delay_secs;
         self.saved.ensure_settings();
+        self.connection_coordinator.set_auto_reconnect_policy(
+            self.saved.settings.auto_reconnect_attempts,
+            self.saved.settings.auto_reconnect_delay_secs,
+        );
         self.save_settings();
         self.status_message = format!("Auto-reconnect delay set to {delay_secs}s.");
         self.error_message.clear();
@@ -6176,27 +6189,31 @@ impl TermiRustApp {
     }
 
     fn maybe_schedule_auto_reconnect(&mut self, pane_id: u64) -> bool {
-        let max_attempts = self.saved.settings.auto_reconnect_attempts;
-        let delay_secs = self.saved.settings.auto_reconnect_delay_secs;
-        if max_attempts == 0 {
-            return false;
-        }
-        let Some(pane) = self.pane_mut(pane_id) else {
+        let Some(pane) = self.pane(pane_id) else {
             return false;
         };
-        if pane.user_closed || pane.request.is_local_shell() {
+        let decision = self
+            .connection_coordinator
+            .schedule_reconnect(ReconnectScheduleInput {
+                user_closed: pane.user_closed,
+                local_shell: pane.request.is_local_shell(),
+                attempts: pane.auto_reconnect_attempts,
+                now_millis: current_unix_millis(),
+            });
+        let ReconnectScheduleDecision::Schedule {
+            attempts,
+            at_millis,
+            status,
+        } = decision
+        else {
             return false;
-        }
-        if pane.auto_reconnect_attempts >= max_attempts {
-            return false;
-        }
-        pane.auto_reconnect_attempts += 1;
-        pane.auto_reconnect_at =
-            Some(current_unix_millis() + u64::from(delay_secs).saturating_mul(1000));
-        pane.status = format!(
-            "Reconnecting in {delay_secs}s ({}/{max_attempts})",
-            pane.auto_reconnect_attempts
-        );
+        };
+        let pane = self
+            .pane_mut(pane_id)
+            .expect("reconnect pane should remain available while scheduling");
+        pane.auto_reconnect_attempts = attempts;
+        pane.auto_reconnect_at = Some(at_millis);
+        pane.status = status;
         true
     }
 
@@ -6206,29 +6223,27 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) -> bool {
         let now = current_unix_millis();
-        let max_attempts = self.saved.settings.auto_reconnect_attempts;
 
         let mut status_changed = false;
         let mut due_pane_ids: Vec<u64> = Vec::new();
         for pane in self.panes.iter_mut() {
-            let Some(target) = pane.auto_reconnect_at else {
-                continue;
-            };
-            if pane.user_closed {
-                continue;
-            }
-            if now >= target {
-                due_pane_ids.push(pane.id);
-                continue;
-            }
-            let remaining_secs = ((target - now) + 999) / 1000;
-            let next_status = format!(
-                "Reconnecting in {remaining_secs}s ({}/{max_attempts})",
-                pane.auto_reconnect_attempts
-            );
-            if pane.status != next_status {
-                pane.status = next_status;
-                status_changed = true;
+            match self
+                .connection_coordinator
+                .project_reconnect_tick(ReconnectTickInput {
+                    target_millis: pane.auto_reconnect_at,
+                    user_closed: pane.user_closed,
+                    attempts: pane.auto_reconnect_attempts,
+                    now_millis: now,
+                    current_status: &pane.status,
+                }) {
+                ReconnectTickDecision::Ignore => {}
+                ReconnectTickDecision::Waiting { status, changed } => {
+                    if changed {
+                        pane.status = status;
+                        status_changed = true;
+                    }
+                }
+                ReconnectTickDecision::Due => due_pane_ids.push(pane.id),
             }
         }
         if due_pane_ids.is_empty() {
