@@ -8,6 +8,7 @@ KOTLIN_ROOT="$ROOT/../terminal_app/terminal_kotlin"
 FILES="
 tests/fixtures/terminal/terminal-conformance-v1.json|TermiRustMobileTests/Fixtures/terminal-conformance-v1.json|app/src/testController/resources/terminal-conformance-v1.json
 tests/fixtures/terminal/terminal-conformance-v2.json|TermiRustMobileTests/Fixtures/terminal-conformance-v2.json|app/src/testController/resources/terminal-conformance-v2.json
+tests/fixtures/terminal/terminal-interaction-v1.json|TermiRustMobileTests/Fixtures/terminal-interaction-v1.json|app/src/testController/resources/terminal-interaction-v1.json
 tests/fixtures/terminal/generated/GeneratedTerminalCellWidth.swift|TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift|-
 tests/fixtures/terminal/generated/GeneratedTerminalCellWidth.kt|-|app/src/main/java/com/termirust/mobile/controller/GeneratedTerminalCellWidth.kt
 "

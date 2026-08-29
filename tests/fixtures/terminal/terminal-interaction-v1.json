@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "limits": {
+    "max_paste_bytes": 262144,
+    "paste_confirmation_bytes": 4096,
+    "max_url_bytes": 2048,
+    "max_urls": 32
+  },
+  "key_cases": [
+    { "name": "escape", "key": "escape", "expected": [27] },
+    { "name": "tab", "key": "tab", "expected": [9] },
+    { "name": "shift-tab", "key": "tab", "shift": true, "expected": [27, 91, 90] },
+    { "name": "enter", "key": "enter", "expected": [13] },
+    { "name": "backspace", "key": "backspace", "expected": [127] },
+    { "name": "normal-up", "key": "up", "expected": [27, 91, 65] },
+    { "name": "application-up", "key": "up", "application_cursor": true, "expected": [27, 79, 65] },
+    { "name": "normal-down", "key": "down", "expected": [27, 91, 66] },
+    { "name": "application-down", "key": "down", "application_cursor": true, "expected": [27, 79, 66] },
+    { "name": "normal-left", "key": "left", "expected": [27, 91, 68] },
+    { "name": "application-left", "key": "left", "application_cursor": true, "expected": [27, 79, 68] },
+    { "name": "normal-right", "key": "right", "expected": [27, 91, 67] },
+    { "name": "application-right", "key": "right", "application_cursor": true, "expected": [27, 79, 67] },
+    { "name": "normal-home", "key": "home", "expected": [27, 91, 72] },
+    { "name": "application-home", "key": "home", "application_cursor": true, "expected": [27, 79, 72] },
+    { "name": "normal-end", "key": "end", "expected": [27, 91, 70] },
+    { "name": "application-end", "key": "end", "application_cursor": true, "expected": [27, 79, 70] },
+    { "name": "insert", "key": "insert", "expected": [27, 91, 50, 126] },
+    { "name": "delete", "key": "delete", "expected": [27, 91, 51, 126] },
+    { "name": "page-up", "key": "pageup", "expected": [27, 91, 53, 126] },
+    { "name": "page-down", "key": "pagedown", "expected": [27, 91, 54, 126] },
+    { "name": "control-a", "key": "a", "text": "a", "control": true, "expected": [1] },
+    { "name": "control-left-bracket", "key": "[", "text": "[", "control": true, "expected": [27] },
+    { "name": "control-space", "key": "space", "text": " ", "control": true, "expected": [0] },
+    { "name": "alt-x", "key": "x", "text": "x", "alt": true, "expected": [27, 120] },
+    { "name": "unicode-text", "key": "text", "text": "é界", "expected": [195, 169, 231, 149, 140] },
+    { "name": "alt-unicode", "key": "text", "text": "é", "alt": true, "expected": [27, 195, 169] }
+  ],
+  "paste_cases": [
+    { "name": "single-line", "input": "printf ok", "bracketed": false, "requires_confirmation": false, "expected": [112, 114, 105, 110, 116, 102, 32, 111, 107] },
+    { "name": "crlf-normalized", "input": "one\r\ntwo", "bracketed": false, "requires_confirmation": true, "expected": [111, 110, 101, 10, 116, 119, 111] },
+    { "name": "multiline-bracketed", "input": "one\ntwo", "bracketed": true, "requires_confirmation": true, "expected": [27, 91, 50, 48, 48, 126, 111, 110, 101, 10, 116, 119, 111, 27, 91, 50, 48, 49, 126] },
+    { "name": "threshold", "input_repeat": { "value": "x", "count": 4096 }, "bracketed": false, "requires_confirmation": false },
+    { "name": "over-threshold", "input_repeat": { "value": "x", "count": 4097 }, "bracketed": false, "requires_confirmation": true }
+  ],
+  "selection_cases": [
+    {
+      "name": "plain-range-excludes-padding",
+      "rows": [
+        [{ "text": "h", "width": 1 }, { "text": "i", "width": 1 }],
+        [{ "text": "o", "width": 1 }, { "text": "k", "width": 1 }]
+      ],
+      "start": { "row": 0, "column": 1 },
+      "end": { "row": 1, "column": 2 },
+      "expected": "i\nok"
+    },
+    {
+      "name": "wide-continuation-once",
+      "rows": [[{ "text": "A", "width": 1 }, { "text": "界", "width": 2 }, { "text": "", "width": 0 }, { "text": "B", "width": 1 }]],
+      "start": { "row": 0, "column": 0 },
+      "end": { "row": 0, "column": 4 },
+      "expected": "A界B"
+    },
+    {
+      "name": "combining-grapheme-kept",
+      "rows": [[{ "text": "é", "width": 1 }, { "text": "!", "width": 1 }]],
+      "start": { "row": 0, "column": 0 },
+      "end": { "row": 0, "column": 1 },
+      "expected": "é"
+    }
+  ],
+  "ime_cases": [
+    {
+      "name": "updates-stay-local-until-commit",
+      "operations": [
+        { "kind": "update", "text": "に" },
+        { "kind": "update", "text": "日本" },
+        { "kind": "commit", "text": "日本" }
+      ],
+      "expected_emissions": [[230, 151, 165, 230, 156, 172]]
+    },
+    {
+      "name": "cancel-sends-nothing",
+      "operations": [{ "kind": "update", "text": "é" }, { "kind": "cancel" }],
+      "expected_emissions": []
+    },
+    {
+      "name": "direct-commit-once",
+      "operations": [{ "kind": "commit", "text": "hello" }],
+      "expected_emissions": [[104, 101, 108, 108, 111]]
+    },
+    {
+      "name": "finish-commits-marked-once",
+      "operations": [{ "kind": "update", "text": "한" }, { "kind": "finish" }],
+      "expected_emissions": [[237, 149, 156]]
+    }
+  ],
+  "url_cases": [
+    { "name": "http-and-https", "text": "open https://example.com/a?q=1 or http://localhost:8080/x", "expected": ["https://example.com/a?q=1", "http://localhost:8080/x"] },
+    { "name": "trim-punctuation", "text": "See (https://example.com/docs).", "expected": ["https://example.com/docs"] },
+    { "name": "reject-other-schemes", "text": "file:///etc/passwd ssh://host javascript:alert(1)", "expected": [] },
+    { "name": "osc-is-not-visible", "text": "safe text only", "expected": [] }
+  ]
+}
