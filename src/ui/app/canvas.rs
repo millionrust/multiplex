@@ -46,7 +46,8 @@ use crate::ui::theme;
 use crate::{storage::managed_agent_worktree_dir, ui::util::current_unix_millis};
 
 use super::canvas_coordinator::{
-    CanvasCoordinator, CanvasSelectionDecision, CanvasSelectionRequest,
+    CanvasCoordinator, CanvasLinkCreationError, CanvasLinkCreationRequest, CanvasLinkEdgeSummary,
+    CanvasLinkNodeSummary, CanvasSelectionDecision, CanvasSelectionRequest,
 };
 use super::project::{
     CanvasProjectPanelState, git_snapshot as canvas_project_git_snapshot,
@@ -1280,112 +1281,67 @@ impl CanvasWorkspaceState {
         &mut self,
         source: CanvasNodeId,
         target: CanvasNodeId,
-    ) -> anyhow::Result<CanvasEdgeId> {
-        if source == target {
-            anyhow::bail!("Choose a different target node");
-        }
-        if !self.nodes.iter().any(|node| node.id == source)
-            || !self.nodes.iter().any(|node| node.id == target)
-        {
-            anyhow::bail!("Both context-link nodes must exist");
-        }
-        let source_kind = &self.node(&source).expect("source checked above").kind;
-        let target_kind = &self.node(&target).expect("target checked above").kind;
-        if !source_kind.can_source_context() {
-            anyhow::bail!("Group frames cannot be used as context sources");
-        }
-        if !target_kind.is_executable() {
-            anyhow::bail!("Choose a terminal or agent as the context target");
-        }
-        if self.edges.iter().any(|edge| {
-            edge.source == source && edge.target == target && edge.kind == CanvasEdgeKind::Context
-        }) {
-            anyhow::bail!("That context link already exists");
-        }
-        let mut ordinal = self.edges.len() + 1;
-        let id = loop {
-            let candidate = CanvasEdgeId::new(format!("context-edge-{ordinal}"));
-            if !self.edges.iter().any(|edge| edge.id == candidate) {
-                break candidate;
-            }
-            ordinal += 1;
-        };
-        self.edges.push(CanvasEdge {
-            id: id.clone(),
-            source,
-            target,
-            kind: CanvasEdgeKind::Context,
-            enabled: true,
-            context_policy: Some(crate::models::SavedContextPolicy::default()),
-        });
-        Ok(id)
+        canvas_coordinator: &CanvasCoordinator,
+    ) -> Result<CanvasEdgeId, CanvasLinkCreationError> {
+        self.add_edge(source, target, CanvasEdgeKind::Context, canvas_coordinator)
     }
 
     pub(super) fn add_dependency_edge(
         &mut self,
         source: CanvasNodeId,
         target: CanvasNodeId,
-    ) -> anyhow::Result<CanvasEdgeId> {
-        if source == target {
-            anyhow::bail!("Choose a different dependency target");
-        }
-        if !self.nodes.iter().any(|node| node.id == source)
-            || !self.nodes.iter().any(|node| node.id == target)
-        {
-            anyhow::bail!("Both dependency nodes must exist");
-        }
-        if !self
-            .node(&source)
-            .is_some_and(|node| node.kind.is_executable())
-            || !self
-                .node(&target)
-                .is_some_and(|node| node.kind.is_executable())
-        {
-            anyhow::bail!("Dependencies can only connect terminals and agents");
-        }
-        if self.edges.iter().any(|edge| {
-            edge.source == source
-                && edge.target == target
-                && edge.kind == CanvasEdgeKind::Dependency
-        }) {
-            anyhow::bail!("That dependency already exists");
-        }
-        let mut adjacency: HashMap<CanvasNodeId, Vec<CanvasNodeId>> = HashMap::new();
-        for edge in self
-            .edges
-            .iter()
-            .filter(|edge| edge.enabled && edge.kind == CanvasEdgeKind::Dependency)
-        {
-            adjacency
-                .entry(edge.source.clone())
-                .or_default()
-                .push(edge.target.clone());
-        }
-        let mut pending = vec![target.clone()];
-        let mut visited = HashSet::new();
-        while let Some(node) = pending.pop() {
-            if node == source {
-                anyhow::bail!("That dependency would create a cycle");
-            }
-            if visited.insert(node.clone()) {
-                pending.extend(adjacency.get(&node).into_iter().flatten().cloned());
-            }
-        }
-        let mut ordinal = self.edges.len() + 1;
-        let id = loop {
-            let candidate = CanvasEdgeId::new(format!("dependency-edge-{ordinal}"));
-            if !self.edges.iter().any(|edge| edge.id == candidate) {
-                break candidate;
-            }
-            ordinal += 1;
-        };
-        self.edges.push(CanvasEdge {
-            id: id.clone(),
+        canvas_coordinator: &CanvasCoordinator,
+    ) -> Result<CanvasEdgeId, CanvasLinkCreationError> {
+        self.add_edge(
             source,
             target,
-            kind: CanvasEdgeKind::Dependency,
-            enabled: true,
-            context_policy: None,
+            CanvasEdgeKind::Dependency,
+            canvas_coordinator,
+        )
+    }
+
+    fn add_edge(
+        &mut self,
+        source: CanvasNodeId,
+        target: CanvasNodeId,
+        kind: CanvasEdgeKind,
+        canvas_coordinator: &CanvasCoordinator,
+    ) -> Result<CanvasEdgeId, CanvasLinkCreationError> {
+        let nodes = self
+            .nodes
+            .iter()
+            .map(|node| CanvasLinkNodeSummary {
+                id: node.id.clone(),
+                can_source_context: node.kind.can_source_context(),
+                executable: node.kind.is_executable(),
+            })
+            .collect::<Vec<_>>();
+        let edges = self
+            .edges
+            .iter()
+            .map(|edge| CanvasLinkEdgeSummary {
+                id: edge.id.clone(),
+                source: edge.source.clone(),
+                target: edge.target.clone(),
+                kind: edge.kind,
+                enabled: edge.enabled,
+            })
+            .collect::<Vec<_>>();
+        let plan = canvas_coordinator.create_link(CanvasLinkCreationRequest {
+            nodes: &nodes,
+            edges: &edges,
+            source,
+            target,
+            kind,
+        })?;
+        let id = plan.id.clone();
+        self.edges.push(CanvasEdge {
+            id: plan.id,
+            source: plan.source,
+            target: plan.target,
+            kind: plan.kind,
+            enabled: plan.enabled,
+            context_policy: plan.context_policy,
         });
         Ok(id)
     }
@@ -4465,12 +4421,18 @@ impl TermiRustApp {
             cx.notify();
             return;
         };
+        let canvas_coordinator = self.canvas_coordinator.clone();
         let result = self
             .ensure_same_execution_host(&source, &node_id)
             .and_then(|()| {
                 self.active_workspace_mut()
                     .ok_or_else(|| anyhow::anyhow!("No active canvas workspace"))
-                    .and_then(|workspace| workspace.canvas.add_context_edge(source, node_id))
+                    .and_then(|workspace| {
+                        workspace
+                            .canvas
+                            .add_context_edge(source, node_id, &canvas_coordinator)
+                            .map_err(Into::into)
+                    })
             });
         match result {
             Ok(_) => {
@@ -4495,12 +4457,18 @@ impl TermiRustApp {
             cx.notify();
             return;
         };
+        let canvas_coordinator = self.canvas_coordinator.clone();
         let result = self
             .ensure_same_execution_host(&source, &node_id)
             .and_then(|()| {
                 self.active_workspace_mut()
                     .ok_or_else(|| anyhow::anyhow!("No active canvas workspace"))
-                    .and_then(|workspace| workspace.canvas.add_dependency_edge(source, node_id))
+                    .and_then(|workspace| {
+                        workspace
+                            .canvas
+                            .add_dependency_edge(source, node_id, &canvas_coordinator)
+                            .map_err(Into::into)
+                    })
             });
         match result {
             Ok(_) => {
@@ -10557,6 +10525,7 @@ mod tests {
 
     #[test]
     fn context_edges_are_directed_unique_and_not_self_referential() {
+        let coordinator = CanvasCoordinator;
         let mut canvas = CanvasWorkspaceState {
             nodes: vec![
                 terminal_node("source", 1, 0.0, 0.0),
@@ -10565,7 +10534,11 @@ mod tests {
             ..CanvasWorkspaceState::default()
         };
         let edge_id = canvas
-            .add_context_edge(CanvasNodeId::new("source"), CanvasNodeId::new("target"))
+            .add_context_edge(
+                CanvasNodeId::new("source"),
+                CanvasNodeId::new("target"),
+                &coordinator,
+            )
             .unwrap();
         assert_eq!(edge_id.0, "context-edge-1");
         assert_eq!(canvas.edges[0].source.0, "source");
@@ -10573,14 +10546,22 @@ mod tests {
         assert!(canvas.edges[0].context_policy.is_some());
         assert!(
             canvas
-                .add_context_edge(CanvasNodeId::new("source"), CanvasNodeId::new("target"))
+                .add_context_edge(
+                    CanvasNodeId::new("source"),
+                    CanvasNodeId::new("target"),
+                    &coordinator,
+                )
                 .unwrap_err()
                 .to_string()
                 .contains("already exists")
         );
         assert!(
             canvas
-                .add_context_edge(CanvasNodeId::new("source"), CanvasNodeId::new("source"))
+                .add_context_edge(
+                    CanvasNodeId::new("source"),
+                    CanvasNodeId::new("source"),
+                    &coordinator,
+                )
                 .unwrap_err()
                 .to_string()
                 .contains("different target")
@@ -10589,6 +10570,7 @@ mod tests {
 
     #[test]
     fn notes_are_context_sources_but_not_dependency_or_context_targets() {
+        let coordinator = CanvasCoordinator;
         let mut canvas = CanvasWorkspaceState {
             nodes: vec![terminal_node("target", 1, 800.0, 0.0)],
             ..CanvasWorkspaceState::default()
@@ -10597,18 +10579,18 @@ mod tests {
         assert!(canvas.set_note_text(&note_id, "Review the auth boundary".to_string()));
 
         canvas
-            .add_context_edge(note_id.clone(), CanvasNodeId::new("target"))
+            .add_context_edge(note_id.clone(), CanvasNodeId::new("target"), &coordinator)
             .expect("notes should feed executable nodes");
         assert!(
             canvas
-                .add_dependency_edge(note_id.clone(), CanvasNodeId::new("target"))
+                .add_dependency_edge(note_id.clone(), CanvasNodeId::new("target"), &coordinator,)
                 .unwrap_err()
                 .to_string()
                 .contains("terminals and agents")
         );
         assert!(
             canvas
-                .add_context_edge(CanvasNodeId::new("target"), note_id)
+                .add_context_edge(CanvasNodeId::new("target"), note_id, &coordinator)
                 .unwrap_err()
                 .to_string()
                 .contains("context target")
@@ -10666,6 +10648,7 @@ mod tests {
 
     #[test]
     fn dependency_edges_reject_cycles() {
+        let coordinator = CanvasCoordinator;
         let mut canvas = CanvasWorkspaceState {
             nodes: vec![
                 terminal_node("a", 1, 0.0, 0.0),
@@ -10675,14 +10658,14 @@ mod tests {
             ..CanvasWorkspaceState::default()
         };
         canvas
-            .add_dependency_edge(CanvasNodeId::new("a"), CanvasNodeId::new("b"))
+            .add_dependency_edge(CanvasNodeId::new("a"), CanvasNodeId::new("b"), &coordinator)
             .unwrap();
         canvas
-            .add_dependency_edge(CanvasNodeId::new("b"), CanvasNodeId::new("c"))
+            .add_dependency_edge(CanvasNodeId::new("b"), CanvasNodeId::new("c"), &coordinator)
             .unwrap();
         assert!(
             canvas
-                .add_dependency_edge(CanvasNodeId::new("c"), CanvasNodeId::new("a"))
+                .add_dependency_edge(CanvasNodeId::new("c"), CanvasNodeId::new("a"), &coordinator,)
                 .unwrap_err()
                 .to_string()
                 .contains("cycle")
@@ -10691,6 +10674,7 @@ mod tests {
 
     #[test]
     fn orchestration_scope_contains_only_the_workspace_nodes_and_edges() {
+        let coordinator = CanvasCoordinator;
         let mut canvas = CanvasWorkspaceState {
             nodes: vec![
                 terminal_node("workspace-a", 1, 0.0, 0.0),
@@ -10702,6 +10686,7 @@ mod tests {
             .add_dependency_edge(
                 CanvasNodeId::new("workspace-a"),
                 CanvasNodeId::new("workspace-b"),
+                &coordinator,
             )
             .unwrap();
 
@@ -10783,6 +10768,7 @@ mod tests {
 
     #[test]
     fn edge_controls_do_not_remove_connected_nodes() {
+        let coordinator = CanvasCoordinator;
         let mut canvas = CanvasWorkspaceState {
             nodes: vec![
                 terminal_node("a", 1, 0.0, 0.0),
@@ -10791,7 +10777,7 @@ mod tests {
             ..CanvasWorkspaceState::default()
         };
         let edge_id = canvas
-            .add_context_edge(CanvasNodeId::new("a"), CanvasNodeId::new("b"))
+            .add_context_edge(CanvasNodeId::new("a"), CanvasNodeId::new("b"), &coordinator)
             .expect("edge should be created");
 
         assert!(canvas.set_edge_enabled(&edge_id, false));
@@ -10825,6 +10811,7 @@ mod tests {
 
     #[test]
     fn v1_capacity_geometry_handles_twenty_nodes_and_forty_edges() {
+        let coordinator = CanvasCoordinator;
         let mut canvas = CanvasWorkspaceState::default();
         for index in 0..super::CANVAS_V1_SUPPORTED_NODE_COUNT {
             let column = (index % 5) as f32;
@@ -10843,6 +10830,7 @@ mod tests {
                     .add_context_edge(
                         CanvasNodeId::new(format!("node-{source}")),
                         CanvasNodeId::new(format!("node-{target}")),
+                        &coordinator,
                     )
                     .unwrap();
             }

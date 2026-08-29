@@ -15180,13 +15180,18 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
+                    let canvas_coordinator = app.canvas_coordinator.clone();
                     {
                         let workspace = app
                             .active_workspace_mut()
                             .expect("canvas workspace should be active");
                         workspace
                             .canvas
-                            .add_context_edge(node_id.clone(), target_id.clone())
+                            .add_context_edge(
+                                node_id.clone(),
+                                target_id.clone(),
+                                &canvas_coordinator,
+                            )
                             .expect("same-host context link should be accepted");
                         workspace.canvas.select_and_raise(&target_id);
                     }
