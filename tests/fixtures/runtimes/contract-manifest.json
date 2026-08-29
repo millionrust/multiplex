@@ -1,5 +1,16 @@
 {
   "schema_version": 1,
+  "resume_contracts": [
+    {
+      "runtime": "codex",
+      "version": "0.150.1",
+      "release_enabled": true,
+      "route": ["resume", "<conversation-uuid>", "--cd", "<canonical-project>"],
+      "conversation_root": "$CODEX_HOME/sessions",
+      "metadata_record": "session_meta-v0.150.1",
+      "provenance": "Official Codex CLI 0.150.1 --version and resume --help output; official web documentation did not publish the resume argv contract on 2026-08-29"
+    }
+  ],
   "transcript_contracts": [
     {
       "id": "termirust-sanitized-v1",

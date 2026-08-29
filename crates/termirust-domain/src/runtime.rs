@@ -155,7 +155,11 @@ impl RuntimeDescriptor {
                 .all(|argument| !argument.contains('\0') && argument.len() <= 128)
             && self.version_rules.iter().all(|rule| {
                 rule.minimum < rule.maximum_exclusive
-                    && !rule.capabilities.contains(RuntimeCapability::Resume)
+                    && (!rule.capabilities.contains(RuntimeCapability::Resume)
+                        || (self.id.as_str() == "codex"
+                            && rule.launch_mode == RuntimeLaunchMode::Interactive
+                            && rule.minimum == crate::CODEX_RESUME_VERSION
+                            && rule.maximum_exclusive == crate::CODEX_RESUME_MAXIMUM_EXCLUSIVE))
                     && !rule
                         .capabilities
                         .contains(RuntimeCapability::TranscriptExport)
@@ -212,6 +216,32 @@ pub fn compiled_runtime_descriptors() -> Vec<RuntimeDescriptor> {
             ],
         }
     };
+    let mut codex = descriptor(
+        "codex",
+        "Codex",
+        "codex",
+        RuntimeVersion::new(1, 0, 0),
+        RuntimeVersion::new(1, 1, 0),
+        codex_structured.clone(),
+    );
+    codex.version_rules.push(RuntimeVersionRule {
+        minimum: crate::CODEX_RESUME_VERSION,
+        maximum_exclusive: crate::CODEX_RESUME_MAXIMUM_EXCLUSIVE,
+        launch_mode: RuntimeLaunchMode::Interactive,
+        capabilities: RuntimeCapabilitySet::new([
+            RuntimeCapability::InteractivePty,
+            RuntimeCapability::Cancellation,
+            RuntimeCapability::ContextHandoff,
+            RuntimeCapability::RemoteLaunch,
+            RuntimeCapability::Resume,
+        ]),
+    });
+    codex.version_rules.push(RuntimeVersionRule {
+        minimum: crate::CODEX_RESUME_VERSION,
+        maximum_exclusive: crate::CODEX_RESUME_MAXIMUM_EXCLUSIVE,
+        launch_mode: RuntimeLaunchMode::Structured,
+        capabilities: codex_structured,
+    });
     let mut descriptors = vec![
         descriptor(
             "claude",
@@ -221,14 +251,7 @@ pub fn compiled_runtime_descriptors() -> Vec<RuntimeDescriptor> {
             RuntimeVersion::new(2, 1, 0),
             structured.clone(),
         ),
-        descriptor(
-            "codex",
-            "Codex",
-            "codex",
-            RuntimeVersion::new(1, 0, 0),
-            RuntimeVersion::new(1, 1, 0),
-            codex_structured,
-        ),
+        codex,
         descriptor(
             "gemini",
             "Gemini CLI",
@@ -459,6 +482,8 @@ pub struct RuntimeOccupant {
     pub runtime_id: RuntimeId,
     pub descriptor_version: u16,
     pub safe_version: Option<String>,
+    #[serde(default)]
+    pub executable_fingerprint: Option<ExecutableFingerprint>,
     pub generation: OccupantGeneration,
     pub ownership: OccupantOwnership,
     pub capabilities: RuntimeCapabilitySet,
@@ -478,6 +503,7 @@ impl fmt::Debug for RuntimeOccupant {
             .field("runtime_id", &self.runtime_id)
             .field("descriptor_version", &self.descriptor_version)
             .field("safe_version", &self.safe_version)
+            .field("executable_fingerprint", &self.executable_fingerprint)
             .field("generation", &self.generation)
             .field("ownership", &self.ownership)
             .field("capabilities", &self.capabilities)
@@ -491,7 +517,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn runtime_registry_is_stable_bounded_and_has_no_resume_claim() {
+    fn runtime_registry_is_stable_bounded_and_has_only_exact_codex_resume_claim() {
         let descriptors = compiled_runtime_descriptors();
         assert_eq!(
             descriptors
@@ -501,12 +527,23 @@ mod tests {
             vec!["claude", "codex", "gemini", "generic"]
         );
         assert!(descriptors.iter().all(RuntimeDescriptor::validates));
-        assert!(descriptors.iter().all(|descriptor| {
-            descriptor
-                .version_rules
-                .iter()
-                .all(|rule| !rule.capabilities.contains(RuntimeCapability::Resume))
-        }));
+        let resume_rules = descriptors
+            .iter()
+            .flat_map(|descriptor| {
+                descriptor.version_rules.iter().filter_map(move |rule| {
+                    rule.capabilities
+                        .contains(RuntimeCapability::Resume)
+                        .then_some((descriptor.id.as_str(), rule))
+                })
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(resume_rules.len(), 1);
+        assert_eq!(resume_rules[0].0, "codex");
+        assert_eq!(resume_rules[0].1.minimum, crate::CODEX_RESUME_VERSION);
+        assert_eq!(
+            resume_rules[0].1.maximum_exclusive,
+            crate::CODEX_RESUME_MAXIMUM_EXCLUSIVE
+        );
     }
 
     #[test]
@@ -562,6 +599,7 @@ mod tests {
                 runtime_id: RuntimeId::new("codex").unwrap(),
                 descriptor_version: 1,
                 safe_version: Some("1.0.0".to_string()),
+                executable_fingerprint: Some(fingerprint),
                 generation: OccupantGeneration::new(1),
                 ownership,
                 capabilities: capabilities.clone(),

@@ -11,6 +11,7 @@ pub mod notification;
 pub mod preset;
 pub mod project;
 pub mod runtime;
+pub mod runtime_resume;
 pub mod search;
 pub mod session;
 pub mod transcript;
@@ -95,6 +96,12 @@ pub use runtime::{
     RuntimeDetectionResult, RuntimeDetectionStatus, RuntimeLaunchMode, RuntimeOccupant,
     RuntimeRecognition, RuntimeVersion, RuntimeVersionRule, compiled_runtime_descriptors,
     parse_runtime_version,
+};
+pub use runtime_resume::{
+    CODEX_RESUME_MAXIMUM_EXCLUSIVE, CODEX_RESUME_VERSION, ContinuityLink, ConversationHandle,
+    MAX_CONVERSATION_HANDLE_BYTES, MAX_RESUME_ARGUMENT_BYTES, MAX_RESUME_ARGUMENTS,
+    ResumeCandidate, ResumeEligibility, ResumeError, ResumePlan, ResumeRequest,
+    codex_resume_contract_matches, evaluate_resume,
 };
 pub use search::{
     Filter, HighlightField, MAX_SEARCH_DOCUMENT_BYTES, MAX_SEARCH_QUERY_SCALARS,

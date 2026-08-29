@@ -227,6 +227,7 @@ mod tests {
                 runtime_id: RuntimeId::new(runtime).unwrap(),
                 descriptor_version: 1,
                 safe_version: Some(version.to_string()),
+                executable_fingerprint: None,
                 generation: OccupantGeneration::new(1),
                 ownership: OccupantOwnership::Managed {
                     host_instance: host,

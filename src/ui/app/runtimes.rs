@@ -171,6 +171,7 @@ mod tests {
                 runtime_id: RuntimeId::new("codex").unwrap(),
                 descriptor_version: 1,
                 safe_version: Some("1.0.7".to_string()),
+                executable_fingerprint: None,
                 generation: OccupantGeneration::new(4),
                 ownership: OccupantOwnership::Managed {
                     host_instance: host,

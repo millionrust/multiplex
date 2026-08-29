@@ -213,6 +213,7 @@ impl ProcessObservationEngine {
                 runtime_id: detection.runtime_id.clone(),
                 descriptor_version: detection.descriptor_version,
                 safe_version: detection.safe_version.clone(),
+                executable_fingerprint: detection.fingerprint,
                 generation,
                 ownership,
                 capabilities: detection.capabilities.clone(),
