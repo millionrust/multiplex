@@ -230,7 +230,8 @@ impl RelaySocket {
                 Some(Ok(Message::Ping(_))) => {
                     self.websocket.flush().await.map_err(map_transport_error)?;
                 }
-                Some(Ok(Message::Close(_))) | None => {
+                Some(Ok(Message::Close(frame))) => return Err(map_close_frame(frame)),
+                None => {
                     return Err(RelayRouteError::new(RelayRouteErrorCode::PeerDisconnected));
                 }
                 Some(Ok(_)) => {
@@ -301,9 +302,8 @@ fn validate_challenge(
 async fn next_binary(websocket: &mut RelayWebSocket) -> Result<Vec<u8>, RelayRouteError> {
     match websocket.next().await {
         Some(Ok(Message::Binary(bytes))) => Ok(bytes.to_vec()),
-        Some(Ok(Message::Close(_))) | None => {
-            Err(RelayRouteError::new(RelayRouteErrorCode::PeerDisconnected))
-        }
+        Some(Ok(Message::Close(frame))) => Err(map_close_frame(frame)),
+        None => Err(RelayRouteError::new(RelayRouteErrorCode::PeerDisconnected)),
         Some(Ok(_)) => Err(RelayRouteError::new(RelayRouteErrorCode::MalformedFrame)),
         Some(Err(error)) => Err(map_transport_error(error)),
     }
@@ -334,4 +334,19 @@ fn map_admission_result(diagnostic: RelayDiagnosticCode) -> RelayRouteError {
         _ => RelayRouteErrorCode::AdmissionRejected,
     };
     RelayRouteError::new(code)
+}
+
+fn map_close_frame(
+    frame: Option<tokio_tungstenite::tungstenite::protocol::CloseFrame>,
+) -> RelayRouteError {
+    let Some(frame) = frame else {
+        return RelayRouteError::new(RelayRouteErrorCode::PeerDisconnected);
+    };
+    RelayDiagnosticCode::ALL
+        .into_iter()
+        .find(|diagnostic| frame.reason == diagnostic.as_str())
+        .map_or_else(
+            || RelayRouteError::new(RelayRouteErrorCode::PeerDisconnected),
+            map_admission_result,
+        )
 }

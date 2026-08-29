@@ -37,10 +37,9 @@ impl RelaySecretStore for OsRelaySecretStore {
         let mut encoded = relay_entry(reference)?
             .get_password()
             .map_err(map_keyring_error)?;
-        let mut decoded = base64::engine::general_purpose::STANDARD_NO_PAD
-            .decode(&encoded)
-            .map_err(|_| RelaySecretStoreError::Invalid)?;
+        let decoded = base64::engine::general_purpose::STANDARD_NO_PAD.decode(&encoded);
         encoded.zeroize();
+        let mut decoded = decoded.map_err(|_| RelaySecretStoreError::Invalid)?;
         if decoded.len() != 32 {
             decoded.zeroize();
             return Err(RelaySecretStoreError::Invalid);
