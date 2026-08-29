@@ -21,6 +21,7 @@ use termirust_domain::{
 use termirust_store::{RecoveryResult, SessionRemovalPlan, StoreError};
 
 use super::runtimes::runtime_inspector_projection;
+use super::session_coordinator::PendingArchiveAction;
 use super::session_library::{SessionLibraryFilter, SessionLibraryRecovery, SessionLibraryView};
 use super::session_resume::{resume_error_message, session_resume_projection};
 use super::transcript_export::transcript_export_projection;
@@ -630,30 +631,26 @@ impl TermiRustApp {
     pub(super) fn complete_pending_session_archive(
         &mut self,
         id: HostedSessionId,
-        lifecycle: HostedSessionState,
+        action: PendingArchiveAction,
     ) {
         if self.session_library.pending_archive_after_stop != Some(id) {
             return;
         }
-        if lifecycle == HostedSessionState::Exited {
-            self.session_library.pending_archive_after_stop = None;
-            self.mutate_session(
-                id,
-                SessionMutation::Archive {
-                    at: crate::ui::util::current_unix_millis(),
-                },
-            );
-        } else if matches!(
-            lifecycle,
-            HostedSessionState::Failed
-                | HostedSessionState::Offline
-                | HostedSessionState::Orphaned
-                | HostedSessionState::Gap
-                | HostedSessionState::PermissionDenied
-                | HostedSessionState::Incompatible
-        ) {
-            self.session_library.pending_archive_after_stop = None;
-            self.error_message = localization::session_library_operation_failed();
+        match action {
+            PendingArchiveAction::Archive => {
+                self.session_library.pending_archive_after_stop = None;
+                self.mutate_session(
+                    id,
+                    SessionMutation::Archive {
+                        at: crate::ui::util::current_unix_millis(),
+                    },
+                );
+            }
+            PendingArchiveAction::Fail => {
+                self.session_library.pending_archive_after_stop = None;
+                self.error_message = localization::session_library_operation_failed();
+            }
+            PendingArchiveAction::None => {}
         }
     }
 

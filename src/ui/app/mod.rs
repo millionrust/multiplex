@@ -52,7 +52,9 @@ use presets::PresetLibraryState;
 use project::CanvasProjectPanelState;
 use projects::ProjectLibraryState;
 use remote_devices::RemoteDevicesState;
-use session_coordinator::{SessionCoordinator, SessionStartRequest};
+use session_coordinator::{
+    HostedDevUrlAction, HostedStatusInput, SessionCoordinator, SessionStartRequest,
+};
 use session_library::{SessionLibraryFilter, SessionLibraryState, SessionLibraryView};
 use session_resume::SessionResumeState;
 use worktree_launch::WorktreeLaunchUiState;
@@ -6826,70 +6828,64 @@ impl TermiRustApp {
                 } => {
                     let hosted_session_id = self.pane_mut(session_id).and_then(|pane| {
                         pane.status = detail;
-                        pane.app_attached.as_mut().map(|hosted| {
-                            hosted.last_sequence = last_sequence;
-                            hosted.has_writer_lease = has_writer_lease;
-                            if matches!(state, termirust_domain::HostedSessionState::Gap) {
-                                hosted.dev_urls.mark_gap();
-                            }
-                            if matches!(
-                                state,
-                                termirust_domain::HostedSessionState::Exited
-                                    | termirust_domain::HostedSessionState::Failed
-                                    | termirust_domain::HostedSessionState::Orphaned
-                                    | termirust_domain::HostedSessionState::Offline
-                                    | termirust_domain::HostedSessionState::PermissionDenied
-                                    | termirust_domain::HostedSessionState::Incompatible
-                            ) {
-                                hosted.dev_urls.mark_host_unavailable();
-                            }
-                            hosted.hosted_session_id
-                        })
+                        pane.app_attached
+                            .as_ref()
+                            .map(|hosted| hosted.hosted_session_id)
                     });
                     if let Some(hosted_session_id) = hosted_session_id {
-                        let previous_session =
-                            self.session_library.session(hosted_session_id).cloned();
                         let visibly_focused = self.window_active
                             && self.active_pane().is_some_and(|pane| {
                                 pane.app_attached.as_ref().is_some_and(|attached| {
                                     attached.hosted_session_id == hosted_session_id
                                 })
                             });
-                        if let Some(saved) = self
-                            .saved
-                            .app_attached_sessions
-                            .iter_mut()
-                            .find(|saved| saved.id == hosted_session_id)
-                        {
-                            if let Some(host) = saved.durable_host.as_mut() {
-                                host.last_sequence = host.last_sequence.max(last_sequence);
-                                host.durable_sequence = host.durable_sequence.max(durable_sequence);
-                            }
-                        }
-                        let reconciled = self.session_library.reconcile(
-                            &mut self.saved,
+                        let input = HostedStatusInput {
                             hosted_session_id,
                             state,
+                            last_sequence,
+                            durable_sequence,
                             activity,
-                            termirust_domain::OutputSequence::new(last_sequence),
+                            has_writer_lease,
+                            visibly_focused,
+                        };
+                        let pane_projection = input.pane_projection();
+                        if let Some(pane) = self.pane_mut(session_id)
+                            && let Some(hosted) = pane.app_attached.as_mut()
+                        {
+                            hosted.last_sequence = pane_projection.last_sequence;
+                            hosted.has_writer_lease = pane_projection.has_writer_lease;
+                            match pane_projection.dev_url_action {
+                                HostedDevUrlAction::Preserve => {}
+                                HostedDevUrlAction::MarkGap => hosted.dev_urls.mark_gap(),
+                                HostedDevUrlAction::MarkUnavailable => {
+                                    hosted.dev_urls.mark_host_unavailable();
+                                }
+                            }
+                        }
+
+                        let projected = self.session_coordinator.project_hosted_status(
+                            input,
+                            &mut self.saved,
+                            &mut self.session_library,
+                            &mut self.activity_center,
+                            save_saved_state,
                         );
-                        match reconciled {
-                            Ok(session) => {
-                                if let Err(error) = save_saved_state(&self.saved) {
+                        match projected {
+                            Ok(projection) => {
+                                if let Some(error) = projection.warnings.compatibility_save {
                                     eprintln!(
                                         "[session-library] compatibility projection save failed: {error:#}"
                                     );
                                 }
-                                if let Err(error) = self.activity_center.observe_transition(
-                                    previous_session.as_ref(),
-                                    &session,
-                                    visibly_focused,
-                                ) {
+                                if let Some(error) = projection.warnings.activity_observation {
                                     eprintln!(
                                         "[activity-center] committed transition could not be recorded: {error}"
                                     );
                                 }
-                                self.complete_pending_session_archive(hosted_session_id, state);
+                                self.complete_pending_session_archive(
+                                    hosted_session_id,
+                                    projection.pending_archive,
+                                );
                             }
                             Err(error) => {
                                 eprintln!("[session-library] reconcile failed: {error}");

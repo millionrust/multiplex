@@ -76,7 +76,7 @@ impl SessionLibraryState {
         }
     }
 
-    fn open_repository(repository: SessionRepository, saved: &mut SavedState) -> Self {
+    pub(super) fn open_repository(repository: SessionRepository, saved: &mut SavedState) -> Self {
         let mut state = Self {
             repository: Some(repository),
             snapshot: None,

@@ -24,6 +24,7 @@ use crate::storage::app_dir;
 use crate::ui::util::current_unix_millis;
 use crate::ui::{localization, theme};
 
+use super::session_coordinator::SessionActivityObserver;
 use super::{NavSection, TermiRustApp};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -359,6 +360,19 @@ impl ActivityCenterState {
             monotonic_millis: self.started.elapsed().as_millis() as u64,
             runtime_epoch_wall_millis: self.runtime_epoch_wall_millis,
         }
+    }
+}
+
+impl SessionActivityObserver for ActivityCenterState {
+    fn observe_session_transition(
+        &mut self,
+        previous: Option<&HostedSession>,
+        current: &HostedSession,
+        visibly_focused: bool,
+    ) -> Result<(), String> {
+        ActivityCenterState::observe_transition(self, previous, current, visibly_focused)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
     }
 }
 
