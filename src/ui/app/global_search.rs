@@ -586,7 +586,7 @@ mod tests {
     use termirust_domain::{HostedSessionId, SearchDocumentId};
 
     #[test]
-    fn palette_tests_category_mapping_and_status_copy_are_total() {
+    fn global_palette_category_mapping_and_status_copy_are_total() {
         let id = HostedSessionId::new();
         let result = SearchResult {
             id: SearchDocumentId::Session(id),

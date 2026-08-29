@@ -78,9 +78,9 @@ It runs:
 - `ui::app::tests::e2e_chrome_new_button_click_opens_new_host_editor`
 - `ui::app::tests::e2e_double_click_empty_chrome_opens_local_terminal`
 - `ui::app::tests::e2e_library_nav_cards_click_switch_sections`
-- `ui::app::tests::e2e_library_navigation_shortcuts_switch_sections_and_open_editor`
+- `ui::app::tests::e2e_keyboard_conformance_primary_navigation_shortcuts_switch_sections_and_focus_content`
 - `ui::app::tests::e2e_workspace_shortcuts_toggle_views_broadcast_and_cycle_tabs`
-- `ui::app::tests::e2e_terminal_shortcuts_open_search_palette_and_close_workspace`
+- `ui::app::tests::e2e_keyboard_conformance_terminal_shortcuts_preserve_input_and_restore_focus`
 - `ui::app::tests::e2e_terminal_paging_shortcuts_adjust_scrollback`
 - `ui::app::tests::e2e_terminal_clipboard_shortcuts_copy_and_cancel_multiline_paste`
 - `ui::app::tests::e2e_escape_closes_editor_dialog`

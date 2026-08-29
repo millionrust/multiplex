@@ -249,6 +249,19 @@ impl NavSection {
     }
 }
 
+fn primary_nav_shortcut(key: &str) -> Option<NavSection> {
+    match key {
+        "1" => Some(NavSection::Activity),
+        "2" => Some(NavSection::Projects),
+        "3" => Some(NavSection::Hosts),
+        "4" => Some(NavSection::Sessions),
+        "5" => Some(NavSection::Sftp),
+        "6" => Some(NavSection::Devices),
+        "7" => Some(NavSection::Settings),
+        _ => None,
+    }
+}
+
 use crate::ui::keys::TerminalCellPos;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -11033,38 +11046,23 @@ impl TermiRustApp {
             return true;
         }
 
+        if !event.keystroke.modifiers.shift
+            && !event.keystroke.modifiers.alt
+            && let Some(section) = primary_nav_shortcut(event.keystroke.key.as_str())
+        {
+            if section == NavSection::Sftp {
+                self.open_files_library(artifact_gallery::FilesLibraryTab::Artifacts, window, cx);
+            } else {
+                self.activate_library_section(section, window, cx);
+            }
+            self.project_list_focus.focus(window);
+            return true;
+        }
+
         match event.keystroke.key.as_str() {
-            "1" => {
-                self.activate_library_section(NavSection::Projects, window, cx);
-                self.project_list_focus.focus(window);
-                true
-            }
-            "2" => {
-                self.activate_library_section(NavSection::Vaults, window, cx);
-                true
-            }
-            "3" => {
-                self.activate_library_section(NavSection::Keychain, window, cx);
-                true
-            }
-            "4" => {
-                self.activate_library_section(NavSection::Snippets, window, cx);
-                true
-            }
-            "5" => {
-                self.activate_library_section(NavSection::Settings, window, cx);
-                true
-            }
-            "6" => {
-                self.activate_library_section(NavSection::KnownHosts, window, cx);
-                true
-            }
-            "7" => {
-                self.activate_library_section(NavSection::Logs, window, cx);
-                true
-            }
             "," => {
                 self.activate_library_section(NavSection::Settings, window, cx);
+                self.project_list_focus.focus(window);
                 true
             }
             "l" => {
@@ -11395,6 +11393,39 @@ mod tests {
     use std::time::{Duration, Instant};
     use termirust_domain::HostedSessionId;
     use vt100::MouseProtocolMode;
+
+    fn keyboard_palette_result(
+        id: termirust_domain::SearchDocumentId,
+        category: termirust_domain::SearchCategory,
+        title: &str,
+        status: termirust_domain::SearchStatus,
+        archived: bool,
+        action: termirust_domain::SearchAction,
+    ) -> termirust_domain::SearchResult {
+        termirust_domain::SearchResult {
+            id,
+            category,
+            title: title.to_string(),
+            project_label: None,
+            group_label: None,
+            preset_label: None,
+            runtime_label: None,
+            status,
+            pinned: false,
+            archived,
+            highlights: Vec::new(),
+            action,
+            score: termirust_domain::ScoreTuple {
+                match_quality: 3,
+                current_project: 0,
+                actionable_status: 0,
+                pinned: 0,
+                position: termirust_domain::PositionKey::FIRST,
+                meaningful_activity_at: 0,
+                id,
+            },
+        }
+    }
 
     fn docker_ssh_request(server: &DockerSshServer) -> ConnectRequest {
         ConnectRequest {
@@ -17783,7 +17814,9 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_command_palette_replays_recent_command(cx: &mut TestAppContext) {
+    fn e2e_keyboard_conformance_global_palette_enter_replays_recent_command(
+        cx: &mut TestAppContext,
+    ) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let request = ConnectRequest::local_shell_with_config(
@@ -17867,7 +17900,17 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    assert!(app.run_selected_command_palette(window, cx));
+                    let enter = KeyDownEvent {
+                        keystroke: Keystroke::parse("enter").expect("enter should parse"),
+                        is_held: false,
+                    };
+                    assert!(app.handle_command_palette_key(&enter, window, cx));
+                    assert!(
+                        app.pane(pane_id)
+                            .expect("pane should exist")
+                            .terminal_focus
+                            .is_focused(window)
+                    );
                 })
             })
             .expect("window update should succeed");
@@ -20533,18 +20576,20 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_library_navigation_shortcuts_switch_sections_and_open_editor(cx: &mut TestAppContext) {
+    fn e2e_keyboard_conformance_primary_navigation_shortcuts_switch_sections_and_focus_content(
+        cx: &mut TestAppContext,
+    ) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
 
         for (shortcut, expected) in [
-            ("cmd-1", NavSection::Projects),
-            ("cmd-2", NavSection::Vaults),
-            ("cmd-3", NavSection::Keychain),
-            ("cmd-4", NavSection::Snippets),
-            ("cmd-5", NavSection::Settings),
-            ("cmd-6", NavSection::KnownHosts),
-            ("cmd-7", NavSection::Logs),
+            ("cmd-1", NavSection::Activity),
+            ("cmd-2", NavSection::Projects),
+            ("cmd-3", NavSection::Hosts),
+            ("cmd-4", NavSection::Sessions),
+            ("cmd-5", NavSection::Sftp),
+            ("cmd-6", NavSection::Devices),
+            ("cmd-7", NavSection::Settings),
         ] {
             let event = KeyDownEvent {
                 keystroke: Keystroke::parse(shortcut).expect("shortcut should parse"),
@@ -20555,6 +20600,7 @@ sleep 1
                 .update(cx, |_, window, cx| {
                     app.update(cx, |app, cx| {
                         assert!(app.handle_global_key(&event, window, cx));
+                        assert!(app.project_list_focus.is_focused(window));
                     })
                 })
                 .expect("window update should succeed");
@@ -20579,6 +20625,7 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     assert!(app.handle_global_key(&settings_event, window, cx));
+                    assert!(app.project_list_focus.is_focused(window));
                 })
             })
             .expect("window update should succeed");
@@ -20617,6 +20664,208 @@ sleep 1
             assert!(app.show_editor_panel);
             assert_eq!(app.selected_profile_id, None);
         });
+    }
+
+    #[gpui::test]
+    fn e2e_keyboard_conformance_global_palette_activates_project_preset_and_safe_action(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let project_root = tempfile::tempdir().expect("project fixture should be created");
+        let project = termirust_domain::Project {
+            id: termirust_domain::ProjectId::new(),
+            display_name: termirust_domain::LocalizedUserText::new("Keyboard project")
+                .expect("project label should be valid"),
+            canonical_root: termirust_domain::CanonicalPath::resolve(project_root.path())
+                .expect("project path should resolve"),
+            position: termirust_domain::PositionKey::FIRST,
+            revision: termirust_domain::Revision::new(2),
+        };
+        let preset = termirust_domain::PresetDraft {
+            id: termirust_domain::PresetId::new(),
+            label: "Keyboard preset".to_string(),
+            executable: std::env::current_exe()
+                .expect("test executable should exist")
+                .display()
+                .to_string(),
+            args: Vec::new(),
+            working_directory: termirust_domain::WorkingDirectoryRule::ProjectRoot,
+            runtime: None,
+            enabled: true,
+            favorite: true,
+            permission_policy: termirust_domain::PermissionPolicy::AskAsNeeded,
+            origin: termirust_domain::PresetOrigin::User,
+            confirm_risky_favorite: false,
+        }
+        .validate(
+            termirust_domain::PositionKey::FIRST,
+            termirust_domain::Revision::new(3),
+        )
+        .expect("preset should be valid");
+        let (app, window) = open_test_app(cx);
+        cx.run_until_parked();
+        let open_palette = KeyDownEvent {
+            keystroke: Keystroke::parse("cmd-k").expect("palette shortcut should parse"),
+            is_held: false,
+        };
+        let enter = KeyDownEvent {
+            keystroke: Keystroke::parse("enter").expect("enter should parse"),
+            is_held: false,
+        };
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.project_library.snapshot = Some(termirust_store::ProjectSnapshot {
+                        revision: project.revision,
+                        projects: vec![project.clone().into()],
+                        groups: Vec::new(),
+                        worktree_intents: Vec::new(),
+                        worktrees: Vec::new(),
+                        health: termirust_store::StoreHealth::Healthy,
+                        read_only: false,
+                        durability: termirust_store::Durability::Full,
+                    });
+                    app.preset_library.snapshot = Some(termirust_store::PresetSnapshot {
+                        revision: preset.revision,
+                        presets: vec![preset.clone()],
+                        health: termirust_store::StoreHealth::Healthy,
+                        read_only: false,
+                        durability: termirust_store::Durability::Full,
+                    });
+                    app.project_library.selected_id = Some(project.id);
+                    app.project_list_focus.focus(window);
+                    assert!(app.handle_global_key(&open_palette, window, cx));
+                    app.global_search.cancel();
+                    app.global_search.results = vec![keyboard_palette_result(
+                        termirust_domain::SearchDocumentId::Project(project.id),
+                        termirust_domain::SearchCategory::Project,
+                        "Keyboard project",
+                        termirust_domain::SearchStatus::Unknown,
+                        false,
+                        termirust_domain::SearchAction::OpenProject(project.id),
+                    )];
+                })
+            })
+            .expect("project palette search should start");
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let candidates = app.command_palette_candidates(cx);
+                    let index = candidates
+                        .iter()
+                        .position(|candidate| {
+                            candidate.action
+                                == super::PaletteAction::Search(
+                                    termirust_domain::SearchAction::OpenProject(project.id),
+                                )
+                        })
+                        .expect("project result should be present");
+                    assert_eq!(
+                        candidates[index].category,
+                        super::palette::PaletteCategory::Projects
+                    );
+                    app.selected_command_palette_index = index;
+                    assert!(app.handle_command_palette_key(&enter, window, cx));
+                    assert_eq!(app.nav_section, NavSection::Projects);
+                    assert_eq!(app.project_library.selected_id, Some(project.id));
+                    assert!(!app.show_command_palette);
+                })
+            })
+            .expect("project result should activate");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&open_palette, window, cx));
+                    app.global_search.cancel();
+                    app.global_search.results = vec![keyboard_palette_result(
+                        termirust_domain::SearchDocumentId::Preset(preset.id),
+                        termirust_domain::SearchCategory::Preset,
+                        "Keyboard preset",
+                        termirust_domain::SearchStatus::Unknown,
+                        false,
+                        termirust_domain::SearchAction::StartPreset(preset.id),
+                    )];
+                })
+            })
+            .expect("preset palette search should start");
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let candidates = app.command_palette_candidates(cx);
+                    let index = candidates
+                        .iter()
+                        .position(|candidate| {
+                            candidate.action
+                                == super::PaletteAction::Search(
+                                    termirust_domain::SearchAction::StartPreset(preset.id),
+                                )
+                        })
+                        .expect("preset result should be present");
+                    assert_eq!(
+                        candidates[index].category,
+                        super::palette::PaletteCategory::Presets
+                    );
+                    app.selected_command_palette_index = index;
+                    assert!(app.handle_command_palette_key(&enter, window, cx));
+                    let new_session = app
+                        .new_session
+                        .as_ref()
+                        .expect("preset activation should open session review");
+                    assert_eq!(new_session.project_id, project.id);
+                    assert_eq!(new_session.selected_preset_id, Some(preset.id));
+                    assert!(app.saved.app_attached_sessions.is_empty());
+                    assert!(app.workspaces.is_empty());
+                    app.close_new_session(cx);
+                })
+            })
+            .expect("preset result should activate");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_global_key(&open_palette, window, cx));
+                    app.global_search.cancel();
+                    app.global_search.results = vec![keyboard_palette_result(
+                        termirust_domain::SearchDocumentId::Action(
+                            termirust_domain::SearchActionId::ShowArchive,
+                        ),
+                        termirust_domain::SearchCategory::Action,
+                        "Show session archive",
+                        termirust_domain::SearchStatus::Unknown,
+                        false,
+                        termirust_domain::SearchAction::ShowArchive,
+                    )];
+                })
+            })
+            .expect("safe-action palette search should start");
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let candidates = app.command_palette_candidates(cx);
+                    let index = candidates
+                        .iter()
+                        .position(|candidate| {
+                            candidate.action
+                                == super::PaletteAction::Search(
+                                    termirust_domain::SearchAction::ShowArchive,
+                                )
+                        })
+                        .expect("safe action should be present");
+                    assert_eq!(
+                        candidates[index].category,
+                        super::palette::PaletteCategory::Actions
+                    );
+                    app.selected_command_palette_index = index;
+                    assert!(app.handle_command_palette_key(&enter, window, cx));
+                    assert_eq!(app.nav_section, NavSection::Sessions);
+                    assert_eq!(app.session_library.view, SessionLibraryView::Archive);
+                    assert!(app.saved.app_attached_sessions.is_empty());
+                    assert!(app.workspaces.is_empty());
+                })
+            })
+            .expect("safe action should activate");
     }
 
     #[gpui::test]
@@ -20938,7 +21187,7 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_cross_entry_archived_palette_open_uses_sessions_without_creating_a_record(
+    fn e2e_keyboard_conformance_global_palette_archived_session_open_uses_sessions_without_creating_a_record(
         cx: &mut TestAppContext,
     ) {
         let _isolation = TestIsolation::acquire();
@@ -20976,11 +21225,20 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.show_command_palette = true;
-                    assert!(app.activate_global_palette_action(
+                    app.global_search.cancel();
+                    app.global_search.results = vec![keyboard_palette_result(
+                        termirust_domain::SearchDocumentId::Session(session_id),
+                        termirust_domain::SearchCategory::Archive,
+                        "Archived cross-entry session",
+                        termirust_domain::SearchStatus::Done,
+                        true,
                         termirust_domain::SearchAction::OpenSession(session_id),
-                        window,
-                        cx,
-                    ));
+                    )];
+                    let enter = KeyDownEvent {
+                        keystroke: Keystroke::parse("enter").expect("enter should parse"),
+                        is_held: false,
+                    };
+                    assert!(app.handle_command_palette_key(&enter, window, cx));
                 })
             })
             .expect("palette action should update");
@@ -21018,7 +21276,7 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_cross_entry_active_session_open_is_identity_preserving_and_idempotent(
+    fn e2e_keyboard_conformance_global_palette_active_session_open_is_identity_preserving_and_idempotent(
         cx: &mut TestAppContext,
     ) {
         let _isolation = TestIsolation::acquire();
@@ -21060,8 +21318,23 @@ sleep 1
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    assert!(app.open_session_from_entry(session_id, window, cx));
-                    assert!(app.open_session_from_entry(session_id, window, cx));
+                    let enter = KeyDownEvent {
+                        keystroke: Keystroke::parse("enter").expect("enter should parse"),
+                        is_held: false,
+                    };
+                    for _ in 0..2 {
+                        app.show_command_palette = true;
+                        app.global_search.cancel();
+                        app.global_search.results = vec![keyboard_palette_result(
+                            termirust_domain::SearchDocumentId::Session(session_id),
+                            termirust_domain::SearchCategory::Session,
+                            "Recoverable cross-entry session",
+                            termirust_domain::SearchStatus::Unavailable,
+                            false,
+                            termirust_domain::SearchAction::OpenSession(session_id),
+                        )];
+                        assert!(app.handle_command_palette_key(&enter, window, cx));
+                    }
                 })
             })
             .expect("session opens should update");
@@ -21821,7 +22094,9 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_global_palette_opens_from_library_navigates_and_restores_focus(cx: &mut TestAppContext) {
+    fn e2e_keyboard_conformance_global_palette_opens_from_library_navigates_and_restores_focus(
+        cx: &mut TestAppContext,
+    ) {
         use gpui::Focusable as _;
 
         let _isolation = TestIsolation::acquire();
@@ -21901,7 +22176,9 @@ sleep 1
     }
 
     #[gpui::test]
-    fn e2e_terminal_shortcuts_open_search_palette_and_close_workspace(cx: &mut TestAppContext) {
+    fn e2e_keyboard_conformance_terminal_shortcuts_preserve_input_and_restore_focus(
+        cx: &mut TestAppContext,
+    ) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
         let request = ConnectRequest::local_shell_with_config(
@@ -21944,6 +22221,16 @@ sleep 1
             assert!(workspace.search_visible);
         });
 
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    assert!(app.handle_terminal_key(pane_id, &open_search, window, cx));
+                    let pane = app.pane(pane_id).expect("pane should exist");
+                    assert!(pane.terminal_focus.is_focused(window));
+                })
+            })
+            .expect("terminal search should close");
+
         let open_palette = KeyDownEvent {
             keystroke: Keystroke::parse("cmd-k").expect("palette shortcut should parse"),
             is_held: false,
@@ -21967,6 +22254,17 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     assert!(app.handle_command_palette_key(&close_palette, window, cx));
+                    let pane = app.pane(pane_id).expect("pane should exist");
+                    assert!(pane.terminal_focus.is_focused(window));
+
+                    let enter = KeyDownEvent {
+                        keystroke: Keystroke::parse("enter").expect("enter should parse"),
+                        is_held: false,
+                    };
+                    assert!(app.handle_terminal_key(pane_id, &enter, window, cx));
+                    assert!(!app.show_command_palette);
+                    assert!(app.new_session.is_none());
+                    assert!(app.session_resume.is_none());
                 })
             })
             .expect("window update should succeed");
