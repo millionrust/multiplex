@@ -45,6 +45,9 @@ use crate::ui::shell::shell_single_quote;
 use crate::ui::theme;
 use crate::{storage::managed_agent_worktree_dir, ui::util::current_unix_millis};
 
+use super::canvas_coordinator::{
+    CanvasCoordinator, CanvasSelectionDecision, CanvasSelectionRequest,
+};
 use super::project::{
     CanvasProjectPanelState, git_snapshot as canvas_project_git_snapshot,
     load_project_directory as load_canvas_project_directory,
@@ -1425,20 +1428,30 @@ impl CanvasWorkspaceState {
         self.next_z_index = self.next_z_index.saturating_add(1);
     }
 
-    pub(super) fn select_adjacent_node(&mut self, delta: isize) -> Option<CanvasNodeId> {
-        if self.nodes.is_empty() {
-            self.selected_node_id = None;
-            return None;
+    pub(super) fn select_adjacent_node(
+        &mut self,
+        delta: isize,
+        canvas_coordinator: &CanvasCoordinator,
+    ) -> Option<CanvasNodeId> {
+        let node_ids = self
+            .nodes
+            .iter()
+            .map(|node| node.id.clone())
+            .collect::<Vec<_>>();
+        match canvas_coordinator.select_adjacent(CanvasSelectionRequest {
+            node_ids: &node_ids,
+            selected_node_id: self.selected_node_id.as_ref(),
+            delta,
+        }) {
+            CanvasSelectionDecision::Clear => {
+                self.selected_node_id = None;
+                None
+            }
+            CanvasSelectionDecision::Select(node_id) => {
+                self.select_and_raise(&node_id);
+                Some(node_id)
+            }
         }
-        let current = self
-            .selected_node_id
-            .as_ref()
-            .and_then(|selected| self.nodes.iter().position(|node| &node.id == selected))
-            .unwrap_or_else(|| if delta < 0 { 0 } else { self.nodes.len() - 1 });
-        let next = (current as isize + delta).rem_euclid(self.nodes.len() as isize) as usize;
-        let node_id = self.nodes[next].id.clone();
-        self.select_and_raise(&node_id);
-        Some(node_id)
     }
 
     pub(super) fn node_at_screen(&self, point: CanvasPoint) -> Option<&CanvasNode> {
@@ -1832,9 +1845,12 @@ impl TermiRustApp {
             "right" | "down" => 1,
             _ => return false,
         };
-        let selected = self
-            .active_workspace_mut()
-            .and_then(|workspace| workspace.canvas.select_adjacent_node(delta));
+        let canvas_coordinator = self.canvas_coordinator.clone();
+        let selected = self.active_workspace_mut().and_then(|workspace| {
+            workspace
+                .canvas
+                .select_adjacent_node(delta, &canvas_coordinator)
+        });
         if let Some(selected) = selected.as_ref() {
             let viewport = window.viewport_size();
             let viewport_width = f32::from(viewport.width);
@@ -10210,8 +10226,8 @@ fn agent_state_after_queue(state: AgentRunState) -> Option<AgentRunState> {
 mod tests {
     use super::{
         AgentExecutableStatus, AgentRunState, CANVAS_DEFAULT_NODE_HEIGHT,
-        CANVAS_DEFAULT_NODE_WIDTH, CanvasNode, CanvasNodeKind, CanvasPoint, CanvasRect,
-        CanvasTransform, CanvasWorkspaceState, TermiRustApp, agent_creation_can_launch,
+        CANVAS_DEFAULT_NODE_WIDTH, CanvasCoordinator, CanvasNode, CanvasNodeKind, CanvasPoint,
+        CanvasRect, CanvasTransform, CanvasWorkspaceState, TermiRustApp, agent_creation_can_launch,
         agent_state_after_queue, agent_state_needs_attention, canvas_minimap_geometry,
         canvas_node_render_rect, canvas_orchestration_scope, canvas_rect_is_visible,
         canvas_reveal_delta, compact_activity_detail, default_agent_backend,
@@ -10716,6 +10732,7 @@ mod tests {
 
     #[test]
     fn keyboard_selection_cycles_canvas_nodes_in_both_directions() {
+        let coordinator = CanvasCoordinator;
         let mut canvas = CanvasWorkspaceState {
             nodes: vec![
                 terminal_node("a", 1, 0.0, 0.0),
@@ -10725,14 +10742,20 @@ mod tests {
             ..CanvasWorkspaceState::default()
         };
 
-        assert_eq!(canvas.select_adjacent_node(1), Some(CanvasNodeId::new("a")));
-        assert_eq!(canvas.select_adjacent_node(1), Some(CanvasNodeId::new("b")));
         assert_eq!(
-            canvas.select_adjacent_node(-1),
+            canvas.select_adjacent_node(1, &coordinator),
             Some(CanvasNodeId::new("a"))
         );
         assert_eq!(
-            canvas.select_adjacent_node(-1),
+            canvas.select_adjacent_node(1, &coordinator),
+            Some(CanvasNodeId::new("b"))
+        );
+        assert_eq!(
+            canvas.select_adjacent_node(-1, &coordinator),
+            Some(CanvasNodeId::new("a"))
+        );
+        assert_eq!(
+            canvas.select_adjacent_node(-1, &coordinator),
             Some(CanvasNodeId::new("c"))
         );
     }

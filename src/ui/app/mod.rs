@@ -1,6 +1,7 @@
 mod activity_center;
 mod artifact_gallery;
 mod canvas;
+mod canvas_coordinator;
 mod chrome;
 mod cli_status;
 mod connect;
@@ -43,6 +44,7 @@ use canvas::{
     CanvasWorkspaceState, ContextHandoffReview, PendingCanvasNodeDelete, PendingCanvasPaneClose,
     PendingTmuxClose, SplitPaneChooser, StructuredAgentRuntime,
 };
+use canvas_coordinator::CanvasCoordinator;
 use connection_coordinator::{
     ConnectionCoordinator, ReconnectScheduleDecision, ReconnectScheduleInput,
     ReconnectTickDecision, ReconnectTickInput, SftpEventProjection, SftpOperationRequest,
@@ -966,6 +968,7 @@ pub struct TermiRustApp {
     draft_auth_mode: AuthMode,
     project_coordinator: ProjectCoordinator,
     controller_coordinator: ControllerCoordinator,
+    canvas_coordinator: CanvasCoordinator,
     project_library: ProjectLibraryState,
     project_label_input: Entity<InputState>,
     group_name_input: Entity<InputState>,
@@ -1263,6 +1266,7 @@ impl TermiRustApp {
             draft_auth_mode,
             project_coordinator: ProjectCoordinator::default(),
             controller_coordinator,
+            canvas_coordinator: CanvasCoordinator,
             project_library,
             project_label_input,
             group_name_input,
