@@ -11,7 +11,7 @@ use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::{Input, InputState};
 use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
-use crate::models::{HostProfile, WorkspaceLayoutMode};
+use crate::models::{AuthMode, HostProfile, WorkspaceLayoutMode};
 use crate::ui::app::{
     CanvasWorkspaceState, ConnectDialogMode, ConnectFailure, ConnectProtocol, NavSection,
     SplitNode, TermiRustApp, WorkspaceTab, WorkspaceViewMode,
@@ -579,6 +579,54 @@ impl TermiRustApp {
                 selected == ConnectProtocol::Telnet,
                 cx,
             ))
+            .when(
+                profile.auth_mode == AuthMode::LocalAgent
+                    && selected == ConnectProtocol::Ssh,
+                |this| {
+                    this.child(
+                        v_flex()
+                            .w(px(420.))
+                            .gap(px(8.))
+                            .px(px(12.))
+                            .py(px(10.))
+                            .rounded(px(8.))
+                            .border_1()
+                            .border_color(theme::with_alpha(theme::warning(), 0.45))
+                            .bg(theme::with_alpha(theme::warning(), 0.08))
+                            .child(
+                                div()
+                                    .text_size(px(12.))
+                                    .text_color(theme::text_main())
+                                    .child(
+                                        "Agent forwarding lets this server request signatures from your local SSH agent for this connection only.",
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .debug_selector(|| {
+                                        "choose-proto-forward-agent".to_string()
+                                    })
+                                    .child(
+                                        Button::new("choose-proto-forward-agent")
+                                            .w_full()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Danger,
+                                                cx,
+                                            ))
+                                            .icon(IconName::TriangleAlert)
+                                            .label("Connect + Forward Agent Once")
+                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                                this.confirm_choose_protocol_with_agent_forwarding(
+                                                    workspace_id,
+                                                    window,
+                                                    cx,
+                                                );
+                                            })),
+                                    ),
+                            ),
+                    )
+                },
+            )
             .child(
                 h_flex()
                     .w(px(420.))
@@ -700,6 +748,25 @@ impl TermiRustApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.confirm_choose_protocol_impl(workspace_id, false, window, cx);
+    }
+
+    fn confirm_choose_protocol_with_agent_forwarding(
+        &mut self,
+        workspace_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.confirm_choose_protocol_impl(workspace_id, true, window, cx);
+    }
+
+    fn confirm_choose_protocol_impl(
+        &mut self,
+        workspace_id: u64,
+        forward_agent: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(workspace) = self.workspaces.iter().find(|w| w.id == workspace_id) else {
             return;
         };
@@ -763,7 +830,7 @@ impl TermiRustApp {
             Self::set_input_value(&self.inputs.port, port_str, window, cx);
         }
         self.show_editor_panel = false;
-        let request = match self.build_request_for_current_draft(cx) {
+        let mut request = match self.build_request_for_current_draft(cx) {
             Ok(r) => r,
             Err(e) => {
                 log.push(format!("😞 {e}"));
@@ -780,6 +847,27 @@ impl TermiRustApp {
                 return;
             }
         };
+        if forward_agent {
+            let result = request
+                .auth
+                .as_mut()
+                .ok_or_else(|| anyhow::anyhow!("SSH authentication is not configured"))
+                .and_then(|auth| auth.enable_one_shot_agent_forwarding());
+            if let Err(error) = result {
+                log.push(format!("Connection approval failed: {error}"));
+                if let Some(workspace) = self.workspaces.iter_mut().find(|w| w.id == workspace_id) {
+                    workspace.connect_failure = Some(ConnectFailure {
+                        profile: profile.clone(),
+                        protocol,
+                        port,
+                        log,
+                    });
+                    workspace.pending_connect = None;
+                }
+                cx.notify();
+                return;
+            }
+        }
         let pane_id = self.spawn_pane(request.clone(), window, cx);
         if let Some(workspace) = self.workspaces.iter_mut().find(|w| w.id == workspace_id) {
             workspace.pane_ids = vec![pane_id];

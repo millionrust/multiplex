@@ -4,6 +4,8 @@ use std::io::Read;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[cfg(unix)]
+use std::process::{Child, Stdio};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -127,6 +129,109 @@ impl Drop for TestIsolation {
 pub struct DockerSshServer {
     container_name: String,
     pub port: u16,
+}
+
+#[cfg(unix)]
+pub struct TestSshAgent {
+    child: Child,
+    _directory: tempfile::TempDir,
+    socket_path: PathBuf,
+}
+
+#[cfg(unix)]
+impl TestSshAgent {
+    pub fn start_empty() -> Result<Self, String> {
+        let directory = tempfile::TempDir::new()
+            .map_err(|error| format!("unable to create SSH-agent test directory: {error}"))?;
+        let socket_path = directory.path().join("agent.sock");
+        let mut child = Command::new("ssh-agent")
+            .args(["-D", "-a"])
+            .arg(&socket_path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| {
+                format!("unable to start the local SSH-agent test fixture: {error}")
+            })?;
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if socket_path.exists() {
+                return Ok(Self {
+                    child,
+                    _directory: directory,
+                    socket_path,
+                });
+            }
+            if let Some(status) = child
+                .try_wait()
+                .map_err(|error| format!("unable to inspect SSH-agent fixture: {error}"))?
+            {
+                return Err(format!(
+                    "local SSH-agent test fixture exited before creating its socket: {status}"
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        Err("timed out waiting for the local SSH-agent test fixture".to_string())
+    }
+
+    pub fn start_with_fixture_key() -> Result<Self, String> {
+        let agent = Self::start_empty()?;
+        let source =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ssh-server/id_ed25519");
+        let key = agent._directory.path().join("authorized-test-key");
+        fs::copy(source, &key)
+            .map_err(|error| format!("unable to prepare SSH-agent test key: {error}"))?;
+        use std::os::unix::fs::PermissionsExt as _;
+        fs::set_permissions(&key, fs::Permissions::from_mode(0o600))
+            .map_err(|error| format!("unable to secure SSH-agent test key: {error}"))?;
+        agent.add_key(&key)?;
+        Ok(agent)
+    }
+
+    pub fn start_with_untrusted_key() -> Result<Self, String> {
+        let agent = Self::start_empty()?;
+        let key = agent._directory.path().join("untrusted-test-key");
+        let output = Command::new("ssh-keygen")
+            .args(["-q", "-t", "ed25519", "-N", ""])
+            .arg("-f")
+            .arg(&key)
+            .output()
+            .map_err(|error| format!("unable to generate SSH-agent test key: {error}"))?;
+        if !output.status.success() {
+            return Err(command_error("ssh-keygen", output));
+        }
+        agent.add_key(&key)?;
+        Ok(agent)
+    }
+
+    fn add_key(&self, key: &Path) -> Result<(), String> {
+        let output = Command::new("ssh-add")
+            .arg(key)
+            .env("SSH_AUTH_SOCK", &self.socket_path)
+            .output()
+            .map_err(|error| format!("unable to add an SSH-agent test identity: {error}"))?;
+        if !output.status.success() {
+            return Err(command_error("ssh-add", output));
+        }
+        Ok(())
+    }
+
+    pub fn socket_path(&self) -> &Path {
+        &self.socket_path
+    }
+}
+
+#[cfg(unix)]
+impl Drop for TestSshAgent {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
 }
 
 impl DockerSshServer {

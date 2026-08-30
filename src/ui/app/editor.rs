@@ -282,6 +282,17 @@ impl TermiRustApp {
 
     fn render_editor_panel_termius(&self, cx: &mut Context<Self>) -> Div {
         let auth_mode = self.draft_auth_mode;
+        let agent_socket = self
+            .inputs
+            .identity_agent
+            .read(cx)
+            .value()
+            .trim()
+            .to_string();
+        let agent_available = crate::ssh_auth::resolve_local_agent_socket(
+            (!agent_socket.is_empty()).then_some(agent_socket.as_str()),
+        )
+        .is_ok();
         let address_row = self.editor_labeled_input_row(
             "Server address",
             Some("Use localhost, an IP address, or a domain. Do not put the username here."),
@@ -339,6 +350,13 @@ impl TermiRustApp {
                         "Private Key",
                         AuthMode::PrivateKey,
                         auth_mode == AuthMode::PrivateKey,
+                        cx,
+                    ))
+                    .child(self.editor_auth_mode_button(
+                        "editor-auth-agent",
+                        "SSH Agent",
+                        AuthMode::LocalAgent,
+                        auth_mode == AuthMode::LocalAgent,
                         cx,
                     )),
             )
@@ -430,6 +448,39 @@ impl TermiRustApp {
                                         .text_color(theme::text_muted())
                                         .child("Paired with the private key above; no plain-key fallback."),
                                 ),
+                        ),
+                )
+            })
+            .when(auth_mode == AuthMode::LocalAgent, |this| {
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .gap(px(6.))
+                        .child(self.editor_labeled_input_row(
+                            "Agent socket",
+                            Some("Leave empty to use SSH_AUTH_SOCK. TermiRust never copies or stores private keys from your agent."),
+                            Some(app_icon(ICON_KEY)),
+                            &self.inputs.identity_agent,
+                        ))
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(if agent_available {
+                                    theme::success()
+                                } else {
+                                    theme::warning()
+                                })
+                                .child(if agent_available {
+                                    "Local SSH agent detected. Authentication does not forward it."
+                                } else {
+                                    "No usable local SSH agent detected. Start one or enter its absolute socket path."
+                                }),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(10.))
+                                .text_color(theme::text_muted())
+                                .child("Forwarding is a separate one-connection action on the SSH protocol screen."),
                         ),
                 )
             })

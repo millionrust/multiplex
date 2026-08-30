@@ -299,6 +299,7 @@ struct DraftInputs {
     password: Entity<InputState>,
     key_path: Entity<InputState>,
     certificate_path: Entity<InputState>,
+    identity_agent: Entity<InputState>,
     forward_local_port: Entity<InputState>,
     forward_remote_host: Entity<InputState>,
     forward_remote_port: Entity<InputState>,
@@ -339,6 +340,10 @@ impl DraftInputs {
             certificate_path: cx.new(|cx| {
                 InputState::new(window, cx)
                     .placeholder("Optional OpenSSH user certificate, e.g. id_ed25519-cert.pub")
+            }),
+            identity_agent: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder("Optional agent socket; empty uses SSH_AUTH_SOCK")
             }),
             forward_local_port: cx.new(|cx| InputState::new(window, cx).placeholder("15432")),
             forward_remote_host: cx.new(|cx| InputState::new(window, cx).placeholder("127.0.0.1")),
@@ -1575,6 +1580,7 @@ impl TermiRustApp {
             password: self.inputs.password.read(cx).value().to_string(),
             key_path,
             certificate_path: self.inputs.certificate_path.read(cx).value().to_string(),
+            identity_agent: self.inputs.identity_agent.read(cx).value().to_string(),
             identity_id,
             jump_host_id,
             startup_directory: self.inputs.startup_directory.read(cx).value().to_string(),
@@ -2224,6 +2230,12 @@ impl TermiRustApp {
             window,
             cx,
         );
+        Self::set_input_value(
+            &self.inputs.identity_agent,
+            draft.identity_agent,
+            window,
+            cx,
+        );
         Self::set_input_value(&self.inputs.forward_local_port, "", window, cx);
         Self::set_input_value(&self.inputs.forward_remote_host, "", window, cx);
         Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
@@ -2297,6 +2309,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.password, "", window, cx);
         Self::set_input_value(&self.inputs.key_path, "", window, cx);
         Self::set_input_value(&self.inputs.certificate_path, "", window, cx);
+        Self::set_input_value(&self.inputs.identity_agent, "", window, cx);
         Self::set_input_value(&self.inputs.forward_local_port, "", window, cx);
         Self::set_input_value(&self.inputs.forward_remote_host, "", window, cx);
         Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
@@ -5902,8 +5915,19 @@ impl TermiRustApp {
         let title = request.title.clone();
         eprintln!("[app] spawn_pane: pane_id={pane_id} title='{title}' endpoint={endpoint}");
         let terminal_focus = cx.focus_handle().tab_stop(true);
-        let runtime = self.connection_coordinator.start(request.clone());
-        self.register_pane(request, runtime, terminal_focus)
+        let (runtime_request, stored_request) = Self::consume_agent_forwarding_approval(request);
+        let runtime = self.connection_coordinator.start(runtime_request);
+        self.register_pane(stored_request, runtime, terminal_focus)
+    }
+
+    fn consume_agent_forwarding_approval(
+        mut request: ConnectRequest,
+    ) -> (ConnectRequest, ConnectRequest) {
+        let runtime_request = request.clone();
+        if let Some(auth) = request.auth.as_mut() {
+            auth.disable_agent_forwarding();
+        }
+        (runtime_request, request)
     }
 
     fn spawn_saved_durable_pane(
@@ -6238,6 +6262,7 @@ impl TermiRustApp {
                         Some(AuthConfig::PasswordRef { .. }) => "stored-password",
                         Some(AuthConfig::PrivateKey { .. }) => "private-key",
                         Some(AuthConfig::OpenSshCertificate { .. }) => "openssh-certificate",
+                        Some(AuthConfig::LocalAgent { .. }) => "local-agent",
                         None => "none",
                     }
                 );
@@ -10245,6 +10270,31 @@ impl TermiRustApp {
                                         let _ = this.ensure_default_identity_selected(window, cx);
                                     }))
                                     .child("Private Key"),
+                            )
+                            .child(
+                                div()
+                                    .id("auth-agent")
+                                    .flex_1()
+                                    .h(px(28.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(6.))
+                                    .text_size(px(14.))
+                                    .font_medium()
+                                    .cursor_pointer()
+                                    .when(auth_mode == AuthMode::LocalAgent, |this| {
+                                        this.bg(theme::library_card())
+                                            .shadow_sm()
+                                            .text_color(theme::text_main())
+                                    })
+                                    .when(auth_mode != AuthMode::LocalAgent, |this| {
+                                        this.text_color(theme::text_muted())
+                                    })
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.set_auth_mode(AuthMode::LocalAgent, cx);
+                                    }))
+                                    .child("SSH Agent"),
                             ),
                     ),
             )
@@ -10351,6 +10401,26 @@ impl TermiRustApp {
                                 ),
                         )
                         .child(self.render_identity_picker(cx)),
+                )
+            })
+            .when(auth_mode == AuthMode::LocalAgent, |this| {
+                this.child(
+                    v_flex()
+                        .id("editor-agent-auth")
+                        .gap_2()
+                        .child(self.form_field_with_id(
+                            "editor-field-agent-socket",
+                            "Agent socket (optional)",
+                            Input::new(&self.inputs.identity_agent),
+                        ))
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(theme::text_muted())
+                                .child(
+                                    "Empty uses SSH_AUTH_SOCK. Private keys remain in your local agent. Forwarding requires a separate one-connection approval.",
+                                ),
+                        ),
                 )
             })
     }
@@ -11461,6 +11531,8 @@ mod tests {
     use crate::sftp::RemoteFileEntry;
     use crate::ssh::SessionCommand;
     use crate::storage::load_saved_state;
+    #[cfg(unix)]
+    use crate::test_support::TestSshAgent;
     use crate::test_support::{
         DockerSshServer, TestIsolation, allocate_local_port, queue_dialog_path,
     };
@@ -11556,6 +11628,47 @@ mod tests {
             .join("tests/fixtures/ssh-server/id_ed25519")
             .display()
             .to_string()
+    }
+
+    #[test]
+    fn pane_storage_consumes_one_shot_agent_forwarding_approval() {
+        let request = ConnectRequest {
+            session_id: 17,
+            title: "Agent host".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: "agent.example.com".to_string(),
+            port: 22,
+            username: "deploy".to_string(),
+            auth: Some(AuthConfig::LocalAgent {
+                socket_path: Some("/tmp/test-agent.sock".to_string()),
+                forward_agent: true,
+            }),
+            jump_host: None,
+            startup_directory: None,
+            startup_command: None,
+            start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: Vec::new(),
+        };
+
+        let (runtime, stored) = TermiRustApp::consume_agent_forwarding_approval(request);
+        assert!(
+            runtime
+                .auth
+                .as_ref()
+                .is_some_and(|auth| auth.forwarded_agent_socket().is_some())
+        );
+        assert!(
+            stored
+                .auth
+                .as_ref()
+                .is_some_and(|auth| auth.forwarded_agent_socket().is_none())
+        );
     }
 
     fn fleet_host_profile(
@@ -12233,6 +12346,7 @@ mod tests {
             password: String::new(),
             key_path: String::new(),
             certificate_path: String::new(),
+            identity_agent: String::new(),
             identity_id: None,
             jump_host_id: None,
             startup_directory: String::new(),
@@ -12322,6 +12436,7 @@ mod tests {
             password: String::new(),
             key_path: String::new(),
             certificate_path: String::new(),
+            identity_agent: String::new(),
             identity_id: None,
             jump_host_id: None,
             startup_directory: String::new(),
@@ -24923,6 +25038,154 @@ sleep 1
                 "ops-user"
             );
             assert!(!app.show_editor_panel);
+        });
+    }
+
+    #[cfg(unix)]
+    #[gpui::test]
+    fn e2e_choose_protocol_agent_forwarding_action_is_one_shot(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping agent-forwarding UI e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH fixture");
+        let agent = TestSshAgent::start_with_fixture_key().expect("unable to start test SSH agent");
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::LocalAgent, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.label,
+                        "Agent Forward UI",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.host,
+                        server.host().to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.port,
+                        server.port.to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.username,
+                        server.username().to_string(),
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.identity_agent,
+                        agent.socket_path().display().to_string(),
+                        window,
+                        cx,
+                    );
+                    app.save_profile(window, cx);
+                    let profile_id = app
+                        .selected_profile_id
+                        .clone()
+                        .expect("agent profile should save");
+                    app.open_choose_protocol_tab(&profile_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+
+        let click = selector_click_center(window, cx, "choose-proto-forward-agent");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(click, gpui::Modifiers::none());
+
+        let pane_id = wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let workspace = app.active_workspace()?;
+            let pane = app.pane(workspace.active_pane_id)?;
+            pane.connected.then_some(pane.id)
+        });
+        app.read_with(cx, |app, _| {
+            let pane = app.pane(pane_id).expect("forwarded pane should exist");
+            assert!(
+                pane.request
+                    .auth
+                    .as_ref()
+                    .is_some_and(|auth| auth.forwarded_agent_socket().is_none())
+            );
+            pane.runtime
+                .command_tx
+                .send(SessionCommand::Input(
+                    b"ssh-add -l >/dev/null 2>&1 && printf 'agent-forward-ui-ok\\n'\n".to_vec(),
+                ))
+                .expect("unable to send forwarding UI verification command");
+        });
+
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("agent-forward-ui-ok"))
+                .then_some(())
+        });
+
+        app.read_with(cx, |app, _| {
+            app.pane(pane_id)
+                .expect("forwarded pane should exist")
+                .runtime
+                .command_tx
+                .send(SessionCommand::Disconnect)
+                .expect("unable to disconnect forwarded pane");
+        });
+        wait_for_window_app_state(cx, window, &app, Duration::from_secs(10), |app| {
+            let pane = app.pane(pane_id)?;
+            (!pane.connected && pane.closed).then_some(())
+        });
+
+        let workspace_id = app.read_with(cx, |app, _| {
+            app.pane_workspace_id(pane_id)
+                .expect("forwarded pane workspace should exist")
+        });
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| app.reconnect_pane(pane_id, window, cx))
+            })
+            .expect("window update should succeed");
+
+        let reconnected_pane_id =
+            wait_for_window_app_state(cx, window, &app, Duration::from_secs(20), |app| {
+                let workspace = app.workspace(workspace_id)?;
+                let pane = app.pane(workspace.active_pane_id)?;
+                (pane.connected && pane.id != pane_id).then_some(pane.id)
+            });
+        app.read_with(cx, |app, _| {
+            let pane = app
+                .pane(reconnected_pane_id)
+                .expect("reconnected agent pane should exist");
+            assert!(
+                pane.request
+                    .auth
+                    .as_ref()
+                    .is_some_and(|auth| auth.forwarded_agent_socket().is_none())
+            );
+            pane.runtime
+                .command_tx
+                .send(SessionCommand::Input(
+                    b"test -z \"${SSH_AUTH_SOCK:-}\" && printf 'agent-forward-reconnect-disabled-ok\\n'\n"
+                        .to_vec(),
+                ))
+                .expect("unable to verify forwarding remains disabled after reconnect");
+        });
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let pane = app.pane(reconnected_pane_id)?;
+            pane.terminal
+                .all_rows_text()
+                .iter()
+                .any(|row| row.contains("agent-forward-reconnect-disabled-ok"))
+                .then_some(())
         });
     }
 

@@ -43,6 +43,7 @@ pub enum AuthMode {
     #[default]
     Password,
     PrivateKey,
+    LocalAgent,
 }
 
 impl AuthMode {
@@ -50,6 +51,7 @@ impl AuthMode {
         match self {
             Self::Password => "Password",
             Self::PrivateKey => "Private Key",
+            Self::LocalAgent => "SSH Agent",
         }
     }
 }
@@ -245,6 +247,8 @@ pub struct HostProfile {
     #[serde(default)]
     pub certificate_path: Option<String>,
     #[serde(default)]
+    pub identity_agent: Option<String>,
+    #[serde(default)]
     pub identity_id: Option<String>,
     #[serde(default)]
     pub jump_host_id: Option<String>,
@@ -374,6 +378,11 @@ impl HostProfile {
                 certificate_signer: Some(termirust_domain::SshCertificateSigner::PrivateKey),
                 agent_forwarding: termirust_domain::SshAgentForwardingPolicy::Disabled,
             },
+            (AuthMode::LocalAgent, _) => SshAccessPolicy {
+                authentication: termirust_domain::SshAuthenticationKind::LocalAgent,
+                certificate_signer: None,
+                agent_forwarding: termirust_domain::SshAgentForwardingPolicy::Disabled,
+            },
         }
     }
 
@@ -409,6 +418,10 @@ impl HostProfile {
                     }),
                 }
             }
+            AuthMode::LocalAgent => Ok(AuthConfig::LocalAgent {
+                socket_path: self.identity_agent.clone(),
+                forward_agent: false,
+            }),
         }
     }
 
@@ -442,6 +455,11 @@ impl HostProfile {
             .filter(|value| !value.is_empty());
         self.certificate_path = self
             .certificate_path
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        self.identity_agent = self
+            .identity_agent
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
@@ -1637,6 +1655,7 @@ pub struct DraftProfile {
     pub password: String,
     pub key_path: String,
     pub certificate_path: String,
+    pub identity_agent: String,
     pub identity_id: Option<String>,
     pub jump_host_id: Option<String>,
     pub startup_directory: String,
@@ -1673,6 +1692,7 @@ impl DraftProfile {
             password: String::new(),
             key_path: profile.key_path.clone(),
             certificate_path: profile.certificate_path.clone().unwrap_or_default(),
+            identity_agent: profile.identity_agent.clone().unwrap_or_default(),
             identity_id: profile.identity_id.clone(),
             jump_host_id: profile.jump_host_id.clone(),
             startup_directory: profile.startup_directory.clone().unwrap_or_default(),
@@ -1836,6 +1856,7 @@ impl DraftProfile {
         let username = self.username.trim();
         let key_path = self.key_path.trim();
         let certificate_path = self.certificate_path.trim();
+        let identity_agent = self.identity_agent.trim();
 
         if host.is_empty() {
             bail!("Host is required");
@@ -1864,6 +1885,11 @@ impl DraftProfile {
             key_path: key_path.to_string(),
             certificate_path: if self.auth_mode == AuthMode::PrivateKey {
                 non_empty(certificate_path)
+            } else {
+                None
+            },
+            identity_agent: if self.auth_mode == AuthMode::LocalAgent {
+                non_empty(identity_agent)
             } else {
                 None
             },
@@ -1920,6 +1946,10 @@ impl DraftProfile {
                     key_path: profile.key_path.clone(),
                     passphrase: non_empty(self.key_passphrase.trim()),
                 },
+            },
+            AuthMode::LocalAgent => AuthConfig::LocalAgent {
+                socket_path: profile.identity_agent.clone(),
+                forward_agent: false,
             },
         };
         let persistent_session_name = profile.persistent_session_name.clone().or_else(|| {
@@ -2074,9 +2104,39 @@ pub enum AuthConfig {
         certificate_path: String,
         passphrase: Option<String>,
     },
+    LocalAgent {
+        socket_path: Option<String>,
+        forward_agent: bool,
+    },
 }
 
 impl AuthConfig {
+    pub fn enable_one_shot_agent_forwarding(&mut self) -> Result<()> {
+        match self {
+            Self::LocalAgent { forward_agent, .. } => {
+                *forward_agent = true;
+                Ok(())
+            }
+            _ => bail!("Agent forwarding requires SSH-agent authentication"),
+        }
+    }
+
+    pub fn disable_agent_forwarding(&mut self) {
+        if let Self::LocalAgent { forward_agent, .. } = self {
+            *forward_agent = false;
+        }
+    }
+
+    pub fn forwarded_agent_socket(&self) -> Option<Option<&str>> {
+        match self {
+            Self::LocalAgent {
+                socket_path,
+                forward_agent: true,
+            } => Some(socket_path.as_deref()),
+            _ => None,
+        }
+    }
+
     pub fn to_restorable(&self) -> Option<RestorableAuth> {
         match self {
             Self::Password { .. } => None,
@@ -2093,6 +2153,9 @@ impl AuthConfig {
             } => Some(RestorableAuth::OpenSshCertificate {
                 key_path: key_path.clone(),
                 certificate_path: certificate_path.clone(),
+            }),
+            Self::LocalAgent { socket_path, .. } => Some(RestorableAuth::LocalAgent {
+                socket_path: socket_path.clone(),
             }),
         }
     }
@@ -2316,6 +2379,10 @@ pub enum RestorableAuth {
         key_path: String,
         certificate_path: String,
     },
+    LocalAgent {
+        #[serde(default)]
+        socket_path: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -2378,6 +2445,10 @@ impl RestorableConnection {
                         key_path: key_path.clone(),
                         certificate_path: certificate_path.clone(),
                         passphrase: None,
+                    },
+                    RestorableAuth::LocalAgent { socket_path } => AuthConfig::LocalAgent {
+                        socket_path: socket_path.clone(),
+                        forward_agent: false,
                     },
                 };
 
@@ -2469,6 +2540,10 @@ impl RestorableJumpHostConnection {
                 key_path: key_path.clone(),
                 certificate_path: certificate_path.clone(),
                 passphrase: None,
+            },
+            RestorableAuth::LocalAgent { socket_path } => AuthConfig::LocalAgent {
+                socket_path: socket_path.clone(),
+                forward_agent: false,
             },
         };
 
@@ -4004,7 +4079,8 @@ mod tests {
             }
             AuthConfig::Password { .. }
             | AuthConfig::PasswordRef { .. }
-            | AuthConfig::OpenSshCertificate { .. } => {
+            | AuthConfig::OpenSshCertificate { .. }
+            | AuthConfig::LocalAgent { .. } => {
                 panic!("expected private key auth")
             }
         }
@@ -4166,6 +4242,73 @@ mod tests {
         assert!(serialized.get("ssh_access_policy").is_none());
         assert!(serialized.get("agent_forwarding").is_none());
         assert!(serialized.get("certificate_signer").is_none());
+    }
+
+    #[test]
+    fn local_agent_forwarding_is_one_shot_and_not_restorable() {
+        let mut auth = AuthConfig::LocalAgent {
+            socket_path: Some("/tmp/test-agent.sock".to_string()),
+            forward_agent: false,
+        };
+        assert!(auth.forwarded_agent_socket().is_none());
+        auth.enable_one_shot_agent_forwarding().unwrap();
+        assert_eq!(
+            auth.forwarded_agent_socket().flatten(),
+            Some("/tmp/test-agent.sock")
+        );
+
+        let restorable = auth.to_restorable().expect("agent auth should restore");
+        let RestorableAuth::LocalAgent { socket_path } = restorable else {
+            panic!("expected local-agent restore state");
+        };
+        assert_eq!(socket_path.as_deref(), Some("/tmp/test-agent.sock"));
+
+        auth.disable_agent_forwarding();
+        assert!(auth.forwarded_agent_socket().is_none());
+        assert!(
+            AuthConfig::PrivateKey {
+                key_path: "/tmp/key".to_string(),
+                passphrase: None,
+            }
+            .enable_one_shot_agent_forwarding()
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn restored_local_agent_auth_never_forwards() {
+        let restored = RestorableConnection {
+            title: "agent host".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: "agent.example.com".to_string(),
+            port: 22,
+            username: "deploy".to_string(),
+            auth: Some(RestorableAuth::LocalAgent {
+                socket_path: Some("/tmp/test-agent.sock".to_string()),
+            }),
+            jump_host: None,
+            startup_directory: None,
+            startup_command: None,
+            start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
+            terminal_scrollback_rows: None,
+            port_forward_rules: Vec::new(),
+            local_forwards: Vec::new(),
+            local_forward: None,
+            local_shell: None,
+            durable_session_id: None,
+        }
+        .to_connect_request(99);
+
+        assert!(matches!(
+            restored.auth,
+            Some(AuthConfig::LocalAgent {
+                forward_agent: false,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -4767,6 +4910,7 @@ mod tests {
             password: String::new(),
             key_path: "/tmp/id_ed25519".to_string(),
             certificate_path: String::new(),
+            identity_agent: String::new(),
             identity_id: Some("identity-123".to_string()),
             jump_host_id: None,
             startup_directory: "/var/www/app".to_string(),
@@ -4826,6 +4970,7 @@ mod tests {
             password: String::new(),
             key_path: String::new(),
             certificate_path: String::new(),
+            identity_agent: String::new(),
             identity_id: None,
             jump_host_id: None,
             startup_directory: String::new(),
@@ -4868,6 +5013,7 @@ mod tests {
                 password: "secret".to_string(),
                 key_path: String::new(),
                 certificate_path: String::new(),
+                identity_agent: String::new(),
                 identity_id: None,
                 jump_host_id: None,
                 startup_directory: String::new(),
@@ -4905,6 +5051,7 @@ mod tests {
                 password: "secret".to_string(),
                 key_path: String::new(),
                 certificate_path: String::new(),
+                identity_agent: String::new(),
                 identity_id: None,
                 jump_host_id: None,
                 startup_directory: String::new(),
@@ -4992,6 +5139,7 @@ mod tests {
             password: String::new(),
             key_path: "/tmp/id_ed25519".to_string(),
             certificate_path: String::new(),
+            identity_agent: String::new(),
             identity_id: Some("identity-123".to_string()),
             jump_host_id: None,
             startup_directory: String::new(),
@@ -5038,6 +5186,7 @@ mod tests {
             password: String::new(),
             key_path: "/tmp/id_ed25519".to_string(),
             certificate_path: String::new(),
+            identity_agent: String::new(),
             identity_id: Some("identity-123".to_string()),
             jump_host_id: None,
             startup_directory: String::new(),
@@ -5084,6 +5233,7 @@ mod tests {
             password: String::new(),
             key_path: "/tmp/id_ed25519".to_string(),
             certificate_path: String::new(),
+            identity_agent: String::new(),
             identity_id: Some("identity-123".to_string()),
             jump_host_id: None,
             startup_directory: String::new(),
@@ -5131,6 +5281,7 @@ mod tests {
             auth_mode: AuthMode::Password,
             key_path: String::new(),
             certificate_path: None,
+            identity_agent: None,
             identity_id: None,
             jump_host_id: None,
             startup_directory: None,

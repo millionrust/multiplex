@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -11,17 +11,20 @@ use crate::credentials;
 use crate::models::AuthConfig;
 
 const MAX_OPENSSH_CERTIFICATE_BYTES: u64 = 64 * 1024;
+const MAX_AGENT_IDENTITIES: usize = 64;
+const AGENT_OPERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 pub async fn authenticate<H: client::Handler>(
     handle: &mut client::Handle<H>,
     username: &str,
     auth: &AuthConfig,
 ) -> Result<()> {
-    let auth_result = match auth {
+    let authenticated = match auth {
         AuthConfig::Password { password } => handle
             .authenticate_password(username.to_string(), password.clone())
             .await
-            .context("Password authentication failed")?,
+            .context("Password authentication failed")?
+            .success(),
         AuthConfig::PasswordRef { credential_id } => {
             let password = credentials::load_password(credential_id)
                 .context("Unable to load the saved SSH password")?;
@@ -29,6 +32,7 @@ pub async fn authenticate<H: client::Handler>(
                 .authenticate_password(username.to_string(), password)
                 .await
                 .context("Password authentication failed")?
+                .success()
         }
         AuthConfig::PrivateKey {
             key_path,
@@ -45,6 +49,7 @@ pub async fn authenticate<H: client::Handler>(
                 .authenticate_publickey(username.to_string(), key)
                 .await
                 .context("Public key authentication failed")?
+                .success()
         }
         AuthConfig::OpenSshCertificate {
             key_path,
@@ -57,13 +62,108 @@ pub async fn authenticate<H: client::Handler>(
                 .authenticate_openssh_cert(username.to_string(), Arc::new(key), certificate)
                 .await
                 .context("OpenSSH certificate authentication failed")?
+                .success()
+        }
+        AuthConfig::LocalAgent { socket_path, .. } => {
+            authenticate_with_local_agent(handle, username, socket_path.as_deref()).await?
         }
     };
 
-    if !auth_result.success() {
+    if !authenticated {
         bail!("Authentication was rejected by the server");
     }
     Ok(())
+}
+
+#[cfg(unix)]
+async fn authenticate_with_local_agent<H: client::Handler>(
+    handle: &mut client::Handle<H>,
+    username: &str,
+    socket_path: Option<&str>,
+) -> Result<bool> {
+    use russh::keys::agent::client::AgentClient;
+
+    let socket = resolve_local_agent_socket(socket_path)?;
+    let mut agent =
+        tokio::time::timeout(AGENT_OPERATION_TIMEOUT, AgentClient::connect_uds(&socket))
+            .await
+            .map_err(|_| anyhow::anyhow!("The local SSH agent did not respond in time"))?
+            .map_err(|_| anyhow::anyhow!("Unable to connect to the local SSH agent"))?;
+    let identities = tokio::time::timeout(AGENT_OPERATION_TIMEOUT, agent.request_identities())
+        .await
+        .map_err(|_| anyhow::anyhow!("The local SSH agent did not list identities in time"))?
+        .map_err(|_| anyhow::anyhow!("Unable to read identities from the local SSH agent"))?;
+    if identities.is_empty() {
+        bail!("The local SSH agent has no identities");
+    }
+    if identities.len() > MAX_AGENT_IDENTITIES {
+        bail!("The local SSH agent exceeds the 64-identity safety limit");
+    }
+
+    let rsa_hash = handle
+        .best_supported_rsa_hash()
+        .await
+        .context("Unable to negotiate an SSH-agent signature algorithm")?
+        .flatten();
+    for identity in identities {
+        let result = tokio::time::timeout(
+            AGENT_OPERATION_TIMEOUT,
+            handle.authenticate_publickey_with(
+                username.to_string(),
+                identity,
+                rsa_hash,
+                &mut agent,
+            ),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("SSH-agent authentication timed out"))?
+        .map_err(|_| anyhow::anyhow!("The local SSH agent could not sign authentication"))?;
+        if result.success() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(not(unix))]
+async fn authenticate_with_local_agent<H: client::Handler>(
+    _handle: &mut client::Handle<H>,
+    _username: &str,
+    _socket_path: Option<&str>,
+) -> Result<bool> {
+    bail!("Local SSH-agent authentication is unavailable on this platform")
+}
+
+#[cfg(unix)]
+pub fn resolve_local_agent_socket(socket_path: Option<&str>) -> Result<PathBuf> {
+    use std::os::unix::fs::{FileTypeExt, MetadataExt};
+
+    let raw = match socket_path.map(str::trim).filter(|path| !path.is_empty()) {
+        Some(path) => path.to_string(),
+        None => std::env::var("SSH_AUTH_SOCK")
+            .map_err(|_| anyhow::anyhow!("No local SSH agent is available"))?,
+    };
+    if raw.len() > 4096 {
+        bail!("The local SSH agent socket path exceeds the safety limit");
+    }
+    let path = PathBuf::from(raw);
+    if !path.is_absolute() {
+        bail!("The local SSH agent socket path must be absolute");
+    }
+    let metadata = std::fs::symlink_metadata(&path)
+        .map_err(|_| anyhow::anyhow!("The local SSH agent socket is unavailable"))?;
+    if metadata.file_type().is_symlink() || !metadata.file_type().is_socket() {
+        bail!("The local SSH agent path is not a direct Unix socket");
+    }
+    if metadata.uid() != unsafe { libc::geteuid() } {
+        bail!("The local SSH agent socket is owned by another user");
+    }
+    Ok(path)
+}
+
+#[cfg(not(unix))]
+pub fn resolve_local_agent_socket(_socket_path: Option<&str>) -> Result<PathBuf> {
+    bail!("Local SSH-agent authentication is unavailable on this platform")
 }
 
 fn load_private_key(key_path: &str, passphrase: Option<&str>) -> Result<russh::keys::PrivateKey> {
@@ -287,5 +387,41 @@ mod tests {
         assert!(!message.contains(key_path));
         assert!(!message.contains(passphrase));
         assert_eq!(message, "Unable to load the configured private key");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn local_agent_socket_validation_accepts_owned_direct_socket() {
+        let directory = TempDir::new().unwrap();
+        let socket = directory.path().join("agent.sock");
+        let _listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+
+        assert_eq!(
+            resolve_local_agent_socket(Some(socket.to_string_lossy().as_ref())).unwrap(),
+            socket
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn local_agent_socket_validation_rejects_unsafe_paths_without_disclosure() {
+        use std::os::unix::fs::symlink;
+
+        let directory = TempDir::new().unwrap();
+        let regular = directory.path().join("customer-secret-agent.sock");
+        std::fs::write(&regular, "not a socket").unwrap();
+        let error = resolve_local_agent_socket(Some(regular.to_string_lossy().as_ref()))
+            .expect_err("regular file must be rejected");
+        assert!(!error.to_string().contains("customer-secret-agent.sock"));
+
+        let socket = directory.path().join("real.sock");
+        let _listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        let link = directory.path().join("linked-agent.sock");
+        symlink(&socket, &link).unwrap();
+        let error = resolve_local_agent_socket(Some(link.to_string_lossy().as_ref()))
+            .expect_err("symlink must be rejected");
+        assert!(!error.to_string().contains("linked-agent.sock"));
+
+        assert!(resolve_local_agent_socket(Some("relative-agent.sock")).is_err());
     }
 }

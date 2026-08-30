@@ -330,7 +330,8 @@ async fn run_remote_exec(
         config_inner.keepalive_interval =
             Some(std::time::Duration::from_secs(u64::from(keepalive_secs)));
     }
-    let established = establish_session(Arc::new(config_inner), request, known_hosts).await?;
+    let established =
+        establish_session(Arc::new(config_inner), request, known_hosts, false).await?;
     eprintln!("[ssh][{session_id}] remote exec authenticated");
     let mut channel = {
         let handle = established.target_handle.lock().await;
@@ -427,7 +428,12 @@ async fn run_session(
             Some(std::time::Duration::from_secs(u64::from(keepalive_secs)));
     }
     let config = Arc::new(config_inner);
-    let established = establish_session(config, request.clone(), known_hosts).await?;
+    let allow_agent_forwarding = request
+        .auth
+        .as_ref()
+        .is_some_and(|auth| auth.forwarded_agent_socket().is_some());
+    let established =
+        establish_session(config, request.clone(), known_hosts, allow_agent_forwarding).await?;
 
     eprintln!("[ssh][{session_id}] authenticated, opening channel...");
     let channel = {
@@ -437,6 +443,17 @@ async fn run_session(
             .await
             .context("Unable to open an SSH session channel")?
     };
+
+    if request
+        .auth
+        .as_ref()
+        .is_some_and(|auth| auth.forwarded_agent_socket().is_some())
+    {
+        channel
+            .agent_forward(true)
+            .await
+            .context("Unable to request one-shot SSH-agent forwarding")?;
+    }
 
     eprintln!("[ssh][{session_id}] channel open, requesting PTY...");
     channel
@@ -591,6 +608,7 @@ async fn establish_session(
     config: Arc<client::Config>,
     request: ConnectRequest,
     known_hosts: Arc<KnownHostStore>,
+    allow_agent_forwarding: bool,
 ) -> Result<EstablishedSession> {
     let auth = request
         .auth
@@ -616,6 +634,7 @@ async fn establish_session(
                 jump_host,
                 remote_forwards,
                 known_hosts,
+                allow_agent_forwarding,
             )
             .await?
         } else {
@@ -627,6 +646,7 @@ async fn establish_session(
                 auth,
                 remote_forwards,
                 known_hosts,
+                allow_agent_forwarding,
             )
             .await?;
             (
@@ -643,6 +663,7 @@ async fn establish_session(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn connect_via_jump_chain(
     config: Arc<client::Config>,
     target_host: String,
@@ -653,6 +674,7 @@ async fn connect_via_jump_chain(
     jump_host: JumpHostConnection,
     remote_forwards: Vec<RemotePortForward>,
     known_hosts: Arc<KnownHostStore>,
+    allow_agent_forwarding: bool,
 ) -> Result<(
     client::Handle<SessionHandler>,
     Vec<client::Handle<SessionHandler>>,
@@ -671,6 +693,7 @@ async fn connect_via_jump_chain(
         first_hop.auth.clone(),
         Vec::new(),
         known_hosts.clone(),
+        false,
     )
     .await?;
     let mut jump_handles = Vec::new();
@@ -694,6 +717,7 @@ async fn connect_via_jump_chain(
             hop.auth.clone(),
             Vec::new(),
             known_hosts.clone(),
+            false,
         )
         .await?;
         trusted_new_host |= next_trusted.swap(false, Ordering::SeqCst);
@@ -718,6 +742,7 @@ async fn connect_via_jump_chain(
         target_auth,
         remote_forwards,
         known_hosts,
+        allow_agent_forwarding,
     )
     .await?;
 
@@ -742,6 +767,7 @@ fn flatten_jump_chain(jump_host: JumpHostConnection) -> Vec<JumpHostConnection> 
     chain
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn connect_and_authenticate(
     config: Arc<client::Config>,
     address: String,
@@ -750,13 +776,22 @@ async fn connect_and_authenticate(
     auth: AuthConfig,
     remote_forwards: Vec<RemotePortForward>,
     known_hosts: Arc<KnownHostStore>,
+    allow_agent_forwarding: bool,
 ) -> Result<(client::Handle<SessionHandler>, Arc<AtomicBool>)> {
     let trusted_new_host = Arc::new(AtomicBool::new(false));
+    let agent_forward_socket = if allow_agent_forwarding {
+        auth.forwarded_agent_socket()
+            .map(crate::ssh_auth::resolve_local_agent_socket)
+            .transpose()?
+    } else {
+        None
+    };
     let handler = SessionHandler {
         endpoint,
         known_hosts,
         trusted_new_host: trusted_new_host.clone(),
         remote_forwards,
+        agent_forward_socket,
     };
 
     let mut handle = client::connect(config, address, handler)
@@ -766,6 +801,7 @@ async fn connect_and_authenticate(
     Ok((handle, trusted_new_host))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn connect_and_authenticate_stream<R>(
     config: Arc<client::Config>,
     stream: R,
@@ -774,16 +810,25 @@ async fn connect_and_authenticate_stream<R>(
     auth: AuthConfig,
     remote_forwards: Vec<RemotePortForward>,
     known_hosts: Arc<KnownHostStore>,
+    allow_agent_forwarding: bool,
 ) -> Result<(client::Handle<SessionHandler>, Arc<AtomicBool>)>
 where
     R: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
     let trusted_new_host = Arc::new(AtomicBool::new(false));
+    let agent_forward_socket = if allow_agent_forwarding {
+        auth.forwarded_agent_socket()
+            .map(crate::ssh_auth::resolve_local_agent_socket)
+            .transpose()?
+    } else {
+        None
+    };
     let handler = SessionHandler {
         endpoint,
         known_hosts,
         trusted_new_host: trusted_new_host.clone(),
         remote_forwards,
+        agent_forward_socket,
     };
 
     let mut handle = client::connect_stream(config, stream, handler)
@@ -1121,6 +1166,7 @@ struct SessionHandler {
     known_hosts: Arc<KnownHostStore>,
     trusted_new_host: Arc<AtomicBool>,
     remote_forwards: Vec<RemotePortForward>,
+    agent_forward_socket: Option<std::path::PathBuf>,
 }
 
 impl client::Handler for SessionHandler {
@@ -1189,6 +1235,43 @@ impl client::Handler for SessionHandler {
 
         Ok(())
     }
+
+    async fn server_channel_open_agent_forward(
+        &mut self,
+        channel: russh::Channel<russh::client::Msg>,
+        _session: &mut client::Session,
+    ) -> Result<()> {
+        #[cfg(not(unix))]
+        {
+            let _ = channel;
+            bail!("SSH-agent forwarding is unavailable on this platform");
+        }
+        #[cfg(unix)]
+        {
+            let socket = self
+                .agent_forward_socket
+                .clone()
+                .context("The server requested SSH-agent forwarding without approval")?;
+            tokio::spawn(async move {
+                let result = async move {
+                    let mut local_agent =
+                        tokio::net::UnixStream::connect(socket).await.map_err(|_| {
+                            anyhow::anyhow!("Unable to reach the approved local SSH agent")
+                        })?;
+                    let mut remote_agent = channel.into_stream();
+                    tokio::io::copy_bidirectional(&mut local_agent, &mut remote_agent)
+                        .await
+                        .context("SSH-agent forwarding channel failed")?;
+                    Result::<()>::Ok(())
+                }
+                .await;
+                if let Err(error) = result {
+                    eprintln!("[ssh] approved agent forwarding channel failed: {error}");
+                }
+            });
+            Ok(())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1202,6 +1285,8 @@ mod tests {
         LocalPortForward, PortForwardRule, RemotePortForward,
     };
     use crate::storage::KnownHostStore;
+    #[cfg(unix)]
+    use crate::test_support::TestSshAgent;
     use crate::test_support::{
         DockerSshServer, TestIsolation, allocate_local_port, create_test_user_certificate,
     };
@@ -1459,6 +1544,30 @@ mod tests {
         panic!("{label} did not emit expected output containing {needle:?}");
     }
 
+    fn wait_for_auth_error(
+        request: &ConnectRequest,
+        event_rx: &mpsc::Receiver<SshEvent>,
+        label: &str,
+    ) -> String {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while Instant::now() < deadline {
+            match event_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(SshEvent::Error {
+                    session_id,
+                    message,
+                }) => {
+                    assert_eq!(session_id, request.session_id);
+                    return message;
+                }
+                Ok(SshEvent::Connected { .. }) => panic!("{label} unexpectedly authenticated"),
+                Ok(_) => {}
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        panic!("{label} did not produce an authentication error");
+    }
+
     #[test]
     fn docker_ssh_session_connects_and_streams_output() {
         let _isolation = TestIsolation::acquire();
@@ -1675,6 +1784,211 @@ mod tests {
             "certificate jump ssh",
         );
         disconnect_runtime(&request, &runtime, &event_rx, "certificate jump ssh");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn docker_ssh_agent_authenticates_terminal_and_remote_exec() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping Docker SSH-agent auth e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH server");
+        let agent = TestSshAgent::start_with_fixture_key().expect("unable to start test SSH agent");
+        let auth = AuthConfig::LocalAgent {
+            socket_path: Some(agent.socket_path().display().to_string()),
+            forward_agent: false,
+        };
+
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let mut request = docker_ssh_request(&server);
+        request.auth = Some(auth.clone());
+        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+        wait_for_connected(&request, &event_rx, "SSH-agent terminal auth");
+        runtime
+            .command_tx
+            .send(SessionCommand::Input(
+                b"printf 'agent-terminal-ok\\n'\n".to_vec(),
+            ))
+            .expect("unable to send agent terminal command");
+        wait_for_output_contains(
+            &request,
+            &event_rx,
+            "agent-terminal-ok",
+            "SSH-agent terminal auth",
+        );
+        disconnect_runtime(&request, &runtime, &event_rx, "SSH-agent terminal auth");
+
+        request.session_id += 1;
+        let AuthConfig::LocalAgent { socket_path, .. } = auth else {
+            unreachable!();
+        };
+        request.auth = Some(AuthConfig::LocalAgent {
+            socket_path,
+            forward_agent: true,
+        });
+        let mut process = spawn_remote_exec(
+            request,
+            known_hosts,
+            0,
+            "test -z \"${SSH_AUTH_SOCK:-}\" && printf 'agent-remote-exec-ok'".to_string(),
+        )
+        .expect("unable to start agent-authenticated remote exec");
+        let mut stdout = String::new();
+        process.stdout.read_to_string(&mut stdout).unwrap();
+        let exit = process
+            .exit_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("agent remote exec did not report an exit")
+            .expect("agent remote exec transport failed");
+        assert_eq!(stdout, "agent-remote-exec-ok");
+        assert_eq!(exit, RemoteExecExit::Status(0));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn docker_ssh_agent_rejects_unavailable_empty_and_untrusted_agents_without_fallback() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping Docker SSH-agent rejection e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH server");
+
+        let agent = TestSshAgent::start_empty().expect("unable to start empty SSH agent");
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let mut request = docker_ssh_request(&server);
+        request.session_id = 90;
+        request.auth = Some(AuthConfig::LocalAgent {
+            socket_path: Some(agent.socket_path().display().to_string()),
+            forward_agent: false,
+        });
+        let _runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let message = wait_for_auth_error(&request, &event_rx, "empty agent");
+        assert!(message.contains("has no identities"));
+        assert!(!message.contains(agent.socket_path().to_string_lossy().as_ref()));
+        drop(agent);
+
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        request.session_id = 91;
+        request.auth = Some(AuthConfig::LocalAgent {
+            socket_path: Some("/tmp/customer-secret-missing-agent.sock".to_string()),
+            forward_agent: false,
+        });
+        let _runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let message = wait_for_auth_error(&request, &event_rx, "unavailable agent");
+        assert!(!message.contains("customer-secret-missing-agent.sock"));
+
+        let agent =
+            TestSshAgent::start_with_untrusted_key().expect("unable to start untrusted SSH agent");
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        request.session_id = 92;
+        request.auth = Some(AuthConfig::LocalAgent {
+            socket_path: Some(agent.socket_path().display().to_string()),
+            forward_agent: false,
+        });
+        let _runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let message = wait_for_auth_error(&request, &event_rx, "untrusted agent key");
+        assert!(message.contains("Authentication was rejected by the server"));
+        assert!(!message.contains(agent.socket_path().to_string_lossy().as_ref()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn docker_jump_host_accepts_ssh_agent_authentication_on_both_hops() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping Docker jump SSH-agent e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH server");
+        let agent = TestSshAgent::start_with_fixture_key().expect("unable to start test SSH agent");
+        let auth = AuthConfig::LocalAgent {
+            socket_path: Some(agent.socket_path().display().to_string()),
+            forward_agent: false,
+        };
+        let mut request = docker_jump_request(&server);
+        request.auth = Some(auth.clone());
+        request.jump_host.as_mut().unwrap().auth = auth;
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        wait_for_connected(&request, &event_rx, "SSH-agent jump chain");
+        runtime
+            .command_tx
+            .send(SessionCommand::Input(
+                b"printf 'agent-jump-ok\\n'\n".to_vec(),
+            ))
+            .expect("unable to send agent jump command");
+        wait_for_output_contains(&request, &event_rx, "agent-jump-ok", "SSH-agent jump chain");
+        disconnect_runtime(&request, &runtime, &event_rx, "SSH-agent jump chain");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn docker_ssh_agent_forwarding_requires_explicit_per_connection_approval() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping Docker agent-forwarding e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH server");
+        let agent = TestSshAgent::start_with_fixture_key().expect("unable to start test SSH agent");
+        let socket_path = Some(agent.socket_path().display().to_string());
+
+        let mut request = docker_ssh_request(&server);
+        request.session_id = 93;
+        request.auth = Some(AuthConfig::LocalAgent {
+            socket_path: socket_path.clone(),
+            forward_agent: false,
+        });
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        wait_for_connected(&request, &event_rx, "agent forwarding disabled");
+        runtime
+            .command_tx
+            .send(SessionCommand::Input(
+                b"test -z \"${SSH_AUTH_SOCK:-}\" && printf 'agent-forward-disabled-ok\\n'\n"
+                    .to_vec(),
+            ))
+            .expect("unable to test disabled agent forwarding");
+        wait_for_output_contains(
+            &request,
+            &event_rx,
+            "agent-forward-disabled-ok",
+            "agent forwarding disabled",
+        );
+        disconnect_runtime(&request, &runtime, &event_rx, "agent forwarding disabled");
+
+        request.session_id = 94;
+        request.auth = Some(AuthConfig::LocalAgent {
+            socket_path,
+            forward_agent: true,
+        });
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        wait_for_connected(&request, &event_rx, "agent forwarding approved");
+        runtime
+            .command_tx
+            .send(SessionCommand::Input(
+                b"ssh-add -l >/dev/null 2>&1 && printf 'agent-forward-approved-ok\\n'\n".to_vec(),
+            ))
+            .expect("unable to test approved agent forwarding");
+        wait_for_output_contains(
+            &request,
+            &event_rx,
+            "agent-forward-approved-ok",
+            "agent forwarding approved",
+        );
+        disconnect_runtime(&request, &runtime, &event_rx, "agent forwarding approved");
     }
 
     #[test]

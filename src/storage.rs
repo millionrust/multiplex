@@ -272,13 +272,11 @@ fn build_mobile_vault_export(
     exported
         .profiles
         .retain(|profile| profile.source == ProfileSource::User);
-    if exported
-        .profiles
-        .iter()
-        .any(|profile| profile.certificate_path.is_some())
-    {
+    if exported.profiles.iter().any(|profile| {
+        profile.certificate_path.is_some() || profile.auth_mode == AuthMode::LocalAgent
+    }) {
         bail!(
-            "Mobile vault export does not yet support OpenSSH certificate hosts; remove those hosts from the export or use the portable desktop bundle"
+            "Mobile vault export does not yet support OpenSSH certificate or SSH-agent hosts; remove those hosts from the export or use the portable desktop bundle"
         );
     }
 
@@ -398,6 +396,7 @@ fn mobile_host_from_profile(profile: HostProfile) -> MobileHost {
     let auth_kind = match profile.auth_mode {
         AuthMode::Password => MobileAuthKind::Password,
         AuthMode::PrivateKey => MobileAuthKind::PrivateKey,
+        AuthMode::LocalAgent => unreachable!("agent profiles are rejected before mobile export"),
     };
     let secret_ref =
         mobile_secret_ref_for_host(&profile.id, auth_kind, profile.identity_id.as_deref());
@@ -795,6 +794,7 @@ struct SshConfigBlock {
     port: Option<u16>,
     identity_file: Option<String>,
     certificate_file: Option<String>,
+    identity_agent: Option<String>,
     proxy_jump: Option<String>,
     unsupported_proxy_command: bool,
 }
@@ -851,6 +851,19 @@ fn parse_ssh_config_hosts(content: &str) -> Vec<HostProfile> {
                     block.certificate_file = Some(expand_home_path(value));
                 }
             }
+            "identityagent" => {
+                if block.identity_agent.is_none() {
+                    block.identity_agent = Some(
+                        if value.eq_ignore_ascii_case("SSH_AUTH_SOCK")
+                            || value.eq_ignore_ascii_case("none")
+                        {
+                            value.to_string()
+                        } else {
+                            expand_home_path(value)
+                        },
+                    );
+                }
+            }
             "proxyjump" => {
                 if block.proxy_jump.is_none() {
                     block.proxy_jump = parse_proxyjump_alias(value);
@@ -897,10 +910,16 @@ fn flush_ssh_config_block(
             .filter(|path| !path.to_ascii_lowercase().ends_with(".pub"))
             .unwrap_or_default();
 
-        let auth_mode = if key_path.is_empty() {
-            AuthMode::Password
-        } else {
+        let agent_configured = block
+            .identity_agent
+            .as_deref()
+            .is_some_and(|value| !value.eq_ignore_ascii_case("none"));
+        let auth_mode = if !key_path.is_empty() {
             AuthMode::PrivateKey
+        } else if agent_configured {
+            AuthMode::LocalAgent
+        } else {
+            AuthMode::Password
         };
 
         entries.insert(
@@ -919,6 +938,10 @@ fn flush_ssh_config_block(
                 certificate_path: (!key_path.is_empty())
                     .then(|| block.certificate_file.clone())
                     .flatten(),
+                identity_agent: (auth_mode == AuthMode::LocalAgent)
+                    .then(|| block.identity_agent.clone())
+                    .flatten()
+                    .filter(|value| !value.eq_ignore_ascii_case("SSH_AUTH_SOCK")),
                 key_path,
                 identity_id: None,
                 jump_host_id: block
@@ -1286,8 +1309,111 @@ Host cert-prod
         assert!(
             error
                 .to_string()
-                .contains("does not yet support OpenSSH certificate hosts")
+                .contains("does not yet support OpenSSH certificate or SSH-agent hosts")
         );
+        assert!(!export_path.exists());
+    }
+
+    #[test]
+    fn parses_ssh_config_identity_agent_without_overriding_explicit_keys() {
+        let hosts = parse_ssh_config_hosts(
+            r#"
+Host default-agent
+  HostName agent.example.com
+  User deploy
+  IdentityAgent SSH_AUTH_SOCK
+
+Host explicit-agent
+  HostName explicit.example.com
+  IdentityAgent ~/.ssh/custom-agent.sock
+
+Host disabled-agent
+  HostName disabled.example.com
+  IdentityAgent none
+
+Host key-wins
+  HostName key.example.com
+  IdentityFile ~/.ssh/id_ed25519
+  IdentityAgent ~/.ssh/custom-agent.sock
+"#,
+        );
+
+        let default_agent = hosts
+            .iter()
+            .find(|host| host.label == "default-agent")
+            .unwrap();
+        assert_eq!(default_agent.auth_mode, AuthMode::LocalAgent);
+        assert_eq!(default_agent.identity_agent, None);
+        assert!(matches!(
+            default_agent.saved_auth_config().unwrap(),
+            crate::models::AuthConfig::LocalAgent {
+                socket_path: None,
+                forward_agent: false
+            }
+        ));
+
+        let explicit = hosts
+            .iter()
+            .find(|host| host.label == "explicit-agent")
+            .unwrap();
+        assert_eq!(explicit.auth_mode, AuthMode::LocalAgent);
+        assert!(
+            explicit
+                .identity_agent
+                .as_deref()
+                .is_some_and(|path| path.ends_with("/.ssh/custom-agent.sock"))
+        );
+        assert_eq!(
+            hosts
+                .iter()
+                .find(|host| host.label == "disabled-agent")
+                .unwrap()
+                .auth_mode,
+            AuthMode::Password
+        );
+        assert_eq!(
+            hosts
+                .iter()
+                .find(|host| host.label == "key-wins")
+                .unwrap()
+                .auth_mode,
+            AuthMode::PrivateKey
+        );
+    }
+
+    #[test]
+    fn mobile_vault_export_rejects_ssh_agent_hosts_without_downgrade() {
+        let profile = HostProfile {
+            id: "agent-export".to_string(),
+            label: "Agent export".to_string(),
+            host: "agent.example.com".to_string(),
+            username: "deploy".to_string(),
+            auth_mode: AuthMode::LocalAgent,
+            ..Default::default()
+        };
+        let mut state = SavedState::default();
+        state.upsert_profile(profile);
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let export_path =
+            std::env::temp_dir().join(format!("termirust-agent-mobile-{suffix}.json"));
+        let known_hosts = KnownHostStore {
+            path: std::env::temp_dir().join(format!("termirust-agent-hosts-{suffix}.json")),
+            entries: std::sync::Mutex::new(HashMap::new()),
+        };
+
+        let error = export_encrypted_mobile_vault(
+            &export_path,
+            &state,
+            &known_hosts,
+            "hunter2",
+            "agent-export",
+            "desktop-1",
+        )
+        .expect_err("agent host must not be downgraded during mobile export");
+        assert!(error.to_string().contains("SSH-agent hosts"));
         assert!(!export_path.exists());
     }
 
@@ -1371,6 +1497,7 @@ Host app-prod
             auth_mode: AuthMode::Password,
             key_path: String::new(),
             certificate_path: None,
+            identity_agent: None,
             identity_id: None,
             jump_host_id: None,
             startup_directory: Some("/srv/prod".to_string()),
@@ -1481,6 +1608,7 @@ Host app-prod
             auth_mode: AuthMode::Password,
             key_path: String::new(),
             certificate_path: None,
+            identity_agent: None,
             identity_id: None,
             jump_host_id: None,
             startup_directory: None,
@@ -1605,6 +1733,7 @@ Host app-prod
             auth_mode: AuthMode::PrivateKey,
             key_path: "/Users/jacob/.ssh/prod_ed25519".to_string(),
             certificate_path: None,
+            identity_agent: None,
             identity_id: Some("identity-prod".to_string()),
             jump_host_id: None,
             startup_directory: Some("/srv/app".to_string()),

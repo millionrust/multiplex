@@ -69,15 +69,14 @@ impl TermiRustApp {
         let last_connected_label = self
             .last_connected_at(profile)
             .map(|ts| format!("Last {}", format_relative_time(ts)));
-        let protocols = if profile.auth_mode == AuthMode::PrivateKey {
-            "key auth"
-        } else {
-            "password"
+        let protocols = match profile.auth_mode {
+            AuthMode::Password => "password",
+            AuthMode::PrivateKey => "key auth",
+            AuthMode::LocalAgent => "SSH agent",
         };
-        let protocol_icon = if profile.auth_mode == AuthMode::PrivateKey {
-            app_icon(ICON_KEY)
-        } else {
-            Icon::new(IconName::User)
+        let protocol_icon = match profile.auth_mode {
+            AuthMode::Password => Icon::new(IconName::User),
+            AuthMode::PrivateKey | AuthMode::LocalAgent => app_icon(ICON_KEY),
         };
 
         let visible_tags: Vec<String> = profile.tags.iter().take(4).cloned().collect();

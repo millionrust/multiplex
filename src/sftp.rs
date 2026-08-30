@@ -500,6 +500,8 @@ mod tests {
     };
     use crate::models::{AuthConfig, ConnectRequest, ConnectionKind};
     use crate::storage::KnownHostStore;
+    #[cfg(unix)]
+    use crate::test_support::TestSshAgent;
     use crate::test_support::{DockerSshServer, TestIsolation, create_test_user_certificate};
     use std::fs;
     use std::sync::Arc;
@@ -690,6 +692,45 @@ mod tests {
                 assert!(entries.iter().any(|entry| entry.name == "visible.txt"));
             }
             event => panic!("unexpected certificate SFTP event: {event:?}"),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn docker_sftp_lists_directory_with_ssh_agent_authentication() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping Docker SSH-agent SFTP e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH server");
+        server
+            .exec(
+                "mkdir -p /home/termirust/agent-sftp && touch /home/termirust/agent-sftp/visible.txt && chown -R termirust:termirust /home/termirust/agent-sftp",
+            )
+            .expect("unable to seed agent SFTP directory");
+        let agent = TestSshAgent::start_with_fixture_key().expect("unable to start test SSH agent");
+        let mut request = docker_sftp_request(&server);
+        request.auth = Some(AuthConfig::LocalAgent {
+            socket_path: Some(agent.socket_path().display().to_string()),
+            forward_agent: false,
+        });
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+
+        spawn_list_directory(
+            9,
+            1,
+            request,
+            known_hosts,
+            "/home/termirust/agent-sftp".to_string(),
+            event_tx,
+        );
+        match recv_sftp_event(&event_rx) {
+            SftpEvent::DirectoryLoaded { entries, .. } => {
+                assert!(entries.iter().any(|entry| entry.name == "visible.txt"));
+            }
+            event => panic!("unexpected SSH-agent SFTP event: {event:?}"),
         }
     }
 }
