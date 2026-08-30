@@ -15,7 +15,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::models::{
     AuthConfig, ConnectRequest, DynamicPortForward, JumpHostConnection, LocalPortForward,
-    PortForwardRule, RemotePortForward,
+    OutboundProxy, PortForwardRule, RemotePortForward,
 };
 use crate::storage::{HostKeyDecision, KnownHostStore};
 use crate::terminal::TerminalSize;
@@ -467,15 +467,20 @@ async fn run_session(
         .await
         .context("Unable to start an interactive shell")?;
 
+    let mut forward_tasks = ForwardTaskGuard::default();
     for rule in request.port_forward_rules.clone() {
         match rule {
             PortForwardRule::Local { forward } => {
-                start_local_forwarder(established.target_handle.clone(), session_id, forward)
-                    .await?;
+                forward_tasks.push(
+                    start_local_forwarder(established.target_handle.clone(), session_id, forward)
+                        .await?,
+                );
             }
             PortForwardRule::Dynamic { forward } => {
-                start_dynamic_forwarder(established.target_handle.clone(), session_id, forward)
-                    .await?;
+                forward_tasks.push(
+                    start_dynamic_forwarder(established.target_handle.clone(), session_id, forward)
+                        .await?,
+                );
             }
             PortForwardRule::Remote { forward } => {
                 start_remote_forwarder(established.target_handle.clone(), session_id, forward)
@@ -559,6 +564,25 @@ async fn run_session(
     Ok(())
 }
 
+#[derive(Default)]
+struct ForwardTaskGuard {
+    tasks: Vec<tokio::task::JoinHandle<()>>,
+}
+
+impl ForwardTaskGuard {
+    fn push(&mut self, task: tokio::task::JoinHandle<()>) {
+        self.tasks.push(task);
+    }
+}
+
+impl Drop for ForwardTaskGuard {
+    fn drop(&mut self) {
+        for task in &self.tasks {
+            task.abort();
+        }
+    }
+}
+
 fn shell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
@@ -640,7 +664,9 @@ async fn establish_session(
         } else {
             let (target_handle, target_trusted) = connect_and_authenticate(
                 config,
-                request.address(),
+                request.host.clone(),
+                request.port,
+                request.outbound_proxy.clone(),
                 request.known_host_key(),
                 request.username.clone(),
                 auth,
@@ -687,7 +713,9 @@ async fn connect_via_jump_chain(
         .ok_or_else(|| anyhow::anyhow!("Jump host chain is empty"))?;
     let (mut current_handle, current_trusted) = connect_and_authenticate(
         config.clone(),
-        first_hop.address(),
+        first_hop.host.clone(),
+        first_hop.port,
+        first_hop.outbound_proxy.clone(),
         first_hop.known_host_key(),
         first_hop.username.clone(),
         first_hop.auth.clone(),
@@ -770,7 +798,9 @@ fn flatten_jump_chain(jump_host: JumpHostConnection) -> Vec<JumpHostConnection> 
 #[allow(clippy::too_many_arguments)]
 async fn connect_and_authenticate(
     config: Arc<client::Config>,
-    address: String,
+    host: String,
+    port: u16,
+    outbound_proxy: Option<OutboundProxy>,
     endpoint: String,
     username: String,
     auth: AuthConfig,
@@ -794,9 +824,10 @@ async fn connect_and_authenticate(
         agent_forward_socket,
     };
 
-    let mut handle = client::connect(config, address, handler)
+    let stream = crate::proxy::connect_first_hop(&host, port, outbound_proxy.as_ref()).await?;
+    let mut handle = client::connect_stream(config, stream, handler)
         .await
-        .context("Unable to open the SSH transport")?;
+        .context("Unable to open the SSH transport after establishing the network route")?;
     crate::ssh_auth::authenticate(&mut handle, &username, &auth).await?;
     Ok((handle, trusted_new_host))
 }
@@ -842,7 +873,7 @@ async fn start_local_forwarder(
     handle: Arc<Mutex<client::Handle<SessionHandler>>>,
     session_id: u64,
     forward: LocalPortForward,
-) -> Result<()> {
+) -> Result<tokio::task::JoinHandle<()>> {
     let bind_addr = format!("{}:{}", forward.local_host, forward.local_port);
     let listener = TcpListener::bind(&bind_addr)
         .await
@@ -853,7 +884,7 @@ async fn start_local_forwarder(
         bind_addr, forward.remote_host, forward.remote_port
     );
 
-    tokio::spawn(async move {
+    Ok(tokio::spawn(async move {
         loop {
             match listener.accept().await {
                 Ok((stream, originator_addr)) => {
@@ -883,16 +914,14 @@ async fn start_local_forwarder(
                 }
             }
         }
-    });
-
-    Ok(())
+    }))
 }
 
 async fn start_dynamic_forwarder(
     handle: Arc<Mutex<client::Handle<SessionHandler>>>,
     session_id: u64,
     forward: DynamicPortForward,
-) -> Result<()> {
+) -> Result<tokio::task::JoinHandle<()>> {
     let bind_addr = format!("{}:{}", forward.local_host, forward.local_port);
     let listener = TcpListener::bind(&bind_addr)
         .await
@@ -903,7 +932,7 @@ async fn start_dynamic_forwarder(
         bind_addr
     );
 
-    tokio::spawn(async move {
+    Ok(tokio::spawn(async move {
         loop {
             match listener.accept().await {
                 Ok((stream, originator_addr)) => {
@@ -931,9 +960,7 @@ async fn start_dynamic_forwarder(
                 }
             }
         }
-    });
-
-    Ok(())
+    }))
 }
 
 async fn start_remote_forwarder(
@@ -1282,13 +1309,14 @@ mod tests {
     };
     use crate::models::{
         AuthConfig, ConnectRequest, ConnectionKind, DynamicPortForward, JumpHostConnection,
-        LocalPortForward, PortForwardRule, RemotePortForward,
+        LocalPortForward, OutboundProxy, PortForwardRule, RemotePortForward,
     };
     use crate::storage::KnownHostStore;
     #[cfg(unix)]
     use crate::test_support::TestSshAgent;
     use crate::test_support::{
-        DockerSshServer, TestIsolation, allocate_local_port, create_test_user_certificate,
+        DockerSshServer, TestIsolation, TestProxyProtocol, TestTcpProxy, allocate_local_port,
+        create_test_user_certificate,
     };
     use crate::ui::shell::{shell_single_quote, startup_bytes_for_request};
     use std::io::{Read, Write};
@@ -1310,6 +1338,7 @@ mod tests {
                 password: server.password().to_string(),
             }),
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
@@ -1373,7 +1402,9 @@ mod tests {
                     passphrase: None,
                 },
                 jump_host: None,
+                outbound_proxy: None,
             }),
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
@@ -1544,7 +1575,7 @@ mod tests {
         panic!("{label} did not emit expected output containing {needle:?}");
     }
 
-    fn wait_for_auth_error(
+    fn wait_for_runtime_error(
         request: &ConnectRequest,
         event_rx: &mpsc::Receiver<SshEvent>,
         label: &str,
@@ -1565,7 +1596,21 @@ mod tests {
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         }
-        panic!("{label} did not produce an authentication error");
+        panic!("{label} did not produce a runtime error");
+    }
+
+    fn assert_loopback_port_released(port: u16, label: &str) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            match TcpListener::bind(("127.0.0.1", port)) {
+                Ok(listener) => {
+                    drop(listener);
+                    return;
+                }
+                Err(_) => std::thread::sleep(Duration::from_millis(50)),
+            }
+        }
+        panic!("{label} did not release 127.0.0.1:{port}");
     }
 
     #[test]
@@ -1867,7 +1912,7 @@ mod tests {
             forward_agent: false,
         });
         let _runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
-        let message = wait_for_auth_error(&request, &event_rx, "empty agent");
+        let message = wait_for_runtime_error(&request, &event_rx, "empty agent");
         assert!(message.contains("has no identities"));
         assert!(!message.contains(agent.socket_path().to_string_lossy().as_ref()));
         drop(agent);
@@ -1880,7 +1925,7 @@ mod tests {
             forward_agent: false,
         });
         let _runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
-        let message = wait_for_auth_error(&request, &event_rx, "unavailable agent");
+        let message = wait_for_runtime_error(&request, &event_rx, "unavailable agent");
         assert!(!message.contains("customer-secret-missing-agent.sock"));
 
         let agent =
@@ -1893,7 +1938,7 @@ mod tests {
             forward_agent: false,
         });
         let _runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
-        let message = wait_for_auth_error(&request, &event_rx, "untrusted agent key");
+        let message = wait_for_runtime_error(&request, &event_rx, "untrusted agent key");
         assert!(message.contains("Authentication was rejected by the server"));
         assert!(!message.contains(agent.socket_path().to_string_lossy().as_ref()));
     }
@@ -2027,6 +2072,81 @@ mod tests {
         assert_eq!(stdout, "stdout:round-trip");
         assert_eq!(stderr, "stderr:round-trip");
         assert_eq!(exit, RemoteExecExit::Status(7));
+    }
+
+    #[test]
+    fn docker_ssh_routes_terminal_exec_and_first_jump_hop_through_supported_proxies() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping Docker proxy e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let target = format!("{}:{}", server.host(), server.port)
+            .parse()
+            .expect("invalid Docker SSH endpoint");
+
+        for (index, protocol) in [TestProxyProtocol::Socks5, TestProxyProtocol::HttpConnect]
+            .into_iter()
+            .enumerate()
+        {
+            let proxy = TestTcpProxy::start(protocol, target).expect("unable to start test proxy");
+            let route = match protocol {
+                TestProxyProtocol::Socks5 => OutboundProxy::Socks5 {
+                    host: "127.0.0.1".to_string(),
+                    port: proxy.port,
+                },
+                TestProxyProtocol::HttpConnect => OutboundProxy::HttpConnect {
+                    host: "127.0.0.1".to_string(),
+                    port: proxy.port,
+                },
+            };
+            let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+            let (event_tx, event_rx) = mpsc::channel();
+            let mut request = docker_ssh_request(&server);
+            request.session_id = 120 + index as u64;
+            request.outbound_proxy = Some(route.clone());
+            let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+            wait_for_connected(&request, &event_rx, "proxied terminal");
+            runtime
+                .command_tx
+                .send(SessionCommand::Input(
+                    b"printf 'proxy-terminal-ok\\n'\n".to_vec(),
+                ))
+                .unwrap();
+            wait_for_output_contains(&request, &event_rx, "proxy-terminal-ok", "proxied terminal");
+            disconnect_runtime(&request, &runtime, &event_rx, "proxied terminal");
+
+            request.session_id += 10;
+            let mut process = spawn_remote_exec(
+                request,
+                known_hosts.clone(),
+                0,
+                "printf 'proxy-exec-ok'".to_string(),
+            )
+            .expect("unable to start proxied remote exec");
+            let mut stdout = String::new();
+            process.stdout.read_to_string(&mut stdout).unwrap();
+            let exit = process
+                .exit_rx
+                .recv_timeout(Duration::from_secs(15))
+                .unwrap()
+                .unwrap();
+            assert_eq!(stdout, "proxy-exec-ok");
+            assert_eq!(exit, RemoteExecExit::Status(0));
+
+            let (event_tx, event_rx) = mpsc::channel();
+            let mut jump_request = docker_jump_request(&server);
+            jump_request.session_id = 140 + index as u64;
+            let first_hop = jump_request.jump_host.as_mut().unwrap();
+            first_hop.host = "proxy-only.invalid".to_string();
+            first_hop.port = 65022;
+            first_hop.outbound_proxy = Some(route);
+            let runtime = spawn_session(jump_request.clone(), known_hosts, event_tx, 0);
+            wait_for_connected(&jump_request, &event_rx, "proxied jump hop");
+            disconnect_runtime(&jump_request, &runtime, &event_rx, "proxied jump hop");
+            assert!(proxy.accepted_connections() >= 2);
+        }
     }
 
     #[test]
@@ -2390,6 +2510,7 @@ mod tests {
         assert!(buffer.contains("forward-local-ok"));
 
         disconnect_runtime(&request, &runtime, &event_rx, "local forward");
+        assert_loopback_port_released(local_port, "local forward disconnect");
     }
 
     #[test]
@@ -2454,6 +2575,44 @@ mod tests {
         assert!(buffer.contains("forward-socks-ok"));
 
         disconnect_runtime(&request, &runtime, &event_rx, "dynamic forward");
+        assert_loopback_port_released(local_port, "dynamic forward disconnect");
+    }
+
+    #[test]
+    fn docker_ssh_forward_bind_conflict_is_reported_and_prior_listeners_are_cleaned_up() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker forward conflict e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let first_port = allocate_local_port();
+        let conflict_listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let conflict_port = conflict_listener.local_addr().unwrap().port();
+        let mut request = docker_ssh_request(&server);
+        request.port_forward_rules = vec![
+            PortForwardRule::Local {
+                forward: LocalPortForward {
+                    local_host: "127.0.0.1".to_string(),
+                    local_port: first_port,
+                    remote_host: "127.0.0.1".to_string(),
+                    remote_port: 22,
+                },
+            },
+            PortForwardRule::Dynamic {
+                forward: DynamicPortForward {
+                    local_host: "127.0.0.1".to_string(),
+                    local_port: conflict_port,
+                },
+            },
+        ];
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let _runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let error = wait_for_runtime_error(&request, &event_rx, "forward bind conflict");
+        assert!(error.contains("Unable to bind dynamic forward"));
+        assert!(!error.contains(server.password()));
+        assert_loopback_port_released(first_port, "partially started forward set");
     }
 
     #[test]

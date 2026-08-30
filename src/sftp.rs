@@ -16,7 +16,7 @@ use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroize;
 
-use crate::models::{AuthConfig, ConnectRequest, JumpHostConnection};
+use crate::models::{AuthConfig, ConnectRequest, JumpHostConnection, OutboundProxy};
 use crate::ssh_keys::{
     AuthorizedKeyMutation, PublicKeyMaterial, add_authorized_key, remove_authorized_key,
 };
@@ -864,7 +864,9 @@ async fn establish_handles(
     } else {
         let handle = connect_and_authenticate(
             config,
-            request.address(),
+            request.host.clone(),
+            request.port,
+            request.outbound_proxy.clone(),
             request.known_host_key(),
             request.username.clone(),
             auth,
@@ -900,7 +902,9 @@ async fn connect_via_jump_chain(
         .ok_or_else(|| anyhow!("Jump host chain is empty"))?;
     let mut current_handle = connect_and_authenticate(
         config.clone(),
-        first_hop.address(),
+        first_hop.host.clone(),
+        first_hop.port,
+        first_hop.outbound_proxy.clone(),
         first_hop.known_host_key(),
         first_hop.username.clone(),
         first_hop.auth.clone(),
@@ -964,7 +968,9 @@ fn flatten_jump_chain(jump_host: JumpHostConnection) -> Vec<JumpHostConnection> 
 
 async fn connect_and_authenticate(
     config: Arc<client::Config>,
-    address: String,
+    host: String,
+    port: u16,
+    outbound_proxy: Option<OutboundProxy>,
     endpoint: String,
     username: String,
     auth: AuthConfig,
@@ -976,9 +982,10 @@ async fn connect_and_authenticate(
         trusted_new_host: Arc::new(AtomicBool::new(false)),
     };
 
-    let mut handle = client::connect(config, address, handler)
+    let stream = crate::proxy::connect_first_hop(&host, port, outbound_proxy.as_ref()).await?;
+    let mut handle = client::connect_stream(config, stream, handler)
         .await
-        .context("Unable to open the SSH transport")?;
+        .context("Unable to open the SSH transport after establishing the network route")?;
     crate::ssh_auth::authenticate(&mut handle, &username, &auth).await?;
     Ok(handle)
 }
@@ -1039,13 +1046,16 @@ mod tests {
         SftpEvent, spawn_authorized_key_operation, spawn_delete_path, spawn_download_file,
         spawn_list_directory, spawn_upload_file,
     };
-    use crate::models::{AuthConfig, ConnectRequest, ConnectionKind};
+    use crate::models::{AuthConfig, ConnectRequest, ConnectionKind, OutboundProxy};
     use crate::ssh::{SessionCommand, SshEvent, spawn_session};
     use crate::ssh_keys::{PublicKeyMaterial, generate_ed25519_key_pair};
     use crate::storage::KnownHostStore;
     #[cfg(unix)]
     use crate::test_support::TestSshAgent;
-    use crate::test_support::{DockerSshServer, TestIsolation, create_test_user_certificate};
+    use crate::test_support::{
+        DockerSshServer, TestIsolation, TestProxyProtocol, TestTcpProxy,
+        create_test_user_certificate,
+    };
     use std::fs;
     use std::sync::Arc;
     use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
@@ -1063,6 +1073,7 @@ mod tests {
                 password: server.password().to_string(),
             }),
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
@@ -1225,6 +1236,41 @@ mod tests {
         }
 
         let _ = fs::remove_dir_all(local_dir);
+    }
+
+    #[test]
+    fn docker_sftp_lists_through_http_connect_proxy() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping Docker proxied SFTP e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let target = format!("{}:{}", server.host(), server.port)
+            .parse()
+            .expect("invalid Docker SSH endpoint");
+        let proxy = TestTcpProxy::start(TestProxyProtocol::HttpConnect, target)
+            .expect("unable to start HTTP CONNECT proxy");
+        let mut request = docker_sftp_request(&server);
+        request.outbound_proxy = Some(OutboundProxy::HttpConnect {
+            host: "127.0.0.1".to_string(),
+            port: proxy.port,
+        });
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        spawn_list_directory(
+            1,
+            90,
+            request,
+            known_hosts,
+            "/home/termirust".to_string(),
+            event_tx,
+        );
+        match recv_sftp_event(&event_rx) {
+            SftpEvent::DirectoryLoaded { path, .. } => assert_eq!(path, "/home/termirust"),
+            event => panic!("unexpected proxied SFTP event: {event:?}"),
+        }
+        assert_eq!(proxy.accepted_connections(), 1);
     }
 
     #[test]
@@ -1708,6 +1754,7 @@ mod tests {
                         password: "not-used".to_string(),
                     }),
                     jump_host: None,
+                    outbound_proxy: None,
                     startup_directory: None,
                     startup_command: None,
                     start_in_files: false,

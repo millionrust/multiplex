@@ -103,11 +103,11 @@ use vt100::MouseProtocolMode;
 use crate::credentials;
 use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
-    HostColorTag, HostProfile, JumpHostConnection, PortForwardKind, PortForwardRule, ProfileSource,
-    QuickConnect, SavedAppAttachedSession, SavedHostGroup, SavedIdentity, SavedSnippet,
-    SavedSplitNode, SavedState, SavedVault, SavedVaultMember, SavedWindowBounds, SavedWorkspace,
-    SessionLogEntry, SplitAxis, ThemePreset, VaultKind, VaultMemberRole, WorkspaceLayoutMode,
-    default_persistent_session_name_from_id,
+    HostColorTag, HostProfile, JumpHostConnection, OutboundProxyKind, PortForwardKind,
+    PortForwardRule, ProfileSource, QuickConnect, SavedAppAttachedSession, SavedHostGroup,
+    SavedIdentity, SavedSnippet, SavedSplitNode, SavedState, SavedVault, SavedVaultMember,
+    SavedWindowBounds, SavedWorkspace, SessionLogEntry, SplitAxis, ThemePreset, VaultKind,
+    VaultMemberRole, WorkspaceLayoutMode, default_persistent_session_name_from_id,
 };
 use crate::sftp::{RemoteFileEntry, SftpEvent};
 use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent};
@@ -298,6 +298,8 @@ struct DraftInputs {
     host: Entity<InputState>,
     port: Entity<InputState>,
     username: Entity<InputState>,
+    outbound_proxy_host: Entity<InputState>,
+    outbound_proxy_port: Entity<InputState>,
     password: Entity<InputState>,
     key_path: Entity<InputState>,
     certificate_path: Entity<InputState>,
@@ -331,6 +333,10 @@ impl DraftInputs {
             port: cx.new(|cx| InputState::new(window, cx).default_value("22")),
             username: cx
                 .new(|cx| InputState::new(window, cx).placeholder("SSH username, e.g. jacob")),
+            outbound_proxy_host: cx
+                .new(|cx| InputState::new(window, cx).placeholder("Proxy hostname or IP address")),
+            outbound_proxy_port: cx
+                .new(|cx| InputState::new(window, cx).placeholder("1080 or 3128")),
             password: cx.new(|cx| {
                 InputState::new(window, cx)
                     .masked(true)
@@ -1055,6 +1061,7 @@ pub struct TermiRustApp {
     draft_color_tag: Option<HostColorTag>,
     draft_port_forward_rules: Vec<PortForwardRule>,
     draft_port_forward_kind: PortForwardKind,
+    draft_outbound_proxy_kind: OutboundProxyKind,
     snippet_vault_id: Option<String>,
     snippet_pinned: bool,
     draft_vault_member_role: VaultMemberRole,
@@ -1355,6 +1362,7 @@ impl TermiRustApp {
             draft_color_tag: None,
             draft_port_forward_rules: Vec::new(),
             draft_port_forward_kind: PortForwardKind::Local,
+            draft_outbound_proxy_kind: OutboundProxyKind::Direct,
             snippet_vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             snippet_pinned: false,
             draft_vault_member_role: VaultMemberRole::Editor,
@@ -1568,6 +1576,9 @@ impl TermiRustApp {
         let jump_host_id = self.resolve_jump_host_reference(&jump_host_value)?;
 
         let draft = DraftProfile {
+            outbound_proxy_kind: self.draft_outbound_proxy_kind,
+            outbound_proxy_host: self.inputs.outbound_proxy_host.read(cx).value().to_string(),
+            outbound_proxy_port: self.inputs.outbound_proxy_port.read(cx).value().to_string(),
             label: self.inputs.label.read(cx).value().to_string(),
             vault_id: self.draft_vault_id.clone(),
             favorite: self.draft_profile_favorite,
@@ -2061,6 +2072,7 @@ impl TermiRustApp {
             port: profile.port,
             username: profile.username.clone(),
             auth,
+            outbound_proxy: profile.outbound_proxy.clone(),
             jump_host: nested_jump_host,
         })
     }
@@ -2221,6 +2233,18 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.host, draft.host, window, cx);
         Self::set_input_value(&self.inputs.port, draft.port, window, cx);
         Self::set_input_value(&self.inputs.username, draft.username, window, cx);
+        Self::set_input_value(
+            &self.inputs.outbound_proxy_host,
+            draft.outbound_proxy_host,
+            window,
+            cx,
+        );
+        Self::set_input_value(
+            &self.inputs.outbound_proxy_port,
+            draft.outbound_proxy_port,
+            window,
+            cx,
+        );
         Self::set_input_value(&self.inputs.password, "", window, cx);
         Self::set_input_value(&self.inputs.key_path, draft.key_path, window, cx);
         Self::set_input_value(
@@ -2249,6 +2273,7 @@ impl TermiRustApp {
         self.draft_persistent_session_detach_others = draft.persistent_session_detach_others;
         self.draft_port_forward_rules = draft.saved_port_forward_rules;
         self.draft_port_forward_kind = PortForwardKind::Local;
+        self.draft_outbound_proxy_kind = draft.outbound_proxy_kind;
         self.draft_identity_id = draft.identity_id.or_else(|| {
             self.identity_for_key_path(profile.key_path.as_str())
                 .map(|identity| identity.id.clone())
@@ -2305,6 +2330,8 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.host, "", window, cx);
         Self::set_input_value(&self.inputs.port, "22", window, cx);
         Self::set_input_value(&self.inputs.username, "", window, cx);
+        Self::set_input_value(&self.inputs.outbound_proxy_host, "", window, cx);
+        Self::set_input_value(&self.inputs.outbound_proxy_port, "", window, cx);
         Self::set_input_value(&self.inputs.password, "", window, cx);
         Self::set_input_value(&self.inputs.key_path, "", window, cx);
         Self::set_input_value(&self.inputs.certificate_path, "", window, cx);
@@ -2323,6 +2350,7 @@ impl TermiRustApp {
         self.draft_persistent_session_detach_others = false;
         self.draft_port_forward_rules.clear();
         self.draft_port_forward_kind = PortForwardKind::Local;
+        self.draft_outbound_proxy_kind = OutboundProxyKind::Direct;
         let first_identity = self.saved.identities.first().cloned();
         if let Some(identity) = &first_identity {
             self.draft_identity_id = Some(identity.id.clone());
@@ -2344,6 +2372,12 @@ impl TermiRustApp {
         self.draft_port_forward_kind = kind;
         self.error_message.clear();
         self.status_message = format!("Forward rule type set to {}.", kind.label());
+        cx.notify();
+    }
+
+    fn set_draft_outbound_proxy_kind(&mut self, kind: OutboundProxyKind, cx: &mut Context<Self>) {
+        self.draft_outbound_proxy_kind = kind;
+        self.error_message.clear();
         cx.notify();
     }
 
@@ -10026,6 +10060,78 @@ impl TermiRustApp {
             )
             .child(
                 v_flex()
+                    .id("editor-outbound-proxy")
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_size(px(14.))
+                            .font_medium()
+                            .text_color(theme::text_main())
+                            .child("Network Route"),
+                    )
+                    .child(
+                        h_flex()
+                            .p(px(3.))
+                            .rounded(px(8.))
+                            .bg(theme::hover())
+                            .children(
+                                [
+                                    OutboundProxyKind::Direct,
+                                    OutboundProxyKind::Socks5,
+                                    OutboundProxyKind::HttpConnect,
+                                ]
+                                .into_iter()
+                                .enumerate()
+                                .map(|(index, kind)| {
+                                    let active = self.draft_outbound_proxy_kind == kind;
+                                    Button::new(("outbound-proxy-kind", index))
+                                        .small()
+                                        .custom(Self::segmented_button_style(active, cx))
+                                        .label(kind.label())
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.set_draft_outbound_proxy_kind(kind, cx);
+                                        }))
+                                        .into_any_element()
+                                }),
+                            ),
+                    )
+                    .when(
+                        self.draft_outbound_proxy_kind != OutboundProxyKind::Direct,
+                        |this| {
+                            this.child(
+                                h_flex()
+                                    .gap_3()
+                                    .child(
+                                        self.form_field(
+                                            "Proxy Host",
+                                            Input::new(&self.inputs.outbound_proxy_host),
+                                        )
+                                        .flex_1(),
+                                    )
+                                    .child(
+                                        self.form_field(
+                                            "Proxy Port",
+                                            Input::new(&self.inputs.outbound_proxy_port),
+                                        )
+                                        .w(px(150.)),
+                                    ),
+                            )
+                        },
+                    )
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .line_height(relative(1.4))
+                            .text_color(theme::text_muted())
+                            .child(if self.draft_outbound_proxy_kind == OutboundProxyKind::Direct {
+                                "Connect directly to this host."
+                            } else {
+                                "Route only the first TCP hop through this proxy. SSH still verifies and authenticates the target end to end. Authenticated proxies are not supported."
+                            }),
+                    ),
+            )
+            .child(
+                v_flex()
                     .gap_2()
                     .child(
                         div()
@@ -11539,11 +11645,12 @@ mod tests {
     use crate::models::{
         AgentBackendKind, AgentLocation, AgentProvider, AuthConfig, AuthMode, CanvasNodeId,
         ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile, HostColorTag, HostProfile,
-        IdentitySource, JumpHostConnection, LocalPortForward, LocalShellConfig, PortForwardKind,
-        PortForwardRule, ProfileSource, RestorableAuth, RestorableConnection, SavedCanvasNode,
-        SavedCanvasNodeKind, SavedCanvasState, SavedHostGroup, SavedIdentity, SavedManagedWorktree,
-        SavedManagedWorktreeDisposition, SavedSnippet, SavedSplitNode, SavedState, SavedWorkspace,
-        SavedWorktreePolicy, SplitAxis, ThemePreset, VaultMemberRole, WorkspaceLayoutMode,
+        IdentitySource, JumpHostConnection, LocalPortForward, LocalShellConfig, OutboundProxyKind,
+        PortForwardKind, PortForwardRule, ProfileSource, RestorableAuth, RestorableConnection,
+        SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState, SavedHostGroup, SavedIdentity,
+        SavedManagedWorktree, SavedManagedWorktreeDisposition, SavedSnippet, SavedSplitNode,
+        SavedState, SavedWorkspace, SavedWorktreePolicy, SplitAxis, ThemePreset, VaultMemberRole,
+        WorkspaceLayoutMode,
     };
     use crate::sftp::RemoteFileEntry;
     use crate::ssh::SessionCommand;
@@ -11615,6 +11722,7 @@ mod tests {
                 password: server.password().to_string(),
             }),
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: Some("printf 'termirust-ui-ready\\n'".to_string()),
             start_in_files: false,
@@ -11661,6 +11769,7 @@ mod tests {
                 forward_agent: true,
             }),
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
@@ -11733,7 +11842,9 @@ mod tests {
                     passphrase: None,
                 },
                 jump_host: None,
+                outbound_proxy: None,
             }),
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: Some("printf 'jump-ui-ready\\n'".to_string()),
             start_in_files: false,
@@ -11769,6 +11880,7 @@ mod tests {
                     key_path: docker_ssh_private_key_path(),
                 }),
                 jump_host: None,
+                outbound_proxy: None,
                 startup_directory: startup_directory.map(ToString::to_string),
                 startup_command: startup_command.map(ToString::to_string),
                 start_in_files,
@@ -11809,6 +11921,7 @@ mod tests {
                     credential_id: credential_id.to_string(),
                 }),
                 jump_host: None,
+                outbound_proxy: None,
                 startup_directory: None,
                 startup_command: startup_command.map(ToString::to_string),
                 start_in_files: false,
@@ -12170,6 +12283,7 @@ mod tests {
             username: "deploy".to_string(),
             auth: None,
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
@@ -12268,6 +12382,7 @@ mod tests {
             username: "ubuntu".to_string(),
             auth: None,
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: Some("/srv".to_string()),
             startup_command: Some("uptime".to_string()),
             start_in_files: false,
@@ -12303,6 +12418,7 @@ mod tests {
                 password: "secret".to_string(),
             }),
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: Some("/var/www/app's".to_string()),
             startup_command: Some("docker compose logs -f".to_string()),
             start_in_files: false,
@@ -12333,6 +12449,7 @@ mod tests {
             username: "ubuntu".to_string(),
             auth: None,
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: Some(" ".to_string()),
             startup_command: None,
             start_in_files: false,
@@ -12352,6 +12469,9 @@ mod tests {
     #[test]
     fn group_defaults_fill_blank_draft_values_without_overriding_explicit_fields() {
         let draft = DraftProfile {
+            outbound_proxy_kind: OutboundProxyKind::Direct,
+            outbound_proxy_host: String::new(),
+            outbound_proxy_port: String::new(),
             label: "Prod".to_string(),
             vault_id: None,
             favorite: false,
@@ -12442,6 +12562,9 @@ mod tests {
             },
         };
         let draft = DraftProfile {
+            outbound_proxy_kind: OutboundProxyKind::Direct,
+            outbound_proxy_host: String::new(),
+            outbound_proxy_port: String::new(),
             label: "Prod".to_string(),
             vault_id: None,
             favorite: false,
@@ -14994,6 +15117,7 @@ sleep 30
                 username: String::new(),
                 auth: None,
                 jump_host: None,
+                outbound_proxy: None,
                 startup_directory: None,
                 startup_command: None,
                 start_in_files: false,
@@ -23835,6 +23959,7 @@ sleep 1
                 username: String::new(),
                 auth: None,
                 jump_host: None,
+                outbound_proxy: None,
                 startup_directory: None,
                 startup_command: None,
                 start_in_files: false,

@@ -46,6 +46,74 @@ pub enum AuthMode {
     LocalAgent,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OutboundProxyKind {
+    #[default]
+    Direct,
+    Socks5,
+    HttpConnect,
+}
+
+impl OutboundProxyKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Direct => "Direct",
+            Self::Socks5 => "SOCKS5",
+            Self::HttpConnect => "HTTP CONNECT",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum OutboundProxy {
+    Socks5 { host: String, port: u16 },
+    HttpConnect { host: String, port: u16 },
+}
+
+impl OutboundProxy {
+    pub fn kind(&self) -> OutboundProxyKind {
+        match self {
+            Self::Socks5 { .. } => OutboundProxyKind::Socks5,
+            Self::HttpConnect { .. } => OutboundProxyKind::HttpConnect,
+        }
+    }
+
+    pub fn endpoint(&self) -> (&str, u16) {
+        match self {
+            Self::Socks5 { host, port } | Self::HttpConnect { host, port } => (host, *port),
+        }
+    }
+
+    pub fn validate(self) -> Result<Self> {
+        let (host, port) = self.endpoint();
+        validate_proxy_host(host)?;
+        if port == 0 {
+            bail!("Proxy port must be between 1 and 65535");
+        }
+        Ok(self)
+    }
+}
+
+fn validate_proxy_host(host: &str) -> Result<()> {
+    let host = host.trim();
+    if host.is_empty() {
+        bail!("Proxy host is required");
+    }
+    if host.len() > 253 {
+        bail!("Proxy host is too long");
+    }
+    if host.chars().any(|character| {
+        character.is_control()
+            || character.is_whitespace()
+            || matches!(character, '/' | '\\' | '@' | '#' | '?')
+    }) {
+        bail!("Proxy host contains invalid characters");
+    }
+    Ok(())
+}
+
 impl AuthMode {
     pub fn label(self) -> &'static str {
         match self {
@@ -254,6 +322,8 @@ pub struct HostProfile {
     #[serde(default)]
     pub jump_host_id: Option<String>,
     #[serde(default)]
+    pub outbound_proxy: Option<OutboundProxy>,
+    #[serde(default)]
     pub startup_directory: Option<String>,
     #[serde(default)]
     pub startup_command: Option<String>,
@@ -449,6 +519,10 @@ impl HostProfile {
     }
 
     pub fn normalize(&mut self) {
+        self.outbound_proxy = self
+            .outbound_proxy
+            .take()
+            .and_then(|proxy| proxy.validate().ok());
         self.startup_directory = self
             .startup_directory
             .take()
@@ -1659,6 +1733,9 @@ pub struct DraftProfile {
     pub identity_agent: String,
     pub identity_id: Option<String>,
     pub jump_host_id: Option<String>,
+    pub outbound_proxy_kind: OutboundProxyKind,
+    pub outbound_proxy_host: String,
+    pub outbound_proxy_port: String,
     pub startup_directory: String,
     pub startup_command: String,
     pub start_in_files: bool,
@@ -1696,6 +1773,21 @@ impl DraftProfile {
             identity_agent: profile.identity_agent.clone().unwrap_or_default(),
             identity_id: profile.identity_id.clone(),
             jump_host_id: profile.jump_host_id.clone(),
+            outbound_proxy_kind: profile
+                .outbound_proxy
+                .as_ref()
+                .map(OutboundProxy::kind)
+                .unwrap_or_default(),
+            outbound_proxy_host: profile
+                .outbound_proxy
+                .as_ref()
+                .map(|proxy| proxy.endpoint().0.to_string())
+                .unwrap_or_default(),
+            outbound_proxy_port: profile
+                .outbound_proxy
+                .as_ref()
+                .map(|proxy| proxy.endpoint().1.to_string())
+                .unwrap_or_default(),
             startup_directory: profile.startup_directory.clone().unwrap_or_default(),
             startup_command: profile.startup_command.clone().unwrap_or_default(),
             start_in_files: profile.start_in_files,
@@ -1751,6 +1843,27 @@ impl DraftProfile {
 
         port.parse::<u16>()
             .with_context(|| format!("Invalid SSH port '{port}'"))
+    }
+
+    fn parse_outbound_proxy(&self) -> Result<Option<OutboundProxy>> {
+        if self.outbound_proxy_kind == OutboundProxyKind::Direct {
+            return Ok(None);
+        }
+        let host = self.outbound_proxy_host.trim().to_string();
+        validate_proxy_host(&host)?;
+        let raw_port = self.outbound_proxy_port.trim();
+        let port = raw_port
+            .parse::<u16>()
+            .with_context(|| format!("Invalid proxy port '{raw_port}'"))?;
+        if port == 0 {
+            bail!("Proxy port must be between 1 and 65535");
+        }
+        let proxy = match self.outbound_proxy_kind {
+            OutboundProxyKind::Direct => unreachable!(),
+            OutboundProxyKind::Socks5 => OutboundProxy::Socks5 { host, port },
+            OutboundProxyKind::HttpConnect => OutboundProxy::HttpConnect { host, port },
+        };
+        Ok(Some(proxy))
     }
 
     pub fn parse_pending_port_forward_rule(&self) -> Result<Option<PortForwardRule>> {
@@ -1900,6 +2013,7 @@ impl DraftProfile {
                 None
             },
             jump_host_id: self.jump_host_id.clone(),
+            outbound_proxy: self.parse_outbound_proxy()?,
             startup_directory: non_empty(self.startup_directory.trim()),
             startup_command: non_empty(self.startup_command.trim()),
             start_in_files: self.start_in_files,
@@ -1972,6 +2086,7 @@ impl DraftProfile {
             username: profile.username,
             auth: Some(auth),
             jump_host: None,
+            outbound_proxy: profile.outbound_proxy,
             startup_directory: profile.startup_directory,
             startup_command: profile.startup_command,
             start_in_files: profile.start_in_files,
@@ -2173,6 +2288,7 @@ pub struct ConnectRequest {
     pub username: String,
     pub auth: Option<AuthConfig>,
     pub jump_host: Option<JumpHostConnection>,
+    pub outbound_proxy: Option<OutboundProxy>,
     pub startup_directory: Option<String>,
     pub startup_command: Option<String>,
     pub start_in_files: bool,
@@ -2251,6 +2367,7 @@ impl ConnectRequest {
                     .jump_host
                     .as_ref()
                     .and_then(JumpHostConnection::to_restorable),
+                outbound_proxy: self.outbound_proxy.clone(),
                 startup_directory: self.startup_directory.clone(),
                 startup_command: self.startup_command.clone(),
                 start_in_files: self.start_in_files,
@@ -2272,6 +2389,7 @@ impl ConnectRequest {
                 username: self.username.clone(),
                 auth: None,
                 jump_host: None,
+                outbound_proxy: None,
                 startup_directory: None,
                 startup_command: None,
                 start_in_files: false,
@@ -2304,6 +2422,7 @@ impl ConnectRequest {
             username: current_username(),
             auth: None,
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
@@ -2339,6 +2458,7 @@ pub struct JumpHostConnection {
     pub port: u16,
     pub username: String,
     pub auth: AuthConfig,
+    pub outbound_proxy: Option<OutboundProxy>,
     pub jump_host: Option<Box<JumpHostConnection>>,
 }
 
@@ -2358,6 +2478,7 @@ impl JumpHostConnection {
             port: self.port,
             username: self.username.clone(),
             auth: self.auth.to_restorable()?,
+            outbound_proxy: self.outbound_proxy.clone(),
             jump_host: self
                 .jump_host
                 .as_deref()
@@ -2401,6 +2522,8 @@ pub struct RestorableConnection {
     pub auth: Option<RestorableAuth>,
     #[serde(default)]
     pub jump_host: Option<RestorableJumpHostConnection>,
+    #[serde(default)]
+    pub outbound_proxy: Option<OutboundProxy>,
     #[serde(default)]
     pub startup_directory: Option<String>,
     #[serde(default)]
@@ -2465,6 +2588,7 @@ impl RestorableConnection {
                         .jump_host
                         .as_ref()
                         .map(RestorableJumpHostConnection::to_jump_host_connection),
+                    outbound_proxy: self.outbound_proxy.clone(),
                     startup_directory: self.startup_directory.clone(),
                     startup_command: self.startup_command.clone(),
                     start_in_files: self.start_in_files,
@@ -2493,6 +2617,7 @@ impl RestorableConnection {
                 username: self.username.clone(),
                 auth: None,
                 jump_host: None,
+                outbound_proxy: None,
                 startup_directory: None,
                 startup_command: None,
                 start_in_files: false,
@@ -2520,6 +2645,8 @@ pub struct RestorableJumpHostConnection {
     pub port: u16,
     pub username: String,
     pub auth: RestorableAuth,
+    #[serde(default)]
+    pub outbound_proxy: Option<OutboundProxy>,
     #[serde(default)]
     pub jump_host: Option<Box<RestorableJumpHostConnection>>,
 }
@@ -2554,6 +2681,7 @@ impl RestorableJumpHostConnection {
             port: self.port,
             username: self.username.clone(),
             auth,
+            outbound_proxy: self.outbound_proxy.clone(),
             jump_host: self
                 .jump_host
                 .as_deref()
@@ -3369,6 +3497,7 @@ impl QuickConnect {
             username: self.username.clone(),
             auth: Some(auth),
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
@@ -3731,15 +3860,15 @@ mod tests {
         CanvasEdgeKind, CanvasNodeId, CanvasNoteColor, ConnectRequest, ConnectionKind,
         DEFAULT_VAULT_ID, DraftProfile, HostColorTag, HostProfile, IdentitySource,
         ImportedIdentity, JumpHostConnection, LocalPortForward, LocalShellConfig,
-        MobileDevicePairingRequest, PortForwardKind, PortForwardRule, ProfileSource, QuickConnect,
-        RestorableAuth, RestorableConnection, SavedAgentDefinition, SavedCanvasEdge,
-        SavedCanvasNode, SavedCanvasNodeKind, SavedCanvasState, SavedCanvasViewport,
-        SavedCommandHistoryEntry, SavedContextPolicy, SavedIdentity, SavedManagedWorktree,
-        SavedManagedWorktreeDisposition, SavedSnippet, SavedState, SavedVault, SavedVaultMember,
-        SavedWorkspace, SavedWorktreePolicy, SessionLogEntry, SessionLogStatus, ThemePreset,
-        VaultKind, VaultMemberRole, WorkspaceLayoutMode,
-        default_persistent_session_name_for_endpoint, default_persistent_session_name_from_id,
-        identity_id_for_path,
+        MobileDevicePairingRequest, OutboundProxy, OutboundProxyKind, PortForwardKind,
+        PortForwardRule, ProfileSource, QuickConnect, RestorableAuth, RestorableConnection,
+        SavedAgentDefinition, SavedCanvasEdge, SavedCanvasNode, SavedCanvasNodeKind,
+        SavedCanvasState, SavedCanvasViewport, SavedCommandHistoryEntry, SavedContextPolicy,
+        SavedIdentity, SavedManagedWorktree, SavedManagedWorktreeDisposition, SavedSnippet,
+        SavedState, SavedVault, SavedVaultMember, SavedWorkspace, SavedWorktreePolicy,
+        SessionLogEntry, SessionLogStatus, ThemePreset, VaultKind, VaultMemberRole,
+        WorkspaceLayoutMode, default_persistent_session_name_for_endpoint,
+        default_persistent_session_name_from_id, identity_id_for_path,
     };
     use termirust_domain::{
         HostedSessionId, HostedSessionState, PresetId, ProjectId, Revision, SessionLaunchRoute,
@@ -3752,6 +3881,43 @@ mod tests {
         assert_eq!(qc.username, "root");
         assert_eq!(qc.host, "192.168.1.1");
         assert_eq!(qc.port, 22);
+    }
+
+    #[test]
+    fn old_host_json_defaults_to_direct_route() {
+        let profile: HostProfile = serde_json::from_str(
+            r#"{"id":"old","label":"Old","host":"old.example.com","username":"ubuntu","key_path":""}"#,
+        )
+        .unwrap();
+        assert_eq!(profile.outbound_proxy, None);
+    }
+
+    #[test]
+    fn draft_proxy_validation_and_restore_round_trip_are_typed() {
+        let draft = DraftProfile {
+            host: "target.internal".to_string(),
+            username: "ubuntu".to_string(),
+            password_credential_id: Some("profile:proxy-test".to_string()),
+            auth_mode: AuthMode::Password,
+            outbound_proxy_kind: OutboundProxyKind::Socks5,
+            outbound_proxy_host: "proxy.internal".to_string(),
+            outbound_proxy_port: "1080".to_string(),
+            ..DraftProfile::default()
+        };
+        let request = draft.to_connect_request(33).unwrap();
+        assert_eq!(
+            request.outbound_proxy,
+            Some(OutboundProxy::Socks5 {
+                host: "proxy.internal".to_string(),
+                port: 1080,
+            })
+        );
+        let restored = request.to_restorable().unwrap().to_connect_request(34);
+        assert_eq!(restored.outbound_proxy, request.outbound_proxy);
+
+        let mut invalid = draft;
+        invalid.outbound_proxy_host = "bad\r\nHost: injected".to_string();
+        assert!(invalid.to_profile("invalid".to_string()).is_err());
     }
 
     #[test]
@@ -3918,6 +4084,7 @@ mod tests {
                 password: "secret".to_string(),
             }),
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
@@ -3946,6 +4113,7 @@ mod tests {
                 credential_id: "profile:app".to_string(),
             }),
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: Some("/srv/app".to_string()),
             startup_command: Some("git status".to_string()),
             start_in_files: true,
@@ -3994,6 +4162,7 @@ mod tests {
                     key_path: "/tmp/jump_id_ed25519".to_string(),
                     passphrase: None,
                 },
+                outbound_proxy: None,
                 jump_host: Some(Box::new(JumpHostConnection {
                     title: "edge".to_string(),
                     host: "edge.example.com".to_string(),
@@ -4004,8 +4173,10 @@ mod tests {
                         passphrase: None,
                     },
                     jump_host: None,
+                    outbound_proxy: None,
                 })),
             }),
+            outbound_proxy: None,
             startup_directory: Some("/var/www/prod".to_string()),
             startup_command: Some("docker compose ps".to_string()),
             start_in_files: false,
@@ -4090,6 +4261,9 @@ mod tests {
     #[test]
     fn openssh_certificate_profiles_and_sessions_round_trip_without_downgrade() {
         let draft = DraftProfile {
+            outbound_proxy_kind: OutboundProxyKind::Direct,
+            outbound_proxy_host: String::new(),
+            outbound_proxy_port: String::new(),
             label: "certificate host".to_string(),
             host: "cert.example.com".to_string(),
             username: "deploy".to_string(),
@@ -4140,6 +4314,9 @@ mod tests {
     #[test]
     fn password_profile_discards_stale_certificate_fields() {
         let draft = DraftProfile {
+            outbound_proxy_kind: OutboundProxyKind::Direct,
+            outbound_proxy_host: String::new(),
+            outbound_proxy_port: String::new(),
             host: "password.example.com".to_string(),
             username: "deploy".to_string(),
             auth_mode: AuthMode::Password,
@@ -4288,6 +4465,7 @@ mod tests {
                 socket_path: Some("/tmp/test-agent.sock".to_string()),
             }),
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
@@ -4326,6 +4504,7 @@ mod tests {
                 passphrase: None,
             }),
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: Some("/srv/app".to_string()),
             startup_command: Some("uptime".to_string()),
             start_in_files: false,
@@ -4398,6 +4577,7 @@ mod tests {
                     credential_id: "profile:prod".to_string(),
                 }),
                 jump_host: None,
+                outbound_proxy: None,
                 startup_directory: None,
                 startup_command: None,
                 start_in_files: false,
@@ -4438,6 +4618,7 @@ mod tests {
                     credential_id: "profile:real-app-docker-e2e".to_string(),
                 }),
                 jump_host: None,
+                outbound_proxy: None,
                 startup_directory: None,
                 startup_command: None,
                 start_in_files: false,
@@ -4825,6 +5006,7 @@ mod tests {
             username: "jacob".to_string(),
             auth: None,
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
@@ -4956,6 +5138,9 @@ mod tests {
     #[test]
     fn draft_profile_keeps_identity_reference_for_private_key_hosts() {
         let draft = DraftProfile {
+            outbound_proxy_kind: OutboundProxyKind::Direct,
+            outbound_proxy_host: String::new(),
+            outbound_proxy_port: String::new(),
             label: "prod".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             favorite: true,
@@ -5016,6 +5201,9 @@ mod tests {
     #[test]
     fn draft_profile_tags_are_deduplicated_case_insensitively() {
         let draft = DraftProfile {
+            outbound_proxy_kind: OutboundProxyKind::Direct,
+            outbound_proxy_host: String::new(),
+            outbound_proxy_port: String::new(),
             label: "ops".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             favorite: false,
@@ -5059,6 +5247,9 @@ mod tests {
         let mut state = SavedState::default();
         state.upsert_profile(
             DraftProfile {
+                outbound_proxy_kind: OutboundProxyKind::Direct,
+                outbound_proxy_host: String::new(),
+                outbound_proxy_port: String::new(),
                 label: "zeta".to_string(),
                 vault_id: Some(DEFAULT_VAULT_ID.to_string()),
                 favorite: false,
@@ -5097,6 +5288,9 @@ mod tests {
         );
         state.upsert_profile(
             DraftProfile {
+                outbound_proxy_kind: OutboundProxyKind::Direct,
+                outbound_proxy_host: String::new(),
+                outbound_proxy_port: String::new(),
                 label: "alpha".to_string(),
                 vault_id: Some(DEFAULT_VAULT_ID.to_string()),
                 favorite: true,
@@ -5185,6 +5379,9 @@ mod tests {
     #[test]
     fn draft_profile_parses_local_forward() {
         let draft = DraftProfile {
+            outbound_proxy_kind: OutboundProxyKind::Direct,
+            outbound_proxy_host: String::new(),
+            outbound_proxy_port: String::new(),
             label: "db".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             favorite: false,
@@ -5232,6 +5429,9 @@ mod tests {
     #[test]
     fn draft_profile_parses_dynamic_forward() {
         let draft = DraftProfile {
+            outbound_proxy_kind: OutboundProxyKind::Direct,
+            outbound_proxy_host: String::new(),
+            outbound_proxy_port: String::new(),
             label: "proxy".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             favorite: false,
@@ -5279,6 +5479,9 @@ mod tests {
     #[test]
     fn draft_profile_parses_remote_forward() {
         let draft = DraftProfile {
+            outbound_proxy_kind: OutboundProxyKind::Direct,
+            outbound_proxy_host: String::new(),
+            outbound_proxy_port: String::new(),
             label: "reverse-proxy".to_string(),
             vault_id: Some(DEFAULT_VAULT_ID.to_string()),
             favorite: false,
@@ -5341,6 +5544,7 @@ mod tests {
             identity_agent: None,
             identity_id: None,
             jump_host_id: None,
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
@@ -5497,6 +5701,7 @@ mod tests {
             username: "deploy".to_string(),
             auth: None,
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: Some("/srv/app".to_string()),
             startup_command: Some("npm run status".to_string()),
             start_in_files: false,

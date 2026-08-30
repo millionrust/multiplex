@@ -948,6 +948,7 @@ fn flush_ssh_config_block(
                     .proxy_jump
                     .as_ref()
                     .map(|alias| imported_host_id(alias)),
+                outbound_proxy: None,
                 startup_directory: None,
                 startup_command: None,
                 start_in_files: false,
@@ -1500,6 +1501,7 @@ Host app-prod
             identity_agent: None,
             identity_id: None,
             jump_host_id: None,
+            outbound_proxy: None,
             startup_directory: Some("/srv/prod".to_string()),
             startup_command: Some("sudo systemctl status app".to_string()),
             start_in_files: true,
@@ -1611,6 +1613,7 @@ Host app-prod
             identity_agent: None,
             identity_id: None,
             jump_host_id: None,
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
@@ -1736,6 +1739,7 @@ Host app-prod
             identity_agent: None,
             identity_id: Some("identity-prod".to_string()),
             jump_host_id: None,
+            outbound_proxy: None,
             startup_directory: Some("/srv/app".to_string()),
             startup_command: Some("uptime".to_string()),
             start_in_files: false,

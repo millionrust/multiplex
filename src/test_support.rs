@@ -1,12 +1,13 @@
 use std::collections::VecDeque;
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 #[cfg(unix)]
 use std::process::{Child, Stdio};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::storage::set_test_app_dir_override;
@@ -15,6 +16,162 @@ const TEST_SSH_IMAGE: &str = "termirust-e2e-sshd:local";
 const TEST_SSH_USER: &str = "termirust";
 const TEST_SSH_PASSWORD: &str = "termirust-pass";
 pub const TEST_POLL_INTERVAL: Duration = Duration::from_millis(20);
+
+#[derive(Clone, Copy, Debug)]
+pub enum TestProxyProtocol {
+    Socks5,
+    HttpConnect,
+}
+
+pub struct TestTcpProxy {
+    pub port: u16,
+    accepted: Arc<AtomicUsize>,
+    stop: Arc<AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl TestTcpProxy {
+    pub fn start(protocol: TestProxyProtocol, target: SocketAddr) -> Result<Self, String> {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .map_err(|error| format!("unable to bind test proxy: {error}"))?;
+        let port = listener
+            .local_addr()
+            .map_err(|error| error.to_string())?
+            .port();
+        listener
+            .set_nonblocking(true)
+            .map_err(|error| format!("unable to configure test proxy: {error}"))?;
+        let stop = Arc::new(AtomicBool::new(false));
+        let accepted = Arc::new(AtomicUsize::new(0));
+        let thread_stop = stop.clone();
+        let thread_accepted = accepted.clone();
+        let thread = std::thread::spawn(move || {
+            while !thread_stop.load(Ordering::SeqCst) {
+                match listener.accept() {
+                    Ok((client, _)) => {
+                        thread_accepted.fetch_add(1, Ordering::SeqCst);
+                        std::thread::spawn(move || {
+                            if let Err(error) = serve_proxy_connection(client, protocol, target) {
+                                eprintln!("test proxy connection failed: {error}");
+                            }
+                        });
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(TEST_POLL_INTERVAL);
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+        Ok(Self {
+            port,
+            accepted,
+            stop,
+            thread: Some(thread),
+        })
+    }
+
+    pub fn accepted_connections(&self) -> usize {
+        self.accepted.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for TestTcpProxy {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        let _ = TcpStream::connect(("127.0.0.1", self.port));
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+fn serve_proxy_connection(
+    mut client: TcpStream,
+    protocol: TestProxyProtocol,
+    target: SocketAddr,
+) -> Result<(), String> {
+    client
+        .set_nonblocking(false)
+        .map_err(|error| error.to_string())?;
+    client
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .map_err(|error| error.to_string())?;
+    match protocol {
+        TestProxyProtocol::Socks5 => {
+            let mut greeting = [0_u8; 3];
+            client
+                .read_exact(&mut greeting)
+                .map_err(|error| error.to_string())?;
+            if greeting != [5, 1, 0] {
+                return Err("unexpected SOCKS5 greeting".to_string());
+            }
+            client
+                .write_all(&[5, 0])
+                .map_err(|error| error.to_string())?;
+            let mut prefix = [0_u8; 4];
+            client
+                .read_exact(&mut prefix)
+                .map_err(|error| error.to_string())?;
+            if prefix[..3] != [5, 1, 0] {
+                return Err("unexpected SOCKS5 CONNECT request".to_string());
+            }
+            let address_len = match prefix[3] {
+                1 => 4,
+                4 => 16,
+                3 => {
+                    let mut len = [0_u8; 1];
+                    client
+                        .read_exact(&mut len)
+                        .map_err(|error| error.to_string())?;
+                    usize::from(len[0])
+                }
+                _ => return Err("unexpected SOCKS5 address type".to_string()),
+            };
+            let mut address_and_port = vec![0_u8; address_len + 2];
+            client
+                .read_exact(&mut address_and_port)
+                .map_err(|error| error.to_string())?;
+            client
+                .write_all(&[5, 0, 0, 1, 127, 0, 0, 1, 0, 0])
+                .map_err(|error| error.to_string())?;
+        }
+        TestProxyProtocol::HttpConnect => {
+            let mut request = Vec::new();
+            let mut byte = [0_u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                if request.len() >= 16 * 1024 {
+                    return Err("test HTTP CONNECT request too large".to_string());
+                }
+                client
+                    .read_exact(&mut byte)
+                    .map_err(|error| error.to_string())?;
+                request.push(byte[0]);
+            }
+            if !request.starts_with(b"CONNECT ") {
+                return Err("unexpected HTTP CONNECT request".to_string());
+            }
+            client
+                .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    let server = TcpStream::connect(target).map_err(|error| error.to_string())?;
+    client
+        .set_read_timeout(None)
+        .map_err(|error| error.to_string())?;
+    relay_tcp(client, server)
+}
+
+fn relay_tcp(mut left: TcpStream, mut right: TcpStream) -> Result<(), String> {
+    let mut left_reader = left.try_clone().map_err(|error| error.to_string())?;
+    let mut right_writer = right.try_clone().map_err(|error| error.to_string())?;
+    let left_to_right =
+        std::thread::spawn(move || std::io::copy(&mut left_reader, &mut right_writer));
+    let _ = std::io::copy(&mut right, &mut left);
+    let _ = left_to_right.join();
+    Ok(())
+}
 
 fn test_mutex() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();

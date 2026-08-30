@@ -811,6 +811,7 @@ mod tests {
                 password: server.password().to_string(),
             }),
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: None,
             start_in_files: false,

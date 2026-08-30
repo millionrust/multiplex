@@ -2748,6 +2748,7 @@ impl TermiRustApp {
             username: profile.username.clone(),
             auth: Some(auth),
             jump_host,
+            outbound_proxy: profile.outbound_proxy.clone(),
             startup_directory: profile.startup_directory.clone(),
             startup_command: profile.startup_command.clone(),
             start_in_files: false,

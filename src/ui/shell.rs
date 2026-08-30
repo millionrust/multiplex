@@ -205,6 +205,7 @@ mod tests {
                 passphrase: None,
             }),
             jump_host: None,
+            outbound_proxy: None,
             startup_directory: None,
             startup_command: None,
             start_in_files: false,
