@@ -2,8 +2,8 @@ use std::io::Write as _;
 
 use termirust_cli::{
     Cancellation, CliCommand, CliPaths, ControllerSshAction, LocalCommandService,
-    SystemSshControllerExecutor, failure_output, parse_args, read_removal_confirmation, run_parsed,
-    write_output,
+    SystemSshControllerExecutor, failure_output, parse_args, read_removal_confirmation,
+    read_session_input, run_parsed, write_output,
 };
 
 fn main() {
@@ -64,6 +64,23 @@ fn main() {
             .clone()
             .with_removal_confirmation(confirmation)
         {
+            Ok(command) => command,
+            Err(error) => exit_with_output(failure_output(error, invocation.json, width)),
+        };
+    }
+    let reads_session_input = matches!(
+        &invocation.command,
+        CliCommand::SessionInput {
+            input_stdin: true,
+            ..
+        }
+    );
+    if reads_session_input {
+        let input = match read_session_input(&mut std::io::stdin()) {
+            Ok(input) => input,
+            Err(error) => exit_with_output(failure_output(error, invocation.json, width)),
+        };
+        invocation.command = match invocation.command.clone().with_session_input(input) {
             Ok(command) => command,
             Err(error) => exit_with_output(failure_output(error, invocation.json, width)),
         };

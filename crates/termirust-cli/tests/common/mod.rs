@@ -8,13 +8,15 @@ use termirust_cli::{
     HostLauncher, LocalCommandService,
 };
 use termirust_domain::{
-    ActivityAggregate, AddProject, CommandId, ExecutableSpec, HostInstanceId, HostedSession,
-    HostedSessionId, HostedSessionState, LaunchPreset, OsStringValue, OutputSequence,
-    PermissionPolicy, PositionKey, PresetDraft, PresetId, PresetOrigin, PresetRisk, ProjectId,
-    Revision, SessionTitle, TitleSource, WorkingDirectoryRule,
+    ActivityAggregate, AddProject, CommandId, ExecutableSpec, HostInstanceId, HostLifecycle,
+    HostedSession, HostedSessionId, HostedSessionState, LaunchPreset, OsStringValue,
+    OutputSequence, PermissionPolicy, PositionKey, PresetDraft, PresetId, PresetOrigin, PresetRisk,
+    ProjectId, Revision, SessionTitle, TitleSource, WorkingDirectoryRule,
 };
 use termirust_session_host::LaunchDescriptor;
-use termirust_store::{PresetRepository, ProjectRepository, SessionRepository};
+use termirust_store::{
+    HostLease, HostMetadata, PresetRepository, ProjectRepository, SessionRepository,
+};
 use uuid::Uuid;
 
 pub const PROJECT_ID: ProjectId = ProjectId::from_uuid(Uuid::from_u128(1));
@@ -124,6 +126,31 @@ pub fn insert_session(
         .unwrap()
 }
 
+pub fn write_ready_host_metadata(seed: &SeededStore, host_id: HostInstanceId) -> HostLease {
+    let lease = HostLease::acquire(
+        seed.config_root
+            .join("durable-sessions")
+            .join(SESSION_ID.to_string()),
+        host_id,
+    )
+    .unwrap();
+    lease
+        .write_metadata(&HostMetadata {
+            format_version: HostMetadata::FORMAT_VERSION,
+            session_id: SESSION_ID,
+            host_instance_id: host_id,
+            process_token: None,
+            runtime_recognition: None,
+            activity: Default::default(),
+            lifecycle: HostLifecycle::Ready,
+            endpoint_name: "fixture.sock".into(),
+            heartbeat_monotonic_nanos: 1,
+            durability_watermark: None,
+        })
+        .unwrap();
+    lease
+}
+
 #[derive(Default)]
 pub struct FakeLauncherState {
     pub calls: usize,
@@ -161,8 +188,11 @@ impl HostLauncher for FakeLauncher {
 #[derive(Default)]
 pub struct FakeControllerState {
     pub calls: usize,
+    pub input_calls: usize,
+    pub inputs: Vec<Vec<u8>>,
     pub expected_hosts: Vec<Option<HostInstanceId>>,
     pub result: Option<Result<(), CliError>>,
+    pub input_result: Option<Result<bool, CliError>>,
 }
 
 pub struct FakeController {
@@ -170,6 +200,22 @@ pub struct FakeController {
 }
 
 impl HostController for FakeController {
+    fn input(
+        &self,
+        _runtime_root: &Path,
+        _session_id: HostedSessionId,
+        expected_host_instance_id: HostInstanceId,
+        _command_id: CommandId,
+        bytes: Vec<u8>,
+        _cancellation: &Cancellation,
+    ) -> Result<bool, CliError> {
+        let mut state = self.state.lock().unwrap();
+        state.input_calls += 1;
+        state.inputs.push(bytes);
+        state.expected_hosts.push(Some(expected_host_instance_id));
+        state.input_result.clone().unwrap_or(Ok(true))
+    }
+
     fn stop(
         &self,
         _runtime_root: &Path,

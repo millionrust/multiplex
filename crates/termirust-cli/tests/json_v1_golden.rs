@@ -4,7 +4,10 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use common::*;
-use termirust_cli::{Cancellation, LocalCommandService, run};
+use termirust_cli::{
+    Cancellation, CliData, LocalCommandService, RenderOptions, SessionInputData, render_success,
+    run,
+};
 
 fn json(
     service: &mut LocalCommandService,
@@ -99,6 +102,23 @@ fn json_v1_golden() {
             &["session", "restore", &SESSION_ID.to_string()],
             &cancellation,
         ),
+    );
+    let input = render_success(
+        &CliData::Input(SessionInputData {
+            session_id: SESSION_ID.to_string(),
+            accepted_bytes: 13,
+            applied: true,
+        }),
+        &[],
+        RenderOptions {
+            json: true,
+            terminal_width: 80,
+        },
+    )
+    .unwrap();
+    actual.insert(
+        "session_input".into(),
+        serde_json::from_slice(&input).unwrap(),
     );
     actual.insert(
         "session_launch".into(),

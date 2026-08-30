@@ -198,6 +198,7 @@ fn failed_stop_never_commits_the_following_archive() {
             "fixture stop timeout",
             "inspect the Session",
         ))),
+        ..FakeControllerState::default()
     }));
     let service = service(
         &seed,

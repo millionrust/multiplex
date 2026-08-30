@@ -17,6 +17,7 @@ pub const MAX_ARG_BYTES: usize = 4 * 1024;
 pub const MAX_TOTAL_ARG_BYTES: usize = 64 * 1024;
 pub const DEFAULT_SESSION_WAIT_TIMEOUT_MS: u64 = 30_000;
 pub const MAX_SESSION_WAIT_TIMEOUT_MS: u64 = 300_000;
+pub const MAX_SESSION_INPUT_BYTES: usize = 64 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Invocation {
@@ -40,6 +41,11 @@ pub enum CliCommand {
         session_id: HostedSessionId,
         condition: SessionWaitCondition,
         timeout_ms: u64,
+    },
+    SessionInput {
+        session_id: HostedSessionId,
+        input_stdin: bool,
+        input: Option<SessionInput>,
     },
     SessionLaunch {
         project_id: ProjectId,
@@ -77,6 +83,22 @@ pub enum SessionWaitCondition {
 }
 
 impl CliCommand {
+    pub fn with_session_input(mut self, input: SessionInput) -> Result<Self, CliError> {
+        let Self::SessionInput {
+            input_stdin,
+            input: current,
+            ..
+        } = &mut self
+        else {
+            return Err(usage("terminal input is valid only for session input"));
+        };
+        if !*input_stdin || current.is_some() {
+            return Err(usage("session input from stdin was not requested"));
+        }
+        *current = Some(input);
+        Ok(self)
+    }
+
     pub fn with_removal_confirmation(
         mut self,
         confirmation: RemovalConfirmation,
@@ -96,6 +118,47 @@ impl CliCommand {
         }
         *current = Some(confirmation);
         Ok(self)
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct SessionInput(Vec<u8>);
+
+impl SessionInput {
+    pub fn new(bytes: Vec<u8>) -> Result<Self, CliError> {
+        if bytes.is_empty() {
+            return Err(CliError::new(
+                ErrorCode::Validation,
+                "session input from stdin is empty",
+                "Pipe between 1 and 65536 bytes to stdin.",
+            ));
+        }
+        if bytes.len() > MAX_SESSION_INPUT_BYTES {
+            return Err(CliError::new(
+                ErrorCode::ResourceLimit,
+                "session input from stdin exceeds 65536 bytes",
+                "Send a smaller payload and wait for acknowledgement before sending more.",
+            ));
+        }
+        Ok(Self(bytes))
+    }
+
+    pub fn byte_len(&self) -> u64 {
+        self.0.len() as u64
+    }
+
+    pub fn into_bytes(self) -> Vec<u8> {
+        self.0
+    }
+}
+
+impl fmt::Debug for SessionInput {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SessionInput")
+            .field("bytes", &"<redacted>")
+            .field("length", &self.0.len())
+            .finish()
     }
 }
 
@@ -244,6 +307,17 @@ pub fn parse_args(arguments: Vec<String>) -> Result<Invocation, CliError> {
                     .map(parse_wait_timeout)
                     .transpose()?
                     .unwrap_or(DEFAULT_SESSION_WAIT_TIMEOUT_MS),
+            }
+        }
+        [scope, action, session, rest @ ..] if scope == "session" && action == "input" => {
+            let options = parse_options(rest, &[], &["--input-stdin"])?;
+            if !options.flag("--input-stdin") {
+                return Err(usage("session input requires --input-stdin"));
+            }
+            CliCommand::SessionInput {
+                session_id: parse_id(session, "session")?,
+                input_stdin: true,
+                input: None,
             }
         }
         [scope, action, rest @ ..] if scope == "session" && action == "launch" => {
@@ -826,6 +900,38 @@ mod tests {
                 "--timeout-ms",
                 "300001",
             ],
+        ] {
+            assert_eq!(
+                parse_args(invalid.into_iter().map(str::to_string).collect())
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Usage
+            );
+        }
+    }
+
+    #[test]
+    fn session_input_parser_requires_explicit_stdin_and_carries_no_payload() {
+        let id = HostedSessionId::new().to_string();
+        let parsed = parse_args(
+            ["session", "input", &id, "--input-stdin"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        )
+        .unwrap();
+        assert!(matches!(
+            parsed.command,
+            CliCommand::SessionInput {
+                input_stdin: true,
+                input: None,
+                ..
+            }
+        ));
+        for invalid in [
+            vec!["session", "input", &id],
+            vec!["session", "input", &id, "--input-stdin", "--input-stdin"],
+            vec!["session", "input", &id, "secret-on-argv"],
         ] {
             assert_eq!(
                 parse_args(invalid.into_iter().map(str::to_string).collect())

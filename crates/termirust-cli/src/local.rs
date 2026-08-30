@@ -29,8 +29,9 @@ use crate::{
     CLI_JSON_SCHEMA_VERSION, Cancellation, CliCommand, CliData, CliError, CommandService,
     ControllerSshCommand, ErrorCode, MAX_RESPONSE_RECORDS, MAX_SESSION_WAIT_TIMEOUT_MS,
     PresetListData, PresetView, ProjectListData, ProjectView, RemovalConfirmationKind, SessionData,
-    SessionListData, SessionListFilter, SessionMutationData, SessionRemovalPreviewData,
-    SessionView, SessionWaitCondition, SessionWaitConditionData, SessionWaitData, StatusData,
+    SessionInput, SessionInputData, SessionListData, SessionListFilter, SessionMutationData,
+    SessionRemovalPreviewData, SessionView, SessionWaitCondition, SessionWaitConditionData,
+    SessionWaitData, StatusData,
 };
 
 const STORE_DIR_NAME: &str = "agent-workspace";
@@ -154,6 +155,16 @@ pub trait HostLauncher: Send + Sync {
 }
 
 pub trait HostController: Send + Sync {
+    fn input(
+        &self,
+        runtime_root: &Path,
+        session_id: HostedSessionId,
+        expected_host_instance_id: HostInstanceId,
+        command_id: CommandId,
+        bytes: Vec<u8>,
+        cancellation: &Cancellation,
+    ) -> Result<bool, CliError>;
+
     fn stop(
         &self,
         runtime_root: &Path,
@@ -915,6 +926,66 @@ impl LocalCommandService {
         }
     }
 
+    fn session_input(
+        &self,
+        session_id: HostedSessionId,
+        input_stdin: bool,
+        input: Option<SessionInput>,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        if !input_stdin {
+            return Err(validation(
+                "session input requires explicit stdin",
+                "Rerun with --input-stdin and pipe a bounded payload to stdin.",
+            ));
+        }
+        let input = input.ok_or_else(|| {
+            validation(
+                "session input payload is unavailable",
+                "Pipe a bounded payload to stdin through the packaged CLI.",
+            )
+        })?;
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let snapshot = self.sessions()?.load().map_err(map_store)?;
+        let session = require_session(&snapshot.sessions, session_id)?;
+        if session.archived_at.is_some()
+            || !matches!(
+                session.lifecycle,
+                HostedSessionState::Live | HostedSessionState::RecordingPaused
+            )
+        {
+            return Err(validation(
+                "session is not available for terminal input",
+                "Wait for the durable Session to become live and ensure it is not archived.",
+            ));
+        }
+        let metadata = read_host_metadata(&self.paths.session_dir(session_id))
+            .map_err(|_| unavailable("durable Host ownership metadata is unavailable or unsafe"))?;
+        if metadata.session_id != session_id
+            || metadata.lifecycle != termirust_domain::HostLifecycle::Ready
+        {
+            return Err(unavailable(
+                "the durable Host is not ready for terminal input",
+            ));
+        }
+        let accepted_bytes = input.byte_len();
+        let applied = self.controller.input(
+            &self.paths.runtime_root(session_id),
+            session_id,
+            metadata.host_instance_id,
+            self.ids.command_id(),
+            input.into_bytes(),
+            cancellation,
+        )?;
+        Ok(CliData::Input(SessionInputData {
+            session_id: session_id.to_string(),
+            accepted_bytes,
+            applied,
+        }))
+    }
+
     fn session_archive(
         &self,
         session_id: HostedSessionId,
@@ -1368,6 +1439,11 @@ impl CommandService for LocalCommandService {
                 condition,
                 timeout_ms,
             } => self.session_wait(session_id, condition, timeout_ms, cancellation),
+            CliCommand::SessionInput {
+                session_id,
+                input_stdin,
+                input,
+            } => self.session_input(session_id, input_stdin, input, cancellation),
             CliCommand::SessionLaunch {
                 project_id,
                 preset_id,
@@ -1534,6 +1610,87 @@ impl HostLauncher for ProcessHostLauncher {
 struct LocalHostController;
 
 impl HostController for LocalHostController {
+    fn input(
+        &self,
+        runtime_root: &Path,
+        session_id: HostedSessionId,
+        expected_host_instance_id: HostInstanceId,
+        command_id: CommandId,
+        bytes: Vec<u8>,
+        cancellation: &Cancellation,
+    ) -> Result<bool, CliError> {
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| operation("unable to initialize local Host control"))?;
+        let async_cancel = CancellationToken::new();
+        let done = Arc::new(AtomicBool::new(false));
+        let monitor_done = done.clone();
+        let monitor_cancel = async_cancel.clone();
+        let source = cancellation.clone();
+        let monitor = std::thread::spawn(move || {
+            while !monitor_done.load(Ordering::Acquire) {
+                if source.is_cancelled() {
+                    monitor_cancel.cancel();
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
+        let endpoint = LocalEndpoint::new(runtime_root, session_id);
+        let mut nonce = [0_u8; 32];
+        rand::rngs::OsRng.fill_bytes(&mut nonce);
+        let result = runtime.block_on(async {
+            let mut client = HostClient::connect(
+                endpoint,
+                ConnectOptions::local(session_id, nonce),
+                &async_cancel,
+            )
+            .await
+            .map_err(map_client)?;
+            if client.host_instance_id() != Some(expected_host_instance_id) {
+                client.disconnect();
+                return Err(CliError::new(
+                    ErrorCode::PermissionDenied,
+                    "durable Host identity changed before input",
+                    "Inspect the Session and retry only after its current Host is confirmed.",
+                ));
+            }
+            let state = client.get_state(&async_cancel).await.map_err(map_client)?;
+            if wire::Lifecycle::try_from(state.lifecycle) != Ok(wire::Lifecycle::Ready) {
+                client.disconnect();
+                return Err(validation(
+                    "durable Host is not ready for terminal input",
+                    "Inspect the Session state and wait for the current lifecycle operation.",
+                ));
+            }
+            if !state.has_writer_lease {
+                client.disconnect();
+                return Err(CliError::new(
+                    ErrorCode::InteractionRequired,
+                    "another Controller holds the Session writer lease",
+                    "Detach the current writer or explicitly release its control, then retry.",
+                ));
+            }
+            if async_cancel.is_cancelled() {
+                client.disconnect();
+                return Err(cancelled());
+            }
+            let applied = client
+                .input(command_id, bytes, &async_cancel)
+                .await
+                .map_err(map_input_after_dispatch)?;
+            client.disconnect();
+            Ok(applied)
+        });
+        done.store(true, Ordering::Release);
+        let _ = monitor.join();
+        result
+    }
+
     fn stop(
         &self,
         runtime_root: &Path,
@@ -1831,6 +1988,23 @@ fn map_client(error: ClientError) -> CliError {
     }
 }
 
+fn map_input_after_dispatch(error: ClientError) -> CliError {
+    match error.code {
+        ClientErrorCode::PermissionDenied
+        | ClientErrorCode::ConflictingDuplicate
+        | ClientErrorCode::ResourceLimit
+        | ClientErrorCode::FrameTooLarge
+        | ClientErrorCode::ProtocolIncompatible
+        | ClientErrorCode::WrongSession
+        | ClientErrorCode::InvalidIdentity => map_client(error),
+        _ => CliError::new(
+            ErrorCode::UnknownCompletion,
+            "session input outcome is unknown",
+            "Inspect the Session output before deciding whether to send new input. Do not retry automatically.",
+        ),
+    }
+}
+
 fn map_process(error: std::io::Error) -> CliError {
     if error.kind() == std::io::ErrorKind::PermissionDenied {
         CliError::new(
@@ -1993,6 +2167,24 @@ mod tests {
         assert_eq!(
             bounded_records(MAX_RESPONSE_RECORDS + 1).unwrap_err().code,
             ErrorCode::ResourceLimit
+        );
+    }
+
+    #[test]
+    fn input_transport_failure_after_dispatch_is_never_presented_as_safe_to_retry() {
+        for code in [
+            ClientErrorCode::Io,
+            ClientErrorCode::EndOfStream,
+            ClientErrorCode::Cancelled,
+            ClientErrorCode::MalformedFrame,
+        ] {
+            let error = map_input_after_dispatch(ClientError::new(code));
+            assert_eq!(error.code, ErrorCode::UnknownCompletion);
+            assert!(error.hint.contains("Do not retry automatically"));
+        }
+        assert_eq!(
+            map_input_after_dispatch(ClientError::new(ClientErrorCode::PermissionDenied)).code,
+            ErrorCode::PermissionDenied
         );
     }
 }
