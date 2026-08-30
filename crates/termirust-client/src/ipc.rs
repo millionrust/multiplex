@@ -24,6 +24,18 @@ impl LocalEndpoint {
         }
     }
 
+    /// Resolves the user-only runtime endpoint used by a durable session Host.
+    ///
+    /// Unix sockets live below the platform temporary directory so their paths
+    /// remain short enough for the operating system. Other platforms keep the
+    /// runtime beside the configured application data.
+    pub fn for_config_root(config_root: &Path, session_id: HostedSessionId) -> Self {
+        Self::new(
+            durable_runtime_parent(config_root).join(session_id.to_string()),
+            session_id,
+        )
+    }
+
     pub fn runtime_root(&self) -> &Path {
         &self.runtime_root
     }
@@ -31,6 +43,23 @@ impl LocalEndpoint {
     pub fn socket_path(&self) -> &Path {
         &self.socket_path
     }
+}
+
+#[cfg(target_os = "macos")]
+fn durable_runtime_parent(_: &Path) -> PathBuf {
+    PathBuf::from(format!("/private/tmp/termirust-{}", unsafe {
+        libc::geteuid()
+    }))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn durable_runtime_parent(_: &Path) -> PathBuf {
+    PathBuf::from(format!("/tmp/termirust-{}", unsafe { libc::geteuid() }))
+}
+
+#[cfg(not(unix))]
+fn durable_runtime_parent(config_root: &Path) -> PathBuf {
+    config_root.join("session-host-runtime")
 }
 
 impl fmt::Debug for LocalEndpoint {
@@ -43,6 +72,24 @@ impl fmt::Debug for LocalEndpoint {
                 &self.socket_path.file_name().unwrap_or_default(),
             )
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod endpoint_tests {
+    use super::*;
+
+    #[test]
+    fn config_root_resolution_is_opaque_and_debug_output_is_redacted() {
+        let session_id = HostedSessionId::new();
+        let endpoint = LocalEndpoint::for_config_root(Path::new("/sensitive/config"), session_id);
+        assert_eq!(
+            endpoint.socket_path().parent(),
+            Some(endpoint.runtime_root())
+        );
+        let debug = format!("{endpoint:?}");
+        assert!(debug.contains("[REDACTED]"));
+        assert!(!debug.contains("sensitive"));
     }
 }
 

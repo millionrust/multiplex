@@ -2,6 +2,7 @@
 
 use std::io::{Read as _, Write as _};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -64,8 +65,16 @@ fn run_in_pty(arguments: &[&str], environment: &[(&str, &str)], send: Option<&[u
 }
 
 fn spawn_reader(
+    reader: Box<dyn std::io::Read + Send>,
+    writer: Arc<Mutex<Box<dyn std::io::Write + Send>>>,
+) -> thread::JoinHandle<Vec<u8>> {
+    spawn_reader_with_ready(reader, writer, None)
+}
+
+fn spawn_reader_with_ready(
     mut reader: Box<dyn std::io::Read + Send>,
     writer: Arc<Mutex<Box<dyn std::io::Write + Send>>>,
+    ready: Option<Arc<AtomicBool>>,
 ) -> thread::JoinHandle<Vec<u8>> {
     thread::spawn(move || {
         let mut output = Vec::new();
@@ -75,6 +84,13 @@ fn spawn_reader(
                 Ok(0) => break,
                 Ok(count) => {
                     output.extend_from_slice(&chunk[..count]);
+                    if output
+                        .windows(b"\x1b[?1049h".len())
+                        .any(|window| window == b"\x1b[?1049h")
+                        && let Some(ready) = &ready
+                    {
+                        ready.store(true, Ordering::Release);
+                    }
                     if output.ends_with(b"\x1b[6n") {
                         let mut writer = writer.lock().unwrap();
                         writer.write_all(b"\x1b[1;1R").unwrap();
@@ -156,10 +172,22 @@ fn sigint_restores_terminal_and_exits_cleanly() {
     let mut child = pty.slave.spawn_command(command).unwrap();
     let pid = child.process_id().unwrap() as libc::pid_t;
     drop(pty.slave);
-    let reader_thread = spawn_reader(reader, Arc::clone(&writer));
-    thread::sleep(Duration::from_millis(200));
+    let ready = Arc::new(AtomicBool::new(false));
+    let reader_thread =
+        spawn_reader_with_ready(reader, Arc::clone(&writer), Some(Arc::clone(&ready)));
+    for _ in 0..100 {
+        if ready.load(Ordering::Acquire) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        ready.load(Ordering::Acquire),
+        "TUI did not initialize in time"
+    );
     assert_eq!(unsafe { libc::kill(pid, libc::SIGINT) }, 0);
-    assert!(wait_bounded(child.as_mut()).success());
+    let status = wait_bounded(child.as_mut());
+    assert!(status.success(), "SIGINT child status: {status:?}");
     let output = reader_thread.join().unwrap();
     assert_eq!(pty.master.get_termios().unwrap(), before);
     let output = String::from_utf8_lossy(&output);

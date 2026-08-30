@@ -6,6 +6,7 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
 use crate::localization::{TextId, TuiLocale, text};
 use crate::model::{FleetHealth, LoadState, PaneFocus, ProjectAvailability, ScopeId, TuiModel};
+use crate::{AttachedTerminal, InteractiveLease, TuiAttachState, TuiFocus};
 
 const MIN_WIDTH: u16 = 80;
 const MIN_HEIGHT: u16 = 20;
@@ -48,6 +49,159 @@ pub fn render(frame: &mut Frame<'_>, model: &TuiModel, options: RenderOptions) {
     render_status(frame, status, model, options);
     if model.help_visible() {
         render_help(frame, centered(area, 72, 9), options);
+    }
+}
+
+pub fn render_attached(
+    frame: &mut Frame<'_>,
+    attached: &AttachedTerminal,
+    notice: Option<&str>,
+    options: RenderOptions,
+) {
+    let area = frame.area();
+    if area.width < 20 || area.height < 8 {
+        render_attached_small(frame, area, options);
+        return;
+    }
+    let [header, terminal, status] = Layout::vertical([
+        Constraint::Length(2),
+        Constraint::Min(3),
+        Constraint::Length(3),
+    ])
+    .areas(area);
+    let lease = match attached.input().lease() {
+        InteractiveLease::Interactive => "Interactive",
+        InteractiveLease::ViewOnly => "View only",
+    };
+    let durability = if attached.recording_paused() {
+        "recording paused"
+    } else if attached.durable_sequence() < attached.watermark() {
+        "durability pending"
+    } else {
+        "durable"
+    };
+    let title = if options.recording_friendly {
+        "[session hidden]".to_string()
+    } else {
+        display_user(attached.title(), "session", options)
+    };
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(vec![
+                Span::styled(title, emphasis(options, true)),
+                Span::raw(format!(
+                    "  {}  {}  local Host  {lease}",
+                    attach_state_label(attached.state()),
+                    attached.lifecycle().label(),
+                )),
+            ]),
+            Line::from(Span::styled(
+                format!(
+                    "sequence {} / latest {} / durable {}  {durability}",
+                    attached.watermark(),
+                    attached.latest_sequence(),
+                    attached.durable_sequence(),
+                ),
+                muted(options),
+            )),
+        ]),
+        header,
+    );
+    if options.recording_friendly {
+        frame.render_widget(
+            Paragraph::new("Terminal output hidden in recording-friendly mode")
+                .alignment(Alignment::Center),
+            terminal,
+        );
+    } else {
+        attached
+            .terminal()
+            .render(frame, terminal, options.no_color);
+    }
+
+    let recovery = notice
+        .or(attached.diagnostic())
+        .unwrap_or(match attached.state() {
+            TuiAttachState::Attaching => "Connecting to the durable Host...",
+            TuiAttachState::Replaying => "Replaying retained output...",
+            TuiAttachState::LiveInteractive => "Input is sent directly to the current Host lease.",
+            TuiAttachState::LiveReadOnly => "Another client may own input. Press i to request it.",
+            TuiAttachState::Gap | TuiAttachState::Unavailable => {
+                "Press r to retry from the Host journal."
+            }
+            TuiAttachState::Exited => "Process exited. Retained output remains read-only.",
+            TuiAttachState::Detached => "Detached. The Host continues in the background.",
+        });
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(recovery),
+            Line::from(Span::styled(
+                "Ctrl+Space then Esc: detach  Ctrl+Space then Space: send NUL",
+                muted(options),
+            )),
+            Line::from(Span::styled(
+                format!(
+                    "replay: {} records / {} bytes  focus: {}",
+                    attached.replay_records(),
+                    attached.replay_bytes(),
+                    focus_label(attached.input().focus()),
+                ),
+                muted(options),
+            )),
+        ]),
+        status,
+    );
+
+    if attached.input().focus() == TuiFocus::Leader {
+        let overlay = centered(area, 52, 5);
+        frame.render_widget(Clear, overlay);
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from("Leader active"),
+                Line::from("Esc detach | Space send NUL | other key sends NUL + key"),
+            ])
+            .alignment(Alignment::Center)
+            .block(panel("Terminal command".into(), true, options)),
+            overlay,
+        );
+    } else if let Some(bytes) = attached.input().pending_paste() {
+        let overlay = centered(area, 58, 6);
+        frame.render_widget(Clear, overlay);
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from("Confirm terminal paste"),
+                Line::from(format!(
+                    "{} bytes will be sent to the active session.",
+                    bytes.len()
+                )),
+                Line::from("The paste contents are intentionally not previewed or logged."),
+                Line::from("Enter confirm | Esc cancel"),
+            ])
+            .alignment(Alignment::Center)
+            .block(panel("Paste guard".into(), true, options)),
+            overlay,
+        );
+    }
+}
+
+fn attach_state_label(state: TuiAttachState) -> &'static str {
+    match state {
+        TuiAttachState::Detached => "DETACHED",
+        TuiAttachState::Attaching => "ATTACHING",
+        TuiAttachState::Replaying => "REPLAYING",
+        TuiAttachState::LiveReadOnly => "LIVE READ-ONLY",
+        TuiAttachState::LiveInteractive => "LIVE",
+        TuiAttachState::Gap => "GAP",
+        TuiAttachState::Exited => "EXITED",
+        TuiAttachState::Unavailable => "UNAVAILABLE",
+    }
+}
+
+fn focus_label(focus: TuiFocus) -> &'static str {
+    match focus {
+        TuiFocus::Fleet => "confirmation",
+        TuiFocus::Terminal => "terminal",
+        TuiFocus::Leader => "leader",
     }
 }
 
@@ -250,8 +404,11 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, options: RenderOptions) {
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(text(options.locale, TextId::HelpKeys)),
-            Line::from("Left/Right collapse or expand Projects. Enter only changes selection."),
-            Line::from("This interface cannot attach, send input, launch, stop, archive or write."),
+            Line::from(
+                "Left/Right collapse or expand Projects. Enter attaches the selected Session.",
+            ),
+            Line::from("Terminal: Ctrl+Space then Esc detaches without stopping the Host."),
+            Line::from("This interface cannot launch, stop, archive or modify metadata."),
             Line::from("Use --inline, --no-color or --recording-friendly when needed."),
         ])
         .wrap(Wrap { trim: true })
@@ -275,6 +432,24 @@ fn render_small(frame: &mut Frame<'_>, area: Rect, options: RenderOptions) {
             Line::from(text(options.locale, TextId::SmallTerminal)),
             Line::from(format!("Current size: {}x{}", area.width, area.height)),
             Line::from("Press q to quit."),
+        ])
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: true }),
+        area,
+    );
+}
+
+fn render_attached_small(frame: &mut Frame<'_>, area: Rect, options: RenderOptions) {
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(Span::styled(
+                text(options.locale, TextId::AppTitle),
+                emphasis(options, true),
+            )),
+            Line::from(""),
+            Line::from("Terminal view needs at least 20 columns by 8 rows."),
+            Line::from(format!("Current size: {}x{}", area.width, area.height)),
+            Line::from("Ctrl+Space then Esc detaches without stopping the Host."),
         ])
         .alignment(Alignment::Center)
         .wrap(Wrap { trim: true }),
@@ -421,12 +596,17 @@ fn yes_no(value: bool) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use termirust_domain::{HostInstanceId, HostedSessionId, OutputSequence};
+
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
     use super::*;
     use crate::model::{
         FleetProject, FleetRevision, FleetSession, FleetSnapshot, ModelAction, ProjectAvailability,
+    };
+    use crate::{
+        AttachBatch, AttachEvent, AttachedTerminal, HostAttachState, HostLifecycle, Viewport,
     };
 
     fn ready_model() -> TuiModel {
@@ -461,6 +641,48 @@ mod tests {
             },
         });
         model
+    }
+
+    #[test]
+    fn attached_terminal_reflows_at_eighty_columns_without_exposing_control_bytes() {
+        let session_id = HostedSessionId::new();
+        let mut attached =
+            AttachedTerminal::new(1, session_id, "Build shell".into(), Viewport::new(80, 15));
+        attached.apply(AttachEvent::Batch {
+            generation: 1,
+            batch: AttachBatch {
+                host_instance_id: HostInstanceId::new(),
+                snapshot: None,
+                outputs: vec![termirust_client::SequencedOutput {
+                    sequence: OutputSequence::new(1),
+                    bytes: b"visible\x1b]0;hidden title\x07".to_vec(),
+                }],
+                state: HostAttachState {
+                    lifecycle: HostLifecycle::Ready,
+                    earliest_sequence: OutputSequence::new(1),
+                    latest_sequence: OutputSequence::new(1),
+                    durable_sequence: OutputSequence::new(1),
+                    has_writer_lease: true,
+                    recording_paused: false,
+                },
+            },
+        });
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render_attached(frame, &attached, None, RenderOptions::default()))
+            .unwrap();
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(rendered.contains("Build shell"));
+        assert!(rendered.contains("Interactive"));
+        assert!(rendered.contains("visible"));
+        assert!(!rendered.contains("hidden title"));
     }
 
     fn rendered(width: u16, height: u16, model: &TuiModel, options: RenderOptions) -> String {
@@ -527,6 +749,6 @@ mod tests {
             },
         );
         assert!(output.contains("Keyboard help"));
-        assert!(output.contains("cannot attach"));
+        assert!(output.contains("cannot launch"));
     }
 }

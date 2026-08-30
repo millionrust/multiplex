@@ -8577,11 +8577,18 @@ dependencies = [
  "dirs 6.0.0",
  "libc",
  "portable-pty",
+ "rand 0.8.6",
  "ratatui",
  "signal-hook",
  "tempfile",
+ "termirust-client",
  "termirust-domain",
+ "termirust-host-protocol",
+ "termirust-session-host",
  "termirust-store",
+ "tokio",
+ "tokio-util",
+ "vt100",
 ]
 
 [[package]]

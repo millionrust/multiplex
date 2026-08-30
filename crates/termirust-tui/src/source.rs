@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use termirust_client::LocalEndpoint;
+use termirust_domain::HostedSessionId;
 use termirust_domain::ProjectStatus;
 use termirust_store::{StoreError, StoreHealth, load_fleet_read_only};
 
@@ -32,6 +34,10 @@ impl FleetCancellation {
 
 pub trait FleetSource: Send + Sync {
     fn load(&self, cancellation: &FleetCancellation) -> Result<FleetSnapshot, FleetLoadError>;
+
+    fn local_endpoint(&self, _session_id: HostedSessionId) -> Option<LocalEndpoint> {
+        None
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -55,6 +61,7 @@ impl FleetLoadError {
 
 #[derive(Clone, Debug)]
 pub struct LocalFleetSource {
+    config_root: PathBuf,
     metadata_root: PathBuf,
 }
 
@@ -73,12 +80,26 @@ impl LocalFleetSource {
             },
             recovery_required: false,
         })?;
-        Ok(Self::new(config_root.join(STORE_DIR_NAME)))
+        Ok(Self::from_config_root(config_root))
     }
 
     pub fn new(metadata_root: impl Into<PathBuf>) -> Self {
+        let metadata_root = metadata_root.into();
+        let config_root = metadata_root
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| metadata_root.clone());
         Self {
-            metadata_root: metadata_root.into(),
+            config_root,
+            metadata_root,
+        }
+    }
+
+    pub fn from_config_root(config_root: impl Into<PathBuf>) -> Self {
+        let config_root = config_root.into();
+        Self {
+            metadata_root: config_root.join(STORE_DIR_NAME),
+            config_root,
         }
     }
 
@@ -185,6 +206,13 @@ impl FleetSource for LocalFleetSource {
             },
             skipped_records,
         })
+    }
+
+    fn local_endpoint(&self, session_id: HostedSessionId) -> Option<LocalEndpoint> {
+        Some(LocalEndpoint::for_config_root(
+            &self.config_root,
+            session_id,
+        ))
     }
 }
 

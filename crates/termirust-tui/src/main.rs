@@ -70,10 +70,11 @@ fn parse_options(arguments: impl Iterator<Item = String>) -> io::Result<ParseOut
 fn print_help() {
     println!("termirust-tui [--inline] [--no-color] [--recording-friendly] [--locale LOCALE]");
     println!();
-    println!("Read-only Project and Session fleet navigation.");
+    println!("Project and Session fleet navigation with one durable terminal attachment.");
     println!("Locales: en-US, en-XA, ar-XB");
-    println!("Keys: arrows/j/k, Left/Right, Tab/Shift+Tab, /, Esc, i, r, ?, q");
-    println!("This binary cannot attach, send input, launch, stop, archive, or modify metadata.");
+    println!("Fleet keys: arrows/j/k, Left/Right, Tab/Shift+Tab, Enter, /, Esc, i, r, ?, q");
+    println!("Terminal escape: Ctrl+Space then Esc. Ctrl+Space then Space sends NUL.");
+    println!("This binary cannot launch, stop, archive, or modify session metadata.");
 }
 
 #[cfg(test)]

@@ -3,9 +3,11 @@ use std::mem::ManuallyDrop;
 use std::panic;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, SyncSender};
+use std::sync::mpsc::{self, RecvTimeoutError, SyncSender, TrySendError};
 use std::thread;
+use std::time::{Duration, Instant};
 
+use rand::RngCore as _;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::cursor::{Hide, Show};
@@ -14,19 +16,81 @@ use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
-use ratatui::{TerminalOptions, Viewport};
+use ratatui::{TerminalOptions, Viewport as RatatuiViewport};
 #[cfg(unix)]
 use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGTERM};
 #[cfg(unix)]
 use signal_hook::iterator::Signals;
 
+use crate::attach::{
+    AttachCommand, AttachEvent, AttachEventSink, AttachWorker, AttachedTerminal, TuiAttachState,
+    Viewport, endpoint_for_source, spawn_attach_worker,
+};
+use crate::input::{InputDecision, InteractiveLease, TuiFocus};
 use crate::localization::TuiLocale;
 use crate::model::{ModelAction, ModelEffect, TuiDiagnostic, TuiModel};
-use crate::render::{RenderOptions, render};
+use crate::render::{RenderOptions, render, render_attached};
 use crate::source::{FleetCancellation, FleetLoadError, FleetSource};
 
 const EVENT_QUEUE_CAPACITY: usize = 64;
 const INLINE_HEIGHT: u16 = 20;
+const RESIZE_DEBOUNCE: Duration = Duration::from_millis(50);
+const EVENT_DELIVERY_TIMEOUT: Duration = Duration::from_secs(2);
+const RETRY_BASE: Duration = Duration::from_millis(250);
+const RETRY_CAP: Duration = Duration::from_secs(30);
+const RETRY_MAX_ELAPSED: Duration = Duration::from_secs(90);
+const RETRY_MAX_ATTEMPTS: u8 = 8;
+
+#[derive(Clone, Debug, Default)]
+struct AttachRetry {
+    attempts: u8,
+    started_at: Option<Instant>,
+    deadline: Option<Instant>,
+}
+
+impl AttachRetry {
+    fn schedule(&mut self, now: Instant, random: u64) -> Option<Duration> {
+        let started_at = *self.started_at.get_or_insert(now);
+        if self.attempts >= RETRY_MAX_ATTEMPTS
+            || now.saturating_duration_since(started_at) >= RETRY_MAX_ELAPSED
+        {
+            self.deadline = None;
+            return None;
+        }
+        let exponent = u32::from(self.attempts).min(7);
+        let cap = RETRY_BASE
+            .checked_mul(1_u32 << exponent)
+            .unwrap_or(RETRY_CAP)
+            .min(RETRY_CAP);
+        let remaining = RETRY_MAX_ELAPSED.saturating_sub(now.saturating_duration_since(started_at));
+        let cap = cap.min(remaining);
+        let cap_millis = u64::try_from(cap.as_millis()).unwrap_or(u64::MAX);
+        let delay = Duration::from_millis(random % cap_millis.saturating_add(1));
+        self.attempts = self.attempts.saturating_add(1);
+        self.deadline = Some(now + delay);
+        Some(delay)
+    }
+
+    fn due(&self, now: Instant) -> bool {
+        self.deadline.is_some_and(|deadline| deadline <= now)
+    }
+
+    fn take_deadline(&mut self) {
+        self.deadline = None;
+    }
+
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    fn notice(&self, delay: Duration) -> String {
+        format!(
+            "Reconnect attempt {} of {RETRY_MAX_ATTEMPTS} in {} ms. Press r to try now; Ctrl+Space then Esc cancels.",
+            self.attempts,
+            delay.as_millis()
+        )
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RunOptions {
@@ -54,6 +118,8 @@ enum AppEvent {
         generation: u64,
         result: Result<crate::FleetSnapshot, FleetLoadError>,
     },
+    Attach(AttachEvent),
+    Deadline,
     TerminalFailure,
 }
 
@@ -64,14 +130,14 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
             "termirust-tui requires an interactive terminal",
         ));
     }
+    let (sender, receiver) = mpsc::sync_channel(EVENT_QUEUE_CAPACITY);
+    spawn_signal_thread(sender.clone())?;
     let mut session = TerminalSession::enter(options.inline)?;
     if std::env::var_os("TERMIRUST_TUI_INJECT_PANIC_AFTER_INIT").is_some() {
         panic!("injected terminal restoration test");
     }
 
-    let (sender, receiver) = mpsc::sync_channel(EVENT_QUEUE_CAPACITY);
     spawn_input_thread(sender.clone())?;
-    spawn_signal_thread(sender.clone())?;
 
     let mut model = TuiModel::default();
     let mut refresh_cancellation = FleetCancellation::default();
@@ -86,22 +152,110 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
         recording_friendly: options.recording_friendly,
         locale: options.locale,
     };
+    let mut attached: Option<AttachedTerminal> = None;
+    let mut attach_worker: Option<AttachWorker> = None;
+    let mut attach_generation = 0_u64;
+    let mut terminal_notice: Option<String> = None;
+    let mut pending_resize: Option<(Viewport, Instant)> = None;
+    let mut attach_retry = AttachRetry::default();
 
     loop {
-        session
-            .terminal
-            .draw(|frame| render(frame, &model, render_options))?;
+        session.terminal.draw(|frame| {
+            if let Some(attached) = &attached {
+                render_attached(frame, attached, terminal_notice.as_deref(), render_options);
+            } else {
+                render(frame, &model, render_options);
+            }
+        })?;
         if std::env::var_os("TERMIRUST_TUI_EXIT_AFTER_FIRST_DRAW").is_some() {
             break;
         }
-        let app_event = receiver
-            .recv()
-            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "TUI event channel closed"))?;
+        let deadline = nearest_deadline(
+            attached.as_ref(),
+            pending_resize.as_ref(),
+            attach_retry.deadline,
+        );
+        let app_event = receive_event(&receiver, deadline)?;
+        let mut retry_attach = false;
+        let mut return_to_fleet = false;
         let effect = match app_event {
             AppEvent::Input(Event::Key(key)) if key.kind == KeyEventKind::Press => {
-                key_action(&model, key)
-                    .map(|action| model.reduce(action))
-                    .unwrap_or(ModelEffect::None)
+                if let Some(current) = attached.as_mut() {
+                    if current.input().pending_paste().is_none()
+                        && current.input().focus() == TuiFocus::Terminal
+                        && key.code == KeyCode::Char('i')
+                        && current.input().lease() == InteractiveLease::ViewOnly
+                        && matches!(
+                            current.state(),
+                            TuiAttachState::LiveReadOnly | TuiAttachState::Replaying
+                        )
+                    {
+                        if attach_worker
+                            .as_ref()
+                            .is_some_and(|worker| worker.try_send(AttachCommand::RequestLease))
+                        {
+                            terminal_notice = Some("Requesting the interactive lease...".into());
+                        } else {
+                            terminal_notice = Some("The attach worker is unavailable.".into());
+                        }
+                    } else if current.input().pending_paste().is_none()
+                        && current.input().focus() == TuiFocus::Terminal
+                        && key.code == KeyCode::Char('r')
+                        && matches!(
+                            current.state(),
+                            TuiAttachState::Gap | TuiAttachState::Unavailable
+                        )
+                    {
+                        attach_retry.take_deadline();
+                        retry_attach = true;
+                    } else {
+                        let decision = current.input_mut().handle_key(key, Instant::now());
+                        return_to_fleet = apply_input_decision(
+                            decision,
+                            attach_worker.as_ref(),
+                            &mut terminal_notice,
+                        );
+                    }
+                    ModelEffect::None
+                } else if key.code == KeyCode::Enter && model.focus() == crate::PaneFocus::Sessions
+                {
+                    if let Some(selected) = model.selected_session().cloned() {
+                        begin_attach(
+                            &source,
+                            &sender,
+                            selected,
+                            &mut attached,
+                            &mut attach_worker,
+                            &mut attach_generation,
+                            session.terminal.size()?.into(),
+                        )?;
+                    }
+                    terminal_notice = None;
+                    ModelEffect::None
+                } else {
+                    key_action(&model, key)
+                        .map(|action| model.reduce(action))
+                        .unwrap_or(ModelEffect::None)
+                }
+            }
+            AppEvent::Input(Event::Paste(value)) => {
+                if let Some(current) = attached.as_mut() {
+                    let bracketed = current.terminal().bracketed_paste();
+                    let decision = current.input_mut().handle_paste(value, bracketed);
+                    return_to_fleet = apply_input_decision(
+                        decision,
+                        attach_worker.as_ref(),
+                        &mut terminal_notice,
+                    );
+                }
+                ModelEffect::None
+            }
+            AppEvent::Input(Event::Resize(columns, rows)) => {
+                if let Some(current) = attached.as_mut() {
+                    let viewport = current.resize(viewport_for_size(columns, rows));
+                    pending_resize = Some((viewport, Instant::now() + RESIZE_DEBOUNCE));
+                }
+                ModelEffect::None
             }
             AppEvent::Input(_) => ModelEffect::None,
             AppEvent::Interrupt => ModelEffect::Quit,
@@ -116,6 +270,44 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                     recovery_required: error.recovery_required,
                 }),
             },
+            AppEvent::Attach(event) => {
+                let successful_batch = matches!(&event, AttachEvent::Batch { .. });
+                if let Some(current) = attached.as_mut()
+                    && current.apply(event)
+                {
+                    if successful_batch {
+                        attach_retry.reset();
+                        terminal_notice = None;
+                    }
+                    if current.state() == TuiAttachState::Detached {
+                        return_to_fleet = true;
+                    } else if matches!(
+                        current.state(),
+                        TuiAttachState::Gap | TuiAttachState::Unavailable | TuiAttachState::Exited
+                    ) {
+                        attach_worker.take();
+                        if current.failure() == Some(crate::AttachFailure::Unavailable) {
+                            let delay =
+                                attach_retry.schedule(Instant::now(), rand::rngs::OsRng.next_u64());
+                            terminal_notice = delay.map(|delay| attach_retry.notice(delay)).or_else(
+                                || Some("Automatic reconnect stopped after its bounded limit. Press r to try now or detach.".into()),
+                            );
+                        }
+                    }
+                }
+                ModelEffect::None
+            }
+            AppEvent::Deadline => {
+                if let Some(current) = attached.as_mut() {
+                    let decision = current.input_mut().expire_leader(Instant::now());
+                    return_to_fleet = apply_input_decision(
+                        decision,
+                        attach_worker.as_ref(),
+                        &mut terminal_notice,
+                    );
+                }
+                ModelEffect::None
+            }
             AppEvent::TerminalFailure => {
                 return Err(io::Error::new(
                     io::ErrorKind::BrokenPipe,
@@ -123,6 +315,37 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                 ));
             }
         };
+        if pending_resize
+            .as_ref()
+            .is_some_and(|(_, deadline)| *deadline <= Instant::now())
+            && let Some((viewport, _)) = pending_resize.take()
+            && let Some(worker) = &attach_worker
+            && !worker.try_send(AttachCommand::Resize(viewport))
+        {
+            terminal_notice = Some("Resize delivery is busy; the next size will retry.".into());
+        }
+        if attach_retry.due(Instant::now()) {
+            attach_retry.take_deadline();
+            retry_attach = true;
+            terminal_notice = Some("Retrying the read-only attach path now...".into());
+        }
+        if retry_attach {
+            restart_attach(
+                &source,
+                &sender,
+                &mut attached,
+                &mut attach_worker,
+                &mut attach_generation,
+            )?;
+            terminal_notice = None;
+        }
+        if return_to_fleet {
+            attach_worker.take();
+            attached = None;
+            pending_resize = None;
+            terminal_notice = None;
+            attach_retry.reset();
+        }
         match effect {
             ModelEffect::Quit => break,
             ModelEffect::CancelRefresh => refresh_cancellation.cancel(),
@@ -133,7 +356,168 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
         }
     }
     refresh_cancellation.cancel();
+    attach_worker.take();
     Ok(())
+}
+
+fn receive_event(
+    receiver: &mpsc::Receiver<AppEvent>,
+    deadline: Option<Instant>,
+) -> io::Result<AppEvent> {
+    let result = deadline.map_or_else(
+        || receiver.recv().map_err(|_| RecvTimeoutError::Disconnected),
+        |deadline| receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())),
+    );
+    match result {
+        Ok(event) => Ok(event),
+        Err(RecvTimeoutError::Timeout) => Ok(AppEvent::Deadline),
+        Err(RecvTimeoutError::Disconnected) => Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "TUI event channel closed",
+        )),
+    }
+}
+
+fn nearest_deadline(
+    attached: Option<&AttachedTerminal>,
+    resize: Option<&(Viewport, Instant)>,
+    retry: Option<Instant>,
+) -> Option<Instant> {
+    [
+        attached.and_then(|attached| attached.input().leader_deadline()),
+        resize.map(|(_, deadline)| *deadline),
+        retry,
+    ]
+    .into_iter()
+    .flatten()
+    .min()
+}
+
+fn begin_attach(
+    source: &Arc<dyn FleetSource>,
+    sender: &SyncSender<AppEvent>,
+    selected: crate::FleetSession,
+    attached: &mut Option<AttachedTerminal>,
+    worker: &mut Option<AttachWorker>,
+    generation: &mut u64,
+    size: ratatui::layout::Rect,
+) -> io::Result<()> {
+    let session_id = selected.id.parse().map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "selected session identity is invalid",
+        )
+    })?;
+    let endpoint = endpoint_for_source(source.as_ref(), session_id)
+        .map_err(|failure| io::Error::new(io::ErrorKind::NotFound, failure.message()))?;
+    *generation = generation.saturating_add(1);
+    let model = AttachedTerminal::new(
+        *generation,
+        session_id,
+        selected.title,
+        viewport_for_size(size.width, size.height),
+    );
+    let event_sender = sender.clone();
+    let sink: AttachEventSink = Arc::new(move |event| enqueue_attach_event(&event_sender, event));
+    let next_worker = spawn_attach_worker(
+        model.generation(),
+        endpoint,
+        model.session_id(),
+        model.viewport(),
+        sink,
+    )?;
+    worker.replace(next_worker);
+    attached.replace(model);
+    Ok(())
+}
+
+fn restart_attach(
+    source: &Arc<dyn FleetSource>,
+    sender: &SyncSender<AppEvent>,
+    attached: &mut Option<AttachedTerminal>,
+    worker: &mut Option<AttachWorker>,
+    generation: &mut u64,
+) -> io::Result<()> {
+    let Some(previous) = attached.take() else {
+        return Ok(());
+    };
+    worker.take();
+    let session_id = previous.session_id();
+    let endpoint = endpoint_for_source(source.as_ref(), session_id)
+        .map_err(|failure| io::Error::new(io::ErrorKind::NotFound, failure.message()))?;
+    *generation = generation.saturating_add(1);
+    let model = AttachedTerminal::new(
+        *generation,
+        session_id,
+        previous.title().to_string(),
+        previous.viewport(),
+    );
+    let event_sender = sender.clone();
+    let sink: AttachEventSink = Arc::new(move |event| enqueue_attach_event(&event_sender, event));
+    let next_worker = spawn_attach_worker(
+        model.generation(),
+        endpoint,
+        session_id,
+        model.viewport(),
+        sink,
+    )?;
+    worker.replace(next_worker);
+    attached.replace(model);
+    Ok(())
+}
+
+fn viewport_for_size(columns: u16, rows: u16) -> Viewport {
+    Viewport::new(columns.max(1), rows.saturating_sub(5).max(1))
+}
+
+fn enqueue_attach_event(sender: &SyncSender<AppEvent>, event: AttachEvent) -> bool {
+    let deadline = Instant::now() + EVENT_DELIVERY_TIMEOUT;
+    let mut event = event;
+    loop {
+        match sender.try_send(AppEvent::Attach(event)) {
+            Ok(()) => return true,
+            Err(TrySendError::Full(AppEvent::Attach(pending))) if Instant::now() < deadline => {
+                event = pending;
+                thread::sleep(Duration::from_millis(1));
+            }
+            Err(TrySendError::Full(_)) | Err(TrySendError::Disconnected(_)) => return false,
+        }
+    }
+}
+
+fn apply_input_decision(
+    decision: InputDecision,
+    worker: Option<&AttachWorker>,
+    notice: &mut Option<String>,
+) -> bool {
+    match decision {
+        InputDecision::None => false,
+        InputDecision::Send(bytes) => {
+            if !worker.is_some_and(|worker| worker.try_send(AttachCommand::Input(bytes))) {
+                *notice = Some("Input was not queued because the Host is unavailable.".into());
+            }
+            false
+        }
+        InputDecision::Detach => {
+            if !worker.is_some_and(|worker| worker.try_send(AttachCommand::Detach)) {
+                *notice = Some("The client disconnected; the Host was not stopped.".into());
+                return true;
+            }
+            *notice = Some("Detaching from the Host...".into());
+            false
+        }
+        InputDecision::ConfirmPaste { bytes, multiline } => {
+            *notice = Some(format!(
+                "Confirm {bytes}-byte{} paste with Enter or cancel with Esc.",
+                if multiline { " multiline" } else { "" }
+            ));
+            false
+        }
+        InputDecision::PasteRejected => {
+            *notice = Some("Paste rejected: the 64 KiB input limit was exceeded.".into());
+            false
+        }
+    }
 }
 
 fn start_effect(
@@ -268,7 +652,7 @@ impl TerminalSession {
                 Terminal::with_options(
                     backend,
                     TerminalOptions {
-                        viewport: Viewport::Inline(INLINE_HEIGHT),
+                        viewport: RatatuiViewport::Inline(INLINE_HEIGHT),
                     },
                 )?
             } else {
@@ -393,5 +777,37 @@ mod tests {
         };
         assert_eq!(generation, 7);
         assert_eq!(result.unwrap_err().diagnostic.code, "refresh-failed");
+    }
+
+    #[test]
+    fn attach_retry_uses_full_jitter_caps_and_exact_attempt_limit() {
+        let now = Instant::now();
+        let mut retry = AttachRetry::default();
+        let expected_caps = [250, 500, 1_000, 2_000, 4_000, 8_000, 16_000, 30_000];
+        for (attempt, cap_millis) in expected_caps.into_iter().enumerate() {
+            let delay = retry.schedule(now, u64::MAX).unwrap();
+            assert!(delay <= Duration::from_millis(cap_millis));
+            assert_eq!(retry.attempts, u8::try_from(attempt + 1).unwrap());
+        }
+        assert_eq!(retry.schedule(now, 0), None);
+        assert!(retry.deadline.is_none());
+    }
+
+    #[test]
+    fn attach_retry_honors_elapsed_limit_and_reset() {
+        let now = Instant::now();
+        let mut retry = AttachRetry::default();
+        assert_eq!(retry.schedule(now, 0), Some(Duration::ZERO));
+        assert!(retry.due(now));
+        retry.take_deadline();
+        assert!(!retry.due(now));
+        assert_eq!(
+            retry.schedule(now + RETRY_MAX_ELAPSED, 0),
+            None,
+            "the ninety-second bound is inclusive"
+        );
+        retry.reset();
+        assert_eq!(retry.attempts, 0);
+        assert!(retry.started_at.is_none());
     }
 }
