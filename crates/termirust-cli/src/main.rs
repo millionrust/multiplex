@@ -2,8 +2,8 @@ use std::io::Write as _;
 
 use termirust_cli::{
     Cancellation, CliCommand, CliPaths, ControllerSshAction, LocalCommandService,
-    SystemSshControllerExecutor, failure_output, parse_args, read_removal_confirmation,
-    read_session_input, run_parsed, write_output,
+    LocalSessionAttachExecutor, SystemSshControllerExecutor, failure_output, parse_args,
+    read_removal_confirmation, read_session_input, run_parsed, write_output,
 };
 
 fn main() {
@@ -91,6 +91,13 @@ fn main() {
     {
         let executor = SystemSshControllerExecutor::new(paths.config_root());
         match executor.execute_interactive_attach(command.clone(), &cancellation) {
+            Ok(()) => std::process::exit(0),
+            Err(error) => exit_with_output(failure_output(error, false, width)),
+        }
+    }
+    if matches!(invocation.command, CliCommand::SessionAttach { .. }) && !invocation.json {
+        let executor = LocalSessionAttachExecutor::new(paths.clone());
+        match executor.execute(invocation.command.clone(), &cancellation) {
             Ok(()) => std::process::exit(0),
             Err(error) => exit_with_output(failure_output(error, false, width)),
         }

@@ -52,6 +52,13 @@ pub enum CliCommand {
         columns: u16,
         rows: u16,
     },
+    SessionAttach {
+        session_id: HostedSessionId,
+        from_sequence: OutputSequence,
+        columns: u16,
+        rows: u16,
+        request_control: bool,
+    },
     SessionLaunch {
         project_id: ProjectId,
         preset_id: PresetId,
@@ -331,6 +338,24 @@ pub fn parse_args(arguments: Vec<String>) -> Result<Invocation, CliError> {
                 session_id: parse_id(session, "session")?,
                 columns: required_dimension(&options, "--columns")?,
                 rows: required_dimension(&options, "--rows")?,
+            }
+        }
+        [scope, action, session, rest @ ..] if scope == "session" && action == "attach" => {
+            let options = parse_options(
+                rest,
+                &["--from-sequence", "--columns", "--rows"],
+                &["--write"],
+            )?;
+            CliCommand::SessionAttach {
+                session_id: parse_id(session, "session")?,
+                from_sequence: options
+                    .value("--from-sequence")
+                    .map(parse_sequence)
+                    .transpose()?
+                    .unwrap_or(OutputSequence::ZERO),
+                columns: optional_dimension(&options, "--columns", 80)?,
+                rows: optional_dimension(&options, "--rows", 24)?,
+                request_control: options.flag("--write"),
             }
         }
         [scope, action, rest @ ..] if scope == "session" && action == "launch" => {
@@ -986,6 +1011,69 @@ mod tests {
                 "--rows",
                 "1001",
             ],
+        ] {
+            assert_eq!(
+                parse_args(invalid.into_iter().map(str::to_string).collect())
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Usage
+            );
+        }
+    }
+
+    #[test]
+    fn session_attach_parser_defaults_to_read_only_and_bounds_replay_viewport() {
+        let id = HostedSessionId::new().to_string();
+        let parsed = parse_args(
+            ["session", "attach", &id]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        )
+        .unwrap();
+        assert_eq!(
+            parsed.command,
+            CliCommand::SessionAttach {
+                session_id: id.parse().unwrap(),
+                from_sequence: OutputSequence::ZERO,
+                columns: 80,
+                rows: 24,
+                request_control: false,
+            }
+        );
+        let writable = parse_args(
+            [
+                "session",
+                "attach",
+                &id,
+                "--from-sequence",
+                "42",
+                "--columns",
+                "132",
+                "--rows",
+                "43",
+                "--write",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        )
+        .unwrap();
+        assert!(matches!(
+            writable.command,
+            CliCommand::SessionAttach {
+                from_sequence,
+                columns: 132,
+                rows: 43,
+                request_control: true,
+                ..
+            } if from_sequence == OutputSequence::new(42)
+        ));
+        for invalid in [
+            vec!["session", "attach", &id, "--columns", "0"],
+            vec!["session", "attach", &id, "--rows", "1001"],
+            vec!["session", "attach", &id, "--from-sequence", "x"],
+            vec!["session", "attach", &id, "--write", "--write"],
         ] {
             assert_eq!(
                 parse_args(invalid.into_iter().map(str::to_string).collect())

@@ -28,10 +28,10 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     CLI_JSON_SCHEMA_VERSION, Cancellation, CliCommand, CliData, CliError, CommandService,
     ControllerSshCommand, ErrorCode, MAX_RESPONSE_RECORDS, MAX_SESSION_WAIT_TIMEOUT_MS,
-    PresetListData, PresetView, ProjectListData, ProjectView, RemovalConfirmationKind, SessionData,
-    SessionInput, SessionInputData, SessionListData, SessionListFilter, SessionMutationData,
-    SessionRemovalPreviewData, SessionResizeData, SessionView, SessionWaitCondition,
-    SessionWaitConditionData, SessionWaitData, StatusData,
+    PresetListData, PresetView, ProjectListData, ProjectView, RemovalConfirmationKind,
+    SessionAttachData, SessionData, SessionInput, SessionInputData, SessionListData,
+    SessionListFilter, SessionMutationData, SessionRemovalPreviewData, SessionResizeData,
+    SessionView, SessionWaitCondition, SessionWaitConditionData, SessionWaitData, StatusData,
 };
 
 const STORE_DIR_NAME: &str = "agent-workspace";
@@ -112,11 +112,11 @@ impl CliPaths {
         &self.session_data_root
     }
 
-    fn runtime_root(&self, session_id: HostedSessionId) -> PathBuf {
+    pub(crate) fn runtime_root(&self, session_id: HostedSessionId) -> PathBuf {
         self.runtime_parent.join(session_id.to_string())
     }
 
-    fn session_dir(&self, session_id: HostedSessionId) -> PathBuf {
+    pub(crate) fn session_dir(&self, session_id: HostedSessionId) -> PathBuf {
         self.session_data_root.join(session_id.to_string())
     }
 }
@@ -162,7 +162,40 @@ pub struct HostResizeRequest {
     pub rows: u16,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HostAttachRequest {
+    pub expected_host_instance_id: HostInstanceId,
+    pub from_sequence: OutputSequence,
+    pub columns: u16,
+    pub rows: u16,
+    pub request_control: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HostAttachSummary {
+    pub lifecycle: termirust_domain::HostLifecycle,
+    pub latest_sequence: OutputSequence,
+    pub replayed_records: u64,
+    pub replayed_bytes: u64,
+    pub snapshot: bool,
+    pub writer_lease: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ValidatedSessionAttach {
+    pub runtime_root: PathBuf,
+    pub request: HostAttachRequest,
+}
+
 pub trait HostController: Send + Sync {
+    fn attach(
+        &self,
+        runtime_root: &Path,
+        session_id: HostedSessionId,
+        request: HostAttachRequest,
+        cancellation: &Cancellation,
+    ) -> Result<HostAttachSummary, CliError>;
+
     fn input(
         &self,
         runtime_root: &Path,
@@ -1059,6 +1092,102 @@ impl LocalCommandService {
         }))
     }
 
+    fn session_attach(
+        &self,
+        session_id: HostedSessionId,
+        from_sequence: OutputSequence,
+        columns: u16,
+        rows: u16,
+        request_control: bool,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        let validated = self.validate_session_attach(
+            session_id,
+            from_sequence,
+            columns,
+            rows,
+            request_control,
+            cancellation,
+        )?;
+        let summary = self.controller.attach(
+            &validated.runtime_root,
+            session_id,
+            validated.request,
+            cancellation,
+        )?;
+        Ok(CliData::Attach(SessionAttachData {
+            session_id: session_id.to_string(),
+            lifecycle: host_lifecycle_name(summary.lifecycle).to_string(),
+            from_sequence: from_sequence.get(),
+            latest_sequence: summary.latest_sequence.get(),
+            replayed_records: summary.replayed_records,
+            replayed_bytes: summary.replayed_bytes,
+            snapshot: summary.snapshot,
+            writer_lease: summary.writer_lease,
+        }))
+    }
+
+    pub(crate) fn validate_session_attach(
+        &self,
+        session_id: HostedSessionId,
+        from_sequence: OutputSequence,
+        columns: u16,
+        rows: u16,
+        request_control: bool,
+        cancellation: &Cancellation,
+    ) -> Result<ValidatedSessionAttach, CliError> {
+        if !(1..=1_000).contains(&columns) || !(1..=1_000).contains(&rows) {
+            return Err(validation(
+                "terminal dimensions must be integers from 1 to 1000",
+                "Provide both --columns and --rows within the supported range.",
+            ));
+        }
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let snapshot = self.sessions()?.load().map_err(map_store)?;
+        let session = require_session(&snapshot.sessions, session_id)?;
+        if session.archived_at.is_some() {
+            return Err(validation(
+                "archived sessions cannot be attached",
+                "Restore the Session before attaching to its durable Host.",
+            ));
+        }
+        if session.lifecycle == HostedSessionState::RunningAppAttached {
+            return Err(validation(
+                "app-attached sessions do not have a durable Host endpoint",
+                "Use a durable Host launch route before attaching from the CLI.",
+            ));
+        }
+        let metadata = read_host_metadata(&self.paths.session_dir(session_id))
+            .map_err(|_| unavailable("durable Host ownership metadata is unavailable or unsafe"))?;
+        if metadata.session_id != session_id {
+            return Err(CliError::new(
+                ErrorCode::PermissionDenied,
+                "durable Host metadata belongs to a different Session",
+                "Inspect the Session and its durable Host ownership before retrying.",
+            ));
+        }
+        if matches!(
+            metadata.lifecycle,
+            termirust_domain::HostLifecycle::Starting | termirust_domain::HostLifecycle::Orphaned
+        ) {
+            return Err(unavailable(
+                "the durable Host is not available for terminal attach",
+            ));
+        }
+        Ok(ValidatedSessionAttach {
+            runtime_root: self.paths.runtime_root(session_id),
+            request: HostAttachRequest {
+                expected_host_instance_id: metadata.host_instance_id,
+                from_sequence,
+                columns,
+                rows,
+                request_control,
+            },
+        })
+    }
+
     fn session_archive(
         &self,
         session_id: HostedSessionId,
@@ -1522,6 +1651,20 @@ impl CommandService for LocalCommandService {
                 columns,
                 rows,
             } => self.session_resize(session_id, columns, rows, cancellation),
+            CliCommand::SessionAttach {
+                session_id,
+                from_sequence,
+                columns,
+                rows,
+                request_control,
+            } => self.session_attach(
+                session_id,
+                from_sequence,
+                columns,
+                rows,
+                request_control,
+                cancellation,
+            ),
             CliCommand::SessionLaunch {
                 project_id,
                 preset_id,
@@ -1688,6 +1831,100 @@ impl HostLauncher for ProcessHostLauncher {
 struct LocalHostController;
 
 impl HostController for LocalHostController {
+    fn attach(
+        &self,
+        runtime_root: &Path,
+        session_id: HostedSessionId,
+        request: HostAttachRequest,
+        cancellation: &Cancellation,
+    ) -> Result<HostAttachSummary, CliError> {
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| operation("unable to initialize local Host attach"))?;
+        let async_cancel = CancellationToken::new();
+        let done = Arc::new(AtomicBool::new(false));
+        let monitor_done = done.clone();
+        let monitor_cancel = async_cancel.clone();
+        let source = cancellation.clone();
+        let monitor = std::thread::spawn(move || {
+            while !monitor_done.load(Ordering::Acquire) {
+                if source.is_cancelled() {
+                    monitor_cancel.cancel();
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
+        let endpoint = LocalEndpoint::new(runtime_root, session_id);
+        let mut nonce = [0_u8; 32];
+        rand::rngs::OsRng.fill_bytes(&mut nonce);
+        let result = runtime.block_on(async {
+            let options = if request.request_control {
+                ConnectOptions::local(session_id, nonce)
+            } else {
+                ConnectOptions::local_read_only(session_id, nonce)
+            };
+            let mut client = HostClient::connect(endpoint, options, &async_cancel)
+                .await
+                .map_err(map_client)?;
+            if client.host_instance_id() != Some(request.expected_host_instance_id) {
+                client.disconnect();
+                return Err(CliError::new(
+                    ErrorCode::PermissionDenied,
+                    "durable Host identity changed before attach",
+                    "Inspect the Session and retry only after its current Host is confirmed.",
+                ));
+            }
+            let outputs = client
+                .attach(
+                    request.from_sequence,
+                    u32::from(request.columns),
+                    u32::from(request.rows),
+                    &async_cancel,
+                )
+                .await
+                .map_err(map_client)?;
+            let snapshot = client.take_last_snapshot().is_some();
+            let state = client.take_last_state().ok_or_else(|| {
+                operation("durable Host attach completed without an authoritative state")
+            })?;
+            let writer_lease = state.has_writer_lease;
+            if request.request_control && !writer_lease {
+                client.disconnect();
+                return Err(CliError::new(
+                    ErrorCode::InteractionRequired,
+                    "another Controller holds the Session writer lease",
+                    "Detach the current writer or attach without --write for read-only access.",
+                ));
+            }
+            let lifecycle = decode_host_lifecycle(state.lifecycle)?;
+            let replayed_records = u64::try_from(outputs.len())
+                .map_err(|_| operation("durable Host replay record count overflowed"))?;
+            let replayed_bytes = outputs.iter().try_fold(0_u64, |total, output| {
+                total
+                    .checked_add(output.bytes.len() as u64)
+                    .ok_or_else(|| operation("durable Host replay byte count overflowed"))
+            })?;
+            let summary = HostAttachSummary {
+                lifecycle,
+                latest_sequence: OutputSequence::new(state.latest_sequence),
+                replayed_records,
+                replayed_bytes,
+                snapshot,
+                writer_lease,
+            };
+            client.detach(&async_cancel).await.map_err(map_client)?;
+            Ok(summary)
+        });
+        done.store(true, Ordering::Release);
+        let _ = monitor.join();
+        result
+    }
+
     fn input(
         &self,
         runtime_root: &Path,
@@ -2123,7 +2360,7 @@ fn map_store(error: StoreError) -> CliError {
     }
 }
 
-fn map_client(error: ClientError) -> CliError {
+pub(crate) fn map_client(error: ClientError) -> CliError {
     match error.code {
         ClientErrorCode::ProtocolIncompatible => CliError::new(
             ErrorCode::Incompatible,
@@ -2150,7 +2387,35 @@ fn map_client(error: ClientError) -> CliError {
     }
 }
 
-fn map_input_after_dispatch(error: ClientError) -> CliError {
+pub(crate) fn decode_host_lifecycle(
+    value: i32,
+) -> Result<termirust_domain::HostLifecycle, CliError> {
+    match wire::Lifecycle::try_from(value).unwrap_or(wire::Lifecycle::Unspecified) {
+        wire::Lifecycle::Starting => Ok(termirust_domain::HostLifecycle::Starting),
+        wire::Lifecycle::Ready => Ok(termirust_domain::HostLifecycle::Ready),
+        wire::Lifecycle::Stopping => Ok(termirust_domain::HostLifecycle::Stopping),
+        wire::Lifecycle::Exited => Ok(termirust_domain::HostLifecycle::Exited),
+        wire::Lifecycle::Failed => Ok(termirust_domain::HostLifecycle::Failed),
+        wire::Lifecycle::Unspecified => Err(operation(
+            "durable Host returned an invalid lifecycle during attach",
+        )),
+    }
+}
+
+pub(crate) const fn host_lifecycle_name(
+    lifecycle: termirust_domain::HostLifecycle,
+) -> &'static str {
+    match lifecycle {
+        termirust_domain::HostLifecycle::Starting => "starting",
+        termirust_domain::HostLifecycle::Ready => "ready",
+        termirust_domain::HostLifecycle::Stopping => "stopping",
+        termirust_domain::HostLifecycle::Exited => "exited",
+        termirust_domain::HostLifecycle::Failed => "failed",
+        termirust_domain::HostLifecycle::Orphaned => "orphaned",
+    }
+}
+
+pub(crate) fn map_input_after_dispatch(error: ClientError) -> CliError {
     match error.code {
         ClientErrorCode::PermissionDenied
         | ClientErrorCode::ConflictingDuplicate
@@ -2167,7 +2432,7 @@ fn map_input_after_dispatch(error: ClientError) -> CliError {
     }
 }
 
-fn map_resize_after_dispatch(error: ClientError) -> CliError {
+pub(crate) fn map_resize_after_dispatch(error: ClientError) -> CliError {
     match error.code {
         ClientErrorCode::PermissionDenied
         | ClientErrorCode::ConflictingDuplicate

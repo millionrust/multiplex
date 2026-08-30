@@ -150,6 +150,30 @@ fn render_human(data: &CliData, warnings: &[String], width: usize) -> String {
                 ("Applied", if data.applied { "yes" } else { "no" }.into()),
             ]),
         ),
+        CliData::Attach(data) => render_records(
+            "Session attach summary",
+            std::iter::once(vec![
+                ("Session", data.session_id.clone()),
+                ("Lifecycle", data.lifecycle.clone()),
+                ("From sequence", data.from_sequence.to_string()),
+                ("Latest sequence", data.latest_sequence.to_string()),
+                ("Replayed records", data.replayed_records.to_string()),
+                ("Replayed bytes", data.replayed_bytes.to_string()),
+                (
+                    "Viewport snapshot",
+                    if data.snapshot { "yes" } else { "no" }.into(),
+                ),
+                (
+                    "Writer lease",
+                    if data.writer_lease {
+                        "held"
+                    } else {
+                        "read-only"
+                    }
+                    .into(),
+                ),
+            ]),
+        ),
         CliData::Mutation(data) => {
             let mut text = format!("Outcome: {}", data.outcome);
             text.push_str(&render_records(

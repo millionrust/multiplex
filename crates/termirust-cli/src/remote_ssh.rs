@@ -993,15 +993,17 @@ impl Drop for RawModeGuard {
     }
 }
 
-fn is_leader_key(key: &KeyEvent) -> bool {
-    matches!(key.code, KeyCode::Char(']')) && key.modifiers == KeyModifiers::CONTROL
+pub(crate) fn is_leader_key(key: &KeyEvent) -> bool {
+    // In legacy terminal input Ctrl-] is the single byte 0x1d. Crossterm decodes
+    // that byte as Ctrl-5, so accept both representations.
+    matches!(key.code, KeyCode::Char(']' | '5')) && key.modifiers == KeyModifiers::CONTROL
 }
 
-fn is_cancel_key(key: &KeyEvent) -> bool {
+pub(crate) fn is_cancel_key(key: &KeyEvent) -> bool {
     matches!(key.code, KeyCode::Char('c' | 'C')) && key.modifiers == KeyModifiers::CONTROL
 }
 
-fn append_key_bytes(bytes: &mut Vec<u8>, key: KeyEvent) -> Result<(), CliError> {
+pub(crate) fn append_key_bytes(bytes: &mut Vec<u8>, key: KeyEvent) -> Result<(), CliError> {
     let mut encoded = Vec::with_capacity(8);
     match key.code {
         KeyCode::Char(character) if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1908,6 +1910,10 @@ mod tests {
         assert_eq!(bytes, b"a\x1b[A\x18");
         assert!(is_leader_key(&KeyEvent::new(
             KeyCode::Char(']'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(is_leader_key(&KeyEvent::new(
+            KeyCode::Char('5'),
             KeyModifiers::CONTROL,
         )));
         assert!(is_cancel_key(&KeyEvent::new(

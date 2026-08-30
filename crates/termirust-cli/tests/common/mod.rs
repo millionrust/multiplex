@@ -4,8 +4,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use termirust_cli::{
-    Cancellation, CliClock, CliError, CliIds, CliPaths, HostController, HostLaunchOutcome,
-    HostLauncher, HostResizeRequest, LocalCommandService,
+    Cancellation, CliClock, CliError, CliIds, CliPaths, HostAttachRequest, HostAttachSummary,
+    HostController, HostLaunchOutcome, HostLauncher, HostResizeRequest, LocalCommandService,
 };
 use termirust_domain::{
     ActivityAggregate, AddProject, CommandId, ExecutableSpec, HostInstanceId, HostLifecycle,
@@ -190,12 +190,15 @@ pub struct FakeControllerState {
     pub calls: usize,
     pub input_calls: usize,
     pub resize_calls: usize,
+    pub attach_calls: usize,
     pub inputs: Vec<Vec<u8>>,
     pub resize_requests: Vec<(u16, u16)>,
+    pub attach_requests: Vec<HostAttachRequest>,
     pub expected_hosts: Vec<Option<HostInstanceId>>,
     pub result: Option<Result<(), CliError>>,
     pub input_result: Option<Result<bool, CliError>>,
     pub resize_result: Option<Result<bool, CliError>>,
+    pub attach_result: Option<Result<HostAttachSummary, CliError>>,
 }
 
 pub struct FakeController {
@@ -203,6 +206,29 @@ pub struct FakeController {
 }
 
 impl HostController for FakeController {
+    fn attach(
+        &self,
+        _runtime_root: &Path,
+        _session_id: HostedSessionId,
+        request: HostAttachRequest,
+        _cancellation: &Cancellation,
+    ) -> Result<HostAttachSummary, CliError> {
+        let mut state = self.state.lock().unwrap();
+        state.attach_calls += 1;
+        state
+            .expected_hosts
+            .push(Some(request.expected_host_instance_id));
+        state.attach_requests.push(request);
+        state.attach_result.clone().unwrap_or(Ok(HostAttachSummary {
+            lifecycle: HostLifecycle::Ready,
+            latest_sequence: OutputSequence::new(9),
+            replayed_records: 2,
+            replayed_bytes: 12,
+            snapshot: false,
+            writer_lease: request.request_control,
+        }))
+    }
+
     fn input(
         &self,
         _runtime_root: &Path,

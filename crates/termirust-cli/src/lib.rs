@@ -3,6 +3,7 @@
 mod args;
 mod contract;
 mod local;
+mod local_attach;
 mod remote_ssh;
 mod render;
 
@@ -18,11 +19,12 @@ pub use args::{
 };
 pub use contract::*;
 pub use local::{
-    CliClock, CliIds, CliInstallationStatus, CliPaths, CliWaiter, HostController,
-    HostLaunchOutcome, HostLauncher, HostResizeRequest, LocalCommandService, ManagementCommand,
-    ManagementRemovalManifest, ManagementRemovalPreview, SshControllerCommandExecutor,
-    cli_installation_status,
+    CliClock, CliIds, CliInstallationStatus, CliPaths, CliWaiter, HostAttachRequest,
+    HostAttachSummary, HostController, HostLaunchOutcome, HostLauncher, HostResizeRequest,
+    LocalCommandService, ManagementCommand, ManagementRemovalManifest, ManagementRemovalPreview,
+    SshControllerCommandExecutor, cli_installation_status,
 };
+pub use local_attach::LocalSessionAttachExecutor;
 pub use remote_ssh::SystemSshControllerExecutor;
 pub use render::{RenderOptions, render_failure, render_success};
 
@@ -195,6 +197,7 @@ pub(crate) fn help_data() -> CliData {
             "session wait <id> (--state <state> | --activity <activity>) [--timeout-ms N] [--json]".into(),
             "session input <id> --input-stdin [--json] < stdin".into(),
             "session resize <id> --columns N --rows N [--json]".into(),
+            "session attach <id> [--from-sequence N] [--columns N] [--rows N] [--write] [--json]".into(),
             "session launch --project <id> --preset <id> [--group <id>] [--json]".into(),
             "session stop <id> [--expected-revision N] --yes [--json]".into(),
             "session archive <id> [--expected-revision N] [--json]".into(),
@@ -209,7 +212,7 @@ pub(crate) fn help_data() -> CliData {
             "controller ssh --host <host> [--user <user>] [--port <port>] approval --session <id> --generation N --approval <id> --decision <allow|deny> [--json]".into(),
             "controller ssh --host <host> [--user <user>] [--port <port>] detach --session <id> --generation N [--json]".into(),
         ],
-        safety: "Local metadata and authenticated Host commands only. Session wait accepts lifecycle values shown by session show, or activity values unknown, idle, busy, needs_input, done, and failed. Local Session input requires explicit bounded stdin and never echoes payload bytes. Local Session resize requires explicit dimensions from 1 to 1000. Stop requires --yes. Session removal requires a reviewed preview token, --yes, and bounded confirmation from stdin. Human SSH attach is interactive and detaches with Ctrl-] then d; JSON attach never emits terminal bytes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen project, preset, and session titles and may be sensitive.".into(),
+        safety: "Local metadata and authenticated Host commands only. Session wait accepts lifecycle values shown by session show, or activity values unknown, idle, busy, needs_input, done, and failed. Local Session attach is read-only unless --write is explicit; human attach requires a TTY and detaches with Ctrl-] then d, while JSON attach never emits terminal bytes. Local Session input requires explicit bounded stdin and never echoes payload bytes. Local Session resize requires explicit dimensions from 1 to 1000. Stop requires --yes. Session removal requires a reviewed preview token, --yes, and bounded confirmation from stdin. Human SSH attach is interactive and detaches with Ctrl-] then d; JSON attach never emits terminal bytes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen project, preset, and session titles and may be sensitive.".into(),
         exit_codes: vec![
             "0 success".into(),
             "2 usage or validation".into(),

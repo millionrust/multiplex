@@ -32,4 +32,5 @@ uuid = "1.22"
 zeroize = "=1.8.2"
 
 [dev-dependencies]
+portable-pty = "=0.9.0"
 tempfile = "3.27"
