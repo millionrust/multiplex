@@ -49,7 +49,6 @@ pub enum ConnectDialogMode {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ConnectProtocol {
     Ssh,
-    Mosh,
     Telnet,
 }
 

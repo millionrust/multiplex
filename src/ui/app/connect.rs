@@ -144,18 +144,6 @@ impl TermiRustApp {
             cx,
         );
         Self::set_input_value(
-            &self.shell_inputs.protocol_mosh_port,
-            profile.port.to_string(),
-            window,
-            cx,
-        );
-        Self::set_input_value(
-            &self.shell_inputs.protocol_mosh_command,
-            format!("mosh --server=/path/server {}", profile.host),
-            window,
-            cx,
-        );
-        Self::set_input_value(
             &self.shell_inputs.protocol_telnet_port,
             "23".to_string(),
             window,
@@ -251,7 +239,6 @@ impl TermiRustApp {
             "{} {}:{}",
             match failure.protocol {
                 ConnectProtocol::Ssh => "SSH",
-                ConnectProtocol::Mosh => "Mosh",
                 ConnectProtocol::Telnet => "Telnet",
             },
             failure.profile.host,
@@ -560,16 +547,6 @@ impl TermiRustApp {
                 cx,
             ))
             .child(self.protocol_card(
-                "proto-mosh",
-                ConnectProtocol::Mosh,
-                "Mosh",
-                &format!("mosh {host}"),
-                Some(self.shell_inputs.protocol_mosh_command.clone()),
-                &self.shell_inputs.protocol_mosh_port.clone(),
-                selected == ConnectProtocol::Mosh,
-                cx,
-            ))
-            .child(self.protocol_card(
                 "proto-telnet",
                 ConnectProtocol::Telnet,
                 "Telnet",
@@ -776,7 +753,6 @@ impl TermiRustApp {
         let protocol = workspace.pending_connect_protocol;
         if protocol != ConnectProtocol::Ssh {
             let label = match protocol {
-                ConnectProtocol::Mosh => "Mosh",
                 ConnectProtocol::Telnet => "Telnet",
                 ConnectProtocol::Ssh => "SSH",
             };

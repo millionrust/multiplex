@@ -372,8 +372,6 @@ struct ShellInputs {
     create_host_address: Entity<InputState>,
     connect_username: Entity<InputState>,
     protocol_ssh_port: Entity<InputState>,
-    protocol_mosh_port: Entity<InputState>,
-    protocol_mosh_command: Entity<InputState>,
     protocol_telnet_port: Entity<InputState>,
     sftp_local_filter: Entity<InputState>,
     bulk_group: Entity<InputState>,
@@ -514,10 +512,6 @@ impl ShellInputs {
                 .new(|cx| InputState::new(window, cx).placeholder("Type IP or Hostname")),
             connect_username: cx.new(|cx| InputState::new(window, cx).placeholder("Username")),
             protocol_ssh_port: cx.new(|cx| InputState::new(window, cx).default_value("22")),
-            protocol_mosh_port: cx.new(|cx| InputState::new(window, cx).default_value("22")),
-            protocol_mosh_command: cx.new(|cx| {
-                InputState::new(window, cx).default_value("mosh --server=/path/server host")
-            }),
             protocol_telnet_port: cx.new(|cx| InputState::new(window, cx).default_value("23")),
             sftp_local_filter: cx.new(|cx| InputState::new(window, cx).placeholder("Filter files")),
             bulk_group: cx.new(|cx| InputState::new(window, cx).placeholder("Bulk group name")),
