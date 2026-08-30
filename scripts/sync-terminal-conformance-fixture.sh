@@ -12,6 +12,8 @@ tests/fixtures/terminal/terminal-interaction-v1.json|TermiRustMobileTests/Fixtur
 tests/fixtures/terminal/terminal-acceptance-v1.json|TermiRustMobileTests/Fixtures/terminal-acceptance-v1.json|app/src/test/resources/terminal-acceptance-v1.json
 tests/fixtures/mobile/mobile-route-contract-v1.json|TermiRustMobileTests/Fixtures/mobile-route-contract-v1.json|app/src/test/resources/mobile-route-contract-v1.json
 tests/fixtures/mobile/mobile-cross-route-acceptance-v1.json|TermiRustMobileTests/Fixtures/mobile-cross-route-acceptance-v1.json|app/src/test/resources/mobile-cross-route-acceptance-v1.json
+tests/fixtures/controller-routes/route-selection-v1.json|TermiRustMobileTests/Fixtures/route-selection-v1.json|app/src/test/resources/route-selection-v1.json
+tests/fixtures/controller-routes/remote-route-acceptance-v1.json|TermiRustMobileTests/Fixtures/remote-route-acceptance-v1.json|app/src/test/resources/remote-route-acceptance-v1.json
 tests/fixtures/terminal/generated/GeneratedTerminalCellWidth.swift|TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift|-
 tests/fixtures/terminal/generated/GeneratedTerminalCellWidth.kt|-|app/src/main/java/com/termirust/mobile/controller/GeneratedTerminalCellWidth.kt
 "

@@ -71,6 +71,7 @@ pub struct DesktopRoutePlan {
     pub release_writer: bool,
     pub retry_idempotent_reads: bool,
     pub mutation_disposition: Option<RemoteRouteMutationDisposition>,
+    pub requires_explicit_action: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -392,6 +393,7 @@ fn plan_for_transition(
         mutation_disposition: (transition.mutation_disposition
             != RemoteRouteMutationDisposition::None)
             .then_some(transition.mutation_disposition),
+        requires_explicit_action: transition.requires_explicit_action,
         ..DesktopRoutePlan::default()
     }
 }
@@ -439,6 +441,86 @@ pub const fn phase_for_relay_state(state: RelayClientState) -> RemoteRoutePhase 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize)]
+    struct AcceptanceFixture {
+        schema_version: u32,
+        routes: Vec<RemoteRouteKind>,
+        lifecycle_cases: Vec<LifecycleCase>,
+        switch_matrix: SwitchMatrix,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct LifecycleCase {
+        name: String,
+        steps: Vec<AcceptanceStep>,
+        expected: AcceptanceMetrics,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct AcceptanceStep {
+        kind: String,
+        held: Option<bool>,
+        retryable: Option<bool>,
+        mutation_in_flight: Option<bool>,
+        available: Option<bool>,
+    }
+
+    #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
+    struct AcceptanceMetrics {
+        phase: Option<RemoteRoutePhase>,
+        transport_starts: u32,
+        transport_disconnects: u32,
+        input_clears: u32,
+        writer_releases: u32,
+        idempotent_read_retries: u32,
+        mutation_queries: u32,
+        mutation_replays: u32,
+        automatic_switches: u32,
+        explicit_actions: u32,
+        terminal_allowed: Option<bool>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct SwitchMatrix {
+        confirmed: ConfirmedSwitch,
+        unconfirmed_error: String,
+        unavailable_error: String,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct ConfirmedSwitch {
+        source_phase: RemoteRoutePhase,
+        writer_held: bool,
+        source_disconnects: u32,
+        target_starts: u32,
+        input_clears: u32,
+        writer_releases: u32,
+        automatic_switches: u32,
+        target_phase: RemoteRoutePhase,
+    }
+
+    impl AcceptanceMetrics {
+        fn observe(&mut self, plan: DesktopRoutePlan) {
+            self.transport_starts += u32::from(plan.start_transport.is_some());
+            self.transport_disconnects += u32::from(plan.disconnect_transport.is_some());
+            self.input_clears += u32::from(plan.clear_pending_input);
+            self.writer_releases += u32::from(plan.release_writer);
+            self.idempotent_read_retries += u32::from(plan.retry_idempotent_reads);
+            self.mutation_queries += u32::from(
+                plan.mutation_disposition == Some(RemoteRouteMutationDisposition::QueryByCommandId),
+            );
+            self.explicit_actions += u32::from(plan.requires_explicit_action);
+        }
+    }
+
+    fn acceptance_fixture() -> AcceptanceFixture {
+        serde_json::from_str(include_str!(
+            "../../tests/fixtures/controller-routes/remote-route-acceptance-v1.json"
+        ))
+        .unwrap()
+    }
 
     fn availability() -> DesktopRouteAvailability {
         DesktopRouteAvailability {
@@ -812,5 +894,143 @@ mod tests {
                 assert_eq!(coordinator.selected(), Some(target));
             }
         }
+    }
+
+    #[test]
+    fn shared_acceptance_lifecycles_match_every_remote_route() {
+        let fixture = acceptance_fixture();
+        assert_eq!(fixture.schema_version, 1);
+        assert_eq!(
+            fixture.routes,
+            vec![
+                RemoteRouteKind::PrivateNetwork,
+                RemoteRouteKind::Ssh,
+                RemoteRouteKind::SelfHostedRelay,
+            ]
+        );
+
+        for route in fixture.routes {
+            for case in &fixture.lifecycle_cases {
+                let mut coordinator = DesktopRouteCoordinator::new(all_available());
+                let mut actual = AcceptanceMetrics::default();
+                for step in &case.steps {
+                    let plan = match step.kind.as_str() {
+                        "select" => coordinator.select(route, true).unwrap(),
+                        "connect" => coordinator.connect_selected().unwrap(),
+                        "transport_ready" => coordinator.transport_ready(route).unwrap(),
+                        "authenticated" => coordinator.authenticated(route).unwrap(),
+                        "set_writer" => {
+                            coordinator.set_writer_held(step.held.unwrap()).unwrap();
+                            continue;
+                        }
+                        "failure" => coordinator
+                            .failed(
+                                route,
+                                step.retryable.unwrap(),
+                                step.mutation_in_flight.unwrap(),
+                            )
+                            .unwrap(),
+                        "retry" => coordinator.retry_selected().unwrap(),
+                        "cancel" => coordinator.cancel_selected().unwrap(),
+                        "revoke" => coordinator.revoke_selected().unwrap(),
+                        "set_available" => {
+                            if let Some(plan) = coordinator
+                                .set_available(route, step.available.unwrap())
+                                .unwrap()
+                            {
+                                actual.observe(plan);
+                            }
+                            continue;
+                        }
+                        "authorization_restored" => {
+                            coordinator.authorization_restored(route).unwrap()
+                        }
+                        other => panic!("{}: unsupported step {other}", case.name),
+                    };
+                    actual.observe(plan);
+                }
+                let projection = coordinator
+                    .projections()
+                    .into_iter()
+                    .find(|item| item.route == route)
+                    .unwrap();
+                actual.phase = Some(projection.phase);
+                actual.terminal_allowed = Some(projection.terminal_allowed);
+                assert_eq!(actual, case.expected, "{} on {route:?}", case.name);
+            }
+        }
+    }
+
+    #[test]
+    fn shared_acceptance_switch_matrix_is_explicit_and_source_owned() {
+        let fixture = acceptance_fixture();
+        let expected = &fixture.switch_matrix.confirmed;
+        assert_eq!(expected.source_phase, RemoteRoutePhase::Online);
+        assert!(expected.writer_held);
+
+        for source in &fixture.routes {
+            for target in &fixture.routes {
+                if source == target {
+                    continue;
+                }
+                let mut coordinator = DesktopRouteCoordinator::new(all_available());
+                connect_online(&mut coordinator, *source);
+                coordinator.set_writer_held(expected.writer_held).unwrap();
+
+                let unconfirmed = coordinator.select(*target, false).unwrap_err();
+                assert_eq!(
+                    acceptance_error(unconfirmed),
+                    fixture.switch_matrix.unconfirmed_error
+                );
+                assert_eq!(coordinator.selected(), Some(*source));
+
+                let plan = coordinator.select(*target, true).unwrap();
+                assert_eq!(
+                    u32::from(plan.disconnect_transport == Some(*source)),
+                    expected.source_disconnects
+                );
+                assert_eq!(
+                    u32::from(plan.start_transport == Some(*target)),
+                    expected.target_starts
+                );
+                assert_eq!(u32::from(plan.clear_pending_input), expected.input_clears);
+                assert_eq!(u32::from(plan.release_writer), expected.writer_releases);
+                assert_eq!(0, expected.automatic_switches);
+                let target_projection = coordinator
+                    .projections()
+                    .into_iter()
+                    .find(|item| item.route == *target)
+                    .unwrap();
+                assert_eq!(target_projection.phase, expected.target_phase);
+
+                let unavailable = DesktopRouteAvailability {
+                    local_ipc: true,
+                    private_network: *target != RemoteRouteKind::PrivateNetwork,
+                    ssh: *target != RemoteRouteKind::Ssh,
+                    self_hosted_relay: *target != RemoteRouteKind::SelfHostedRelay,
+                };
+                let mut blocked = DesktopRouteCoordinator::new(unavailable);
+                connect_online(&mut blocked, *source);
+                let error = blocked.select(*target, true).unwrap_err();
+                assert_eq!(
+                    acceptance_error(error),
+                    fixture.switch_matrix.unavailable_error
+                );
+                assert_eq!(blocked.selected(), Some(*source));
+            }
+        }
+    }
+
+    fn acceptance_error(error: DesktopRouteCoordinatorError) -> String {
+        match error {
+            DesktopRouteCoordinatorError::Transition(
+                RemoteRouteTransitionError::ExplicitConfirmationRequired,
+            ) => "explicit_confirmation_required",
+            DesktopRouteCoordinatorError::Transition(
+                RemoteRouteTransitionError::TargetUnavailable,
+            ) => "target_unavailable",
+            other => panic!("unexpected acceptance error {other:?}"),
+        }
+        .to_owned()
     }
 }
