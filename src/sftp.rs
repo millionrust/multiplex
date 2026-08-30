@@ -1,17 +1,31 @@
 use anyhow::{Context, Result, anyhow};
-use russh::client;
 use russh::keys::PublicKey;
+use russh::{ChannelMsg, client};
 use russh_sftp::client::SftpSession;
+use russh_sftp::client::error::Error as SftpClientError;
+use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::runtime::Builder;
+use tokio::time::timeout;
+use tokio_util::sync::CancellationToken;
+use zeroize::Zeroize;
 
 use crate::models::{AuthConfig, ConnectRequest, JumpHostConnection};
+use crate::ssh_keys::{
+    AuthorizedKeyMutation, PublicKeyMaterial, add_authorized_key, remove_authorized_key,
+};
 use crate::storage::{HostKeyDecision, KnownHostStore};
+
+const AUTHORIZED_KEYS_CONNECT_TIMEOUT: Duration = Duration::from_secs(45);
+const AUTHORIZED_KEYS_STEP_TIMEOUT: Duration = Duration::from_secs(8);
+const AUTHORIZED_KEYS_STALE_LOCK_SECS: u64 = 120;
+const AUTHORIZED_KEYS_MAX_REMOTE_OUTPUT: usize = 4096;
 
 #[derive(Clone, Debug)]
 pub struct RemoteFileEntry {
@@ -51,6 +65,153 @@ pub enum SftpEvent {
         operation_id: u64,
         message: String,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuthorizedKeyAction {
+    Add,
+    Remove,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuthorizedKeyOutcome {
+    InstalledAndVerified,
+    AlreadyPresentAndVerified,
+    InstalledVerificationFailed,
+    AlreadyPresentVerificationFailed,
+    Removed,
+    NotPresent,
+    Cancelled,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AuthorizedKeyEvent {
+    Complete {
+        operation_id: u64,
+        fingerprint: String,
+        outcome: AuthorizedKeyOutcome,
+    },
+    Error {
+        operation_id: u64,
+        fingerprint: String,
+        message: String,
+    },
+}
+
+#[derive(Clone)]
+pub struct AuthorizedKeyControl {
+    cancellation: CancellationToken,
+}
+
+impl AuthorizedKeyControl {
+    pub fn cancel(&self) {
+        self.cancellation.cancel();
+    }
+}
+
+impl std::fmt::Debug for AuthorizedKeyControl {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AuthorizedKeyControl")
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Clone)]
+pub struct GeneratedKeyVerification {
+    private_key_path: PathBuf,
+    passphrase: Option<String>,
+}
+
+impl GeneratedKeyVerification {
+    pub fn new(private_key_path: PathBuf, passphrase: Option<String>) -> Self {
+        Self {
+            private_key_path,
+            passphrase,
+        }
+    }
+}
+
+impl std::fmt::Debug for GeneratedKeyVerification {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("GeneratedKeyVerification")
+            .field("private_key_path", &"[REDACTED]")
+            .field(
+                "passphrase",
+                &self.passphrase.as_ref().map(|_| "[REDACTED]"),
+            )
+            .finish()
+    }
+}
+
+impl Drop for GeneratedKeyVerification {
+    fn drop(&mut self) {
+        if let Some(passphrase) = self.passphrase.as_mut() {
+            passphrase.zeroize();
+        }
+    }
+}
+
+pub fn spawn_authorized_key_operation(
+    operation_id: u64,
+    request: ConnectRequest,
+    known_hosts: Arc<KnownHostStore>,
+    public_key: PublicKeyMaterial,
+    action: AuthorizedKeyAction,
+    verification: Option<GeneratedKeyVerification>,
+) -> Result<(AuthorizedKeyControl, Receiver<AuthorizedKeyEvent>)> {
+    if action == AuthorizedKeyAction::Add && verification.is_none() {
+        anyhow::bail!("Adding an SSH public key requires fresh-key verification");
+    }
+    let cancellation = CancellationToken::new();
+    let control = AuthorizedKeyControl {
+        cancellation: cancellation.clone(),
+    };
+    let (event_tx, event_rx) = channel();
+    thread::Builder::new()
+        .name(format!("authorized-key-{operation_id}"))
+        .spawn(move || {
+            let runtime = match Builder::new_current_thread()
+                .enable_io()
+                .enable_time()
+                .build()
+            {
+                Ok(runtime) => runtime,
+                Err(_) => {
+                    let _ = event_tx.send(AuthorizedKeyEvent::Error {
+                        operation_id,
+                        fingerprint: public_key.fingerprint.clone(),
+                        message: "Unable to initialize the SSH key deployment runtime".to_string(),
+                    });
+                    return;
+                }
+            };
+            let fingerprint = public_key.fingerprint.clone();
+            let result = runtime.block_on(run_authorized_key_operation(
+                request,
+                known_hosts,
+                public_key,
+                action,
+                verification,
+                cancellation,
+            ));
+            let event = match result {
+                Ok(outcome) => AuthorizedKeyEvent::Complete {
+                    operation_id,
+                    fingerprint,
+                    outcome,
+                },
+                Err(error) => AuthorizedKeyEvent::Error {
+                    operation_id,
+                    fingerprint,
+                    message: format!("{error:#}"),
+                },
+            };
+            let _ = event_tx.send(event);
+        })
+        .context("Unable to start the SSH public-key operation")?;
+    Ok((control, event_rx))
 }
 
 pub fn spawn_list_directory(
@@ -249,6 +410,377 @@ where
         .expect("unable to spawn SFTP thread");
 }
 
+async fn run_authorized_key_operation(
+    request: ConnectRequest,
+    known_hosts: Arc<KnownHostStore>,
+    public_key: PublicKeyMaterial,
+    action: AuthorizedKeyAction,
+    verification: Option<GeneratedKeyVerification>,
+    cancellation: CancellationToken,
+) -> Result<AuthorizedKeyOutcome> {
+    if cancellation.is_cancelled() {
+        return Ok(AuthorizedKeyOutcome::Cancelled);
+    }
+    let (sftp, handles) = timeout(
+        AUTHORIZED_KEYS_CONNECT_TIMEOUT,
+        open_sftp(request.clone(), known_hosts.clone()),
+    )
+    .await
+    .map_err(|_| anyhow!("The SSH key deployment connection timed out"))??;
+    sftp.set_timeout(AUTHORIZED_KEYS_STEP_TIMEOUT.as_secs())
+        .await;
+    if cancellation.is_cancelled() {
+        let _ = sftp.close().await;
+        return Ok(AuthorizedKeyOutcome::Cancelled);
+    }
+    let mutation = mutate_authorized_keys(
+        &sftp,
+        &handles.target_handle,
+        &public_key,
+        action,
+        &cancellation,
+    )
+    .await?;
+    sftp.close()
+        .await
+        .map_err(|_| anyhow!("Unable to close the SSH key deployment channel"))?;
+    drop(handles);
+
+    match (action, mutation) {
+        (_, AuthorizedKeyMutation::Cancelled) => Ok(AuthorizedKeyOutcome::Cancelled),
+        (AuthorizedKeyAction::Remove, AuthorizedKeyMutation::Changed(_)) => {
+            Ok(AuthorizedKeyOutcome::Removed)
+        }
+        (AuthorizedKeyAction::Remove, AuthorizedKeyMutation::NotPresent) => {
+            Ok(AuthorizedKeyOutcome::NotPresent)
+        }
+        (AuthorizedKeyAction::Add, AuthorizedKeyMutation::Changed(_)) => {
+            let verified = verify_generated_key(request, known_hosts, verification.unwrap()).await;
+            Ok(if verified {
+                AuthorizedKeyOutcome::InstalledAndVerified
+            } else {
+                AuthorizedKeyOutcome::InstalledVerificationFailed
+            })
+        }
+        (AuthorizedKeyAction::Add, AuthorizedKeyMutation::AlreadyPresent) => {
+            let verified = verify_generated_key(request, known_hosts, verification.unwrap()).await;
+            Ok(if verified {
+                AuthorizedKeyOutcome::AlreadyPresentAndVerified
+            } else {
+                AuthorizedKeyOutcome::AlreadyPresentVerificationFailed
+            })
+        }
+        _ => bail_invalid_authorized_key_outcome(),
+    }
+}
+
+fn bail_invalid_authorized_key_outcome<T>() -> Result<T> {
+    anyhow::bail!("The SSH key operation produced an invalid state")
+}
+
+async fn verify_generated_key(
+    mut request: ConnectRequest,
+    known_hosts: Arc<KnownHostStore>,
+    verification: GeneratedKeyVerification,
+) -> bool {
+    request.session_id = request.session_id.saturating_add(1);
+    request.auth = Some(AuthConfig::PrivateKey {
+        key_path: verification.private_key_path.display().to_string(),
+        passphrase: verification.passphrase.clone(),
+    });
+    let result = timeout(AUTHORIZED_KEYS_STEP_TIMEOUT, async move {
+        let (sftp, _handles) = open_sftp(request, known_hosts).await?;
+        sftp.set_timeout(AUTHORIZED_KEYS_STEP_TIMEOUT.as_secs())
+            .await;
+        sftp.canonicalize(".".to_string())
+            .await
+            .map_err(|_| anyhow!("Fresh generated-key verification failed"))?;
+        sftp.close()
+            .await
+            .map_err(|_| anyhow!("Fresh generated-key verification failed"))?;
+        Result::<()>::Ok(())
+    })
+    .await;
+    matches!(result, Ok(Ok(())))
+}
+
+async fn mutate_authorized_keys(
+    sftp: &SftpSession,
+    handle: &client::Handle<SftpHandler>,
+    public_key: &PublicKeyMaterial,
+    action: AuthorizedKeyAction,
+    cancellation: &CancellationToken,
+) -> Result<AuthorizedKeyMutation> {
+    let home = sftp
+        .canonicalize(".".to_string())
+        .await
+        .map_err(|_| anyhow!("Unable to resolve the remote home directory"))?;
+    validate_remote_path(&home)?;
+    let home_metadata = sftp
+        .symlink_metadata(home.clone())
+        .await
+        .map_err(|_| anyhow!("Unable to inspect the remote home directory"))?;
+    if !home_metadata.is_dir() || home_metadata.is_symlink() {
+        anyhow::bail!("The remote home path is not a direct directory");
+    }
+    let owner = home_metadata
+        .uid
+        .ok_or_else(|| anyhow!("The remote server did not report home ownership"))?;
+    let ssh_dir = join_remote_path(&home, ".ssh");
+    ensure_remote_ssh_directory(sftp, &ssh_dir, owner).await?;
+    let lock_path = join_remote_path(&ssh_dir, ".termirust-authorized-keys.lock");
+    acquire_authorized_keys_lock(sftp, &lock_path, owner).await?;
+
+    let result = mutate_authorized_keys_under_lock(
+        sftp,
+        handle,
+        &ssh_dir,
+        owner,
+        public_key,
+        action,
+        cancellation,
+    )
+    .await;
+    let cleanup = sftp.remove_dir(lock_path).await;
+    match (result, cleanup) {
+        (Ok(outcome), Ok(())) => Ok(outcome),
+        (Ok(_), Err(_)) => anyhow::bail!("Unable to release the remote authorized_keys lock"),
+        (Err(error), _) => Err(error),
+    }
+}
+
+async fn mutate_authorized_keys_under_lock(
+    sftp: &SftpSession,
+    handle: &client::Handle<SftpHandler>,
+    ssh_dir: &str,
+    owner: u32,
+    public_key: &PublicKeyMaterial,
+    action: AuthorizedKeyAction,
+    cancellation: &CancellationToken,
+) -> Result<AuthorizedKeyMutation> {
+    if cancellation.is_cancelled() {
+        return Ok(AuthorizedKeyMutation::Cancelled);
+    }
+    let authorized_keys = join_remote_path(ssh_dir, "authorized_keys");
+    let existing = match remote_symlink_metadata(sftp, &authorized_keys).await? {
+        Some(metadata) => {
+            validate_remote_authorized_keys_metadata(&metadata, owner)?;
+            let bytes = sftp
+                .read(authorized_keys.clone())
+                .await
+                .map_err(|_| anyhow!("Unable to read remote authorized_keys"))?;
+            if bytes.len() > 1024 * 1024 {
+                anyhow::bail!("The remote authorized_keys file exceeds the 1 MiB safety limit");
+            }
+            bytes
+        }
+        None => Vec::new(),
+    };
+    let mutation = match action {
+        AuthorizedKeyAction::Add => add_authorized_key(&existing, public_key)?,
+        AuthorizedKeyAction::Remove => remove_authorized_key(&existing, public_key)?,
+    };
+    let AuthorizedKeyMutation::Changed(updated) = &mutation else {
+        return Ok(mutation);
+    };
+    if cancellation.is_cancelled() {
+        return Ok(AuthorizedKeyMutation::Cancelled);
+    }
+
+    let temporary = join_remote_path(
+        ssh_dir,
+        &format!(".authorized_keys.termirust-{}.tmp", uuid::Uuid::new_v4()),
+    );
+    let attributes = FileAttributes {
+        permissions: Some(0o600),
+        ..FileAttributes::empty()
+    };
+    let mut file = sftp
+        .open_with_flags_and_attributes(
+            temporary.clone(),
+            OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
+            attributes,
+        )
+        .await
+        .map_err(|_| anyhow!("Unable to create a remote authorized_keys staging file"))?;
+    use tokio::io::AsyncWriteExt as _;
+    if file.write_all(updated).await.is_err() {
+        let _ = sftp.remove_file(temporary).await;
+        anyhow::bail!("Unable to write the remote authorized_keys staging file");
+    }
+    if file.sync_all().await.is_err() || file.shutdown().await.is_err() {
+        let _ = sftp.remove_file(temporary).await;
+        anyhow::bail!("Unable to sync the remote authorized_keys staging file");
+    }
+    if cancellation.is_cancelled() {
+        let _ = sftp.remove_file(temporary).await;
+        return Ok(AuthorizedKeyMutation::Cancelled);
+    }
+    if let Err(error) = atomic_remote_replace(handle, &temporary, &authorized_keys).await {
+        let _ = sftp.remove_file(temporary).await;
+        return Err(error);
+    }
+    let metadata = sftp
+        .symlink_metadata(authorized_keys.clone())
+        .await
+        .map_err(|_| anyhow!("Unable to verify the updated remote authorized_keys"))?;
+    validate_remote_authorized_keys_metadata(&metadata, owner)?;
+    sftp.set_metadata(
+        authorized_keys,
+        FileAttributes {
+            permissions: Some(0o600),
+            ..FileAttributes::empty()
+        },
+    )
+    .await
+    .map_err(|_| anyhow!("Unable to secure the remote authorized_keys permissions"))?;
+    Ok(mutation)
+}
+
+async fn ensure_remote_ssh_directory(sftp: &SftpSession, ssh_dir: &str, owner: u32) -> Result<()> {
+    let metadata = match remote_symlink_metadata(sftp, ssh_dir).await? {
+        Some(metadata) => metadata,
+        None => {
+            sftp.create_dir(ssh_dir.to_string())
+                .await
+                .map_err(|_| anyhow!("Unable to create the remote SSH directory"))?;
+            sftp.symlink_metadata(ssh_dir.to_string())
+                .await
+                .map_err(|_| anyhow!("Unable to inspect the remote SSH directory"))?
+        }
+    };
+    if metadata.is_symlink() || !metadata.is_dir() || metadata.uid != Some(owner) {
+        anyhow::bail!("The remote SSH directory has an unsafe type or owner");
+    }
+    sftp.set_metadata(
+        ssh_dir.to_string(),
+        FileAttributes {
+            permissions: Some(0o700),
+            ..FileAttributes::empty()
+        },
+    )
+    .await
+    .map_err(|_| anyhow!("Unable to secure the remote SSH directory permissions"))
+}
+
+async fn acquire_authorized_keys_lock(
+    sftp: &SftpSession,
+    lock_path: &str,
+    owner: u32,
+) -> Result<()> {
+    match sftp.create_dir(lock_path.to_string()).await {
+        Ok(()) => {}
+        Err(_) => {
+            let metadata = remote_symlink_metadata(sftp, lock_path)
+                .await?
+                .ok_or_else(|| anyhow!("The remote authorized_keys lock is busy"))?;
+            if metadata.is_symlink() || !metadata.is_dir() || metadata.uid != Some(owner) {
+                anyhow::bail!("The remote authorized_keys lock has an unsafe type or owner");
+            }
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let modified = u64::from(metadata.mtime.unwrap_or_default());
+            if now.saturating_sub(modified) < AUTHORIZED_KEYS_STALE_LOCK_SECS {
+                anyhow::bail!("Another authorized_keys operation is already in progress");
+            }
+            sftp.remove_dir(lock_path.to_string())
+                .await
+                .map_err(|_| anyhow!("Unable to recover a stale authorized_keys lock"))?;
+            sftp.create_dir(lock_path.to_string())
+                .await
+                .map_err(|_| anyhow!("Another authorized_keys operation is already in progress"))?;
+        }
+    }
+    sftp.set_metadata(
+        lock_path.to_string(),
+        FileAttributes {
+            permissions: Some(0o700),
+            ..FileAttributes::empty()
+        },
+    )
+    .await
+    .map_err(|_| anyhow!("Unable to secure the remote authorized_keys lock"))
+}
+
+async fn remote_symlink_metadata(sftp: &SftpSession, path: &str) -> Result<Option<FileAttributes>> {
+    match sftp.symlink_metadata(path.to_string()).await {
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(SftpClientError::Status(status)) if status.status_code == StatusCode::NoSuchFile => {
+            Ok(None)
+        }
+        Err(_) => Err(anyhow!("Unable to inspect a remote SSH key path")),
+    }
+}
+
+fn validate_remote_authorized_keys_metadata(metadata: &FileAttributes, owner: u32) -> Result<()> {
+    if metadata.is_symlink() || !metadata.is_regular() || metadata.uid != Some(owner) {
+        anyhow::bail!("The remote authorized_keys file has an unsafe type or owner");
+    }
+    if metadata.len() > 1024 * 1024 {
+        anyhow::bail!("The remote authorized_keys file exceeds the 1 MiB safety limit");
+    }
+    Ok(())
+}
+
+fn validate_remote_path(path: &str) -> Result<()> {
+    if path.len() > 4096 || path.chars().any(char::is_control) || !path.starts_with('/') {
+        anyhow::bail!("The remote home path is outside the supported safety policy");
+    }
+    Ok(())
+}
+
+async fn atomic_remote_replace(
+    handle: &client::Handle<SftpHandler>,
+    temporary: &str,
+    destination: &str,
+) -> Result<()> {
+    let command = format!(
+        "command mv -f {} {}",
+        shell_single_quote(temporary),
+        shell_single_quote(destination)
+    );
+    let mut channel = handle
+        .channel_open_session()
+        .await
+        .map_err(|_| anyhow!("Unable to open the atomic authorized_keys replacement channel"))?;
+    channel
+        .exec(true, command)
+        .await
+        .map_err(|_| anyhow!("Unable to start the atomic authorized_keys replacement"))?;
+    let mut output_bytes = 0usize;
+    let mut exit_status = None;
+    loop {
+        let message = timeout(AUTHORIZED_KEYS_STEP_TIMEOUT, channel.wait())
+            .await
+            .map_err(|_| anyhow!("The atomic authorized_keys replacement timed out"))?;
+        match message {
+            Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) => {
+                output_bytes = output_bytes.saturating_add(data.len());
+                if output_bytes > AUTHORIZED_KEYS_MAX_REMOTE_OUTPUT {
+                    anyhow::bail!(
+                        "The atomic authorized_keys replacement exceeded its output limit"
+                    );
+                }
+            }
+            Some(ChannelMsg::ExitStatus {
+                exit_status: status,
+            }) => exit_status = Some(status),
+            Some(ChannelMsg::Close) | None => break,
+            Some(_) => {}
+        }
+    }
+    if exit_status != Some(0) {
+        anyhow::bail!("The atomic authorized_keys replacement was rejected");
+    }
+    Ok(())
+}
+
+fn shell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
 async fn with_sftp<T, F, Fut>(
     request: ConnectRequest,
     known_hosts: Arc<KnownHostStore>,
@@ -258,9 +790,17 @@ where
     F: FnOnce(SftpSession) -> Fut,
     Fut: std::future::Future<Output = Result<T>>,
 {
+    let (sftp, _handles) = open_sftp(request, known_hosts).await?;
+    action(sftp).await
+}
+
+async fn open_sftp(
+    request: ConnectRequest,
+    known_hosts: Arc<KnownHostStore>,
+) -> Result<(SftpSession, EstablishedHandles)> {
     let config = Arc::new(client::Config::default());
-    let _handles = establish_handles(config, request.clone(), known_hosts).await?;
-    let channel = _handles
+    let handles = establish_handles(config, request, known_hosts).await?;
+    let channel = handles
         .target_handle
         .channel_open_session()
         .await
@@ -273,8 +813,7 @@ where
     let sftp = SftpSession::new(channel.into_stream())
         .await
         .context("Unable to initialize the SFTP session")?;
-
-    action(sftp).await
+    Ok((sftp, handles))
 }
 
 async fn canonical_remote_path(sftp: &SftpSession, path: &str) -> Result<String> {
@@ -496,9 +1035,13 @@ impl client::Handler for SftpHandler {
 #[cfg(test)]
 mod tests {
     use super::{
-        SftpEvent, spawn_delete_path, spawn_download_file, spawn_list_directory, spawn_upload_file,
+        AuthorizedKeyAction, AuthorizedKeyEvent, AuthorizedKeyOutcome, GeneratedKeyVerification,
+        SftpEvent, spawn_authorized_key_operation, spawn_delete_path, spawn_download_file,
+        spawn_list_directory, spawn_upload_file,
     };
     use crate::models::{AuthConfig, ConnectRequest, ConnectionKind};
+    use crate::ssh::{SessionCommand, SshEvent, spawn_session};
+    use crate::ssh_keys::{PublicKeyMaterial, generate_ed25519_key_pair};
     use crate::storage::KnownHostStore;
     #[cfg(unix)]
     use crate::test_support::TestSshAgent;
@@ -539,6 +1082,38 @@ mod tests {
             Err(RecvTimeoutError::Timeout) => panic!("timed out waiting for SFTP event"),
             Err(RecvTimeoutError::Disconnected) => panic!("SFTP event channel disconnected"),
         }
+    }
+
+    fn recv_authorized_key_event(rx: &Receiver<AuthorizedKeyEvent>) -> AuthorizedKeyEvent {
+        match rx.recv_timeout(Duration::from_secs(75)) {
+            Ok(event) => event,
+            Err(RecvTimeoutError::Timeout) => {
+                panic!("timed out waiting for authorized_keys operation")
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                panic!("authorized_keys operation channel disconnected")
+            }
+        }
+    }
+
+    fn run_authorized_key_operation(
+        operation_id: u64,
+        request: ConnectRequest,
+        known_hosts: Arc<KnownHostStore>,
+        key: PublicKeyMaterial,
+        action: AuthorizedKeyAction,
+        verification: Option<GeneratedKeyVerification>,
+    ) -> AuthorizedKeyEvent {
+        let (_control, events) = spawn_authorized_key_operation(
+            operation_id,
+            request,
+            known_hosts,
+            key,
+            action,
+            verification,
+        )
+        .expect("unable to start authorized_keys operation");
+        recv_authorized_key_event(&events)
     }
 
     #[test]
@@ -732,5 +1307,429 @@ mod tests {
             }
             event => panic!("unexpected SSH-agent SFTP event: {event:?}"),
         }
+    }
+
+    #[test]
+    fn docker_generated_key_install_is_verified_idempotent_and_exactly_removable() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping generated-key lifecycle e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH server");
+        server
+            .exec(
+                "printf '# preserve this comment with spaces\\nnot-a-key preserve-me exactly\\n' >> /home/termirust/.ssh/authorized_keys",
+            )
+            .expect("unable to seed unrelated authorized_keys lines");
+        let original_authorized_keys = server
+            .exec("cat /home/termirust/.ssh/authorized_keys")
+            .expect("unable to capture original authorized_keys content");
+        let key_dir = tempfile::TempDir::new().expect("unable to create generated-key directory");
+        let private_path = key_dir.path().join("id_termirust_generated");
+        let passphrase = "generated-key-test-passphrase";
+        let generated = generate_ed25519_key_pair(
+            &private_path,
+            "termirust-generated-key-test",
+            Some(passphrase),
+        )
+        .expect("unable to generate test SSH identity");
+        let key = PublicKeyMaterial::parse(&generated.public_key)
+            .expect("unable to parse generated public key");
+        let key_blob = key
+            .openssh
+            .split_whitespace()
+            .nth(1)
+            .expect("generated public key should contain a key blob")
+            .to_string();
+        let request = docker_sftp_request(&server);
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let verification = || {
+            Some(GeneratedKeyVerification::new(
+                private_path.clone(),
+                Some(passphrase.to_string()),
+            ))
+        };
+
+        assert!(matches!(
+            run_authorized_key_operation(
+                20,
+                request.clone(),
+                known_hosts.clone(),
+                key.clone(),
+                AuthorizedKeyAction::Add,
+                verification(),
+            ),
+            AuthorizedKeyEvent::Complete {
+                outcome: AuthorizedKeyOutcome::InstalledAndVerified,
+                ..
+            }
+        ));
+
+        let mut generated_request = request.clone();
+        generated_request.session_id = 25;
+        generated_request.auth = Some(AuthConfig::PrivateKey {
+            key_path: private_path.display().to_string(),
+            passphrase: Some(passphrase.to_string()),
+        });
+        let (ssh_tx, ssh_rx) = mpsc::channel();
+        let runtime = spawn_session(generated_request, known_hosts.clone(), ssh_tx, 0);
+        let mut connected = false;
+        let mut marker = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        while std::time::Instant::now() < deadline && !marker {
+            match ssh_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(SshEvent::Connected { .. }) => {
+                    connected = true;
+                    runtime
+                        .command_tx
+                        .send(SessionCommand::Input(
+                            b"printf 'generated-key-terminal-ok\\n'\n".to_vec(),
+                        ))
+                        .expect("unable to send generated-key terminal marker");
+                }
+                Ok(SshEvent::Output { data, .. }) => {
+                    marker |= String::from_utf8_lossy(&data).contains("generated-key-terminal-ok");
+                }
+                Ok(SshEvent::Error { message, .. }) => {
+                    panic!("generated-key terminal login failed: {message}")
+                }
+                Ok(_) => {}
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        let _ = runtime.command_tx.send(SessionCommand::Disconnect);
+        assert!(connected, "generated key should open a fresh terminal");
+        assert!(
+            marker,
+            "generated-key terminal should stream command output"
+        );
+
+        assert!(matches!(
+            run_authorized_key_operation(
+                21,
+                request.clone(),
+                known_hosts.clone(),
+                key.clone(),
+                AuthorizedKeyAction::Add,
+                verification(),
+            ),
+            AuthorizedKeyEvent::Complete {
+                outcome: AuthorizedKeyOutcome::AlreadyPresentAndVerified,
+                ..
+            }
+        ));
+
+        let installed = server
+            .exec("cat /home/termirust/.ssh/authorized_keys")
+            .expect("unable to read remote authorized_keys");
+        assert_eq!(installed.matches(&key_blob).count(), 1);
+        assert!(installed.contains("# preserve this comment with spaces"));
+        assert!(installed.contains("not-a-key preserve-me exactly"));
+        assert!(
+            installed.lines().count() >= 2,
+            "fixture key must be preserved"
+        );
+        assert_eq!(
+            server
+                .exec("stat -c '%a %U' /home/termirust/.ssh /home/termirust/.ssh/authorized_keys")
+                .expect("unable to inspect remote SSH permissions"),
+            "700 termirust\n600 termirust"
+        );
+
+        assert!(matches!(
+            run_authorized_key_operation(
+                22,
+                request.clone(),
+                known_hosts.clone(),
+                key.clone(),
+                AuthorizedKeyAction::Remove,
+                None,
+            ),
+            AuthorizedKeyEvent::Complete {
+                outcome: AuthorizedKeyOutcome::Removed,
+                ..
+            }
+        ));
+        let removed = server
+            .exec("cat /home/termirust/.ssh/authorized_keys")
+            .expect("unable to read remote authorized_keys after removal");
+        assert!(!removed.contains(&key_blob));
+        assert_eq!(removed, original_authorized_keys);
+        assert!(
+            !removed.trim().is_empty(),
+            "fixture key must remain after removal"
+        );
+        assert!(matches!(
+            run_authorized_key_operation(
+                23,
+                request,
+                known_hosts,
+                key,
+                AuthorizedKeyAction::Remove,
+                None,
+            ),
+            AuthorizedKeyEvent::Complete {
+                outcome: AuthorizedKeyOutcome::NotPresent,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn docker_generated_key_deployment_rejects_authorized_keys_symlink_without_leaking_secrets() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping generated-key hostile-path e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH server");
+        server
+            .exec(
+                "mv /home/termirust/.ssh/authorized_keys /home/termirust/.ssh/authorized_keys.real && ln -s authorized_keys.real /home/termirust/.ssh/authorized_keys",
+            )
+            .expect("unable to prepare hostile authorized_keys symlink");
+        let before = server
+            .exec("cat /home/termirust/.ssh/authorized_keys.real")
+            .expect("unable to read protected authorized_keys fixture");
+        let key_dir = tempfile::TempDir::new().expect("unable to create generated-key directory");
+        let private_path = key_dir.path().join("hostile-secret-path");
+        let passphrase = "hostile-secret-passphrase";
+        let generated = generate_ed25519_key_pair(&private_path, "hostile-test", Some(passphrase))
+            .expect("unable to generate hostile-path test identity");
+        let key = PublicKeyMaterial::parse(&generated.public_key)
+            .expect("unable to parse generated public key");
+        let event = run_authorized_key_operation(
+            24,
+            docker_sftp_request(&server),
+            Arc::new(KnownHostStore::load().expect("unable to load known hosts")),
+            key,
+            AuthorizedKeyAction::Add,
+            Some(GeneratedKeyVerification::new(
+                private_path.clone(),
+                Some(passphrase.to_string()),
+            )),
+        );
+        let AuthorizedKeyEvent::Error { message, .. } = event else {
+            panic!("hostile authorized_keys symlink was not rejected: {event:?}");
+        };
+        assert!(message.contains("unsafe type or owner"));
+        assert!(!message.contains(passphrase));
+        assert!(!message.contains(private_path.to_string_lossy().as_ref()));
+        assert!(!message.contains(&generated.public_key));
+        assert_eq!(
+            server
+                .exec("cat /home/termirust/.ssh/authorized_keys.real")
+                .expect("unable to re-read protected authorized_keys fixture"),
+            before
+        );
+    }
+
+    #[test]
+    fn docker_generated_key_verification_failure_reports_installed_state_honestly() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping generated-key verification-failure e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH server");
+        let key_dir = tempfile::TempDir::new().expect("unable to create generated-key directory");
+        let installed_path = key_dir.path().join("installed-key");
+        let rejected_path = key_dir.path().join("different-verification-key");
+        let installed = generate_ed25519_key_pair(&installed_path, "installed", None).unwrap();
+        generate_ed25519_key_pair(&rejected_path, "different", None).unwrap();
+        let key = PublicKeyMaterial::parse(&installed.public_key).unwrap();
+        let key_blob = key.openssh.split_whitespace().nth(1).unwrap().to_string();
+        let request = docker_sftp_request(&server);
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+
+        assert!(matches!(
+            run_authorized_key_operation(
+                26,
+                request.clone(),
+                known_hosts.clone(),
+                key.clone(),
+                AuthorizedKeyAction::Add,
+                Some(GeneratedKeyVerification::new(rejected_path, None)),
+            ),
+            AuthorizedKeyEvent::Complete {
+                outcome: AuthorizedKeyOutcome::InstalledVerificationFailed,
+                ..
+            }
+        ));
+        assert_eq!(
+            server
+                .exec("cat /home/termirust/.ssh/authorized_keys")
+                .expect("unable to inspect failed-verification deployment")
+                .matches(&key_blob)
+                .count(),
+            1,
+            "a verification failure must not misreport the completed remote write"
+        );
+        assert!(matches!(
+            run_authorized_key_operation(
+                27,
+                request,
+                known_hosts,
+                key,
+                AuthorizedKeyAction::Remove,
+                None,
+            ),
+            AuthorizedKeyEvent::Complete {
+                outcome: AuthorizedKeyOutcome::Removed,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn docker_concurrent_generated_key_deployments_preserve_both_keys() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping concurrent generated-key e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH server");
+        let key_dir = tempfile::TempDir::new().expect("unable to create generated-key directory");
+        let first_path = key_dir.path().join("concurrent-first");
+        let second_path = key_dir.path().join("concurrent-second");
+        let first = generate_ed25519_key_pair(&first_path, "concurrent-first", None)
+            .expect("unable to generate first concurrent key");
+        let second = generate_ed25519_key_pair(&second_path, "concurrent-second", None)
+            .expect("unable to generate second concurrent key");
+        let first_key = PublicKeyMaterial::parse(&first.public_key).unwrap();
+        let second_key = PublicKeyMaterial::parse(&second.public_key).unwrap();
+        let first_blob = first_key
+            .openssh
+            .split_whitespace()
+            .nth(1)
+            .unwrap()
+            .to_string();
+        let second_blob = second_key
+            .openssh
+            .split_whitespace()
+            .nth(1)
+            .unwrap()
+            .to_string();
+        let request = docker_sftp_request(&server);
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+
+        let (_first_control, first_events) = spawn_authorized_key_operation(
+            31,
+            request.clone(),
+            known_hosts.clone(),
+            first_key.clone(),
+            AuthorizedKeyAction::Add,
+            Some(GeneratedKeyVerification::new(first_path.clone(), None)),
+        )
+        .unwrap();
+        let (_second_control, second_events) = spawn_authorized_key_operation(
+            32,
+            request.clone(),
+            known_hosts.clone(),
+            second_key.clone(),
+            AuthorizedKeyAction::Add,
+            Some(GeneratedKeyVerification::new(second_path.clone(), None)),
+        )
+        .unwrap();
+        let first_event = recv_authorized_key_event(&first_events);
+        let second_event = recv_authorized_key_event(&second_events);
+
+        for (operation_id, event, key, path) in [
+            (33, first_event, first_key, first_path),
+            (34, second_event, second_key, second_path),
+        ] {
+            match event {
+                AuthorizedKeyEvent::Complete {
+                    outcome:
+                        AuthorizedKeyOutcome::InstalledAndVerified
+                        | AuthorizedKeyOutcome::AlreadyPresentAndVerified,
+                    ..
+                } => {}
+                AuthorizedKeyEvent::Error { message, .. }
+                    if message.contains("already in progress") =>
+                {
+                    let retry = run_authorized_key_operation(
+                        operation_id,
+                        request.clone(),
+                        known_hosts.clone(),
+                        key,
+                        AuthorizedKeyAction::Add,
+                        Some(GeneratedKeyVerification::new(path, None)),
+                    );
+                    assert!(matches!(
+                        retry,
+                        AuthorizedKeyEvent::Complete {
+                            outcome: AuthorizedKeyOutcome::InstalledAndVerified
+                                | AuthorizedKeyOutcome::AlreadyPresentAndVerified,
+                            ..
+                        }
+                    ));
+                }
+                event => panic!("unexpected concurrent deployment result: {event:?}"),
+            }
+        }
+
+        let installed = server
+            .exec("cat /home/termirust/.ssh/authorized_keys")
+            .expect("unable to read concurrent authorized_keys result");
+        assert_eq!(installed.matches(&first_blob).count(), 1);
+        assert_eq!(installed.matches(&second_blob).count(), 1);
+        assert!(
+            installed.lines().count() >= 3,
+            "fixture key must be preserved"
+        );
+    }
+
+    #[test]
+    fn pre_cancelled_generated_key_operation_is_bounded_and_does_not_connect() {
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        cancellation.cancel();
+        let key_dir = tempfile::TempDir::new().unwrap();
+        let generated =
+            generate_ed25519_key_pair(&key_dir.path().join("cancelled"), "", None).unwrap();
+        let key = PublicKeyMaterial::parse(&generated.public_key).unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let started = std::time::Instant::now();
+        let outcome = runtime
+            .block_on(super::run_authorized_key_operation(
+                ConnectRequest {
+                    session_id: 40,
+                    title: "cancelled".to_string(),
+                    kind: ConnectionKind::Ssh,
+                    host: "192.0.2.1".to_string(),
+                    port: 22,
+                    username: "nobody".to_string(),
+                    auth: Some(AuthConfig::Password {
+                        password: "not-used".to_string(),
+                    }),
+                    jump_host: None,
+                    startup_directory: None,
+                    startup_command: None,
+                    start_in_files: false,
+                    persistent_session: false,
+                    persistent_session_name: None,
+                    persistent_session_detach_others: false,
+                    terminal_scrollback_rows: 10_000,
+                    port_forward_rules: Vec::new(),
+                    local_shell: None,
+                    environment: Vec::new(),
+                },
+                Arc::new(KnownHostStore::load().unwrap()),
+                key,
+                AuthorizedKeyAction::Add,
+                Some(GeneratedKeyVerification::new(
+                    generated.private_key_path,
+                    None,
+                )),
+                cancellation,
+            ))
+            .unwrap();
+        assert_eq!(outcome, AuthorizedKeyOutcome::Cancelled);
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 }

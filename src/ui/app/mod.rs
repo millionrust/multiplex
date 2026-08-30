@@ -12,6 +12,7 @@ mod editor;
 mod global_search;
 mod hosted_session;
 mod hosts;
+mod key_lifecycle;
 mod library;
 mod new_session;
 mod notification_settings;
@@ -53,6 +54,7 @@ use controller_coordinator::ControllerCoordinator;
 use dev_urls::DevUrlUiState;
 use global_search::GlobalSearchState;
 use hosted_session::DurableSessionPaths;
+use key_lifecycle::{KeyLifecycleDialog, KeyLifecycleInputs};
 use new_session::NewSessionState;
 use palette::{
     CommandPaletteCandidate, OutputSuggestionContext, PaletteAction, PathSuggestionContext,
@@ -1066,6 +1068,9 @@ pub struct TermiRustApp {
     draft_vault_member_role: VaultMemberRole,
     known_hosts: Arc<KnownHostStore>,
     keychain_tab: KeychainTab,
+    key_lifecycle_inputs: KeyLifecycleInputs,
+    key_lifecycle_dialog: Option<KeyLifecycleDialog>,
+    key_lifecycle_control: Option<crate::sftp::AuthorizedKeyControl>,
     show_command_palette: bool,
     show_new_host_menu: bool,
     hosts_view_mode: HostsViewMode,
@@ -1151,6 +1156,7 @@ impl TermiRustApp {
         let settings_inputs = SettingsInputs::new(window, cx);
         let vault_inputs = VaultInputs::new(window, cx);
         let vault_member_inputs = VaultMemberInputs::new(window, cx);
+        let key_lifecycle_inputs = KeyLifecycleInputs::new(window, cx);
         let (event_tx, event_rx) = mpsc::channel();
         let session_coordinator = SessionCoordinator::new(event_tx.clone());
         let (sftp_event_tx, sftp_event_rx) = mpsc::channel();
@@ -1363,6 +1369,9 @@ impl TermiRustApp {
             draft_vault_member_role: VaultMemberRole::Editor,
             known_hosts,
             keychain_tab: KeychainTab::Keys,
+            key_lifecycle_inputs,
+            key_lifecycle_dialog: None,
+            key_lifecycle_control: None,
             show_command_palette: false,
             show_new_host_menu: false,
             hosts_view_mode: HostsViewMode::Grid,
@@ -10998,6 +11007,9 @@ impl Render for TermiRustApp {
             .when(self.dev_url_ui.has_pending(), |this| {
                 this.child(self.render_dev_url_confirmation(cx))
             })
+            .when(self.key_lifecycle_dialog.is_some(), |this| {
+                this.child(self.render_key_lifecycle_dialog(cx))
+            })
     }
 }
 
@@ -11035,6 +11047,20 @@ impl TermiRustApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if let Some(dialog) = self.key_lifecycle_dialog.as_ref() {
+            if event.keystroke.key.as_str() == "escape" {
+                match dialog {
+                    KeyLifecycleDialog::Running { .. } => self.cancel_key_operation(cx),
+                    KeyLifecycleDialog::Generating => {}
+                    _ => self.close_key_lifecycle(window, cx),
+                }
+                return true;
+            }
+
+            // Keep app and canvas shortcuts behind the modal from firing while its
+            // inputs own keyboard focus.
+            return false;
+        }
         if self.dev_url_ui.has_pending() && event.keystroke.key.as_str() == "escape" {
             self.cancel_dev_url_open(cx);
             return true;
@@ -11511,12 +11537,13 @@ fn apply_group_defaults_to_draft(
 mod tests {
     use super::{
         AutocompleteSource, ConnectDialogMode, ConnectProtocol, DropZone, HostsSort, HostsViewMode,
-        KeychainTab, MAX_SPLIT_PANES, NavSection, OutputSuggestionContext, PathSuggestionContext,
-        SessionLibraryView, SplitNode, TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone,
-        WorkspaceViewMode, apply_group_defaults_to_draft, collect_autocomplete_candidates,
-        collect_command_palette_candidates, extract_snippet_prompt_names,
-        shell_command_requires_continuation, startup_bytes_for_request,
-        substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
+        KeyLifecycleDialog, KeychainTab, MAX_SPLIT_PANES, NavSection, OutputSuggestionContext,
+        PathSuggestionContext, SessionLibraryView, SplitNode, TermiRustApp, WorkspaceIndicators,
+        WorkspaceRuntimeTone, WorkspaceViewMode, apply_group_defaults_to_draft,
+        collect_autocomplete_candidates, collect_command_palette_candidates,
+        extract_snippet_prompt_names, shell_command_requires_continuation,
+        startup_bytes_for_request, substitute_snippet_placeholders, substitute_snippet_prompts,
+        workspace_runtime_summary,
     };
     use crate::credentials;
     use crate::models::{
@@ -22918,6 +22945,329 @@ sleep 1
                 .expect("imported identity should be selected");
             assert_eq!(identity.key_path, key_path.display().to_string());
         });
+    }
+
+    #[gpui::test]
+    fn e2e_keychain_generate_flow_creates_encrypted_identity_and_review(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        let (app, window) = open_test_app_with_state(cx, saved);
+        let destination_dir = tempfile::TempDir::new().expect("unable to create key destination");
+        let destination = destination_dir.path().join("generated-ui-key");
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Keychain, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        let generate_click = selector_click_center(window, cx, "keychain-generate");
+        let mut generate_visual = VisualTestContext::from_window(window.into(), cx);
+        generate_visual.simulate_click(generate_click, gpui::Modifiers::none());
+        generate_visual.run_until_parked();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.key_lifecycle_inputs.label,
+                        "Generated UI Key",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.key_lifecycle_inputs.comment,
+                        "ui-test@example.test",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.key_lifecycle_inputs.passphrase,
+                        "ui-key-passphrase",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.key_lifecycle_inputs.passphrase_confirm,
+                        "ui-key-passphrase",
+                        window,
+                        cx,
+                    );
+                    queue_dialog_path(Some(destination.clone()));
+                })
+            })
+            .expect("window update should succeed");
+        let destination_click = selector_click_center(window, cx, "key-lifecycle-generate");
+        let mut destination_visual = VisualTestContext::from_window(window.into(), cx);
+        destination_visual.simulate_click(destination_click, gpui::Modifiers::none());
+        destination_visual.run_until_parked();
+
+        wait_for_window_app_state(cx, window, &app, Duration::from_secs(10), |app| {
+            matches!(
+                app.key_lifecycle_dialog,
+                Some(KeyLifecycleDialog::Generated { .. })
+            )
+            .then_some(())
+        });
+        app.read_with(cx, |app, cx| {
+            let identity = app
+                .saved
+                .identities
+                .iter()
+                .find(|identity| identity.label == "Generated UI Key")
+                .expect("generated identity should be saved");
+            assert_eq!(identity.source, IdentitySource::Generated);
+            assert_eq!(identity.key_path, destination.display().to_string());
+            assert!(
+                app.key_lifecycle_inputs
+                    .passphrase
+                    .read(cx)
+                    .value()
+                    .is_empty()
+            );
+            assert!(
+                app.key_lifecycle_inputs
+                    .passphrase_confirm
+                    .read(cx)
+                    .value()
+                    .is_empty()
+            );
+        });
+        assert!(destination.exists());
+        assert!(destination.with_file_name("generated-ui-key.pub").exists());
+        russh::keys::load_secret_key(&destination, Some("ui-key-passphrase"))
+            .expect("generated private key should decrypt with the entered passphrase");
+    }
+
+    #[gpui::test]
+    fn e2e_key_lifecycle_escape_closes_modal_and_clears_passphrases(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_key_generation(window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.key_lifecycle_inputs.passphrase,
+                        "must-not-remain",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.key_lifecycle_inputs.passphrase_confirm,
+                        "must-not-remain",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.key_lifecycle_inputs.deployment_passphrase,
+                        "must-not-remain",
+                        window,
+                        cx,
+                    );
+                    let escape = KeyDownEvent {
+                        keystroke: Keystroke::parse("escape").unwrap(),
+                        is_held: false,
+                    };
+                    assert!(app.handle_global_key(&escape, window, cx));
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, cx| {
+            assert!(app.key_lifecycle_dialog.is_none());
+            assert!(
+                app.key_lifecycle_inputs
+                    .passphrase
+                    .read(cx)
+                    .value()
+                    .is_empty()
+            );
+            assert!(
+                app.key_lifecycle_inputs
+                    .passphrase_confirm
+                    .read(cx)
+                    .value()
+                    .is_empty()
+            );
+            assert!(
+                app.key_lifecycle_inputs
+                    .deployment_passphrase
+                    .read(cx)
+                    .value()
+                    .is_empty()
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_keychain_ui_deploys_verifies_and_exactly_removes_generated_key(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping rendered key lifecycle e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH fixture");
+        let original_authorized_keys = server
+            .exec("cat /home/termirust/.ssh/authorized_keys")
+            .expect("unable to read initial authorized_keys");
+        let destination_dir = tempfile::TempDir::new().expect("unable to create key destination");
+        let destination = destination_dir.path().join("rendered-lifecycle-key");
+
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        saved.profiles.push(HostProfile {
+            id: "rendered-key-deploy-host".to_string(),
+            label: "Rendered Key Deploy Host".to_string(),
+            host: server.host().to_string(),
+            port: server.port,
+            username: server.username().to_string(),
+            auth_mode: AuthMode::PrivateKey,
+            key_path: docker_ssh_private_key_path(),
+            source: ProfileSource::User,
+            ..HostProfile::default()
+        });
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Keychain, window, cx);
+                    app.open_key_generation(window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.key_lifecycle_inputs.label,
+                        "Rendered Lifecycle Key",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.key_lifecycle_inputs.comment,
+                        "rendered-lifecycle@example.test",
+                        window,
+                        cx,
+                    );
+                    queue_dialog_path(Some(destination.clone()));
+                })
+            })
+            .expect("window update should succeed");
+        let generate_click = selector_click_center(window, cx, "key-lifecycle-generate");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(generate_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+
+        let (identity_id, key_blob) =
+            wait_for_window_app_state(cx, window, &app, Duration::from_secs(10), |app| {
+                let KeyLifecycleDialog::Generated { identity_id, .. } =
+                    app.key_lifecycle_dialog.as_ref()?
+                else {
+                    return None;
+                };
+                let public = fs::read_to_string(destination.with_extension("pub")).ok()?;
+                let blob = public.split_whitespace().nth(1)?.to_string();
+                Some((identity_id.clone(), blob))
+            });
+
+        let deploy_click = selector_click_center(window, cx, "key-lifecycle-deploy-generated");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(deploy_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+        let profile_index = app.read_with(cx, |app, _| {
+            app.saved
+                .profiles
+                .iter()
+                .position(|profile| profile.id == "rendered-key-deploy-host")
+                .expect("deploy profile should exist")
+        });
+        let choose_click = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("key-lifecycle-choose-host-{profile_index}"),
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(choose_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+        let confirm_click = selector_click_center(window, cx, "key-lifecycle-confirm");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(confirm_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+
+        wait_for_window_app_state(cx, window, &app, Duration::from_secs(75), |app| {
+            matches!(
+                app.key_lifecycle_dialog,
+                Some(KeyLifecycleDialog::Result {
+                    action: crate::sftp::AuthorizedKeyAction::Add,
+                    success: true,
+                    ..
+                })
+            )
+            .then_some(())
+        });
+        let installed = server
+            .exec("cat /home/termirust/.ssh/authorized_keys")
+            .expect("unable to read installed authorized_keys");
+        assert_eq!(installed.matches(&key_blob).count(), 1);
+
+        let done_click = selector_click_center(window, cx, "key-lifecycle-done");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(done_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+        let identity_index = app.read_with(cx, |app, _| {
+            app.saved
+                .identities
+                .iter()
+                .position(|identity| identity.id == identity_id)
+                .expect("generated identity should remain in Keychain")
+        });
+        let remove_click = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("keychain-remove-remote-{identity_index}"),
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(remove_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+        let choose_click = dynamic_selector_click_center(
+            window,
+            cx,
+            format!("key-lifecycle-choose-host-{profile_index}"),
+        );
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(choose_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+        let confirm_click = selector_click_center(window, cx, "key-lifecycle-confirm");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(confirm_click, gpui::Modifiers::none());
+        visual.run_until_parked();
+
+        wait_for_window_app_state(cx, window, &app, Duration::from_secs(75), |app| {
+            matches!(
+                app.key_lifecycle_dialog,
+                Some(KeyLifecycleDialog::Result {
+                    action: crate::sftp::AuthorizedKeyAction::Remove,
+                    success: true,
+                    ..
+                })
+            )
+            .then_some(())
+        });
+        assert_eq!(
+            server
+                .exec("cat /home/termirust/.ssh/authorized_keys")
+                .expect("unable to read authorized_keys after rendered removal"),
+            original_authorized_keys
+        );
+
+        let audit = fs::read_to_string(
+            crate::storage::app_dir()
+                .expect("app dir should resolve")
+                .join("ssh-key-operations.json"),
+        )
+        .expect("rendered lifecycle should write a redacted audit");
+        assert!(!audit.contains(destination.to_string_lossy().as_ref()));
+        assert!(!audit.contains(&key_blob));
+        assert!(!audit.contains("rendered-lifecycle@example.test"));
     }
 
     #[gpui::test]

@@ -139,6 +139,20 @@ impl TermiRustApp {
                                 )
                             })
                             .child(
+                                Button::new("keychain-generate")
+                                    .debug_selector(|| "keychain-generate".to_string())
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .icon(IconName::Plus)
+                                    .label("Generate Key")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_key_generation(window, cx);
+                                    })),
+                            )
+                            .child(
                                 Button::new("keychain-browse")
                                     .debug_selector(|| "keychain-browse".to_string())
                                     .small()
@@ -240,6 +254,17 @@ impl TermiRustApp {
                                                                 ))
                                                             },
                                                         )
+                                                        .when(
+                                                            button_identity.source
+                                                                == crate::models::IdentitySource::Generated,
+                                                            |this| {
+                                                                this.child(self.status_badge(
+                                                                    "Generated",
+                                                                    theme::library_bg(),
+                                                                    theme::success(),
+                                                                ))
+                                                            },
+                                                        )
                                                         .when(index == 0, |this| {
                                                             this.child(self.status_badge(
                                                                 "Default",
@@ -269,17 +294,77 @@ impl TermiRustApp {
                                         ),
                                 )
                                 .child(
-                                    Button::new(("keychain-use", index))
-                                        .debug_selector(move || format!("keychain-use-{index}"))
-                                        .small()
-                                        .custom(Self::action_button_style(
-                                            theme::ActionTone::AccentSoft,
-                                            cx,
-                                        ))
-                                        .label("Use")
-                                        .on_click(cx.listener(move |this, _, window, cx| {
-                                            this.use_identity(&button_identity, window, cx);
-                                        })),
+                                    h_flex()
+                                        .gap_2()
+                                        .when(has_pub, |this| {
+                                            let deploy_identity_id = button_identity.id.clone();
+                                            let remove_identity_id = button_identity.id.clone();
+                                            this.child(
+                                                Button::new(("keychain-deploy", index))
+                                                    .debug_selector(move || {
+                                                        format!("keychain-deploy-{index}")
+                                                    })
+                                                    .small()
+                                                    .custom(Self::action_button_style(
+                                                        theme::ActionTone::Accent,
+                                                        cx,
+                                                    ))
+                                                    .label("Deploy")
+                                                    .on_click(cx.listener(
+                                                        move |this, _, window, cx| {
+                                                            this.open_key_host_picker(
+                                                                deploy_identity_id.clone(),
+                                                                crate::sftp::AuthorizedKeyAction::Add,
+                                                                window,
+                                                                cx,
+                                                            );
+                                                        },
+                                                    )),
+                                            )
+                                            .child(
+                                                Button::new(("keychain-remove-remote", index))
+                                                    .debug_selector(move || {
+                                                        format!("keychain-remove-remote-{index}")
+                                                    })
+                                                    .small()
+                                                    .custom(Self::action_button_style(
+                                                        theme::ActionTone::Neutral,
+                                                        cx,
+                                                    ))
+                                                    .label("Remove")
+                                                    .on_click(cx.listener(
+                                                        move |this, _, window, cx| {
+                                                            this.open_key_host_picker(
+                                                                remove_identity_id.clone(),
+                                                                crate::sftp::AuthorizedKeyAction::Remove,
+                                                                window,
+                                                                cx,
+                                                            );
+                                                        },
+                                                    )),
+                                            )
+                                        })
+                                        .child(
+                                            Button::new(("keychain-use", index))
+                                                .debug_selector(move || {
+                                                    format!("keychain-use-{index}")
+                                                })
+                                                .small()
+                                                .custom(Self::action_button_style(
+                                                    theme::ActionTone::AccentSoft,
+                                                    cx,
+                                                ))
+                                                .label("Use")
+                                                .on_click(cx.listener(
+                                                    move |this, _, window, cx| {
+                                                        this.use_identity(
+                                                            &button_identity,
+                                                            window,
+                                                            cx,
+                                                        );
+                                                    },
+                                                )),
+                                        ),
                                 )
                                 .into_any_element()
                         },
@@ -297,6 +382,22 @@ impl TermiRustApp {
                                 h_flex()
                                     .gap_2()
                                     .justify_center()
+                                    .child(
+                                        Button::new("keys-empty-generate")
+                                            .debug_selector(|| {
+                                                "keys-empty-generate".to_string()
+                                            })
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Accent,
+                                                cx,
+                                            ))
+                                            .icon(IconName::Plus)
+                                            .label("Generate Key")
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.open_key_generation(window, cx);
+                                            })),
+                                    )
                                     .child(
                                         Button::new("keys-empty-add")
                                             .debug_selector(|| "keys-empty-add".to_string())

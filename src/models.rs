@@ -70,6 +70,7 @@ pub enum IdentitySource {
     #[default]
     User,
     Imported,
+    Generated,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1535,7 +1536,7 @@ impl SavedState {
                 .iter_mut()
                 .find(|item| item.id == identity.id)
             {
-                if existing.source == IdentitySource::User {
+                if existing.source != IdentitySource::Imported {
                     continue;
                 }
                 *existing = identity;
@@ -4894,6 +4895,62 @@ mod tests {
         assert_eq!(state.identities.len(), 1);
         assert_eq!(state.identities[0].label, "prod-key");
         assert_eq!(state.identities[0].source, IdentitySource::User);
+    }
+
+    #[test]
+    fn generated_identity_source_round_trips_and_old_state_defaults_to_user() {
+        let generated = SavedIdentity {
+            id: "generated-id".to_string(),
+            label: "Generated".to_string(),
+            vault_id: None,
+            key_path: "/tmp/generated".to_string(),
+            kind: "ED25519".to_string(),
+            source: IdentitySource::Generated,
+        };
+        let encoded = serde_json::to_string(&generated).unwrap();
+        assert!(encoded.contains("\"source\":\"generated\""));
+        assert_eq!(
+            serde_json::from_str::<SavedIdentity>(&encoded)
+                .unwrap()
+                .source,
+            IdentitySource::Generated
+        );
+
+        let old_state = r#"{
+            "id":"legacy-id",
+            "label":"Legacy",
+            "key_path":"/tmp/legacy",
+            "kind":"OpenSSH"
+        }"#;
+        assert_eq!(
+            serde_json::from_str::<SavedIdentity>(old_state)
+                .unwrap()
+                .source,
+            IdentitySource::User
+        );
+    }
+
+    #[test]
+    fn imported_identities_do_not_replace_generated_identities() {
+        let mut state = SavedState::default();
+        state.identities.push(SavedIdentity {
+            id: identity_id_for_path("/tmp/generated"),
+            label: "generated-key".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            key_path: "/tmp/generated".to_string(),
+            kind: "ED25519".to_string(),
+            source: IdentitySource::Generated,
+        });
+
+        state.merge_imported_identities(vec![ImportedIdentity {
+            label: "generated".to_string(),
+            path: "/tmp/generated".to_string(),
+            kind: "OpenSSH".to_string(),
+        }]);
+
+        assert_eq!(state.identities.len(), 1);
+        assert_eq!(state.identities[0].label, "generated-key");
+        assert_eq!(state.identities[0].source, IdentitySource::Generated);
     }
 
     #[test]
