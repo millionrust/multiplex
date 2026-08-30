@@ -71,6 +71,20 @@ fn json_v1_golden() {
         ),
     );
     actual.insert(
+        "session_wait".into(),
+        json(
+            &mut service,
+            &[
+                "session",
+                "wait",
+                &SESSION_ID.to_string(),
+                "--state",
+                "exited",
+            ],
+            &cancellation,
+        ),
+    );
+    actual.insert(
         "session_archive".into(),
         json(
             &mut service,

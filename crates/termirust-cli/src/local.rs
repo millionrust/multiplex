@@ -27,9 +27,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     CLI_JSON_SCHEMA_VERSION, Cancellation, CliCommand, CliData, CliError, CommandService,
-    ControllerSshCommand, ErrorCode, MAX_RESPONSE_RECORDS, PresetListData, PresetView,
-    ProjectListData, ProjectView, RemovalConfirmationKind, SessionData, SessionListData,
-    SessionListFilter, SessionMutationData, SessionRemovalPreviewData, SessionView, StatusData,
+    ControllerSshCommand, ErrorCode, MAX_RESPONSE_RECORDS, MAX_SESSION_WAIT_TIMEOUT_MS,
+    PresetListData, PresetView, ProjectListData, ProjectView, RemovalConfirmationKind, SessionData,
+    SessionListData, SessionListFilter, SessionMutationData, SessionRemovalPreviewData,
+    SessionView, SessionWaitCondition, SessionWaitConditionData, SessionWaitData, StatusData,
 };
 
 const STORE_DIR_NAME: &str = "agent-workspace";
@@ -37,6 +38,8 @@ const SESSION_DATA_DIR_NAME: &str = "durable-sessions";
 const FORMAT_FILE_NAME: &str = "format.json";
 const HOST_READY_DEADLINE: Duration = Duration::from_secs(5);
 const READY_POLL_INTERVAL: Duration = Duration::from_millis(25);
+const SESSION_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const SESSION_WAIT_CANCELLATION_SLICE: Duration = Duration::from_millis(10);
 
 #[derive(Clone)]
 pub struct CliPaths {
@@ -346,6 +349,11 @@ pub trait CliClock: Send + Sync {
     fn now_millis(&self) -> u64;
 }
 
+pub trait CliWaiter: Send + Sync {
+    fn now(&self) -> Duration;
+    fn sleep_interruptibly(&self, duration: Duration, cancellation: &Cancellation) -> bool;
+}
+
 pub trait CliIds: Send + Sync {
     fn session_id(&self) -> HostedSessionId;
     fn command_id(&self) -> CommandId;
@@ -371,6 +379,7 @@ pub struct LocalCommandService {
     launcher: Arc<dyn HostLauncher>,
     controller: Arc<dyn HostController>,
     clock: Arc<dyn CliClock>,
+    waiter: Arc<dyn CliWaiter>,
     ids: Arc<dyn CliIds>,
     ssh_controller: Arc<dyn SshControllerCommandExecutor>,
 }
@@ -402,6 +411,7 @@ impl LocalCommandService {
             launcher,
             controller,
             clock,
+            waiter: Arc::new(SystemWaiter::new()),
             ids,
             ssh_controller: Arc::new(UnavailableSshController),
         }
@@ -412,6 +422,11 @@ impl LocalCommandService {
         ssh_controller: Arc<dyn SshControllerCommandExecutor>,
     ) -> Self {
         self.ssh_controller = ssh_controller;
+        self
+    }
+
+    pub fn with_waiter(mut self, waiter: Arc<dyn CliWaiter>) -> Self {
+        self.waiter = waiter;
         self
     }
 
@@ -838,6 +853,66 @@ impl LocalCommandService {
         Ok(CliData::Session(SessionData {
             session: SessionView::from(session),
         }))
+    }
+
+    fn session_wait(
+        &self,
+        session_id: HostedSessionId,
+        condition: SessionWaitCondition,
+        timeout_ms: u64,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        if !(1..=MAX_SESSION_WAIT_TIMEOUT_MS).contains(&timeout_ms) {
+            return Err(validation(
+                "session wait timeout is outside the supported range",
+                "Use a timeout from 1 through 300000 milliseconds.",
+            ));
+        }
+        let repository = self.sessions()?;
+        let timeout = Duration::from_millis(timeout_ms);
+        let deadline = self.waiter.now().saturating_add(timeout);
+        let mut first_observation = true;
+        let mut last_revision = None;
+
+        loop {
+            if cancellation.is_cancelled() {
+                return Err(cancelled());
+            }
+            let now = self.waiter.now();
+            if !first_observation && now >= deadline {
+                let mut error = CliError::new(
+                    ErrorCode::Timeout,
+                    "session wait timed out before the requested state was observed",
+                    "Inspect the current Session state and retry with a suitable bounded timeout.",
+                );
+                if let Some(revision) = last_revision {
+                    error = error.with_revision(revision);
+                }
+                return Err(error);
+            }
+
+            let snapshot = repository.load().map_err(map_store)?;
+            let session = require_session(&snapshot.sessions, session_id)?;
+            last_revision = Some(session.revision);
+            if wait_condition_matches(condition, session) {
+                return Ok(CliData::Wait(SessionWaitData {
+                    session: SessionView::from(session),
+                    condition: SessionWaitConditionData::from(condition),
+                }));
+            }
+            first_observation = false;
+
+            let now = self.waiter.now();
+            if now >= deadline {
+                continue;
+            }
+            let wait_for = SESSION_WAIT_POLL_INTERVAL.min(deadline.saturating_sub(now));
+            if !self.waiter.sleep_interruptibly(wait_for, cancellation)
+                || cancellation.is_cancelled()
+            {
+                return Err(cancelled());
+            }
+        }
     }
 
     fn session_archive(
@@ -1288,6 +1363,11 @@ impl CommandService for LocalCommandService {
             CliCommand::PresetList { project_id } => self.preset_list(project_id),
             CliCommand::SessionList(filter) => self.session_list(filter),
             CliCommand::SessionShow { session_id } => self.session_show(session_id),
+            CliCommand::SessionWait {
+                session_id,
+                condition,
+                timeout_ms,
+            } => self.session_wait(session_id, condition, timeout_ms, cancellation),
             CliCommand::SessionLaunch {
                 project_id,
                 preset_id,
@@ -1524,6 +1604,38 @@ impl CliClock for SystemClock {
     }
 }
 
+struct SystemWaiter {
+    origin: Instant,
+}
+
+impl SystemWaiter {
+    fn new() -> Self {
+        Self {
+            origin: Instant::now(),
+        }
+    }
+}
+
+impl CliWaiter for SystemWaiter {
+    fn now(&self) -> Duration {
+        self.origin.elapsed()
+    }
+
+    fn sleep_interruptibly(&self, duration: Duration, cancellation: &Cancellation) -> bool {
+        let deadline = Instant::now() + duration;
+        loop {
+            if cancellation.is_cancelled() {
+                return false;
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                return true;
+            }
+            std::thread::sleep(SESSION_WAIT_CANCELLATION_SLICE.min(deadline - now));
+        }
+    }
+}
+
 struct RandomIds;
 
 impl CliIds for RandomIds {
@@ -1565,6 +1677,13 @@ fn require_session(
         .iter()
         .find(|session| session.id == id)
         .ok_or_else(|| unavailable("session is unavailable"))
+}
+
+fn wait_condition_matches(condition: SessionWaitCondition, session: &HostedSession) -> bool {
+    match condition {
+        SessionWaitCondition::Lifecycle(state) => session.lifecycle == state,
+        SessionWaitCondition::Activity(state) => session.activity.state == state,
+    }
 }
 
 fn mutation_revision(

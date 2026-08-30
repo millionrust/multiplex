@@ -234,6 +234,32 @@ pub struct SessionData {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct SessionWaitData {
+    pub session: SessionView,
+    pub condition: SessionWaitConditionData,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum SessionWaitConditionData {
+    Lifecycle { state: String },
+    Activity { state: String },
+}
+
+impl From<crate::SessionWaitCondition> for SessionWaitConditionData {
+    fn from(value: crate::SessionWaitCondition) -> Self {
+        match value {
+            crate::SessionWaitCondition::Lifecycle(state) => Self::Lifecycle {
+                state: lifecycle_name(state).to_string(),
+            },
+            crate::SessionWaitCondition::Activity(state) => Self::Activity {
+                state: activity_name(state).to_string(),
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct SessionMutationData {
     pub outcome: String,
     pub session: SessionView,
@@ -309,6 +335,7 @@ pub enum CliData {
     Presets(PresetListData),
     Sessions(SessionListData),
     Session(SessionData),
+    Wait(SessionWaitData),
     Mutation(SessionMutationData),
     RemovalPreview(SessionRemovalPreviewData),
     ControllerSsh(ControllerSshData),

@@ -5,8 +5,8 @@ use termirust_client::{
     SshControllerTarget, SshControllerTargetId, ValidatedDnsOrIp, ValidatedUser,
 };
 use termirust_domain::{
-    GroupId, HostedSessionId, HostedSessionState, OccupantGeneration, OutputSequence, PresetId,
-    ProjectId, Revision,
+    ActivityState, GroupId, HostedSessionId, HostedSessionState, OccupantGeneration,
+    OutputSequence, PresetId, ProjectId, Revision,
 };
 use uuid::Uuid;
 
@@ -15,6 +15,8 @@ use crate::{CliError, ErrorCode};
 pub const MAX_ARG_COUNT: usize = 128;
 pub const MAX_ARG_BYTES: usize = 4 * 1024;
 pub const MAX_TOTAL_ARG_BYTES: usize = 64 * 1024;
+pub const DEFAULT_SESSION_WAIT_TIMEOUT_MS: u64 = 30_000;
+pub const MAX_SESSION_WAIT_TIMEOUT_MS: u64 = 300_000;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Invocation {
@@ -33,6 +35,11 @@ pub enum CliCommand {
     SessionList(SessionListFilter),
     SessionShow {
         session_id: HostedSessionId,
+    },
+    SessionWait {
+        session_id: HostedSessionId,
+        condition: SessionWaitCondition,
+        timeout_ms: u64,
     },
     SessionLaunch {
         project_id: ProjectId,
@@ -61,6 +68,12 @@ pub enum CliCommand {
         confirmation: Option<RemovalConfirmation>,
     },
     ControllerSsh(ControllerSshCommand),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SessionWaitCondition {
+    Lifecycle(HostedSessionState),
+    Activity(ActivityState),
 }
 
 impl CliCommand {
@@ -210,6 +223,27 @@ pub fn parse_args(arguments: Vec<String>) -> Result<Invocation, CliError> {
         [scope, action, session] if scope == "session" && action == "show" => {
             CliCommand::SessionShow {
                 session_id: parse_id(session, "session")?,
+            }
+        }
+        [scope, action, session, rest @ ..] if scope == "session" && action == "wait" => {
+            let options = parse_options(rest, &["--state", "--activity", "--timeout-ms"], &[])?;
+            let condition = match (options.value("--state"), options.value("--activity")) {
+                (Some(state), None) => SessionWaitCondition::Lifecycle(parse_state(state)?),
+                (None, Some(activity)) => SessionWaitCondition::Activity(parse_activity(activity)?),
+                _ => {
+                    return Err(usage(
+                        "session wait requires exactly one of --state or --activity",
+                    ));
+                }
+            };
+            CliCommand::SessionWait {
+                session_id: parse_id(session, "session")?,
+                condition,
+                timeout_ms: options
+                    .value("--timeout-ms")
+                    .map(parse_wait_timeout)
+                    .transpose()?
+                    .unwrap_or(DEFAULT_SESSION_WAIT_TIMEOUT_MS),
             }
         }
         [scope, action, rest @ ..] if scope == "session" && action == "launch" => {
@@ -568,6 +602,29 @@ fn parse_state(value: &str) -> Result<HostedSessionState, CliError> {
     }
 }
 
+fn parse_activity(value: &str) -> Result<ActivityState, CliError> {
+    use ActivityState as State;
+    match value {
+        "unknown" => Ok(State::Unknown),
+        "idle" => Ok(State::Idle),
+        "busy" => Ok(State::Busy),
+        "needs_input" => Ok(State::NeedsInput),
+        "done" => Ok(State::Done),
+        "failed" => Ok(State::Failed),
+        _ => Err(usage("unknown session activity")),
+    }
+}
+
+fn parse_wait_timeout(value: &str) -> Result<u64, CliError> {
+    value
+        .parse::<u64>()
+        .ok()
+        .filter(|timeout| (1..=MAX_SESSION_WAIT_TIMEOUT_MS).contains(timeout))
+        .ok_or_else(|| {
+            usage("session wait timeout must be an integer from 1 to 300000 milliseconds")
+        })
+}
+
 fn validate_bounds(arguments: &[String]) -> Result<(), CliError> {
     if arguments.len() > MAX_ARG_COUNT
         || arguments
@@ -689,6 +746,89 @@ mod tests {
         ] {
             assert_eq!(
                 parse_args(partial.into_iter().map(str::to_string).collect())
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Usage
+            );
+        }
+    }
+
+    #[test]
+    fn session_wait_parser_requires_one_bounded_closed_condition() {
+        let id = HostedSessionId::new().to_string();
+        let lifecycle = parse_args(
+            ["session", "wait", &id, "--state", "exited"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        )
+        .unwrap();
+        assert!(matches!(
+            lifecycle.command,
+            CliCommand::SessionWait {
+                condition: SessionWaitCondition::Lifecycle(HostedSessionState::Exited),
+                timeout_ms: 30_000,
+                ..
+            }
+        ));
+
+        let activity = parse_args(
+            [
+                "session",
+                "wait",
+                &id,
+                "--activity",
+                "needs_input",
+                "--timeout-ms",
+                "300000",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        )
+        .unwrap();
+        assert!(matches!(
+            activity.command,
+            CliCommand::SessionWait {
+                condition: SessionWaitCondition::Activity(ActivityState::NeedsInput),
+                timeout_ms: 300_000,
+                ..
+            }
+        ));
+
+        for invalid in [
+            vec!["session", "wait", &id],
+            vec![
+                "session",
+                "wait",
+                &id,
+                "--state",
+                "live",
+                "--activity",
+                "busy",
+            ],
+            vec!["session", "wait", &id, "--activity", "settled"],
+            vec![
+                "session",
+                "wait",
+                &id,
+                "--state",
+                "live",
+                "--timeout-ms",
+                "0",
+            ],
+            vec![
+                "session",
+                "wait",
+                &id,
+                "--state",
+                "live",
+                "--timeout-ms",
+                "300001",
+            ],
+        ] {
+            assert_eq!(
+                parse_args(invalid.into_iter().map(str::to_string).collect())
                     .unwrap_err()
                     .code,
                 ErrorCode::Usage

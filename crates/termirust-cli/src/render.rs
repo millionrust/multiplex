@@ -2,7 +2,7 @@ use unicode_width::UnicodeWidthChar as _;
 
 use crate::{
     CLI_JSON_SCHEMA_VERSION, CliData, CliError, ErrorCode, JsonFailure, JsonSuccess,
-    MAX_RESPONSE_BYTES, RemovalConfirmationKind,
+    MAX_RESPONSE_BYTES, RemovalConfirmationKind, SessionWaitConditionData,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -118,6 +118,20 @@ fn render_human(data: &CliData, warnings: &[String], width: usize) -> String {
         }
         CliData::Session(data) => {
             render_records("Session", std::iter::once(session_fields(&data.session)))
+        }
+        CliData::Wait(data) => {
+            let condition = match &data.condition {
+                SessionWaitConditionData::Lifecycle { state } => {
+                    format!("lifecycle={state}")
+                }
+                SessionWaitConditionData::Activity { state } => format!("activity={state}"),
+            };
+            let mut text = format!("Wait condition matched: {condition}");
+            text.push_str(&render_records(
+                "\nSession",
+                std::iter::once(session_fields(&data.session)),
+            ));
+            text
         }
         CliData::Mutation(data) => {
             let mut text = format!("Outcome: {}", data.outcome);

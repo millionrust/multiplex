@@ -11,14 +11,16 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use args::{
-    ApprovalDecision, CliCommand, ControllerSshAction, ControllerSshCommand, Invocation,
-    RemovalConfirmation, SessionListFilter, parse_args,
+    ApprovalDecision, CliCommand, ControllerSshAction, ControllerSshCommand,
+    DEFAULT_SESSION_WAIT_TIMEOUT_MS, Invocation, MAX_SESSION_WAIT_TIMEOUT_MS, RemovalConfirmation,
+    SessionListFilter, SessionWaitCondition, parse_args,
 };
 pub use contract::*;
 pub use local::{
-    CliClock, CliIds, CliInstallationStatus, CliPaths, HostController, HostLaunchOutcome,
-    HostLauncher, LocalCommandService, ManagementCommand, ManagementRemovalManifest,
-    ManagementRemovalPreview, SshControllerCommandExecutor, cli_installation_status,
+    CliClock, CliIds, CliInstallationStatus, CliPaths, CliWaiter, HostController,
+    HostLaunchOutcome, HostLauncher, LocalCommandService, ManagementCommand,
+    ManagementRemovalManifest, ManagementRemovalPreview, SshControllerCommandExecutor,
+    cli_installation_status,
 };
 pub use remote_ssh::SystemSshControllerExecutor;
 pub use render::{RenderOptions, render_failure, render_success};
@@ -174,6 +176,7 @@ pub(crate) fn help_data() -> CliData {
             "preset list --project <ProjectId> [--json]".into(),
             "session list [--project <id>] [--group <id>] [--state <value>] [--archived] [--json]".into(),
             "session show <HostedSessionId> [--json]".into(),
+            "session wait <id> (--state <state> | --activity <activity>) [--timeout-ms N] [--json]".into(),
             "session launch --project <id> --preset <id> [--group <id>] [--json]".into(),
             "session stop <id> [--expected-revision N] --yes [--json]".into(),
             "session archive <id> [--expected-revision N] [--json]".into(),
@@ -188,7 +191,7 @@ pub(crate) fn help_data() -> CliData {
             "controller ssh --host <host> [--user <user>] [--port <port>] approval --session <id> --generation N --approval <id> --decision <allow|deny> [--json]".into(),
             "controller ssh --host <host> [--user <user>] [--port <port>] detach --session <id> --generation N [--json]".into(),
         ],
-        safety: "Local metadata and authenticated Host commands only. Stop requires --yes. Session removal requires a reviewed preview token, --yes, and bounded confirmation from stdin. Human SSH attach is interactive and detaches with Ctrl-] then d; JSON attach never emits terminal bytes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen project, preset, and session titles and may be sensitive.".into(),
+        safety: "Local metadata and authenticated Host commands only. Session wait accepts lifecycle values shown by session show, or activity values unknown, idle, busy, needs_input, done, and failed. Stop requires --yes. Session removal requires a reviewed preview token, --yes, and bounded confirmation from stdin. Human SSH attach is interactive and detaches with Ctrl-] then d; JSON attach never emits terminal bytes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen project, preset, and session titles and may be sensitive.".into(),
         exit_codes: vec![
             "0 success".into(),
             "2 usage or validation".into(),
