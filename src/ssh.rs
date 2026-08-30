@@ -2,6 +2,7 @@ use anyhow::{Context, Result, bail};
 use russh::client;
 use russh::keys::PublicKey;
 use russh::{ChannelMsg, Sig};
+use russh_sftp::client::SftpSession;
 use std::io::{self, Read, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,6 +13,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::Builder;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio_util::sync::CancellationToken;
 
 use crate::models::{
     AuthConfig, ConnectRequest, DynamicPortForward, JumpHostConnection, LocalPortForward,
@@ -177,6 +179,138 @@ struct EstablishedSession {
     target_handle: Arc<Mutex<client::Handle<SessionHandler>>>,
     trusted_new_host: bool,
     _jump_handles: Vec<client::Handle<SessionHandler>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SshDiagnosticStage {
+    RouteAndAuthenticate,
+    SessionChannel,
+    Sftp,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SshDiagnosticStageState {
+    Started,
+    Passed,
+}
+
+#[derive(Debug)]
+pub struct SshDiagnosticFailure {
+    pub stage: SshDiagnosticStage,
+    pub error: anyhow::Error,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HostKeyPolicy {
+    TrustOnFirstUse,
+    RequireExisting,
+}
+
+pub async fn diagnose_connection<F>(
+    mut request: ConnectRequest,
+    known_hosts: Arc<KnownHostStore>,
+    cancellation: CancellationToken,
+    mut observe: F,
+) -> std::result::Result<(), SshDiagnosticFailure>
+where
+    F: FnMut(SshDiagnosticStage, SshDiagnosticStageState, std::time::Duration),
+{
+    use tokio::time::{Duration, Instant, timeout};
+
+    request.startup_directory = None;
+    request.startup_command = None;
+    request.persistent_session = false;
+    request.persistent_session_name = None;
+    request.persistent_session_detach_others = false;
+    request.port_forward_rules.clear();
+    request.environment.clear();
+
+    let config = Arc::new(client::Config::default());
+    let stage = SshDiagnosticStage::RouteAndAuthenticate;
+    observe(stage, SshDiagnosticStageState::Started, Duration::ZERO);
+    let started = Instant::now();
+    let established = tokio::select! {
+        _ = cancellation.cancelled() => return Err(SshDiagnosticFailure {
+            stage,
+            error: anyhow::anyhow!("Connection diagnostic cancelled"),
+        }),
+        result = timeout(
+            Duration::from_secs(30),
+            establish_session_with_policy(
+                config,
+                request,
+                known_hosts,
+                false,
+                HostKeyPolicy::RequireExisting,
+            ),
+        ) => result
+            .map_err(|_| SshDiagnosticFailure {
+                stage,
+                error: anyhow::anyhow!("SSH route and authentication timed out"),
+            })?
+            .map_err(|error| SshDiagnosticFailure { stage, error })?,
+    };
+    observe(stage, SshDiagnosticStageState::Passed, started.elapsed());
+
+    let stage = SshDiagnosticStage::SessionChannel;
+    observe(stage, SshDiagnosticStageState::Started, Duration::ZERO);
+    let started = Instant::now();
+    let channel = tokio::select! {
+        _ = cancellation.cancelled() => return Err(SshDiagnosticFailure {
+            stage,
+            error: anyhow::anyhow!("Connection diagnostic cancelled"),
+        }),
+        result = timeout(Duration::from_secs(10), async {
+            let handle = established.target_handle.lock().await;
+            handle.channel_open_session().await
+        }) => result
+            .map_err(|_| SshDiagnosticFailure {
+                stage,
+                error: anyhow::anyhow!("SSH session channel probe timed out"),
+            })?
+            .context("Unable to open an SSH session channel")
+            .map_err(|error| SshDiagnosticFailure { stage, error })?,
+    };
+    drop(channel);
+    observe(stage, SshDiagnosticStageState::Passed, started.elapsed());
+
+    let stage = SshDiagnosticStage::Sftp;
+    observe(stage, SshDiagnosticStageState::Started, Duration::ZERO);
+    let started = Instant::now();
+    tokio::select! {
+        _ = cancellation.cancelled() => return Err(SshDiagnosticFailure {
+            stage,
+            error: anyhow::anyhow!("Connection diagnostic cancelled"),
+        }),
+        result = timeout(Duration::from_secs(10), async {
+            let channel = {
+                let handle = established.target_handle.lock().await;
+                handle
+                    .channel_open_session()
+                    .await
+                    .context("Unable to open an SSH session channel for SFTP")?
+            };
+            channel
+                .request_subsystem(true, "sftp")
+                .await
+                .context("Unable to start the SFTP subsystem")?;
+            let sftp = SftpSession::new(channel.into_stream())
+                .await
+                .context("Unable to initialize the SFTP session")?;
+            sftp.canonicalize(".".to_string())
+                .await
+                .context("Unable to resolve the SFTP home directory")?;
+            let _ = sftp.close().await;
+            Ok::<(), anyhow::Error>(())
+        }) => result
+            .map_err(|_| SshDiagnosticFailure {
+                stage,
+                error: anyhow::anyhow!("SFTP capability probe timed out"),
+            })?
+            .map_err(|error| SshDiagnosticFailure { stage, error })?,
+    }
+    observe(stage, SshDiagnosticStageState::Passed, started.elapsed());
+    Ok(())
 }
 
 pub fn spawn_session(
@@ -634,6 +768,23 @@ async fn establish_session(
     known_hosts: Arc<KnownHostStore>,
     allow_agent_forwarding: bool,
 ) -> Result<EstablishedSession> {
+    establish_session_with_policy(
+        config,
+        request,
+        known_hosts,
+        allow_agent_forwarding,
+        HostKeyPolicy::TrustOnFirstUse,
+    )
+    .await
+}
+
+async fn establish_session_with_policy(
+    config: Arc<client::Config>,
+    request: ConnectRequest,
+    known_hosts: Arc<KnownHostStore>,
+    allow_agent_forwarding: bool,
+    host_key_policy: HostKeyPolicy,
+) -> Result<EstablishedSession> {
     let auth = request
         .auth
         .clone()
@@ -659,6 +810,7 @@ async fn establish_session(
                 remote_forwards,
                 known_hosts,
                 allow_agent_forwarding,
+                host_key_policy,
             )
             .await?
         } else {
@@ -673,6 +825,7 @@ async fn establish_session(
                 remote_forwards,
                 known_hosts,
                 allow_agent_forwarding,
+                host_key_policy,
             )
             .await?;
             (
@@ -701,6 +854,7 @@ async fn connect_via_jump_chain(
     remote_forwards: Vec<RemotePortForward>,
     known_hosts: Arc<KnownHostStore>,
     allow_agent_forwarding: bool,
+    host_key_policy: HostKeyPolicy,
 ) -> Result<(
     client::Handle<SessionHandler>,
     Vec<client::Handle<SessionHandler>>,
@@ -722,6 +876,7 @@ async fn connect_via_jump_chain(
         Vec::new(),
         known_hosts.clone(),
         false,
+        host_key_policy,
     )
     .await?;
     let mut jump_handles = Vec::new();
@@ -746,6 +901,7 @@ async fn connect_via_jump_chain(
             Vec::new(),
             known_hosts.clone(),
             false,
+            host_key_policy,
         )
         .await?;
         trusted_new_host |= next_trusted.swap(false, Ordering::SeqCst);
@@ -771,6 +927,7 @@ async fn connect_via_jump_chain(
         remote_forwards,
         known_hosts,
         allow_agent_forwarding,
+        host_key_policy,
     )
     .await?;
 
@@ -807,6 +964,7 @@ async fn connect_and_authenticate(
     remote_forwards: Vec<RemotePortForward>,
     known_hosts: Arc<KnownHostStore>,
     allow_agent_forwarding: bool,
+    host_key_policy: HostKeyPolicy,
 ) -> Result<(client::Handle<SessionHandler>, Arc<AtomicBool>)> {
     let trusted_new_host = Arc::new(AtomicBool::new(false));
     let agent_forward_socket = if allow_agent_forwarding {
@@ -822,6 +980,7 @@ async fn connect_and_authenticate(
         trusted_new_host: trusted_new_host.clone(),
         remote_forwards,
         agent_forward_socket,
+        host_key_policy,
     };
 
     let stream = crate::proxy::connect_first_hop(&host, port, outbound_proxy.as_ref()).await?;
@@ -842,6 +1001,7 @@ async fn connect_and_authenticate_stream<R>(
     remote_forwards: Vec<RemotePortForward>,
     known_hosts: Arc<KnownHostStore>,
     allow_agent_forwarding: bool,
+    host_key_policy: HostKeyPolicy,
 ) -> Result<(client::Handle<SessionHandler>, Arc<AtomicBool>)>
 where
     R: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
@@ -860,6 +1020,7 @@ where
         trusted_new_host: trusted_new_host.clone(),
         remote_forwards,
         agent_forward_socket,
+        host_key_policy,
     };
 
     let mut handle = client::connect_stream(config, stream, handler)
@@ -1194,6 +1355,7 @@ struct SessionHandler {
     trusted_new_host: Arc<AtomicBool>,
     remote_forwards: Vec<RemotePortForward>,
     agent_forward_socket: Option<std::path::PathBuf>,
+    host_key_policy: HostKeyPolicy,
 }
 
 impl client::Handler for SessionHandler {
@@ -1204,6 +1366,12 @@ impl client::Handler for SessionHandler {
         let key = server_public_key
             .to_openssh()
             .context("Unable to serialize the server public key")?;
+
+        if self.host_key_policy == HostKeyPolicy::RequireExisting {
+            self.known_hosts.verify_existing(&self.endpoint, &key)?;
+            eprintln!("[ssh] host key matched existing entry (strict diagnostic)");
+            return Ok(true);
+        }
 
         match self.known_hosts.verify_or_trust(&self.endpoint, &key)? {
             HostKeyDecision::Existing => {
@@ -1304,8 +1472,8 @@ impl client::Handler for SessionHandler {
 #[cfg(test)]
 mod tests {
     use super::{
-        RemoteExecExit, SessionCommand, SshEvent, spawn_remote_exec, spawn_session,
-        tmux_kill_command,
+        RemoteExecExit, SessionCommand, SshDiagnosticStage, SshEvent, diagnose_connection,
+        spawn_remote_exec, spawn_session, tmux_kill_command,
     };
     use crate::models::{
         AuthConfig, ConnectRequest, ConnectionKind, DynamicPortForward, JumpHostConnection,
@@ -1325,6 +1493,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::mpsc::{self, RecvTimeoutError};
     use std::time::{Duration, Instant};
+    use tokio_util::sync::CancellationToken;
 
     fn docker_ssh_request(server: &DockerSshServer) -> ConnectRequest {
         ConnectRequest {
@@ -1350,6 +1519,30 @@ mod tests {
             local_shell: None,
             environment: Vec::new(),
         }
+    }
+
+    fn run_connection_diagnostic(
+        request: ConnectRequest,
+        known_hosts: Arc<KnownHostStore>,
+        cancellation: CancellationToken,
+    ) -> Result<Vec<SshDiagnosticStage>, super::SshDiagnosticFailure> {
+        let stages = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let observed = stages.clone();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(diagnose_connection(
+            request,
+            known_hosts,
+            cancellation,
+            move |stage, state, _| {
+                if state == super::SshDiagnosticStageState::Passed {
+                    observed.lock().unwrap().push(stage);
+                }
+            },
+        ))?;
+        Ok(stages.lock().unwrap().clone())
     }
 
     #[test]
@@ -1708,6 +1901,162 @@ mod tests {
         let saved_keys = known_hosts.entries().expect("unable to read known hosts");
         assert_eq!(saved_keys.len(), 1);
         assert_eq!(saved_keys[0].0, request.known_host_key());
+    }
+
+    #[test]
+    fn docker_ssh_connection_diagnostic_is_strict_read_only_and_recovers() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping Docker connection diagnostic e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH server");
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let mut request = docker_ssh_request(&server);
+
+        let unknown = run_connection_diagnostic(
+            request.clone(),
+            known_hosts.clone(),
+            CancellationToken::new(),
+        )
+        .unwrap_err();
+        assert_eq!(unknown.stage, SshDiagnosticStage::RouteAndAuthenticate);
+        assert!(format!("{:#}", unknown.error).contains("Host key is not trusted"));
+        assert!(known_hosts.entries().unwrap().is_empty());
+
+        let (event_tx, event_rx) = mpsc::channel();
+        let runtime = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+        wait_for_connected(&request, &event_rx, "diagnostic trust setup");
+        disconnect_runtime(&request, &runtime, &event_rx, "diagnostic trust setup");
+        assert_eq!(known_hosts.entries().unwrap().len(), 1);
+
+        let forward_port = allocate_local_port();
+        request.startup_command = Some("touch /home/termirust/diagnostic-startup-ran".to_string());
+        request.persistent_session = true;
+        request.persistent_session_name = Some("diagnostic-must-not-exist".to_string());
+        request.port_forward_rules = vec![PortForwardRule::Dynamic {
+            forward: DynamicPortForward {
+                local_host: "127.0.0.1".to_string(),
+                local_port: forward_port,
+            },
+        }];
+        request.environment = vec![("SECRET_DIAGNOSTIC_VALUE".to_string(), "hidden".to_string())];
+
+        let stages = run_connection_diagnostic(
+            request.clone(),
+            known_hosts.clone(),
+            CancellationToken::new(),
+        )
+        .expect("strict diagnostic should pass after normal trust review");
+        assert_eq!(
+            stages,
+            vec![
+                SshDiagnosticStage::RouteAndAuthenticate,
+                SshDiagnosticStage::SessionChannel,
+                SshDiagnosticStage::Sftp,
+            ]
+        );
+
+        let target = format!("{}:{}", server.host(), server.port)
+            .parse()
+            .expect("invalid Docker SSH endpoint");
+        let proxy = TestTcpProxy::start(TestProxyProtocol::HttpConnect, target)
+            .expect("unable to start diagnostic proxy");
+        let mut proxied = request.clone();
+        proxied.outbound_proxy = Some(OutboundProxy::HttpConnect {
+            host: "127.0.0.1".to_string(),
+            port: proxy.port,
+        });
+        run_connection_diagnostic(proxied, known_hosts.clone(), CancellationToken::new())
+            .expect("strict diagnostic should reuse the saved proxy route");
+        assert!(proxy.accepted_connections() >= 1);
+
+        let jump_request = docker_jump_request(&server);
+        let (event_tx, event_rx) = mpsc::channel();
+        let jump_trust = spawn_session(jump_request.clone(), known_hosts.clone(), event_tx, 0);
+        wait_for_connected(&jump_request, &event_rx, "diagnostic jump trust setup");
+        disconnect_runtime(
+            &jump_request,
+            &jump_trust,
+            &event_rx,
+            "diagnostic jump trust setup",
+        );
+        run_connection_diagnostic(jump_request, known_hosts.clone(), CancellationToken::new())
+            .expect("strict diagnostic should reuse the saved jump route");
+
+        server
+            .exec("test ! -e /home/termirust/diagnostic-startup-ran")
+            .expect("diagnostic must not run the startup command");
+        server
+            .exec("! su -s /bin/sh -c 'tmux has-session -t diagnostic-must-not-exist' termirust")
+            .expect("diagnostic must not create the configured tmux session");
+        let listener = TcpListener::bind(("127.0.0.1", forward_port))
+            .expect("diagnostic must not activate configured forwarding");
+        drop(listener);
+
+        let mut denied_request = request.clone();
+        denied_request.auth = Some(AuthConfig::Password {
+            password: "incorrect".to_string(),
+        });
+        let denied = run_connection_diagnostic(
+            denied_request,
+            known_hosts.clone(),
+            CancellationToken::new(),
+        )
+        .unwrap_err();
+        assert_eq!(denied.stage, SshDiagnosticStage::RouteAndAuthenticate);
+        assert!(format!("{:#}", denied.error).contains("Authentication was rejected"));
+
+        let endpoint = request.address();
+        known_hosts.remove(&endpoint).unwrap();
+        known_hosts
+            .verify_or_trust(&endpoint, "ssh-ed25519 deliberately-wrong")
+            .unwrap();
+        let mismatch = run_connection_diagnostic(
+            request.clone(),
+            known_hosts.clone(),
+            CancellationToken::new(),
+        )
+        .unwrap_err();
+        assert_eq!(mismatch.stage, SshDiagnosticStage::RouteAndAuthenticate);
+        assert!(format!("{:#}", mismatch.error).contains("Host key mismatch"));
+        known_hosts.remove(&endpoint).unwrap();
+        let (event_tx, event_rx) = mpsc::channel();
+        let trust_recovery = spawn_session(request.clone(), known_hosts.clone(), event_tx, 0);
+        wait_for_connected(&request, &event_rx, "diagnostic trust recovery");
+        disconnect_runtime(
+            &request,
+            &trust_recovery,
+            &event_rx,
+            "diagnostic trust recovery",
+        );
+
+        server
+            .exec("mv /usr/lib/openssh/sftp-server /usr/lib/openssh/sftp-server.disabled")
+            .expect("unable to disable SFTP fixture");
+        let no_sftp = run_connection_diagnostic(
+            request.clone(),
+            known_hosts.clone(),
+            CancellationToken::new(),
+        )
+        .unwrap_err();
+        assert_eq!(no_sftp.stage, SshDiagnosticStage::Sftp);
+        server
+            .exec("mv /usr/lib/openssh/sftp-server.disabled /usr/lib/openssh/sftp-server")
+            .expect("unable to restore SFTP fixture");
+
+        run_connection_diagnostic(
+            request.clone(),
+            known_hosts.clone(),
+            CancellationToken::new(),
+        )
+        .expect("diagnostic should recover after SFTP is restored");
+
+        let cancelled = CancellationToken::new();
+        cancelled.cancel();
+        let cancellation = run_connection_diagnostic(request, known_hosts, cancelled).unwrap_err();
+        assert_eq!(cancellation.stage, SshDiagnosticStage::RouteAndAuthenticate);
+        assert!(format!("{:#}", cancellation.error).contains("cancelled"));
     }
 
     #[test]

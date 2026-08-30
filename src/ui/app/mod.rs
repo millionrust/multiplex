@@ -100,6 +100,10 @@ use termirust_store::{
 use tokio_util::sync::CancellationToken;
 use vt100::MouseProtocolMode;
 
+use crate::connection_diagnostics::{
+    ConnectionDiagnosticManager, DiagnosticControl, DiagnosticEvent, DiagnosticFailureKind,
+    DiagnosticStage, DiagnosticSubmitError, MAX_DIAGNOSTIC_BATCH,
+};
 use crate::credentials;
 use crate::models::{
     AuthConfig, AuthMode, ConnectRequest, ConnectionKind, DEFAULT_VAULT_ID, DraftProfile,
@@ -1031,6 +1035,47 @@ struct HostRecoveryOperation {
     cancellation: CancellationToken,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ConnectionDiagnosticStatus {
+    Queued,
+    Running,
+    Passed,
+    Failed,
+    Cancelled,
+}
+
+impl ConnectionDiagnosticStatus {
+    fn is_active(self) -> bool {
+        matches!(self, Self::Queued | Self::Running)
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Queued => "Queued",
+            Self::Running => "Checking",
+            Self::Passed => "Healthy",
+            Self::Failed => "Needs attention",
+            Self::Cancelled => "Cancelled",
+        }
+    }
+}
+
+#[derive(Clone)]
+struct ConnectionDiagnosticRow {
+    operation_id: u64,
+    profile_id: String,
+    title: String,
+    address: String,
+    route: String,
+    status: ConnectionDiagnosticStatus,
+    stage: DiagnosticStage,
+    failure_kind: Option<DiagnosticFailureKind>,
+    message: String,
+    recovery: String,
+    elapsed: Duration,
+    control: Option<DiagnosticControl>,
+}
+
 pub struct TermiRustApp {
     saved: SavedState,
     inputs: DraftInputs,
@@ -1076,6 +1121,9 @@ pub struct TermiRustApp {
     event_tx: Sender<SshEvent>,
     event_rx: Receiver<SshEvent>,
     sftp_event_rx: Receiver<SftpEvent>,
+    connection_diagnostic_manager: ConnectionDiagnosticManager,
+    connection_diagnostic_event_rx: Receiver<DiagnosticEvent>,
+    connection_diagnostics: Vec<ConnectionDiagnosticRow>,
     panes: Vec<SessionPane>,
     workspaces: Vec<WorkspaceTab>,
     active_workspace_id: Option<u64>,
@@ -1240,6 +1288,8 @@ impl TermiRustApp {
         );
         let known_hosts =
             Arc::new(KnownHostStore::load().expect("unable to initialize known host storage"));
+        let (connection_diagnostic_manager, connection_diagnostic_event_rx) =
+            ConnectionDiagnosticManager::new(known_hosts.clone());
         let connection_coordinator = ConnectionCoordinator::new(
             event_tx.clone(),
             sftp_event_tx,
@@ -1378,6 +1428,9 @@ impl TermiRustApp {
             event_tx,
             event_rx,
             sftp_event_rx,
+            connection_diagnostic_manager,
+            connection_diagnostic_event_rx,
+            connection_diagnostics: Vec::new(),
             panes: Vec::new(),
             workspaces: Vec::new(),
             active_workspace_id: None,
@@ -3109,6 +3162,266 @@ impl TermiRustApp {
         );
         self.error_message.clear();
         cx.notify();
+    }
+
+    fn diagnose_selected_hosts(&mut self, cx: &mut Context<Self>) {
+        if self.selected_host_ids.is_empty() {
+            self.error_message = "Select at least one saved host to diagnose.".to_string();
+            cx.notify();
+            return;
+        }
+
+        let profile_ids = self
+            .saved
+            .profiles
+            .iter()
+            .filter(|profile| self.selected_host_ids.contains(&profile.id))
+            .map(|profile| profile.id.clone())
+            .take(MAX_DIAGNOSTIC_BATCH + 1)
+            .collect::<Vec<_>>();
+        if profile_ids.len() > MAX_DIAGNOSTIC_BATCH {
+            self.error_message = format!(
+                "Diagnose supports at most {MAX_DIAGNOSTIC_BATCH} hosts in one batch. Narrow the selection and retry."
+            );
+            cx.notify();
+            return;
+        }
+
+        let mut started = 0usize;
+        let mut skipped = 0usize;
+        let mut failures = Vec::new();
+        for profile_id in profile_ids {
+            match self.submit_connection_diagnostic(&profile_id) {
+                Ok(()) => started += 1,
+                Err(DiagnosticSubmitError::AlreadyRunning) => skipped += 1,
+                Err(DiagnosticSubmitError::QueueFull) => {
+                    failures.push("the diagnostic queue is full".to_string())
+                }
+                Err(DiagnosticSubmitError::ManagerStopped) => {
+                    failures.push("the diagnostic worker is unavailable".to_string())
+                }
+                Err(DiagnosticSubmitError::InvalidConfiguration(message)) => failures.push(message),
+            }
+        }
+
+        self.status_message = if skipped > 0 {
+            format!("Started {started} diagnostic(s); {skipped} already running.")
+        } else {
+            format!("Started {started} connection diagnostic(s).")
+        };
+        self.error_message = failures.into_iter().next().unwrap_or_default();
+        cx.notify();
+    }
+
+    fn submit_connection_diagnostic(
+        &mut self,
+        profile_id: &str,
+    ) -> Result<(), DiagnosticSubmitError> {
+        let profile = self
+            .saved
+            .profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .cloned()
+            .ok_or(DiagnosticSubmitError::ManagerStopped)?;
+        let request = self
+            .connect_request_for_saved_canvas_host(&profile)
+            .map_err(|error| DiagnosticSubmitError::InvalidConfiguration(error.to_string()))?;
+        let address = request.address();
+        let title = request.title.clone();
+        let route = if request.jump_host.is_some() {
+            "Saved jump route".to_string()
+        } else if let Some(proxy) = request.outbound_proxy.as_ref() {
+            format!("{} proxy", proxy.kind().label())
+        } else {
+            "Direct SSH".to_string()
+        };
+        let control = self
+            .connection_diagnostic_manager
+            .submit(profile_id.to_string(), request)?;
+        let operation_id = control.operation_id;
+        self.connection_diagnostics
+            .retain(|row| row.profile_id != profile_id || row.status.is_active());
+        self.connection_diagnostics.insert(
+            0,
+            ConnectionDiagnosticRow {
+                operation_id,
+                profile_id: profile_id.to_string(),
+                title,
+                address,
+                route,
+                status: ConnectionDiagnosticStatus::Queued,
+                stage: DiagnosticStage::Configuration,
+                failure_kind: None,
+                message: "Waiting for an available diagnostic slot".to_string(),
+                recovery: String::new(),
+                elapsed: Duration::ZERO,
+                control: Some(control),
+            },
+        );
+        Ok(())
+    }
+
+    fn cancel_connection_diagnostic(&mut self, operation_id: u64, cx: &mut Context<Self>) {
+        if let Some(control) = self
+            .connection_diagnostics
+            .iter()
+            .find(|row| row.operation_id == operation_id)
+            .and_then(|row| row.control.clone())
+        {
+            control.cancel();
+            self.status_message = "Cancelling connection diagnostic...".to_string();
+            self.error_message.clear();
+            cx.notify();
+        }
+    }
+
+    fn retry_connection_diagnostic(&mut self, profile_id: &str, cx: &mut Context<Self>) {
+        match self.submit_connection_diagnostic(profile_id) {
+            Ok(()) => {
+                self.status_message = "Connection diagnostic restarted.".to_string();
+                self.error_message.clear();
+            }
+            Err(DiagnosticSubmitError::AlreadyRunning) => {
+                self.status_message = "That host is already being diagnosed.".to_string();
+            }
+            Err(DiagnosticSubmitError::QueueFull) => {
+                self.error_message =
+                    "The diagnostic queue is full. Wait for a check to finish and retry."
+                        .to_string();
+            }
+            Err(DiagnosticSubmitError::ManagerStopped) => {
+                self.error_message = "Unable to start the connection diagnostic.".to_string();
+            }
+            Err(DiagnosticSubmitError::InvalidConfiguration(message)) => {
+                self.error_message = message;
+            }
+        }
+        cx.notify();
+    }
+
+    fn clear_finished_connection_diagnostics(&mut self, cx: &mut Context<Self>) {
+        self.connection_diagnostics
+            .retain(|row| row.status.is_active());
+        self.status_message = "Cleared finished connection diagnostics.".to_string();
+        self.error_message.clear();
+        cx.notify();
+    }
+
+    fn process_connection_diagnostic_events(&mut self) -> bool {
+        let mut changed = false;
+        while let Ok(event) = self.connection_diagnostic_event_rx.try_recv() {
+            changed = true;
+            match event {
+                DiagnosticEvent::Queued {
+                    operation_id,
+                    profile_id,
+                    title,
+                    address,
+                    route,
+                } => {
+                    if let Some(row) = self
+                        .connection_diagnostics
+                        .iter_mut()
+                        .find(|row| row.operation_id == operation_id)
+                    {
+                        row.status = ConnectionDiagnosticStatus::Queued;
+                        row.profile_id = profile_id;
+                        row.title = title;
+                        row.address = address;
+                        row.route = route;
+                    }
+                }
+                DiagnosticEvent::StageStarted {
+                    operation_id,
+                    stage,
+                } => {
+                    if let Some(row) = self
+                        .connection_diagnostics
+                        .iter_mut()
+                        .find(|row| row.operation_id == operation_id)
+                    {
+                        row.status = ConnectionDiagnosticStatus::Running;
+                        row.stage = stage;
+                        row.message = format!("Checking {}", stage.label().to_ascii_lowercase());
+                    }
+                }
+                DiagnosticEvent::StagePassed {
+                    operation_id,
+                    stage,
+                    elapsed,
+                } => {
+                    if let Some(row) = self
+                        .connection_diagnostics
+                        .iter_mut()
+                        .find(|row| row.operation_id == operation_id)
+                    {
+                        row.stage = stage;
+                        row.elapsed = elapsed;
+                        row.message = format!("{} passed", stage.label());
+                    }
+                }
+                DiagnosticEvent::Completed {
+                    operation_id,
+                    elapsed,
+                } => {
+                    if let Some(row) = self
+                        .connection_diagnostics
+                        .iter_mut()
+                        .find(|row| row.operation_id == operation_id)
+                    {
+                        row.status = ConnectionDiagnosticStatus::Passed;
+                        row.stage = DiagnosticStage::Sftp;
+                        row.message = "SSH and SFTP checks passed".to_string();
+                        row.recovery.clear();
+                        row.elapsed = elapsed;
+                        row.control = None;
+                    }
+                }
+                DiagnosticEvent::Failed {
+                    operation_id,
+                    stage,
+                    kind,
+                    message,
+                    recovery,
+                    elapsed,
+                } => {
+                    if let Some(row) = self
+                        .connection_diagnostics
+                        .iter_mut()
+                        .find(|row| row.operation_id == operation_id)
+                    {
+                        row.status = ConnectionDiagnosticStatus::Failed;
+                        row.stage = stage;
+                        row.failure_kind = Some(kind);
+                        row.message = message;
+                        row.recovery = recovery;
+                        row.elapsed = elapsed;
+                        row.control = None;
+                    }
+                }
+                DiagnosticEvent::Cancelled {
+                    operation_id,
+                    stage,
+                    elapsed,
+                } => {
+                    if let Some(row) = self
+                        .connection_diagnostics
+                        .iter_mut()
+                        .find(|row| row.operation_id == operation_id)
+                    {
+                        row.status = ConnectionDiagnosticStatus::Cancelled;
+                        row.stage = stage;
+                        row.failure_kind = Some(DiagnosticFailureKind::Cancelled);
+                        row.message = "Diagnostic cancelled".to_string();
+                        row.recovery = DiagnosticFailureKind::Cancelled.recovery().to_string();
+                        row.elapsed = elapsed;
+                        row.control = None;
+                    }
+                }
+            }
+        }
+        changed
     }
 
     fn set_profile_favorite(
@@ -7072,6 +7385,7 @@ impl TermiRustApp {
 
     fn process_events(&mut self, cx: &mut Context<Self>) {
         let mut changed = self.process_structured_agent_events();
+        changed |= self.process_connection_diagnostic_events();
         changed |= self.process_project_undo_expiry();
         let mut panes_to_refresh = Vec::new();
         let mut sftp_directories_to_refresh = HashSet::new();
@@ -25078,6 +25392,59 @@ sleep 1
             assert!(app.selected_host_ids.is_empty());
             assert!(app.error_message.is_empty());
         });
+    }
+
+    #[gpui::test]
+    fn e2e_hosts_diagnose_button_reports_unknown_trust_without_opening_terminal(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping hosts diagnostic UI e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH server");
+        let profile_id = format!("diagnostic-ui-{}", server.port);
+        let credential_id = format!("profile:{profile_id}");
+        credentials::store_password(&credential_id, server.password())
+            .expect("unable to seed diagnostic password");
+        let mut saved = SavedState::default();
+        saved.settings.onboarding_dismissed = true;
+        saved.profiles.push(HostProfile {
+            id: profile_id,
+            label: "Diagnostic UI".to_string(),
+            host: server.host().to_string(),
+            port: server.port,
+            username: server.username().to_string(),
+            auth_mode: AuthMode::Password,
+            password_credential_id: Some(credential_id.clone()),
+            source: ProfileSource::User,
+            ..HostProfile::default()
+        });
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        let select_visible = selector_click_center(window, cx, "hosts-select-visible");
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_click(select_visible, gpui::Modifiers::none());
+        let diagnose = selector_click_center(window, cx, "hosts-bulk-diagnose");
+        visual.simulate_click(diagnose, gpui::Modifiers::none());
+
+        wait_for_window_app_state(cx, window, &app, Duration::from_secs(20), |app| {
+            let row = app.connection_diagnostics.first()?;
+            (row.status == super::ConnectionDiagnosticStatus::Failed
+                && row.failure_kind
+                    == Some(crate::connection_diagnostics::DiagnosticFailureKind::UnknownHostKey))
+            .then_some(())
+        });
+        app.read_with(cx, |app, _| {
+            assert!(app.workspaces.is_empty());
+            assert!(app.known_hosts.entries().unwrap().is_empty());
+            assert_eq!(
+                app.connection_diagnostics[0].message,
+                "Host key not trusted"
+            );
+        });
+        let _ = credentials::delete_password(&credential_id);
     }
 
     #[gpui::test]

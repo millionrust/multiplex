@@ -1100,6 +1100,23 @@ impl KnownHostStore {
         }
     }
 
+    pub fn verify_existing(&self, endpoint: &str, key: &str) -> Result<()> {
+        let entries = self
+            .entries
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Unable to lock known host store"))?;
+
+        match entries.get(endpoint) {
+            Some(existing) if existing == key => Ok(()),
+            Some(_) => Err(anyhow::anyhow!(
+                "Host key mismatch for {endpoint}. Verify the server key before removing the saved entry."
+            )),
+            None => Err(anyhow::anyhow!(
+                "Host key is not trusted for {endpoint}. Connect normally once to review and pin it."
+            )),
+        }
+    }
+
     pub fn entries(&self) -> Result<Vec<(String, String)>> {
         let entries = self
             .entries
@@ -1930,5 +1947,37 @@ Host app-prod
         assert_eq!(persisted.entries.len(), 2);
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn strict_known_host_verification_never_mutates_trust() {
+        let path = std::env::temp_dir().join(format!(
+            "termirust-known-host-strict-{}.json",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let store = KnownHostStore {
+            path: path.clone(),
+            entries: std::sync::Mutex::new(HashMap::from([(
+                "known.example.com:22".to_string(),
+                "ssh-ed25519 expected".to_string(),
+            )])),
+        };
+
+        store
+            .verify_existing("known.example.com:22", "ssh-ed25519 expected")
+            .unwrap();
+        let mismatch = store
+            .verify_existing("known.example.com:22", "ssh-ed25519 changed")
+            .unwrap_err();
+        assert!(mismatch.to_string().contains("Host key mismatch"));
+        let unknown = store
+            .verify_existing("unknown.example.com:22", "ssh-ed25519 unknown")
+            .unwrap_err();
+        assert!(unknown.to_string().contains("Host key is not trusted"));
+        assert_eq!(store.entries().unwrap().len(), 1);
+        assert!(!path.exists());
     }
 }

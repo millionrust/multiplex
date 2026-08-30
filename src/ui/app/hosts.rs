@@ -12,10 +12,11 @@ use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::{Disableable, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
+use crate::connection_diagnostics::MAX_DIAGNOSTIC_BATCH;
 use crate::models::{AuthMode, HostProfile};
 use crate::ui::app::{
-    EditorMenu, HostsSort, HostsViewMode, ICON_CALENDAR, ICON_GRID, ICON_KEY, ICON_PENCIL,
-    ICON_TAG, ICON_VAULT, TermiRustApp, ToolbarMenu, app_icon,
+    ConnectionDiagnosticStatus, EditorMenu, HostsSort, HostsViewMode, ICON_CALENDAR, ICON_GRID,
+    ICON_KEY, ICON_PENCIL, ICON_TAG, ICON_VAULT, TermiRustApp, ToolbarMenu, app_icon,
 };
 use crate::ui::theme;
 use crate::ui::util::format_relative_time;
@@ -1581,6 +1582,20 @@ impl TermiRustApp {
                                         })),
                                 )
                                 .child(
+                                    Button::new("hosts-bulk-diagnose")
+                                        .debug_selector(|| "hosts-bulk-diagnose".to_string())
+                                        .xsmall()
+                                        .custom(Self::action_button_style(
+                                            theme::ActionTone::Accent,
+                                            cx,
+                                        ))
+                                        .label("Diagnose")
+                                        .tooltip("Check SSH trust, authentication, channel, and SFTP without opening a terminal")
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.diagnose_selected_hosts(cx);
+                                        })),
+                                )
+                                .child(
                                     Button::new("hosts-bulk-star")
                                         .debug_selector(|| "hosts-bulk-star".to_string())
                                         .xsmall()
@@ -1654,6 +1669,9 @@ impl TermiRustApp {
                             .when_some(self.render_recent_hosts_row(cx), |this, row| {
                                 this.child(row)
                             })
+                            .when_some(self.render_connection_diagnostics(cx), |this, panel| {
+                                this.child(panel)
+                            })
                             .when(!self.saved.profiles.is_empty(), |this| {
                                 this.child(
                                     div()
@@ -1671,5 +1689,202 @@ impl TermiRustApp {
                     }),
             )
             .child(self.render_hosts_overlays(cx))
+    }
+
+    fn render_connection_diagnostics(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        if self.connection_diagnostics.is_empty() {
+            return None;
+        }
+
+        let active = self
+            .connection_diagnostics
+            .iter()
+            .filter(|row| row.status.is_active())
+            .count();
+        let passed = self
+            .connection_diagnostics
+            .iter()
+            .filter(|row| row.status == ConnectionDiagnosticStatus::Passed)
+            .count();
+        let attention = self
+            .connection_diagnostics
+            .iter()
+            .filter(|row| row.status == ConnectionDiagnosticStatus::Failed)
+            .count();
+        let has_finished = self
+            .connection_diagnostics
+            .iter()
+            .any(|row| !row.status.is_active());
+
+        let mut panel = v_flex()
+            .id("connection-diagnostics-panel")
+            .w_full()
+            .gap(px(8.))
+            .py(px(10.))
+            .border_b_1()
+            .border_color(theme::soft_border())
+            .child(
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        v_flex()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(13.))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child("Connection diagnostics"),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(theme::text_muted())
+                                    .child(format!(
+                                        "{active} active  |  {passed} healthy  |  {attention} need attention"
+                                    )),
+                            ),
+                    )
+                    .when(has_finished, |this| {
+                        this.child(
+                            Button::new("connection-diagnostics-clear")
+                                .xsmall()
+                                .ghost()
+                                .label("Clear finished")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.clear_finished_connection_diagnostics(cx);
+                                })),
+                        )
+                    }),
+            );
+
+        for row in self
+            .connection_diagnostics
+            .iter()
+            .take(MAX_DIAGNOSTIC_BATCH)
+        {
+            let operation_id = row.operation_id;
+            let profile_id = row.profile_id.clone();
+            let status_color = match row.status {
+                ConnectionDiagnosticStatus::Queued => theme::text_muted(),
+                ConnectionDiagnosticStatus::Running => theme::accent(),
+                ConnectionDiagnosticStatus::Passed => theme::success(),
+                ConnectionDiagnosticStatus::Failed => theme::danger(),
+                ConnectionDiagnosticStatus::Cancelled => theme::warning(),
+            };
+            let detail = if row.recovery.is_empty() {
+                row.message.clone()
+            } else {
+                format!("{} - {}", row.message, row.recovery)
+            };
+            let elapsed = if row.elapsed.is_zero() {
+                String::new()
+            } else {
+                format!("{:.1}s", row.elapsed.as_secs_f32())
+            };
+            panel = panel.child(
+                h_flex()
+                    .id(("connection-diagnostic-row", operation_id))
+                    .w_full()
+                    .min_h(px(56.))
+                    .gap(px(10.))
+                    .px(px(10.))
+                    .py(px(8.))
+                    .rounded(px(6.))
+                    .bg(theme::with_alpha(theme::hover(), 0.45))
+                    .border_1()
+                    .border_color(theme::soft_border())
+                    .child(
+                        div()
+                            .size(px(8.))
+                            .rounded(px(999.))
+                            .bg(status_color)
+                            .flex_none(),
+                    )
+                    .child(
+                        v_flex()
+                            .min_w_0()
+                            .flex_1()
+                            .gap(px(3.))
+                            .child(
+                                h_flex()
+                                    .gap(px(8.))
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .text_ellipsis()
+                                            .font_semibold()
+                                            .text_size(px(12.))
+                                            .text_color(theme::text_main())
+                                            .child(row.title.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(10.))
+                                            .font_semibold()
+                                            .text_color(status_color)
+                                            .child(row.status.label()),
+                                    )
+                                    .when(!elapsed.is_empty(), |this| {
+                                        this.child(
+                                            div()
+                                                .text_size(px(10.))
+                                                .text_color(theme::text_muted())
+                                                .child(elapsed),
+                                        )
+                                    }),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(10.))
+                                    .text_color(theme::text_muted())
+                                    .child(format!(
+                                        "{}  |  {}  |  {}",
+                                        row.address,
+                                        row.route,
+                                        row.stage.label()
+                                    )),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(
+                                        if row.status == ConnectionDiagnosticStatus::Failed {
+                                            theme::danger()
+                                        } else {
+                                            theme::text_muted()
+                                        },
+                                    )
+                                    .child(detail),
+                            ),
+                    )
+                    .when(row.status.is_active(), |this| {
+                        this.child(
+                            Button::new(("connection-diagnostic-cancel", operation_id))
+                                .xsmall()
+                                .ghost()
+                                .label("Cancel")
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.cancel_connection_diagnostic(operation_id, cx);
+                                })),
+                        )
+                    })
+                    .when(!row.status.is_active(), |this| {
+                        this.child(
+                            Button::new(("connection-diagnostic-retry", operation_id))
+                                .xsmall()
+                                .ghost()
+                                .label("Retry")
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.retry_connection_diagnostic(&profile_id, cx);
+                                })),
+                        )
+                    }),
+            );
+        }
+
+        Some(panel)
     }
 }

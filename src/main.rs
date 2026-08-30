@@ -1,6 +1,7 @@
 mod agents;
 mod artifact_preview;
 mod assets;
+mod connection_diagnostics;
 mod controller;
 mod credentials;
 mod diagnostics;
