@@ -47,6 +47,11 @@ pub enum CliCommand {
         input_stdin: bool,
         input: Option<SessionInput>,
     },
+    SessionResize {
+        session_id: HostedSessionId,
+        columns: u16,
+        rows: u16,
+    },
     SessionLaunch {
         project_id: ProjectId,
         preset_id: PresetId,
@@ -318,6 +323,14 @@ pub fn parse_args(arguments: Vec<String>) -> Result<Invocation, CliError> {
                 session_id: parse_id(session, "session")?,
                 input_stdin: true,
                 input: None,
+            }
+        }
+        [scope, action, session, rest @ ..] if scope == "session" && action == "resize" => {
+            let options = parse_options(rest, &["--columns", "--rows"], &[])?;
+            CliCommand::SessionResize {
+                session_id: parse_id(session, "session")?,
+                columns: required_dimension(&options, "--columns")?,
+                rows: required_dimension(&options, "--rows")?,
             }
         }
         [scope, action, rest @ ..] if scope == "session" && action == "launch" => {
@@ -932,6 +945,47 @@ mod tests {
             vec!["session", "input", &id],
             vec!["session", "input", &id, "--input-stdin", "--input-stdin"],
             vec!["session", "input", &id, "secret-on-argv"],
+        ] {
+            assert_eq!(
+                parse_args(invalid.into_iter().map(str::to_string).collect())
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Usage
+            );
+        }
+    }
+
+    #[test]
+    fn session_resize_parser_requires_both_bounded_dimensions() {
+        let id = HostedSessionId::new().to_string();
+        let parsed = parse_args(
+            ["session", "resize", &id, "--columns", "132", "--rows", "43"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        )
+        .unwrap();
+        assert_eq!(
+            parsed.command,
+            CliCommand::SessionResize {
+                session_id: id.parse().unwrap(),
+                columns: 132,
+                rows: 43,
+            }
+        );
+        for invalid in [
+            vec!["session", "resize", &id, "--columns", "80"],
+            vec!["session", "resize", &id, "--rows", "24"],
+            vec!["session", "resize", &id, "--columns", "0", "--rows", "24"],
+            vec![
+                "session",
+                "resize",
+                &id,
+                "--columns",
+                "80",
+                "--rows",
+                "1001",
+            ],
         ] {
             assert_eq!(
                 parse_args(invalid.into_iter().map(str::to_string).collect())

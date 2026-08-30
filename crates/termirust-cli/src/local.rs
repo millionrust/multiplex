@@ -30,8 +30,8 @@ use crate::{
     ControllerSshCommand, ErrorCode, MAX_RESPONSE_RECORDS, MAX_SESSION_WAIT_TIMEOUT_MS,
     PresetListData, PresetView, ProjectListData, ProjectView, RemovalConfirmationKind, SessionData,
     SessionInput, SessionInputData, SessionListData, SessionListFilter, SessionMutationData,
-    SessionRemovalPreviewData, SessionView, SessionWaitCondition, SessionWaitConditionData,
-    SessionWaitData, StatusData,
+    SessionRemovalPreviewData, SessionResizeData, SessionView, SessionWaitCondition,
+    SessionWaitConditionData, SessionWaitData, StatusData,
 };
 
 const STORE_DIR_NAME: &str = "agent-workspace";
@@ -154,6 +154,14 @@ pub trait HostLauncher: Send + Sync {
     ) -> Result<HostLaunchOutcome, CliError>;
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HostResizeRequest {
+    pub expected_host_instance_id: HostInstanceId,
+    pub command_id: CommandId,
+    pub columns: u16,
+    pub rows: u16,
+}
+
 pub trait HostController: Send + Sync {
     fn input(
         &self,
@@ -162,6 +170,14 @@ pub trait HostController: Send + Sync {
         expected_host_instance_id: HostInstanceId,
         command_id: CommandId,
         bytes: Vec<u8>,
+        cancellation: &Cancellation,
+    ) -> Result<bool, CliError>;
+
+    fn resize(
+        &self,
+        runtime_root: &Path,
+        session_id: HostedSessionId,
+        request: HostResizeRequest,
         cancellation: &Cancellation,
     ) -> Result<bool, CliError>;
 
@@ -986,6 +1002,63 @@ impl LocalCommandService {
         }))
     }
 
+    fn session_resize(
+        &self,
+        session_id: HostedSessionId,
+        columns: u16,
+        rows: u16,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        if !(1..=1_000).contains(&columns) || !(1..=1_000).contains(&rows) {
+            return Err(validation(
+                "terminal dimensions must be integers from 1 to 1000",
+                "Provide both --columns and --rows within the supported range.",
+            ));
+        }
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let snapshot = self.sessions()?.load().map_err(map_store)?;
+        let session = require_session(&snapshot.sessions, session_id)?;
+        if session.archived_at.is_some()
+            || !matches!(
+                session.lifecycle,
+                HostedSessionState::Live | HostedSessionState::RecordingPaused
+            )
+        {
+            return Err(validation(
+                "session is not available for terminal resize",
+                "Wait for the durable Session to become live and ensure it is not archived.",
+            ));
+        }
+        let metadata = read_host_metadata(&self.paths.session_dir(session_id))
+            .map_err(|_| unavailable("durable Host ownership metadata is unavailable or unsafe"))?;
+        if metadata.session_id != session_id
+            || metadata.lifecycle != termirust_domain::HostLifecycle::Ready
+        {
+            return Err(unavailable(
+                "the durable Host is not ready for terminal resize",
+            ));
+        }
+        let applied = self.controller.resize(
+            &self.paths.runtime_root(session_id),
+            session_id,
+            HostResizeRequest {
+                expected_host_instance_id: metadata.host_instance_id,
+                command_id: self.ids.command_id(),
+                columns,
+                rows,
+            },
+            cancellation,
+        )?;
+        Ok(CliData::Resize(SessionResizeData {
+            session_id: session_id.to_string(),
+            columns,
+            rows,
+            applied,
+        }))
+    }
+
     fn session_archive(
         &self,
         session_id: HostedSessionId,
@@ -1444,6 +1517,11 @@ impl CommandService for LocalCommandService {
                 input_stdin,
                 input,
             } => self.session_input(session_id, input_stdin, input, cancellation),
+            CliCommand::SessionResize {
+                session_id,
+                columns,
+                rows,
+            } => self.session_resize(session_id, columns, rows, cancellation),
             CliCommand::SessionLaunch {
                 project_id,
                 preset_id,
@@ -1683,6 +1761,90 @@ impl HostController for LocalHostController {
                 .input(command_id, bytes, &async_cancel)
                 .await
                 .map_err(map_input_after_dispatch)?;
+            client.disconnect();
+            Ok(applied)
+        });
+        done.store(true, Ordering::Release);
+        let _ = monitor.join();
+        result
+    }
+
+    fn resize(
+        &self,
+        runtime_root: &Path,
+        session_id: HostedSessionId,
+        request: HostResizeRequest,
+        cancellation: &Cancellation,
+    ) -> Result<bool, CliError> {
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let runtime = Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| operation("unable to initialize local Host control"))?;
+        let async_cancel = CancellationToken::new();
+        let done = Arc::new(AtomicBool::new(false));
+        let monitor_done = done.clone();
+        let monitor_cancel = async_cancel.clone();
+        let source = cancellation.clone();
+        let monitor = std::thread::spawn(move || {
+            while !monitor_done.load(Ordering::Acquire) {
+                if source.is_cancelled() {
+                    monitor_cancel.cancel();
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
+        let endpoint = LocalEndpoint::new(runtime_root, session_id);
+        let mut nonce = [0_u8; 32];
+        rand::rngs::OsRng.fill_bytes(&mut nonce);
+        let result = runtime.block_on(async {
+            let mut client = HostClient::connect(
+                endpoint,
+                ConnectOptions::local(session_id, nonce),
+                &async_cancel,
+            )
+            .await
+            .map_err(map_client)?;
+            if client.host_instance_id() != Some(request.expected_host_instance_id) {
+                client.disconnect();
+                return Err(CliError::new(
+                    ErrorCode::PermissionDenied,
+                    "durable Host identity changed before resize",
+                    "Inspect the Session and retry only after its current Host is confirmed.",
+                ));
+            }
+            let state = client.get_state(&async_cancel).await.map_err(map_client)?;
+            if wire::Lifecycle::try_from(state.lifecycle) != Ok(wire::Lifecycle::Ready) {
+                client.disconnect();
+                return Err(validation(
+                    "durable Host is not ready for terminal resize",
+                    "Inspect the Session state and wait for the current lifecycle operation.",
+                ));
+            }
+            if !state.has_writer_lease {
+                client.disconnect();
+                return Err(CliError::new(
+                    ErrorCode::InteractionRequired,
+                    "another Controller holds the Session writer lease",
+                    "Detach the current writer or explicitly release its control, then retry.",
+                ));
+            }
+            if async_cancel.is_cancelled() {
+                client.disconnect();
+                return Err(cancelled());
+            }
+            let applied = client
+                .resize(
+                    request.command_id,
+                    u32::from(request.columns),
+                    u32::from(request.rows),
+                    &async_cancel,
+                )
+                .await
+                .map_err(map_resize_after_dispatch)?;
             client.disconnect();
             Ok(applied)
         });
@@ -2005,6 +2167,23 @@ fn map_input_after_dispatch(error: ClientError) -> CliError {
     }
 }
 
+fn map_resize_after_dispatch(error: ClientError) -> CliError {
+    match error.code {
+        ClientErrorCode::PermissionDenied
+        | ClientErrorCode::ConflictingDuplicate
+        | ClientErrorCode::ResourceLimit
+        | ClientErrorCode::FrameTooLarge
+        | ClientErrorCode::ProtocolIncompatible
+        | ClientErrorCode::WrongSession
+        | ClientErrorCode::InvalidIdentity => map_client(error),
+        _ => CliError::new(
+            ErrorCode::UnknownCompletion,
+            "session resize outcome is unknown",
+            "Inspect the Session dimensions before resizing again. Do not retry automatically.",
+        ),
+    }
+}
+
 fn map_process(error: std::io::Error) -> CliError {
     if error.kind() == std::io::ErrorKind::PermissionDenied {
         CliError::new(
@@ -2184,6 +2363,24 @@ mod tests {
         }
         assert_eq!(
             map_input_after_dispatch(ClientError::new(ClientErrorCode::PermissionDenied)).code,
+            ErrorCode::PermissionDenied
+        );
+    }
+
+    #[test]
+    fn resize_transport_failure_after_dispatch_is_never_presented_as_safe_to_retry() {
+        for code in [
+            ClientErrorCode::Io,
+            ClientErrorCode::EndOfStream,
+            ClientErrorCode::Cancelled,
+            ClientErrorCode::MalformedFrame,
+        ] {
+            let error = map_resize_after_dispatch(ClientError::new(code));
+            assert_eq!(error.code, ErrorCode::UnknownCompletion);
+            assert!(error.hint.contains("Do not retry automatically"));
+        }
+        assert_eq!(
+            map_resize_after_dispatch(ClientError::new(ClientErrorCode::PermissionDenied)).code,
             ErrorCode::PermissionDenied
         );
     }

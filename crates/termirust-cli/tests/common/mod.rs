@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use termirust_cli::{
     Cancellation, CliClock, CliError, CliIds, CliPaths, HostController, HostLaunchOutcome,
-    HostLauncher, LocalCommandService,
+    HostLauncher, HostResizeRequest, LocalCommandService,
 };
 use termirust_domain::{
     ActivityAggregate, AddProject, CommandId, ExecutableSpec, HostInstanceId, HostLifecycle,
@@ -189,10 +189,13 @@ impl HostLauncher for FakeLauncher {
 pub struct FakeControllerState {
     pub calls: usize,
     pub input_calls: usize,
+    pub resize_calls: usize,
     pub inputs: Vec<Vec<u8>>,
+    pub resize_requests: Vec<(u16, u16)>,
     pub expected_hosts: Vec<Option<HostInstanceId>>,
     pub result: Option<Result<(), CliError>>,
     pub input_result: Option<Result<bool, CliError>>,
+    pub resize_result: Option<Result<bool, CliError>>,
 }
 
 pub struct FakeController {
@@ -214,6 +217,22 @@ impl HostController for FakeController {
         state.inputs.push(bytes);
         state.expected_hosts.push(Some(expected_host_instance_id));
         state.input_result.clone().unwrap_or(Ok(true))
+    }
+
+    fn resize(
+        &self,
+        _runtime_root: &Path,
+        _session_id: HostedSessionId,
+        request: HostResizeRequest,
+        _cancellation: &Cancellation,
+    ) -> Result<bool, CliError> {
+        let mut state = self.state.lock().unwrap();
+        state.resize_calls += 1;
+        state.resize_requests.push((request.columns, request.rows));
+        state
+            .expected_hosts
+            .push(Some(request.expected_host_instance_id));
+        state.resize_result.clone().unwrap_or(Ok(true))
     }
 
     fn stop(

@@ -247,6 +247,14 @@ pub struct SessionInputData {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct SessionResizeData {
+    pub session_id: String,
+    pub columns: u16,
+    pub rows: u16,
+    pub applied: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
 pub enum SessionWaitConditionData {
     Lifecycle { state: String },
@@ -344,6 +352,7 @@ pub enum CliData {
     Session(SessionData),
     Wait(SessionWaitData),
     Input(SessionInputData),
+    Resize(SessionResizeData),
     Mutation(SessionMutationData),
     RemovalPreview(SessionRemovalPreviewData),
     ControllerSsh(ControllerSshData),

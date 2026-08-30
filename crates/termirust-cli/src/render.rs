@@ -141,6 +141,15 @@ fn render_human(data: &CliData, warnings: &[String], width: usize) -> String {
                 ("Applied", if data.applied { "yes" } else { "no" }.into()),
             ]),
         ),
+        CliData::Resize(data) => render_records(
+            "Session resize",
+            std::iter::once(vec![
+                ("Session", data.session_id.clone()),
+                ("Columns", data.columns.to_string()),
+                ("Rows", data.rows.to_string()),
+                ("Applied", if data.applied { "yes" } else { "no" }.into()),
+            ]),
+        ),
         CliData::Mutation(data) => {
             let mut text = format!("Outcome: {}", data.outcome);
             text.push_str(&render_records(

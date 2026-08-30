@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use common::*;
 use termirust_cli::{
-    Cancellation, CliData, LocalCommandService, RenderOptions, SessionInputData, render_success,
-    run,
+    Cancellation, CliData, LocalCommandService, RenderOptions, SessionInputData, SessionResizeData,
+    render_success, run,
 };
 
 fn json(
@@ -119,6 +119,24 @@ fn json_v1_golden() {
     actual.insert(
         "session_input".into(),
         serde_json::from_slice(&input).unwrap(),
+    );
+    let resize = render_success(
+        &CliData::Resize(SessionResizeData {
+            session_id: SESSION_ID.to_string(),
+            columns: 132,
+            rows: 43,
+            applied: true,
+        }),
+        &[],
+        RenderOptions {
+            json: true,
+            terminal_width: 80,
+        },
+    )
+    .unwrap();
+    actual.insert(
+        "session_resize".into(),
+        serde_json::from_slice(&resize).unwrap(),
     );
     actual.insert(
         "session_launch".into(),
