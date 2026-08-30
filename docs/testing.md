@@ -32,6 +32,8 @@ It runs:
 - `ui::app::tests::e2e_restored_password_workspace_reconnects_on_launch`
 - `ui::app::tests::e2e_local_shell_paste_confirmation_and_search`
 - `sftp::tests::docker_sftp_round_trips_directory_upload_download_and_delete`
+- `sftp::tests::docker_transfer_manager_enforces_conflicts_resume_and_identity_checks`
+- `sftp::tests::docker_active_upload_cancellation_does_not_clobber_destination`
 - `ui::app::tests::e2e_sftp_files_view_navigates_and_deletes_remote_files`
 - `ui::app::tests::e2e_sftp_upload_and_download_via_dialog_actions`
 - `ui::app::tests::e2e_saved_local_forward_rule_launches_on_connect`
@@ -142,6 +144,7 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - restored SSH workspaces can also reconnect through the saved password-credential path on launch
 - the local terminal path can confirm/cancel multi-line paste and drive workspace search against real terminal output
 - the SFTP runtime can list directories, upload files, download files, and delete remote files against the same Docker SSH target
+- the bounded SFTP manager streams content, reports monotonic progress and SHA-256 evidence, requires explicit conflict decisions, resumes only matching app-owned staging, rejects identity mismatches, and preserves destinations on cancellation
 - the GPUI app can open the remote Files view, navigate folders, delete remote files, save/remove user hosts, and quick-connect with password auth
 - the GPUI app can save a password-backed host into the system credential store and later reconnect through the stored-password path without retyping the password
 - the GPUI app can save a jump-host profile and later resolve that saved host into a real jump chain during connect

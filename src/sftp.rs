@@ -4,11 +4,14 @@ use russh::{ChannelMsg, client};
 use russh_sftp::client::SftpSession;
 use russh_sftp::client::error::Error as SftpClientError;
 use russh_sftp::protocol::{FileAttributes, OpenFlags, StatusCode};
-use std::fs;
-use std::path::PathBuf;
-use std::sync::Arc;
+use sha2::{Digest as _, Sha256};
+use std::collections::VecDeque;
+use std::fs::{self, File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex, Weak};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::runtime::Builder;
@@ -26,6 +29,12 @@ const AUTHORIZED_KEYS_CONNECT_TIMEOUT: Duration = Duration::from_secs(45);
 const AUTHORIZED_KEYS_STEP_TIMEOUT: Duration = Duration::from_secs(8);
 const AUTHORIZED_KEYS_STALE_LOCK_SECS: u64 = 120;
 const AUTHORIZED_KEYS_MAX_REMOTE_OUTPUT: usize = 4096;
+pub const SFTP_TRANSFER_CHUNK_BYTES: usize = 256 * 1024;
+pub const SFTP_TRANSFER_MAX_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+pub const SFTP_TRANSFER_MAX_ACTIVE: usize = 3;
+pub const SFTP_TRANSFER_MAX_QUEUED: usize = 32;
+const SFTP_TRANSFER_CONNECT_TIMEOUT: Duration = Duration::from_secs(45);
+const SFTP_TRANSFER_IO_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug)]
 pub struct RemoteFileEntry {
@@ -36,6 +45,68 @@ pub struct RemoteFileEntry {
     pub size: Option<u64>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SftpTransferDirection {
+    Upload,
+    Download,
+}
+
+impl SftpTransferDirection {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Upload => "Upload",
+            Self::Download => "Download",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SftpConflictPolicy {
+    #[default]
+    Ask,
+    Replace,
+    Skip,
+    Resume,
+}
+
+#[derive(Clone, Debug)]
+pub struct SftpTransferSpec {
+    pub workspace_id: u64,
+    pub operation_id: u64,
+    pub request: ConnectRequest,
+    pub direction: SftpTransferDirection,
+    pub local_path: PathBuf,
+    pub remote_path: String,
+    pub conflict_policy: SftpConflictPolicy,
+}
+
+#[derive(Clone)]
+pub struct SftpTransferControl {
+    inner: Weak<SftpTransferManagerInner>,
+    workspace_id: u64,
+    operation_id: u64,
+    cancellation: CancellationToken,
+}
+
+impl SftpTransferControl {
+    pub fn cancel(&self) {
+        self.cancellation.cancel();
+        if let Some(inner) = self.inner.upgrade() {
+            cancel_queued_transfer(&inner, self.workspace_id, self.operation_id);
+        }
+    }
+}
+
+impl std::fmt::Debug for SftpTransferControl {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SftpTransferControl")
+            .field("workspace_id", &self.workspace_id)
+            .field("operation_id", &self.operation_id)
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug)]
 pub enum SftpEvent {
     DirectoryLoaded {
@@ -44,27 +115,882 @@ pub enum SftpEvent {
         path: String,
         entries: Vec<RemoteFileEntry>,
     },
-    UploadComplete {
-        workspace_id: u64,
-        operation_id: u64,
-        remote_path: String,
-    },
-    DownloadComplete {
-        workspace_id: u64,
-        operation_id: u64,
-        remote_path: String,
-        local_path: String,
-    },
     DeleteComplete {
         workspace_id: u64,
         operation_id: u64,
         remote_path: String,
+    },
+    TransferQueued {
+        workspace_id: u64,
+        operation_id: u64,
+        direction: SftpTransferDirection,
+        queued_ahead: usize,
+    },
+    TransferStarted {
+        workspace_id: u64,
+        operation_id: u64,
+        direction: SftpTransferDirection,
+        total_bytes: u64,
+        resumed_from: u64,
+    },
+    TransferProgress {
+        workspace_id: u64,
+        operation_id: u64,
+        direction: SftpTransferDirection,
+        transferred_bytes: u64,
+        total_bytes: u64,
+    },
+    TransferConflict {
+        workspace_id: u64,
+        operation_id: u64,
+        direction: SftpTransferDirection,
+        existing_bytes: u64,
+        resume_available: bool,
+    },
+    TransferSkipped {
+        workspace_id: u64,
+        operation_id: u64,
+        direction: SftpTransferDirection,
+    },
+    TransferCancelled {
+        workspace_id: u64,
+        operation_id: u64,
+        direction: SftpTransferDirection,
+        transferred_bytes: u64,
+        staging_retained: bool,
+    },
+    TransferComplete {
+        workspace_id: u64,
+        operation_id: u64,
+        direction: SftpTransferDirection,
+        transferred_bytes: u64,
+        resumed_from: u64,
+        sha256: String,
+        cleanup_warning: bool,
     },
     Error {
         workspace_id: u64,
         operation_id: u64,
         message: String,
     },
+}
+
+#[derive(Clone)]
+pub struct SftpTransferManager {
+    inner: Arc<SftpTransferManagerInner>,
+}
+
+struct SftpTransferManagerInner {
+    state: Mutex<SftpTransferManagerState>,
+}
+
+#[derive(Default)]
+struct SftpTransferManagerState {
+    active: usize,
+    queued: VecDeque<SftpTransferJob>,
+}
+
+struct SftpTransferJob {
+    spec: SftpTransferSpec,
+    known_hosts: Arc<KnownHostStore>,
+    event_tx: Sender<SftpEvent>,
+    cancellation: CancellationToken,
+}
+
+impl Default for SftpTransferManager {
+    fn default() -> Self {
+        Self {
+            inner: Arc::new(SftpTransferManagerInner {
+                state: Mutex::new(SftpTransferManagerState::default()),
+            }),
+        }
+    }
+}
+
+impl SftpTransferManager {
+    pub fn enqueue(
+        &self,
+        spec: SftpTransferSpec,
+        known_hosts: Arc<KnownHostStore>,
+        event_tx: Sender<SftpEvent>,
+    ) -> Result<SftpTransferControl> {
+        validate_transfer_spec(&spec)?;
+        let cancellation = CancellationToken::new();
+        let queued_ahead = {
+            let mut state = self
+                .inner
+                .state
+                .lock()
+                .map_err(|_| anyhow!("SFTP transfer scheduler is unavailable"))?;
+            if state.active + state.queued.len()
+                >= SFTP_TRANSFER_MAX_ACTIVE + SFTP_TRANSFER_MAX_QUEUED
+            {
+                anyhow::bail!(
+                    "SFTP transfer queue is full ({} active, {} queued)",
+                    SFTP_TRANSFER_MAX_ACTIVE,
+                    SFTP_TRANSFER_MAX_QUEUED
+                );
+            }
+            let queued_ahead = state.queued.len() + state.active;
+            state.queued.push_back(SftpTransferJob {
+                spec: spec.clone(),
+                known_hosts,
+                event_tx: event_tx.clone(),
+                cancellation: cancellation.clone(),
+            });
+            queued_ahead
+        };
+
+        let _ = event_tx.send(SftpEvent::TransferQueued {
+            workspace_id: spec.workspace_id,
+            operation_id: spec.operation_id,
+            direction: spec.direction,
+            queued_ahead,
+        });
+        dispatch_transfers(self.inner.clone());
+
+        Ok(SftpTransferControl {
+            inner: Arc::downgrade(&self.inner),
+            workspace_id: spec.workspace_id,
+            operation_id: spec.operation_id,
+            cancellation,
+        })
+    }
+}
+
+fn validate_transfer_spec(spec: &SftpTransferSpec) -> Result<()> {
+    if spec.remote_path.is_empty() || spec.remote_path.len() > 4096 {
+        anyhow::bail!("Remote transfer path must contain between 1 and 4096 bytes");
+    }
+    validate_remote_path(&spec.remote_path)?;
+    if spec.local_path.as_os_str().is_empty() {
+        anyhow::bail!("Local transfer path is required");
+    }
+    Ok(())
+}
+
+fn cancel_queued_transfer(
+    inner: &Arc<SftpTransferManagerInner>,
+    workspace_id: u64,
+    operation_id: u64,
+) {
+    let removed = inner.state.lock().ok().and_then(|mut state| {
+        let index = state.queued.iter().position(|job| {
+            job.spec.workspace_id == workspace_id && job.spec.operation_id == operation_id
+        })?;
+        state.queued.remove(index)
+    });
+    if let Some(job) = removed {
+        let _ = job.event_tx.send(SftpEvent::TransferCancelled {
+            workspace_id,
+            operation_id,
+            direction: job.spec.direction,
+            transferred_bytes: 0,
+            staging_retained: false,
+        });
+    }
+}
+
+fn dispatch_transfers(inner: Arc<SftpTransferManagerInner>) {
+    loop {
+        let job = {
+            let Ok(mut state) = inner.state.lock() else {
+                return;
+            };
+            if state.active >= SFTP_TRANSFER_MAX_ACTIVE {
+                return;
+            }
+            let Some(job) = state.queued.pop_front() else {
+                return;
+            };
+            state.active += 1;
+            job
+        };
+
+        let worker_inner = inner.clone();
+        let workspace_id = job.spec.workspace_id;
+        let operation_id = job.spec.operation_id;
+        let event_tx = job.event_tx.clone();
+        let worker_event_tx = event_tx.clone();
+        let spawn_result = thread::Builder::new()
+            .name(format!("sftp-transfer-{workspace_id}-{operation_id}"))
+            .spawn(move || {
+                let result = Builder::new_current_thread()
+                    .enable_io()
+                    .enable_time()
+                    .build()
+                    .context("Unable to initialize the SFTP transfer runtime")
+                    .and_then(|runtime| runtime.block_on(run_transfer(job)));
+                if let Err(error) = result {
+                    let _ = worker_event_tx.send(SftpEvent::Error {
+                        workspace_id,
+                        operation_id,
+                        message: format!("SFTP transfer failed: {error:#}"),
+                    });
+                }
+                finish_transfer(&worker_inner);
+            });
+
+        if let Err(error) = spawn_result {
+            let _ = event_tx.send(SftpEvent::Error {
+                workspace_id,
+                operation_id,
+                message: format!("Unable to start the SFTP transfer worker: {error}"),
+            });
+            finish_transfer(&inner);
+        }
+    }
+}
+
+fn finish_transfer(inner: &Arc<SftpTransferManagerInner>) {
+    if let Ok(mut state) = inner.state.lock() {
+        state.active = state.active.saturating_sub(1);
+    }
+    dispatch_transfers(inner.clone());
+}
+
+async fn run_transfer(job: SftpTransferJob) -> Result<()> {
+    if job.cancellation.is_cancelled() {
+        send_transfer_cancelled(&job, 0, false);
+        return Ok(());
+    }
+    match job.spec.direction {
+        SftpTransferDirection::Upload => run_upload(job).await,
+        SftpTransferDirection::Download => run_download(job).await,
+    }
+}
+
+fn send_transfer_cancelled(job: &SftpTransferJob, transferred: u64, retained: bool) {
+    let _ = job.event_tx.send(SftpEvent::TransferCancelled {
+        workspace_id: job.spec.workspace_id,
+        operation_id: job.spec.operation_id,
+        direction: job.spec.direction,
+        transferred_bytes: transferred,
+        staging_retained: retained,
+    });
+}
+
+fn send_transfer_progress(job: &SftpTransferJob, transferred: u64, total: u64) {
+    let _ = job.event_tx.send(SftpEvent::TransferProgress {
+        workspace_id: job.spec.workspace_id,
+        operation_id: job.spec.operation_id,
+        direction: job.spec.direction,
+        transferred_bytes: transferred,
+        total_bytes: total,
+    });
+}
+
+fn send_transfer_started(job: &SftpTransferJob, total: u64, resumed_from: u64) {
+    let _ = job.event_tx.send(SftpEvent::TransferStarted {
+        workspace_id: job.spec.workspace_id,
+        operation_id: job.spec.operation_id,
+        direction: job.spec.direction,
+        total_bytes: total,
+        resumed_from,
+    });
+}
+
+fn send_transfer_complete(
+    job: &SftpTransferJob,
+    transferred: u64,
+    resumed_from: u64,
+    hasher: Sha256,
+    cleanup_warning: bool,
+) {
+    let _ = job.event_tx.send(SftpEvent::TransferComplete {
+        workspace_id: job.spec.workspace_id,
+        operation_id: job.spec.operation_id,
+        direction: job.spec.direction,
+        transferred_bytes: transferred,
+        resumed_from,
+        sha256: encode_sha256(hasher.finalize().as_slice()),
+        cleanup_warning,
+    });
+}
+
+async fn cancellable_transfer_step<T, E, F>(
+    cancellation: &CancellationToken,
+    timeout_duration: Duration,
+    timeout_message: &'static str,
+    future: F,
+) -> Result<Option<T>>
+where
+    F: std::future::Future<Output = std::result::Result<T, E>>,
+    E: std::fmt::Display,
+{
+    tokio::select! {
+        _ = cancellation.cancelled() => Ok(None),
+        result = timeout(timeout_duration, future) => {
+            let value = result
+                .map_err(|_| anyhow!(timeout_message))?
+                .map_err(|error| anyhow!("{error}"))?;
+            Ok(Some(value))
+        }
+    }
+}
+
+fn encode_sha256(bytes: &[u8]) -> String {
+    let mut value = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        let _ = write!(value, "{byte:02x}");
+    }
+    value
+}
+
+fn local_file_identity(path: &Path) -> Result<(u64, Option<SystemTime>)> {
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("Unable to inspect {}", path.display()))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        anyhow::bail!("The local transfer source or destination must be a regular file");
+    }
+    Ok((metadata.len(), metadata.modified().ok()))
+}
+
+fn local_destination_identity(path: &Path) -> Result<Option<(u64, Option<SystemTime>)>> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                anyhow::bail!("The local destination exists but is not a regular file");
+            }
+            Ok(Some((metadata.len(), metadata.modified().ok())))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("Unable to inspect {}", path.display())),
+    }
+}
+
+fn local_staging_path(destination: &Path, operation_id: u64) -> Result<PathBuf> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| anyhow!("The local destination needs a parent directory"))?;
+    let name = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| anyhow!("The local destination needs a valid file name"))?;
+    Ok(parent.join(format!(".{name}.termirust-{operation_id}.part")))
+}
+
+fn local_backup_path(destination: &Path, operation_id: u64) -> Result<PathBuf> {
+    let parent = destination
+        .parent()
+        .ok_or_else(|| anyhow!("The local destination needs a parent directory"))?;
+    let name = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| anyhow!("The local destination needs a valid file name"))?;
+    Ok(parent.join(format!(".{name}.termirust-{operation_id}.backup")))
+}
+
+fn remote_staging_path(destination: &str, operation_id: u64) -> Result<String> {
+    let staging = format!("{destination}.termirust-{operation_id}.part");
+    if staging.len() > 4096 {
+        anyhow::bail!("Remote staging path exceeds 4096 bytes");
+    }
+    Ok(staging)
+}
+
+fn ensure_transfer_size(size: u64) -> Result<()> {
+    if size > SFTP_TRANSFER_MAX_BYTES {
+        anyhow::bail!(
+            "Transfer size {} exceeds the {} byte per-file limit",
+            size,
+            SFTP_TRANSFER_MAX_BYTES
+        );
+    }
+    Ok(())
+}
+
+fn same_remote_identity(left: &FileAttributes, right: &FileAttributes) -> bool {
+    left.size == right.size && left.mtime == right.mtime && left.permissions == right.permissions
+}
+
+async fn run_upload(job: SftpTransferJob) -> Result<()> {
+    use tokio::io::{AsyncReadExt as _, AsyncSeekExt as _, AsyncWriteExt as _};
+
+    let (total, source_modified) = local_file_identity(&job.spec.local_path)?;
+    ensure_transfer_size(total)?;
+    let Some((sftp, _handles)) = cancellable_transfer_step(
+        &job.cancellation,
+        SFTP_TRANSFER_CONNECT_TIMEOUT,
+        "SFTP transfer connection timed out",
+        open_sftp(job.spec.request.clone(), job.known_hosts.clone()),
+    )
+    .await?
+    else {
+        send_transfer_cancelled(&job, 0, false);
+        return Ok(());
+    };
+    sftp.set_timeout(SFTP_TRANSFER_IO_TIMEOUT.as_secs()).await;
+
+    let destination_before = remote_symlink_metadata(&sftp, &job.spec.remote_path).await?;
+    if let Some(metadata) = destination_before.as_ref()
+        && (metadata.is_symlink() || !metadata.is_regular())
+    {
+        anyhow::bail!("The remote destination exists but is not a regular file");
+    }
+    if let Some(metadata) = destination_before.as_ref() {
+        match job.spec.conflict_policy {
+            SftpConflictPolicy::Ask => {
+                let staging = remote_staging_path(&job.spec.remote_path, job.spec.operation_id)?;
+                let resume_available =
+                    remote_symlink_metadata(&sftp, &staging)
+                        .await?
+                        .is_some_and(|part| {
+                            part.is_regular() && !part.is_empty() && part.len() < total
+                        });
+                let _ = job.event_tx.send(SftpEvent::TransferConflict {
+                    workspace_id: job.spec.workspace_id,
+                    operation_id: job.spec.operation_id,
+                    direction: job.spec.direction,
+                    existing_bytes: metadata.len(),
+                    resume_available,
+                });
+                let _ = sftp.close().await;
+                return Ok(());
+            }
+            SftpConflictPolicy::Skip => {
+                let _ = job.event_tx.send(SftpEvent::TransferSkipped {
+                    workspace_id: job.spec.workspace_id,
+                    operation_id: job.spec.operation_id,
+                    direction: job.spec.direction,
+                });
+                let _ = sftp.close().await;
+                return Ok(());
+            }
+            SftpConflictPolicy::Replace | SftpConflictPolicy::Resume => {}
+        }
+    } else if job.spec.conflict_policy == SftpConflictPolicy::Skip {
+        let _ = job.event_tx.send(SftpEvent::TransferSkipped {
+            workspace_id: job.spec.workspace_id,
+            operation_id: job.spec.operation_id,
+            direction: job.spec.direction,
+        });
+        let _ = sftp.close().await;
+        return Ok(());
+    }
+
+    let staging = remote_staging_path(&job.spec.remote_path, job.spec.operation_id)?;
+    let mut source = File::open(&job.spec.local_path)
+        .with_context(|| format!("Unable to open {}", job.spec.local_path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut resumed_from = 0;
+
+    if job.spec.conflict_policy == SftpConflictPolicy::Resume {
+        let staged = remote_symlink_metadata(&sftp, &staging)
+            .await?
+            .ok_or_else(|| anyhow!("No app-owned remote staging file is available to resume"))?;
+        if !staged.is_regular() || staged.is_symlink() || staged.len() > total {
+            anyhow::bail!("The remote staging file is not safe to resume");
+        }
+        resumed_from = staged.len();
+        let mut remote_prefix = sftp
+            .open(staging.clone())
+            .await
+            .context("Unable to open the remote staging file for resume validation")?;
+        let mut local_chunk = vec![0u8; SFTP_TRANSFER_CHUNK_BYTES];
+        let mut remote_chunk = vec![0u8; SFTP_TRANSFER_CHUNK_BYTES];
+        let mut checked = 0u64;
+        while checked < resumed_from {
+            if job.cancellation.is_cancelled() {
+                send_transfer_cancelled(&job, checked, true);
+                let _ = sftp.close().await;
+                return Ok(());
+            }
+            let want =
+                usize::try_from((resumed_from - checked).min(SFTP_TRANSFER_CHUNK_BYTES as u64))
+                    .unwrap_or(SFTP_TRANSFER_CHUNK_BYTES);
+            source.read_exact(&mut local_chunk[..want])?;
+            let Some(_) = cancellable_transfer_step(
+                &job.cancellation,
+                SFTP_TRANSFER_IO_TIMEOUT,
+                "Remote staging validation timed out",
+                remote_prefix.read_exact(&mut remote_chunk[..want]),
+            )
+            .await?
+            else {
+                send_transfer_cancelled(&job, checked, true);
+                let _ = sftp.close().await;
+                return Ok(());
+            };
+            if local_chunk[..want] != remote_chunk[..want] {
+                anyhow::bail!("Resume refused because the staged prefix does not match the source");
+            }
+            hasher.update(&local_chunk[..want]);
+            checked += want as u64;
+        }
+        timeout(SFTP_TRANSFER_IO_TIMEOUT, remote_prefix.shutdown())
+            .await
+            .map_err(|_| anyhow!("Closing the remote resume reader timed out"))??;
+    } else {
+        if remote_symlink_metadata(&sftp, &staging).await?.is_some() {
+            sftp.remove_file(staging.clone())
+                .await
+                .context("Unable to clear an old app-owned upload staging file")?;
+        }
+    }
+
+    let flags = if resumed_from == 0 {
+        OpenFlags::CREATE | OpenFlags::TRUNCATE | OpenFlags::WRITE
+    } else {
+        OpenFlags::CREATE | OpenFlags::WRITE
+    };
+    let mut remote = sftp
+        .open_with_flags(staging.clone(), flags)
+        .await
+        .context("Unable to open the remote upload staging file")?;
+    if resumed_from > 0 {
+        timeout(
+            SFTP_TRANSFER_IO_TIMEOUT,
+            remote.seek(tokio::io::SeekFrom::Start(resumed_from)),
+        )
+        .await
+        .map_err(|_| anyhow!("Seeking the remote staging file timed out"))??;
+        source.seek(SeekFrom::Start(resumed_from))?;
+    }
+    send_transfer_started(&job, total, resumed_from);
+    send_transfer_progress(&job, resumed_from, total);
+
+    let mut transferred = resumed_from;
+    let mut chunk = vec![0u8; SFTP_TRANSFER_CHUNK_BYTES];
+    while transferred < total {
+        if job.cancellation.is_cancelled() {
+            let _ = timeout(SFTP_TRANSFER_IO_TIMEOUT, remote.shutdown()).await;
+            send_transfer_cancelled(&job, transferred, true);
+            let _ = sftp.close().await;
+            return Ok(());
+        }
+        let read = source
+            .read(&mut chunk)
+            .context("Unable to read the local upload source")?;
+        if read == 0 {
+            anyhow::bail!("The local upload source ended before its reported size");
+        }
+        let Some(()) = cancellable_transfer_step(
+            &job.cancellation,
+            SFTP_TRANSFER_IO_TIMEOUT,
+            "Uploading a file chunk timed out",
+            remote.write_all(&chunk[..read]),
+        )
+        .await?
+        else {
+            let _ = timeout(SFTP_TRANSFER_IO_TIMEOUT, remote.shutdown()).await;
+            send_transfer_cancelled(&job, transferred, true);
+            let _ = sftp.close().await;
+            return Ok(());
+        };
+        hasher.update(&chunk[..read]);
+        transferred = transferred.saturating_add(read as u64);
+        send_transfer_progress(&job, transferred, total);
+    }
+    timeout(SFTP_TRANSFER_IO_TIMEOUT, remote.flush())
+        .await
+        .map_err(|_| anyhow!("Flushing the remote upload timed out"))??;
+    timeout(SFTP_TRANSFER_IO_TIMEOUT, remote.shutdown())
+        .await
+        .map_err(|_| anyhow!("Closing the remote upload timed out"))??;
+
+    let (source_size_after, source_modified_after) = local_file_identity(&job.spec.local_path)?;
+    if source_size_after != total || source_modified_after != source_modified {
+        anyhow::bail!("The local upload source changed during transfer; staging was not published");
+    }
+    let staged = remote_symlink_metadata(&sftp, &staging)
+        .await?
+        .ok_or_else(|| anyhow!("The remote upload staging file disappeared"))?;
+    if staged.len() != total || !staged.is_regular() || staged.is_symlink() {
+        anyhow::bail!("The remote upload staging size or type could not be verified");
+    }
+    let cleanup_warning = publish_remote_staging(
+        &sftp,
+        &staging,
+        &job.spec.remote_path,
+        destination_before.as_ref(),
+        job.spec.operation_id,
+    )
+    .await?;
+    let _ = sftp.close().await;
+    send_transfer_complete(&job, transferred, resumed_from, hasher, cleanup_warning);
+    Ok(())
+}
+
+async fn publish_remote_staging(
+    sftp: &SftpSession,
+    staging: &str,
+    destination: &str,
+    destination_before: Option<&FileAttributes>,
+    operation_id: u64,
+) -> Result<bool> {
+    let mut cleanup_warning = false;
+    if let Some(expected) = destination_before {
+        let current = remote_symlink_metadata(sftp, destination)
+            .await?
+            .ok_or_else(|| anyhow!("The remote destination changed before publish"))?;
+        if !same_remote_identity(expected, &current) {
+            anyhow::bail!("The remote destination changed before publish; replace was refused");
+        }
+        let backup = format!("{destination}.termirust-{operation_id}.backup");
+        if remote_symlink_metadata(sftp, &backup).await?.is_some() {
+            anyhow::bail!("An app-owned remote backup already exists; publish was refused");
+        }
+        sftp.rename(destination.to_string(), backup.clone())
+            .await
+            .context("Unable to stage the existing remote destination for replacement")?;
+        if let Err(error) = sftp
+            .rename(staging.to_string(), destination.to_string())
+            .await
+        {
+            let _ = sftp.rename(backup, destination.to_string()).await;
+            return Err(error).context("Unable to publish the remote upload staging file");
+        }
+        if sftp.remove_file(backup).await.is_err() {
+            cleanup_warning = true;
+        }
+    } else {
+        if remote_symlink_metadata(sftp, destination).await?.is_some() {
+            anyhow::bail!("The remote destination appeared during transfer; publish was refused");
+        }
+        sftp.rename(staging.to_string(), destination.to_string())
+            .await
+            .context("Unable to publish the remote upload staging file")?;
+    }
+    Ok(cleanup_warning)
+}
+
+async fn run_download(job: SftpTransferJob) -> Result<()> {
+    use tokio::io::{AsyncReadExt as _, AsyncSeekExt as _};
+
+    let Some((sftp, _handles)) = cancellable_transfer_step(
+        &job.cancellation,
+        SFTP_TRANSFER_CONNECT_TIMEOUT,
+        "SFTP transfer connection timed out",
+        open_sftp(job.spec.request.clone(), job.known_hosts.clone()),
+    )
+    .await?
+    else {
+        send_transfer_cancelled(&job, 0, false);
+        return Ok(());
+    };
+    sftp.set_timeout(SFTP_TRANSFER_IO_TIMEOUT.as_secs()).await;
+    let source_before = remote_symlink_metadata(&sftp, &job.spec.remote_path)
+        .await?
+        .ok_or_else(|| anyhow!("The remote download source does not exist"))?;
+    if source_before.is_symlink() || !source_before.is_regular() {
+        anyhow::bail!("The remote download source must be a regular file");
+    }
+    let total = source_before.len();
+    ensure_transfer_size(total)?;
+    let destination_before = local_destination_identity(&job.spec.local_path)?;
+    let staging = local_staging_path(&job.spec.local_path, job.spec.operation_id)?;
+    let staged_before = local_destination_identity(&staging)?;
+
+    if let Some((existing_bytes, _)) = destination_before.as_ref() {
+        match job.spec.conflict_policy {
+            SftpConflictPolicy::Ask => {
+                let resume_available =
+                    staged_before.is_some_and(|(size, _)| size > 0 && size < total);
+                let _ = job.event_tx.send(SftpEvent::TransferConflict {
+                    workspace_id: job.spec.workspace_id,
+                    operation_id: job.spec.operation_id,
+                    direction: job.spec.direction,
+                    existing_bytes: *existing_bytes,
+                    resume_available,
+                });
+                let _ = sftp.close().await;
+                return Ok(());
+            }
+            SftpConflictPolicy::Skip => {
+                let _ = job.event_tx.send(SftpEvent::TransferSkipped {
+                    workspace_id: job.spec.workspace_id,
+                    operation_id: job.spec.operation_id,
+                    direction: job.spec.direction,
+                });
+                let _ = sftp.close().await;
+                return Ok(());
+            }
+            SftpConflictPolicy::Replace | SftpConflictPolicy::Resume => {}
+        }
+    } else if job.spec.conflict_policy == SftpConflictPolicy::Skip {
+        let _ = job.event_tx.send(SftpEvent::TransferSkipped {
+            workspace_id: job.spec.workspace_id,
+            operation_id: job.spec.operation_id,
+            direction: job.spec.direction,
+        });
+        let _ = sftp.close().await;
+        return Ok(());
+    }
+
+    let mut remote = sftp
+        .open(job.spec.remote_path.clone())
+        .await
+        .context("Unable to open the remote download source")?;
+    let mut hasher = Sha256::new();
+    let mut resumed_from = 0;
+    if job.spec.conflict_policy == SftpConflictPolicy::Resume {
+        let (staged_size, _) = staged_before
+            .ok_or_else(|| anyhow!("No app-owned local staging file is available to resume"))?;
+        if staged_size > total {
+            anyhow::bail!("The local staging file is larger than the remote source");
+        }
+        resumed_from = staged_size;
+        let mut local_prefix = File::open(&staging)
+            .with_context(|| format!("Unable to open {}", staging.display()))?;
+        let mut local_chunk = vec![0u8; SFTP_TRANSFER_CHUNK_BYTES];
+        let mut remote_chunk = vec![0u8; SFTP_TRANSFER_CHUNK_BYTES];
+        let mut checked = 0u64;
+        while checked < resumed_from {
+            if job.cancellation.is_cancelled() {
+                send_transfer_cancelled(&job, checked, true);
+                let _ = sftp.close().await;
+                return Ok(());
+            }
+            let want =
+                usize::try_from((resumed_from - checked).min(SFTP_TRANSFER_CHUNK_BYTES as u64))
+                    .unwrap_or(SFTP_TRANSFER_CHUNK_BYTES);
+            local_prefix.read_exact(&mut local_chunk[..want])?;
+            let Some(_) = cancellable_transfer_step(
+                &job.cancellation,
+                SFTP_TRANSFER_IO_TIMEOUT,
+                "Remote source validation timed out",
+                remote.read_exact(&mut remote_chunk[..want]),
+            )
+            .await?
+            else {
+                send_transfer_cancelled(&job, checked, true);
+                let _ = sftp.close().await;
+                return Ok(());
+            };
+            if local_chunk[..want] != remote_chunk[..want] {
+                anyhow::bail!("Resume refused because the staged prefix does not match the source");
+            }
+            hasher.update(&remote_chunk[..want]);
+            checked += want as u64;
+        }
+    } else if staged_before.is_some() {
+        fs::remove_file(&staging)
+            .with_context(|| format!("Unable to clear old staging file {}", staging.display()))?;
+    }
+
+    let mut local = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(resumed_from == 0)
+        .open(&staging)
+        .with_context(|| format!("Unable to open staging file {}", staging.display()))?;
+    if resumed_from > 0 {
+        local.seek(SeekFrom::Start(resumed_from))?;
+        timeout(
+            SFTP_TRANSFER_IO_TIMEOUT,
+            remote.seek(tokio::io::SeekFrom::Start(resumed_from)),
+        )
+        .await
+        .map_err(|_| anyhow!("Seeking the remote source timed out"))??;
+    }
+    send_transfer_started(&job, total, resumed_from);
+    send_transfer_progress(&job, resumed_from, total);
+    let mut transferred = resumed_from;
+    let mut chunk = vec![0u8; SFTP_TRANSFER_CHUNK_BYTES];
+    while transferred < total {
+        if job.cancellation.is_cancelled() {
+            local.flush()?;
+            send_transfer_cancelled(&job, transferred, true);
+            let _ = sftp.close().await;
+            return Ok(());
+        }
+        let Some(read) = cancellable_transfer_step(
+            &job.cancellation,
+            SFTP_TRANSFER_IO_TIMEOUT,
+            "Downloading a file chunk timed out",
+            remote.read(&mut chunk),
+        )
+        .await?
+        else {
+            local.flush()?;
+            send_transfer_cancelled(&job, transferred, true);
+            let _ = sftp.close().await;
+            return Ok(());
+        };
+        if read == 0 {
+            anyhow::bail!("The remote download source ended before its reported size");
+        }
+        local
+            .write_all(&chunk[..read])
+            .context("Unable to write the local download staging file")?;
+        hasher.update(&chunk[..read]);
+        transferred = transferred.saturating_add(read as u64);
+        send_transfer_progress(&job, transferred, total);
+    }
+    local.flush()?;
+    local.sync_all()?;
+
+    let source_after = remote_symlink_metadata(&sftp, &job.spec.remote_path)
+        .await?
+        .ok_or_else(|| anyhow!("The remote source disappeared during download"))?;
+    if !same_remote_identity(&source_before, &source_after) {
+        anyhow::bail!("The remote source changed during download; staging was not published");
+    }
+    let staged_after = local_file_identity(&staging)?;
+    if staged_after.0 != total {
+        anyhow::bail!("The local download staging size could not be verified");
+    }
+    let cleanup_warning = publish_local_staging(
+        &staging,
+        &job.spec.local_path,
+        destination_before.as_ref(),
+        job.spec.operation_id,
+    )?;
+    let _ = sftp.close().await;
+    send_transfer_complete(&job, transferred, resumed_from, hasher, cleanup_warning);
+    Ok(())
+}
+
+fn publish_local_staging(
+    staging: &Path,
+    destination: &Path,
+    destination_before: Option<&(u64, Option<SystemTime>)>,
+    operation_id: u64,
+) -> Result<bool> {
+    let mut cleanup_warning = false;
+    let current = local_destination_identity(destination)?;
+    if current.as_ref() != destination_before {
+        anyhow::bail!("The local destination changed during transfer; replace was refused");
+    }
+    if let Some(parent) = destination.parent() {
+        File::open(parent)
+            .and_then(|directory| directory.sync_all())
+            .ok();
+    }
+    if destination_before.is_some() {
+        let backup = local_backup_path(destination, operation_id)?;
+        match fs::symlink_metadata(&backup) {
+            Ok(_) => {
+                anyhow::bail!("An app-owned local backup already exists; publish was refused")
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("Unable to inspect {}", backup.display()));
+            }
+        }
+        fs::rename(destination, &backup).with_context(|| {
+            format!("Unable to stage {} for replacement", destination.display())
+        })?;
+        if let Err(error) = fs::rename(staging, destination) {
+            let _ = fs::rename(&backup, destination);
+            return Err(error).context("Unable to publish the local download staging file");
+        }
+        if fs::remove_file(&backup).is_err() {
+            cleanup_warning = true;
+        }
+    } else {
+        fs::hard_link(staging, destination)
+            .context("Unable to publish the local download without overwriting another file")?;
+        if fs::remove_file(staging).is_err() {
+            cleanup_warning = true;
+        }
+    }
+    Ok(cleanup_warning)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -268,75 +1194,6 @@ pub fn spawn_list_directory(
     });
 }
 
-pub fn spawn_upload_file(
-    workspace_id: u64,
-    operation_id: u64,
-    request: ConnectRequest,
-    known_hosts: Arc<KnownHostStore>,
-    remote_dir: String,
-    local_path: PathBuf,
-    event_tx: Sender<SftpEvent>,
-) {
-    spawn_operation(workspace_id, operation_id, event_tx, async move {
-        let file_name = local_path
-            .file_name()
-            .map(|name| name.to_string_lossy().trim().to_string())
-            .filter(|name| !name.is_empty())
-            .ok_or_else(|| anyhow!("Unable to determine a file name for upload"))?;
-        let remote_path = join_remote_path(&remote_dir, &file_name);
-        let bytes = fs::read(&local_path)
-            .with_context(|| format!("Unable to read {}", local_path.display()))?;
-
-        with_sftp(request, known_hosts, move |sftp| async move {
-            let mut file = sftp
-                .create(remote_path.clone())
-                .await
-                .with_context(|| format!("Unable to create remote file {remote_path}"))?;
-            tokio::io::AsyncWriteExt::write_all(&mut file, &bytes)
-                .await
-                .with_context(|| format!("Unable to upload to {remote_path}"))?;
-            Ok(remote_path)
-        })
-        .await
-        .map(|remote_path| SftpEvent::UploadComplete {
-            workspace_id,
-            operation_id,
-            remote_path,
-        })
-    });
-}
-
-pub fn spawn_download_file(
-    workspace_id: u64,
-    operation_id: u64,
-    request: ConnectRequest,
-    known_hosts: Arc<KnownHostStore>,
-    remote_path: String,
-    local_path: PathBuf,
-    event_tx: Sender<SftpEvent>,
-) {
-    spawn_operation(workspace_id, operation_id, event_tx, async move {
-        let display_local_path = local_path.display().to_string();
-        let remote_path_for_read = remote_path.clone();
-        let bytes = with_sftp(request, known_hosts, move |sftp| async move {
-            sftp.read(remote_path_for_read.clone())
-                .await
-                .with_context(|| format!("Unable to read remote file {remote_path_for_read}"))
-        })
-        .await?;
-
-        fs::write(&local_path, bytes)
-            .with_context(|| format!("Unable to write {}", local_path.display()))?;
-
-        Ok(SftpEvent::DownloadComplete {
-            workspace_id,
-            operation_id,
-            remote_path,
-            local_path: display_local_path,
-        })
-    });
-}
-
 pub fn spawn_delete_path(
     workspace_id: u64,
     operation_id: u64,
@@ -374,40 +1231,44 @@ where
     F: std::future::Future<Output = Result<SftpEvent>> + Send + 'static,
 {
     let thread_name = format!("sftp-{workspace_id}-{operation_id}");
-    thread::Builder::new()
-        .name(thread_name)
-        .spawn(move || {
-            let runtime = match Builder::new_current_thread()
-                .enable_io()
-                .enable_time()
-                .build()
-            {
-                Ok(runtime) => runtime,
-                Err(error) => {
-                    let _ = event_tx.send(SftpEvent::Error {
-                        workspace_id,
-                        operation_id,
-                        message: format!("Failed to build async runtime: {error}"),
-                    });
-                    return;
-                }
-            };
-
-            let result = runtime.block_on(future);
-            match result {
-                Ok(event) => {
-                    let _ = event_tx.send(event);
-                }
-                Err(error) => {
-                    let _ = event_tx.send(SftpEvent::Error {
-                        workspace_id,
-                        operation_id,
-                        message: format!("{error:#}"),
-                    });
-                }
+    let worker_event_tx = event_tx.clone();
+    if let Err(error) = thread::Builder::new().name(thread_name).spawn(move || {
+        let runtime = match Builder::new_current_thread()
+            .enable_io()
+            .enable_time()
+            .build()
+        {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                let _ = worker_event_tx.send(SftpEvent::Error {
+                    workspace_id,
+                    operation_id,
+                    message: format!("Failed to build async runtime: {error}"),
+                });
+                return;
             }
-        })
-        .expect("unable to spawn SFTP thread");
+        };
+
+        let result = runtime.block_on(future);
+        match result {
+            Ok(event) => {
+                let _ = worker_event_tx.send(event);
+            }
+            Err(error) => {
+                let _ = worker_event_tx.send(SftpEvent::Error {
+                    workspace_id,
+                    operation_id,
+                    message: format!("{error:#}"),
+                });
+            }
+        }
+    }) {
+        let _ = event_tx.send(SftpEvent::Error {
+            workspace_id,
+            operation_id,
+            message: format!("Unable to start the SFTP operation: {error}"),
+        });
+    }
 }
 
 async fn run_authorized_key_operation(
@@ -1043,8 +1904,11 @@ impl client::Handler for SftpHandler {
 mod tests {
     use super::{
         AuthorizedKeyAction, AuthorizedKeyEvent, AuthorizedKeyOutcome, GeneratedKeyVerification,
-        SftpEvent, spawn_authorized_key_operation, spawn_delete_path, spawn_download_file,
-        spawn_list_directory, spawn_upload_file,
+        SFTP_TRANSFER_CHUNK_BYTES, SFTP_TRANSFER_MAX_ACTIVE, SFTP_TRANSFER_MAX_BYTES,
+        SFTP_TRANSFER_MAX_QUEUED, SftpConflictPolicy, SftpEvent, SftpTransferDirection,
+        SftpTransferManager, SftpTransferSpec, cancellable_transfer_step,
+        local_destination_identity, local_file_identity, local_staging_path, publish_local_staging,
+        spawn_authorized_key_operation, spawn_delete_path, spawn_list_directory,
     };
     use crate::models::{AuthConfig, ConnectRequest, ConnectionKind, OutboundProxy};
     use crate::ssh::{SessionCommand, SshEvent, spawn_session};
@@ -1057,9 +1921,18 @@ mod tests {
         create_test_user_certificate,
     };
     use std::fs;
+    use std::io::Read as _;
+    use std::net::TcpListener;
+    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
     use std::time::Duration;
+
+    fn sha256(bytes: &[u8]) -> String {
+        use sha2::{Digest as _, Sha256};
+
+        super::encode_sha256(&Sha256::digest(bytes))
+    }
 
     fn docker_sftp_request(server: &DockerSshServer) -> ConnectRequest {
         ConnectRequest {
@@ -1087,12 +1960,355 @@ mod tests {
         }
     }
 
+    fn synthetic_sftp_request(port: u16) -> ConnectRequest {
+        ConnectRequest {
+            session_id: 99,
+            title: "Synthetic SFTP".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "test".to_string(),
+            auth: Some(AuthConfig::Password {
+                password: "not-a-real-secret".to_string(),
+            }),
+            jump_host: None,
+            outbound_proxy: None,
+            startup_directory: None,
+            startup_command: None,
+            start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
+            terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: Vec::new(),
+        }
+    }
+
     fn recv_sftp_event(rx: &Receiver<SftpEvent>) -> SftpEvent {
         match rx.recv_timeout(Duration::from_secs(20)) {
             Ok(event) => event,
             Err(RecvTimeoutError::Timeout) => panic!("timed out waiting for SFTP event"),
             Err(RecvTimeoutError::Disconnected) => panic!("SFTP event channel disconnected"),
         }
+    }
+
+    fn recv_transfer_complete(
+        rx: &Receiver<SftpEvent>,
+        operation_id: u64,
+    ) -> (SftpTransferDirection, String) {
+        let mut previous_progress = 0;
+        loop {
+            match recv_sftp_event(rx) {
+                SftpEvent::TransferQueued {
+                    operation_id: actual,
+                    ..
+                }
+                | SftpEvent::TransferStarted {
+                    operation_id: actual,
+                    ..
+                } if actual == operation_id => {}
+                SftpEvent::TransferProgress {
+                    operation_id: actual,
+                    transferred_bytes,
+                    total_bytes,
+                    ..
+                } if actual == operation_id => {
+                    assert!(transferred_bytes >= previous_progress);
+                    assert!(transferred_bytes <= total_bytes);
+                    previous_progress = transferred_bytes;
+                }
+                SftpEvent::TransferComplete {
+                    operation_id: actual,
+                    direction,
+                    transferred_bytes,
+                    sha256,
+                    ..
+                } if actual == operation_id => {
+                    assert_eq!(transferred_bytes, previous_progress);
+                    return (direction, sha256);
+                }
+                SftpEvent::Error {
+                    operation_id: actual,
+                    message,
+                    ..
+                } if actual == operation_id => panic!("transfer failed: {message}"),
+                event => panic!("unexpected transfer event: {event:?}"),
+            }
+        }
+    }
+
+    fn recv_transfer_terminal(rx: &Receiver<SftpEvent>, operation_id: u64) -> SftpEvent {
+        loop {
+            let event = recv_sftp_event(rx);
+            let (actual, terminal) = match &event {
+                SftpEvent::TransferConflict { operation_id, .. }
+                | SftpEvent::TransferSkipped { operation_id, .. }
+                | SftpEvent::TransferCancelled { operation_id, .. }
+                | SftpEvent::TransferComplete { operation_id, .. }
+                | SftpEvent::Error { operation_id, .. } => (*operation_id, true),
+                SftpEvent::TransferQueued { operation_id, .. }
+                | SftpEvent::TransferStarted { operation_id, .. }
+                | SftpEvent::TransferProgress { operation_id, .. } => (*operation_id, false),
+                _ => continue,
+            };
+            if actual == operation_id && terminal {
+                return event;
+            }
+        }
+    }
+
+    #[test]
+    fn transfer_manager_bounds_queue_and_cancels_queued_jobs_immediately() {
+        let _isolation = TestIsolation::acquire();
+        let manager = SftpTransferManager::default();
+        manager.inner.state.lock().unwrap().active = SFTP_TRANSFER_MAX_ACTIVE;
+        let known_hosts = Arc::new(KnownHostStore::load().expect("known-host store should load"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let mut controls = Vec::new();
+
+        for operation_id in 1..=SFTP_TRANSFER_MAX_QUEUED as u64 {
+            controls.push(
+                manager
+                    .enqueue(
+                        SftpTransferSpec {
+                            workspace_id: 1,
+                            operation_id,
+                            request: synthetic_sftp_request(9),
+                            direction: SftpTransferDirection::Download,
+                            local_path: PathBuf::from(format!("/tmp/queued-{operation_id}")),
+                            remote_path: format!("/queued-{operation_id}"),
+                            conflict_policy: SftpConflictPolicy::Ask,
+                        },
+                        known_hosts.clone(),
+                        event_tx.clone(),
+                    )
+                    .expect("queue slot should be available"),
+            );
+        }
+        assert_eq!(manager.inner.state.lock().unwrap().queued.len(), 32);
+        let rejected = manager.enqueue(
+            SftpTransferSpec {
+                workspace_id: 1,
+                operation_id: 100,
+                request: synthetic_sftp_request(9),
+                direction: SftpTransferDirection::Download,
+                local_path: PathBuf::from("/tmp/rejected"),
+                remote_path: "/rejected".to_string(),
+                conflict_policy: SftpConflictPolicy::Ask,
+            },
+            known_hosts.clone(),
+            event_tx.clone(),
+        );
+        assert!(rejected.unwrap_err().to_string().contains("queue is full"));
+
+        controls[7].cancel();
+        assert_eq!(manager.inner.state.lock().unwrap().queued.len(), 31);
+        let cancelled = recv_transfer_terminal(&event_rx, 8);
+        assert!(matches!(
+            cancelled,
+            SftpEvent::TransferCancelled {
+                transferred_bytes: 0,
+                staging_retained: false,
+                ..
+            }
+        ));
+        manager
+            .enqueue(
+                SftpTransferSpec {
+                    workspace_id: 1,
+                    operation_id: 101,
+                    request: synthetic_sftp_request(9),
+                    direction: SftpTransferDirection::Download,
+                    local_path: PathBuf::from("/tmp/replacement"),
+                    remote_path: "/replacement".to_string(),
+                    conflict_policy: SftpConflictPolicy::Ask,
+                },
+                known_hosts,
+                event_tx,
+            )
+            .expect("cancelled queue slot should be reusable");
+    }
+
+    #[test]
+    fn transfer_step_timeout_and_file_ceiling_fail_deterministically() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        let error = runtime
+            .block_on(cancellable_transfer_step(
+                &cancellation,
+                Duration::from_millis(20),
+                "synthetic transfer step timed out",
+                std::future::pending::<std::io::Result<()>>(),
+            ))
+            .unwrap_err();
+        assert_eq!(error.to_string(), "synthetic transfer step timed out");
+
+        let _isolation = TestIsolation::acquire();
+        let temp = tempfile::TempDir::new().unwrap();
+        let oversized = temp.path().join("oversized.bin");
+        fs::File::create(&oversized)
+            .unwrap()
+            .set_len(SFTP_TRANSFER_MAX_BYTES + 1)
+            .unwrap();
+        let manager = SftpTransferManager::default();
+        let known_hosts = Arc::new(KnownHostStore::load().unwrap());
+        let (event_tx, event_rx) = mpsc::channel();
+        manager
+            .enqueue(
+                SftpTransferSpec {
+                    workspace_id: 1,
+                    operation_id: 150,
+                    request: synthetic_sftp_request(9),
+                    direction: SftpTransferDirection::Upload,
+                    local_path: oversized,
+                    remote_path: "/oversized.bin".to_string(),
+                    conflict_policy: SftpConflictPolicy::Ask,
+                },
+                known_hosts,
+                event_tx,
+            )
+            .unwrap();
+        assert!(matches!(
+            recv_transfer_terminal(&event_rx, 150),
+            SftpEvent::Error { message, .. }
+                if message.contains("exceeds the 8589934592 byte per-file limit")
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn upload_source_symlinks_are_rejected() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::TempDir::new().unwrap();
+        let regular = temp.path().join("regular.txt");
+        let linked = temp.path().join("linked.txt");
+        fs::write(&regular, b"content").unwrap();
+        symlink(&regular, &linked).unwrap();
+        assert!(
+            local_file_identity(&linked)
+                .unwrap_err()
+                .to_string()
+                .contains("regular file")
+        );
+    }
+
+    #[test]
+    fn transfer_implementation_keeps_streaming_and_scheduler_limits_visible() {
+        let source = include_str!("sftp.rs");
+        let start = source.find("impl SftpTransferManager").unwrap();
+        let end = source
+            .find("pub fn spawn_authorized_key_operation")
+            .unwrap();
+        let implementation = &source[start..end];
+        assert!(implementation.contains("SFTP_TRANSFER_CHUNK_BYTES"));
+        assert!(implementation.contains("SFTP_TRANSFER_MAX_ACTIVE"));
+        assert!(implementation.contains("SFTP_TRANSFER_MAX_QUEUED"));
+        assert!(!implementation.contains("read_to_end"));
+        assert!(!implementation.contains("fs::read("));
+        assert!(!source.contains("expect(\"unable to spawn SFTP thread\")"));
+        assert_eq!(SFTP_TRANSFER_CHUNK_BYTES, 256 * 1024);
+    }
+
+    #[test]
+    fn active_transfer_cancellation_interrupts_a_stalled_ssh_handshake() {
+        let _isolation = TestIsolation::acquire();
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("listener should bind");
+        let port = listener.local_addr().unwrap().port();
+        let (accepted_tx, accepted_rx) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("test connection should arrive");
+            accepted_tx.send(()).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut buffer = [0u8; 64];
+            let _ = stream.read(&mut buffer);
+        });
+        let manager = SftpTransferManager::default();
+        let known_hosts = Arc::new(KnownHostStore::load().expect("known-host store should load"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let control = manager
+            .enqueue(
+                SftpTransferSpec {
+                    workspace_id: 1,
+                    operation_id: 200,
+                    request: synthetic_sftp_request(port),
+                    direction: SftpTransferDirection::Download,
+                    local_path: PathBuf::from("/tmp/stalled-download"),
+                    remote_path: "/stalled".to_string(),
+                    conflict_policy: SftpConflictPolicy::Ask,
+                },
+                known_hosts,
+                event_tx,
+            )
+            .expect("transfer should queue");
+        accepted_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("worker should connect to fixture");
+        control.cancel();
+        let started = std::time::Instant::now();
+        let event = recv_transfer_terminal(&event_rx, 200);
+        assert!(matches!(event, SftpEvent::TransferCancelled { .. }));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn local_staging_publish_revalidates_destination_and_preserves_evidence_on_race() {
+        let temp = tempfile::TempDir::new().expect("temp dir should be created");
+        let destination = temp.path().join("download.txt");
+        let staging = temp.path().join(".download.txt.termirust-1.part");
+        fs::write(&destination, "old").unwrap();
+        fs::write(&staging, "new").unwrap();
+        let expected = local_destination_identity(&destination).unwrap().unwrap();
+        fs::write(&destination, "changed after review").unwrap();
+
+        let error = publish_local_staging(&staging, &destination, Some(&expected), 1).unwrap_err();
+        assert!(error.to_string().contains("changed during transfer"));
+        assert_eq!(
+            fs::read_to_string(&destination).unwrap(),
+            "changed after review"
+        );
+        assert_eq!(fs::read_to_string(&staging).unwrap(), "new");
+    }
+
+    #[test]
+    fn local_staging_publish_without_destination_is_no_overwrite_and_cleans_staging() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let destination = temp.path().join("download.txt");
+        let staging = temp.path().join(".download.txt.termirust-2.part");
+        fs::write(&staging, "verified").unwrap();
+
+        let cleanup_warning = publish_local_staging(&staging, &destination, None, 2).unwrap();
+        assert!(!cleanup_warning);
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "verified");
+        assert!(!staging.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn local_staging_publish_rejects_a_dangling_backup_path() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::TempDir::new().unwrap();
+        let destination = temp.path().join("download.txt");
+        let staging = temp.path().join(".download.txt.termirust-3.part");
+        let backup = super::local_backup_path(&destination, 3).unwrap();
+        fs::write(&destination, "old").unwrap();
+        fs::write(&staging, "new").unwrap();
+        symlink(temp.path().join("missing"), &backup).unwrap();
+        let expected = local_destination_identity(&destination).unwrap().unwrap();
+
+        let error = publish_local_staging(&staging, &destination, Some(&expected), 3).unwrap_err();
+        assert!(error.to_string().contains("backup already exists"));
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "old");
+        assert_eq!(fs::read_to_string(&staging).unwrap(), "new");
     }
 
     fn recv_authorized_key_event(rx: &Receiver<AuthorizedKeyEvent>) -> AuthorizedKeyEvent {
@@ -1167,37 +2383,47 @@ mod tests {
         let upload_path = local_dir.join("upload.txt");
         fs::write(&upload_path, "uploaded from test\n").expect("unable to write upload fixture");
 
-        spawn_upload_file(
-            1,
-            2,
-            request.clone(),
-            known_hosts.clone(),
-            "/home/termirust/e2e-sftp".to_string(),
-            upload_path,
-            event_tx.clone(),
-        );
-        let uploaded_remote_path = match recv_sftp_event(&event_rx) {
-            SftpEvent::UploadComplete { remote_path, .. } => remote_path,
-            event => panic!("unexpected upload event: {event:?}"),
-        };
+        let transfers = SftpTransferManager::default();
+        let uploaded_remote_path = "/home/termirust/e2e-sftp/upload.txt".to_string();
+        let _upload = transfers
+            .enqueue(
+                SftpTransferSpec {
+                    workspace_id: 1,
+                    operation_id: 2,
+                    request: request.clone(),
+                    direction: SftpTransferDirection::Upload,
+                    local_path: upload_path,
+                    remote_path: uploaded_remote_path.clone(),
+                    conflict_policy: SftpConflictPolicy::Ask,
+                },
+                known_hosts.clone(),
+                event_tx.clone(),
+            )
+            .expect("unable to queue upload");
+        let (direction, upload_sha256) = recv_transfer_complete(&event_rx, 2);
+        assert_eq!(direction, SftpTransferDirection::Upload);
+        assert_eq!(upload_sha256.len(), 64);
         assert_eq!(uploaded_remote_path, "/home/termirust/e2e-sftp/upload.txt");
 
         let download_path = local_dir.join("downloaded.txt");
-        spawn_download_file(
-            1,
-            3,
-            request.clone(),
-            known_hosts.clone(),
-            uploaded_remote_path.clone(),
-            download_path.clone(),
-            event_tx.clone(),
-        );
-        match recv_sftp_event(&event_rx) {
-            SftpEvent::DownloadComplete { remote_path, .. } => {
-                assert_eq!(remote_path, uploaded_remote_path);
-            }
-            event => panic!("unexpected download event: {event:?}"),
-        }
+        let _download = transfers
+            .enqueue(
+                SftpTransferSpec {
+                    workspace_id: 1,
+                    operation_id: 3,
+                    request: request.clone(),
+                    direction: SftpTransferDirection::Download,
+                    local_path: download_path.clone(),
+                    remote_path: uploaded_remote_path.clone(),
+                    conflict_policy: SftpConflictPolicy::Ask,
+                },
+                known_hosts.clone(),
+                event_tx.clone(),
+            )
+            .expect("unable to queue download");
+        let (direction, download_sha256) = recv_transfer_complete(&event_rx, 3);
+        assert_eq!(direction, SftpTransferDirection::Download);
+        assert_eq!(download_sha256, upload_sha256);
         assert_eq!(
             fs::read_to_string(&download_path).expect("unable to read downloaded file"),
             "uploaded from test\n"
@@ -1236,6 +2462,323 @@ mod tests {
         }
 
         let _ = fs::remove_dir_all(local_dir);
+    }
+
+    #[test]
+    fn docker_transfer_manager_enforces_conflicts_resume_and_identity_checks() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping Docker transfer-manager conflicts: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH server");
+        server
+            .exec(
+                "mkdir -p /home/termirust/e2e-transfer-manager && printf 'remote-old' > /home/termirust/e2e-transfer-manager/upload.bin && chown -R termirust:termirust /home/termirust/e2e-transfer-manager",
+            )
+            .expect("unable to seed transfer-manager fixture");
+
+        let temp = tempfile::TempDir::new().expect("unable to create transfer temp dir");
+        let source_path = temp.path().join("upload.bin");
+        let source = (0..700_000)
+            .map(|index| ((index * 31) % 251) as u8)
+            .collect::<Vec<_>>();
+        fs::write(&source_path, &source).expect("unable to write upload source");
+        let expected_sha256 = sha256(&source);
+        let destination = "/home/termirust/e2e-transfer-manager/upload.bin";
+        let manager = SftpTransferManager::default();
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let request = docker_sftp_request(&server);
+        let (event_tx, event_rx) = mpsc::channel();
+        let upload = |operation_id, conflict_policy| SftpTransferSpec {
+            workspace_id: 10,
+            operation_id,
+            request: request.clone(),
+            direction: SftpTransferDirection::Upload,
+            local_path: source_path.clone(),
+            remote_path: destination.to_string(),
+            conflict_policy,
+        };
+
+        manager
+            .enqueue(
+                upload(10, SftpConflictPolicy::Ask),
+                known_hosts.clone(),
+                event_tx.clone(),
+            )
+            .unwrap();
+        assert!(matches!(
+            recv_transfer_terminal(&event_rx, 10),
+            SftpEvent::TransferConflict {
+                existing_bytes: 10,
+                resume_available: false,
+                ..
+            }
+        ));
+        assert_eq!(
+            server.exec(&format!("cat {destination}")).unwrap(),
+            "remote-old"
+        );
+
+        manager
+            .enqueue(
+                upload(11, SftpConflictPolicy::Skip),
+                known_hosts.clone(),
+                event_tx.clone(),
+            )
+            .unwrap();
+        assert!(matches!(
+            recv_transfer_terminal(&event_rx, 11),
+            SftpEvent::TransferSkipped { .. }
+        ));
+        assert_eq!(
+            server.exec(&format!("cat {destination}")).unwrap(),
+            "remote-old"
+        );
+
+        manager
+            .enqueue(
+                upload(12, SftpConflictPolicy::Replace),
+                known_hosts.clone(),
+                event_tx.clone(),
+            )
+            .unwrap();
+        let (_, replace_sha256) = recv_transfer_complete(&event_rx, 12);
+        assert_eq!(replace_sha256, expected_sha256);
+        assert_eq!(
+            server
+                .exec(&format!("sha256sum {destination} | cut -d' ' -f1"))
+                .unwrap(),
+            expected_sha256
+        );
+
+        server
+            .exec(&format!(
+                "cp {destination} {destination}.termirust-13.part && truncate -s 300000 {destination}.termirust-13.part && chown termirust:termirust {destination}.termirust-13.part"
+            ))
+            .expect("unable to seed resumable remote staging");
+        manager
+            .enqueue(
+                upload(13, SftpConflictPolicy::Ask),
+                known_hosts.clone(),
+                event_tx.clone(),
+            )
+            .unwrap();
+        assert!(matches!(
+            recv_transfer_terminal(&event_rx, 13),
+            SftpEvent::TransferConflict {
+                resume_available: true,
+                ..
+            }
+        ));
+        manager
+            .enqueue(
+                upload(13, SftpConflictPolicy::Resume),
+                known_hosts.clone(),
+                event_tx.clone(),
+            )
+            .unwrap();
+        let resumed = recv_transfer_terminal(&event_rx, 13);
+        assert!(
+            matches!(
+                resumed,
+            SftpEvent::TransferComplete {
+                resumed_from: 300_000,
+                ref sha256,
+                ..
+            } if sha256 == &expected_sha256
+            ),
+            "unexpected resumed upload outcome: {resumed:?}"
+        );
+
+        server
+            .exec(&format!(
+                "printf 'wrong-prefix' > {destination}.termirust-14.part"
+            ))
+            .expect("unable to seed mismatched remote staging");
+        manager
+            .enqueue(
+                upload(14, SftpConflictPolicy::Resume),
+                known_hosts.clone(),
+                event_tx.clone(),
+            )
+            .unwrap();
+        assert!(matches!(
+            recv_transfer_terminal(&event_rx, 14),
+            SftpEvent::Error { message, .. }
+                if message.contains("staged prefix does not match")
+        ));
+        assert_eq!(
+            server
+                .exec(&format!("sha256sum {destination} | cut -d' ' -f1"))
+                .unwrap(),
+            expected_sha256
+        );
+
+        let download_path = temp.path().join("download.bin");
+        fs::write(&download_path, b"local-old").unwrap();
+        let download = |operation_id, conflict_policy| SftpTransferSpec {
+            workspace_id: 10,
+            operation_id,
+            request: request.clone(),
+            direction: SftpTransferDirection::Download,
+            local_path: download_path.clone(),
+            remote_path: destination.to_string(),
+            conflict_policy,
+        };
+        manager
+            .enqueue(
+                download(20, SftpConflictPolicy::Ask),
+                known_hosts.clone(),
+                event_tx.clone(),
+            )
+            .unwrap();
+        assert!(matches!(
+            recv_transfer_terminal(&event_rx, 20),
+            SftpEvent::TransferConflict {
+                existing_bytes: 9,
+                resume_available: false,
+                ..
+            }
+        ));
+
+        manager
+            .enqueue(
+                download(21, SftpConflictPolicy::Skip),
+                known_hosts.clone(),
+                event_tx.clone(),
+            )
+            .unwrap();
+        assert!(matches!(
+            recv_transfer_terminal(&event_rx, 21),
+            SftpEvent::TransferSkipped { .. }
+        ));
+        assert_eq!(fs::read(&download_path).unwrap(), b"local-old");
+
+        let download_staging = local_staging_path(&download_path, 22).unwrap();
+        fs::write(&download_staging, &source[..300_000]).unwrap();
+        manager
+            .enqueue(
+                download(22, SftpConflictPolicy::Ask),
+                known_hosts.clone(),
+                event_tx.clone(),
+            )
+            .unwrap();
+        assert!(matches!(
+            recv_transfer_terminal(&event_rx, 22),
+            SftpEvent::TransferConflict {
+                resume_available: true,
+                ..
+            }
+        ));
+        manager
+            .enqueue(
+                download(22, SftpConflictPolicy::Resume),
+                known_hosts.clone(),
+                event_tx.clone(),
+            )
+            .unwrap();
+        assert!(matches!(
+            recv_transfer_terminal(&event_rx, 22),
+            SftpEvent::TransferComplete {
+                resumed_from: 300_000,
+                ref sha256,
+                ..
+            } if sha256 == &expected_sha256
+        ));
+        assert_eq!(fs::read(&download_path).unwrap(), source);
+
+        fs::write(&download_path, b"must-survive").unwrap();
+        let mismatched_staging = local_staging_path(&download_path, 23).unwrap();
+        fs::write(&mismatched_staging, b"wrong-prefix").unwrap();
+        manager
+            .enqueue(
+                download(23, SftpConflictPolicy::Resume),
+                known_hosts,
+                event_tx,
+            )
+            .unwrap();
+        assert!(matches!(
+            recv_transfer_terminal(&event_rx, 23),
+            SftpEvent::Error { message, .. }
+                if message.contains("staged prefix does not match")
+        ));
+        assert_eq!(fs::read(&download_path).unwrap(), b"must-survive");
+        assert!(mismatched_staging.exists());
+    }
+
+    #[test]
+    fn docker_active_upload_cancellation_does_not_clobber_destination() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping Docker active transfer cancellation: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start Docker SSH server");
+        let destination = "/home/termirust/cancel-transfer.bin";
+        server
+            .exec(&format!(
+                "printf 'original-destination' > {destination} && chown termirust:termirust {destination}"
+            ))
+            .expect("unable to seed cancellation destination");
+        let temp = tempfile::TempDir::new().expect("unable to create cancellation fixture");
+        let source = temp.path().join("cancel-transfer.bin");
+        let file = fs::File::create(&source).expect("unable to create sparse upload fixture");
+        file.set_len(64 * 1024 * 1024)
+            .expect("unable to size sparse upload fixture");
+        let manager = SftpTransferManager::default();
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let control = manager
+            .enqueue(
+                SftpTransferSpec {
+                    workspace_id: 11,
+                    operation_id: 30,
+                    request: docker_sftp_request(&server),
+                    direction: SftpTransferDirection::Upload,
+                    local_path: source,
+                    remote_path: destination.to_string(),
+                    conflict_policy: SftpConflictPolicy::Replace,
+                },
+                known_hosts,
+                event_tx,
+            )
+            .expect("unable to queue cancellable upload");
+
+        loop {
+            match recv_sftp_event(&event_rx) {
+                SftpEvent::TransferStarted {
+                    operation_id: 30, ..
+                } => break,
+                SftpEvent::TransferQueued {
+                    operation_id: 30, ..
+                } => {}
+                SftpEvent::Error {
+                    operation_id: 30,
+                    message,
+                    ..
+                } => panic!("upload failed before cancellation: {message}"),
+                event => panic!("unexpected cancellation setup event: {event:?}"),
+            }
+        }
+        control.cancel();
+        assert!(matches!(
+            recv_transfer_terminal(&event_rx, 30),
+            SftpEvent::TransferCancelled {
+                staging_retained: true,
+                ..
+            }
+        ));
+        assert_eq!(
+            server.exec(&format!("cat {destination}")).unwrap(),
+            "original-destination"
+        );
+        assert_eq!(
+            server
+                .exec(&format!("test -e {destination}.termirust-30.part; echo $?"))
+                .unwrap(),
+            "0"
+        );
     }
 
     #[test]

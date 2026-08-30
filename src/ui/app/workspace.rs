@@ -24,7 +24,7 @@ use crate::ui::app::{
     WORKSPACE_PADDING, WORKSPACE_SEARCH_ROW_HEIGHT, WorkspaceTabDrag, WorkspaceViewMode,
 };
 use crate::ui::localization;
-use crate::ui::path::format_file_size;
+use crate::ui::path::{format_file_size, remote_parent_path};
 use crate::ui::render_terminal::{
     SelectionRange, default_terminal_style, display_terminal_text, selection_contains,
     style_for_render,
@@ -182,6 +182,11 @@ impl TermiRustApp {
                 .child(empty_state);
         };
         let selected_entry = self.selected_workspace_sftp_entry(workspace.id);
+        let transfer_active = browser
+            .transfer
+            .as_ref()
+            .is_some_and(|transfer| transfer.active);
+        let selected_is_file = selected_entry.as_ref().is_some_and(|entry| !entry.is_dir);
 
         v_flex()
             .flex_1()
@@ -261,6 +266,270 @@ impl TermiRustApp {
                         )
                     }),
             )
+            .child(
+                h_flex()
+                    .w_full()
+                    .flex_wrap()
+                    .gap_2()
+                    .child(
+                        Button::new("workspace-files-up")
+                            .small()
+                            .ghost()
+                            .icon(IconName::ChevronUp)
+                            .label("Up")
+                            .disabled(remote_parent_path(&browser.current_path).is_none())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.navigate_workspace_files_up(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("workspace-files-refresh")
+                            .small()
+                            .ghost()
+                            .icon(IconName::Redo2)
+                            .label("Refresh")
+                            .disabled(browser.loading)
+                            .on_click(cx.listener(move |this, _, _, _| {
+                                this.refresh_workspace_files(workspace_id);
+                            })),
+                    )
+                    .child(
+                        Button::new("workspace-files-upload")
+                            .small()
+                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                            .icon(IconName::Plus)
+                            .label("Upload")
+                            .disabled(transfer_active)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.upload_workspace_file(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("workspace-files-download")
+                            .small()
+                            .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                            .icon(IconName::ArrowDown)
+                            .label("Download")
+                            .disabled(transfer_active || !selected_is_file)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.download_workspace_file(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("workspace-files-delete")
+                            .small()
+                            .ghost()
+                            .icon(IconName::Delete)
+                            .label("Delete")
+                            .disabled(transfer_active || selected_entry.is_none())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.delete_workspace_file(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("workspace-files-terminal")
+                            .small()
+                            .ghost()
+                            .icon(IconName::SquareTerminal)
+                            .label("Terminal")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.show_active_workspace_terminal(cx);
+                            })),
+                    ),
+            )
+            .when_some(browser.transfer.as_ref(), |this, transfer| {
+                let progress = if transfer.total_bytes == 0 {
+                    0.0
+                } else {
+                    (transfer.transferred_bytes as f32 / transfer.total_bytes as f32).clamp(0.0, 1.0)
+                };
+                let progress_percent = (progress * 100.0).round() as u32;
+                let can_retry = !transfer.active
+                    && transfer.conflict.is_none()
+                    && transfer.sha256.is_none()
+                    && (transfer.transferred_bytes > 0
+                        || transfer.status.contains("failed")
+                        || transfer.status.starts_with("Cancelled"));
+                this.child(
+                    v_flex()
+                        .w_full()
+                        .gap_2()
+                        .p_3()
+                        .rounded(px(theme::CARD_RADIUS))
+                        .bg(theme::terminal_panel())
+                        .border_1()
+                        .border_color(if transfer.conflict.is_some() {
+                            theme::warning()
+                        } else if transfer.active {
+                            theme::with_alpha(theme::accent(), 0.55)
+                        } else {
+                            theme::border_dark()
+                        })
+                        .child(
+                            h_flex()
+                                .w_full()
+                                .flex_wrap()
+                                .items_center()
+                                .justify_between()
+                                .gap_2()
+                                .child(
+                                    v_flex()
+                                        .gap(px(2.))
+                                        .child(
+                                            div()
+                                                .text_size(px(13.))
+                                                .font_semibold()
+                                                .text_color(theme::text_on_dark())
+                                                .child(transfer.status.clone()),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(12.))
+                                                .text_color(theme::text_muted_dark())
+                                                .child(format!(
+                                                    "{} of {}  ·  {progress_percent}%{}",
+                                                    format_file_size(transfer.transferred_bytes),
+                                                    if transfer.total_bytes > 0 {
+                                                        format_file_size(transfer.total_bytes)
+                                                    } else {
+                                                        "waiting".to_string()
+                                                    },
+                                                    if transfer.resumed_from > 0 {
+                                                        format!(
+                                                            "  ·  resumed at {}",
+                                                            format_file_size(transfer.resumed_from)
+                                                        )
+                                                    } else {
+                                                        String::new()
+                                                    }
+                                                )),
+                                        ),
+                                )
+                                .when(transfer.active, |this| {
+                                    this.child(
+                                        Button::new("workspace-transfer-cancel")
+                                            .small()
+                                            .ghost()
+                                            .icon(IconName::Close)
+                                            .label("Cancel")
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.cancel_workspace_transfer(workspace_id, cx);
+                                            })),
+                                    )
+                                })
+                                .when(can_retry, |this| {
+                                    this.child(
+                                        Button::new("workspace-transfer-retry")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Accent,
+                                                cx,
+                                            ))
+                                            .icon(IconName::Redo2)
+                                            .label(if transfer.transferred_bytes > 0 {
+                                                "Resume"
+                                            } else {
+                                                "Retry"
+                                            })
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.retry_workspace_transfer(workspace_id, cx);
+                                            })),
+                                    )
+                                }),
+                        )
+                        .when(transfer.total_bytes > 0, |this| {
+                            this.child(
+                                div()
+                                    .w_full()
+                                    .h(px(6.))
+                                    .rounded(px(3.))
+                                    .bg(theme::with_alpha(theme::border_dark(), 0.7))
+                                    .child(
+                                        div()
+                                            .h_full()
+                                            .w(relative(progress))
+                                            .rounded(px(3.))
+                                            .bg(theme::accent()),
+                                    ),
+                            )
+                        })
+                        .when_some(transfer.conflict, |this, conflict| {
+                            this.child(
+                                h_flex()
+                                    .w_full()
+                                    .flex_wrap()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(12.))
+                                            .text_color(theme::warning())
+                                            .child(format!(
+                                                "Destination contains {}. Nothing has been changed.",
+                                                format_file_size(conflict.existing_bytes)
+                                            )),
+                                    )
+                                    .child(
+                                        Button::new("workspace-transfer-replace")
+                                            .small()
+                                            .custom(Self::action_button_style(
+                                                theme::ActionTone::Danger,
+                                                cx,
+                                            ))
+                                            .icon(IconName::Replace)
+                                            .label("Replace")
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.resolve_workspace_transfer(
+                                                    workspace_id,
+                                                    crate::sftp::SftpConflictPolicy::Replace,
+                                                    cx,
+                                                );
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("workspace-transfer-skip")
+                                            .small()
+                                            .ghost()
+                                            .label("Skip")
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.resolve_workspace_transfer(
+                                                    workspace_id,
+                                                    crate::sftp::SftpConflictPolicy::Skip,
+                                                    cx,
+                                                );
+                                            })),
+                                    )
+                                    .when(conflict.resume_available, |this| {
+                                        this.child(
+                                            Button::new("workspace-transfer-resume")
+                                                .small()
+                                                .custom(Self::action_button_style(
+                                                    theme::ActionTone::Accent,
+                                                    cx,
+                                                ))
+                                                .icon(IconName::Redo2)
+                                                .label("Resume staging")
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.resolve_workspace_transfer(
+                                                        workspace_id,
+                                                        crate::sftp::SftpConflictPolicy::Resume,
+                                                        cx,
+                                                    );
+                                                })),
+                                        )
+                                    }),
+                            )
+                        })
+                        .when_some(transfer.sha256.as_ref(), |this, checksum| {
+                            this.child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(theme::text_muted_dark())
+                                    .child(format!("SHA-256 {checksum}")),
+                            )
+                        }),
+                )
+            })
             .child(
                 v_flex()
                     .flex_1()

@@ -109,7 +109,9 @@ use crate::models::{
     SavedWindowBounds, SavedWorkspace, SessionLogEntry, SplitAxis, ThemePreset, VaultKind,
     VaultMemberRole, WorkspaceLayoutMode, default_persistent_session_name_from_id,
 };
-use crate::sftp::{RemoteFileEntry, SftpEvent};
+use crate::sftp::{
+    RemoteFileEntry, SftpConflictPolicy, SftpEvent, SftpTransferControl, SftpTransferDirection,
+};
 use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent};
 use crate::storage::{
     KnownHostStore, export_encrypted_mobile_vault, export_encrypted_portable_data_bundle,
@@ -936,6 +938,48 @@ struct WorkspaceSftpState {
     selected_path: Option<String>,
     loading: bool,
     pending_operation_id: Option<u64>,
+    transfer: Option<WorkspaceSftpTransfer>,
+}
+
+#[derive(Clone, Debug)]
+struct WorkspaceSftpTransfer {
+    request: SftpOperationRequest,
+    control: Option<SftpTransferControl>,
+    direction: SftpTransferDirection,
+    status: String,
+    transferred_bytes: u64,
+    total_bytes: u64,
+    resumed_from: u64,
+    active: bool,
+    conflict: Option<WorkspaceSftpConflict>,
+    sha256: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct WorkspaceSftpConflict {
+    existing_bytes: u64,
+    resume_available: bool,
+}
+
+impl WorkspaceSftpTransfer {
+    fn queued(
+        request: SftpOperationRequest,
+        control: SftpTransferControl,
+        direction: SftpTransferDirection,
+    ) -> Self {
+        Self {
+            request,
+            control: Some(control),
+            direction,
+            status: format!("{} queued", direction.label()),
+            transferred_bytes: 0,
+            total_bytes: 0,
+            resumed_from: 0,
+            active: true,
+            conflict: None,
+            sha256: None,
+        }
+    }
 }
 
 impl WorkspaceSftpState {
@@ -948,6 +992,7 @@ impl WorkspaceSftpState {
             selected_path: None,
             loading: true,
             pending_operation_id: None,
+            transfer: None,
         }
     }
 }
@@ -5697,13 +5742,24 @@ impl TermiRustApp {
             return;
         };
 
-        self.connection_coordinator
+        if let Err(error) = self
+            .connection_coordinator
             .start_sftp(SftpOperationRequest::List {
                 workspace_id,
                 operation_id,
                 request,
                 path: load_path,
-            });
+            })
+        {
+            if let Some(browser) = self
+                .workspace_mut(workspace_id)
+                .and_then(|workspace| workspace.sftp.as_mut())
+            {
+                browser.loading = false;
+                browser.pending_operation_id = None;
+            }
+            self.error_message = format!("Unable to start remote directory load: {error:#}");
+        }
     }
 
     fn refresh_workspace_files(&mut self, workspace_id: u64) {
@@ -5789,27 +5845,16 @@ impl TermiRustApp {
             return;
         };
 
-        let operation_id = self.next_sftp_operation_id();
-        if let Some(browser) = self
-            .workspace_mut(workspace_id)
-            .and_then(|workspace| workspace.sftp.as_mut())
-        {
-            browser.loading = true;
-            browser.pending_operation_id = Some(operation_id);
-        }
-
-        self.status_message = format!("Uploading {}...", local_path.display());
-        self.error_message.clear();
-        self.connection_coordinator
-            .start_sftp(SftpOperationRequest::Upload {
-                workspace_id,
-                operation_id,
-                request,
-                remote_dir: current_path,
-                local_path,
-            });
+        let operation = SftpOperationRequest::Upload {
+            workspace_id,
+            operation_id: self.next_sftp_operation_id(),
+            request,
+            remote_dir: current_path,
+            local_path,
+            conflict_policy: SftpConflictPolicy::Ask,
+        };
+        self.start_workspace_transfer(workspace_id, operation, cx);
         let _ = window;
-        cx.notify();
     }
 
     fn download_workspace_file(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -5840,26 +5885,118 @@ impl TermiRustApp {
             return;
         };
 
-        let operation_id = self.next_sftp_operation_id();
-        if let Some(browser) = self
+        let operation = SftpOperationRequest::Download {
+            workspace_id,
+            operation_id: self.next_sftp_operation_id(),
+            request,
+            remote_path: entry.path,
+            local_path,
+            conflict_policy: SftpConflictPolicy::Ask,
+        };
+        self.start_workspace_transfer(workspace_id, operation, cx);
+    }
+
+    fn start_workspace_transfer(
+        &mut self,
+        workspace_id: u64,
+        operation: SftpOperationRequest,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(direction) = operation.direction() else {
+            return;
+        };
+        let already_active = self
+            .workspace(workspace_id)
+            .and_then(|workspace| workspace.sftp.as_ref())
+            .and_then(|browser| browser.transfer.as_ref())
+            .is_some_and(|transfer| transfer.active);
+        if already_active {
+            self.error_message =
+                "Finish or cancel the current transfer before starting another here.".to_string();
+            cx.notify();
+            return;
+        }
+        match self.connection_coordinator.start_sftp(operation.clone()) {
+            Ok(Some(control)) => {
+                if let Some(browser) = self
+                    .workspace_mut(workspace_id)
+                    .and_then(|workspace| workspace.sftp.as_mut())
+                {
+                    browser.transfer =
+                        Some(WorkspaceSftpTransfer::queued(operation, control, direction));
+                }
+                self.status_message = format!("{} queued.", direction.label());
+                self.error_message.clear();
+            }
+            Ok(None) => {
+                self.error_message = "The selected SFTP action is not a transfer.".to_string();
+            }
+            Err(error) => {
+                self.error_message = format!("Unable to start {}: {error:#}", direction.label());
+            }
+        }
+        cx.notify();
+    }
+
+    fn cancel_workspace_transfer(&mut self, workspace_id: u64, cx: &mut Context<Self>) {
+        let control = self
+            .workspace(workspace_id)
+            .and_then(|workspace| workspace.sftp.as_ref())
+            .and_then(|browser| browser.transfer.as_ref())
+            .and_then(|transfer| transfer.control.clone());
+        if let Some(control) = control {
+            control.cancel();
+            if let Some(transfer) = self
+                .workspace_mut(workspace_id)
+                .and_then(|workspace| workspace.sftp.as_mut())
+                .and_then(|browser| browser.transfer.as_mut())
+            {
+                transfer.status = "Cancellation requested...".to_string();
+            }
+            self.status_message = "SFTP transfer cancellation requested.".to_string();
+            cx.notify();
+        }
+    }
+
+    fn resolve_workspace_transfer(
+        &mut self,
+        workspace_id: u64,
+        policy: SftpConflictPolicy,
+        cx: &mut Context<Self>,
+    ) {
+        let operation = self
+            .workspace(workspace_id)
+            .and_then(|workspace| workspace.sftp.as_ref())
+            .and_then(|browser| browser.transfer.as_ref())
+            .map(|transfer| transfer.request.clone().with_conflict_policy(policy));
+        let Some(operation) = operation else {
+            return;
+        };
+        if let Some(transfer) = self
             .workspace_mut(workspace_id)
             .and_then(|workspace| workspace.sftp.as_mut())
+            .and_then(|browser| browser.transfer.as_mut())
         {
-            browser.loading = true;
-            browser.pending_operation_id = Some(operation_id);
+            transfer.active = false;
+            transfer.conflict = None;
         }
+        self.start_workspace_transfer(workspace_id, operation, cx);
+    }
 
-        self.status_message = format!("Downloading {}...", entry.path);
-        self.error_message.clear();
-        self.connection_coordinator
-            .start_sftp(SftpOperationRequest::Download {
-                workspace_id,
-                operation_id,
-                request,
-                remote_path: entry.path,
-                local_path,
-            });
-        cx.notify();
+    fn retry_workspace_transfer(&mut self, workspace_id: u64, cx: &mut Context<Self>) {
+        let policy = self
+            .workspace(workspace_id)
+            .and_then(|workspace| workspace.sftp.as_ref())
+            .and_then(|browser| browser.transfer.as_ref())
+            .map(|transfer| {
+                if transfer.transferred_bytes > 0 {
+                    SftpConflictPolicy::Resume
+                } else {
+                    SftpConflictPolicy::Replace
+                }
+            })
+            .unwrap_or(SftpConflictPolicy::Replace);
+        self.resolve_workspace_transfer(workspace_id, policy, cx);
     }
 
     fn delete_workspace_file(&mut self, cx: &mut Context<Self>) {
@@ -5890,14 +6027,25 @@ impl TermiRustApp {
 
         self.status_message = format!("Deleting {}...", entry.path);
         self.error_message.clear();
-        self.connection_coordinator
+        if let Err(error) = self
+            .connection_coordinator
             .start_sftp(SftpOperationRequest::Delete {
                 workspace_id,
                 operation_id,
                 request,
                 remote_path: entry.path,
                 is_dir: entry.is_dir,
-            });
+            })
+        {
+            if let Some(browser) = self
+                .workspace_mut(workspace_id)
+                .and_then(|workspace| workspace.sftp.as_mut())
+            {
+                browser.loading = false;
+                browser.pending_operation_id = None;
+            }
+            self.error_message = format!("Unable to start remote delete: {error:#}");
+        }
         cx.notify();
     }
 
@@ -7275,10 +7423,25 @@ impl TermiRustApp {
 
         while let Ok(event) = self.sftp_event_rx.try_recv() {
             let context = ConnectionCoordinator::sftp_event_context(&event);
-            let pending_operation_id = self
+            let (browser_operation_id, transfer_operation_id) = self
                 .workspace(context.workspace_id)
                 .and_then(|workspace| workspace.sftp.as_ref())
-                .and_then(|browser| browser.pending_operation_id);
+                .map(|browser| {
+                    (
+                        browser.pending_operation_id,
+                        browser
+                            .transfer
+                            .as_ref()
+                            .map(|transfer| transfer.request.operation_id()),
+                    )
+                })
+                .unwrap_or((None, None));
+            let (pending_operation_id, transfer_event) =
+                ConnectionCoordinator::expected_sftp_operation(
+                    &event,
+                    browser_operation_id,
+                    transfer_operation_id,
+                );
             let projection = self
                 .connection_coordinator
                 .project_sftp_event(event, pending_operation_id);
@@ -7317,13 +7480,185 @@ impl TermiRustApp {
                         .workspace_mut(context.workspace_id)
                         .and_then(|workspace| workspace.sftp.as_mut())
                     {
-                        browser.loading = false;
-                        browser.pending_operation_id = None;
+                        if transfer_event {
+                            if let Some(transfer) = browser.transfer.as_mut() {
+                                transfer.active = false;
+                                transfer.control = None;
+                                transfer.status = status.clone();
+                            }
+                        } else {
+                            browser.loading = false;
+                            browser.pending_operation_id = None;
+                        }
                     }
 
                     self.status_message = status;
                     self.error_message.clear();
                     if refresh_directory {
+                        sftp_directories_to_refresh.insert(context.workspace_id);
+                    }
+                }
+                SftpEventProjection::TransferQueued {
+                    context,
+                    direction,
+                    queued_ahead,
+                } => {
+                    changed = true;
+                    if let Some(transfer) = self
+                        .workspace_mut(context.workspace_id)
+                        .and_then(|workspace| workspace.sftp.as_mut())
+                        .and_then(|browser| browser.transfer.as_mut())
+                    {
+                        transfer.direction = direction;
+                        transfer.status = if queued_ahead == 0 {
+                            format!("{} starting...", direction.label())
+                        } else {
+                            format!(
+                                "{} queued behind {queued_ahead} transfer(s)",
+                                direction.label()
+                            )
+                        };
+                        transfer.active = true;
+                    }
+                }
+                SftpEventProjection::TransferStarted {
+                    context,
+                    direction,
+                    total_bytes,
+                    resumed_from,
+                } => {
+                    changed = true;
+                    if let Some(transfer) = self
+                        .workspace_mut(context.workspace_id)
+                        .and_then(|workspace| workspace.sftp.as_mut())
+                        .and_then(|browser| browser.transfer.as_mut())
+                    {
+                        transfer.direction = direction;
+                        transfer.total_bytes = total_bytes;
+                        transfer.transferred_bytes = resumed_from;
+                        transfer.resumed_from = resumed_from;
+                        transfer.status = if resumed_from > 0 {
+                            format!("Resuming {}", direction.label().to_ascii_lowercase())
+                        } else {
+                            format!("{} in progress", direction.label())
+                        };
+                        transfer.active = true;
+                        transfer.conflict = None;
+                    }
+                }
+                SftpEventProjection::TransferProgress {
+                    context,
+                    direction,
+                    transferred_bytes,
+                    total_bytes,
+                } => {
+                    changed = true;
+                    if let Some(transfer) = self
+                        .workspace_mut(context.workspace_id)
+                        .and_then(|workspace| workspace.sftp.as_mut())
+                        .and_then(|browser| browser.transfer.as_mut())
+                    {
+                        transfer.direction = direction;
+                        transfer.transferred_bytes =
+                            transfer.transferred_bytes.max(transferred_bytes);
+                        transfer.total_bytes = total_bytes;
+                        transfer.status = format!("{} in progress", direction.label());
+                    }
+                }
+                SftpEventProjection::TransferConflict {
+                    context,
+                    direction,
+                    existing_bytes,
+                    resume_available,
+                } => {
+                    changed = true;
+                    if let Some(transfer) = self
+                        .workspace_mut(context.workspace_id)
+                        .and_then(|workspace| workspace.sftp.as_mut())
+                        .and_then(|browser| browser.transfer.as_mut())
+                    {
+                        transfer.direction = direction;
+                        transfer.active = false;
+                        transfer.control = None;
+                        transfer.status = "Destination already exists".to_string();
+                        transfer.conflict = Some(WorkspaceSftpConflict {
+                            existing_bytes,
+                            resume_available,
+                        });
+                    }
+                    self.status_message =
+                        "Choose Replace, Skip, or Resume before the transfer can continue."
+                            .to_string();
+                }
+                SftpEventProjection::TransferCancelled {
+                    context,
+                    direction,
+                    transferred_bytes,
+                    staging_retained,
+                } => {
+                    changed = true;
+                    if let Some(transfer) = self
+                        .workspace_mut(context.workspace_id)
+                        .and_then(|workspace| workspace.sftp.as_mut())
+                        .and_then(|browser| browser.transfer.as_mut())
+                    {
+                        transfer.direction = direction;
+                        transfer.active = false;
+                        transfer.control = None;
+                        transfer.transferred_bytes = transferred_bytes;
+                        transfer.status = if staging_retained {
+                            "Cancelled; verified staging can be resumed".to_string()
+                        } else {
+                            "Cancelled before transfer started".to_string()
+                        };
+                    }
+                    self.status_message = "SFTP transfer cancelled.".to_string();
+                }
+                SftpEventProjection::TransferComplete {
+                    context,
+                    direction,
+                    transferred_bytes,
+                    resumed_from,
+                    sha256,
+                    cleanup_warning,
+                } => {
+                    changed = true;
+                    if let Some(transfer) = self
+                        .workspace_mut(context.workspace_id)
+                        .and_then(|workspace| workspace.sftp.as_mut())
+                        .and_then(|browser| browser.transfer.as_mut())
+                    {
+                        transfer.direction = direction;
+                        transfer.active = false;
+                        transfer.control = None;
+                        transfer.transferred_bytes = transferred_bytes;
+                        transfer.total_bytes = transferred_bytes;
+                        transfer.resumed_from = resumed_from;
+                        transfer.status = if cleanup_warning {
+                            format!(
+                                "{} verified; old backup cleanup is still needed",
+                                direction.label()
+                            )
+                        } else {
+                            format!("{} complete and verified", direction.label())
+                        };
+                        transfer.sha256 = Some(sha256.clone());
+                        transfer.conflict = None;
+                    }
+                    self.status_message = if cleanup_warning {
+                        format!(
+                            "{} published and verified, but an app-owned backup could not be removed.",
+                            direction.label()
+                        )
+                    } else {
+                        format!(
+                            "{} complete. SHA-256 {}...",
+                            direction.label(),
+                            &sha256[..sha256.len().min(12)]
+                        )
+                    };
+                    self.error_message.clear();
+                    if direction == SftpTransferDirection::Upload {
                         sftp_directories_to_refresh.insert(context.workspace_id);
                     }
                 }
@@ -7333,8 +7668,16 @@ impl TermiRustApp {
                         .workspace_mut(context.workspace_id)
                         .and_then(|workspace| workspace.sftp.as_mut())
                     {
-                        browser.loading = false;
-                        browser.pending_operation_id = None;
+                        if transfer_event {
+                            if let Some(transfer) = browser.transfer.as_mut() {
+                                transfer.active = false;
+                                transfer.control = None;
+                                transfer.status = "Transfer failed; retry is available".to_string();
+                            }
+                        } else {
+                            browser.loading = false;
+                            browser.pending_operation_id = None;
+                        }
                     }
 
                     self.error_message = message;
@@ -16039,11 +16382,18 @@ sleep 1
 
         wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
             let browser = app.workspace(workspace_id)?.sftp.as_ref()?;
+            let transfer = browser.transfer.as_ref()?;
             (!browser.loading
                 && browser
                     .entries
                     .iter()
-                    .any(|entry| entry.name == "upload-from-app.txt"))
+                    .any(|entry| entry.name == "upload-from-app.txt")
+                && !transfer.active
+                && transfer.status == "Upload complete and verified"
+                && transfer
+                    .sha256
+                    .as_ref()
+                    .is_some_and(|value| value.len() == 64))
             .then_some(())
         });
 
@@ -16066,11 +16416,22 @@ sleep 1
             })
             .expect("window update should succeed");
 
-        wait_for_app_state(cx, &app, Duration::from_secs(20), |_app| {
-            std::fs::read_to_string(&download_path)
-                .ok()
-                .filter(|content| content == "uploaded from app action\n")
-                .map(|_| ())
+        wait_for_app_state(cx, &app, Duration::from_secs(20), |app| {
+            let transfer = app
+                .workspace(workspace_id)?
+                .sftp
+                .as_ref()?
+                .transfer
+                .as_ref()?;
+            (std::fs::read_to_string(&download_path).ok().as_deref()
+                == Some("uploaded from app action\n")
+                && !transfer.active
+                && transfer.status == "Download complete and verified"
+                && transfer
+                    .sha256
+                    .as_ref()
+                    .is_some_and(|value| value.len() == 64))
+            .then_some(())
         });
     }
 
