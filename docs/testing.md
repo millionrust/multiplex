@@ -193,6 +193,10 @@ Those tests build `tests/fixtures/ssh-server/`, start a disposable OpenSSH conta
 - the rendered Logs empty-state `Open Hosts` button returns to the Hosts section through its actual click handler
 - the rendered hosts toolbar can open the new-host editor, open a local terminal, and switch between grid and list view modes through the actual dropdown clicks
 - the rendered hosts toolbar can also launch quick connect through the `CONNECT` button and drive select-visible, bulk group assignment, bulk star/unstar, and clear-selection through the actual bulk-action buttons
+- the rendered hosts toolbar can diagnose selected saved hosts through the actual `Diagnose` button, show strict unknown-trust guidance, leave known-host storage unchanged, and open no terminal workspace
+- connection diagnostics enforce four active workers, a 64-item queue and batch cap, per-profile deduplication, queued/active cancellation, explicit retry, and allowlisted actionable outcomes
+- the live diagnostic probe reuses direct, HTTP CONNECT, and jump-host routing while requiring existing exact host trust, and distinguishes credential denial, key mismatch, timeout, cancellation, channel/SFTP failure, and recovery
+- diagnostic requests strip startup commands, tmux settings, environment entries, port forwarding, PTY/shell/exec, and agent forwarding before probing SSH channel and SFTP availability
 - the rendered hosts toolbar can also drive tag filtering, all sort variants, and both avatar invite/email actions through the actual dropdown clicks
 - the rendered new-host split-menu chevron can open the editor through `New Group` and import hosts through `Import from ~/.ssh/config`
 - an explicitly closed SSH pane can be reconnected manually through the app’s reconnect path after the Docker server comes back on the same port

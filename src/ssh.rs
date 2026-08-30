@@ -200,6 +200,23 @@ pub struct SshDiagnosticFailure {
     pub error: anyhow::Error,
 }
 
+#[derive(Clone, Copy)]
+struct SshDiagnosticTimeouts {
+    route: std::time::Duration,
+    channel: std::time::Duration,
+    sftp: std::time::Duration,
+}
+
+impl Default for SshDiagnosticTimeouts {
+    fn default() -> Self {
+        Self {
+            route: std::time::Duration::from_secs(30),
+            channel: std::time::Duration::from_secs(10),
+            sftp: std::time::Duration::from_secs(10),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum HostKeyPolicy {
     TrustOnFirstUse,
@@ -207,9 +224,29 @@ enum HostKeyPolicy {
 }
 
 pub async fn diagnose_connection<F>(
+    request: ConnectRequest,
+    known_hosts: Arc<KnownHostStore>,
+    cancellation: CancellationToken,
+    observe: F,
+) -> std::result::Result<(), SshDiagnosticFailure>
+where
+    F: FnMut(SshDiagnosticStage, SshDiagnosticStageState, std::time::Duration),
+{
+    diagnose_connection_with_timeouts(
+        request,
+        known_hosts,
+        cancellation,
+        SshDiagnosticTimeouts::default(),
+        observe,
+    )
+    .await
+}
+
+async fn diagnose_connection_with_timeouts<F>(
     mut request: ConnectRequest,
     known_hosts: Arc<KnownHostStore>,
     cancellation: CancellationToken,
+    timeouts: SshDiagnosticTimeouts,
     mut observe: F,
 ) -> std::result::Result<(), SshDiagnosticFailure>
 where
@@ -235,7 +272,7 @@ where
             error: anyhow::anyhow!("Connection diagnostic cancelled"),
         }),
         result = timeout(
-            Duration::from_secs(30),
+            timeouts.route,
             establish_session_with_policy(
                 config,
                 request,
@@ -260,7 +297,7 @@ where
             stage,
             error: anyhow::anyhow!("Connection diagnostic cancelled"),
         }),
-        result = timeout(Duration::from_secs(10), async {
+        result = timeout(timeouts.channel, async {
             let handle = established.target_handle.lock().await;
             handle.channel_open_session().await
         }) => result
@@ -282,7 +319,7 @@ where
             stage,
             error: anyhow::anyhow!("Connection diagnostic cancelled"),
         }),
-        result = timeout(Duration::from_secs(10), async {
+        result = timeout(timeouts.sftp, async {
             let channel = {
                 let handle = established.target_handle.lock().await;
                 handle
@@ -1472,8 +1509,9 @@ impl client::Handler for SessionHandler {
 #[cfg(test)]
 mod tests {
     use super::{
-        RemoteExecExit, SessionCommand, SshDiagnosticStage, SshEvent, diagnose_connection,
-        spawn_remote_exec, spawn_session, tmux_kill_command,
+        RemoteExecExit, SessionCommand, SshDiagnosticStage, SshDiagnosticTimeouts, SshEvent,
+        diagnose_connection, diagnose_connection_with_timeouts, spawn_remote_exec, spawn_session,
+        tmux_kill_command,
     };
     use crate::models::{
         AuthConfig, ConnectRequest, ConnectionKind, DynamicPortForward, JumpHostConnection,
@@ -1515,6 +1553,103 @@ mod tests {
             persistent_session_name: None,
             persistent_session_detach_others: false,
             terminal_scrollback_rows: 10_000,
+            port_forward_rules: Vec::new(),
+            local_shell: None,
+            environment: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn connection_diagnostic_times_out_and_cancels_a_stalled_transport() {
+        let _isolation = TestIsolation::acquire();
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (connection, _) = listener.accept().unwrap();
+            std::thread::sleep(Duration::from_secs(2));
+            drop(connection);
+        });
+        let mut request = ssh_request_for_endpoint(port);
+        request.session_id = 501;
+        request.title = "Stalled SSH".to_string();
+        let known_hosts = Arc::new(KnownHostStore::load().unwrap());
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let timed_out = runtime
+            .block_on(diagnose_connection_with_timeouts(
+                request,
+                known_hosts,
+                CancellationToken::new(),
+                SshDiagnosticTimeouts {
+                    route: Duration::from_millis(100),
+                    channel: Duration::from_millis(100),
+                    sftp: Duration::from_millis(100),
+                },
+                |_, _, _| {},
+            ))
+            .unwrap_err();
+        assert_eq!(timed_out.stage, SshDiagnosticStage::RouteAndAuthenticate);
+        assert!(format!("{:#}", timed_out.error).contains("timed out"));
+        server.join().unwrap();
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (connection, _) = listener.accept().unwrap();
+            std::thread::sleep(Duration::from_secs(2));
+            drop(connection);
+        });
+        let mut request = ssh_request_for_endpoint(port);
+        request.session_id = 502;
+        let known_hosts = Arc::new(KnownHostStore::load().unwrap());
+        let cancellation = CancellationToken::new();
+        let cancel_from_thread = cancellation.clone();
+        let canceller = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            cancel_from_thread.cancel();
+        });
+        let started = Instant::now();
+        let cancelled = runtime
+            .block_on(diagnose_connection_with_timeouts(
+                request,
+                known_hosts,
+                cancellation,
+                SshDiagnosticTimeouts {
+                    route: Duration::from_secs(5),
+                    channel: Duration::from_secs(5),
+                    sftp: Duration::from_secs(5),
+                },
+                |_, _, _| {},
+            ))
+            .unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(format!("{:#}", cancelled.error).contains("cancelled"));
+        canceller.join().unwrap();
+        server.join().unwrap();
+    }
+
+    fn ssh_request_for_endpoint(port: u16) -> ConnectRequest {
+        ConnectRequest {
+            session_id: 1,
+            title: "SSH endpoint".to_string(),
+            kind: ConnectionKind::Ssh,
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "user".to_string(),
+            auth: Some(AuthConfig::Password {
+                password: "secret".to_string(),
+            }),
+            jump_host: None,
+            outbound_proxy: None,
+            startup_directory: None,
+            startup_command: None,
+            start_in_files: false,
+            persistent_session: false,
+            persistent_session_name: None,
+            persistent_session_detach_others: false,
+            terminal_scrollback_rows: 1_000,
             port_forward_rules: Vec::new(),
             local_shell: None,
             environment: Vec::new(),
