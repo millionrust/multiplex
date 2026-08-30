@@ -11,16 +11,21 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use rand::RngCore as _;
 use termirust_client::{ClientError, ClientErrorCode, ConnectOptions, HostClient, LocalEndpoint};
 use termirust_domain::{
-    ActivityAggregate, CommandId, GroupId, HostInstanceId, HostedSession, HostedSessionId,
-    HostedSessionState, OutputSequence, PositionKey, PresetId, PresetRisk, ProjectId, Revision,
-    SessionMutation, SessionStateError, SessionTitle, TitleSource, resolve_launch,
+    ActivityAggregate, CommandId, ContinuityLink, GroupId, HostInstanceId, HostLifecycle,
+    HostedSession, HostedSessionId, HostedSessionState, OutputSequence, PermissionPolicy,
+    PositionKey, PresetId, PresetRisk, ProjectId, ResumeError, ResumePlan, ResumeRequest, Revision,
+    RuntimeCapability, RuntimeCapabilitySet, RuntimeDetectionResult, RuntimeDetectionStatus,
+    SessionMutation, SessionStateError, SessionTitle, TitleSource, evaluate_resume, resolve_launch,
 };
 use termirust_host_protocol::{CURRENT_PROTOCOL, wire};
-use termirust_session_host::{LaunchDescriptor, StopDeadlines};
+use termirust_session_host::{
+    CodexResumePlanInput, LaunchDescriptor, ResumeValidationCancellation, StopDeadlines,
+    build_codex_resume_plan, discover_codex_conversation_handle,
+};
 use termirust_store::{
-    JournalLimits, PresetRepository, PresetSnapshot, ProjectRepository, ProjectSnapshot,
-    SessionRemovalManifest, SessionRepository, SessionSnapshot, StoreError, StoreHealth,
-    read_host_metadata,
+    ContinuityRepository, JournalLimits, PresetRepository, PresetSnapshot, ProjectRepository,
+    ProjectSnapshot, SessionRemovalManifest, SessionRepository, SessionSnapshot, StoreError,
+    StoreHealth, read_host_metadata,
 };
 use tokio::runtime::Builder;
 use tokio_util::sync::CancellationToken;
@@ -31,7 +36,8 @@ use crate::{
     PresetListData, PresetView, ProjectListData, ProjectView, RemovalConfirmationKind,
     SessionAttachData, SessionData, SessionInput, SessionInputData, SessionListData,
     SessionListFilter, SessionMutationData, SessionRemovalPreviewData, SessionResizeData,
-    SessionView, SessionWaitCondition, SessionWaitConditionData, SessionWaitData, StatusData,
+    SessionResumeData, SessionResumePreviewData, SessionView, SessionWaitCondition,
+    SessionWaitConditionData, SessionWaitData, StatusData,
 };
 
 const STORE_DIR_NAME: &str = "agent-workspace";
@@ -49,6 +55,7 @@ pub struct CliPaths {
     session_data_root: PathBuf,
     runtime_parent: PathBuf,
     host_executable: PathBuf,
+    codex_conversation_root: Option<PathBuf>,
 }
 
 impl fmt::Debug for CliPaths {
@@ -60,6 +67,7 @@ impl fmt::Debug for CliPaths {
             .field("session_data_root", &"<redacted>")
             .field("runtime_parent", &"<redacted>")
             .field("host_executable", &"<redacted>")
+            .field("codex_conversation_root", &"<redacted>")
             .finish()
     }
 }
@@ -95,6 +103,7 @@ impl CliPaths {
             metadata_root: config_root.join(STORE_DIR_NAME),
             session_data_root: config_root.join(SESSION_DATA_DIR_NAME),
             runtime_parent: durable_runtime_parent(&config_root),
+            codex_conversation_root: default_codex_conversation_root(),
             config_root,
             host_executable: host_executable.into(),
         }
@@ -110,6 +119,11 @@ impl CliPaths {
 
     pub fn session_data_root(&self) -> &Path {
         &self.session_data_root
+    }
+
+    pub fn with_codex_conversation_root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.codex_conversation_root = Some(root.into());
+        self
     }
 
     pub(crate) fn runtime_root(&self, session_id: HostedSessionId) -> PathBuf {
@@ -185,6 +199,15 @@ pub struct HostAttachSummary {
 pub(crate) struct ValidatedSessionAttach {
     pub runtime_root: PathBuf,
     pub request: HostAttachRequest,
+}
+
+#[derive(Clone)]
+struct PreparedSessionResume {
+    source: HostedSession,
+    plan: ResumePlan,
+    projects_revision: Revision,
+    presets_revision: Revision,
+    sessions_revision: Revision,
 }
 
 pub trait HostController: Send + Sync {
@@ -1127,6 +1150,429 @@ impl LocalCommandService {
         }))
     }
 
+    fn session_resume(
+        &self,
+        session_id: HostedSessionId,
+        expected_revision: Option<Revision>,
+        confirmed: bool,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        if confirmed != expected_revision.is_some() {
+            return Err(CliError::new(
+                ErrorCode::InteractionRequired,
+                "session resume requires an exact reviewed revision and --yes",
+                "Run session resume <id> first, then repeat with --expected-revision N --yes.",
+            ));
+        }
+        let command_id = self.ids.command_id();
+        let replacement_session_id = self.ids.session_id();
+        let prepared = self.prepare_session_resume(
+            session_id,
+            expected_revision,
+            command_id,
+            replacement_session_id,
+            cancellation,
+        )?;
+        let replacement_generation = prepared.plan.candidate.prior_generation.next();
+        if !confirmed {
+            return Ok(CliData::ResumePreview(SessionResumePreviewData {
+                source_session_id: session_id.to_string(),
+                source_revision: prepared.source.revision.get(),
+                provider: prepared.plan.candidate.runtime_id.as_str().to_string(),
+                provider_version: prepared.plan.candidate.runtime_version.to_string(),
+                permission_policy: "read_only".to_string(),
+                replacement_generation: replacement_generation.get(),
+                confirmation_required: true,
+            }));
+        }
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+
+        let project_repository = self.projects()?;
+        let preset_repository = self.presets()?;
+        let session_repository = self.sessions()?;
+        if project_repository.load().map_err(map_store)?.revision != prepared.projects_revision
+            || preset_repository.load().map_err(map_store)?.revision != prepared.presets_revision
+            || session_repository.load().map_err(map_store)?.revision != prepared.sessions_revision
+        {
+            return Err(CliError::new(
+                ErrorCode::Conflict,
+                "resume inputs changed after validation",
+                "Run the resume review again and use its current Session revision.",
+            )
+            .with_revision(prepared.source.revision));
+        }
+        let continuity_repository = ContinuityRepository::open(self.paths.metadata_root.clone())
+            .map_err(|_| resume_error(ResumeError::ContinuityConflict))?;
+        let continuity = continuity_repository
+            .load()
+            .map_err(|_| resume_error(ResumeError::ContinuityConflict))?;
+        if continuity
+            .links
+            .iter()
+            .any(|link| link.source_session_id == session_id)
+        {
+            return Err(resume_error(ResumeError::ContinuityConflict));
+        }
+
+        create_user_only_directory(&self.paths.runtime_root(replacement_session_id))?;
+        create_user_only_directory(&self.paths.session_dir(replacement_session_id))?;
+        let now = self.clock.now_millis();
+        let successor = HostedSession {
+            id: replacement_session_id,
+            project_id: prepared.source.project_id,
+            group_id: prepared.source.group_id,
+            preset_id: prepared.source.preset_id,
+            title: prepared.source.title.clone(),
+            title_source: if prepared.source.title_source == TitleSource::Manual {
+                TitleSource::Manual
+            } else {
+                TitleSource::Imported
+            },
+            lifecycle: HostedSessionState::Provisioning,
+            activity: ActivityAggregate {
+                generation: replacement_generation,
+                ..ActivityAggregate::default()
+            },
+            pinned: prepared.source.pinned,
+            position: prepared.source.position,
+            last_output_sequence: OutputSequence::ZERO,
+            read_through_sequence: OutputSequence::ZERO,
+            unread_sequence: None,
+            archived_at: None,
+            created_at: now,
+            updated_at: now,
+            revision: Revision::ZERO,
+        };
+        let created = session_repository
+            .create_session(successor, prepared.sessions_revision)
+            .map_err(map_store)?;
+        let descriptor = self.resume_launch_descriptor(&prepared.plan, replacement_generation);
+        let outcome = self
+            .launcher
+            .launch(&descriptor, &self.paths.host_executable, cancellation);
+        match outcome {
+            Ok(HostLaunchOutcome::Ready) => {
+                if cancellation.is_cancelled() {
+                    return self.abort_resume_replacement(
+                        &session_repository,
+                        &created,
+                        &descriptor,
+                        HostedSessionState::Cancelled,
+                        cancelled(),
+                    );
+                }
+                let link = ContinuityLink {
+                    command_id,
+                    source_session_id: session_id,
+                    replacement_session_id,
+                    runtime_id: prepared.plan.candidate.runtime_id.clone(),
+                    prior_generation: prepared.plan.candidate.prior_generation,
+                    replacement_generation,
+                    committed_at: self.clock.now_millis(),
+                };
+                if continuity_repository
+                    .record(continuity.revision, link)
+                    .is_err()
+                {
+                    return self.abort_resume_replacement(
+                        &session_repository,
+                        &created,
+                        &descriptor,
+                        HostedSessionState::Failed,
+                        resume_error(ResumeError::ContinuityConflict),
+                    );
+                }
+                let attaching = session_repository
+                    .mutate_session(
+                        replacement_session_id,
+                        created.revision,
+                        SessionMutation::SetLifecycle(HostedSessionState::Attaching),
+                        self.clock.now_millis(),
+                    )
+                    .map_err(map_store)?;
+                let live = session_repository
+                    .mutate_session(
+                        replacement_session_id,
+                        attaching.revision,
+                        SessionMutation::SetLifecycle(HostedSessionState::Live),
+                        self.clock.now_millis(),
+                    )
+                    .map_err(map_store)?;
+                Ok(CliData::Resume(SessionResumeData {
+                    source_session_id: session_id.to_string(),
+                    successor_session_id: replacement_session_id.to_string(),
+                    source_revision: prepared.source.revision.get(),
+                    successor_revision: live.revision.get(),
+                    provider: prepared.plan.candidate.runtime_id.as_str().to_string(),
+                    provider_version: prepared.plan.candidate.runtime_version.to_string(),
+                    permission_policy: "read_only".to_string(),
+                    replacement_generation: replacement_generation.get(),
+                    lifecycle: "live".to_string(),
+                    continuity_committed: true,
+                }))
+            }
+            Ok(HostLaunchOutcome::ReadyAfterPreReadyCancellation) => self.abort_resume_replacement(
+                &session_repository,
+                &created,
+                &descriptor,
+                HostedSessionState::Cancelled,
+                cancelled(),
+            ),
+            Err(error) => {
+                let lifecycle = if error.code == ErrorCode::Cancelled {
+                    HostedSessionState::Cancelled
+                } else {
+                    HostedSessionState::Failed
+                };
+                let _ = session_repository.mutate_session(
+                    replacement_session_id,
+                    created.revision,
+                    SessionMutation::SetLifecycle(lifecycle),
+                    self.clock.now_millis(),
+                );
+                Err(error)
+            }
+        }
+    }
+
+    fn prepare_session_resume(
+        &self,
+        session_id: HostedSessionId,
+        expected_revision: Option<Revision>,
+        command_id: CommandId,
+        replacement_session_id: HostedSessionId,
+        cancellation: &Cancellation,
+    ) -> Result<PreparedSessionResume, CliError> {
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let project_repository = self.projects()?;
+        let preset_repository = self.presets()?;
+        let session_repository = self.sessions()?;
+        let projects = project_repository.load().map_err(map_store)?;
+        let presets = preset_repository.load().map_err(map_store)?;
+        let sessions = session_repository.load().map_err(map_store)?;
+        let source = require_session(&sessions.sessions, session_id)?.clone();
+        if source.archived_at.is_some() {
+            return Err(validation(
+                "archived sessions cannot be resumed",
+                "Restore the source Session before reviewing resume.",
+            ));
+        }
+        if let Some(expected) = expected_revision
+            && expected != source.revision
+        {
+            return Err(CliError::new(
+                ErrorCode::Conflict,
+                "session changed after resume review",
+                "Run the resume review again and use its current revision.",
+            )
+            .with_revision(source.revision));
+        }
+        let preset_id = source.preset_id.ok_or_else(|| {
+            validation(
+                "the source Session has no launch preset",
+                "Resume only a verified Codex Session created from a saved preset.",
+            )
+        })?;
+        let project = require_project(&projects.projects, source.project_id)?
+            .project
+            .clone();
+        let preset = presets
+            .presets
+            .iter()
+            .find(|preset| preset.id == preset_id)
+            .cloned()
+            .ok_or_else(|| unavailable("the source Session preset is unavailable"))?;
+        if matches!(preset.risk, PresetRisk::Risky(_)) {
+            return Err(validation(
+                "risky presets cannot be resumed from CLI v1",
+                "Review this Session in the desktop application.",
+            ));
+        }
+        let host_metadata = read_host_metadata(&self.paths.session_dir(session_id))
+            .map_err(|_| resume_error(ResumeError::OwnershipUnproven))?;
+        if host_metadata.session_id != session_id
+            || !matches!(
+                host_metadata.lifecycle,
+                HostLifecycle::Exited | HostLifecycle::Failed
+            )
+        {
+            return Err(resume_error(ResumeError::OwnershipUnproven));
+        }
+        let recognition = host_metadata
+            .runtime_recognition
+            .clone()
+            .ok_or_else(|| resume_error(ResumeError::OwnershipUnproven))?;
+        let occupant = recognition
+            .occupant
+            .as_ref()
+            .ok_or_else(|| resume_error(ResumeError::OwnershipUnproven))?;
+        if occupant.generation.get() == u64::MAX {
+            return Err(resume_error(ResumeError::ResourceLimit));
+        }
+        let conversation_root = self
+            .paths
+            .codex_conversation_root
+            .as_deref()
+            .ok_or_else(|| resume_error(ResumeError::ConversationMissing))?;
+        let resolved = resolve_launch(
+            replacement_session_id,
+            &project,
+            &preset,
+            &explicit_path_snapshot(),
+            dirs::home_dir().as_deref(),
+        )
+        .map_err(|_| resume_error(ResumeError::ProviderUnavailable))?;
+        resolved
+            .revalidate()
+            .map_err(|_| resume_error(ResumeError::ProviderUnavailable))?;
+        let resume_cancel = ResumeValidationCancellation::new();
+        let (done, monitor) = monitor_resume_cancellation(cancellation, &resume_cancel);
+        let validation_result = (|| {
+            let handle = discover_codex_conversation_handle(
+                conversation_root,
+                resolved.working_directory(),
+                source.created_at.saturating_sub(5_000),
+                &resume_cancel,
+            )?;
+            let candidate = evaluate_resume(
+                ResumeRequest {
+                    command_id,
+                    session_id,
+                    expected_generation: occupant.generation,
+                    expected_revision: source.revision,
+                },
+                &source,
+                Some(&recognition),
+                Some(handle),
+            )?;
+            build_codex_resume_plan(
+                CodexResumePlanInput {
+                    candidate,
+                    conversation_root,
+                    canonical_project: source.project_id,
+                    expected_working_directory: resolved.working_directory(),
+                    permission_policy: PermissionPolicy::ReadOnly,
+                    executable: resolved.executable(),
+                    replacement_session_id,
+                },
+                &resume_cancel,
+            )
+        })();
+        done.store(true, Ordering::Release);
+        let _ = monitor.join();
+        let plan = validation_result.map_err(resume_error)?;
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let current_host = read_host_metadata(&self.paths.session_dir(session_id))
+            .map_err(|_| resume_error(ResumeError::OwnershipUnproven))?;
+        let current_sessions = session_repository.load().map_err(map_store)?;
+        if project_repository.load().map_err(map_store)?.revision != projects.revision
+            || preset_repository.load().map_err(map_store)?.revision != presets.revision
+            || current_sessions.revision != sessions.revision
+            || current_sessions
+                .sessions
+                .iter()
+                .find(|session| session.id == session_id)
+                .is_none_or(|session| session.revision != source.revision)
+            || current_host.host_instance_id != host_metadata.host_instance_id
+            || current_host.lifecycle != host_metadata.lifecycle
+            || current_host.runtime_recognition != host_metadata.runtime_recognition
+        {
+            return Err(CliError::new(
+                ErrorCode::Conflict,
+                "resume inputs changed during validation",
+                "Run the resume review again after the source Session settles.",
+            )
+            .with_revision(source.revision));
+        }
+        Ok(PreparedSessionResume {
+            source,
+            plan,
+            projects_revision: projects.revision,
+            presets_revision: presets.revision,
+            sessions_revision: sessions.revision,
+        })
+    }
+
+    fn abort_resume_replacement(
+        &self,
+        repository: &SessionRepository,
+        created: &HostedSession,
+        descriptor: &LaunchDescriptor,
+        lifecycle: HostedSessionState,
+        error: CliError,
+    ) -> Result<CliData, CliError> {
+        let stopped = self.controller.stop(
+            &descriptor.runtime_root,
+            descriptor.session_id,
+            Some(descriptor.host_instance_id),
+            self.ids.command_id(),
+            &Cancellation::default(),
+        );
+        let closed_lifecycle = if stopped.is_ok() {
+            lifecycle
+        } else {
+            HostedSessionState::Offline
+        };
+        let _ = repository.mutate_session(
+            descriptor.session_id,
+            created.revision,
+            SessionMutation::SetLifecycle(closed_lifecycle),
+            self.clock.now_millis(),
+        );
+        if stopped.is_ok() {
+            Err(error)
+        } else {
+            Err(CliError::new(
+                ErrorCode::OperationFailed,
+                "resume replacement could not be stopped after commit failure",
+                "Inspect the successor Session before taking another action.",
+            ))
+        }
+    }
+
+    fn resume_launch_descriptor(
+        &self,
+        plan: &ResumePlan,
+        replacement_generation: termirust_domain::OccupantGeneration,
+    ) -> LaunchDescriptor {
+        let detection = RuntimeDetectionResult {
+            runtime_id: plan.candidate.runtime_id.clone(),
+            descriptor_version: 1,
+            status: RuntimeDetectionStatus::Available,
+            fingerprint: Some(plan.candidate.expected_executable_fingerprint),
+            safe_version: Some(plan.candidate.runtime_version.to_string()),
+            capabilities: RuntimeCapabilitySet::new([
+                RuntimeCapability::InteractivePty,
+                RuntimeCapability::Cancellation,
+                RuntimeCapability::Resume,
+            ]),
+            diagnostic_code: None,
+        };
+        LaunchDescriptor {
+            format_version: LaunchDescriptor::FORMAT_VERSION,
+            session_id: plan.replacement_session_id,
+            host_instance_id: self.ids.host_instance_id(),
+            expected_occupant_generation: Some(replacement_generation),
+            runtime_root: self.paths.runtime_root(plan.replacement_session_id),
+            session_dir: self.paths.session_dir(plan.replacement_session_id),
+            executable: plan.executable.clone(),
+            runtime_detection: Some(detection),
+            arguments: plan.arguments.clone(),
+            environment: launch_environment(),
+            cwd: Some(plan.working_directory.clone()),
+            columns: 160,
+            rows: 48,
+            journal_limits: JournalLimits::default(),
+            stop_deadlines: StopDeadlines::default(),
+        }
+    }
+
     pub(crate) fn validate_session_attach(
         &self,
         session_id: HostedSessionId,
@@ -1529,15 +1975,6 @@ impl LocalCommandService {
     }
 
     fn launch_descriptor(&self, resolved: &termirust_domain::ResolvedLaunch) -> LaunchDescriptor {
-        let mut environment = BTreeMap::new();
-        for name in ["HOME", "LANG", "LC_ALL", "PATH", "SHELL", "TERM"] {
-            if let Ok(value) = std::env::var(name) {
-                environment.insert(name.to_string(), value);
-            }
-        }
-        environment
-            .entry("TERM".to_string())
-            .or_insert_with(|| "xterm-256color".to_string());
         LaunchDescriptor {
             format_version: LaunchDescriptor::FORMAT_VERSION,
             session_id: resolved.session_id,
@@ -1548,7 +1985,7 @@ impl LocalCommandService {
             executable: resolved.executable().to_path_buf(),
             runtime_detection: None,
             arguments: resolved.arguments().to_vec(),
-            environment,
+            environment: launch_environment(),
             cwd: Some(resolved.working_directory().to_path_buf()),
             columns: 160,
             rows: 48,
@@ -1665,6 +2102,11 @@ impl CommandService for LocalCommandService {
                 request_control,
                 cancellation,
             ),
+            CliCommand::SessionResume {
+                session_id,
+                expected_revision,
+                confirmed,
+            } => self.session_resume(session_id, expected_revision, confirmed, cancellation),
             CliCommand::SessionLaunch {
                 project_id,
                 preset_id,
@@ -2495,6 +2937,103 @@ fn cancelled() -> CliError {
         "operation was cancelled",
         "Inspect current state before running another mutation.",
     )
+}
+
+fn resume_error(error: ResumeError) -> CliError {
+    match error {
+        ResumeError::StillRunning => validation(
+            "only an exited exact Codex Session can be resumed",
+            "Wait for the source Session to exit before reviewing resume.",
+        ),
+        ResumeError::OwnershipUnproven => CliError::new(
+            ErrorCode::PermissionDenied,
+            "the source Codex process ownership is not proven",
+            "Resume only a verified managed Codex Session.",
+        ),
+        ResumeError::StaleOccupant | ResumeError::StaleRevision => CliError::new(
+            ErrorCode::Conflict,
+            "the source Session changed before resume",
+            "Run the resume review again and use its current revision.",
+        ),
+        ResumeError::UnsupportedVersion => validation(
+            "the source runtime version cannot be resumed safely",
+            "Resume is currently limited to the exact verified Codex 0.150.1 contract.",
+        ),
+        ResumeError::ConversationMissing => {
+            unavailable("the exact Codex conversation metadata is unavailable")
+        }
+        ResumeError::ConversationMalformed => validation(
+            "the Codex conversation metadata is ambiguous or malformed",
+            "Inspect the source Session in the desktop application.",
+        ),
+        ResumeError::PermissionDenied => CliError::new(
+            ErrorCode::PermissionDenied,
+            "permission to validate Codex resume metadata was denied",
+            "Check ownership and user-only permissions, then retry.",
+        ),
+        ResumeError::ProviderUnavailable => {
+            unavailable("the exact verified Codex executable or project is unavailable")
+        }
+        ResumeError::ResourceLimit => CliError::new(
+            ErrorCode::ResourceLimit,
+            "Codex resume validation reached a bounded resource limit",
+            "Reduce duplicate provider metadata and retry after the source settles.",
+        ),
+        ResumeError::Cancelled => cancelled(),
+        ResumeError::ContinuityConflict => CliError::new(
+            ErrorCode::Conflict,
+            "Session resume continuity conflicts with current state",
+            "Inspect the source and any existing successor before retrying.",
+        ),
+    }
+}
+
+fn monitor_resume_cancellation(
+    cancellation: &Cancellation,
+    resume_cancel: &ResumeValidationCancellation,
+) -> (Arc<AtomicBool>, std::thread::JoinHandle<()>) {
+    let done = Arc::new(AtomicBool::new(false));
+    let monitor_done = done.clone();
+    let source = cancellation.clone();
+    let target = resume_cancel.clone();
+    let monitor = std::thread::spawn(move || {
+        while !monitor_done.load(Ordering::Acquire) {
+            if source.is_cancelled() {
+                target.cancel();
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    });
+    (done, monitor)
+}
+
+fn launch_environment() -> BTreeMap<String, String> {
+    let mut environment = BTreeMap::new();
+    for name in [
+        "CODEX_HOME",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "PATH",
+        "SHELL",
+        "TERM",
+    ] {
+        if let Ok(value) = std::env::var(name) {
+            environment.insert(name.to_string(), value);
+        }
+    }
+    environment
+        .entry("TERM".to_string())
+        .or_insert_with(|| "xterm-256color".to_string());
+    environment
+}
+
+fn default_codex_conversation_root() -> Option<PathBuf> {
+    std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|home| home.join(".codex")))
+        .map(|root| root.join("sessions"))
 }
 
 fn explicit_path_snapshot() -> Vec<PathBuf> {

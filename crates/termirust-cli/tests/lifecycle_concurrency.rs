@@ -106,6 +106,7 @@ fn pre_ready_cancellation_cleans_host_and_post_ready_cancellation_detaches_succe
     let seed = seed_store();
     let launcher = Arc::new(Mutex::new(FakeLauncherState {
         calls: 0,
+        descriptors: Vec::new(),
         outcome: Some(Ok(
             termirust_cli::HostLaunchOutcome::ReadyAfterPreReadyCancellation,
         )),
@@ -141,6 +142,7 @@ fn pre_ready_cancellation_cleans_host_and_post_ready_cancellation_detaches_succe
     let cancellation = Cancellation::default();
     let launcher = Arc::new(Mutex::new(FakeLauncherState {
         calls: 0,
+        descriptors: Vec::new(),
         outcome: Some(Ok(termirust_cli::HostLaunchOutcome::Ready)),
         cancel_after_ready: true,
     }));

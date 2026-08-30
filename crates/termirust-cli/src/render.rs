@@ -174,6 +174,55 @@ fn render_human(data: &CliData, warnings: &[String], width: usize) -> String {
                 ),
             ]),
         ),
+        CliData::ResumePreview(data) => render_records(
+            "Session resume review",
+            std::iter::once(vec![
+                ("Source Session", data.source_session_id.clone()),
+                ("Source revision", data.source_revision.to_string()),
+                ("Provider", data.provider.clone()),
+                ("Provider version", data.provider_version.clone()),
+                ("Permission", data.permission_policy.clone()),
+                (
+                    "Replacement generation",
+                    data.replacement_generation.to_string(),
+                ),
+                (
+                    "Confirmation",
+                    if data.confirmation_required {
+                        "required"
+                    } else {
+                        "not required"
+                    }
+                    .into(),
+                ),
+            ]),
+        ),
+        CliData::Resume(data) => render_records(
+            "Session resumed",
+            std::iter::once(vec![
+                ("Source Session", data.source_session_id.clone()),
+                ("Successor Session", data.successor_session_id.clone()),
+                ("Source revision", data.source_revision.to_string()),
+                ("Successor revision", data.successor_revision.to_string()),
+                ("Provider", data.provider.clone()),
+                ("Provider version", data.provider_version.clone()),
+                ("Permission", data.permission_policy.clone()),
+                (
+                    "Replacement generation",
+                    data.replacement_generation.to_string(),
+                ),
+                ("Lifecycle", data.lifecycle.clone()),
+                (
+                    "Continuity",
+                    if data.continuity_committed {
+                        "committed"
+                    } else {
+                        "not committed"
+                    }
+                    .into(),
+                ),
+            ]),
+        ),
         CliData::Mutation(data) => {
             let mut text = format!("Outcome: {}", data.outcome);
             text.push_str(&render_records(

@@ -156,6 +156,7 @@ pub struct FakeLauncherState {
     pub calls: usize,
     pub outcome: Option<Result<HostLaunchOutcome, CliError>>,
     pub cancel_after_ready: bool,
+    pub descriptors: Vec<LaunchDescriptor>,
 }
 
 pub struct FakeLauncher {
@@ -172,6 +173,7 @@ impl HostLauncher for FakeLauncher {
         assert!(!format!("{descriptor:?}").contains("sleep 30"));
         let mut state = self.state.lock().unwrap();
         state.calls += 1;
+        state.descriptors.push(descriptor.clone());
         if state.cancel_after_ready {
             cancellation.cancel();
         }

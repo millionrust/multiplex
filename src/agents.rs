@@ -7,7 +7,6 @@ mod headless;
 mod orchestrator;
 mod process;
 mod protocol;
-mod resume;
 mod stream;
 mod transcript;
 mod worktree;
@@ -33,8 +32,5 @@ pub use process::{
     build_remote_interactive_arguments, detect_agent_executable,
 };
 pub use protocol::{AgentApprovalRequest, AgentEvent, AgentRole, AgentRunState};
-pub use resume::{
-    ResumeValidationCancellation, build_codex_resume_plan, discover_codex_conversation_handle,
-};
 pub(crate) use transcript::sanitized_candidate_transcript_contract;
 pub use worktree::{create_managed_worktree, managed_worktree_status, remove_managed_worktree};

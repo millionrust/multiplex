@@ -59,6 +59,11 @@ pub enum CliCommand {
         rows: u16,
         request_control: bool,
     },
+    SessionResume {
+        session_id: HostedSessionId,
+        expected_revision: Option<Revision>,
+        confirmed: bool,
+    },
     SessionLaunch {
         project_id: ProjectId,
         preset_id: PresetId,
@@ -356,6 +361,21 @@ pub fn parse_args(arguments: Vec<String>) -> Result<Invocation, CliError> {
                 columns: optional_dimension(&options, "--columns", 80)?,
                 rows: optional_dimension(&options, "--rows", 24)?,
                 request_control: options.flag("--write"),
+            }
+        }
+        [scope, action, session, rest @ ..] if scope == "session" && action == "resume" => {
+            let options = parse_options(rest, &["--expected-revision"], &["--yes"])?;
+            let expected_revision = optional_revision(&options)?;
+            let confirmed = options.flag("--yes");
+            if confirmed != expected_revision.is_some() {
+                return Err(usage(
+                    "session resume commit requires --expected-revision and --yes together",
+                ));
+            }
+            CliCommand::SessionResume {
+                session_id: parse_id(session, "session")?,
+                expected_revision,
+                confirmed,
             }
         }
         [scope, action, rest @ ..] if scope == "session" && action == "launch" => {
@@ -1074,6 +1094,60 @@ mod tests {
             vec!["session", "attach", &id, "--rows", "1001"],
             vec!["session", "attach", &id, "--from-sequence", "x"],
             vec!["session", "attach", &id, "--write", "--write"],
+        ] {
+            assert_eq!(
+                parse_args(invalid.into_iter().map(str::to_string).collect())
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Usage
+            );
+        }
+    }
+
+    #[test]
+    fn session_resume_parser_separates_preview_from_exact_confirmed_commit() {
+        let id = HostedSessionId::new().to_string();
+        let preview = parse_args(
+            ["session", "resume", &id]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        )
+        .unwrap();
+        assert_eq!(
+            preview.command,
+            CliCommand::SessionResume {
+                session_id: id.parse().unwrap(),
+                expected_revision: None,
+                confirmed: false,
+            }
+        );
+        let commit = parse_args(
+            [
+                "session",
+                "resume",
+                &id,
+                "--expected-revision",
+                "7",
+                "--yes",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        )
+        .unwrap();
+        assert_eq!(
+            commit.command,
+            CliCommand::SessionResume {
+                session_id: id.parse().unwrap(),
+                expected_revision: Some(Revision::new(7)),
+                confirmed: true,
+            }
+        );
+        for invalid in [
+            vec!["session", "resume", &id, "--yes"],
+            vec!["session", "resume", &id, "--expected-revision", "7"],
+            vec!["session", "resume", &id, "--yes", "--yes"],
         ] {
             assert_eq!(
                 parse_args(invalid.into_iter().map(str::to_string).collect())

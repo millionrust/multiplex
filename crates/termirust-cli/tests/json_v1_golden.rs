@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use common::*;
 use termirust_cli::{
     Cancellation, CliData, LocalCommandService, RenderOptions, SessionAttachData, SessionInputData,
-    SessionResizeData, render_success, run,
+    SessionResizeData, SessionResumeData, SessionResumePreviewData, render_success, run,
 };
 
 fn json(
@@ -159,6 +159,51 @@ fn json_v1_golden() {
     actual.insert(
         "session_attach".into(),
         serde_json::from_slice(&attach).unwrap(),
+    );
+    let resume_preview = render_success(
+        &CliData::ResumePreview(SessionResumePreviewData {
+            source_session_id: SESSION_ID.to_string(),
+            source_revision: 3,
+            provider: "codex".into(),
+            provider_version: "0.150.1".into(),
+            permission_policy: "read_only".into(),
+            replacement_generation: 4,
+            confirmation_required: true,
+        }),
+        &[],
+        RenderOptions {
+            json: true,
+            terminal_width: 80,
+        },
+    )
+    .unwrap();
+    actual.insert(
+        "session_resume_preview".into(),
+        serde_json::from_slice(&resume_preview).unwrap(),
+    );
+    let resume = render_success(
+        &CliData::Resume(SessionResumeData {
+            source_session_id: SESSION_ID.to_string(),
+            successor_session_id: LAUNCH_SESSION_ID.to_string(),
+            source_revision: 3,
+            successor_revision: 3,
+            provider: "codex".into(),
+            provider_version: "0.150.1".into(),
+            permission_policy: "read_only".into(),
+            replacement_generation: 4,
+            lifecycle: "live".into(),
+            continuity_committed: true,
+        }),
+        &[],
+        RenderOptions {
+            json: true,
+            terminal_width: 80,
+        },
+    )
+    .unwrap();
+    actual.insert(
+        "session_resume".into(),
+        serde_json::from_slice(&resume).unwrap(),
     );
     actual.insert(
         "session_launch".into(),

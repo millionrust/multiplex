@@ -8539,6 +8539,7 @@ dependencies = [
 name = "termirust-session-host"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "crc32c",
  "libc",
  "portable-pty",

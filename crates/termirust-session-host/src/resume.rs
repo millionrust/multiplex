@@ -7,12 +7,12 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
+use crate::process_observation::fingerprint_executable;
 use serde::Deserialize;
 use termirust_domain::{
     ConversationHandle, HostedSessionId, PermissionPolicy, ProjectId, ResumeCandidate, ResumeError,
     ResumePlan,
 };
-use termirust_session_host::process_observation::fingerprint_executable;
 
 const CODEX_VERSION: &str = "0.150.1";
 const MAX_METADATA_LINE_BYTES: usize = 64 * 1024;
@@ -61,6 +61,16 @@ impl Default for CodexResumeLimits {
             deadline: DEFAULT_VALIDATION_DEADLINE,
         }
     }
+}
+
+pub struct CodexResumePlanInput<'a> {
+    pub candidate: ResumeCandidate,
+    pub conversation_root: &'a Path,
+    pub canonical_project: ProjectId,
+    pub expected_working_directory: &'a Path,
+    pub permission_policy: PermissionPolicy,
+    pub executable: &'a Path,
+    pub replacement_session_id: HostedSessionId,
 }
 
 #[derive(Deserialize)]
@@ -128,16 +138,18 @@ pub fn discover_codex_conversation_handle(
 }
 
 pub fn build_codex_resume_plan(
-    candidate: ResumeCandidate,
-    conversation_root: &Path,
-    canonical_project: ProjectId,
-    expected_working_directory: &Path,
-    permission_policy: PermissionPolicy,
-    executable: &Path,
-    replacement_session_id: HostedSessionId,
+    input: CodexResumePlanInput<'_>,
     cancel: &ResumeValidationCancellation,
 ) -> Result<ResumePlan, ResumeError> {
-    build_codex_resume_plan_with_limits(
+    build_codex_resume_plan_with_limits(input, cancel, CodexResumeLimits::default())
+}
+
+fn build_codex_resume_plan_with_limits(
+    input: CodexResumePlanInput<'_>,
+    cancel: &ResumeValidationCancellation,
+    limits: CodexResumeLimits,
+) -> Result<ResumePlan, ResumeError> {
+    let CodexResumePlanInput {
         candidate,
         conversation_root,
         canonical_project,
@@ -145,23 +157,7 @@ pub fn build_codex_resume_plan(
         permission_policy,
         executable,
         replacement_session_id,
-        cancel,
-        CodexResumeLimits::default(),
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn build_codex_resume_plan_with_limits(
-    candidate: ResumeCandidate,
-    conversation_root: &Path,
-    canonical_project: ProjectId,
-    expected_working_directory: &Path,
-    permission_policy: PermissionPolicy,
-    executable: &Path,
-    replacement_session_id: HostedSessionId,
-    cancel: &ResumeValidationCancellation,
-    limits: CodexResumeLimits,
-) -> Result<ResumePlan, ResumeError> {
+    } = input;
     check_cancel(cancel)?;
     let root = canonical_regular_directory(conversation_root)?;
     let working_directory = canonical_regular_directory(expected_working_directory)?;
@@ -478,6 +474,24 @@ mod tests {
         }
     }
 
+    fn plan_input<'a>(
+        candidate: ResumeCandidate,
+        conversation_root: &'a Path,
+        expected_working_directory: &'a Path,
+        permission_policy: PermissionPolicy,
+        executable: &'a Path,
+    ) -> CodexResumePlanInput<'a> {
+        CodexResumePlanInput {
+            candidate,
+            conversation_root,
+            canonical_project: ProjectId::new(),
+            expected_working_directory,
+            permission_policy,
+            executable,
+            replacement_session_id: HostedSessionId::new(),
+        }
+    }
+
     fn write_metadata(root: &Path, cwd: &Path, handle: &str, version: &str) -> PathBuf {
         let directory = root.join("2026/08/29");
         fs::create_dir_all(&directory).unwrap();
@@ -501,7 +515,7 @@ mod tests {
     #[test]
     fn runtime_resume_contracts_match_the_frozen_release_manifest() {
         let manifest: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/runtimes/contract-manifest.json"
+            "../../../tests/fixtures/runtimes/contract-manifest.json"
         ))
         .unwrap();
         let contracts = manifest["resume_contracts"].as_array().unwrap();
@@ -578,13 +592,13 @@ mod tests {
             CODEX_VERSION,
         );
         build_codex_resume_plan_with_limits(
-            candidate(fingerprint),
-            &root,
-            ProjectId::new(),
-            &cwd,
-            PermissionPolicy::ReadOnly,
-            &executable,
-            HostedSessionId::new(),
+            plan_input(
+                candidate(fingerprint),
+                &root,
+                &cwd,
+                PermissionPolicy::ReadOnly,
+                &executable,
+            ),
             cancel,
             limits,
         )
@@ -652,13 +666,13 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink(&source, root.join("2026/08/29/link.jsonl")).unwrap();
         let result = build_codex_resume_plan(
-            candidate(fingerprint),
-            &root,
-            ProjectId::new(),
-            &cwd,
-            PermissionPolicy::AskAsNeeded,
-            &executable,
-            HostedSessionId::new(),
+            plan_input(
+                candidate(fingerprint),
+                &root,
+                &cwd,
+                PermissionPolicy::AskAsNeeded,
+                &executable,
+            ),
             &ResumeValidationCancellation::new(),
         );
         #[cfg(unix)]
@@ -668,13 +682,13 @@ mod tests {
         fs::copy(&source, root.join("2026/08/29/duplicate.jsonl")).unwrap();
         assert_eq!(
             build_codex_resume_plan(
-                candidate(fingerprint),
-                &root,
-                ProjectId::new(),
-                &cwd,
-                PermissionPolicy::AskAsNeeded,
-                &executable,
-                HostedSessionId::new(),
+                plan_input(
+                    candidate(fingerprint),
+                    &root,
+                    &cwd,
+                    PermissionPolicy::AskAsNeeded,
+                    &executable,
+                ),
                 &ResumeValidationCancellation::new(),
             ),
             Err(ResumeError::ConversationMalformed)
@@ -683,13 +697,13 @@ mod tests {
         fs::write(&executable, "#!/bin/sh\nexit 1\n").unwrap();
         assert_eq!(
             build_codex_resume_plan(
-                candidate(fingerprint),
-                &root,
-                ProjectId::new(),
-                &cwd,
-                PermissionPolicy::AskAsNeeded,
-                &executable,
-                HostedSessionId::new(),
+                plan_input(
+                    candidate(fingerprint),
+                    &root,
+                    &cwd,
+                    PermissionPolicy::AskAsNeeded,
+                    &executable,
+                ),
                 &ResumeValidationCancellation::new(),
             ),
             Err(ResumeError::ProviderUnavailable)
@@ -711,13 +725,13 @@ mod tests {
         );
         assert_eq!(
             build_codex_resume_plan(
-                candidate(fingerprint),
-                &root,
-                ProjectId::new(),
-                &cwd,
-                PermissionPolicy::AskAsNeeded,
-                &wrong_version_executable,
-                HostedSessionId::new(),
+                plan_input(
+                    candidate(fingerprint),
+                    &root,
+                    &cwd,
+                    PermissionPolicy::AskAsNeeded,
+                    &wrong_version_executable,
+                ),
                 &ResumeValidationCancellation::new(),
             ),
             Err(ResumeError::UnsupportedVersion)
@@ -738,13 +752,13 @@ mod tests {
         );
         assert_eq!(
             build_codex_resume_plan(
-                candidate(fingerprint),
-                &root,
-                ProjectId::new(),
-                &expected_cwd,
-                PermissionPolicy::AskAsNeeded,
-                &wrong_project_executable,
-                HostedSessionId::new(),
+                plan_input(
+                    candidate(fingerprint),
+                    &root,
+                    &expected_cwd,
+                    PermissionPolicy::AskAsNeeded,
+                    &wrong_project_executable,
+                ),
                 &ResumeValidationCancellation::new(),
             ),
             Err(ResumeError::ConversationMalformed)

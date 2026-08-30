@@ -9,23 +9,23 @@ use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Disableable as _, Icon, IconName, StyledExt as _, h_flex, v_flex};
 use termirust_domain::{
-    CommandId, ContinuityLink, HostedSessionId, HostedSessionState, OutputSequence,
-    PermissionPolicy, ResumeError, ResumePlan, ResumeRequest, RuntimeCapability,
-    RuntimeCapabilitySet, RuntimeDetectionResult, RuntimeDetectionStatus, SessionLaunchRoute,
-    TitleSource, evaluate_resume,
+    CommandId, ContinuityLink, HostedSessionId, HostedSessionState, PermissionPolicy, ResumeError,
+    ResumePlan, ResumeRequest, RuntimeCapability, RuntimeCapabilitySet, RuntimeDetectionResult,
+    RuntimeDetectionStatus, SessionLaunchRoute, TitleSource, evaluate_resume,
 };
 use termirust_store::ContinuityRepository;
 
 use super::hosted_session::{DurableContinuityCommit, DurableLaunch, DurableSessionPaths};
 use super::session_coordinator::SessionStartRequest;
 use super::{AppAttachedPaneState, TermiRustApp, theme};
-use crate::agents::{
-    ResumeValidationCancellation, build_codex_resume_plan, discover_codex_conversation_handle,
-};
 use crate::models::{ConnectRequest, LocalShellConfig, SavedAppAttachedSession, SavedDurableHost};
 use crate::storage::{app_dir, project_store_dir, save_saved_state};
 use crate::ui::localization;
 use crate::ui::util::current_unix_millis;
+use termirust_session_host::{
+    CodexResumePlanInput, ResumeValidationCancellation, build_codex_resume_plan,
+    discover_codex_conversation_handle,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SessionResumePhase {
@@ -206,13 +206,15 @@ impl TermiRustApp {
                     let candidate =
                         evaluate_resume(request, &metadata, Some(&recognition), Some(handle))?;
                     build_codex_resume_plan(
-                        candidate,
-                        &conversation_root,
-                        canonical_project,
-                        &working_directory,
-                        permission_policy,
-                        &executable,
-                        replacement_session_id,
+                        CodexResumePlanInput {
+                            candidate,
+                            conversation_root: &conversation_root,
+                            canonical_project,
+                            expected_working_directory: &working_directory,
+                            permission_policy,
+                            executable: &executable,
+                            replacement_session_id,
+                        },
                         &cancellation,
                     )
                 })

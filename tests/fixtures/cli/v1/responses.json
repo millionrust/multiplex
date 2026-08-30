@@ -11,6 +11,7 @@
         "session input <id> --input-stdin [--json] < stdin",
         "session resize <id> --columns N --rows N [--json]",
         "session attach <id> [--from-sequence N] [--columns N] [--rows N] [--write] [--json]",
+        "session resume <id> [--expected-revision N --yes] [--json]",
         "session launch --project <id> --preset <id> [--group <id>] [--json]",
         "session stop <id> [--expected-revision N] --yes [--json]",
         "session archive <id> [--expected-revision N] [--json]",
@@ -35,7 +36,7 @@
         "7 operation failure or timeout",
         "130 signal cancellation"
       ],
-      "safety": "Local metadata and authenticated Host commands only. Session wait accepts lifecycle values shown by session show, or activity values unknown, idle, busy, needs_input, done, and failed. Local Session attach is read-only unless --write is explicit; human attach requires a TTY and detaches with Ctrl-] then d, while JSON attach never emits terminal bytes. Local Session input requires explicit bounded stdin and never echoes payload bytes. Local Session resize requires explicit dimensions from 1 to 1000. Stop requires --yes. Session removal requires a reviewed preview token, --yes, and bounded confirmation from stdin. Human SSH attach is interactive and detaches with Ctrl-] then d; JSON attach never emits terminal bytes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen project, preset, and session titles and may be sensitive."
+      "safety": "Local metadata and authenticated Host commands only. Session wait accepts lifecycle values shown by session show, or activity values unknown, idle, busy, needs_input, done, and failed. Local Session attach is read-only unless --write is explicit; human attach requires a TTY and detaches with Ctrl-] then d, while JSON attach never emits terminal bytes. Session resume previews without mutation and requires an exact reviewed revision plus --yes; the CLI replacement always uses the read-only Codex sandbox. Local Session input requires explicit bounded stdin and never echoes payload bytes. Local Session resize requires explicit dimensions from 1 to 1000. Stop requires --yes. Session removal requires a reviewed preview token, --yes, and bounded confirmation from stdin. Human SSH attach is interactive and detaches with Ctrl-] then d; JSON attach never emits terminal bytes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen project, preset, and session titles and may be sensitive."
     },
     "ok": true,
     "schema_version": 1,
@@ -177,6 +178,37 @@
         "title": "Counter session",
         "unread": false
       }
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_resume": {
+    "data": {
+      "continuity_committed": true,
+      "lifecycle": "live",
+      "permission_policy": "read_only",
+      "provider": "codex",
+      "provider_version": "0.150.1",
+      "replacement_generation": 4,
+      "source_revision": 3,
+      "source_session_id": "00000000-0000-0000-0000-000000000003",
+      "successor_revision": 3,
+      "successor_session_id": "00000000-0000-0000-0000-000000000004"
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "session_resume_preview": {
+    "data": {
+      "confirmation_required": true,
+      "permission_policy": "read_only",
+      "provider": "codex",
+      "provider_version": "0.150.1",
+      "replacement_generation": 4,
+      "source_revision": 3,
+      "source_session_id": "00000000-0000-0000-0000-000000000003"
     },
     "ok": true,
     "schema_version": 1,
