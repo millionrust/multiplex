@@ -35,8 +35,9 @@ provider as bad credentials and may not silently fall back to another method.
   `ProxyCommand`, and ignores `CertificateFile`, `IdentityAgent`, `IdentitiesOnly`, and
   `ForwardAgent`. Later leaves must extend this parser without changing existing imported
   profiles silently.
-- The editor's “SSH.id, Key, Certificate, FIDO2” row and “Add Telnet” row are presentation
-  placeholders, not working capabilities. They must not be used as evidence of support.
+- The editor's authentication row is presentation rather than a transport contract. E07.5 and
+  E07.6 separately deferred Mosh and serial and excluded plain Telnet; their former decorative
+  controls were removed.
 
 ## Security rationale
 

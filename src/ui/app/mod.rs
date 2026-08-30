@@ -372,7 +372,6 @@ struct ShellInputs {
     create_host_address: Entity<InputState>,
     connect_username: Entity<InputState>,
     protocol_ssh_port: Entity<InputState>,
-    protocol_telnet_port: Entity<InputState>,
     sftp_local_filter: Entity<InputState>,
     bulk_group: Entity<InputState>,
     terminal_search: Entity<InputState>,
@@ -512,7 +511,6 @@ impl ShellInputs {
                 .new(|cx| InputState::new(window, cx).placeholder("Type IP or Hostname")),
             connect_username: cx.new(|cx| InputState::new(window, cx).placeholder("Username")),
             protocol_ssh_port: cx.new(|cx| InputState::new(window, cx).default_value("22")),
-            protocol_telnet_port: cx.new(|cx| InputState::new(window, cx).default_value("23")),
             sftp_local_filter: cx.new(|cx| InputState::new(window, cx).placeholder("Filter files")),
             bulk_group: cx.new(|cx| InputState::new(window, cx).placeholder("Bulk group name")),
             terminal_search: cx
@@ -1072,7 +1070,6 @@ pub struct TermiRustApp {
     open_toolbar_menu: Option<ToolbarMenu>,
     hosts_tag_filter: Option<String>,
     editor_advanced_expanded: bool,
-    editor_telnet_added: bool,
     open_editor_menu: Option<EditorMenu>,
     sftp_local_path: std::path::PathBuf,
     sftp_show_host_picker: bool,
@@ -1373,7 +1370,6 @@ impl TermiRustApp {
             open_toolbar_menu: None,
             hosts_tag_filter: None,
             editor_advanced_expanded: false,
-            editor_telnet_added: false,
             open_editor_menu: None,
             sftp_local_path: std::env::var("HOME")
                 .map(std::path::PathBuf::from)
@@ -11530,7 +11526,7 @@ fn apply_group_defaults_to_draft(
 #[cfg(test)]
 mod tests {
     use super::{
-        AutocompleteSource, ConnectDialogMode, ConnectProtocol, DropZone, HostsSort, HostsViewMode,
+        AutocompleteSource, ConnectDialogMode, DropZone, HostsSort, HostsViewMode,
         KeyLifecycleDialog, KeychainTab, MAX_SPLIT_PANES, NavSection, OutputSuggestionContext,
         PathSuggestionContext, SessionLibraryView, SplitNode, TermiRustApp, WorkspaceIndicators,
         WorkspaceRuntimeTone, WorkspaceViewMode, apply_group_defaults_to_draft,
@@ -18710,46 +18706,6 @@ sleep 1
         });
 
         let _ = std::fs::remove_dir_all(temp_dir);
-    }
-
-    #[gpui::test]
-    fn e2e_choose_protocol_rejects_unsupported_protocols(cx: &mut TestAppContext) {
-        let _isolation = TestIsolation::acquire();
-        let (app, window) = open_test_app(cx);
-
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    app.open_editor_for_new_host(window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.label, "Proto Host", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.host, "example.com", window, cx);
-                    TermiRustApp::set_input_value(&app.inputs.port, "22", window, cx);
-                    app.open_choose_protocol_tab_from_draft(window, cx);
-                })
-            })
-            .expect("window update should succeed");
-
-        app.update(cx, |app, _cx| {
-            let workspace_id = app.active_workspace_id.expect("workspace should exist");
-            let workspace = app
-                .workspace_mut(workspace_id)
-                .expect("workspace should exist");
-            workspace.pending_connect_protocol = ConnectProtocol::Telnet;
-        });
-        window
-            .update(cx, |_, window, cx| {
-                app.update(cx, |app, cx| {
-                    let workspace_id = app.active_workspace_id.expect("active workspace");
-                    app.confirm_choose_protocol(workspace_id, window, cx);
-                })
-            })
-            .expect("window update should succeed");
-
-        app.read_with(cx, |app, _| {
-            let workspace = app.active_workspace().expect("workspace should exist");
-            assert!(workspace.pane_ids.is_empty());
-            assert!(app.status_message.contains("isn't supported yet"));
-        });
     }
 
     #[gpui::test]

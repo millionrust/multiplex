@@ -998,16 +998,6 @@ impl TermiRustApp {
                         cx,
                     ))
                     .child(self.dropdown_item(
-                        "overflow-add-telnet",
-                        Some(Icon::new(IconName::Plus)),
-                        "Add Telnet",
-                        false,
-                        |this, _, _| {
-                            this.editor_telnet_added = true;
-                        },
-                        cx,
-                    ))
-                    .child(self.dropdown_item(
                         "overflow-duplicate",
                         Some(Icon::new(IconName::Copy)),
                         "Duplicate",

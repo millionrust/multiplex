@@ -584,82 +584,12 @@ impl TermiRustApp {
                     })),
             );
 
-        let mut body = v_flex()
+        v_flex()
             .w_full()
             .gap(px(12.))
             .child(self.editor_section_card(Some("Address"), address_row))
             .child(self.editor_section_card(Some("General"), general_body))
-            .child(self.editor_section_card(None, ssh_body));
-
-        if self.editor_telnet_added {
-            let telnet_body = v_flex()
-                .gap(px(10.))
-                .child(self.editor_protocol_row("Telnet", &self.inputs.port))
-                .child(div().h(px(1.)).bg(theme::soft_border()))
-                .child(
-                    div()
-                        .text_size(px(13.))
-                        .font_semibold()
-                        .text_color(theme::text_main())
-                        .child("Credentials"),
-                )
-                .child(self.editor_input_row(
-                    Some(Icon::new(IconName::User)),
-                    &self.inputs.username,
-                    None,
-                ))
-                .child(self.editor_input_row(
-                    Some(app_icon(ICON_KEY)),
-                    &self.inputs.password,
-                    None,
-                ));
-            body = body.child(self.editor_section_card(None, telnet_body));
-        } else {
-            body = body.child(
-                div()
-                    .id("editor-add-telnet")
-                    .w_full()
-                    .h(px(40.))
-                    .rounded(px(8.))
-                    .border_1()
-                    .border_color(theme::soft_border())
-                    .bg(theme::with_alpha(theme::library_card(), 0.4))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .gap(px(8.))
-                    .cursor_pointer()
-                    .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.5)))
-                    .child(
-                        div()
-                            .size(px(18.))
-                            .rounded(px(999.))
-                            .border_1()
-                            .border_color(theme::text_main())
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(
-                                Icon::new(IconName::Plus)
-                                    .size(px(11.))
-                                    .text_color(theme::text_main()),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(13.))
-                            .font_semibold()
-                            .text_color(theme::text_main())
-                            .child("Add Telnet"),
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.editor_telnet_added = true;
-                        cx.notify();
-                    })),
-            );
-        }
-
-        body
+            .child(self.editor_section_card(None, ssh_body))
     }
 
     pub(super) fn render_editor_actions(&self, cx: &Context<Self>) -> Div {

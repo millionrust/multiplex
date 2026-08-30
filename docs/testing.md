@@ -55,7 +55,6 @@ It runs:
 - `ui::app::tests::e2e_vault_member_controls_click_select_role_save_clear_and_remove`
 - `ui::app::tests::e2e_vault_member_and_sync_round_trip`
 - `ui::app::tests::e2e_sync_folder_picker_and_force_pull_conflict_flow`
-- `ui::app::tests::e2e_choose_protocol_rejects_unsupported_protocols`
 - `ui::app::tests::e2e_copy_on_select_copies_selection_to_clipboard`
 - `ui::app::tests::e2e_workspace_duplicate_and_reorder`
 - `ui::app::tests::e2e_workspace_tab_drag_reorders_and_moves_to_tail`

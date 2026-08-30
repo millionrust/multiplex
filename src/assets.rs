@@ -48,7 +48,6 @@ const ICONS: &[(&str, &[u8])] = &[
     icon!("plus"),
     icon!("redo"),
     icon!("search"),
-    icon!("serial"),
     icon!("settings"),
     icon!("tag"),
     icon!("shield-check"),

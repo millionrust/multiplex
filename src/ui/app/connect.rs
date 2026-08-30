@@ -143,12 +143,6 @@ impl TermiRustApp {
             window,
             cx,
         );
-        Self::set_input_value(
-            &self.shell_inputs.protocol_telnet_port,
-            "23".to_string(),
-            window,
-            cx,
-        );
         self.workspaces.push(WorkspaceTab {
             id: workspace_id,
             title,
@@ -239,7 +233,6 @@ impl TermiRustApp {
             "{} {}:{}",
             match failure.protocol {
                 ConnectProtocol::Ssh => "SSH",
-                ConnectProtocol::Telnet => "Telnet",
             },
             failure.profile.host,
             failure.port
@@ -534,7 +527,7 @@ impl TermiRustApp {
                     .text_size(px(13.))
                     .font_semibold()
                     .text_color(theme::text_main())
-                    .child("Choose protocol"),
+                    .child("Connection settings"),
             )
             .child(self.protocol_card(
                 "proto-ssh",
@@ -544,16 +537,6 @@ impl TermiRustApp {
                 None,
                 &self.shell_inputs.protocol_ssh_port.clone(),
                 selected == ConnectProtocol::Ssh,
-                cx,
-            ))
-            .child(self.protocol_card(
-                "proto-telnet",
-                ConnectProtocol::Telnet,
-                "Telnet",
-                &format!("telnet {host}"),
-                None,
-                &self.shell_inputs.protocol_telnet_port.clone(),
-                selected == ConnectProtocol::Telnet,
                 cx,
             ))
             .when(
@@ -751,16 +734,6 @@ impl TermiRustApp {
             return;
         };
         let protocol = workspace.pending_connect_protocol;
-        if protocol != ConnectProtocol::Ssh {
-            let label = match protocol {
-                ConnectProtocol::Telnet => "Telnet",
-                ConnectProtocol::Ssh => "SSH",
-            };
-            self.status_message =
-                format!("{label} protocol isn't supported yet — only SSH for now.");
-            cx.notify();
-            return;
-        }
         let port_str = self
             .shell_inputs
             .protocol_ssh_port
