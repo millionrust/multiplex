@@ -2,6 +2,8 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+#[cfg(test)]
+use termirust_domain::SshAccessPolicy;
 use termirust_domain::{
     GroupDestination, GroupId, HostedSession, HostedSessionId, HostedSessionState, OutputSequence,
     PositionKey, ProjectId, Revision, SessionLaunchRoute, SessionOrigin, SessionTitle, TitleSource,
@@ -362,6 +364,14 @@ pub fn default_persistent_session_name_for_endpoint(
 }
 
 impl HostProfile {
+    #[cfg(test)]
+    pub fn legacy_ssh_access_policy(&self) -> SshAccessPolicy {
+        match self.auth_mode {
+            AuthMode::Password => SshAccessPolicy::legacy_password(),
+            AuthMode::PrivateKey => SshAccessPolicy::legacy_private_key(),
+        }
+    }
+
     pub fn default_persistent_session_name(&self) -> String {
         default_persistent_session_name_from_id(&self.id)
     }
@@ -3560,7 +3570,7 @@ mod tests {
     };
     use termirust_domain::{
         HostedSessionId, HostedSessionState, PresetId, ProjectId, Revision, SessionLaunchRoute,
-        SessionOrigin, TitleSource,
+        SessionOrigin, SshAgentForwardingPolicy, SshAuthenticationKind, TitleSource,
     };
 
     #[test]
@@ -3941,6 +3951,52 @@ mod tests {
         assert!(!profile.persistent_session);
         assert_eq!(profile.persistent_session_name, None);
         assert!(!profile.persistent_session_detach_others);
+    }
+
+    #[test]
+    fn legacy_host_profiles_project_to_safe_ssh_access_policies() {
+        let password: HostProfile = serde_json::from_str(
+            r#"{
+                "id": "profile-password",
+                "label": "password",
+                "host": "password.example.com",
+                "username": "deploy"
+            }"#,
+        )
+        .expect("legacy password profile should deserialize");
+        let private_key: HostProfile = serde_json::from_str(
+            r#"{
+                "id": "profile-key",
+                "label": "key",
+                "host": "key.example.com",
+                "username": "deploy",
+                "auth_mode": "private_key",
+                "key_path": "/tmp/id_ed25519"
+            }"#,
+        )
+        .expect("legacy private-key profile should deserialize");
+
+        let password_policy = password.legacy_ssh_access_policy();
+        assert_eq!(
+            password_policy.authentication,
+            SshAuthenticationKind::Password
+        );
+        assert_eq!(
+            password_policy.agent_forwarding,
+            SshAgentForwardingPolicy::Disabled
+        );
+
+        let key_policy = private_key.legacy_ssh_access_policy();
+        assert_eq!(key_policy.authentication, SshAuthenticationKind::PrivateKey);
+        assert_eq!(
+            key_policy.agent_forwarding,
+            SshAgentForwardingPolicy::Disabled
+        );
+
+        let serialized = serde_json::to_value(private_key).expect("serialize legacy profile");
+        assert!(serialized.get("ssh_access_policy").is_none());
+        assert!(serialized.get("agent_forwarding").is_none());
+        assert!(serialized.get("certificate_signer").is_none());
     }
 
     #[test]

@@ -15,6 +15,7 @@ pub mod runtime;
 pub mod runtime_resume;
 pub mod search;
 pub mod session;
+pub mod ssh_access;
 pub mod transcript;
 pub mod worktree;
 
@@ -121,6 +122,12 @@ pub use session::{
     MAX_PATH_SEARCH_DIRECTORIES, MAX_SESSION_TITLE_SCALARS, MAX_SESSIONS_PER_PROJECT,
     ResolvedLaunch, SessionLaunchRoute, SessionMutation, SessionOrigin, SessionStateError,
     SessionTitle, TitleSource, automatic_title_from_explicit_input, reduce_session, resolve_launch,
+};
+pub use ssh_access::{
+    SSH_ACCESS_CONTRACT_VERSION, SshAccessCapability, SshAccessCapabilityState, SshAccessError,
+    SshAccessMaterial, SshAccessPlan, SshAccessPolicy, SshAccessRequest,
+    SshAccessRuntimeCapabilities, SshAgentForwardingPolicy, SshAuthenticationKind,
+    SshCapabilityAvailability, SshCertificateSigner,
 };
 pub use transcript::{
     ExportManifest, MAX_PROVIDER_CONTRACT_BYTES, MAX_PROVIDER_RECORD_REF_BYTES,
