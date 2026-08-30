@@ -28,6 +28,7 @@ members = [
     "crates/termirust-relay-client",
     "crates/termirust-relay-server",
     "crates/termirust-store",
+    "crates/termirust-tui",
     "crates/termirust-ui-contract",
     "crates/termirust-update-trust",
 ]

@@ -128,6 +128,28 @@ pub(crate) fn validate_session_metadata_bytes(bytes: &[u8]) -> Result<Revision, 
 }
 
 impl SessionRepository {
+    pub(crate) fn load_existing_read_only(
+        root: impl Into<PathBuf>,
+    ) -> Result<SessionSnapshot, StoreError> {
+        let repository = Self {
+            root: root.into(),
+            data_root: PathBuf::new(),
+            writer: Arc::new(SystemAtomicWriter),
+        };
+        match repository.read_document(SESSIONS_FILE) {
+            Ok(document) => Ok(snapshot(document, StoreHealth::Healthy, false)),
+            Err(StoreError::Corrupt { .. })
+            | Err(StoreError::Io {
+                kind: io::ErrorKind::NotFound,
+                ..
+            }) => {
+                let backup = repository.read_document(SESSIONS_BACKUP_FILE)?;
+                Ok(snapshot(backup, StoreHealth::RecoveredLastGood, true))
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     pub fn open(
         root: impl Into<PathBuf>,
         data_root: impl Into<PathBuf>,

@@ -3,6 +3,7 @@ mod atomic;
 pub mod continuity;
 pub mod controller_devices;
 pub mod controller_network;
+mod fleet;
 pub mod health;
 pub mod journal;
 pub mod lease;
@@ -27,6 +28,7 @@ pub use controller_devices::{
 pub use controller_network::{
     ControllerNetworkRepository, ControllerNetworkSnapshot, ControllerNetworkStoreError,
 };
+pub use fleet::{FleetStoreSnapshot, load_fleet_read_only};
 pub use health::{
     HealthCheckId, HealthCheckKind, HealthError, HealthErrorCode, HealthEvidenceCode,
     HealthFinding, HealthFindingState, HealthReport, HealthRepository, IndexRepairKind,

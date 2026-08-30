@@ -216,6 +216,17 @@ pub(crate) fn validate_project_metadata_bytes(bytes: &[u8]) -> Result<Revision, 
 }
 
 impl ProjectRepository {
+    pub(crate) fn load_existing_read_only(
+        root: impl Into<PathBuf>,
+    ) -> Result<ProjectSnapshot, StoreError> {
+        let repository = Self {
+            root: root.into(),
+            writer: Arc::new(SystemAtomicWriter),
+        };
+        repository.validate_format_locked()?;
+        repository.load_locked()
+    }
+
     pub fn open(root: impl Into<PathBuf>) -> Result<Self, StoreError> {
         Self::open_with(
             root,

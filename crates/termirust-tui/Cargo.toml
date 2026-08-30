@@ -1,0 +1,23 @@
+[package]
+name = "termirust-tui"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Read-only terminal fleet navigator for TermiRust"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+dirs = "=6.0.0"
+ratatui = { version = "=0.30.2", default-features = false, features = ["crossterm", "layout-cache"] }
+signal-hook = "=0.3.18"
+termirust-domain = { version = "0.1.0", path = "../termirust-domain" }
+termirust-store = { version = "0.1.0", path = "../termirust-store" }
+
+[dev-dependencies]
+libc = "=0.2.183"
+portable-pty = "=0.9.0"
+tempfile = "=3.27.0"
+
+[[bin]]
+name = "termirust-tui"
+path = "src/main.rs"
