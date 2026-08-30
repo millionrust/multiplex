@@ -1,10 +1,13 @@
 mod common;
 
+use std::fs;
 use std::sync::{Arc, Mutex};
 
 use common::*;
 use termirust_cli::{Cancellation, CliData, CliError, ErrorCode, ManagementCommand};
-use termirust_domain::{CommandId, HostInstanceId, HostLifecycle, HostedSessionState, Revision};
+use termirust_domain::{
+    CommandId, HostInstanceId, HostLifecycle, HostedSessionState, Revision, SessionMutation,
+};
 use termirust_store::{HostLease, HostMetadata};
 
 #[test]
@@ -231,6 +234,258 @@ fn management_command_debug_redacts_user_title() {
         title: "PRIVATE-TITLE-CANARY".into(),
     };
     assert!(!format!("{command:?}").contains("PRIVATE-TITLE-CANARY"));
+}
+
+#[test]
+fn removal_previews_exact_manifest_and_quarantines_only_owned_data() {
+    let seed = seed_store();
+    let session = insert_session(&seed, HostedSessionState::Exited, true);
+    let session_root = seed
+        .config_root
+        .join("durable-sessions")
+        .join(SESSION_ID.to_string());
+    fs::create_dir_all(session_root.join("transcripts")).unwrap();
+    fs::write(session_root.join("journal-1.trj"), b"journal").unwrap();
+    fs::write(
+        session_root.join("transcripts").join("records.jsonl"),
+        b"private transcript fixture",
+    )
+    .unwrap();
+    let sentinel = seed.temp.path().join("unrelated-sentinel");
+    fs::write(&sentinel, b"must-survive").unwrap();
+    let service = service(
+        &seed,
+        Arc::new(Mutex::new(FakeLauncherState::default())),
+        Arc::new(Mutex::new(FakeControllerState::default())),
+    );
+    let cancellation = Cancellation::default();
+
+    let preview = service
+        .prepare_management_removal(SESSION_ID, session.revision, &cancellation)
+        .unwrap();
+    assert_eq!(preview.session_id, SESSION_ID);
+    assert_eq!(preview.manifest.journal_bytes, 7);
+    assert_eq!(preview.manifest.transcript_bytes, 26);
+    assert!(preview.manifest.requires_title_confirmation());
+
+    let mismatch = service
+        .execute_management(
+            ManagementCommand::Remove {
+                command_id: CommandId::new(),
+                session_id: SESSION_ID,
+                expected_revision: preview.expected_revision,
+                expected_manifest: preview.manifest,
+                title_confirmation: Some("wrong title".into()),
+            },
+            &cancellation,
+        )
+        .unwrap_err();
+    assert_eq!(mismatch.code, ErrorCode::Validation);
+    assert_eq!(seed.sessions().load().unwrap().sessions.len(), 1);
+
+    let removed = mutation(
+        service
+            .execute_management(
+                ManagementCommand::Remove {
+                    command_id: CommandId::new(),
+                    session_id: SESSION_ID,
+                    expected_revision: preview.expected_revision,
+                    expected_manifest: preview.manifest,
+                    title_confirmation: Some("Counter session".into()),
+                },
+                &cancellation,
+            )
+            .unwrap(),
+    );
+    assert_eq!(removed.outcome, "removed");
+    assert!(seed.sessions().load().unwrap().sessions.is_empty());
+    assert!(!session_root.exists());
+    assert!(
+        seed.config_root
+            .join("durable-session-quarantine")
+            .join(SESSION_ID.to_string())
+            .is_dir()
+    );
+    assert_eq!(fs::read(sentinel).unwrap(), b"must-survive");
+}
+
+#[test]
+fn metadata_only_removal_requires_the_reviewed_remove_token() {
+    let seed = seed_store();
+    let session = insert_session(&seed, HostedSessionState::Exited, true);
+    let service = service(
+        &seed,
+        Arc::new(Mutex::new(FakeLauncherState::default())),
+        Arc::new(Mutex::new(FakeControllerState::default())),
+    );
+    let cancellation = Cancellation::default();
+    let preview = service
+        .prepare_management_removal(SESSION_ID, session.revision, &cancellation)
+        .unwrap();
+    assert!(!preview.manifest.requires_title_confirmation());
+
+    let error = service
+        .execute_management(
+            ManagementCommand::Remove {
+                command_id: CommandId::new(),
+                session_id: SESSION_ID,
+                expected_revision: preview.expected_revision,
+                expected_manifest: preview.manifest,
+                title_confirmation: None,
+            },
+            &cancellation,
+        )
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Validation);
+    assert_eq!(seed.sessions().load().unwrap().sessions.len(), 1);
+
+    let removed = mutation(
+        service
+            .execute_management(
+                ManagementCommand::Remove {
+                    command_id: CommandId::new(),
+                    session_id: SESSION_ID,
+                    expected_revision: preview.expected_revision,
+                    expected_manifest: preview.manifest,
+                    title_confirmation: Some("REMOVE".into()),
+                },
+                &cancellation,
+            )
+            .unwrap(),
+    );
+    assert_eq!(removed.outcome, "removed");
+    assert!(seed.sessions().load().unwrap().sessions.is_empty());
+}
+
+#[test]
+fn removal_rejects_cancelled_preview_and_manifest_race() {
+    let seed = seed_store();
+    let session = insert_session(&seed, HostedSessionState::Exited, true);
+    let session_root = seed
+        .config_root
+        .join("durable-sessions")
+        .join(SESSION_ID.to_string());
+    fs::create_dir_all(&session_root).unwrap();
+    let service = service(
+        &seed,
+        Arc::new(Mutex::new(FakeLauncherState::default())),
+        Arc::new(Mutex::new(FakeControllerState::default())),
+    );
+    let cancelled = Cancellation::default();
+    cancelled.cancel();
+    assert_eq!(
+        service
+            .prepare_management_removal(SESSION_ID, session.revision, &cancelled)
+            .unwrap_err()
+            .code,
+        ErrorCode::Cancelled
+    );
+
+    let preview = service
+        .prepare_management_removal(SESSION_ID, session.revision, &Cancellation::default())
+        .unwrap();
+    fs::create_dir_all(session_root.join("artifacts")).unwrap();
+    fs::write(
+        session_root.join("artifacts").join("changed-after-preview"),
+        b"changed",
+    )
+    .unwrap();
+    let error = service
+        .execute_management(
+            ManagementCommand::Remove {
+                command_id: CommandId::new(),
+                session_id: SESSION_ID,
+                expected_revision: preview.expected_revision,
+                expected_manifest: preview.manifest,
+                title_confirmation: None,
+            },
+            &Cancellation::default(),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Conflict);
+    assert_eq!(seed.sessions().load().unwrap().sessions.len(), 1);
+    assert!(session_root.is_dir());
+}
+
+#[test]
+fn removal_rejects_metadata_revision_race() {
+    let seed = seed_store();
+    let session = insert_session(&seed, HostedSessionState::Exited, true);
+    let service = service(
+        &seed,
+        Arc::new(Mutex::new(FakeLauncherState::default())),
+        Arc::new(Mutex::new(FakeControllerState::default())),
+    );
+    let preview = service
+        .prepare_management_removal(SESSION_ID, session.revision, &Cancellation::default())
+        .unwrap();
+    let repository = seed.sessions();
+    repository
+        .mutate_session(
+            SESSION_ID,
+            preview.expected_revision,
+            SessionMutation::SetPinned(true),
+            2,
+        )
+        .unwrap();
+
+    let error = service
+        .execute_management(
+            ManagementCommand::Remove {
+                command_id: CommandId::new(),
+                session_id: SESSION_ID,
+                expected_revision: preview.expected_revision,
+                expected_manifest: preview.manifest,
+                title_confirmation: None,
+            },
+            &Cancellation::default(),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Conflict);
+    assert!(repository.load().unwrap().sessions[0].pinned);
+}
+
+#[cfg(unix)]
+#[test]
+fn removal_preview_rejects_symlinked_session_data_and_preserves_target() {
+    use std::os::unix::fs::symlink;
+
+    let seed = seed_store();
+    let session = insert_session(&seed, HostedSessionState::Exited, true);
+    let outside = seed.temp.path().join("outside-owned-root");
+    fs::create_dir_all(&outside).unwrap();
+    let sentinel = outside.join("sentinel");
+    fs::write(&sentinel, b"must-survive").unwrap();
+    let session_root = seed
+        .config_root
+        .join("durable-sessions")
+        .join(SESSION_ID.to_string());
+    fs::create_dir_all(session_root.parent().unwrap()).unwrap();
+    symlink(&outside, &session_root).unwrap();
+    let service = service(
+        &seed,
+        Arc::new(Mutex::new(FakeLauncherState::default())),
+        Arc::new(Mutex::new(FakeControllerState::default())),
+    );
+
+    let error = service
+        .prepare_management_removal(SESSION_ID, session.revision, &Cancellation::default())
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::Unavailable);
+    assert_eq!(fs::read(sentinel).unwrap(), b"must-survive");
+    assert_eq!(seed.sessions().load().unwrap().sessions.len(), 1);
+}
+
+#[test]
+fn removal_command_debug_redacts_confirmation() {
+    let command = ManagementCommand::Remove {
+        command_id: CommandId::new(),
+        session_id: SESSION_ID,
+        expected_revision: Revision::new(1),
+        expected_manifest: Default::default(),
+        title_confirmation: Some("PRIVATE-REMOVAL-CANARY".into()),
+    };
+    assert!(!format!("{command:?}").contains("PRIVATE-REMOVAL-CANARY"));
 }
 
 fn write_host_metadata(seed: &SeededStore, host_id: HostInstanceId) -> HostLease {

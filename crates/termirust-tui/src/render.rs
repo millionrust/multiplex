@@ -210,10 +210,16 @@ pub fn render_management(
             )));
             lines.push(Line::from(localize(
                 options.locale,
-                if management.intent() == Some(ManagementIntent::Launch) {
+                if management.intent() == Some(ManagementIntent::Remove)
+                    && management.cancellation_available()
+                {
+                    "Esc cancels the bounded preview before any removal command starts."
+                } else if management.cancellation_available() {
                     "Esc requests cancellation before the Host becomes ready."
                 } else if management.intent() == Some(ManagementIntent::Stop) {
                     "Stop cannot be cancelled after the first Host signal."
+                } else if management.intent() == Some(ManagementIntent::Remove) {
+                    "Removal commit cannot be cancelled or undone. Wait for the exact result."
                 } else {
                     "Wait for the revision-checked command result."
                 },
@@ -271,6 +277,17 @@ fn render_management_draft(
             options.locale,
             "Loading bounded preset choices...",
         ))),
+        Some(ManagementDraft::LoadingRemoval { target }) => {
+            lines.push(management_target_line(target, options));
+            lines.push(Line::from(localize(
+                options.locale,
+                "Scanning a bounded aggregate removal manifest...",
+            )));
+            lines.push(Line::from(localize(
+                options.locale,
+                "Esc cancels this preview without changing the Session.",
+            )));
+        }
         Some(ManagementDraft::Launch {
             project_name,
             choices,
@@ -323,6 +340,56 @@ fn render_management_draft(
             lines.push(Line::from(localize(
                 options.locale,
                 "Enter confirm once | Esc cancel (safe default)",
+            )));
+        }
+        Some(ManagementDraft::Remove {
+            target,
+            preview,
+            confirmation,
+            confirmation_invalid,
+        }) => {
+            lines.push(management_target_line(target, options));
+            lines.push(Line::from(localize(
+                options.locale,
+                "Remove metadata and quarantine exact owned data. No process is stopped and no undo is available.",
+            )));
+            lines.push(Line::from(format!(
+                "{} {} B  {} {} B  {} {} B",
+                localize(options.locale, "Metadata:"),
+                preview.manifest.metadata_bytes,
+                localize(options.locale, "Journal:"),
+                preview.manifest.journal_bytes,
+                localize(options.locale, "Transcript:"),
+                preview.manifest.transcript_bytes,
+            )));
+            lines.push(Line::from(format!(
+                "{} {} B  {} {} B  {} {}",
+                localize(options.locale, "Artifacts:"),
+                preview.manifest.artifact_bytes,
+                localize(options.locale, "Total:"),
+                preview.manifest.total_bytes(),
+                localize(options.locale, "Files:"),
+                preview.manifest.file_count,
+            )));
+            let instruction = if preview.manifest.requires_title_confirmation() {
+                "Type the exact Session title to confirm:"
+            } else {
+                "Type REMOVE to confirm:"
+            };
+            lines.push(Line::from(localize(options.locale, instruction)));
+            lines.push(Line::from(format!(
+                "> {}_",
+                display_user(confirmation, "confirmation", options)
+            )));
+            if *confirmation_invalid {
+                lines.push(Line::from(localize(
+                    options.locale,
+                    "Confirmation does not match. Nothing was removed.",
+                )));
+            }
+            lines.push(Line::from(localize(
+                options.locale,
+                "Enter remove once | Esc cancel (safe default)",
             )));
         }
         None => lines.push(Line::from(localize(
@@ -574,7 +641,7 @@ fn render_status(frame: &mut Frame<'_>, area: Rect, model: &TuiModel, options: R
         Paragraph::new(vec![
             Line::from(summary),
             Line::from(Span::styled(
-                "n launch  e rename  p pin  m read  s stop  a archive/restore  ? help",
+                "n launch  e rename  p pin  m read  s stop  a archive/restore  x remove  ? help",
                 muted(options),
             )),
         ])
@@ -592,7 +659,9 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, options: RenderOptions) {
                 "Left/Right collapse or expand Projects. Enter attaches the selected Session.",
             ),
             Line::from("Terminal: Ctrl+Space then Esc detaches without stopping the Host."),
-            Line::from("Fleet: n launch, e rename, p pin, m mark read, s stop, a archive/restore."),
+            Line::from(
+                "Fleet: n launch, e rename, p pin, m mark read, s stop, a archive/restore, x remove.",
+            ),
             Line::from("Management keys are never interpreted while terminal input has focus."),
             Line::from("Use --inline, --no-color or --recording-friendly when needed."),
         ])
@@ -985,6 +1054,67 @@ mod tests {
             assert!(output.contains("Enter confirm once"));
             assert!(output.contains("[session hidden]"));
             assert!(!output.contains("Build"));
+        }
+    }
+
+    #[test]
+    fn removal_preview_is_aggregate_recording_safe_and_localized() {
+        let model = ready_model();
+        let mut session = model.selected_session().unwrap().clone();
+        session.state = "exited".into();
+        session.archived = true;
+        session.title = "PRIVATE-SESSION-TITLE".into();
+        let mut management = ManagementModel::default();
+        management.begin_session(ManagementIntent::Remove, &session);
+        management.removal_preview_loaded(
+            management.generation(),
+            Ok(crate::RemovalPreview {
+                expected_revision: 12,
+                manifest: termirust_cli::ManagementRemovalManifest {
+                    metadata_bytes: 10,
+                    journal_bytes: 20,
+                    transcript_bytes: 30,
+                    artifact_bytes: 40,
+                    file_count: 4,
+                },
+            }),
+        );
+        management.append_paste("PRIVATE-CONFIRMATION");
+
+        for locale in [
+            TuiLocale::English,
+            TuiLocale::PseudoExpanded,
+            TuiLocale::PseudoRtl,
+        ] {
+            let backend = TestBackend::new(80, 20);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal
+                .draw(|frame| {
+                    render_management(
+                        frame,
+                        &management,
+                        RenderOptions {
+                            locale,
+                            no_color: true,
+                            recording_friendly: true,
+                        },
+                    );
+                })
+                .unwrap();
+            let output = terminal
+                .backend()
+                .buffer()
+                .content()
+                .iter()
+                .map(|cell| cell.symbol())
+                .collect::<String>();
+            assert!(output.contains("Session management"));
+            assert!(output.contains("100 B"));
+            assert!(output.contains("4"));
+            assert!(output.contains("[session hidden]"));
+            assert!(output.contains("[confirmation hidden]"));
+            assert!(!output.contains("PRIVATE-SESSION-TITLE"));
+            assert!(!output.contains("PRIVATE-CONFIRMATION"));
         }
     }
 }

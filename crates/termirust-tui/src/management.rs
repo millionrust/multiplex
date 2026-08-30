@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use termirust_cli::{
     Cancellation, CliCommand, CliData, CliPaths, CommandService, ErrorCode, LocalCommandService,
-    ManagementCommand as LocalCommand,
+    ManagementCommand as LocalCommand, ManagementRemovalManifest,
 };
 use termirust_domain::{CommandId, GroupId, ProjectId, Revision};
 
@@ -24,6 +24,7 @@ pub enum ManagementIntent {
     Stop,
     Archive,
     Restore,
+    Remove,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -43,6 +44,12 @@ pub struct LaunchChoice {
     pub label: String,
     pub enabled: bool,
     pub safe: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RemovalPreview {
+    pub expected_revision: u64,
+    pub manifest: ManagementRemovalManifest,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -77,6 +84,9 @@ pub enum ManagementDraft {
         project_name: String,
         group_id: Option<String>,
     },
+    LoadingRemoval {
+        target: ManagementTarget,
+    },
     Launch {
         project_id: String,
         project_name: String,
@@ -91,6 +101,12 @@ pub enum ManagementDraft {
     Confirm {
         kind: ConfirmationKind,
         target: ManagementTarget,
+    },
+    Remove {
+        target: ManagementTarget,
+        preview: RemovalPreview,
+        confirmation: String,
+        confirmation_invalid: bool,
     },
 }
 
@@ -190,6 +206,13 @@ pub enum ManagementCommand {
         session_id: String,
         expected_revision: u64,
     },
+    Remove {
+        command_id: CommandId,
+        session_id: String,
+        expected_revision: u64,
+        expected_manifest: ManagementRemovalManifest,
+        title_confirmation: Option<String>,
+    },
 }
 
 impl fmt::Debug for ManagementCommand {
@@ -203,6 +226,7 @@ impl fmt::Debug for ManagementCommand {
             Self::Archive { .. } => "archive",
             Self::Restore { .. } => "restore",
             Self::StopAndArchive { .. } => "stop-and-archive",
+            Self::Remove { .. } => "remove",
         };
         formatter
             .debug_struct("ManagementCommand")
@@ -215,7 +239,13 @@ impl fmt::Debug for ManagementCommand {
 pub enum ManagementEffect {
     None,
     Close,
-    LoadLaunchChoices { project_id: String },
+    LoadLaunchChoices {
+        project_id: String,
+    },
+    LoadRemovalPreview {
+        session_id: String,
+        expected_session_revision: u64,
+    },
     Execute(ManagementCommand),
 }
 
@@ -283,6 +313,12 @@ impl ManagementModel {
         }
     }
 
+    pub fn cancellation_available(&self) -> bool {
+        matches!(self.progress, CommandProgress::Running)
+            && (self.intent == Some(ManagementIntent::Launch)
+                || (self.intent == Some(ManagementIntent::Remove) && self.dispatched.is_none()))
+    }
+
     pub fn begin_launch(
         &mut self,
         project_id: String,
@@ -321,6 +357,10 @@ impl ManagementModel {
             ManagementIntent::Restore if !target.archived => Some((
                 "This Session is not archived.",
                 "Choose an archived Session and try again.",
+            )),
+            ManagementIntent::Remove if !target.archived || target.state != "exited" => Some((
+                "Only an exited archived Session can be removed.",
+                "Stop and archive the Session, then refresh the fleet.",
             )),
             ManagementIntent::MarkRead if !target.unread => Some((
                 "This Session has no unread activity.",
@@ -371,6 +411,15 @@ impl ManagementModel {
                 kind: ConfirmationKind::Restore,
                 target,
             },
+            ManagementIntent::Remove => {
+                let effect = ManagementEffect::LoadRemovalPreview {
+                    session_id: target.id.clone(),
+                    expected_session_revision: target.revision,
+                };
+                self.draft = Some(ManagementDraft::LoadingRemoval { target });
+                self.progress = CommandProgress::Running;
+                return effect;
+            }
             ManagementIntent::Launch => {
                 self.progress = CommandProgress::Failed(ManagementFailure::validation(
                     "Launch requires a Project selection.",
@@ -382,6 +431,31 @@ impl ManagementModel {
         self.draft = Some(draft);
         self.progress = CommandProgress::Reviewing;
         ManagementEffect::None
+    }
+
+    pub fn removal_preview_loaded(
+        &mut self,
+        generation: u64,
+        result: Result<RemovalPreview, ManagementFailure>,
+    ) {
+        if generation != self.generation || self.intent != Some(ManagementIntent::Remove) {
+            return;
+        }
+        match result {
+            Ok(preview) => {
+                let Some(ManagementDraft::LoadingRemoval { target }) = self.draft.take() else {
+                    return;
+                };
+                self.draft = Some(ManagementDraft::Remove {
+                    target,
+                    preview,
+                    confirmation: String::new(),
+                    confirmation_invalid: false,
+                });
+                self.progress = CommandProgress::Reviewing;
+            }
+            Err(error) => self.progress = CommandProgress::Failed(error),
+        }
     }
 
     pub fn launch_choices_loaded(
@@ -433,7 +507,7 @@ impl ManagementModel {
         }
         if key.code == KeyCode::Esc {
             return match self.progress {
-                CommandProgress::Running if self.intent == Some(ManagementIntent::Launch) => {
+                CommandProgress::Running if self.cancellation_available() => {
                     self.cancellation.cancel();
                     ManagementEffect::None
                 }
@@ -520,17 +594,72 @@ impl ManagementModel {
                 let command = command_for_confirmation(*kind, target);
                 self.dispatch(command)
             }
+            Some(ManagementDraft::Remove {
+                target,
+                preview,
+                confirmation,
+                confirmation_invalid,
+            }) => match key.code {
+                KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    confirmation.clear();
+                    *confirmation_invalid = false;
+                    ManagementEffect::None
+                }
+                KeyCode::Backspace => {
+                    confirmation.pop();
+                    *confirmation_invalid = false;
+                    ManagementEffect::None
+                }
+                KeyCode::Char(character)
+                    if !character.is_control()
+                        && (key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT)
+                        && confirmation.chars().count() < MAX_MANAGEMENT_TEXT_SCALARS =>
+                {
+                    confirmation.push(character);
+                    *confirmation_invalid = false;
+                    ManagementEffect::None
+                }
+                KeyCode::Enter => {
+                    let expected = if preview.manifest.requires_title_confirmation() {
+                        target.title.as_str()
+                    } else {
+                        "REMOVE"
+                    };
+                    if confirmation != expected {
+                        *confirmation_invalid = true;
+                        return ManagementEffect::None;
+                    }
+                    let command = ManagementCommand::Remove {
+                        command_id: CommandId::new(),
+                        session_id: target.id.clone(),
+                        expected_revision: preview.expected_revision,
+                        expected_manifest: preview.manifest,
+                        title_confirmation: Some(confirmation.clone()),
+                    };
+                    self.dispatch(command)
+                }
+                _ => ManagementEffect::None,
+            },
             _ => ManagementEffect::None,
         }
     }
 
     pub fn append_paste(&mut self, text: &str) {
-        let Some(ManagementDraft::Rename { value, .. }) = self.draft.as_mut() else {
-            return;
-        };
         if !matches!(self.progress, CommandProgress::Reviewing) {
             return;
         }
+        let value = match self.draft.as_mut() {
+            Some(ManagementDraft::Rename { value, .. }) => value,
+            Some(ManagementDraft::Remove {
+                confirmation,
+                confirmation_invalid,
+                ..
+            }) => {
+                *confirmation_invalid = false;
+                confirmation
+            }
+            _ => return,
+        };
         let remaining = MAX_MANAGEMENT_TEXT_SCALARS.saturating_sub(value.chars().count());
         value.extend(
             text.chars()
@@ -617,6 +746,13 @@ pub trait ManagementExecutor: Send + Sync {
         cancellation: &Cancellation,
     ) -> Result<Vec<LaunchChoice>, ManagementFailure>;
 
+    fn removal_preview(
+        &self,
+        session_id: &str,
+        expected_session_revision: u64,
+        cancellation: &Cancellation,
+    ) -> Result<RemovalPreview, ManagementFailure>;
+
     fn execute(
         &self,
         command: ManagementCommand,
@@ -684,6 +820,27 @@ impl ManagementExecutor for LocalManagementExecutor {
                 safe: preset.risk == "safe",
             })
             .collect())
+    }
+
+    fn removal_preview(
+        &self,
+        session_id: &str,
+        expected_session_revision: u64,
+        cancellation: &Cancellation,
+    ) -> Result<RemovalPreview, ManagementFailure> {
+        let session_id = parse_id(session_id, "Session")?;
+        let preview = self
+            .service()
+            .prepare_management_removal(
+                session_id,
+                Revision::new(expected_session_revision),
+                cancellation,
+            )
+            .map_err(map_cli_error)?;
+        Ok(RemovalPreview {
+            expected_revision: preview.expected_revision.get(),
+            manifest: preview.manifest,
+        })
     }
 
     fn execute(
@@ -795,6 +952,19 @@ fn map_command(command: ManagementCommand) -> Result<LocalCommand, ManagementFai
             command_id,
             session_id: parse_id(&session_id, "Session")?,
             expected_revision: Revision::new(expected_revision),
+        },
+        ManagementCommand::Remove {
+            command_id,
+            session_id,
+            expected_revision,
+            expected_manifest,
+            title_confirmation,
+        } => LocalCommand::Remove {
+            command_id,
+            session_id: parse_id(&session_id, "Session")?,
+            expected_revision: Revision::new(expected_revision),
+            expected_manifest,
+            title_confirmation,
         },
     })
 }
@@ -937,6 +1107,7 @@ fn success_summary(outcome: &str) -> &'static str {
         "stopped_and_archived" => "Session stopped, confirmed exited, and archived.",
         "archived" => "Exited Session archived.",
         "restored" => "Session restored as metadata only.",
+        "removed" => "Session metadata removed and owned data quarantined.",
         _ => "Session command completed.",
     }
 }
@@ -1180,5 +1351,148 @@ mod tests {
             title: "PRIVATE-TITLE-CANARY".into(),
         };
         assert!(!format!("{command:?}").contains("PRIVATE-TITLE-CANARY"));
+    }
+
+    #[test]
+    fn removal_requires_archived_exit_exact_preview_and_typed_title() {
+        let mut archived = session();
+        archived.state = "exited".into();
+        archived.archived = true;
+        let mut model = ManagementModel::default();
+        assert_eq!(
+            model.begin_session(ManagementIntent::Remove, &archived),
+            ManagementEffect::LoadRemovalPreview {
+                session_id: archived.id.clone(),
+                expected_session_revision: 4,
+            }
+        );
+        assert!(model.cancellation_available());
+        let generation = model.generation();
+        let manifest = ManagementRemovalManifest {
+            metadata_bytes: 10,
+            journal_bytes: 20,
+            transcript_bytes: 30,
+            artifact_bytes: 40,
+            file_count: 4,
+        };
+        model.removal_preview_loaded(
+            generation,
+            Ok(RemovalPreview {
+                expected_revision: 9,
+                manifest,
+            }),
+        );
+        assert_eq!(model.progress(), &CommandProgress::Reviewing);
+
+        model.append_paste("wrong\n");
+        assert_eq!(
+            model.handle_key(key(KeyCode::Enter), Instant::now()),
+            ManagementEffect::None
+        );
+        let Some(ManagementDraft::Remove {
+            confirmation_invalid,
+            ..
+        }) = model.draft()
+        else {
+            panic!("removal draft expected");
+        };
+        assert!(*confirmation_invalid);
+
+        model.handle_key(
+            KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+            Instant::now(),
+        );
+        model.append_paste(&archived.title);
+        assert!(matches!(
+            model.handle_key(key(KeyCode::Enter), Instant::now()),
+            ManagementEffect::Execute(ManagementCommand::Remove {
+                expected_revision: 9,
+                expected_manifest,
+                title_confirmation: Some(ref title),
+                ..
+            }) if expected_manifest == manifest && title == &archived.title
+        ));
+        assert!(!model.cancellation_available());
+        assert_eq!(
+            model.handle_key(key(KeyCode::Esc), Instant::now()),
+            ManagementEffect::None
+        );
+    }
+
+    #[test]
+    fn removal_without_content_requires_remove_token_and_bounds_input() {
+        let mut archived = session();
+        archived.state = "exited".into();
+        archived.archived = true;
+        let mut model = ManagementModel::default();
+        model.begin_session(ManagementIntent::Remove, &archived);
+        model.removal_preview_loaded(
+            model.generation(),
+            Ok(RemovalPreview {
+                expected_revision: 6,
+                manifest: ManagementRemovalManifest::default(),
+            }),
+        );
+        model.append_paste(&format!("REMOVE\n{}", "x".repeat(300)));
+        let Some(ManagementDraft::Remove { confirmation, .. }) = model.draft() else {
+            panic!("removal draft expected");
+        };
+        assert!(!confirmation.contains('\n'));
+        assert_eq!(confirmation.chars().count(), MAX_MANAGEMENT_TEXT_SCALARS);
+        model.handle_key(
+            KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+            Instant::now(),
+        );
+        model.append_paste("REMOVE");
+        assert!(matches!(
+            model.handle_key(key(KeyCode::Enter), Instant::now()),
+            ManagementEffect::Execute(ManagementCommand::Remove {
+                title_confirmation: Some(ref confirmation),
+                ..
+            }) if confirmation == "REMOVE"
+        ));
+    }
+
+    #[test]
+    fn removal_rejects_live_session_and_discards_stale_preview() {
+        let live = session();
+        let mut model = ManagementModel::default();
+        assert_eq!(
+            model.begin_session(ManagementIntent::Remove, &live),
+            ManagementEffect::None
+        );
+        assert!(matches!(model.progress(), CommandProgress::Failed(_)));
+
+        let mut archived = live;
+        archived.state = "exited".into();
+        archived.archived = true;
+        model.begin_session(ManagementIntent::Remove, &archived);
+        let generation = model.generation();
+        assert_eq!(
+            model.handle_key(key(KeyCode::Esc), Instant::now()),
+            ManagementEffect::None
+        );
+        assert!(model.cancellation().is_cancelled());
+        model.close();
+        model.removal_preview_loaded(
+            generation,
+            Ok(RemovalPreview {
+                expected_revision: 5,
+                manifest: ManagementRemovalManifest::default(),
+            }),
+        );
+        assert!(!model.active());
+    }
+
+    #[test]
+    fn removal_command_debug_redacts_confirmation() {
+        let command = ManagementCommand::Remove {
+            command_id: CommandId::new(),
+            session_id: session().id,
+            expected_revision: 4,
+            expected_manifest: ManagementRemovalManifest::default(),
+            title_confirmation: Some("PRIVATE-REMOVAL-CANARY".into()),
+        };
+        assert!(!format!("{command:?}").contains("PRIVATE-REMOVAL-CANARY"));
     }
 }

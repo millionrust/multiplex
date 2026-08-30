@@ -19,7 +19,7 @@ pub use input::{InputDecision, InteractiveLease, TerminalInputModel, TuiFocus};
 pub use management::{
     CommandProgress, ConfirmationKind, LaunchChoice, LocalManagementExecutor, ManagementCommand,
     ManagementDraft, ManagementEffect, ManagementExecutor, ManagementFailure, ManagementIntent,
-    ManagementModel, ManagementResult,
+    ManagementModel, ManagementResult, RemovalPreview,
 };
 pub use model::{
     FleetGroup, FleetHealth, FleetProject, FleetRevision, FleetSession, FleetSnapshot, LoadState,

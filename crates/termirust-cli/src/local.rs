@@ -19,7 +19,8 @@ use termirust_host_protocol::{CURRENT_PROTOCOL, wire};
 use termirust_session_host::{LaunchDescriptor, StopDeadlines};
 use termirust_store::{
     JournalLimits, PresetRepository, PresetSnapshot, ProjectRepository, ProjectSnapshot,
-    SessionRepository, SessionSnapshot, StoreError, StoreHealth, read_host_metadata,
+    SessionRemovalManifest, SessionRepository, SessionSnapshot, StoreError, StoreHealth,
+    read_host_metadata,
 };
 use tokio::runtime::Builder;
 use tokio_util::sync::CancellationToken;
@@ -160,6 +161,47 @@ pub trait HostController: Send + Sync {
     ) -> Result<(), CliError>;
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ManagementRemovalManifest {
+    pub metadata_bytes: u64,
+    pub journal_bytes: u64,
+    pub transcript_bytes: u64,
+    pub artifact_bytes: u64,
+    pub file_count: usize,
+}
+
+impl ManagementRemovalManifest {
+    pub fn total_bytes(self) -> u64 {
+        self.metadata_bytes
+            .saturating_add(self.journal_bytes)
+            .saturating_add(self.transcript_bytes)
+            .saturating_add(self.artifact_bytes)
+    }
+
+    pub fn requires_title_confirmation(self) -> bool {
+        self.transcript_bytes > 0 || self.artifact_bytes > 0
+    }
+}
+
+impl From<SessionRemovalManifest> for ManagementRemovalManifest {
+    fn from(value: SessionRemovalManifest) -> Self {
+        Self {
+            metadata_bytes: value.metadata_bytes,
+            journal_bytes: value.journal_bytes,
+            transcript_bytes: value.transcript_bytes,
+            artifact_bytes: value.artifact_bytes,
+            file_count: value.file_count,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ManagementRemovalPreview {
+    pub session_id: HostedSessionId,
+    pub expected_revision: Revision,
+    pub manifest: ManagementRemovalManifest,
+}
+
 #[derive(Clone, Eq, PartialEq)]
 pub enum ManagementCommand {
     Launch {
@@ -205,6 +247,13 @@ pub enum ManagementCommand {
         session_id: HostedSessionId,
         expected_revision: Revision,
     },
+    Remove {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        expected_revision: Revision,
+        expected_manifest: ManagementRemovalManifest,
+        title_confirmation: Option<String>,
+    },
 }
 
 impl fmt::Debug for ManagementCommand {
@@ -218,6 +267,7 @@ impl fmt::Debug for ManagementCommand {
             Self::Archive { .. } => "archive",
             Self::Restore { .. } => "restore",
             Self::StopAndArchive { .. } => "stop-and-archive",
+            Self::Remove { .. } => "remove",
         };
         formatter
             .debug_struct("ManagementCommand")
@@ -420,7 +470,101 @@ impl LocalCommandService {
                 archived.outcome = "stopped_and_archived".into();
                 Ok(CliData::Mutation(archived))
             }
+            ManagementCommand::Remove {
+                command_id: _,
+                session_id,
+                expected_revision,
+                expected_manifest,
+                title_confirmation,
+            } => self.remove_management_session(
+                session_id,
+                expected_revision,
+                expected_manifest,
+                title_confirmation.as_deref(),
+                cancellation,
+            ),
         }
+    }
+
+    pub fn prepare_management_removal(
+        &self,
+        session_id: HostedSessionId,
+        expected_session_revision: Revision,
+        cancellation: &Cancellation,
+    ) -> Result<ManagementRemovalPreview, CliError> {
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let repository = self.sessions()?;
+        let snapshot = repository.load().map_err(map_store)?;
+        let session = require_session(&snapshot.sessions, session_id)?;
+        mutation_revision(&snapshot, session, Some(expected_session_revision))?;
+        let plan = repository.removal_plan(session_id).map_err(map_store)?;
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        Ok(ManagementRemovalPreview {
+            session_id,
+            expected_revision: plan.expected_revision,
+            manifest: plan.manifest.into(),
+        })
+    }
+
+    fn remove_management_session(
+        &self,
+        session_id: HostedSessionId,
+        expected_revision: Revision,
+        expected_manifest: ManagementRemovalManifest,
+        title_confirmation: Option<&str>,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        if title_confirmation
+            .is_some_and(|value| value.chars().count() > 256 || value.chars().any(char::is_control))
+        {
+            return Err(validation(
+                "session removal confirmation is invalid",
+                "Use the bounded confirmation requested by the removal preview.",
+            ));
+        }
+        let repository = self.sessions()?;
+        let plan = repository.removal_plan(session_id).map_err(map_store)?;
+        if plan.expected_revision != expected_revision {
+            return Err(CliError::new(
+                ErrorCode::Conflict,
+                "session metadata changed after the removal preview",
+                "Refresh the fleet and review a new removal preview.",
+            )
+            .with_revision(plan.expected_revision));
+        }
+        if ManagementRemovalManifest::from(plan.manifest) != expected_manifest {
+            return Err(CliError::new(
+                ErrorCode::Conflict,
+                "session data changed after the removal preview",
+                "Refresh the fleet and review the updated removal manifest.",
+            )
+            .with_revision(plan.expected_revision));
+        }
+        let expected_confirmation = if plan.manifest.requires_title_confirmation() {
+            plan.title.as_str()
+        } else {
+            "REMOVE"
+        };
+        if title_confirmation != Some(expected_confirmation) {
+            return Err(validation(
+                "session removal confirmation did not match",
+                "Type the exact confirmation shown in the reviewed removal preview.",
+            ));
+        }
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let removed = repository
+            .remove_session(&plan, expected_revision)
+            .map_err(map_store)?;
+        Ok(mutation("removed", &removed.session))
     }
 
     fn session_metadata_mutation(
@@ -1343,6 +1487,17 @@ fn map_store(error: StoreError) -> CliError {
         StoreError::SessionDomain(SessionStateError::StopRequiredBeforeArchive) => validation(
             "only an exited session can be archived",
             "Run session stop <id> --yes first, wait for Exited, then archive.",
+        ),
+        StoreError::SessionDomain(SessionStateError::RemoveRequiresExitedArchive) => validation(
+            "only an exited archived session can be removed",
+            "Stop and archive the Session before requesting removal.",
+        ),
+        StoreError::SessionDomain(SessionStateError::Store {
+            code: "removal-plan-changed" | "quarantine-conflict",
+        }) => CliError::new(
+            ErrorCode::Conflict,
+            "session removal state changed before commit",
+            "Refresh the fleet and review a new removal preview.",
         ),
         StoreError::SessionDomain(SessionStateError::Unavailable)
         | StoreError::PresetDomain(termirust_domain::PresetError::Unavailable)

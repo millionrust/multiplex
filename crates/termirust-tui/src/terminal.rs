@@ -127,6 +127,10 @@ enum AppEvent {
         generation: u64,
         result: Result<Vec<crate::LaunchChoice>, ManagementFailure>,
     },
+    ManagementRemovalPreview {
+        generation: u64,
+        result: Result<crate::RemovalPreview, ManagementFailure>,
+    },
     ManagementCompleted {
         generation: u64,
         result: Result<crate::ManagementResult, ManagementFailure>,
@@ -339,6 +343,10 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                 management.launch_choices_loaded(generation, result);
                 ModelEffect::None
             }
+            AppEvent::ManagementRemovalPreview { generation, result } => {
+                management.removal_preview_loaded(generation, result);
+                ModelEffect::None
+            }
             AppEvent::ManagementCompleted { generation, result } => {
                 let succeeded = result.is_ok();
                 management.completed(generation, result, Instant::now());
@@ -470,6 +478,7 @@ fn management_shortcut(
         KeyCode::Char('s') => ManagementIntent::Stop,
         KeyCode::Char('a') if session.archived => ManagementIntent::Restore,
         KeyCode::Char('a') => ManagementIntent::Archive,
+        KeyCode::Char('x') => ManagementIntent::Remove,
         _ => return None,
     };
     Some(management.begin_session(intent, session))
@@ -526,6 +535,32 @@ fn apply_management_effect(
                     }))
                     .unwrap_or_else(|_| Err(ManagementFailure::unavailable()));
                     let _ = sender.send(AppEvent::ManagementChoices { generation, result });
+                })
+                .map(|_| ())
+        }
+        ManagementEffect::LoadRemovalPreview {
+            session_id,
+            expected_session_revision,
+        } => {
+            let generation = model.generation();
+            let cancellation = model.cancellation();
+            let Some(executor) = executor.cloned() else {
+                model.removal_preview_loaded(generation, Err(ManagementFailure::unavailable()));
+                return Ok(());
+            };
+            let sender = sender.clone();
+            thread::Builder::new()
+                .name("termirust-tui-removal-preview".into())
+                .spawn(move || {
+                    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                        executor.removal_preview(
+                            &session_id,
+                            expected_session_revision,
+                            &cancellation,
+                        )
+                    }))
+                    .unwrap_or_else(|_| Err(ManagementFailure::unavailable()));
+                    let _ = sender.send(AppEvent::ManagementRemovalPreview { generation, result });
                 })
                 .map(|_| ())
         }
