@@ -1,6 +1,6 @@
 use aes_gcm_siv::aead::{Aead, Payload};
 use aes_gcm_siv::{Aes256GcmSiv, KeyInit, Nonce};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use argon2::{Algorithm, Argon2, Params, Version};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
@@ -272,6 +272,15 @@ fn build_mobile_vault_export(
     exported
         .profiles
         .retain(|profile| profile.source == ProfileSource::User);
+    if exported
+        .profiles
+        .iter()
+        .any(|profile| profile.certificate_path.is_some())
+    {
+        bail!(
+            "Mobile vault export does not yet support OpenSSH certificate hosts; remove those hosts from the export or use the portable desktop bundle"
+        );
+    }
 
     let exported_at_millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -785,6 +794,7 @@ struct SshConfigBlock {
     user: Option<String>,
     port: Option<u16>,
     identity_file: Option<String>,
+    certificate_file: Option<String>,
     proxy_jump: Option<String>,
     unsupported_proxy_command: bool,
 }
@@ -834,6 +844,11 @@ fn parse_ssh_config_hosts(content: &str) -> Vec<HostProfile> {
             "identityfile" => {
                 if block.identity_file.is_none() {
                     block.identity_file = Some(expand_home_path(value));
+                }
+            }
+            "certificatefile" => {
+                if block.certificate_file.is_none() {
+                    block.certificate_file = Some(expand_home_path(value));
                 }
             }
             "proxyjump" => {
@@ -901,6 +916,9 @@ fn flush_ssh_config_block(
                 port: block.port.unwrap_or(22),
                 username,
                 auth_mode,
+                certificate_path: (!key_path.is_empty())
+                    .then(|| block.certificate_file.clone())
+                    .flatten(),
                 key_path,
                 identity_id: None,
                 jump_host_id: block
@@ -1185,6 +1203,92 @@ Host tunnel-box
         assert_eq!(hosts[0].auth_mode, AuthMode::PrivateKey);
         assert_eq!(hosts[0].source, ProfileSource::SshConfig);
         assert!(hosts[0].key_path.ends_with("/.ssh/id_ed25519"));
+        assert_eq!(hosts[0].certificate_path, None);
+    }
+
+    #[test]
+    fn parses_ssh_config_certificate_file_without_plain_key_fallback() {
+        let hosts = parse_ssh_config_hosts(
+            r#"
+Host cert-prod
+  HostName cert.example.com
+  User deploy
+  IdentityFile ~/.ssh/id_ed25519
+  CertificateFile ~/.ssh/id_ed25519-cert.pub
+"#,
+        );
+
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(hosts[0].auth_mode, AuthMode::PrivateKey);
+        assert!(hosts[0].key_path.ends_with("/.ssh/id_ed25519"));
+        assert!(
+            hosts[0]
+                .certificate_path
+                .as_deref()
+                .is_some_and(|path| path.ends_with("/.ssh/id_ed25519-cert.pub"))
+        );
+        assert!(matches!(
+            hosts[0].saved_auth_config().unwrap(),
+            crate::models::AuthConfig::OpenSshCertificate { .. }
+        ));
+    }
+
+    #[test]
+    fn ignores_ssh_config_certificate_without_supported_signer_key() {
+        let hosts = parse_ssh_config_hosts(
+            r#"
+Host cert-only
+  HostName cert-only.example.com
+  User deploy
+  CertificateFile ~/.ssh/id_ed25519-cert.pub
+"#,
+        );
+
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(hosts[0].auth_mode, AuthMode::Password);
+        assert_eq!(hosts[0].certificate_path, None);
+    }
+
+    #[test]
+    fn mobile_vault_export_rejects_certificate_hosts_without_downgrade() {
+        let mut profile = parse_ssh_config_hosts(
+            r#"
+Host cert-prod
+  HostName cert.example.com
+  User deploy
+  IdentityFile ~/.ssh/id_ed25519
+  CertificateFile ~/.ssh/id_ed25519-cert.pub
+"#,
+        )
+        .remove(0);
+        profile.source = ProfileSource::User;
+        let mut state = SavedState::default();
+        state.upsert_profile(profile);
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let export_path = std::env::temp_dir().join(format!("termirust-cert-mobile-{suffix}.json"));
+        let known_hosts = KnownHostStore {
+            path: std::env::temp_dir().join(format!("termirust-cert-hosts-{suffix}.json")),
+            entries: std::sync::Mutex::new(HashMap::new()),
+        };
+
+        let error = export_encrypted_mobile_vault(
+            &export_path,
+            &state,
+            &known_hosts,
+            "hunter2",
+            "cert-export",
+            "desktop-1",
+        )
+        .expect_err("certificate host must not export as plain private-key auth");
+        assert!(
+            error
+                .to_string()
+                .contains("does not yet support OpenSSH certificate hosts")
+        );
+        assert!(!export_path.exists());
     }
 
     #[test]
@@ -1266,6 +1370,7 @@ Host app-prod
             username: "ubuntu".to_string(),
             auth_mode: AuthMode::Password,
             key_path: String::new(),
+            certificate_path: None,
             identity_id: None,
             jump_host_id: None,
             startup_directory: Some("/srv/prod".to_string()),
@@ -1375,6 +1480,7 @@ Host app-prod
             username: "ubuntu".to_string(),
             auth_mode: AuthMode::Password,
             key_path: String::new(),
+            certificate_path: None,
             identity_id: None,
             jump_host_id: None,
             startup_directory: None,
@@ -1498,6 +1604,7 @@ Host app-prod
             username: "ubuntu".to_string(),
             auth_mode: AuthMode::PrivateKey,
             key_path: "/Users/jacob/.ssh/prod_ed25519".to_string(),
+            certificate_path: None,
             identity_id: Some("identity-prod".to_string()),
             jump_host_id: None,
             startup_directory: Some("/srv/app".to_string()),

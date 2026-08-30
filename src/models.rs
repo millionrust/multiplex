@@ -2,11 +2,10 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-#[cfg(test)]
-use termirust_domain::SshAccessPolicy;
 use termirust_domain::{
     GroupDestination, GroupId, HostedSession, HostedSessionId, HostedSessionState, OutputSequence,
-    PositionKey, ProjectId, Revision, SessionLaunchRoute, SessionOrigin, SessionTitle, TitleSource,
+    PositionKey, ProjectId, Revision, SessionLaunchRoute, SessionOrigin, SessionTitle,
+    SshAccessPolicy, TitleSource,
 };
 use termirust_protocol::{
     MobileDevicePairingError, MobileDevicePairingRequest, MobileDeviceRecord, MobileDeviceVaultKey,
@@ -244,6 +243,8 @@ pub struct HostProfile {
     #[serde(default)]
     pub key_path: String,
     #[serde(default)]
+    pub certificate_path: Option<String>,
+    #[serde(default)]
     pub identity_id: Option<String>,
     #[serde(default)]
     pub jump_host_id: Option<String>,
@@ -364,11 +365,50 @@ pub fn default_persistent_session_name_for_endpoint(
 }
 
 impl HostProfile {
-    #[cfg(test)]
-    pub fn legacy_ssh_access_policy(&self) -> SshAccessPolicy {
+    pub fn ssh_access_policy(&self) -> SshAccessPolicy {
+        match (self.auth_mode, self.certificate_path.is_some()) {
+            (AuthMode::Password, _) => SshAccessPolicy::legacy_password(),
+            (AuthMode::PrivateKey, false) => SshAccessPolicy::legacy_private_key(),
+            (AuthMode::PrivateKey, true) => SshAccessPolicy {
+                authentication: termirust_domain::SshAuthenticationKind::OpenSshCertificate,
+                certificate_signer: Some(termirust_domain::SshCertificateSigner::PrivateKey),
+                agent_forwarding: termirust_domain::SshAgentForwardingPolicy::Disabled,
+            },
+        }
+    }
+
+    pub fn saved_auth_config(&self) -> Result<AuthConfig> {
+        let policy = self.ssh_access_policy();
         match self.auth_mode {
-            AuthMode::Password => SshAccessPolicy::legacy_password(),
-            AuthMode::PrivateKey => SshAccessPolicy::legacy_private_key(),
+            AuthMode::Password => self
+                .password_credential_id
+                .clone()
+                .map(|credential_id| AuthConfig::PasswordRef { credential_id })
+                .with_context(|| {
+                    format!(
+                        "{} needs a saved password in the system credential store",
+                        self.display_name()
+                    )
+                }),
+            AuthMode::PrivateKey => {
+                if self.key_path.trim().is_empty() {
+                    bail!("{} needs a private key file", self.display_name());
+                }
+                match (policy.authentication, self.certificate_path.clone()) {
+                    (
+                        termirust_domain::SshAuthenticationKind::OpenSshCertificate,
+                        Some(certificate_path),
+                    ) => Ok(AuthConfig::OpenSshCertificate {
+                        key_path: self.key_path.clone(),
+                        certificate_path,
+                        passphrase: None,
+                    }),
+                    _ => Ok(AuthConfig::PrivateKey {
+                        key_path: self.key_path.clone(),
+                        passphrase: None,
+                    }),
+                }
+            }
         }
     }
 
@@ -397,6 +437,11 @@ impl HostProfile {
     pub fn normalize(&mut self) {
         self.startup_directory = self
             .startup_directory
+            .take()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        self.certificate_path = self
+            .certificate_path
             .take()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
@@ -1591,6 +1636,7 @@ pub struct DraftProfile {
     pub username: String,
     pub password: String,
     pub key_path: String,
+    pub certificate_path: String,
     pub identity_id: Option<String>,
     pub jump_host_id: Option<String>,
     pub startup_directory: String,
@@ -1626,6 +1672,7 @@ impl DraftProfile {
             username: profile.username.clone(),
             password: String::new(),
             key_path: profile.key_path.clone(),
+            certificate_path: profile.certificate_path.clone().unwrap_or_default(),
             identity_id: profile.identity_id.clone(),
             jump_host_id: profile.jump_host_id.clone(),
             startup_directory: profile.startup_directory.clone().unwrap_or_default(),
@@ -1788,6 +1835,7 @@ impl DraftProfile {
         let host = self.host.trim();
         let username = self.username.trim();
         let key_path = self.key_path.trim();
+        let certificate_path = self.certificate_path.trim();
 
         if host.is_empty() {
             bail!("Host is required");
@@ -1814,6 +1862,11 @@ impl DraftProfile {
             username: username.to_string(),
             auth_mode: self.auth_mode,
             key_path: key_path.to_string(),
+            certificate_path: if self.auth_mode == AuthMode::PrivateKey {
+                non_empty(certificate_path)
+            } else {
+                None
+            },
             identity_id: if self.auth_mode == AuthMode::PrivateKey {
                 self.identity_id.clone()
             } else {
@@ -1857,9 +1910,16 @@ impl DraftProfile {
                     bail!("Password is required for password authentication");
                 }
             }
-            AuthMode::PrivateKey => AuthConfig::PrivateKey {
-                key_path: profile.key_path.clone(),
-                passphrase: non_empty(self.key_passphrase.trim()),
+            AuthMode::PrivateKey => match profile.certificate_path.clone() {
+                Some(certificate_path) => AuthConfig::OpenSshCertificate {
+                    key_path: profile.key_path.clone(),
+                    certificate_path,
+                    passphrase: non_empty(self.key_passphrase.trim()),
+                },
+                None => AuthConfig::PrivateKey {
+                    key_path: profile.key_path.clone(),
+                    passphrase: non_empty(self.key_passphrase.trim()),
+                },
             },
         };
         let persistent_session_name = profile.persistent_session_name.clone().or_else(|| {
@@ -2009,6 +2069,11 @@ pub enum AuthConfig {
         key_path: String,
         passphrase: Option<String>,
     },
+    OpenSshCertificate {
+        key_path: String,
+        certificate_path: String,
+        passphrase: Option<String>,
+    },
 }
 
 impl AuthConfig {
@@ -2020,6 +2085,14 @@ impl AuthConfig {
             }),
             Self::PrivateKey { key_path, .. } => Some(RestorableAuth::PrivateKey {
                 key_path: key_path.clone(),
+            }),
+            Self::OpenSshCertificate {
+                key_path,
+                certificate_path,
+                ..
+            } => Some(RestorableAuth::OpenSshCertificate {
+                key_path: key_path.clone(),
+                certificate_path: certificate_path.clone(),
             }),
         }
     }
@@ -2233,8 +2306,16 @@ impl JumpHostConnection {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RestorableAuth {
-    PasswordKeychain { credential_id: String },
-    PrivateKey { key_path: String },
+    PasswordKeychain {
+        credential_id: String,
+    },
+    PrivateKey {
+        key_path: String,
+    },
+    OpenSshCertificate {
+        key_path: String,
+        certificate_path: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -2288,6 +2369,14 @@ impl RestorableConnection {
                     },
                     RestorableAuth::PrivateKey { key_path } => AuthConfig::PrivateKey {
                         key_path: key_path.clone(),
+                        passphrase: None,
+                    },
+                    RestorableAuth::OpenSshCertificate {
+                        key_path,
+                        certificate_path,
+                    } => AuthConfig::OpenSshCertificate {
+                        key_path: key_path.clone(),
+                        certificate_path: certificate_path.clone(),
                         passphrase: None,
                     },
                 };
@@ -2371,6 +2460,14 @@ impl RestorableJumpHostConnection {
             },
             RestorableAuth::PrivateKey { key_path } => AuthConfig::PrivateKey {
                 key_path: key_path.clone(),
+                passphrase: None,
+            },
+            RestorableAuth::OpenSshCertificate {
+                key_path,
+                certificate_path,
+            } => AuthConfig::OpenSshCertificate {
+                key_path: key_path.clone(),
+                certificate_path: certificate_path.clone(),
                 passphrase: None,
             },
         };
@@ -3905,10 +4002,82 @@ mod tests {
                 assert_eq!(key_path, "/tmp/id_ed25519");
                 assert_eq!(passphrase, None);
             }
-            AuthConfig::Password { .. } | AuthConfig::PasswordRef { .. } => {
+            AuthConfig::Password { .. }
+            | AuthConfig::PasswordRef { .. }
+            | AuthConfig::OpenSshCertificate { .. } => {
                 panic!("expected private key auth")
             }
         }
+    }
+
+    #[test]
+    fn openssh_certificate_profiles_and_sessions_round_trip_without_downgrade() {
+        let draft = DraftProfile {
+            label: "certificate host".to_string(),
+            host: "cert.example.com".to_string(),
+            username: "deploy".to_string(),
+            auth_mode: AuthMode::PrivateKey,
+            key_path: "/tmp/id_ed25519".to_string(),
+            certificate_path: "/tmp/id_ed25519-cert.pub".to_string(),
+            key_passphrase: "secret".to_string(),
+            ..DraftProfile::default()
+        };
+
+        let profile = draft.to_profile("profile-cert".to_string()).unwrap();
+        assert_eq!(
+            profile.ssh_access_policy().authentication,
+            SshAuthenticationKind::OpenSshCertificate
+        );
+        let request = draft.to_connect_request(91).unwrap();
+        match request.auth.as_ref().unwrap() {
+            AuthConfig::OpenSshCertificate {
+                key_path,
+                certificate_path,
+                passphrase,
+            } => {
+                assert_eq!(key_path, "/tmp/id_ed25519");
+                assert_eq!(certificate_path, "/tmp/id_ed25519-cert.pub");
+                assert_eq!(passphrase.as_deref(), Some("secret"));
+            }
+            _ => panic!("certificate profile was downgraded to another authentication method"),
+        }
+
+        let restored = request
+            .to_restorable()
+            .expect("certificate request restores");
+        let round_trip = restored.to_connect_request(92);
+        match round_trip.auth.unwrap() {
+            AuthConfig::OpenSshCertificate {
+                key_path,
+                certificate_path,
+                passphrase,
+            } => {
+                assert_eq!(key_path, "/tmp/id_ed25519");
+                assert_eq!(certificate_path, "/tmp/id_ed25519-cert.pub");
+                assert_eq!(passphrase, None);
+            }
+            _ => panic!("restored certificate session was downgraded"),
+        }
+    }
+
+    #[test]
+    fn password_profile_discards_stale_certificate_fields() {
+        let draft = DraftProfile {
+            host: "password.example.com".to_string(),
+            username: "deploy".to_string(),
+            auth_mode: AuthMode::Password,
+            key_path: "/tmp/stale-key".to_string(),
+            certificate_path: "/tmp/stale-cert.pub".to_string(),
+            password_credential_id: Some("profile:password".to_string()),
+            ..DraftProfile::default()
+        };
+
+        let profile = draft.to_profile("profile-password".to_string()).unwrap();
+        assert_eq!(profile.certificate_path, None);
+        assert_eq!(
+            profile.ssh_access_policy().authentication,
+            SshAuthenticationKind::Password
+        );
     }
 
     #[test]
@@ -3976,7 +4145,7 @@ mod tests {
         )
         .expect("legacy private-key profile should deserialize");
 
-        let password_policy = password.legacy_ssh_access_policy();
+        let password_policy = password.ssh_access_policy();
         assert_eq!(
             password_policy.authentication,
             SshAuthenticationKind::Password
@@ -3986,7 +4155,7 @@ mod tests {
             SshAgentForwardingPolicy::Disabled
         );
 
-        let key_policy = private_key.legacy_ssh_access_policy();
+        let key_policy = private_key.ssh_access_policy();
         assert_eq!(key_policy.authentication, SshAuthenticationKind::PrivateKey);
         assert_eq!(
             key_policy.agent_forwarding,
@@ -4597,6 +4766,7 @@ mod tests {
             username: "ubuntu".to_string(),
             password: String::new(),
             key_path: "/tmp/id_ed25519".to_string(),
+            certificate_path: String::new(),
             identity_id: Some("identity-123".to_string()),
             jump_host_id: None,
             startup_directory: "/var/www/app".to_string(),
@@ -4655,6 +4825,7 @@ mod tests {
             username: "root".to_string(),
             password: String::new(),
             key_path: String::new(),
+            certificate_path: String::new(),
             identity_id: None,
             jump_host_id: None,
             startup_directory: String::new(),
@@ -4696,6 +4867,7 @@ mod tests {
                 username: "ubuntu".to_string(),
                 password: "secret".to_string(),
                 key_path: String::new(),
+                certificate_path: String::new(),
                 identity_id: None,
                 jump_host_id: None,
                 startup_directory: String::new(),
@@ -4732,6 +4904,7 @@ mod tests {
                 username: "ubuntu".to_string(),
                 password: "secret".to_string(),
                 key_path: String::new(),
+                certificate_path: String::new(),
                 identity_id: None,
                 jump_host_id: None,
                 startup_directory: String::new(),
@@ -4818,6 +4991,7 @@ mod tests {
             username: "postgres".to_string(),
             password: String::new(),
             key_path: "/tmp/id_ed25519".to_string(),
+            certificate_path: String::new(),
             identity_id: Some("identity-123".to_string()),
             jump_host_id: None,
             startup_directory: String::new(),
@@ -4863,6 +5037,7 @@ mod tests {
             username: "ubuntu".to_string(),
             password: String::new(),
             key_path: "/tmp/id_ed25519".to_string(),
+            certificate_path: String::new(),
             identity_id: Some("identity-123".to_string()),
             jump_host_id: None,
             startup_directory: String::new(),
@@ -4908,6 +5083,7 @@ mod tests {
             username: "ubuntu".to_string(),
             password: String::new(),
             key_path: "/tmp/id_ed25519".to_string(),
+            certificate_path: String::new(),
             identity_id: Some("identity-123".to_string()),
             jump_host_id: None,
             startup_directory: String::new(),
@@ -4954,6 +5130,7 @@ mod tests {
             username: "ubuntu".to_string(),
             auth_mode: AuthMode::Password,
             key_path: String::new(),
+            certificate_path: None,
             identity_id: None,
             jump_host_id: None,
             startup_directory: None,

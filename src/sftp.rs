@@ -1,7 +1,6 @@
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow};
 use russh::client;
 use russh::keys::PublicKey;
-use russh::keys::key::PrivateKeyWithHashAlg;
 use russh_sftp::client::SftpSession;
 use std::fs;
 use std::path::PathBuf;
@@ -11,7 +10,6 @@ use std::sync::mpsc::Sender;
 use std::thread;
 use tokio::runtime::Builder;
 
-use crate::credentials;
 use crate::models::{AuthConfig, ConnectRequest, JumpHostConnection};
 use crate::storage::{HostKeyDecision, KnownHostStore};
 
@@ -343,69 +341,6 @@ async fn establish_handles(
     })
 }
 
-async fn authenticate(
-    handle: &mut client::Handle<SftpHandler>,
-    username: &str,
-    auth: &AuthConfig,
-) -> Result<()> {
-    let auth_result = match auth {
-        AuthConfig::Password { password } => handle
-            .authenticate_password(username.to_string(), password.clone())
-            .await
-            .context("Password authentication failed")?,
-        AuthConfig::PasswordRef { credential_id } => {
-            let password = credentials::load_password(credential_id).with_context(|| {
-                format!(
-                    "Unable to load password '{}' from the system credential store",
-                    credential_id
-                )
-            })?;
-
-            handle
-                .authenticate_password(username.to_string(), password)
-                .await
-                .context("Password authentication failed")?
-        }
-        AuthConfig::PrivateKey {
-            key_path,
-            passphrase,
-        } => {
-            let key = match russh::keys::load_secret_key(key_path, passphrase.as_deref()) {
-                Ok(key) => key,
-                Err(error) => {
-                    let message = error.to_string();
-                    if message.to_ascii_lowercase().contains("encrypt") && passphrase.is_none() {
-                        bail!(
-                            "Private key '{}' is passphrase-protected. Enter the passphrase in the host editor and try again.",
-                            key_path
-                        );
-                    }
-
-                    return Err(error)
-                        .with_context(|| format!("Unable to load private key from {}", key_path));
-                }
-            };
-            let rsa_hash = handle
-                .best_supported_rsa_hash()
-                .await
-                .context("Unable to negotiate an RSA signature algorithm")?
-                .flatten();
-            let key = PrivateKeyWithHashAlg::new(Arc::new(key), rsa_hash);
-
-            handle
-                .authenticate_publickey(username.to_string(), key)
-                .await
-                .context("Public key authentication failed")?
-        }
-    };
-
-    if !auth_result.success() {
-        bail!("Authentication was rejected by the server");
-    }
-
-    Ok(())
-}
-
 async fn connect_via_jump_chain(
     config: Arc<client::Config>,
     target_host: String,
@@ -505,7 +440,7 @@ async fn connect_and_authenticate(
     let mut handle = client::connect(config, address, handler)
         .await
         .context("Unable to open the SSH transport")?;
-    authenticate(&mut handle, &username, &auth).await?;
+    crate::ssh_auth::authenticate(&mut handle, &username, &auth).await?;
     Ok(handle)
 }
 
@@ -529,7 +464,7 @@ where
     let mut handle = client::connect_stream(config, stream, handler)
         .await
         .context("Unable to open the SSH transport through the jump host")?;
-    authenticate(&mut handle, &username, &auth).await?;
+    crate::ssh_auth::authenticate(&mut handle, &username, &auth).await?;
     Ok(handle)
 }
 
@@ -565,7 +500,7 @@ mod tests {
     };
     use crate::models::{AuthConfig, ConnectRequest, ConnectionKind};
     use crate::storage::KnownHostStore;
-    use crate::test_support::{DockerSshServer, TestIsolation};
+    use crate::test_support::{DockerSshServer, TestIsolation, create_test_user_certificate};
     use std::fs;
     use std::sync::Arc;
     use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
@@ -713,5 +648,48 @@ mod tests {
         }
 
         let _ = fs::remove_dir_all(local_dir);
+    }
+
+    #[test]
+    fn docker_sftp_lists_directory_with_openssh_certificate() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker certificate sftp e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        server
+            .exec(
+                "mkdir -p /home/termirust/certificate-sftp && touch /home/termirust/certificate-sftp/visible.txt && chown -R termirust:termirust /home/termirust/certificate-sftp",
+            )
+            .expect("unable to seed certificate sftp directory");
+        let certificate_dir = tempfile::TempDir::new().expect("unable to create certificate dir");
+        let certificate =
+            create_test_user_certificate(certificate_dir.path(), server.username(), true);
+        let key_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/ssh-server/id_ed25519");
+        let mut request = docker_sftp_request(&server);
+        request.auth = Some(AuthConfig::OpenSshCertificate {
+            key_path: key_path.display().to_string(),
+            certificate_path: certificate.display().to_string(),
+            passphrase: None,
+        });
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+
+        spawn_list_directory(
+            8,
+            1,
+            request,
+            known_hosts,
+            "/home/termirust/certificate-sftp".to_string(),
+            event_tx,
+        );
+        match recv_sftp_event(&event_rx) {
+            SftpEvent::DirectoryLoaded { entries, .. } => {
+                assert!(entries.iter().any(|entry| entry.name == "visible.txt"));
+            }
+            event => panic!("unexpected certificate SFTP event: {event:?}"),
+        }
     }
 }

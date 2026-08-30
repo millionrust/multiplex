@@ -26,7 +26,7 @@ use crate::agents::{
 };
 use crate::local::{local_tmux_install_guidance, local_tmux_version};
 use crate::models::{
-    AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider, AuthConfig, AuthMode,
+    AgentBackendKind, AgentLocation, AgentPermissionPolicy, AgentProvider,
     CANVAS_DEFAULT_NODE_HEIGHT, CANVAS_DEFAULT_NODE_WIDTH, CANVAS_MAX_ZOOM, CANVAS_MIN_NODE_HEIGHT,
     CANVAS_MIN_NODE_WIDTH, CANVAS_MIN_TERMINAL_NODE_WIDTH, CANVAS_MIN_ZOOM, CanvasEdgeId,
     CanvasEdgeKind, CanvasNodeId, CanvasNoteColor, ConnectRequest, ConnectionKind, HostProfile,
@@ -2729,29 +2729,7 @@ impl TermiRustApp {
         &self,
         profile: &HostProfile,
     ) -> anyhow::Result<ConnectRequest> {
-        let auth = match profile.auth_mode {
-            AuthMode::Password => {
-                let Some(credential_id) = profile.password_credential_id.clone() else {
-                    anyhow::bail!(
-                        "{} needs a saved password. Open the host, enter its password, and save it first.",
-                        profile.display_name()
-                    );
-                };
-                AuthConfig::PasswordRef { credential_id }
-            }
-            AuthMode::PrivateKey => {
-                if profile.key_path.trim().is_empty() {
-                    anyhow::bail!(
-                        "{} needs a private key file before it can be added.",
-                        profile.display_name()
-                    );
-                }
-                AuthConfig::PrivateKey {
-                    key_path: profile.key_path.clone(),
-                    passphrase: None,
-                }
-            }
-        };
+        let auth = profile.saved_auth_config()?;
         let jump_host = profile
             .jump_host_id
             .as_deref()

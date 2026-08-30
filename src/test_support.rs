@@ -67,14 +67,21 @@ fn ensure_test_ssh_image() -> Result<(), String> {
     static BUILD: OnceLock<Result<(), String>> = OnceLock::new();
     BUILD
         .get_or_init(|| {
+            if run_command("docker", &["image", "inspect", TEST_SSH_IMAGE], None).is_ok() {
+                return Ok(());
+            }
             let fixture_dir =
                 Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ssh-server");
-            run_command(
-                "docker",
-                &["build", "-t", TEST_SSH_IMAGE, "."],
-                Some(&fixture_dir),
-            )
-            .map(|_| ())
+            let status = Command::new("docker")
+                .args(["build", "-t", TEST_SSH_IMAGE, "."])
+                .current_dir(&fixture_dir)
+                .status()
+                .map_err(|error| format!("failed to execute docker build: {error}"))?;
+            if status.success() {
+                Ok(())
+            } else {
+                Err(format!("docker build failed with status {status}"))
+            }
         })
         .clone()
 }
@@ -139,6 +146,15 @@ impl DockerSshServer {
         ensure_test_ssh_image()?;
 
         let container_name = format!("termirust-e2e-sshd-{}", unique_suffix());
+        let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ssh-server");
+        let ca_mount = format!(
+            "{}:/etc/ssh/termirust_test_ca.pub:ro",
+            fixture_dir.join("id_ed25519.pub").display()
+        );
+        let policy_mount = format!(
+            "{}:/etc/ssh/sshd_config.d/termirust-test-ca.conf:ro",
+            fixture_dir.join("certificate-auth.conf").display()
+        );
         run_command(
             "docker",
             &[
@@ -147,6 +163,10 @@ impl DockerSshServer {
                 "--rm",
                 "--name",
                 &container_name,
+                "--volume",
+                &ca_mount,
+                "--volume",
+                &policy_mount,
                 "-p",
                 port_mapping,
                 TEST_SSH_IMAGE,
@@ -236,6 +256,65 @@ pub fn allocate_local_port() -> u16 {
         .local_addr()
         .expect("unable to read local test port")
         .port()
+}
+
+pub fn create_test_user_certificate(
+    directory: &Path,
+    principal: &str,
+    trusted_signer: bool,
+) -> PathBuf {
+    use russh::keys::ssh_key::certificate::{Builder, CertType};
+
+    let fixture_key_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/ssh-server/id_ed25519");
+    let subject = russh::keys::load_secret_key(&fixture_key_path, None)
+        .expect("unable to load certificate test subject key");
+    let untrusted_signer;
+    let signer = if trusted_signer {
+        &subject
+    } else {
+        untrusted_signer = russh::keys::PrivateKey::random(
+            &mut rand::rngs::OsRng,
+            russh::keys::Algorithm::Ed25519,
+        )
+        .expect("unable to generate untrusted certificate signer");
+        &untrusted_signer
+    };
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after Unix epoch")
+        .as_secs();
+    let mut builder = Builder::new_with_random_nonce(
+        &mut rand::rngs::OsRng,
+        subject.public_key().key_data().clone(),
+        now.saturating_sub(60),
+        now + 3600,
+    )
+    .expect("unable to create certificate builder");
+    builder
+        .cert_type(CertType::User)
+        .expect("unable to set user certificate type");
+    builder
+        .key_id("termirust-docker-test")
+        .expect("unable to set certificate key id");
+    builder
+        .valid_principal(principal.to_string())
+        .expect("unable to set certificate principal");
+    builder
+        .extension("permit-port-forwarding", "")
+        .expect("unable to permit certificate port forwarding");
+    let certificate = builder
+        .sign(signer)
+        .expect("unable to sign test user certificate");
+    let path = directory.join(if trusted_signer {
+        "trusted-user-cert.pub"
+    } else {
+        "untrusted-user-cert.pub"
+    });
+    certificate
+        .write_file(&path)
+        .expect("unable to write test user certificate");
+    path
 }
 
 pub fn queue_dialog_path(path: Option<PathBuf>) {

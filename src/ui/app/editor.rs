@@ -395,7 +395,42 @@ impl TermiRustApp {
                             Some("Leave empty for the local test key we created."),
                             Some(app_icon(ICON_KEY)),
                             &self.inputs.key_passphrase,
-                        )),
+                        ))
+                        .child(
+                            v_flex()
+                                .w_full()
+                                .gap(px(5.))
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .font_medium()
+                                        .text_color(theme::text_muted())
+                                        .child("OpenSSH user certificate (optional)"),
+                                )
+                                .child(
+                                    h_flex()
+                                        .gap(px(6.))
+                                        .child(Input::new(&self.inputs.certificate_path).flex_1())
+                                        .child(
+                                            Button::new("editor-pick-certificate-file")
+                                                .small()
+                                                .ghost()
+                                                .icon(IconName::FolderOpen)
+                                                .label("Browse")
+                                                .on_click(cx.listener(
+                                                    |this, _, window, cx| {
+                                                        this.pick_certificate_file(window, cx);
+                                                    },
+                                                )),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(10.))
+                                        .text_color(theme::text_muted())
+                                        .child("Paired with the private key above; no plain-key fallback."),
+                                ),
+                        ),
                 )
             })
             .child(

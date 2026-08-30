@@ -298,6 +298,7 @@ struct DraftInputs {
     username: Entity<InputState>,
     password: Entity<InputState>,
     key_path: Entity<InputState>,
+    certificate_path: Entity<InputState>,
     forward_local_port: Entity<InputState>,
     forward_remote_host: Entity<InputState>,
     forward_remote_port: Entity<InputState>,
@@ -334,6 +335,10 @@ impl DraftInputs {
             }),
             key_path: cx.new(|cx| {
                 InputState::new(window, cx).placeholder("Private key path, e.g. ~/.ssh/id_ed25519")
+            }),
+            certificate_path: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder("Optional OpenSSH user certificate, e.g. id_ed25519-cert.pub")
             }),
             forward_local_port: cx.new(|cx| InputState::new(window, cx).placeholder("15432")),
             forward_remote_host: cx.new(|cx| InputState::new(window, cx).placeholder("127.0.0.1")),
@@ -1569,6 +1574,7 @@ impl TermiRustApp {
             username: self.inputs.username.read(cx).value().to_string(),
             password: self.inputs.password.read(cx).value().to_string(),
             key_path,
+            certificate_path: self.inputs.certificate_path.read(cx).value().to_string(),
             identity_id,
             jump_host_id,
             startup_directory: self.inputs.startup_directory.read(cx).value().to_string(),
@@ -2033,21 +2039,9 @@ impl TermiRustApp {
             .find(|profile| profile.id == jump_host_id)
             .ok_or_else(|| anyhow::anyhow!("Jump host is no longer available"))?;
 
-        let auth = match profile.auth_mode {
-            AuthMode::Password => {
-                let Some(credential_id) = profile.password_credential_id.clone() else {
-                    anyhow::bail!(
-                        "Jump host '{}' needs a saved password in the system credential store",
-                        profile.display_name()
-                    );
-                };
-                AuthConfig::PasswordRef { credential_id }
-            }
-            AuthMode::PrivateKey => AuthConfig::PrivateKey {
-                key_path: profile.key_path.clone(),
-                passphrase: None,
-            },
-        };
+        let auth = profile
+            .saved_auth_config()
+            .map_err(|error| anyhow::anyhow!("Jump host '{}': {error}", profile.display_name()))?;
 
         let nested_jump_host = profile
             .jump_host_id
@@ -2224,6 +2218,12 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.username, draft.username, window, cx);
         Self::set_input_value(&self.inputs.password, "", window, cx);
         Self::set_input_value(&self.inputs.key_path, draft.key_path, window, cx);
+        Self::set_input_value(
+            &self.inputs.certificate_path,
+            draft.certificate_path,
+            window,
+            cx,
+        );
         Self::set_input_value(&self.inputs.forward_local_port, "", window, cx);
         Self::set_input_value(&self.inputs.forward_remote_host, "", window, cx);
         Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
@@ -2296,6 +2296,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.inputs.username, "", window, cx);
         Self::set_input_value(&self.inputs.password, "", window, cx);
         Self::set_input_value(&self.inputs.key_path, "", window, cx);
+        Self::set_input_value(&self.inputs.certificate_path, "", window, cx);
         Self::set_input_value(&self.inputs.forward_local_port, "", window, cx);
         Self::set_input_value(&self.inputs.forward_remote_host, "", window, cx);
         Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
@@ -3237,6 +3238,58 @@ impl TermiRustApp {
             });
         })
         .detach();
+    }
+
+    fn pick_certificate_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.status_message = "Choose an OpenSSH user certificate file.".to_string();
+        self.error_message.clear();
+        cx.notify();
+
+        if let Some(path) = Self::take_dialog_path_for_tests() {
+            self.use_certificate_file(path, window, cx);
+            return;
+        }
+
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(path) = AsyncFileDialog::new()
+                .set_title("Choose OpenSSH user certificate")
+                .pick_file()
+                .await
+                .map(|file| file.path().to_path_buf())
+            else {
+                return;
+            };
+
+            let _ = cx.update(|window, cx| {
+                let _ = this.update(cx, |app, cx| {
+                    app.use_certificate_file(path, window, cx);
+                });
+            });
+        })
+        .detach();
+    }
+
+    fn use_certificate_file(
+        &mut self,
+        path: std::path::PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match crate::ssh_auth::inspect_user_certificate_file(&path) {
+            Ok(()) => {
+                Self::set_input_value(
+                    &self.inputs.certificate_path,
+                    path.display().to_string(),
+                    window,
+                    cx,
+                );
+                self.draft_auth_mode = AuthMode::PrivateKey;
+                self.status_message = "OpenSSH user certificate selected.".to_string();
+                self.error_message.clear();
+            }
+            Err(error) => self.error_message = error.to_string(),
+        }
+        cx.notify();
     }
 
     fn import_key_file(
@@ -6183,7 +6236,8 @@ impl TermiRustApp {
                     match request.auth.as_ref() {
                         Some(AuthConfig::Password { .. }) => "password",
                         Some(AuthConfig::PasswordRef { .. }) => "stored-password",
-                        Some(AuthConfig::PrivateKey { key_path, .. }) => key_path.as_str(),
+                        Some(AuthConfig::PrivateKey { .. }) => "private-key",
+                        Some(AuthConfig::OpenSshCertificate { .. }) => "openssh-certificate",
                         None => "none",
                     }
                 );
@@ -10263,6 +10317,39 @@ impl TermiRustApp {
                             "Passphrase",
                             Input::new(&self.inputs.key_passphrase).mask_toggle(),
                         ))
+                        .child(
+                            v_flex()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .font_medium()
+                                        .text_color(theme::text_main())
+                                        .child("OpenSSH user certificate (optional)"),
+                                )
+                                .child(
+                                    h_flex()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .id("editor-field-certificate-path")
+                                                .flex_1()
+                                                .child(Input::new(&self.inputs.certificate_path)),
+                                        )
+                                        .child(
+                                            Button::new("pick-certificate-file")
+                                                .small()
+                                                .ghost()
+                                                .icon(IconName::FolderOpen)
+                                                .label("Browse")
+                                                .on_click(cx.listener(
+                                                    |this, _, window, cx| {
+                                                        this.pick_certificate_file(window, cx);
+                                                    },
+                                                )),
+                                        ),
+                                ),
+                        )
                         .child(self.render_identity_picker(cx)),
                 )
             })
@@ -12145,6 +12232,7 @@ mod tests {
             username: String::new(),
             password: String::new(),
             key_path: String::new(),
+            certificate_path: String::new(),
             identity_id: None,
             jump_host_id: None,
             startup_directory: String::new(),
@@ -12233,6 +12321,7 @@ mod tests {
             username: "ubuntu".to_string(),
             password: String::new(),
             key_path: String::new(),
+            certificate_path: String::new(),
             identity_id: None,
             jump_host_id: None,
             startup_directory: String::new(),

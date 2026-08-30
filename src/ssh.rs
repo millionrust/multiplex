@@ -1,7 +1,6 @@
 use anyhow::{Context, Result, bail};
 use russh::client;
 use russh::keys::PublicKey;
-use russh::keys::key::PrivateKeyWithHashAlg;
 use russh::{ChannelMsg, Sig};
 use std::io::{self, Read, Write};
 use std::sync::Arc;
@@ -14,7 +13,6 @@ use tokio::runtime::Builder;
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use crate::credentials;
 use crate::models::{
     AuthConfig, ConnectRequest, DynamicPortForward, JumpHostConnection, LocalPortForward,
     PortForwardRule, RemotePortForward,
@@ -589,73 +587,6 @@ async fn kill_tmux_session(
     }
 }
 
-async fn authenticate(
-    handle: &mut client::Handle<SessionHandler>,
-    username: &str,
-    auth: &AuthConfig,
-) -> Result<()> {
-    let auth_result = match auth {
-        AuthConfig::Password { password } => handle
-            .authenticate_password(username.to_string(), password.clone())
-            .await
-            .context("Password authentication failed")?,
-        AuthConfig::PasswordRef { credential_id } => {
-            let password = credentials::load_password(credential_id).with_context(|| {
-                format!(
-                    "Unable to load password '{}' from the system credential store",
-                    credential_id
-                )
-            })?;
-
-            handle
-                .authenticate_password(username.to_string(), password)
-                .await
-                .context("Password authentication failed")?
-        }
-        AuthConfig::PrivateKey {
-            key_path,
-            passphrase,
-        } => {
-            eprintln!(
-                "[ssh] loading private key from {key_path} (passphrase={})",
-                passphrase.is_some()
-            );
-            let key = match russh::keys::load_secret_key(key_path, passphrase.as_deref()) {
-                Ok(k) => k,
-                Err(e) => {
-                    let msg = e.to_string();
-                    eprintln!("[ssh] key load failed: {msg}");
-                    if msg.to_ascii_lowercase().contains("encrypt") && passphrase.is_none() {
-                        bail!(
-                            "Private key '{}' is passphrase-protected. Enter the passphrase in the host editor and try again.",
-                            key_path
-                        );
-                    }
-                    return Err(e)
-                        .with_context(|| format!("Unable to load private key from {}", key_path));
-                }
-            };
-            let rsa_hash = handle
-                .best_supported_rsa_hash()
-                .await
-                .context("Unable to negotiate an RSA signature algorithm")?
-                .flatten();
-            let key = PrivateKeyWithHashAlg::new(Arc::new(key), rsa_hash);
-
-            handle
-                .authenticate_publickey(username.to_string(), key)
-                .await
-                .context("Public key authentication failed")?
-        }
-    };
-
-    if !auth_result.success() {
-        bail!("Authentication was rejected by the server");
-    }
-
-    Ok(())
-}
-
 async fn establish_session(
     config: Arc<client::Config>,
     request: ConnectRequest,
@@ -831,7 +762,7 @@ async fn connect_and_authenticate(
     let mut handle = client::connect(config, address, handler)
         .await
         .context("Unable to open the SSH transport")?;
-    authenticate(&mut handle, &username, &auth).await?;
+    crate::ssh_auth::authenticate(&mut handle, &username, &auth).await?;
     Ok((handle, trusted_new_host))
 }
 
@@ -858,7 +789,7 @@ where
     let mut handle = client::connect_stream(config, stream, handler)
         .await
         .context("Unable to open the SSH transport through the jump host")?;
-    authenticate(&mut handle, &username, &auth).await?;
+    crate::ssh_auth::authenticate(&mut handle, &username, &auth).await?;
     Ok((handle, trusted_new_host))
 }
 
@@ -1271,7 +1202,9 @@ mod tests {
         LocalPortForward, PortForwardRule, RemotePortForward,
     };
     use crate::storage::KnownHostStore;
-    use crate::test_support::{DockerSshServer, TestIsolation, allocate_local_port};
+    use crate::test_support::{
+        DockerSshServer, TestIsolation, allocate_local_port, create_test_user_certificate,
+    };
     use crate::ui::shell::{shell_single_quote, startup_bytes_for_request};
     use std::io::{Read, Write};
     use std::net::{TcpListener, TcpStream};
@@ -1621,6 +1554,127 @@ mod tests {
         let saved_keys = known_hosts.entries().expect("unable to read known hosts");
         assert_eq!(saved_keys.len(), 1);
         assert_eq!(saved_keys[0].0, request.known_host_key());
+    }
+
+    #[test]
+    fn docker_ssh_openssh_certificate_connects_and_streams_output() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker certificate ssh e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let certificate_dir = tempfile::TempDir::new().expect("unable to create certificate dir");
+        let certificate =
+            create_test_user_certificate(certificate_dir.path(), server.username(), true);
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let mut request = docker_ssh_request(&server);
+        request.auth = Some(AuthConfig::OpenSshCertificate {
+            key_path: docker_private_key_path(),
+            certificate_path: certificate.display().to_string(),
+            passphrase: None,
+        });
+
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        wait_for_connected(&request, &event_rx, "certificate ssh");
+        runtime
+            .command_tx
+            .send(SessionCommand::Input(
+                b"printf 'certificate-runtime-ok\\n'\n".to_vec(),
+            ))
+            .expect("unable to send certificate test command");
+        wait_for_output_contains(
+            &request,
+            &event_rx,
+            "certificate-runtime-ok",
+            "certificate ssh",
+        );
+        disconnect_runtime(&request, &runtime, &event_rx, "certificate ssh");
+    }
+
+    #[test]
+    fn docker_ssh_openssh_certificate_rejects_untrusted_signer_without_fallback() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker certificate rejection e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let certificate_dir = tempfile::TempDir::new().expect("unable to create certificate dir");
+        let certificate =
+            create_test_user_certificate(certificate_dir.path(), server.username(), false);
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let mut request = docker_ssh_request(&server);
+        request.auth = Some(AuthConfig::OpenSshCertificate {
+            key_path: docker_private_key_path(),
+            certificate_path: certificate.display().to_string(),
+            passphrase: None,
+        });
+
+        let _runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while Instant::now() < deadline {
+            match event_rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(SshEvent::Error {
+                    session_id,
+                    message,
+                }) => {
+                    assert_eq!(session_id, request.session_id);
+                    assert!(message.contains("Authentication was rejected by the server"));
+                    assert!(!message.contains(&docker_private_key_path()));
+                    assert!(!message.contains(certificate.to_string_lossy().as_ref()));
+                    return;
+                }
+                Ok(SshEvent::Connected { .. }) => {
+                    panic!("untrusted certificate unexpectedly authenticated")
+                }
+                Ok(_) => {}
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        panic!("untrusted certificate did not produce an authentication error");
+    }
+
+    #[test]
+    fn docker_jump_host_accepts_openssh_certificates_on_both_hops() {
+        let _isolation = TestIsolation::acquire();
+        if !DockerSshServer::docker_available() {
+            eprintln!("skipping docker jump certificate e2e: Docker is unavailable");
+            return;
+        }
+        let server = DockerSshServer::start().expect("unable to start docker ssh server");
+        let certificate_dir = tempfile::TempDir::new().expect("unable to create certificate dir");
+        let certificate =
+            create_test_user_certificate(certificate_dir.path(), server.username(), true);
+        let certificate_auth = AuthConfig::OpenSshCertificate {
+            key_path: docker_private_key_path(),
+            certificate_path: certificate.display().to_string(),
+            passphrase: None,
+        };
+        let known_hosts = Arc::new(KnownHostStore::load().expect("unable to load known hosts"));
+        let (event_tx, event_rx) = mpsc::channel();
+        let mut request = docker_jump_request(&server);
+        request.auth = Some(certificate_auth.clone());
+        request.jump_host.as_mut().unwrap().auth = certificate_auth;
+
+        let runtime = spawn_session(request.clone(), known_hosts, event_tx, 0);
+        wait_for_connected(&request, &event_rx, "certificate jump ssh");
+        runtime
+            .command_tx
+            .send(SessionCommand::Input(
+                b"printf 'certificate-jump-ok\\n'\n".to_vec(),
+            ))
+            .expect("unable to send certificate jump command");
+        wait_for_output_contains(
+            &request,
+            &event_rx,
+            "certificate-jump-ok",
+            "certificate jump ssh",
+        );
+        disconnect_runtime(&request, &runtime, &event_rx, "certificate jump ssh");
     }
 
     #[test]

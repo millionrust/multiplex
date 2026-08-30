@@ -11,6 +11,7 @@ mod platform_notifications;
 mod platform_open_url;
 mod sftp;
 mod ssh;
+mod ssh_auth;
 mod storage;
 mod terminal;
 #[cfg(test)]
