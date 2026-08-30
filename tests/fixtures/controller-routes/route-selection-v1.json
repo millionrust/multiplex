@@ -218,6 +218,36 @@
         "mutation_disposition": "none",
         "requires_explicit_action": true
       }
+    },
+    {
+      "name": "lost route configuration closes active transport",
+      "initial": {"route": "self_hosted_relay", "phase": "online", "writer_held": true},
+      "event": {"kind": "availability_lost"},
+      "expected": {
+        "state": {"route": "self_hosted_relay", "phase": "unavailable", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": true,
+        "clear_pending_input": true,
+        "release_writer": true,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": true
+      }
+    },
+    {
+      "name": "fresh authorization makes a revoked configured route idle",
+      "initial": {"route": "ssh", "phase": "revoked", "writer_held": false},
+      "event": {"kind": "authorization_restored", "available": true},
+      "expected": {
+        "state": {"route": "ssh", "phase": "idle", "writer_held": false},
+        "terminal_allowed": false,
+        "disconnect_transport": false,
+        "clear_pending_input": false,
+        "release_writer": false,
+        "retry_idempotent_reads": false,
+        "mutation_disposition": "none",
+        "requires_explicit_action": false
+      }
     }
   ],
   "invalid_transition_cases": [
@@ -235,6 +265,11 @@
       "name": "revoked route cannot retry",
       "initial": {"route": "ssh", "phase": "revoked", "writer_held": false},
       "event": {"kind": "retry"}
+    },
+    {
+      "name": "availability loss cannot erase revocation",
+      "initial": {"route": "ssh", "phase": "revoked", "writer_held": false},
+      "event": {"kind": "availability_lost"}
     }
   ],
   "mutation_cases": [

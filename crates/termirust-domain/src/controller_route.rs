@@ -172,6 +172,10 @@ pub enum RemoteRouteEvent {
         retryable: bool,
         mutation_in_flight: bool,
     },
+    AvailabilityLost,
+    AuthorizationRestored {
+        available: bool,
+    },
     Retry,
     Cancel,
     Revoke,
@@ -295,6 +299,20 @@ impl RemoteRouteState {
                     requires_explicit_action: !retryable,
                 }
             }
+            Event::AvailabilityLost if !matches!(self.phase, Phase::Disabled | Phase::Revoked) => {
+                cleanup(self, Phase::Unavailable, true)
+            }
+            Event::AuthorizationRestored { available } if self.phase == Phase::Revoked => {
+                neutral(RemoteRouteState {
+                    phase: if available {
+                        Phase::Idle
+                    } else {
+                        Phase::Unavailable
+                    },
+                    writer_held: false,
+                    ..self
+                })
+            }
             Event::Retry if self.phase == Phase::Degraded => neutral(RemoteRouteState {
                 phase: Phase::Connecting,
                 writer_held: false,
@@ -398,7 +416,6 @@ const fn transport_is_active(phase: RemoteRoutePhase) -> bool {
             | RemoteRoutePhase::Authenticating
             | RemoteRoutePhase::Online
             | RemoteRoutePhase::Reconnecting
-            | RemoteRoutePhase::Degraded
     )
 }
 
@@ -464,6 +481,10 @@ mod tests {
                 "failure" => RemoteRouteEvent::Failure {
                     retryable: self.retryable.unwrap(),
                     mutation_in_flight: self.mutation_in_flight.unwrap(),
+                },
+                "availability_lost" => RemoteRouteEvent::AvailabilityLost,
+                "authorization_restored" => RemoteRouteEvent::AuthorizationRestored {
+                    available: self.available.unwrap(),
                 },
                 "retry" => RemoteRouteEvent::Retry,
                 "cancel" => RemoteRouteEvent::Cancel,
