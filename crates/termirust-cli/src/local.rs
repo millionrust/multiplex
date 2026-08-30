@@ -19,7 +19,7 @@ use termirust_host_protocol::{CURRENT_PROTOCOL, wire};
 use termirust_session_host::{LaunchDescriptor, StopDeadlines};
 use termirust_store::{
     JournalLimits, PresetRepository, PresetSnapshot, ProjectRepository, ProjectSnapshot,
-    SessionRepository, SessionSnapshot, StoreError, StoreHealth,
+    SessionRepository, SessionSnapshot, StoreError, StoreHealth, read_host_metadata,
 };
 use tokio::runtime::Builder;
 use tokio_util::sync::CancellationToken;
@@ -154,9 +154,76 @@ pub trait HostController: Send + Sync {
         &self,
         runtime_root: &Path,
         session_id: HostedSessionId,
+        expected_host_instance_id: Option<HostInstanceId>,
         command_id: CommandId,
         cancellation: &Cancellation,
     ) -> Result<(), CliError>;
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub enum ManagementCommand {
+    Launch {
+        command_id: CommandId,
+        project_id: ProjectId,
+        preset_id: PresetId,
+        group_id: Option<GroupId>,
+    },
+    Rename {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        expected_revision: Revision,
+        title: String,
+    },
+    SetPinned {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        expected_revision: Revision,
+        pinned: bool,
+    },
+    MarkRead {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        expected_revision: Revision,
+    },
+    Stop {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        expected_revision: Revision,
+    },
+    Archive {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        expected_revision: Revision,
+    },
+    Restore {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        expected_revision: Revision,
+    },
+    StopAndArchive {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        expected_revision: Revision,
+    },
+}
+
+impl fmt::Debug for ManagementCommand {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let kind = match self {
+            Self::Launch { .. } => "launch",
+            Self::Rename { .. } => "rename",
+            Self::SetPinned { .. } => "set-pinned",
+            Self::MarkRead { .. } => "mark-read",
+            Self::Stop { .. } => "stop",
+            Self::Archive { .. } => "archive",
+            Self::Restore { .. } => "restore",
+            Self::StopAndArchive { .. } => "stop-and-archive",
+        };
+        formatter
+            .debug_struct("ManagementCommand")
+            .field("kind", &kind)
+            .finish_non_exhaustive()
+    }
 }
 
 pub trait CliClock: Send + Sync {
@@ -230,6 +297,157 @@ impl LocalCommandService {
     ) -> Self {
         self.ssh_controller = ssh_controller;
         self
+    }
+
+    pub fn execute_management(
+        &self,
+        command: ManagementCommand,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        match command {
+            ManagementCommand::Launch {
+                command_id,
+                project_id,
+                preset_id,
+                group_id,
+            } => self.session_launch(
+                project_id,
+                preset_id,
+                group_id,
+                Some(HostedSessionId::from_uuid(command_id.as_uuid())),
+                Some(command_id),
+                cancellation,
+            ),
+            ManagementCommand::Rename {
+                command_id: _,
+                session_id,
+                expected_revision,
+                title,
+            } => {
+                let title = SessionTitle::new(&title).map_err(|_| {
+                    validation(
+                        "session title is invalid",
+                        "Use a non-empty title without control characters.",
+                    )
+                })?;
+                self.session_metadata_mutation(
+                    session_id,
+                    expected_revision,
+                    SessionMutation::Rename(title),
+                    "renamed",
+                )
+            }
+            ManagementCommand::SetPinned {
+                command_id: _,
+                session_id,
+                expected_revision,
+                pinned,
+            } => self.session_metadata_mutation(
+                session_id,
+                expected_revision,
+                SessionMutation::SetPinned(pinned),
+                if pinned { "pinned" } else { "unpinned" },
+            ),
+            ManagementCommand::MarkRead {
+                command_id: _,
+                session_id,
+                expected_revision,
+            } => {
+                let repository = self.sessions()?;
+                let snapshot = repository.load().map_err(map_store)?;
+                let session = require_session(&snapshot.sessions, session_id)?;
+                if expected_revision != session.revision && !session.unread() {
+                    return Ok(mutation("marked_read", session));
+                }
+                let revision = mutation_revision(&snapshot, session, Some(expected_revision))?;
+                let through = session.last_output_sequence;
+                let session = repository
+                    .mutate_session(
+                        session_id,
+                        revision,
+                        SessionMutation::MarkRead { through },
+                        self.clock.now_millis(),
+                    )
+                    .map_err(map_store)?;
+                Ok(mutation("marked_read", &session))
+            }
+            ManagementCommand::Stop {
+                command_id,
+                session_id,
+                expected_revision,
+            } => self.session_stop(
+                session_id,
+                Some(expected_revision),
+                true,
+                true,
+                Some(command_id),
+                cancellation,
+            ),
+            ManagementCommand::Archive {
+                command_id: _,
+                session_id,
+                expected_revision,
+            } => self.session_archive(session_id, Some(expected_revision), true),
+            ManagementCommand::Restore {
+                command_id: _,
+                session_id,
+                expected_revision,
+            } => self.session_restore(session_id, Some(expected_revision), true),
+            ManagementCommand::StopAndArchive {
+                command_id,
+                session_id,
+                expected_revision,
+            } => {
+                let stopped = self.session_stop(
+                    session_id,
+                    Some(expected_revision),
+                    true,
+                    true,
+                    Some(command_id),
+                    cancellation,
+                )?;
+                let CliData::Mutation(stopped) = stopped else {
+                    return Err(operation("stop returned an inconsistent result"));
+                };
+                let archived = self.session_archive(
+                    session_id,
+                    Some(Revision::new(stopped.session.revision)),
+                    true,
+                )?;
+                let CliData::Mutation(mut archived) = archived else {
+                    return Err(operation("archive returned an inconsistent result"));
+                };
+                archived.outcome = "stopped_and_archived".into();
+                Ok(CliData::Mutation(archived))
+            }
+        }
+    }
+
+    fn session_metadata_mutation(
+        &self,
+        session_id: HostedSessionId,
+        expected_revision: Revision,
+        session_mutation: SessionMutation,
+        outcome: &'static str,
+    ) -> Result<CliData, CliError> {
+        let repository = self.sessions()?;
+        let snapshot = repository.load().map_err(map_store)?;
+        let session = require_session(&snapshot.sessions, session_id)?;
+        if expected_revision != session.revision
+            && management_mutation_already_applied(session, &session_mutation)
+        {
+            return Ok(mutation(outcome, session));
+        }
+        let revision = mutation_revision(&snapshot, session, Some(expected_revision))?;
+        let session = repository
+            .mutate_session(
+                session_id,
+                revision,
+                session_mutation,
+                self.clock.now_millis(),
+            )
+            .map_err(map_store)?;
+        Ok(mutation(outcome, &session))
     }
 
     fn status(&self) -> Result<CliData, CliError> {
@@ -334,10 +552,14 @@ impl LocalCommandService {
         &self,
         session_id: HostedSessionId,
         expected: Option<Revision>,
+        allow_idempotent_replay: bool,
     ) -> Result<CliData, CliError> {
         let repository = self.sessions()?;
         let snapshot = repository.load().map_err(map_store)?;
         let session = require_session(&snapshot.sessions, session_id)?;
+        if allow_idempotent_replay && session.archived_at.is_some() {
+            return Ok(mutation("archived", session));
+        }
         if !session.lifecycle.is_exited() {
             return Err(validation(
                 "only an exited session can be archived",
@@ -362,10 +584,14 @@ impl LocalCommandService {
         &self,
         session_id: HostedSessionId,
         expected: Option<Revision>,
+        allow_idempotent_replay: bool,
     ) -> Result<CliData, CliError> {
         let repository = self.sessions()?;
         let snapshot = repository.load().map_err(map_store)?;
         let session = require_session(&snapshot.sessions, session_id)?;
+        if allow_idempotent_replay && session.archived_at.is_none() {
+            return Ok(mutation("restored", session));
+        }
         let revision = mutation_revision(&snapshot, session, expected)?;
         let session = repository
             .mutate_session(
@@ -383,6 +609,8 @@ impl LocalCommandService {
         session_id: HostedSessionId,
         expected: Option<Revision>,
         confirmed: bool,
+        require_exact_host: bool,
+        command_id: Option<CommandId>,
         cancellation: &Cancellation,
     ) -> Result<CliData, CliError> {
         if !confirmed {
@@ -397,6 +625,9 @@ impl LocalCommandService {
         let repository = self.sessions()?;
         let snapshot = repository.load().map_err(map_store)?;
         let session = require_session(&snapshot.sessions, session_id)?;
+        if require_exact_host && session.lifecycle.is_exited() {
+            return Ok(mutation("stopped", session));
+        }
         if !session.lifecycle.can_stop() {
             return Err(validation(
                 "session is not in a stoppable state",
@@ -405,6 +636,11 @@ impl LocalCommandService {
         }
         let revision = mutation_revision(&snapshot, session, expected)?;
         let runtime_root = self.paths.runtime_root(session_id);
+        let expected_host_instance_id = require_exact_host
+            .then(|| read_host_metadata(&self.paths.session_dir(session_id)))
+            .transpose()
+            .map_err(|_| unavailable("durable Host ownership metadata is unavailable or unsafe"))?
+            .map(|metadata| metadata.host_instance_id);
         let stopping = repository
             .mutate_session(
                 session_id,
@@ -413,11 +649,14 @@ impl LocalCommandService {
                 self.clock.now_millis(),
             )
             .map_err(map_store)?;
-        let command_id = self.ids.command_id();
-        match self
-            .controller
-            .stop(&runtime_root, session_id, command_id, cancellation)
-        {
+        let command_id = command_id.unwrap_or_else(|| self.ids.command_id());
+        match self.controller.stop(
+            &runtime_root,
+            session_id,
+            expected_host_instance_id,
+            command_id,
+            cancellation,
+        ) {
             Ok(()) => {
                 let exited = repository
                     .mutate_session(
@@ -444,6 +683,8 @@ impl LocalCommandService {
         project_id: ProjectId,
         preset_id: PresetId,
         group_id: Option<GroupId>,
+        requested_session_id: Option<HostedSessionId>,
+        command_id: Option<CommandId>,
         cancellation: &Cancellation,
     ) -> Result<CliData, CliError> {
         if cancellation.is_cancelled() {
@@ -455,6 +696,25 @@ impl LocalCommandService {
         let projects = project_repository.load().map_err(map_store)?;
         let presets = preset_repository.load().map_err(map_store)?;
         let sessions = session_repository.load().map_err(map_store)?;
+        if let Some(session_id) = requested_session_id
+            && let Some(existing) = sessions
+                .sessions
+                .iter()
+                .find(|session| session.id == session_id)
+        {
+            if existing.project_id != project_id
+                || existing.preset_id != Some(preset_id)
+                || existing.group_id != group_id
+            {
+                return Err(CliError::new(
+                    ErrorCode::Conflict,
+                    "management command identity was already used for another launch",
+                    "Refresh Sessions and submit a new launch command.",
+                )
+                .with_revision(existing.revision));
+            }
+            return Ok(mutation("launched", existing));
+        }
         let project = require_project(&projects.projects, project_id)?
             .project
             .clone();
@@ -483,7 +743,7 @@ impl LocalCommandService {
                 ));
             }
         }
-        let session_id = self.ids.session_id();
+        let session_id = requested_session_id.unwrap_or_else(|| self.ids.session_id());
         let path_snapshot = explicit_path_snapshot();
         let home = dirs::home_dir();
         let resolved = resolve_launch(
@@ -586,7 +846,8 @@ impl LocalCommandService {
                 let stop = self.controller.stop(
                     &self.paths.runtime_root(session_id),
                     session_id,
-                    self.ids.command_id(),
+                    Some(descriptor.host_instance_id),
+                    command_id.unwrap_or_else(|| self.ids.command_id()),
                     &Cancellation::default(),
                 );
                 let lifecycle = if stop.is_ok() {
@@ -739,20 +1000,27 @@ impl CommandService for LocalCommandService {
                 project_id,
                 preset_id,
                 group_id,
-            } => self.session_launch(project_id, preset_id, group_id, cancellation),
+            } => self.session_launch(project_id, preset_id, group_id, None, None, cancellation),
             CliCommand::SessionStop {
                 session_id,
                 expected_revision,
                 confirmed,
-            } => self.session_stop(session_id, expected_revision, confirmed, cancellation),
+            } => self.session_stop(
+                session_id,
+                expected_revision,
+                confirmed,
+                false,
+                None,
+                cancellation,
+            ),
             CliCommand::SessionArchive {
                 session_id,
                 expected_revision,
-            } => self.session_archive(session_id, expected_revision),
+            } => self.session_archive(session_id, expected_revision, false),
             CliCommand::SessionRestore {
                 session_id,
                 expected_revision,
-            } => self.session_restore(session_id, expected_revision),
+            } => self.session_restore(session_id, expected_revision, false),
             CliCommand::ControllerSsh(command) => {
                 self.ssh_controller.execute(command, cancellation)
             }
@@ -869,6 +1137,7 @@ impl HostController for LocalHostController {
         &self,
         runtime_root: &Path,
         session_id: HostedSessionId,
+        expected_host_instance_id: Option<HostInstanceId>,
         command_id: CommandId,
         cancellation: &Cancellation,
     ) -> Result<(), CliError> {
@@ -903,6 +1172,12 @@ impl HostController for LocalHostController {
                 &async_cancel,
             )
             .await?;
+            if expected_host_instance_id
+                .is_some_and(|expected| client.host_instance_id() != Some(expected))
+            {
+                client.disconnect();
+                return Err(ClientError::new(ClientErrorCode::InvalidIdentity));
+            }
             client
                 .stop(command_id, wire::StopMode::Graceful, &async_cancel)
                 .await?;
@@ -987,6 +1262,17 @@ fn mutation_revision(
         .with_revision(session.revision));
     }
     Ok(snapshot.revision)
+}
+
+fn management_mutation_already_applied(
+    session: &HostedSession,
+    mutation: &SessionMutation,
+) -> bool {
+    match mutation {
+        SessionMutation::Rename(title) => session.title == *title,
+        SessionMutation::SetPinned(pinned) => session.pinned == *pinned,
+        _ => false,
+    }
 }
 
 fn bounded_records(count: usize) -> Result<(), CliError> {

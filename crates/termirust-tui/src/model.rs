@@ -41,6 +41,7 @@ pub struct FleetSession {
     pub state: String,
     pub activity: String,
     pub unread: bool,
+    pub pinned: bool,
     pub archived: bool,
     pub revision: u64,
 }
@@ -576,6 +577,7 @@ mod tests {
                     state: "live".into(),
                     activity: "busy".into(),
                     unread: true,
+                    pinned: false,
                     archived: false,
                     revision: 4,
                 },
@@ -587,6 +589,7 @@ mod tests {
                     state: "offline".into(),
                     activity: "idle".into(),
                     unread: false,
+                    pinned: true,
                     archived: false,
                     revision: 5,
                 },

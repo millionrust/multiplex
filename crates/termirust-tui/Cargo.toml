@@ -12,6 +12,7 @@ rand = "0.8"
 ratatui = { version = "=0.30.2", default-features = false, features = ["crossterm", "layout-cache"] }
 signal-hook = "=0.3.18"
 termirust-client = { version = "0.1.0", path = "../termirust-client" }
+termirust-cli = { version = "0.1.0", path = "../termirust-cli" }
 termirust-domain = { version = "0.1.0", path = "../termirust-domain" }
 termirust-host-protocol = { version = "0.1.0", path = "../termirust-host-protocol" }
 termirust-store = { version = "0.1.0", path = "../termirust-store" }

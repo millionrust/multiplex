@@ -17,7 +17,8 @@ pub use args::{
 pub use contract::*;
 pub use local::{
     CliClock, CliIds, CliInstallationStatus, CliPaths, HostController, HostLaunchOutcome,
-    HostLauncher, LocalCommandService, SshControllerCommandExecutor, cli_installation_status,
+    HostLauncher, LocalCommandService, ManagementCommand, SshControllerCommandExecutor,
+    cli_installation_status,
 };
 pub use remote_ssh::SystemSshControllerExecutor;
 pub use render::{RenderOptions, render_failure, render_success};

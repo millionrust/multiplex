@@ -31,6 +31,7 @@ fn model() -> TuiModel {
                 state: "permission_denied".into(),
                 activity: "needs_input".into(),
                 unread: true,
+                pinned: false,
                 archived: false,
                 revision: 9,
             }],

@@ -4,7 +4,10 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 
-use crate::localization::{TextId, TuiLocale, text};
+use crate::localization::{TextId, TuiLocale, localize, text};
+use crate::management::{
+    CommandProgress, ConfirmationKind, ManagementDraft, ManagementIntent, ManagementModel,
+};
 use crate::model::{FleetHealth, LoadState, PaneFocus, ProjectAvailability, ScopeId, TuiModel};
 use crate::{AttachedTerminal, InteractiveLease, TuiAttachState, TuiFocus};
 
@@ -184,6 +187,182 @@ pub fn render_attached(
     }
 }
 
+pub fn render_management(
+    frame: &mut Frame<'_>,
+    management: &ManagementModel,
+    options: RenderOptions,
+) {
+    if !management.active() {
+        return;
+    }
+    let area = centered(frame.area(), 74, 16);
+    frame.render_widget(Clear, area);
+    let mut lines = Vec::new();
+    match management.progress() {
+        CommandProgress::Idle => lines.push(Line::from(localize(
+            options.locale,
+            "Preparing Session management...",
+        ))),
+        CommandProgress::Running => {
+            lines.push(Line::from(localize(
+                options.locale,
+                "Command in progress. The target remains fixed.",
+            )));
+            lines.push(Line::from(localize(
+                options.locale,
+                if management.intent() == Some(ManagementIntent::Launch) {
+                    "Esc requests cancellation before the Host becomes ready."
+                } else if management.intent() == Some(ManagementIntent::Stop) {
+                    "Stop cannot be cancelled after the first Host signal."
+                } else {
+                    "Wait for the revision-checked command result."
+                },
+            )));
+        }
+        CommandProgress::Succeeded {
+            summary,
+            undo_deadline,
+        } => {
+            lines.push(Line::from(localize(options.locale, summary)));
+            lines.push(Line::from(localize(
+                options.locale,
+                if undo_deadline.is_some() {
+                    "u undo within 10 seconds | Esc close"
+                } else {
+                    "Esc close"
+                },
+            )));
+        }
+        CommandProgress::Failed(error) => {
+            lines.push(Line::from(format!("[{}] {}", error.code, error.summary)));
+            lines.push(Line::from(error.recovery.clone()));
+            if let Some(revision) = error.conflict_revision {
+                lines.push(Line::from(format!(
+                    "{} {revision}",
+                    localize(options.locale, "Current revision:")
+                )));
+            }
+            lines.push(Line::from(localize(
+                options.locale,
+                "Esc closes this result. Refresh before another command.",
+            )));
+        }
+        CommandProgress::Reviewing => {
+            render_management_draft(&mut lines, management.draft(), options)
+        }
+    }
+    frame.render_widget(
+        Paragraph::new(lines).wrap(Wrap { trim: true }).block(panel(
+            localize(options.locale, "Session management"),
+            true,
+            options,
+        )),
+        area,
+    );
+}
+
+fn render_management_draft(
+    lines: &mut Vec<Line<'static>>,
+    draft: Option<&ManagementDraft>,
+    options: RenderOptions,
+) {
+    match draft {
+        Some(ManagementDraft::LoadingLaunch { .. }) => lines.push(Line::from(localize(
+            options.locale,
+            "Loading bounded preset choices...",
+        ))),
+        Some(ManagementDraft::Launch {
+            project_name,
+            choices,
+            selected,
+            ..
+        }) => {
+            let project = display_user(project_name, "project", options);
+            lines.push(Line::from(format!(
+                "{} {project}",
+                localize(options.locale, "Project:")
+            )));
+            lines.push(Line::from(localize(
+                options.locale,
+                "Choose one enabled safe preset:",
+            )));
+            let start = selected.saturating_sub(3);
+            for (index, choice) in choices.iter().enumerate().skip(start).take(7) {
+                let marker = if index == *selected { ">" } else { " " };
+                lines.push(Line::from(format!(
+                    "{marker} {}",
+                    display_user(&choice.label, "preset", options)
+                )));
+            }
+            lines.push(Line::from(localize(
+                options.locale,
+                "Up/Down select | Enter launch once | Esc cancel",
+            )));
+        }
+        Some(ManagementDraft::Rename { target, value }) => {
+            lines.push(management_target_line(target, options));
+            lines.push(Line::from(localize(
+                options.locale,
+                "New title (bounded text only):",
+            )));
+            lines.push(Line::from(format!(
+                "> {}_",
+                display_user(value, "title", options)
+            )));
+            lines.push(Line::from(localize(
+                options.locale,
+                "Enter save once | Esc cancel",
+            )));
+        }
+        Some(ManagementDraft::Confirm { kind, target }) => {
+            lines.push(management_target_line(target, options));
+            lines.push(Line::from(localize(
+                options.locale,
+                confirmation_consequence(*kind),
+            )));
+            lines.push(Line::from(localize(
+                options.locale,
+                "Enter confirm once | Esc cancel (safe default)",
+            )));
+        }
+        None => lines.push(Line::from(localize(
+            options.locale,
+            "No management draft is available.",
+        ))),
+    }
+}
+
+fn management_target_line(
+    target: &crate::management::ManagementTarget,
+    options: RenderOptions,
+) -> Line<'static> {
+    Line::from(format!(
+        "{} {}  {} {}  {} {}",
+        localize(options.locale, "Target:"),
+        display_user(&target.title, "session", options),
+        localize(options.locale, "state"),
+        target.state,
+        localize(options.locale, "revision"),
+        target.revision,
+    ))
+}
+
+fn confirmation_consequence(kind: ConfirmationKind) -> &'static str {
+    match kind {
+        ConfirmationKind::Pin => "Pin this Session in fleet ordering.",
+        ConfirmationKind::Unpin => "Remove this Session from pinned ordering.",
+        ConfirmationKind::MarkRead => {
+            "Mark activity visible through the captured sequence as read."
+        }
+        ConfirmationKind::Stop => "Stop the exact owned Host process. This cannot be undone.",
+        ConfirmationKind::StopAndArchive => {
+            "Stop the exact owned Host, confirm exit, then archive its metadata. This cannot be undone as one action."
+        }
+        ConfirmationKind::Archive => "Archive exited Session metadata. No process will start.",
+        ConfirmationKind::Restore => "Restore Session metadata only. No process will start.",
+    }
+}
+
 fn attach_state_label(state: TuiAttachState) -> &'static str {
     match state {
         TuiAttachState::Detached => "DETACHED",
@@ -303,7 +482,12 @@ fn render_sessions(frame: &mut Frame<'_>, area: Rect, model: &TuiModel, options:
         .skip(start)
         .take(visible)
         .map(|(index, session)| {
-            let marker = if session.unread { "*" } else { " " };
+            let marker = match (session.unread, session.pinned) {
+                (true, true) => "*!",
+                (true, false) => "* ",
+                (false, true) => " !",
+                (false, false) => "  ",
+            };
             let archived = if session.archived { " archived" } else { "" };
             let title = display_user(&session.title, "session", options);
             ListItem::new(Line::from(vec![
@@ -390,7 +574,7 @@ fn render_status(frame: &mut Frame<'_>, area: Rect, model: &TuiModel, options: R
         Paragraph::new(vec![
             Line::from(summary),
             Line::from(Span::styled(
-                "? help  r refresh  Esc cancel/clear  q quit",
+                "n launch  e rename  p pin  m read  s stop  a archive/restore  ? help",
                 muted(options),
             )),
         ])
@@ -408,7 +592,8 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, options: RenderOptions) {
                 "Left/Right collapse or expand Projects. Enter attaches the selected Session.",
             ),
             Line::from("Terminal: Ctrl+Space then Esc detaches without stopping the Host."),
-            Line::from("This interface cannot launch, stop, archive or modify metadata."),
+            Line::from("Fleet: n launch, e rename, p pin, m mark read, s stop, a archive/restore."),
+            Line::from("Management keys are never interpreted while terminal input has focus."),
             Line::from("Use --inline, --no-color or --recording-friendly when needed."),
         ])
         .wrap(Wrap { trim: true })
@@ -633,6 +818,7 @@ mod tests {
                     state: "live".into(),
                     activity: "busy".into(),
                     unread: true,
+                    pinned: false,
                     archived: false,
                     revision: 2,
                 }],
@@ -749,6 +935,56 @@ mod tests {
             },
         );
         assert!(output.contains("Keyboard help"));
-        assert!(output.contains("cannot launch"));
+        assert!(output.contains("Fleet: n launch"));
+        assert!(output.contains("[!!"));
+    }
+
+    #[test]
+    fn management_confirmation_reflows_in_no_color_and_localized_modes() {
+        let model = ready_model();
+        let mut management = ManagementModel::default();
+        management.begin_session(ManagementIntent::Stop, model.selected_session().unwrap());
+
+        for locale in [
+            TuiLocale::English,
+            TuiLocale::PseudoExpanded,
+            TuiLocale::PseudoRtl,
+        ] {
+            let backend = TestBackend::new(80, 20);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal
+                .draw(|frame| {
+                    render(
+                        frame,
+                        &model,
+                        RenderOptions {
+                            locale,
+                            no_color: true,
+                            recording_friendly: true,
+                        },
+                    );
+                    render_management(
+                        frame,
+                        &management,
+                        RenderOptions {
+                            locale,
+                            no_color: true,
+                            recording_friendly: true,
+                        },
+                    );
+                })
+                .unwrap();
+            let output = terminal
+                .backend()
+                .buffer()
+                .content()
+                .iter()
+                .map(|cell| cell.symbol())
+                .collect::<String>();
+            assert!(output.contains("Session management"));
+            assert!(output.contains("Enter confirm once"));
+            assert!(output.contains("[session hidden]"));
+            assert!(!output.contains("Build"));
+        }
     }
 }

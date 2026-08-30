@@ -53,8 +53,12 @@ pub fn text(locale: TuiLocale, id: TextId) -> String {
             "Arrows/j/k move  Tab changes pane  / filters  i inspector  r refresh  ? help  q quit"
         }
         TextId::SmallTerminal => "Terminal must be at least 80 columns by 20 rows",
-        TextId::ReadOnly => "Read only",
+        TextId::ReadOnly => "Local controller",
     };
+    localize(locale, english)
+}
+
+pub fn localize(locale: TuiLocale, english: &str) -> String {
     match locale {
         TuiLocale::English => english.to_string(),
         TuiLocale::PseudoExpanded => {

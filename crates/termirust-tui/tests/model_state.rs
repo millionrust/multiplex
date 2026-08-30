@@ -24,6 +24,7 @@ fn large_snapshot() -> FleetSnapshot {
             state: if index % 2 == 0 { "live" } else { "offline" }.into(),
             activity: if index % 3 == 0 { "busy" } else { "idle" }.into(),
             unread: index % 5 == 0,
+            pinned: index % 7 == 0,
             archived: false,
             revision: index as u64,
         })

@@ -28,8 +28,12 @@ use crate::attach::{
 };
 use crate::input::{InputDecision, InteractiveLease, TuiFocus};
 use crate::localization::TuiLocale;
+use crate::management::{
+    LocalManagementExecutor, ManagementEffect, ManagementExecutor, ManagementFailure,
+    ManagementIntent, ManagementModel,
+};
 use crate::model::{ModelAction, ModelEffect, TuiDiagnostic, TuiModel};
-use crate::render::{RenderOptions, render, render_attached};
+use crate::render::{RenderOptions, render, render_attached, render_management};
 use crate::source::{FleetCancellation, FleetLoadError, FleetSource};
 
 const EVENT_QUEUE_CAPACITY: usize = 64;
@@ -119,6 +123,14 @@ enum AppEvent {
         result: Result<crate::FleetSnapshot, FleetLoadError>,
     },
     Attach(AttachEvent),
+    ManagementChoices {
+        generation: u64,
+        result: Result<Vec<crate::LaunchChoice>, ManagementFailure>,
+    },
+    ManagementCompleted {
+        generation: u64,
+        result: Result<crate::ManagementResult, ManagementFailure>,
+    },
     Deadline,
     TerminalFailure,
 }
@@ -158,6 +170,11 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
     let mut terminal_notice: Option<String> = None;
     let mut pending_resize: Option<(Viewport, Instant)> = None;
     let mut attach_retry = AttachRetry::default();
+    let management_executor: Option<Arc<dyn ManagementExecutor>> = source
+        .config_root()
+        .and_then(|root| LocalManagementExecutor::new(root).ok())
+        .map(|executor| Arc::new(executor) as Arc<dyn ManagementExecutor>);
+    let mut management = ManagementModel::default();
 
     loop {
         session.terminal.draw(|frame| {
@@ -165,6 +182,7 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                 render_attached(frame, attached, terminal_notice.as_deref(), render_options);
             } else {
                 render(frame, &model, render_options);
+                render_management(frame, &management, render_options);
             }
         })?;
         if std::env::var_os("TERMIRUST_TUI_EXIT_AFTER_FIRST_DRAW").is_some() {
@@ -174,6 +192,7 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
             attached.as_ref(),
             pending_resize.as_ref(),
             attach_retry.deadline,
+            management.deadline(),
         );
         let app_event = receive_event(&receiver, deadline)?;
         let mut retry_attach = false;
@@ -217,6 +236,23 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                         );
                     }
                     ModelEffect::None
+                } else if management.active() {
+                    let effect = management.handle_key(key, Instant::now());
+                    apply_management_effect(
+                        effect,
+                        &mut management,
+                        management_executor.as_ref(),
+                        &sender,
+                    )?;
+                    ModelEffect::None
+                } else if let Some(effect) = management_shortcut(&model, &mut management, key) {
+                    apply_management_effect(
+                        effect,
+                        &mut management,
+                        management_executor.as_ref(),
+                        &sender,
+                    )?;
+                    ModelEffect::None
                 } else if key.code == KeyCode::Enter && model.focus() == crate::PaneFocus::Sessions
                 {
                     if let Some(selected) = model.selected_session().cloned() {
@@ -247,6 +283,8 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                         attach_worker.as_ref(),
                         &mut terminal_notice,
                     );
+                } else if management.active() {
+                    management.append_paste(&value);
                 }
                 ModelEffect::None
             }
@@ -297,6 +335,19 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                 }
                 ModelEffect::None
             }
+            AppEvent::ManagementChoices { generation, result } => {
+                management.launch_choices_loaded(generation, result);
+                ModelEffect::None
+            }
+            AppEvent::ManagementCompleted { generation, result } => {
+                let succeeded = result.is_ok();
+                management.completed(generation, result, Instant::now());
+                if succeeded {
+                    model.reduce(ModelAction::BeginRefresh)
+                } else {
+                    ModelEffect::None
+                }
+            }
             AppEvent::Deadline => {
                 if let Some(current) = attached.as_mut() {
                     let decision = current.input_mut().expire_leader(Instant::now());
@@ -306,6 +357,7 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                         &mut terminal_notice,
                     );
                 }
+                management.expire_undo(Instant::now());
                 ModelEffect::None
             }
             AppEvent::TerminalFailure => {
@@ -382,15 +434,125 @@ fn nearest_deadline(
     attached: Option<&AttachedTerminal>,
     resize: Option<&(Viewport, Instant)>,
     retry: Option<Instant>,
+    management: Option<Instant>,
 ) -> Option<Instant> {
     [
         attached.and_then(|attached| attached.input().leader_deadline()),
         resize.map(|(_, deadline)| *deadline),
         retry,
+        management,
     ]
     .into_iter()
     .flatten()
     .min()
+}
+
+fn management_shortcut(
+    model: &TuiModel,
+    management: &mut ManagementModel,
+    key: KeyEvent,
+) -> Option<ManagementEffect> {
+    if model.filter_editing() || model.help_visible() || !key.modifiers.is_empty() {
+        return None;
+    }
+    if key.code == KeyCode::Char('n') {
+        let (project_id, project_name, group_id) = launch_context(model)?;
+        return Some(management.begin_launch(project_id, project_name, group_id));
+    }
+    if model.focus() != crate::PaneFocus::Sessions {
+        return None;
+    }
+    let session = model.selected_session()?;
+    let intent = match key.code {
+        KeyCode::Char('e') => ManagementIntent::Rename,
+        KeyCode::Char('p') => ManagementIntent::TogglePin,
+        KeyCode::Char('m') => ManagementIntent::MarkRead,
+        KeyCode::Char('s') => ManagementIntent::Stop,
+        KeyCode::Char('a') if session.archived => ManagementIntent::Restore,
+        KeyCode::Char('a') => ManagementIntent::Archive,
+        _ => return None,
+    };
+    Some(management.begin_session(intent, session))
+}
+
+fn launch_context(model: &TuiModel) -> Option<(String, String, Option<String>)> {
+    let snapshot = model.snapshot()?;
+    let (project_id, group_id) = match model.selected_scope() {
+        crate::ScopeId::Project(project_id) => (project_id.clone(), None),
+        crate::ScopeId::Group(group_id) => {
+            let project = snapshot
+                .projects
+                .iter()
+                .find(|project| project.groups.iter().any(|group| &group.id == group_id))?;
+            (project.id.clone(), Some(group_id.clone()))
+        }
+        crate::ScopeId::All => {
+            let session = model.selected_session()?;
+            (session.project_id.clone(), session.group_id.clone())
+        }
+    };
+    let project = snapshot
+        .projects
+        .iter()
+        .find(|project| project.id == project_id)?;
+    Some((project_id, project.name.clone(), group_id))
+}
+
+fn apply_management_effect(
+    effect: ManagementEffect,
+    model: &mut ManagementModel,
+    executor: Option<&Arc<dyn ManagementExecutor>>,
+    sender: &SyncSender<AppEvent>,
+) -> io::Result<()> {
+    match effect {
+        ManagementEffect::None => Ok(()),
+        ManagementEffect::Close => {
+            model.close();
+            Ok(())
+        }
+        ManagementEffect::LoadLaunchChoices { project_id } => {
+            let generation = model.generation();
+            let cancellation = model.cancellation();
+            let Some(executor) = executor.cloned() else {
+                model.launch_choices_loaded(generation, Err(ManagementFailure::unavailable()));
+                return Ok(());
+            };
+            let sender = sender.clone();
+            thread::Builder::new()
+                .name("termirust-tui-management-read".into())
+                .spawn(move || {
+                    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                        executor.launch_choices(&project_id, &cancellation)
+                    }))
+                    .unwrap_or_else(|_| Err(ManagementFailure::unavailable()));
+                    let _ = sender.send(AppEvent::ManagementChoices { generation, result });
+                })
+                .map(|_| ())
+        }
+        ManagementEffect::Execute(command) => {
+            let generation = model.generation();
+            let cancellation = model.cancellation();
+            let Some(executor) = executor.cloned() else {
+                model.completed(
+                    generation,
+                    Err(ManagementFailure::unavailable()),
+                    Instant::now(),
+                );
+                return Ok(());
+            };
+            let sender = sender.clone();
+            thread::Builder::new()
+                .name("termirust-tui-management-command".into())
+                .spawn(move || {
+                    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                        executor.execute(command, &cancellation)
+                    }))
+                    .unwrap_or_else(|_| Err(ManagementFailure::unavailable()));
+                    let _ = sender.send(AppEvent::ManagementCompleted { generation, result });
+                })
+                .map(|_| ())
+        }
+    }
 }
 
 fn begin_attach(

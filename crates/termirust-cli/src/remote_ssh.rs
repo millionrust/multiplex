@@ -276,11 +276,13 @@ impl SystemSshControllerExecutor {
         let storage_error = std::cell::RefCell::new(None);
         let local_identity_saved = std::cell::Cell::new(false);
         let route_result = runtime.block_on(execute_pair_route(
-            executable,
+            PairRouteContext {
+                executable,
+                private_key: private_key.clone(),
+                ephemeral_key,
+                device_id,
+            },
             &command,
-            private_key.clone(),
-            ephemeral_key,
-            device_id,
             |sas| self.confirm_pairing(sas),
             |result| {
                 let profile = StoredControllerProfile::from_pairing(&command.target, result);
@@ -512,12 +514,16 @@ impl AsyncWrite for ChildDuplex {
     }
 }
 
-async fn execute_pair_route<F, G>(
+struct PairRouteContext {
     executable: PathBuf,
-    command: &ControllerSshCommand,
     private_key: StaticPrivateKey,
     ephemeral_key: StaticPrivateKey,
     device_id: ControllerDeviceId,
+}
+
+async fn execute_pair_route<F, G>(
+    context: PairRouteContext,
+    command: &ControllerSshCommand,
     confirm_sas: F,
     prepare_registration: G,
     cancellation: &Cancellation,
@@ -528,8 +534,8 @@ where
         &termirust_controller_listener::ControllerClientPairingResult,
     ) -> Result<(), ListenerError>,
 {
-    let mut process =
-        AsyncSshControllerProcess::spawn(&executable, &command.target).map_err(map_spawn)?;
+    let mut process = AsyncSshControllerProcess::spawn(&context.executable, &command.target)
+        .map_err(map_spawn)?;
     let reader = process.take_stdout().ok_or_else(route_unavailable)?;
     let writer = process.take_stdin().ok_or_else(route_unavailable)?;
     let stderr = process.take_stderr().ok_or_else(route_unavailable)?;
@@ -546,9 +552,9 @@ where
         pair_controller_client(
             &mut stream,
             offer,
-            private_key,
-            ephemeral_key,
-            device_id,
+            context.private_key,
+            context.ephemeral_key,
+            context.device_id,
             "TermiRust CLI".into(),
             confirm_sas,
             prepare_registration,
@@ -1586,7 +1592,8 @@ fn capability_names(capabilities: CapabilitySet) -> Vec<String> {
         ),
     ]
     .into_iter()
-    .filter_map(|(capability, name)| capabilities.contains(capability).then(|| name.into()))
+    .filter(|(capability, _)| capabilities.contains(*capability))
+    .map(|(_, name)| name.into())
     .collect()
 }
 

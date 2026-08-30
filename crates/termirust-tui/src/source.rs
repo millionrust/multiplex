@@ -38,6 +38,10 @@ pub trait FleetSource: Send + Sync {
     fn local_endpoint(&self, _session_id: HostedSessionId) -> Option<LocalEndpoint> {
         None
     }
+
+    fn config_root(&self) -> Option<PathBuf> {
+        None
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -183,6 +187,7 @@ impl FleetSource for LocalFleetSource {
                 state: session_state(session.lifecycle).to_string(),
                 activity: activity_state(session.activity.state).to_string(),
                 unread: session.unread(),
+                pinned: session.pinned,
                 archived: session.archived_at.is_some(),
                 revision: session.revision.get(),
             });
@@ -213,6 +218,10 @@ impl FleetSource for LocalFleetSource {
             &self.config_root,
             session_id,
         ))
+    }
+
+    fn config_root(&self) -> Option<PathBuf> {
+        Some(self.config_root.clone())
     }
 }
 

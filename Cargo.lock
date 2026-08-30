@@ -8581,6 +8581,7 @@ dependencies = [
  "ratatui",
  "signal-hook",
  "tempfile",
+ "termirust-cli",
  "termirust-client",
  "termirust-domain",
  "termirust-host-protocol",

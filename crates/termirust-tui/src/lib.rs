@@ -3,6 +3,7 @@
 pub mod attach;
 pub mod input;
 pub mod localization;
+pub mod management;
 pub mod model;
 pub mod render;
 pub mod source;
@@ -15,6 +16,11 @@ pub use attach::{
     endpoint_for_source, spawn_attach_worker,
 };
 pub use input::{InputDecision, InteractiveLease, TerminalInputModel, TuiFocus};
+pub use management::{
+    CommandProgress, ConfirmationKind, LaunchChoice, LocalManagementExecutor, ManagementCommand,
+    ManagementDraft, ManagementEffect, ManagementExecutor, ManagementFailure, ManagementIntent,
+    ManagementModel, ManagementResult,
+};
 pub use model::{
     FleetGroup, FleetHealth, FleetProject, FleetRevision, FleetSession, FleetSnapshot, LoadState,
     MAX_FILTER_SCALARS, MAX_PROJECTS, MAX_VISIBLE_SESSIONS, ModelAction, ModelEffect, PaneFocus,

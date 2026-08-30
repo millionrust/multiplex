@@ -161,6 +161,7 @@ impl HostLauncher for FakeLauncher {
 #[derive(Default)]
 pub struct FakeControllerState {
     pub calls: usize,
+    pub expected_hosts: Vec<Option<HostInstanceId>>,
     pub result: Option<Result<(), CliError>>,
 }
 
@@ -173,11 +174,13 @@ impl HostController for FakeController {
         &self,
         _runtime_root: &Path,
         _session_id: HostedSessionId,
+        expected_host_instance_id: Option<HostInstanceId>,
         _command_id: CommandId,
         _cancellation: &Cancellation,
     ) -> Result<(), CliError> {
         let mut state = self.state.lock().unwrap();
         state.calls += 1;
+        state.expected_hosts.push(expected_host_instance_id);
         state.result.clone().unwrap_or(Ok(()))
     }
 }
