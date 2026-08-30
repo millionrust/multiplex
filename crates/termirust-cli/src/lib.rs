@@ -6,13 +6,13 @@ mod local;
 mod remote_ssh;
 mod render;
 
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use args::{
     ApprovalDecision, CliCommand, ControllerSshAction, ControllerSshCommand, Invocation,
-    SessionListFilter, parse_args,
+    RemovalConfirmation, SessionListFilter, parse_args,
 };
 pub use contract::*;
 pub use local::{
@@ -60,6 +60,42 @@ pub fn write_output(
 ) -> io::Result<()> {
     stdout.write_all(&output.stdout)?;
     stderr.write_all(&output.stderr)
+}
+
+pub fn read_removal_confirmation(reader: &mut dyn Read) -> Result<RemovalConfirmation, CliError> {
+    const MAX_STDIN_BYTES: u64 = 1_027;
+    let mut bytes = Vec::new();
+    reader
+        .take(MAX_STDIN_BYTES)
+        .read_to_end(&mut bytes)
+        .map_err(|_| {
+            CliError::new(
+                ErrorCode::OperationFailed,
+                "unable to read session removal confirmation from stdin",
+                "Retry with one confirmation line piped to stdin.",
+            )
+        })?;
+    if bytes.len() > 1_026 {
+        return Err(CliError::new(
+            ErrorCode::ResourceLimit,
+            "session removal confirmation from stdin exceeds the supported limit",
+            "Provide one line of at most 256 Unicode characters.",
+        ));
+    }
+    let mut value = String::from_utf8(bytes).map_err(|_| {
+        CliError::new(
+            ErrorCode::Validation,
+            "session removal confirmation from stdin is not valid UTF-8",
+            "Provide one UTF-8 confirmation line.",
+        )
+    })?;
+    if value.ends_with('\n') {
+        value.pop();
+        if value.ends_with('\r') {
+            value.pop();
+        }
+    }
+    RemovalConfirmation::new(value)
 }
 
 pub fn run(
@@ -142,6 +178,8 @@ pub(crate) fn help_data() -> CliData {
             "session stop <id> [--expected-revision N] --yes [--json]".into(),
             "session archive <id> [--expected-revision N] [--json]".into(),
             "session restore <id> [--expected-revision N] [--json]".into(),
+            "session remove <id> [--expected-revision N] [--json]".into(),
+            "session remove <id> [--expected-revision N] --preview-token <token> --yes --confirmation-stdin [--json] < stdin".into(),
             "controller ssh --host <host> [--user <user>] [--port <port>] pair [--json]".into(),
             "controller ssh --host <host> [--user <user>] [--port <port>] sessions [--json]".into(),
             "controller ssh --host <host> [--user <user>] [--port <port>] attach --session <id> --generation N [--from-sequence N] [--columns N] [--rows N] [--write] [--json]".into(),
@@ -150,7 +188,7 @@ pub(crate) fn help_data() -> CliData {
             "controller ssh --host <host> [--user <user>] [--port <port>] approval --session <id> --generation N --approval <id> --decision <allow|deny> [--json]".into(),
             "controller ssh --host <host> [--user <user>] [--port <port>] detach --session <id> --generation N [--json]".into(),
         ],
-        safety: "Local metadata and authenticated Host commands only. Stop requires --yes. Human SSH attach is interactive and detaches with Ctrl-] then d; JSON attach never emits terminal bytes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen project, preset, and session titles and may be sensitive.".into(),
+        safety: "Local metadata and authenticated Host commands only. Stop requires --yes. Session removal requires a reviewed preview token, --yes, and bounded confirmation from stdin. Human SSH attach is interactive and detaches with Ctrl-] then d; JSON attach never emits terminal bytes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen project, preset, and session titles and may be sensitive.".into(),
         exit_codes: vec![
             "0 success".into(),
             "2 usage or validation".into(),

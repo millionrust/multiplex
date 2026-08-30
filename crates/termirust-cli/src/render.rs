@@ -2,7 +2,7 @@ use unicode_width::UnicodeWidthChar as _;
 
 use crate::{
     CLI_JSON_SCHEMA_VERSION, CliData, CliError, ErrorCode, JsonFailure, JsonSuccess,
-    MAX_RESPONSE_BYTES,
+    MAX_RESPONSE_BYTES, RemovalConfirmationKind,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -125,6 +125,38 @@ fn render_human(data: &CliData, warnings: &[String], width: usize) -> String {
                 "\nSession",
                 std::iter::once(session_fields(&data.session)),
             ));
+            text
+        }
+        CliData::RemovalPreview(data) => {
+            let confirmation = match data.confirmation {
+                RemovalConfirmationKind::SessionTitle => "the exact Session title",
+                RemovalConfirmationKind::Remove => "REMOVE",
+            };
+            let mut text = render_records(
+                "Session removal preview",
+                std::iter::once(vec![
+                    ("ID", data.session.id.clone()),
+                    ("Title", data.session.title.clone()),
+                    ("State", data.session.state.clone()),
+                    (
+                        "Archived",
+                        if data.session.archived { "yes" } else { "no" }.into(),
+                    ),
+                    ("Session revision", data.session.revision.to_string()),
+                    ("Repository revision", data.repository_revision.to_string()),
+                    ("Metadata bytes", data.metadata_bytes.to_string()),
+                    ("Journal bytes", data.journal_bytes.to_string()),
+                    ("Transcript bytes", data.transcript_bytes.to_string()),
+                    ("Artifact bytes", data.artifact_bytes.to_string()),
+                    ("Total bytes", data.total_bytes.to_string()),
+                    ("Files", data.file_count.to_string()),
+                    ("Confirmation", confirmation.into()),
+                    ("Preview token", data.preview_token.clone()),
+                ]),
+            );
+            text.push_str(
+                "\n\nNo data was changed. To commit, pipe the requested confirmation to stdin and rerun with this preview token, --yes, and --confirmation-stdin.",
+            );
             text
         }
         CliData::ControllerSsh(data) => {

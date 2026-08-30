@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt;
 
 use termirust_client::{
     SshControllerTarget, SshControllerTargetId, ValidatedDnsOrIp, ValidatedUser,
@@ -51,7 +52,64 @@ pub enum CliCommand {
         session_id: HostedSessionId,
         expected_revision: Option<Revision>,
     },
+    SessionRemove {
+        session_id: HostedSessionId,
+        expected_revision: Option<Revision>,
+        preview_token: Option<String>,
+        confirmed: bool,
+        confirmation_stdin: bool,
+        confirmation: Option<RemovalConfirmation>,
+    },
     ControllerSsh(ControllerSshCommand),
+}
+
+impl CliCommand {
+    pub fn with_removal_confirmation(
+        mut self,
+        confirmation: RemovalConfirmation,
+    ) -> Result<Self, CliError> {
+        let Self::SessionRemove {
+            confirmation_stdin,
+            confirmation: current,
+            ..
+        } = &mut self
+        else {
+            return Err(usage("confirmation input is valid only for session remove"));
+        };
+        if !*confirmation_stdin || current.is_some() {
+            return Err(usage(
+                "session removal confirmation input was not requested",
+            ));
+        }
+        *current = Some(confirmation);
+        Ok(self)
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct RemovalConfirmation(String);
+
+impl RemovalConfirmation {
+    pub fn new(value: String) -> Result<Self, CliError> {
+        if value.is_empty() || value.chars().count() > 256 || value.chars().any(char::is_control) {
+            return Err(CliError::new(
+                ErrorCode::Validation,
+                "session removal confirmation from stdin is invalid",
+                "Provide exactly one non-empty line of at most 256 Unicode characters.",
+            ));
+        }
+        Ok(Self(value))
+    }
+
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for RemovalConfirmation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("<redacted>")
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -182,6 +240,32 @@ pub fn parse_args(arguments: Vec<String>) -> Result<Invocation, CliError> {
             CliCommand::SessionRestore {
                 session_id: parse_id(session, "session")?,
                 expected_revision: optional_revision(&options)?,
+            }
+        }
+        [scope, action, session, rest @ ..] if scope == "session" && action == "remove" => {
+            let options = parse_options(
+                rest,
+                &["--expected-revision", "--preview-token"],
+                &["--yes", "--confirmation-stdin"],
+            )?;
+            let preview_token = options.value("--preview-token").map(str::to_string);
+            let confirmed = options.flag("--yes");
+            let confirmation_stdin = options.flag("--confirmation-stdin");
+            let commit_options = usize::from(preview_token.is_some())
+                + usize::from(confirmed)
+                + usize::from(confirmation_stdin);
+            if commit_options != 0 && commit_options != 3 {
+                return Err(usage(
+                    "session removal commit requires --preview-token, --yes, and --confirmation-stdin together",
+                ));
+            }
+            CliCommand::SessionRemove {
+                session_id: parse_id(session, "session")?,
+                expected_revision: optional_revision(&options)?,
+                preview_token,
+                confirmed,
+                confirmation_stdin,
+                confirmation: None,
             }
         }
         [scope, route, rest @ ..] if scope == "controller" && route == "ssh" => {
@@ -548,5 +632,67 @@ mod tests {
         };
         assert!(human.allow_interaction);
         assert!(!json.allow_interaction);
+    }
+
+    #[test]
+    fn session_remove_parser_separates_preview_from_complete_commit() {
+        let id = HostedSessionId::new().to_string();
+        let preview = parse_args(
+            ["session", "remove", &id, "--expected-revision", "7"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        )
+        .unwrap();
+        assert!(matches!(
+            preview.command,
+            CliCommand::SessionRemove {
+                expected_revision: Some(revision),
+                preview_token: None,
+                confirmed: false,
+                confirmation_stdin: false,
+                confirmation: None,
+                ..
+            } if revision == Revision::new(7)
+        ));
+
+        let commit = parse_args(
+            [
+                "session",
+                "remove",
+                &id,
+                "--preview-token",
+                "tr-remove-v1:1:2:3:4:5:6",
+                "--yes",
+                "--confirmation-stdin",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        )
+        .unwrap();
+        assert!(matches!(
+            commit.command,
+            CliCommand::SessionRemove {
+                preview_token: Some(_),
+                confirmed: true,
+                confirmation_stdin: true,
+                confirmation: None,
+                ..
+            }
+        ));
+
+        for partial in [
+            vec!["session", "remove", &id, "--yes"],
+            vec!["session", "remove", &id, "--preview-token", "token"],
+            vec!["session", "remove", &id, "--confirmation-stdin"],
+        ] {
+            assert_eq!(
+                parse_args(partial.into_iter().map(str::to_string).collect())
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Usage
+            );
+        }
     }
 }

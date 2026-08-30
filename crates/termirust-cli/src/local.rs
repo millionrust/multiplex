@@ -28,8 +28,8 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     CLI_JSON_SCHEMA_VERSION, Cancellation, CliCommand, CliData, CliError, CommandService,
     ControllerSshCommand, ErrorCode, MAX_RESPONSE_RECORDS, PresetListData, PresetView,
-    ProjectListData, ProjectView, SessionData, SessionListData, SessionListFilter,
-    SessionMutationData, SessionView, StatusData,
+    ProjectListData, ProjectView, RemovalConfirmationKind, SessionData, SessionListData,
+    SessionListFilter, SessionMutationData, SessionRemovalPreviewData, SessionView, StatusData,
 };
 
 const STORE_DIR_NAME: &str = "agent-workspace";
@@ -193,6 +193,72 @@ impl From<SessionRemovalManifest> for ManagementRemovalManifest {
             file_count: value.file_count,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CliRemovalPreviewToken {
+    expected_revision: Revision,
+    manifest: ManagementRemovalManifest,
+}
+
+impl CliRemovalPreviewToken {
+    const PREFIX: &'static str = "tr-remove-v1";
+
+    fn encode(self) -> String {
+        format!(
+            "{}:{}:{}:{}:{}:{}:{}",
+            Self::PREFIX,
+            self.expected_revision.get(),
+            self.manifest.metadata_bytes,
+            self.manifest.journal_bytes,
+            self.manifest.transcript_bytes,
+            self.manifest.artifact_bytes,
+            self.manifest.file_count,
+        )
+    }
+
+    fn parse(value: &str) -> Result<Self, CliError> {
+        if value.len() > 256 {
+            return Err(invalid_removal_preview_token());
+        }
+        let mut parts = value.split(':');
+        if parts.next() != Some(Self::PREFIX) {
+            return Err(invalid_removal_preview_token());
+        }
+        let expected_revision = parse_token_u64(parts.next())?;
+        let token = Self {
+            expected_revision: Revision::new(expected_revision),
+            manifest: ManagementRemovalManifest {
+                metadata_bytes: parse_token_u64(parts.next())?,
+                journal_bytes: parse_token_u64(parts.next())?,
+                transcript_bytes: parse_token_u64(parts.next())?,
+                artifact_bytes: parse_token_u64(parts.next())?,
+                file_count: parts
+                    .next()
+                    .ok_or_else(invalid_removal_preview_token)?
+                    .parse::<usize>()
+                    .map_err(|_| invalid_removal_preview_token())?,
+            },
+        };
+        if parts.next().is_some() || token.encode() != value {
+            return Err(invalid_removal_preview_token());
+        }
+        Ok(token)
+    }
+}
+
+fn parse_token_u64(value: Option<&str>) -> Result<u64, CliError> {
+    value
+        .ok_or_else(invalid_removal_preview_token)?
+        .parse::<u64>()
+        .map_err(|_| invalid_removal_preview_token())
+}
+
+fn invalid_removal_preview_token() -> CliError {
+    validation(
+        "session removal preview token is invalid",
+        "Run session remove <id> again and use the exact new preview token.",
+    )
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -565,6 +631,88 @@ impl LocalCommandService {
             .remove_session(&plan, expected_revision)
             .map_err(map_store)?;
         Ok(mutation("removed", &removed.session))
+    }
+
+    fn session_removal_preview(
+        &self,
+        session_id: HostedSessionId,
+        expected_session_revision: Option<Revision>,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let repository = self.sessions()?;
+        let snapshot = repository.load().map_err(map_store)?;
+        let session = require_session(&snapshot.sessions, session_id)?.clone();
+        mutation_revision(&snapshot, &session, expected_session_revision)?;
+        let plan = repository.removal_plan(session_id).map_err(map_store)?;
+        if plan.expected_revision != snapshot.revision {
+            return Err(CliError::new(
+                ErrorCode::Conflict,
+                "session metadata changed while the removal preview was prepared",
+                "Run session remove <id> again and review the new preview.",
+            )
+            .with_revision(plan.expected_revision));
+        }
+        if cancellation.is_cancelled() {
+            return Err(cancelled());
+        }
+        let manifest = ManagementRemovalManifest::from(plan.manifest);
+        let token = CliRemovalPreviewToken {
+            expected_revision: plan.expected_revision,
+            manifest,
+        };
+        Ok(CliData::RemovalPreview(SessionRemovalPreviewData {
+            session: SessionView::from(&session),
+            preview_token: token.encode(),
+            repository_revision: plan.expected_revision.get(),
+            metadata_bytes: manifest.metadata_bytes,
+            journal_bytes: manifest.journal_bytes,
+            transcript_bytes: manifest.transcript_bytes,
+            artifact_bytes: manifest.artifact_bytes,
+            total_bytes: manifest.total_bytes(),
+            file_count: manifest.file_count,
+            confirmation: if manifest.requires_title_confirmation() {
+                RemovalConfirmationKind::SessionTitle
+            } else {
+                RemovalConfirmationKind::Remove
+            },
+        }))
+    }
+
+    fn commit_cli_session_removal(
+        &self,
+        session_id: HostedSessionId,
+        expected_session_revision: Option<Revision>,
+        preview_token: &str,
+        confirmation: &str,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        let token = CliRemovalPreviewToken::parse(preview_token)?;
+        let current =
+            self.session_removal_preview(session_id, expected_session_revision, cancellation)?;
+        let CliData::RemovalPreview(current) = current else {
+            return Err(operation("session removal preview was inconsistent"));
+        };
+        if current.preview_token != preview_token {
+            return Err(CliError::new(
+                ErrorCode::Conflict,
+                "session removal preview is stale",
+                "Run session remove <id> again and review the new preview.",
+            )
+            .with_revision(Revision::new(current.repository_revision)));
+        }
+        self.execute_management(
+            ManagementCommand::Remove {
+                command_id: self.ids.command_id(),
+                session_id,
+                expected_revision: token.expected_revision,
+                expected_manifest: token.manifest,
+                title_confirmation: Some(confirmation.into()),
+            },
+            cancellation,
+        )
     }
 
     fn session_metadata_mutation(
@@ -1165,6 +1313,35 @@ impl CommandService for LocalCommandService {
                 session_id,
                 expected_revision,
             } => self.session_restore(session_id, expected_revision, false),
+            CliCommand::SessionRemove {
+                session_id,
+                expected_revision,
+                preview_token,
+                confirmed,
+                confirmation_stdin,
+                confirmation,
+            } => match (
+                preview_token.as_deref(),
+                confirmed,
+                confirmation_stdin,
+                confirmation.as_ref(),
+            ) {
+                (None, false, false, None) => {
+                    self.session_removal_preview(session_id, expected_revision, cancellation)
+                }
+                (Some(token), true, true, Some(confirmation)) => self.commit_cli_session_removal(
+                    session_id,
+                    expected_revision,
+                    token,
+                    confirmation.expose(),
+                    cancellation,
+                ),
+                _ => Err(CliError::new(
+                    ErrorCode::InteractionRequired,
+                    "session removal confirmation from stdin is required",
+                    "Pipe the requested confirmation to stdin and use the exact preview token, --yes, and --confirmation-stdin.",
+                )),
+            },
             CliCommand::ControllerSsh(command) => {
                 self.ssh_controller.execute(command, cancellation)
             }

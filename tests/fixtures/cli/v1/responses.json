@@ -11,6 +11,8 @@
         "session stop <id> [--expected-revision N] --yes [--json]",
         "session archive <id> [--expected-revision N] [--json]",
         "session restore <id> [--expected-revision N] [--json]",
+        "session remove <id> [--expected-revision N] [--json]",
+        "session remove <id> [--expected-revision N] --preview-token <token> --yes --confirmation-stdin [--json] < stdin",
         "controller ssh --host <host> [--user <user>] [--port <port>] pair [--json]",
         "controller ssh --host <host> [--user <user>] [--port <port>] sessions [--json]",
         "controller ssh --host <host> [--user <user>] [--port <port>] attach --session <id> --generation N [--from-sequence N] [--columns N] [--rows N] [--write] [--json]",
@@ -29,7 +31,7 @@
         "7 operation failure or timeout",
         "130 signal cancellation"
       ],
-      "safety": "Local metadata and authenticated Host commands only. Stop requires --yes. Human SSH attach is interactive and detaches with Ctrl-] then d; JSON attach never emits terminal bytes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen project, preset, and session titles and may be sensitive."
+      "safety": "Local metadata and authenticated Host commands only. Stop requires --yes. Session removal requires a reviewed preview token, --yes, and bounded confirmation from stdin. Human SSH attach is interactive and detaches with Ctrl-] then d; JSON attach never emits terminal bytes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen project, preset, and session titles and may be sensitive."
     },
     "ok": true,
     "schema_version": 1,

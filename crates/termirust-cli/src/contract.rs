@@ -240,6 +240,27 @@ pub struct SessionMutationData {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct SessionRemovalPreviewData {
+    pub session: SessionView,
+    pub preview_token: String,
+    pub repository_revision: u64,
+    pub metadata_bytes: u64,
+    pub journal_bytes: u64,
+    pub transcript_bytes: u64,
+    pub artifact_bytes: u64,
+    pub total_bytes: u64,
+    pub file_count: usize,
+    pub confirmation: RemovalConfirmationKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RemovalConfirmationKind {
+    Remove,
+    SessionTitle,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct HelpData {
     pub commands: Vec<String>,
     pub safety: String,
@@ -289,6 +310,7 @@ pub enum CliData {
     Sessions(SessionListData),
     Session(SessionData),
     Mutation(SessionMutationData),
+    RemovalPreview(SessionRemovalPreviewData),
     ControllerSsh(ControllerSshData),
     Help(HelpData),
 }

@@ -2,7 +2,8 @@ use std::io::Write as _;
 
 use termirust_cli::{
     Cancellation, CliCommand, CliPaths, ControllerSshAction, LocalCommandService,
-    SystemSshControllerExecutor, failure_output, parse_args, run_parsed, write_output,
+    SystemSshControllerExecutor, failure_output, parse_args, read_removal_confirmation, run_parsed,
+    write_output,
 };
 
 fn main() {
@@ -31,7 +32,7 @@ fn main() {
         .and_then(|value| value.parse::<usize>().ok())
         .filter(|width| (40..=500).contains(width))
         .unwrap_or(80);
-    let invocation = match parse_args(arguments) {
+    let mut invocation = match parse_args(arguments) {
         Ok(invocation) => invocation,
         Err(error) => {
             exit_with_output(failure_output(error, wants_json, width));
@@ -46,6 +47,27 @@ fn main() {
             exit_with_output(failure_output(error, wants_json, width));
         }
     };
+    let reads_removal_confirmation = matches!(
+        &invocation.command,
+        CliCommand::SessionRemove {
+            confirmation_stdin: true,
+            ..
+        }
+    );
+    if reads_removal_confirmation {
+        let confirmation = match read_removal_confirmation(&mut std::io::stdin()) {
+            Ok(confirmation) => confirmation,
+            Err(error) => exit_with_output(failure_output(error, invocation.json, width)),
+        };
+        invocation.command = match invocation
+            .command
+            .clone()
+            .with_removal_confirmation(confirmation)
+        {
+            Ok(command) => command,
+            Err(error) => exit_with_output(failure_output(error, invocation.json, width)),
+        };
+    }
     if let CliCommand::ControllerSsh(command) = &invocation.command
         && matches!(command.action, ControllerSshAction::Attach { .. })
         && !invocation.json
