@@ -1,6 +1,7 @@
-//! Bounded fleet navigation and single-session durable terminal attachment.
+//! Bounded fleet/device control and single-session durable terminal attachment.
 
 pub mod attach;
+pub mod devices;
 pub mod input;
 pub mod localization;
 pub mod management;
@@ -14,6 +15,11 @@ pub use attach::{
     AttachBatch, AttachCommand, AttachEvent, AttachFailure, AttachSnapshot, AttachWorker,
     AttachedTerminal, HostAttachState, HostLifecycle, TuiAttachState, Viewport,
     endpoint_for_source, spawn_attach_worker,
+};
+pub use devices::{
+    DeviceEffect, DeviceExecutor, DeviceFailure, DeviceProgress, DeviceRevocationResult,
+    DeviceRevocationReview, DeviceSnapshot, DevicesModel, LocalDeviceExecutor, MAX_TUI_DEVICES,
+    TuiDevice,
 };
 pub use input::{InputDecision, InteractiveLease, TerminalInputModel, TuiFocus};
 pub use management::{

@@ -8581,6 +8581,7 @@ dependencies = [
  "portable-pty",
  "rand 0.8.6",
  "ratatui",
+ "serde_json",
  "signal-hook",
  "tempfile",
  "termirust-cli",
@@ -8591,6 +8592,7 @@ dependencies = [
  "termirust-store",
  "tokio",
  "tokio-util",
+ "uuid",
  "vt100",
 ]
 

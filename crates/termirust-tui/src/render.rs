@@ -9,7 +9,10 @@ use crate::management::{
     CommandProgress, ConfirmationKind, ManagementDraft, ManagementIntent, ManagementModel,
 };
 use crate::model::{FleetHealth, LoadState, PaneFocus, ProjectAvailability, ScopeId, TuiModel};
-use crate::{AttachedTerminal, InteractiveLease, TuiAttachState, TuiFocus};
+use crate::{
+    AttachedTerminal, DeviceProgress, DevicesModel, InteractiveLease, TuiAttachState, TuiDevice,
+    TuiFocus,
+};
 
 const MIN_WIDTH: u16 = 80;
 const MIN_HEIGHT: u16 = 20;
@@ -52,6 +55,382 @@ pub fn render(frame: &mut Frame<'_>, model: &TuiModel, options: RenderOptions) {
     render_status(frame, status, model, options);
     if model.help_visible() {
         render_help(frame, centered(area, 72, 9), options);
+    }
+}
+
+pub fn render_devices(frame: &mut Frame<'_>, model: &DevicesModel, options: RenderOptions) {
+    let area = frame.area();
+    if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
+        render_small(frame, area, options);
+        return;
+    }
+    let [header, content, status] = Layout::vertical([
+        Constraint::Length(2),
+        Constraint::Min(12),
+        Constraint::Length(4),
+    ])
+    .areas(area);
+    render_devices_header(frame, header, model, options);
+    let [list, inspector] = Layout::horizontal([
+        Constraint::Percentage(if area.width >= WIDE_WIDTH { 38 } else { 44 }),
+        Constraint::Percentage(if area.width >= WIDE_WIDTH { 62 } else { 56 }),
+    ])
+    .areas(content);
+    render_device_list(frame, list, model, options);
+    render_device_inspector(frame, inspector, model, options);
+    render_devices_status(frame, status, model, options);
+    if model.help_visible() {
+        render_devices_help(frame, centered(area, 70, 9), options);
+    }
+    if matches!(
+        model.progress(),
+        DeviceProgress::LoadingReview | DeviceProgress::Reviewing | DeviceProgress::Revoking
+    ) {
+        render_device_review(frame, centered(area, 72, 13), model, options);
+    }
+}
+
+fn render_devices_header(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    model: &DevicesModel,
+    options: RenderOptions,
+) {
+    let revision = model.snapshot().map_or_else(
+        || "-".into(),
+        |snapshot| snapshot.repository_revision.to_string(),
+    );
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(vec![
+                Span::styled(
+                    localize(options.locale, "TermiRust Devices"),
+                    emphasis(options, true),
+                ),
+                Span::raw("  "),
+                Span::styled(
+                    localize(options.locale, "Local Controller authority"),
+                    muted(options),
+                ),
+            ]),
+            Line::from(Span::styled(
+                format!(
+                    "{} {revision}  {} {}",
+                    localize(options.locale, "repository revision"),
+                    localize(options.locale, "state"),
+                    device_progress_label(model.progress()),
+                ),
+                muted(options),
+            )),
+        ]),
+        area,
+    );
+}
+
+fn render_device_list(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    model: &DevicesModel,
+    options: RenderOptions,
+) {
+    let selected = model.selected_index();
+    let devices = model
+        .snapshot()
+        .map_or(&[][..], |snapshot| snapshot.devices.as_slice());
+    let visible = usize::from(area.height.saturating_sub(2));
+    let start = scroll_start(selected, visible, devices.len());
+    let items = devices
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(visible)
+        .map(|(index, device)| {
+            let name = display_user(&device.name, "device", options);
+            ListItem::new(Line::from(vec![
+                Span::raw(format!("{name}  ")),
+                Span::styled(device.status.to_uppercase(), muted(options)),
+            ]))
+            .style(row_style(index == selected, true, options))
+        })
+        .collect::<Vec<_>>();
+    let widget = if items.is_empty() {
+        List::new(vec![ListItem::new(localize(
+            options.locale,
+            if matches!(model.progress(), DeviceProgress::Loading) {
+                "Loading paired devices..."
+            } else {
+                "No paired devices"
+            },
+        ))])
+    } else {
+        List::new(items)
+    };
+    frame.render_widget(
+        widget.block(panel(
+            localize(options.locale, "Paired devices"),
+            true,
+            options,
+        )),
+        area,
+    );
+}
+
+fn render_device_inspector(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    model: &DevicesModel,
+    options: RenderOptions,
+) {
+    let lines = model.selected_device().map_or_else(
+        || {
+            vec![Line::from(localize(
+                options.locale,
+                "Select an active paired device to inspect or revoke access.",
+            ))]
+        },
+        |device| device_detail_lines(device, options),
+    );
+    frame.render_widget(
+        Paragraph::new(lines).wrap(Wrap { trim: true }).block(panel(
+            localize(options.locale, "Device details"),
+            false,
+            options,
+        )),
+        area,
+    );
+}
+
+fn device_detail_lines(device: &TuiDevice, options: RenderOptions) -> Vec<Line<'static>> {
+    let name = display_user(&device.name, "device", options);
+    let id = display_user(&device.id, "device ID", options);
+    let fingerprint = display_user(&device.fingerprint_suffix, "fingerprint suffix", options);
+    vec![
+        Line::from(name),
+        Line::from(format!("{} {id}", localize(options.locale, "ID:"))),
+        Line::from(format!(
+            "{} {}",
+            localize(options.locale, "Status:"),
+            device.status
+        )),
+        Line::from(format!(
+            "{} {}",
+            localize(options.locale, "Capabilities:"),
+            if device.capabilities.is_empty() {
+                localize(options.locale, "none")
+            } else {
+                device.capabilities.join(", ")
+            }
+        )),
+        Line::from(format!(
+            "{} {} to {}",
+            localize(options.locale, "Protocol:"),
+            device.protocol_minimum,
+            device.protocol_maximum
+        )),
+        Line::from(format!(
+            "{} {}",
+            localize(options.locale, "Created:"),
+            device.created_at_unix_seconds
+        )),
+        Line::from(format!(
+            "{} {}",
+            localize(options.locale, "Last seen:"),
+            device.last_seen_at_unix_seconds.map_or_else(
+                || localize(options.locale, "never"),
+                |value| value.to_string()
+            )
+        )),
+        Line::from(format!(
+            "{} {fingerprint}",
+            localize(options.locale, "Fingerprint suffix:")
+        )),
+        Line::from(format!(
+            "{} {}",
+            localize(options.locale, "Identity generation:"),
+            device.identity_generation
+        )),
+        Line::from(""),
+        Line::from(Span::styled(
+            localize(
+                options.locale,
+                "Keys, pairing routes, credentials and terminal content are not exposed.",
+            ),
+            muted(options),
+        )),
+    ]
+}
+
+fn render_devices_status(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    model: &DevicesModel,
+    options: RenderOptions,
+) {
+    let mut lines = match model.progress() {
+        DeviceProgress::Failed(error) => {
+            let mut lines = vec![Line::from(format!(
+                "[{}] {}  {}",
+                error.code, error.summary, error.recovery
+            ))];
+            if let Some(revision) = error.conflict_revision {
+                lines.push(Line::from(format!(
+                    "{} {revision}",
+                    localize(options.locale, "Current repository revision:")
+                )));
+            }
+            lines
+        }
+        DeviceProgress::Succeeded { summary } => {
+            vec![Line::from(localize(options.locale, summary))]
+        }
+        DeviceProgress::Loading => vec![Line::from(localize(
+            options.locale,
+            "Reading the bounded local paired-device authority...",
+        ))],
+        _ => {
+            let count = model
+                .snapshot()
+                .map_or(0, |snapshot| snapshot.devices.len());
+            vec![Line::from(format!(
+                "{count} {}",
+                localize(options.locale, "paired devices")
+            ))]
+        }
+    };
+    lines.push(Line::from(Span::styled(
+        localize(
+            options.locale,
+            "j/k or arrows select  x review revoke  r refresh  f/Esc fleet  ? help  q quit",
+        ),
+        muted(options),
+    )));
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), area);
+}
+
+fn render_device_review(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    model: &DevicesModel,
+    options: RenderOptions,
+) {
+    frame.render_widget(Clear, area);
+    let lines = match model.progress() {
+        DeviceProgress::LoadingReview => vec![
+            Line::from(localize(
+                options.locale,
+                "Preparing a fresh authoritative revocation review...",
+            )),
+            Line::from(localize(
+                options.locale,
+                "Esc cancels this preview without changing device access.",
+            )),
+        ],
+        DeviceProgress::Reviewing => model.review().map_or_else(
+            || vec![Line::from(localize(options.locale, "Review unavailable."))],
+            |review| {
+                vec![
+                    Line::from(format!(
+                        "{} {}",
+                        localize(options.locale, "Target:"),
+                        display_user(&review.device.name, "device", options)
+                    )),
+                    Line::from(format!(
+                        "{} {}",
+                        localize(options.locale, "Device ID:"),
+                        display_user(&review.device.id, "device ID", options)
+                    )),
+                    Line::from(format!(
+                        "{} {}",
+                        localize(options.locale, "Repository revision:"),
+                        review.repository_revision
+                    )),
+                    Line::from(localize(
+                        options.locale,
+                        "Active access for this exact device will be revoked immediately.",
+                    )),
+                    Line::from(localize(
+                        options.locale,
+                        if review.other_devices_reconnect {
+                            "Other connected devices must reconnect after the authority epoch changes."
+                        } else {
+                            "No other device is currently marked online."
+                        },
+                    )),
+                    Line::from(""),
+                    Line::from(localize(
+                        options.locale,
+                        "Enter revoke once | Esc cancel (safe default)",
+                    )),
+                ]
+            },
+        ),
+        DeviceProgress::Revoking => vec![
+            Line::from(localize(
+                options.locale,
+                "Committing one exact revision-checked device revocation...",
+            )),
+            Line::from(localize(
+                options.locale,
+                "This command cannot be cancelled or retried silently. Wait for the result.",
+            )),
+        ],
+        _ => Vec::new(),
+    };
+    frame.render_widget(
+        Paragraph::new(lines).wrap(Wrap { trim: true }).block(panel(
+            localize(options.locale, "Device revocation"),
+            true,
+            options,
+        )),
+        area,
+    );
+}
+
+fn render_devices_help(frame: &mut Frame<'_>, area: Rect, options: RenderOptions) {
+    frame.render_widget(Clear, area);
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(localize(
+                options.locale,
+                "The Devices screen reads the same local authority as desktop and CLI.",
+            )),
+            Line::from(localize(
+                options.locale,
+                "j/k or arrows select. r refreshes without creating missing state.",
+            )),
+            Line::from(localize(
+                options.locale,
+                "x prepares a fresh review; Enter then revokes once at that exact revision.",
+            )),
+            Line::from(localize(
+                options.locale,
+                "Esc is always the safe cancel before commit. f returns to the fleet.",
+            )),
+            Line::from(localize(
+                options.locale,
+                "Device keys, pairing routes, credentials and terminal content stay hidden.",
+            )),
+        ])
+        .wrap(Wrap { trim: true })
+        .block(panel(
+            localize(options.locale, "Devices keyboard help"),
+            true,
+            options,
+        )),
+        area,
+    );
+}
+
+fn device_progress_label(progress: &DeviceProgress) -> &'static str {
+    match progress {
+        DeviceProgress::Idle => "idle",
+        DeviceProgress::Loading => "loading",
+        DeviceProgress::Ready => "ready",
+        DeviceProgress::LoadingReview => "preparing review",
+        DeviceProgress::Reviewing => "reviewing",
+        DeviceProgress::Revoking => "revoking",
+        DeviceProgress::Succeeded { .. } => "updated",
+        DeviceProgress::Failed(_) => "attention required",
     }
 }
 
@@ -641,7 +1020,7 @@ fn render_status(frame: &mut Frame<'_>, area: Rect, model: &TuiModel, options: R
         Paragraph::new(vec![
             Line::from(summary),
             Line::from(Span::styled(
-                "n launch  e rename  p pin  m read  s stop  a archive/restore  x remove  ? help",
+                "n launch  e rename  p pin  m read  s stop  a archive/restore  x remove  d devices  ? help",
                 muted(options),
             )),
         ])
@@ -660,7 +1039,7 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, options: RenderOptions) {
             ),
             Line::from("Terminal: Ctrl+Space then Esc detaches without stopping the Host."),
             Line::from(
-                "Fleet: n launch, e rename, p pin, m mark read, s stop, a archive/restore, x remove.",
+                "Fleet: n launch, e rename, p pin, m mark read, s stop, a archive/restore, x remove, d devices.",
             ),
             Line::from("Management keys are never interpreted while terminal input has focus."),
             Line::from("Use --inline, --no-color or --recording-friendly when needed."),
@@ -850,6 +1229,7 @@ fn yes_no(value: bool) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use termirust_domain::{HostInstanceId, HostedSessionId, OutputSequence};
 
     use ratatui::Terminal;
@@ -1115,6 +1495,133 @@ mod tests {
             assert!(output.contains("[confirmation hidden]"));
             assert!(!output.contains("PRIVATE-SESSION-TITLE"));
             assert!(!output.contains("PRIVATE-CONFIRMATION"));
+        }
+    }
+
+    fn devices_model() -> DevicesModel {
+        let mut model = DevicesModel::default();
+        model.open();
+        let generation = model.generation();
+        model.loaded(
+            generation,
+            Ok(crate::DeviceSnapshot {
+                repository_revision: 9,
+                devices: vec![TuiDevice {
+                    id: "00000000-0000-0000-0000-000000000001".into(),
+                    name: "PRIVATE PHONE".into(),
+                    status: "online".into(),
+                    capabilities: vec!["observe_sessions".into(), "send_input".into()],
+                    protocol_minimum: 1,
+                    protocol_maximum: 1,
+                    created_at_unix_seconds: 10,
+                    last_seen_at_unix_seconds: Some(20),
+                    fingerprint_suffix: "123456789abc".into(),
+                    identity_generation: 2,
+                }],
+            }),
+        );
+        model
+    }
+
+    fn rendered_devices(
+        width: u16,
+        height: u16,
+        model: &DevicesModel,
+        options: RenderOptions,
+    ) -> String {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| render_devices(frame, model, options))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        (0..height)
+            .map(|y| {
+                (0..width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn devices_screen_reflows_and_masks_user_identity_for_recording() {
+        let model = devices_model();
+        let wide = rendered_devices(140, 30, &model, RenderOptions::default());
+        assert!(wide.contains("TermiRust Devices"));
+        assert!(wide.contains("Paired devices"));
+        assert!(wide.contains("Device details"));
+        assert!(wide.contains("PRIVATE PHONE"));
+        assert!(wide.contains("repository revision 9"));
+
+        let compact = rendered_devices(
+            80,
+            20,
+            &model,
+            RenderOptions {
+                no_color: true,
+                ..RenderOptions::default()
+            },
+        );
+        assert!(compact.contains("Paired devices"));
+        assert!(compact.contains("x review revoke"));
+
+        let recording = rendered_devices(
+            100,
+            24,
+            &model,
+            RenderOptions {
+                no_color: true,
+                recording_friendly: true,
+                locale: TuiLocale::PseudoRtl,
+            },
+        );
+        assert!(recording.contains("[device hidden]"));
+        assert!(recording.contains("[device ID hidden]"));
+        assert!(!recording.contains("PRIVATE PHONE"));
+        assert!(!recording.contains("00000000-0000"));
+        assert!(!recording.contains("123456789abc"));
+    }
+
+    #[test]
+    fn device_revocation_review_is_exact_textual_and_cancel_first() {
+        let mut model = devices_model();
+        assert!(matches!(
+            model.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE)),
+            crate::DeviceEffect::Review { .. }
+        ));
+        let generation = model.generation();
+        model.reviewed(
+            generation,
+            Ok(crate::DeviceRevocationReview {
+                repository_revision: 11,
+                device: model.snapshot().unwrap().devices[0].clone(),
+                active_access_will_be_revoked: true,
+                other_devices_reconnect: true,
+            }),
+        );
+        for locale in [
+            TuiLocale::English,
+            TuiLocale::PseudoExpanded,
+            TuiLocale::PseudoRtl,
+        ] {
+            let output = rendered_devices(
+                80,
+                20,
+                &model,
+                RenderOptions {
+                    no_color: true,
+                    locale,
+                    ..RenderOptions::default()
+                },
+            );
+            assert!(output.contains("Device revocation"));
+            assert!(output.contains("Repository revision:"));
+            assert!(output.contains("11"));
+            assert!(output.contains("Enter revoke once"));
+            assert!(output.contains("Esc cancel (safe default)"));
+            assert!(output.contains("must reconnect"));
         }
     }
 }

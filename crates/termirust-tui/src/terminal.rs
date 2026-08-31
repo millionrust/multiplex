@@ -26,6 +26,10 @@ use crate::attach::{
     AttachCommand, AttachEvent, AttachEventSink, AttachWorker, AttachedTerminal, TuiAttachState,
     Viewport, endpoint_for_source, spawn_attach_worker,
 };
+use crate::devices::{
+    DeviceEffect, DeviceExecutor, DeviceFailure, DeviceRevocationResult, DeviceRevocationReview,
+    DeviceSnapshot, DevicesModel, LocalDeviceExecutor,
+};
 use crate::input::{InputDecision, InteractiveLease, TuiFocus};
 use crate::localization::TuiLocale;
 use crate::management::{
@@ -33,7 +37,7 @@ use crate::management::{
     ManagementIntent, ManagementModel,
 };
 use crate::model::{ModelAction, ModelEffect, TuiDiagnostic, TuiModel};
-use crate::render::{RenderOptions, render, render_attached, render_management};
+use crate::render::{RenderOptions, render, render_attached, render_devices, render_management};
 use crate::source::{FleetCancellation, FleetLoadError, FleetSource};
 
 const EVENT_QUEUE_CAPACITY: usize = 64;
@@ -135,6 +139,18 @@ enum AppEvent {
         generation: u64,
         result: Result<crate::ManagementResult, ManagementFailure>,
     },
+    DevicesLoaded {
+        generation: u64,
+        result: Result<DeviceSnapshot, DeviceFailure>,
+    },
+    DeviceReviewed {
+        generation: u64,
+        result: Result<DeviceRevocationReview, DeviceFailure>,
+    },
+    DeviceRevoked {
+        generation: u64,
+        result: Result<DeviceRevocationResult, DeviceFailure>,
+    },
     Deadline,
     TerminalFailure,
 }
@@ -179,11 +195,18 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
         .and_then(|root| LocalManagementExecutor::new(root).ok())
         .map(|executor| Arc::new(executor) as Arc<dyn ManagementExecutor>);
     let mut management = ManagementModel::default();
+    let device_executor: Option<Arc<dyn DeviceExecutor>> = source
+        .config_root()
+        .map(LocalDeviceExecutor::new)
+        .map(|executor| Arc::new(executor) as Arc<dyn DeviceExecutor>);
+    let mut devices = DevicesModel::default();
 
     loop {
         session.terminal.draw(|frame| {
             if let Some(attached) = &attached {
                 render_attached(frame, attached, terminal_notice.as_deref(), render_options);
+            } else if devices.active() {
+                render_devices(frame, &devices, render_options);
             } else {
                 render(frame, &model, render_options);
                 render_management(frame, &management, render_options);
@@ -240,6 +263,13 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                         );
                     }
                     ModelEffect::None
+                } else if devices.active() {
+                    apply_device_effect(
+                        devices.handle_key(key),
+                        &mut devices,
+                        device_executor.as_ref(),
+                        &sender,
+                    )?
                 } else if management.active() {
                     let effect = management.handle_key(key, Instant::now());
                     apply_management_effect(
@@ -249,6 +279,13 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                         &sender,
                     )?;
                     ModelEffect::None
+                } else if device_shortcut(&model, key) {
+                    apply_device_effect(
+                        devices.open(),
+                        &mut devices,
+                        device_executor.as_ref(),
+                        &sender,
+                    )?
                 } else if let Some(effect) = management_shortcut(&model, &mut management, key) {
                     apply_management_effect(
                         effect,
@@ -356,6 +393,18 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                     ModelEffect::None
                 }
             }
+            AppEvent::DevicesLoaded { generation, result } => {
+                devices.loaded(generation, result);
+                ModelEffect::None
+            }
+            AppEvent::DeviceReviewed { generation, result } => {
+                devices.reviewed(generation, result);
+                ModelEffect::None
+            }
+            AppEvent::DeviceRevoked { generation, result } => {
+                devices.revoked(generation, result);
+                ModelEffect::None
+            }
             AppEvent::Deadline => {
                 if let Some(current) = attached.as_mut() {
                     let decision = current.input_mut().expire_leader(Instant::now());
@@ -415,9 +464,89 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
             ModelEffect::None => {}
         }
     }
+    devices.close();
     refresh_cancellation.cancel();
     attach_worker.take();
     Ok(())
+}
+
+fn device_shortcut(model: &TuiModel, key: KeyEvent) -> bool {
+    !model.filter_editing()
+        && !model.help_visible()
+        && key.modifiers.is_empty()
+        && key.code == KeyCode::Char('d')
+}
+
+fn apply_device_effect(
+    effect: DeviceEffect,
+    model: &mut DevicesModel,
+    executor: Option<&Arc<dyn DeviceExecutor>>,
+    sender: &SyncSender<AppEvent>,
+) -> io::Result<ModelEffect> {
+    match effect {
+        DeviceEffect::None | DeviceEffect::Close => Ok(ModelEffect::None),
+        DeviceEffect::Quit => Ok(ModelEffect::Quit),
+        DeviceEffect::Load => {
+            let generation = model.generation();
+            let cancellation = model.cancellation();
+            let Some(executor) = executor.cloned() else {
+                model.loaded(generation, Err(DeviceFailure::unavailable()));
+                return Ok(ModelEffect::None);
+            };
+            let sender = sender.clone();
+            thread::Builder::new()
+                .name("termirust-tui-device-list".into())
+                .spawn(move || {
+                    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                        executor.load(&cancellation)
+                    }))
+                    .unwrap_or_else(|_| Err(DeviceFailure::unavailable()));
+                    let _ = sender.send(AppEvent::DevicesLoaded { generation, result });
+                })
+                .map(|_| ModelEffect::None)
+        }
+        DeviceEffect::Review { device_id } => {
+            let generation = model.generation();
+            let cancellation = model.cancellation();
+            let Some(executor) = executor.cloned() else {
+                model.reviewed(generation, Err(DeviceFailure::unavailable()));
+                return Ok(ModelEffect::None);
+            };
+            let sender = sender.clone();
+            thread::Builder::new()
+                .name("termirust-tui-device-review".into())
+                .spawn(move || {
+                    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                        executor.review_revoke(&device_id, &cancellation)
+                    }))
+                    .unwrap_or_else(|_| Err(DeviceFailure::unavailable()));
+                    let _ = sender.send(AppEvent::DeviceReviewed { generation, result });
+                })
+                .map(|_| ModelEffect::None)
+        }
+        DeviceEffect::Revoke {
+            device_id,
+            expected_revision,
+        } => {
+            let generation = model.generation();
+            let cancellation = model.cancellation();
+            let Some(executor) = executor.cloned() else {
+                model.revoked(generation, Err(DeviceFailure::unavailable()));
+                return Ok(ModelEffect::None);
+            };
+            let sender = sender.clone();
+            thread::Builder::new()
+                .name("termirust-tui-device-revoke".into())
+                .spawn(move || {
+                    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                        executor.revoke(&device_id, expected_revision, &cancellation)
+                    }))
+                    .unwrap_or_else(|_| Err(DeviceFailure::unavailable()));
+                    let _ = sender.send(AppEvent::DeviceRevoked { generation, result });
+                })
+                .map(|_| ModelEffect::None)
+        }
+    }
 }
 
 fn receive_event(

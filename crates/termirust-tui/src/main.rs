@@ -70,11 +70,12 @@ fn parse_options(arguments: impl Iterator<Item = String>) -> io::Result<ParseOut
 fn print_help() {
     println!("termirust-tui [--inline] [--no-color] [--recording-friendly] [--locale LOCALE]");
     println!();
-    println!("Project and Session fleet navigation with one durable terminal attachment.");
+    println!("Project, Session and paired Device control with durable terminal attachment.");
     println!("Locales: en-US, en-XA, ar-XB");
-    println!("Fleet keys: arrows/j/k, Left/Right, Tab/Shift+Tab, Enter, /, Esc, i, r, ?, q");
+    println!("Fleet keys: arrows/j/k, Left/Right, Tab/Shift+Tab, Enter, /, Esc, i, r, d, ?, q");
+    println!("Devices: d open, arrows/j/k select, x review revoke, r refresh, f/Esc fleet");
     println!("Terminal escape: Ctrl+Space then Esc. Ctrl+Space then Space sends NUL.");
-    println!("This binary cannot launch, stop, archive, or modify session metadata.");
+    println!("Destructive actions require visible review and exact current authority.");
 }
 
 #[cfg(test)]

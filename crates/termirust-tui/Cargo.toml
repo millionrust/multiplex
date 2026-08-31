@@ -19,10 +19,12 @@ termirust-store = { version = "0.1.0", path = "../termirust-store" }
 tokio = { version = "1", features = ["rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 vt100 = "=0.16.2"
+uuid = "1"
 
 [dev-dependencies]
 libc = "=0.2.183"
 portable-pty = "=0.9.0"
+serde_json = "1"
 tempfile = "=3.27.0"
 termirust-session-host = { version = "0.1.0", path = "../termirust-session-host" }
 
