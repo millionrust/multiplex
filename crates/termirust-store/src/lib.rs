@@ -11,6 +11,7 @@ pub mod notifications;
 pub mod presets;
 pub mod projects;
 pub mod recovery;
+pub mod replication;
 pub mod sessions;
 pub mod transcript;
 
@@ -54,6 +55,13 @@ pub use recovery::{
     MetadataFileKind, MetadataRecoveryService, RecoveryCancellation, RecoveryError,
     RecoveryErrorCode, RecoveryFaultPoint, RecoveryFilePlan, RecoveryKind, RecoveryPlan,
     RecoveryReceipt, RecoveryResult, RecoveryState, RecoveryStep,
+};
+pub use replication::{
+    MAX_REPLICATION_CONFLICT_ARTIFACTS, ReplicationContentRevision, ReplicationCustodyMetadata,
+    ReplicationRepository, ReplicationRepositoryRevision, ReplicationRepositorySnapshot,
+    ReplicationRepositorySource, ReplicationRetirementOutcome, ReplicationStoreError,
+    SharedFolderConflictArtifact, SharedFolderReplicationTransport, SharedFolderSlot,
+    SharedFolderTransportSnapshot, SharedFolderTransportState,
 };
 pub use sessions::{
     QuarantinedSession, SessionRemovalManifest, SessionRemovalPlan, SessionRepository,

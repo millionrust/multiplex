@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "repository_format_version": 1,
+  "slot": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "artifact_file_name": ".termirust-replica-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.json",
+  "left_canonical_sha256": "a69b40b4c06b8ce3bf1ddc89bbe2a16e432cf43492bea6f5ed1c57abec36b919",
+  "right_canonical_sha256": "8b6580e4565878bc02106b042cb8996b70a651f90fe88500554d412ffdd88735",
+  "max_repository_bytes": 8454144,
+  "max_conflict_artifacts": 16
+}

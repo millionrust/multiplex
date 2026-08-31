@@ -51,10 +51,10 @@ between one and 64. Restored entries may begin at any epoch after prior retireme
 duplicates, wrong-role references, and over-limit state fail closed.
 
 Appending requires the exact monotonic successor. If the explicit bound is exceeded, the index
-returns the oldest references as a deterministic retirement plan. It does not delete them. A
-future atomic repository must first commit the new public authority/repository state and retained
-index, then process retirement with a crash-recoverable journal. This ordering avoids deleting the
-only usable key before public metadata is durable.
+returns the oldest references as a deterministic retirement plan. It does not delete them. The
+E12.6 atomic repository persists the retained index and processes that plan only after successor
+metadata activation through a crash-recoverable journal. This ordering avoids deleting the only
+usable key before public metadata is durable.
 
 [NIST SP 800-57 Part 1 Rev. 5](https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final) treats key
 inventory, states, backup, archive, recovery, and destruction as explicit key-management policy.
@@ -90,8 +90,8 @@ adapter makes no standalone compare-and-swap or multi-item atomicity claim.
 
 ## Deferred boundary
 
-This decision does not integrate E12.4 transitions, persist reference metadata, choose retention,
-delete retired material, define backup/export/recovery, implement Android Keystore, add UI, or
-start transport/background work. E12.6 owns atomic replica persistence and crash ordering. D04
+This decision does not integrate E12.4 transitions, choose a production retention default, define
+secret backup/export/recovery, implement Android Keystore, or add UI/background work. E12.6 now
+owns private reference metadata persistence and commit-before-retirement crash ordering. D04
 continues to own final retention, backup, export, and deletion guarantees; D05 continues to
 prohibit an operated account or cloud service without explicit approval.

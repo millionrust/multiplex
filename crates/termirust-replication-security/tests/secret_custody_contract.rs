@@ -161,6 +161,49 @@ fn epoch_reference(value: u64, marker: u8) -> ReplicationSecretRef {
     .expect("epoch reference")
 }
 
+#[test]
+fn opaque_secret_references_have_a_fixed_private_metadata_encoding() {
+    let references = [
+        ReplicationSecretRef::from_identifier(
+            ReplicationSecretKind::AuthorityPrivateKey,
+            None,
+            [7; 32],
+        )
+        .unwrap(),
+        ReplicationSecretRef::from_identifier(
+            ReplicationSecretKind::DevicePrivateKey,
+            None,
+            [8; 32],
+        )
+        .unwrap(),
+        epoch_reference(9, 9),
+    ];
+    for reference in &references {
+        let encoded = reference.to_bytes();
+        assert_eq!(
+            &ReplicationSecretRef::from_bytes(&encoded).unwrap(),
+            reference
+        );
+    }
+
+    let mut malformed = references[0].to_bytes();
+    malformed[0] ^= 0xff;
+    assert_eq!(
+        ReplicationSecretRef::from_bytes(&malformed),
+        Err(ReplicationSecretCustodyError::InvalidReference)
+    );
+    let mut wrong_epoch = references[0].to_bytes();
+    wrong_epoch[14] = 1;
+    assert_eq!(
+        ReplicationSecretRef::from_bytes(&wrong_epoch),
+        Err(ReplicationSecretCustodyError::InvalidReference)
+    );
+    assert_eq!(
+        ReplicationSecretRef::from_bytes(&references[0].to_bytes()[..46]),
+        Err(ReplicationSecretCustodyError::InvalidReference)
+    );
+}
+
 fn assert_custody_error<T>(
     result: Result<T, ReplicationSecretCustodyError>,
     expected: ReplicationSecretCustodyError,

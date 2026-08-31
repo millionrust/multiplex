@@ -10,9 +10,11 @@ use crate::{
 
 pub const REPLICATION_STORED_SECRET_VERSION: u16 = 1;
 pub const REPLICATION_STORED_SECRET_BYTES: usize = 47;
+pub const REPLICATION_SECRET_REFERENCE_BYTES: usize = 47;
 pub const MAX_REPLICATION_RETAINED_EPOCH_KEYS: usize = 64;
 
 const SECRET_MAGIC: &[u8; 4] = b"TRSC";
+const SECRET_REFERENCE_MAGIC: &[u8; 4] = b"TRRF";
 const SECRET_REFERENCE_BYTES: usize = 32;
 const SECRET_KEY_BYTES: usize = 32;
 const SECRET_HEADER_BYTES: usize = SECRET_MAGIC.len() + 2 + 1 + 8;
@@ -91,6 +93,57 @@ impl ReplicationSecretRef {
             epoch,
             encode_hex(&self.identifier)
         )
+    }
+
+    /// Encodes a non-secret but sensitive opaque reference for private metadata storage.
+    pub fn to_bytes(&self) -> [u8; REPLICATION_SECRET_REFERENCE_BYTES] {
+        let mut encoded = [0_u8; REPLICATION_SECRET_REFERENCE_BYTES];
+        encoded[..4].copy_from_slice(SECRET_REFERENCE_MAGIC);
+        encoded[4..6].copy_from_slice(&self.version.to_be_bytes());
+        encoded[6] = self.kind as u8;
+        encoded[7..15].copy_from_slice(
+            &self
+                .key_epoch
+                .map_or(0, ReplicationKeyEpoch::get)
+                .to_be_bytes(),
+        );
+        encoded[15..].copy_from_slice(&self.identifier);
+        encoded
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, ReplicationSecretCustodyError> {
+        if bytes.len() != REPLICATION_SECRET_REFERENCE_BYTES
+            || bytes.get(..4) != Some(SECRET_REFERENCE_MAGIC)
+        {
+            return Err(ReplicationSecretCustodyError::InvalidReference);
+        }
+        let version = u16::from_be_bytes(
+            bytes[4..6]
+                .try_into()
+                .map_err(|_| ReplicationSecretCustodyError::InvalidReference)?,
+        );
+        if version != REPLICATION_STORED_SECRET_VERSION {
+            return Err(ReplicationSecretCustodyError::InvalidReference);
+        }
+        let kind = ReplicationSecretKind::from_id(bytes[6])
+            .map_err(|_| ReplicationSecretCustodyError::InvalidReference)?;
+        let epoch = u64::from_be_bytes(
+            bytes[7..15]
+                .try_into()
+                .map_err(|_| ReplicationSecretCustodyError::InvalidReference)?,
+        );
+        let key_epoch = match kind {
+            ReplicationSecretKind::EpochKey => Some(
+                ReplicationKeyEpoch::new(epoch)
+                    .map_err(|_| ReplicationSecretCustodyError::InvalidReference)?,
+            ),
+            _ if epoch == 0 => None,
+            _ => return Err(ReplicationSecretCustodyError::InvalidReference),
+        };
+        let identifier = bytes[15..]
+            .try_into()
+            .map_err(|_| ReplicationSecretCustodyError::InvalidReference)?;
+        Self::from_identifier(kind, key_epoch, identifier)
     }
 
     fn generate(
@@ -460,6 +513,12 @@ impl ReplicationHistoricalKeyIndex {
         self.references
             .get(&epoch)
             .ok_or(ReplicationSecretCustodyError::KeyEpochNotRetained)
+    }
+
+    pub fn references(
+        &self,
+    ) -> impl ExactSizeIterator<Item = &ReplicationSecretRef> + DoubleEndedIterator {
+        self.references.values()
     }
 
     pub fn append(

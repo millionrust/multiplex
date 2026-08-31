@@ -8608,7 +8608,9 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "termirust-domain",
+ "termirust-replication-security",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
