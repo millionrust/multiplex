@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "initial": {
+    "session_id": "00000000-0000-0000-0000-000000000003",
+    "project_id": "00000000-0000-0000-0000-000000000001",
+    "preset_id": "00000000-0000-0000-0000-000000000002",
+    "title": "Conformance session",
+    "lifecycle": "exited",
+    "last_output_sequence": 7,
+    "read_through_sequence": 1,
+    "unread_sequence": 7
+  },
+  "expected_initial": {
+    "repository_revision": 1,
+    "session": {
+      "id": "00000000-0000-0000-0000-000000000003",
+      "project_id": "00000000-0000-0000-0000-000000000001",
+      "preset_id": "00000000-0000-0000-0000-000000000002",
+      "title": "Conformance session",
+      "title_source": "manual",
+      "lifecycle": "exited",
+      "activity": "unknown",
+      "pinned": false,
+      "last_output_sequence": 7,
+      "read_through_sequence": 1,
+      "unread_sequence": 7,
+      "unread": true,
+      "archived": false,
+      "session_revision": 1
+    }
+  },
+  "steps": [
+    {
+      "operation": "rename",
+      "value": "Conformance renamed",
+      "expected": {
+        "repository_revision": 2,
+        "session": {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "project_id": "00000000-0000-0000-0000-000000000001",
+          "preset_id": "00000000-0000-0000-0000-000000000002",
+          "title": "Conformance renamed",
+          "title_source": "manual",
+          "lifecycle": "exited",
+          "activity": "unknown",
+          "pinned": false,
+          "last_output_sequence": 7,
+          "read_through_sequence": 1,
+          "unread_sequence": 7,
+          "unread": true,
+          "archived": false,
+          "session_revision": 2
+        }
+      }
+    },
+    {
+      "operation": "set_pinned",
+      "value": true,
+      "expected": {
+        "repository_revision": 3,
+        "session": {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "project_id": "00000000-0000-0000-0000-000000000001",
+          "preset_id": "00000000-0000-0000-0000-000000000002",
+          "title": "Conformance renamed",
+          "title_source": "manual",
+          "lifecycle": "exited",
+          "activity": "unknown",
+          "pinned": true,
+          "last_output_sequence": 7,
+          "read_through_sequence": 1,
+          "unread_sequence": 7,
+          "unread": true,
+          "archived": false,
+          "session_revision": 3
+        }
+      }
+    },
+    {
+      "operation": "mark_read",
+      "expected": {
+        "repository_revision": 4,
+        "session": {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "project_id": "00000000-0000-0000-0000-000000000001",
+          "preset_id": "00000000-0000-0000-0000-000000000002",
+          "title": "Conformance renamed",
+          "title_source": "manual",
+          "lifecycle": "exited",
+          "activity": "unknown",
+          "pinned": true,
+          "last_output_sequence": 7,
+          "read_through_sequence": 7,
+          "unread_sequence": null,
+          "unread": false,
+          "archived": false,
+          "session_revision": 4
+        }
+      }
+    },
+    {
+      "operation": "archive",
+      "expected": {
+        "repository_revision": 5,
+        "session": {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "project_id": "00000000-0000-0000-0000-000000000001",
+          "preset_id": "00000000-0000-0000-0000-000000000002",
+          "title": "Conformance renamed",
+          "title_source": "manual",
+          "lifecycle": "exited",
+          "activity": "unknown",
+          "pinned": true,
+          "last_output_sequence": 7,
+          "read_through_sequence": 7,
+          "unread_sequence": null,
+          "unread": false,
+          "archived": true,
+          "session_revision": 5
+        }
+      }
+    },
+    {
+      "operation": "restore",
+      "expected": {
+        "repository_revision": 6,
+        "session": {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "project_id": "00000000-0000-0000-0000-000000000001",
+          "preset_id": "00000000-0000-0000-0000-000000000002",
+          "title": "Conformance renamed",
+          "title_source": "manual",
+          "lifecycle": "exited",
+          "activity": "unknown",
+          "pinned": true,
+          "last_output_sequence": 7,
+          "read_through_sequence": 7,
+          "unread_sequence": null,
+          "unread": false,
+          "archived": false,
+          "session_revision": 6
+        }
+      }
+    }
+  ],
+  "stale": {
+    "captured_session_revision": 6,
+    "intervening_operation": "set_pinned",
+    "intervening_value": false,
+    "attempt_operation": "rename",
+    "attempt_value": "MUST NOT APPLY",
+    "expected": {
+      "repository_revision": 7,
+      "session": {
+        "id": "00000000-0000-0000-0000-000000000003",
+        "project_id": "00000000-0000-0000-0000-000000000001",
+        "preset_id": "00000000-0000-0000-0000-000000000002",
+        "title": "Conformance renamed",
+        "title_source": "manual",
+        "lifecycle": "exited",
+        "activity": "unknown",
+        "pinned": false,
+        "last_output_sequence": 7,
+        "read_through_sequence": 7,
+        "unread_sequence": null,
+        "unread": false,
+        "archived": false,
+        "session_revision": 7
+      }
+    }
+  }
+}

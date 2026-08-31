@@ -1,6 +1,10 @@
 #[cfg(test)]
 use std::path::Path;
 
+#[cfg(test)]
+#[path = "../../../tests/support/local_controller_conformance.rs"]
+mod local_controller_fixture;
+
 use termirust_domain::{
     ActivityAggregate, GroupId, HostedSession, HostedSessionId, HostedSessionState, OutputSequence,
     ProjectId, Revision, SessionMutation, SessionStateError,
@@ -430,6 +434,144 @@ fn classify_store_failure(error: &StoreError) -> SessionLibraryFailure {
             ..
         } => SessionLibraryFailure::PermissionDenied,
         _ => SessionLibraryFailure::Unavailable,
+    }
+}
+
+#[cfg(test)]
+mod local_controller_conformance_tests {
+    use super::*;
+    use crate::models::SavedDurableHost;
+    use termirust_domain::{PositionKey, SessionLaunchRoute, SessionOrigin, TitleSource};
+
+    use super::local_controller_fixture::{domain_mutation, load_fixture, normalized_snapshot};
+
+    #[test]
+    fn local_controller_conformance_desktop_session_library_matches_fixture() {
+        let fixture = load_fixture();
+        let temp = tempfile::tempdir().unwrap();
+        let metadata_root = temp.path().join("metadata");
+        let session_data_root = temp.path().join("sessions");
+        let repository = SessionRepository::open(metadata_root.clone(), session_data_root).unwrap();
+        let mut saved = SavedState::default();
+        saved
+            .app_attached_sessions
+            .push(saved_record(&fixture.initial));
+        let mut library = SessionLibraryState::open_repository(repository, &mut saved);
+
+        assert_eq!(
+            normalized_snapshot(library.snapshot.as_ref().unwrap()),
+            fixture.expected_initial
+        );
+        assert_saved_projection(&saved, library.session(fixture.initial.id).unwrap());
+
+        for step in &fixture.steps {
+            library
+                .mutate(
+                    &mut saved,
+                    fixture.initial.id,
+                    domain_mutation(&step.mutation),
+                )
+                .unwrap();
+            assert_eq!(
+                normalized_snapshot(library.snapshot.as_ref().unwrap()),
+                step.expected
+            );
+            assert_saved_projection(&saved, library.session(fixture.initial.id).unwrap());
+        }
+
+        assert_eq!(
+            library.session(fixture.initial.id).unwrap().revision.get(),
+            fixture.stale.captured_session_revision
+        );
+        library
+            .repository
+            .as_ref()
+            .unwrap()
+            .mutate_session(
+                fixture.initial.id,
+                library.revision(),
+                domain_mutation(&fixture.stale.intervening),
+                200,
+            )
+            .unwrap();
+        let sessions_path = metadata_root.join("sessions.json");
+        let before_stale_attempt = std::fs::read(&sessions_path).unwrap();
+        let error = library
+            .mutate(
+                &mut saved,
+                fixture.initial.id,
+                domain_mutation(&fixture.stale.attempt),
+            )
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            StoreError::SessionDomain(SessionStateError::StaleRevision { .. })
+        ));
+        assert_eq!(std::fs::read(sessions_path).unwrap(), before_stale_attempt);
+        assert_eq!(
+            normalized_snapshot(library.snapshot.as_ref().unwrap()),
+            fixture.stale.expected
+        );
+        assert_saved_projection(&saved, library.session(fixture.initial.id).unwrap());
+    }
+
+    fn saved_record(session: &HostedSession) -> SavedAppAttachedSession {
+        let durable_host = SavedDurableHost {
+            last_sequence: session.last_output_sequence.get(),
+            ..SavedDurableHost::default()
+        };
+        SavedAppAttachedSession {
+            id: session.id,
+            route: SessionLaunchRoute::DurableHost,
+            origin: SessionOrigin {
+                project_id: session.project_id,
+                preset_id: session.preset_id.unwrap(),
+            },
+            state: session.lifecycle,
+            project_label: "Conformance project".into(),
+            preset_label: "Conformance preset".into(),
+            title: session.title.as_str().into(),
+            title_source: TitleSource::Manual,
+            activity: session.activity.clone(),
+            pinned: session.pinned,
+            read_through_sequence: session.read_through_sequence.get(),
+            unread_sequence: session.unread_sequence.map(OutputSequence::get),
+            archived_at: session.archived_at,
+            revision: Revision::ZERO,
+            durable_host: Some(durable_host),
+            group_id: None,
+            position: PositionKey::FIRST,
+            started_at: session.created_at,
+            updated_at: session.updated_at,
+        }
+    }
+
+    fn assert_saved_projection(saved: &SavedState, session: &HostedSession) {
+        let record = saved
+            .app_attached_sessions
+            .iter()
+            .find(|record| record.id == session.id)
+            .unwrap();
+        assert_eq!(record.state, session.lifecycle);
+        assert_eq!(record.title, session.title.as_str());
+        assert_eq!(record.title_source, session.title_source);
+        assert_eq!(record.activity, session.activity);
+        assert_eq!(record.pinned, session.pinned);
+        assert_eq!(
+            record.read_through_sequence,
+            session.read_through_sequence.get()
+        );
+        assert_eq!(
+            record.unread_sequence,
+            session.unread_sequence.map(OutputSequence::get)
+        );
+        assert_eq!(record.archived_at, session.archived_at);
+        assert_eq!(record.revision, session.revision);
+        assert_eq!(
+            record.durable_host.as_ref().unwrap().last_sequence,
+            session.last_output_sequence.get()
+        );
+        assert_eq!(record.id, session.id);
     }
 }
 
