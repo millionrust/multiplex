@@ -111,9 +111,6 @@ impl RemoteHeadlessSessionHandle {
         {
             control.terminate()?;
         }
-        let _ = self
-            .event_tx
-            .try_send(AgentEvent::StateChanged(AgentRunState::Cancelled));
         Ok(())
     }
 }
@@ -186,9 +183,6 @@ impl HeadlessSessionHandle {
                 }
             }
         }
-        let _ = self
-            .event_tx
-            .try_send(AgentEvent::StateChanged(AgentRunState::Cancelled));
         Ok(())
     }
 }
@@ -1205,7 +1199,14 @@ mod tests {
         }
         assert!(!handle.running.load(Ordering::Acquire));
         let events: Vec<_> = handle.event_rx.try_iter().collect();
-        assert!(events.contains(&AgentEvent::StateChanged(AgentRunState::Cancelled)));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| { **event == AgentEvent::StateChanged(AgentRunState::Cancelled) })
+                .count(),
+            1,
+            "cancellation must be emitted only after the child settles"
+        );
         assert!(!events.contains(&AgentEvent::StateChanged(AgentRunState::Failed)));
         assert!(
             !events

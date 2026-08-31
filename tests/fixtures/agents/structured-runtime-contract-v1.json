@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "max_events": 256,
+  "deadline_ms": 5000,
+  "oversize_line_bytes": 1048577,
+  "providers": [
+    {
+      "provider": "codex",
+      "capabilities": {
+        "interactive_pty": true,
+        "structured_events": true,
+        "approvals": true,
+        "cancellation": true,
+        "context_handoff": true,
+        "remote": true
+      },
+      "expected_session_id": "contract-codex-session",
+      "expected_message": "contract-message",
+      "expected_tool_id": "contract-tool",
+      "expected_tool_name": "contract-tool",
+      "expected_failure": "contract-failure",
+      "handshake": {
+        "initialize": {"id": 1, "result": {"userAgent": "contract-fixture"}},
+        "session": {"id": 2, "result": {"thread": {"id": "contract-codex-session"}}}
+      },
+      "success": [
+        {"id": 100, "result": {"turn": {"id": "contract-turn"}}},
+        {"method": "turn/started", "params": {"turn": {"id": "contract-turn"}}},
+        {"method": "item/agentMessage/delta", "params": {"delta": "contract-message"}},
+        {"method": "item/started", "params": {"item": {"id": "contract-tool", "type": "contract-tool", "command": "fixture-operation"}}},
+        {"method": "item/completed", "params": {"item": {"id": "contract-tool", "status": "completed"}}},
+        {"method": "turn/completed", "params": {"turn": {"id": "contract-turn", "status": "completed"}}}
+      ],
+      "failure": [
+        {"id": 100, "result": {"turn": {"id": "contract-turn"}}},
+        {"method": "turn/started", "params": {"turn": {"id": "contract-turn"}}},
+        {"method": "error", "params": {"message": "contract-failure"}}
+      ],
+      "cancellation": [
+        {"id": 100, "result": {"turn": {"id": "contract-turn"}}},
+        {"method": "turn/started", "params": {"turn": {"id": "contract-turn"}}},
+        {"method": "turn/completed", "params": {"turn": {"id": "contract-turn", "status": "interrupted"}}}
+      ]
+    },
+    {
+      "provider": "claude_code",
+      "capabilities": {
+        "interactive_pty": true,
+        "structured_events": true,
+        "approvals": false,
+        "cancellation": true,
+        "context_handoff": true,
+        "remote": true
+      },
+      "expected_session_id": "contract-claude-session",
+      "expected_message": "contract-message",
+      "expected_tool_id": "contract-tool",
+      "expected_tool_name": "contract-tool",
+      "expected_failure": "contract-failure",
+      "handshake": null,
+      "success": [
+        {"type": "system", "subtype": "init", "session_id": "contract-claude-session"},
+        {"type": "assistant", "message": {"content": [
+          {"type": "text", "text": "contract-message"},
+          {"type": "tool_use", "id": "contract-tool", "name": "contract-tool", "input": {"fixture": true}}
+        ]}},
+        {"type": "user", "message": {"content": [
+          {"type": "tool_result", "tool_use_id": "contract-tool", "is_error": false}
+        ]}},
+        {"type": "result", "is_error": false, "result": "contract-summary"}
+      ],
+      "failure": [
+        {"type": "system", "subtype": "init", "session_id": "contract-claude-session"},
+        {"type": "result", "is_error": true, "result": "contract-failure"}
+      ],
+      "cancellation": [
+        {"type": "system", "subtype": "init", "session_id": "contract-claude-session"}
+      ]
+    },
+    {
+      "provider": "gemini",
+      "capabilities": {
+        "interactive_pty": true,
+        "structured_events": true,
+        "approvals": false,
+        "cancellation": true,
+        "context_handoff": true,
+        "remote": true
+      },
+      "expected_session_id": "contract-gemini-session",
+      "expected_message": "contract-message",
+      "expected_tool_id": "contract-tool",
+      "expected_tool_name": "contract-tool",
+      "expected_failure": "contract-failure",
+      "handshake": null,
+      "success": [
+        {"type": "init", "session_id": "contract-gemini-session"},
+        {"type": "message", "role": "assistant", "content": "contract-message"},
+        {"type": "tool_use", "tool_id": "contract-tool", "tool_name": "contract-tool", "parameters": {"fixture": true}},
+        {"type": "tool_result", "tool_id": "contract-tool", "status": "success"},
+        {"type": "result"}
+      ],
+      "failure": [
+        {"type": "init", "session_id": "contract-gemini-session"},
+        {"type": "error", "message": "contract-failure"}
+      ],
+      "cancellation": [
+        {"type": "init", "session_id": "contract-gemini-session"}
+      ]
+    }
+  ]
+}

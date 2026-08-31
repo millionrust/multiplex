@@ -8,6 +8,8 @@ mod orchestrator;
 mod process;
 mod protocol;
 mod stream;
+#[cfg(all(test, unix))]
+mod structured_contract;
 mod transcript;
 mod worktree;
 
