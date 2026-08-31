@@ -11,6 +11,7 @@ pub mod indexes;
 pub mod notification;
 pub mod preset;
 pub mod project;
+pub mod replication;
 pub mod runtime;
 pub mod runtime_resume;
 pub mod search;
@@ -95,6 +96,15 @@ pub use preset::{
 pub use project::{
     AddProject, CanonicalPath, FileIdentity, LocalizedUserText, MAX_LABEL_SCALARS, Project,
     ProjectError, ProjectService, ProjectStatus, ProjectSummary,
+};
+pub use replication::{
+    MAX_REPLICATION_CANDIDATES_PER_ENTRY, MAX_REPLICATION_DOCUMENT_BYTES, MAX_REPLICATION_ENTRIES,
+    MAX_REPLICATION_REPLICAS, MAX_REPLICATION_SEALED_PAYLOAD_BYTES, REPLICATION_SCHEMA_VERSION,
+    ReplicaAuthorization, ReplicatedVersion, ReplicationAuditEvent, ReplicationAuditOutcome,
+    ReplicationCollectionId, ReplicationDocument, ReplicationEntry, ReplicationError,
+    ReplicationMerge, ReplicationOperation, ReplicationPolicy, ReplicationRecordId,
+    ReplicationRecordKey, ReplicationReplicaId, ReplicationVersionVector, ReplicationWorkspaceId,
+    SealedReplicationPayload, VersionRelation, merge_replication_documents,
 };
 pub use runtime::{
     ExecutableFingerprint, MAX_RUNTIME_CANDIDATES, MAX_RUNTIME_DESCRIPTORS,

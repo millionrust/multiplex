@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "workspace_id": "workspace-alpha",
+  "replicas": [
+    { "id": "device-a", "state": "active" },
+    { "id": "device-b", "state": "active" },
+    { "id": "device-c", "state": "active" },
+    { "id": "device-old", "state": "revoked", "accepted_through": 3 }
+  ],
+  "documents": {
+    "left": {
+      "schema_version": 1,
+      "workspace_id": "workspace-alpha",
+      "entries": [
+        {
+          "key": { "collection": "connections", "record_id": "server-1" },
+          "candidates": [
+            {
+              "author": "device-a",
+              "vector": { "device-a": 2 },
+              "operation": "put",
+              "sealed_payload": [161, 1, 11]
+            }
+          ]
+        },
+        {
+          "key": { "collection": "connections", "record_id": "server-removed" },
+          "candidates": [
+            {
+              "author": "device-a",
+              "vector": { "device-a": 1 },
+              "operation": "put",
+              "sealed_payload": [161, 2, 12]
+            }
+          ]
+        },
+        {
+          "key": { "collection": "snippets", "record_id": "snippet-1" },
+          "candidates": [
+            {
+              "author": "device-a",
+              "vector": { "device-a": 1 },
+              "operation": "put",
+              "sealed_payload": [161, 3, 13]
+            }
+          ]
+        },
+        {
+          "key": { "collection": "vaults", "record_id": "vault-concurrent" },
+          "candidates": [
+            {
+              "author": "device-a",
+              "vector": { "device-a": 1 },
+              "operation": "put",
+              "sealed_payload": [161, 4, 14]
+            }
+          ]
+        }
+      ]
+    },
+    "right": {
+      "schema_version": 1,
+      "workspace_id": "workspace-alpha",
+      "entries": [
+        {
+          "key": { "collection": "connections", "record_id": "server-1" },
+          "candidates": [
+            {
+              "author": "device-b",
+              "vector": { "device-a": 1, "device-b": 1 },
+              "operation": "put",
+              "sealed_payload": [162, 1, 21]
+            }
+          ]
+        },
+        {
+          "key": { "collection": "connections", "record_id": "server-removed" },
+          "candidates": [
+            {
+              "author": "device-a",
+              "vector": { "device-a": 2 },
+              "operation": "delete"
+            }
+          ]
+        },
+        {
+          "key": { "collection": "projects", "record_id": "project-1" },
+          "candidates": [
+            {
+              "author": "device-b",
+              "vector": { "device-b": 1 },
+              "operation": "put",
+              "sealed_payload": [162, 2, 22]
+            }
+          ]
+        },
+        {
+          "key": { "collection": "vaults", "record_id": "vault-concurrent" },
+          "candidates": [
+            {
+              "author": "device-b",
+              "vector": { "device-b": 1 },
+              "operation": "delete"
+            }
+          ]
+        }
+      ]
+    },
+    "resolved": {
+      "schema_version": 1,
+      "workspace_id": "workspace-alpha",
+      "entries": [
+        {
+          "key": { "collection": "connections", "record_id": "server-1" },
+          "candidates": [
+            {
+              "author": "device-c",
+              "vector": { "device-a": 2, "device-b": 1, "device-c": 1 },
+              "operation": "put",
+              "sealed_payload": [163, 1, 31]
+            }
+          ]
+        }
+      ]
+    },
+    "revoked_history": {
+      "schema_version": 1,
+      "workspace_id": "workspace-alpha",
+      "entries": [
+        {
+          "key": { "collection": "audit", "record_id": "historical" },
+          "candidates": [
+            {
+              "author": "device-old",
+              "vector": { "device-old": 3 },
+              "operation": "put",
+              "sealed_payload": [164, 1, 41]
+            }
+          ]
+        }
+      ]
+    },
+    "revoked_after": {
+      "schema_version": 1,
+      "workspace_id": "workspace-alpha",
+      "entries": [
+        {
+          "key": { "collection": "audit", "record_id": "rejected" },
+          "candidates": [
+            {
+              "author": "device-old",
+              "vector": { "device-old": 4 },
+              "operation": "put",
+              "sealed_payload": [165, 1, 51]
+            }
+          ]
+        }
+      ]
+    },
+    "unknown": {
+      "schema_version": 1,
+      "workspace_id": "workspace-alpha",
+      "entries": [
+        {
+          "key": { "collection": "audit", "record_id": "unknown" },
+          "candidates": [
+            {
+              "author": "device-rogue",
+              "vector": { "device-rogue": 1 },
+              "operation": "delete"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
