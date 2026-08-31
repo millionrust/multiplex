@@ -6,11 +6,16 @@ rust-version.workspace = true
 description = "Authenticated record sealing for TermiRust local-first replication"
 license = "MIT OR Apache-2.0"
 
+[features]
+default = []
+os-keyring = ["dep:keyring"]
+
 [dependencies]
 aes-gcm-siv = "=0.11.1"
 getrandom = "=0.4.2"
 hkdf = "=0.12.4"
 hpke = { version = "=0.13.0", default-features = false, features = ["alloc", "x25519"] }
+keyring = { version = "=3.6.3", default-features = false, features = ["apple-native", "windows-native", "linux-native-sync-persistent", "crypto-rust"], optional = true }
 rand_core = { version = "=0.6.4", features = ["getrandom"] }
 rand_core_09 = { package = "rand_core", version = "=0.9.5" }
 sha2 = "=0.10.9"

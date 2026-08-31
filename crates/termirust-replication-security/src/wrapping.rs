@@ -77,6 +77,14 @@ macro_rules! private_key_type {
                         .expect("X25519 public keys are exactly 32 bytes"),
                 )
             }
+
+            /// Copies this key only for immediate encoding by the typed secret vault.
+            /// The vault zeroizes both this copy and its encoded representation.
+            pub(crate) fn copy_for_secret_storage(
+                &self,
+            ) -> [u8; REPLICATION_HPKE_PRIVATE_KEY_BYTES] {
+                self.0
+            }
         }
 
         impl fmt::Debug for $private {

@@ -12,9 +12,11 @@ use termirust_domain::{
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 mod authority;
+mod custody;
 mod wrapping;
 
 pub use authority::*;
+pub use custody::*;
 pub use wrapping::*;
 
 pub const REPLICATION_ENVELOPE_VERSION: u16 = 1;
@@ -76,6 +78,12 @@ impl ReplicationEpochKey {
 
     pub fn epoch(&self) -> ReplicationKeyEpoch {
         self.epoch
+    }
+
+    /// Copies this key only for immediate encoding by the typed secret vault.
+    /// The vault zeroizes both this copy and its encoded representation.
+    pub(crate) fn copy_for_secret_storage(&self) -> [u8; 32] {
+        self.bytes
     }
 }
 
