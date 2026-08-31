@@ -57,15 +57,17 @@ all intermediate plaintext/key buffers are wiped, and failures expose stable con
 
 ## Authority and lifecycle boundary
 
-HPKE authenticates a package against a public key the caller already trusts. It does not answer how
-that authority key or a device public key was enrolled, whether the device is currently authorized,
-or whether a newer epoch exists. A revoked device can always retain keys it learned before
-revocation, so revocation must rotate to a fresh epoch and distribute it only to remaining devices.
+HPKE authenticates a package against a public key the caller already trusts. E12.4 now supplies the
+storage-neutral authority state machine that enrolls exact device public keys, advances revisions
+and epochs, and excludes revoked devices from fresh distributions. It still does not establish
+native secure-store ownership or durable freshness. A revoked device can always retain keys it
+learned before revocation, so revocation rotates to a fresh epoch and distributes it only to
+remaining devices.
 
 The following remain separate work:
 
-- authority/device enrollment and native secure-store ownership
-- atomic authority revision and key-epoch rotation/revocation transitions
+- native secure-store ownership and durable authority enrollment
+- atomic repository commit of authority revision and key-epoch transitions
 - highest-seen epoch/revision rollback protection and historical-key retention
 - repository persistence, shared-folder/network transport, retries, and recovery
 - migration of placeholder mobile key metadata and user-facing device/conflict UI

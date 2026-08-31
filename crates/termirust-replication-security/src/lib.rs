@@ -11,8 +11,10 @@ use termirust_domain::{
 };
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
+mod authority;
 mod wrapping;
 
+pub use authority::*;
 pub use wrapping::*;
 
 pub const REPLICATION_ENVELOPE_VERSION: u16 = 1;
