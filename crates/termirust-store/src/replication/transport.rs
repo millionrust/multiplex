@@ -46,6 +46,32 @@ pub struct SharedFolderConflictArtifact {
     pub revision: ReplicationContentRevision,
 }
 
+#[derive(Clone, Eq, PartialEq)]
+pub struct SharedFolderReplicationInputs {
+    pub(super) current: Option<SharedFolderTransportSnapshot>,
+    pub(super) conflicts: Vec<SharedFolderConflictArtifact>,
+}
+
+impl std::fmt::Debug for SharedFolderReplicationInputs {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SharedFolderReplicationInputs")
+            .field("current_present", &self.current.is_some())
+            .field("conflict_count", &self.conflicts.len())
+            .finish()
+    }
+}
+
+impl SharedFolderReplicationInputs {
+    pub fn current(&self) -> Option<&SharedFolderTransportSnapshot> {
+        self.current.as_ref()
+    }
+
+    pub fn conflicts(&self) -> &[SharedFolderConflictArtifact] {
+        &self.conflicts
+    }
+}
+
 impl SharedFolderConflictArtifact {
     pub fn path(&self) -> &Path {
         &self.path
@@ -154,6 +180,28 @@ impl SharedFolderReplicationTransport {
         policy: &ReplicationPolicy,
     ) -> Result<Vec<SharedFolderConflictArtifact>, ReplicationStoreError> {
         let _lock = self.lock()?;
+        self.read_conflict_artifacts(policy)
+    }
+
+    pub fn replication_inputs(
+        &self,
+        policy: &ReplicationPolicy,
+    ) -> Result<SharedFolderReplicationInputs, ReplicationStoreError> {
+        let _lock = self.lock()?;
+        Ok(SharedFolderReplicationInputs {
+            current: self.read_current(policy)?,
+            conflicts: self.read_conflict_artifacts(policy)?,
+        })
+    }
+
+    pub fn workspace_id(&self) -> &ReplicationWorkspaceId {
+        &self.workspace_id
+    }
+
+    fn read_conflict_artifacts(
+        &self,
+        policy: &ReplicationPolicy,
+    ) -> Result<Vec<SharedFolderConflictArtifact>, ReplicationStoreError> {
         let mut matches = Vec::new();
         let target_name = self.artifact_file_name();
         let target_stem = target_name.strip_suffix(".json").unwrap_or(&target_name);

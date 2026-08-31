@@ -22,6 +22,7 @@ The current private layout is intentionally small and fixed:
   replica.lock
   replica.json
   replica.last-good.json
+  replica.recovery-evidence.json  # present after an explicit recovery
   replica.transaction.json  # present only while secure-store retirement is pending
 ```
 
@@ -92,7 +93,54 @@ does not use modification time to choose a winner and does not claim provider-le
 The adapter recognizes only bounded slot-specific conflict-copy name patterns, validates each as an
 inert sealed document, sorts evidence deterministically, and caps evidence at 16 artifacts while
 scanning at most 1,024 directory entries. It never executes, decrypts, silently deletes, or
-automatically selects a conflict copy. E12.7 owns user-facing review and recovery.
+automatically selects a conflict copy.
+
+## Review and convergence coordinator
+
+The presentation-neutral coordinator reads one authoritative local repository and one coherent
+transport input set containing the current artifact plus bounded provider conflict evidence. It
+canonicalizes merge inputs by content revision, so filesystem enumeration order cannot change the
+result. A review plan reports a disposition and conflict counts without exposing record keys in
+debug output. Its opaque token binds the authority policy, local revision and source, exact current
+transport revision or absence, all provider conflict revisions, and the canonical merged bytes.
+
+Apply and resolve always repeat review and reject a changed token before using a plan. A
+conflict-free result is committed locally with the observed repository revision and then published
+with the observed transport revision. If publication loses a race after local commit, the local
+canonical superset is not rolled back: the caller reviews again, merges the newly observed provider
+state, and retries. This is deliberate monotonic recovery from a partial publication, not an
+all-or-nothing transaction across independent filesystems.
+
+Concurrent record candidates are never selected automatically. Resolution requires exactly one
+`ReplicatedVersion` for each reviewed conflict key. The caller first obtains the exact next vector
+for an active replica, seals the chosen operation through the replication-security layer, and
+returns that complete version. The store validates the author and dominating vector against every
+candidate before committing. It does not hold epoch keys and therefore cannot decrypt or
+cryptographically authenticate the opaque payload itself. Provider conflict copies remain inert,
+visible evidence and are not deleted as a side effect of convergence.
+
+## Explicit last-good recovery
+
+Loading may expose a validated last-good document as read-only state, but synchronization reports
+`RecoveryRequired` and cannot activate it implicitly. Recovery is a separate locked operation and
+is allowed only when the primary is a regular current-format file that fails as corrupt or too
+large. The last-good envelope must independently validate for the exact workspace and current
+authority policy.
+
+Before activation, recovery creates a same-directory hard link at the fixed private evidence path.
+The link preserves the exact displaced bytes without allocating or parsing an oversized payload.
+Activation then uses the normal atomic writer, leaving evidence on the old inode. A failed
+activation can be retried only when the existing evidence path still identifies that same corrupt
+primary inode. Occupied, symlink, or special-file evidence, unsupported hard links, permission
+failure, newer or missing state, workspace mismatch, and policy rejection all fail closed. A
+pending committed retirement journal remains pending and follows the existing reconciliation path
+after recovery.
+
+The focused acceptance harness uses only disposable local directories and synthetic sealed bytes.
+It exercises two independent repository roots sharing one transport slot, offline divergence,
+deterministic review, explicit resolution, a transport replacement after local commit, restart,
+canonical byte convergence, and revoked-author refusal. It does not establish live cloud-provider,
+mobile, background-sync, credential-store, or production-record-mapping acceptance.
 
 ## Platform and product boundary
 

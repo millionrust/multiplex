@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[cfg(unix)]
-use std::os::unix::fs::PermissionsExt as _;
+use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 
 use serde::Deserialize;
 use termirust_domain::{ReplicationDocument, ReplicationPolicy, ReplicationWorkspaceId};
@@ -24,6 +24,7 @@ use super::{
 const REPOSITORY_FILE: &str = "replica.json";
 const LAST_GOOD_FILE: &str = "replica.last-good.json";
 const TRANSACTION_FILE: &str = "replica.transaction.json";
+const RECOVERY_EVIDENCE_FILE: &str = "replica.recovery-evidence.json";
 const LOCK_FILE: &str = "replica.lock";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -68,6 +69,22 @@ pub enum ReplicationRetirementOutcome {
         already_missing: usize,
         durability: Durability,
     },
+}
+
+#[derive(Clone)]
+pub struct ReplicationRecoveryOutcome {
+    pub snapshot: ReplicationRepositorySnapshot,
+    pub evidence_durability: Durability,
+}
+
+impl std::fmt::Debug for ReplicationRecoveryOutcome {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ReplicationRecoveryOutcome")
+            .field("snapshot", &self.snapshot)
+            .field("evidence_durability", &self.evidence_durability)
+            .finish()
+    }
 }
 
 #[derive(Clone)]
@@ -269,12 +286,58 @@ impl ReplicationRepository {
         })
     }
 
+    pub fn recover_last_good(
+        &self,
+        expected_workspace: &ReplicationWorkspaceId,
+        policy: &ReplicationPolicy,
+    ) -> Result<ReplicationRecoveryOutcome, ReplicationStoreError> {
+        let _lock = self.lock()?;
+        match self.read_repository(&self.primary_path(), expected_workspace, policy) {
+            Ok(_) => return Err(ReplicationStoreError::RecoveryNotRequired),
+            Err(ReplicationStoreError::Corrupt | ReplicationStoreError::TooLarge) => {}
+            Err(error) => return Err(error),
+        }
+        let last_good = self.read_repository(&self.last_good_path(), expected_workspace, policy)?;
+        let retirement_pending = reject_unsafe_file_if_present(&self.transaction_path())?;
+        let evidence_path = self.recovery_evidence_path();
+        if reject_unsafe_file_if_present(&evidence_path)? {
+            if !same_file(&self.primary_path(), &evidence_path)? {
+                return Err(ReplicationStoreError::RecoveryEvidenceExists);
+            }
+        } else {
+            fs::hard_link(self.primary_path(), &evidence_path)
+                .map_err(|error| io_error("preserve recovery evidence", error))?;
+            #[cfg(unix)]
+            if let Err(error) =
+                fs::set_permissions(&evidence_path, fs::Permissions::from_mode(0o600))
+            {
+                let _ = fs::remove_file(&evidence_path);
+                return Err(io_error("set recovery evidence permissions", error));
+            }
+        }
+        let evidence_durability = self.sync_root("sync recovery evidence directory")?;
+        let durability = self.write_repository(&self.primary_path(), &last_good.document)?;
+        Ok(ReplicationRecoveryOutcome {
+            snapshot: snapshot(
+                last_good.document,
+                ReplicationRepositorySource::Primary,
+                durability,
+                retirement_pending,
+            )?,
+            evidence_durability,
+        })
+    }
+
     pub fn metadata_path(&self) -> PathBuf {
         self.primary_path()
     }
 
     pub fn transaction_path(&self) -> PathBuf {
         self.root.join(TRANSACTION_FILE)
+    }
+
+    pub fn recovery_evidence_path(&self) -> PathBuf {
+        self.root.join(RECOVERY_EVIDENCE_FILE)
     }
 
     fn ensure_root(&self) -> Result<(), ReplicationStoreError> {
@@ -407,6 +470,10 @@ impl ReplicationRepository {
     fn remove_journal(&self) -> Result<Durability, ReplicationStoreError> {
         fs::remove_file(self.transaction_path())
             .map_err(|error| io_error("remove transaction", error))?;
+        self.sync_root("sync transaction directory")
+    }
+
+    fn sync_root(&self, operation: &'static str) -> Result<Durability, ReplicationStoreError> {
         match File::open(&self.root).and_then(|directory| directory.sync_all()) {
             Ok(()) => Ok(Durability::Full),
             Err(error)
@@ -419,9 +486,22 @@ impl ReplicationRepository {
             {
                 Ok(Durability::RenameOnly)
             }
-            Err(error) => Err(io_error("sync transaction directory", error)),
+            Err(error) => Err(io_error(operation, error)),
         }
     }
+}
+
+#[cfg(unix)]
+fn same_file(left: &Path, right: &Path) -> Result<bool, ReplicationStoreError> {
+    let left = fs::metadata(left).map_err(|error| io_error("inspect recovery source", error))?;
+    let right =
+        fs::metadata(right).map_err(|error| io_error("inspect recovery evidence", error))?;
+    Ok(left.dev() == right.dev() && left.ino() == right.ino())
+}
+
+#[cfg(not(unix))]
+fn same_file(_left: &Path, _right: &Path) -> Result<bool, ReplicationStoreError> {
+    Err(ReplicationStoreError::UnsupportedPlatform)
 }
 
 fn snapshot(

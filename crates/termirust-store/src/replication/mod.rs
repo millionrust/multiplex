@@ -1,4 +1,5 @@
 mod repository;
+mod sync;
 mod transport;
 
 use std::collections::BTreeSet;
@@ -26,12 +27,18 @@ use termirust_replication_security::{
 };
 
 pub use repository::{
-    ReplicationRepository, ReplicationRepositorySnapshot, ReplicationRepositorySource,
-    ReplicationRetirementOutcome,
+    ReplicationRecoveryOutcome, ReplicationRepository, ReplicationRepositorySnapshot,
+    ReplicationRepositorySource, ReplicationRetirementOutcome,
+};
+pub use sync::{
+    ReplicationConflictOperationMix, ReplicationConflictResolution, ReplicationConflictReview,
+    ReplicationResolutionContext, ReplicationSyncCoordinator, ReplicationSyncDisposition,
+    ReplicationSyncOutcome, ReplicationSyncPlan, ReplicationSyncReviewToken,
 };
 pub use transport::{
     MAX_REPLICATION_CONFLICT_ARTIFACTS, SharedFolderConflictArtifact,
-    SharedFolderReplicationTransport, SharedFolderTransportSnapshot, SharedFolderTransportState,
+    SharedFolderReplicationInputs, SharedFolderReplicationTransport, SharedFolderTransportSnapshot,
+    SharedFolderTransportState,
 };
 
 pub const MAX_REPLICATION_REPOSITORY_BYTES: u64 = MAX_REPLICATION_DOCUMENT_BYTES as u64 + 64 * 1024;
@@ -286,6 +293,12 @@ pub enum ReplicationStoreError {
     TooManyRetirements,
     TooManyDirectoryEntries,
     TooManyConflictArtifacts,
+    RecoveryNotRequired,
+    RecoveryEvidenceExists,
+    RecoveryRequired,
+    StaleSyncPlan,
+    ConflictResolutionRequired,
+    InvalidConflictResolution,
     Domain(ReplicationError),
     Custody(ReplicationSecretCustodyError),
 }
@@ -348,6 +361,22 @@ impl fmt::Display for ReplicationStoreError {
             }
             Self::TooManyConflictArtifacts => {
                 formatter.write_str("replication conflict evidence exceeds its item limit")
+            }
+            Self::RecoveryNotRequired => {
+                formatter.write_str("replication repository recovery is not required")
+            }
+            Self::RecoveryEvidenceExists => {
+                formatter.write_str("replication recovery evidence already exists")
+            }
+            Self::RecoveryRequired => {
+                formatter.write_str("replication repository requires explicit recovery")
+            }
+            Self::StaleSyncPlan => formatter.write_str("replication sync plan is stale"),
+            Self::ConflictResolutionRequired => {
+                formatter.write_str("replication conflicts require explicit resolution")
+            }
+            Self::InvalidConflictResolution => {
+                formatter.write_str("replication conflict resolution is invalid")
             }
             Self::Domain(error) => error.fmt(formatter),
             Self::Custody(error) => error.fmt(formatter),

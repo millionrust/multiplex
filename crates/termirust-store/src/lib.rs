@@ -57,10 +57,14 @@ pub use recovery::{
     RecoveryReceipt, RecoveryResult, RecoveryState, RecoveryStep,
 };
 pub use replication::{
-    MAX_REPLICATION_CONFLICT_ARTIFACTS, ReplicationContentRevision, ReplicationCustodyMetadata,
-    ReplicationRepository, ReplicationRepositoryRevision, ReplicationRepositorySnapshot,
-    ReplicationRepositorySource, ReplicationRetirementOutcome, ReplicationStoreError,
-    SharedFolderConflictArtifact, SharedFolderReplicationTransport, SharedFolderSlot,
+    MAX_REPLICATION_CONFLICT_ARTIFACTS, ReplicationConflictOperationMix,
+    ReplicationConflictResolution, ReplicationConflictReview, ReplicationContentRevision,
+    ReplicationCustodyMetadata, ReplicationRecoveryOutcome, ReplicationRepository,
+    ReplicationRepositoryRevision, ReplicationRepositorySnapshot, ReplicationRepositorySource,
+    ReplicationResolutionContext, ReplicationRetirementOutcome, ReplicationStoreError,
+    ReplicationSyncCoordinator, ReplicationSyncDisposition, ReplicationSyncOutcome,
+    ReplicationSyncPlan, ReplicationSyncReviewToken, SharedFolderConflictArtifact,
+    SharedFolderReplicationInputs, SharedFolderReplicationTransport, SharedFolderSlot,
     SharedFolderTransportSnapshot, SharedFolderTransportState,
 };
 pub use sessions::{
