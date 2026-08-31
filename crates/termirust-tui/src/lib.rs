@@ -7,6 +7,7 @@ pub mod localization;
 pub mod management;
 pub mod model;
 pub mod render;
+pub mod resume;
 pub mod source;
 pub mod terminal;
 pub mod terminal_view;
@@ -31,5 +32,9 @@ pub use model::{
     FleetGroup, FleetHealth, FleetProject, FleetRevision, FleetSession, FleetSnapshot, LoadState,
     MAX_FILTER_SCALARS, MAX_PROJECTS, MAX_VISIBLE_SESSIONS, ModelAction, ModelEffect, PaneFocus,
     ProjectAvailability, ScopeId, TuiDiagnostic, TuiModel,
+};
+pub use resume::{
+    LocalResumeExecutor, ResumeEffect, ResumeExecutor, ResumeFailure, ResumeModel, ResumeProgress,
+    ResumeResult, ResumeReview,
 };
 pub use source::{FleetCancellation, FleetSource, LocalFleetSource};

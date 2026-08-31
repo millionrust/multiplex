@@ -37,7 +37,13 @@ use crate::management::{
     ManagementIntent, ManagementModel,
 };
 use crate::model::{ModelAction, ModelEffect, TuiDiagnostic, TuiModel};
-use crate::render::{RenderOptions, render, render_attached, render_devices, render_management};
+use crate::render::{
+    RenderOptions, render, render_attached, render_devices, render_management, render_resume,
+};
+use crate::resume::{
+    LocalResumeExecutor, ResumeEffect, ResumeExecutor, ResumeFailure, ResumeModel, ResumeResult,
+    ResumeReview,
+};
 use crate::source::{FleetCancellation, FleetLoadError, FleetSource};
 
 const EVENT_QUEUE_CAPACITY: usize = 64;
@@ -151,6 +157,14 @@ enum AppEvent {
         generation: u64,
         result: Result<DeviceRevocationResult, DeviceFailure>,
     },
+    ResumeReviewed {
+        generation: u64,
+        result: Result<ResumeReview, ResumeFailure>,
+    },
+    ResumeCompleted {
+        generation: u64,
+        result: Result<ResumeResult, ResumeFailure>,
+    },
     Deadline,
     TerminalFailure,
 }
@@ -200,6 +214,12 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
         .map(LocalDeviceExecutor::new)
         .map(|executor| Arc::new(executor) as Arc<dyn DeviceExecutor>);
     let mut devices = DevicesModel::default();
+    let resume_executor: Option<Arc<dyn ResumeExecutor>> = source
+        .config_root()
+        .and_then(|root| LocalResumeExecutor::new(root).ok())
+        .map(|executor| Arc::new(executor) as Arc<dyn ResumeExecutor>);
+    let mut resume = ResumeModel::default();
+    let mut pending_resume_selection: Option<String> = None;
 
     loop {
         session.terminal.draw(|frame| {
@@ -210,6 +230,7 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
             } else {
                 render(frame, &model, render_options);
                 render_management(frame, &management, render_options);
+                render_resume(frame, &resume, render_options);
             }
         })?;
         if std::env::var_os("TERMIRUST_TUI_EXIT_AFTER_FIRST_DRAW").is_some() {
@@ -270,6 +291,13 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                         device_executor.as_ref(),
                         &sender,
                     )?
+                } else if resume.active() {
+                    apply_resume_effect(
+                        resume.handle_key(key),
+                        &mut resume,
+                        resume_executor.as_ref(),
+                        &sender,
+                    )?
                 } else if management.active() {
                     let effect = management.handle_key(key, Instant::now());
                     apply_management_effect(
@@ -286,6 +314,8 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                         device_executor.as_ref(),
                         &sender,
                     )?
+                } else if let Some(effect) = resume_shortcut(&model, &mut resume, key) {
+                    apply_resume_effect(effect, &mut resume, resume_executor.as_ref(), &sender)?
                 } else if let Some(effect) = management_shortcut(&model, &mut management, key) {
                     apply_management_effect(
                         effect,
@@ -337,12 +367,22 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                 ModelEffect::None
             }
             AppEvent::Input(_) => ModelEffect::None,
+            AppEvent::Interrupt if resume.irreversible_active() => ModelEffect::None,
             AppEvent::Interrupt => ModelEffect::Quit,
             AppEvent::Refresh { generation, result } => match result {
-                Ok(snapshot) => model.reduce(ModelAction::RefreshSucceeded {
-                    generation,
-                    snapshot,
-                }),
+                Ok(snapshot) => {
+                    let effect = model.reduce(ModelAction::RefreshSucceeded {
+                        generation,
+                        snapshot,
+                    });
+                    if pending_resume_selection
+                        .as_deref()
+                        .is_some_and(|session_id| model.select_visible_session(session_id))
+                    {
+                        pending_resume_selection = None;
+                    }
+                    effect
+                }
                 Err(error) => model.reduce(ModelAction::RefreshFailed {
                     generation,
                     diagnostic: error.diagnostic,
@@ -405,6 +445,22 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
                 devices.revoked(generation, result);
                 ModelEffect::None
             }
+            AppEvent::ResumeReviewed { generation, result } => {
+                resume.reviewed(generation, result);
+                ModelEffect::None
+            }
+            AppEvent::ResumeCompleted { generation, result } => {
+                resume.completed(generation, result);
+                if let Some(successor) = resume
+                    .result()
+                    .map(|result| result.successor_session_id.clone())
+                {
+                    pending_resume_selection = Some(successor);
+                    model.reduce(ModelAction::BeginRefresh)
+                } else {
+                    ModelEffect::None
+                }
+            }
             AppEvent::Deadline => {
                 if let Some(current) = attached.as_mut() {
                     let decision = current.input_mut().expire_leader(Instant::now());
@@ -465,9 +521,79 @@ pub fn run(source: Arc<dyn FleetSource>, options: RunOptions) -> io::Result<()> 
         }
     }
     devices.close();
+    resume.close();
     refresh_cancellation.cancel();
     attach_worker.take();
     Ok(())
+}
+
+fn resume_shortcut(
+    model: &TuiModel,
+    resume: &mut ResumeModel,
+    key: KeyEvent,
+) -> Option<ResumeEffect> {
+    if model.filter_editing()
+        || model.help_visible()
+        || model.focus() != crate::PaneFocus::Sessions
+        || !key.modifiers.is_empty()
+        || key.code != KeyCode::Char('c')
+    {
+        return None;
+    }
+    Some(resume.open(model.selected_session()?))
+}
+
+fn apply_resume_effect(
+    effect: ResumeEffect,
+    model: &mut ResumeModel,
+    executor: Option<&Arc<dyn ResumeExecutor>>,
+    sender: &SyncSender<AppEvent>,
+) -> io::Result<ModelEffect> {
+    match effect {
+        ResumeEffect::None | ResumeEffect::Close => Ok(ModelEffect::None),
+        ResumeEffect::Quit => Ok(ModelEffect::Quit),
+        ResumeEffect::Preview { session_id } => {
+            let generation = model.generation();
+            let cancellation = model.cancellation();
+            let Some(executor) = executor.cloned() else {
+                model.reviewed(generation, Err(ResumeFailure::unavailable()));
+                return Ok(ModelEffect::None);
+            };
+            let sender = sender.clone();
+            thread::Builder::new()
+                .name("termirust-tui-resume-review".into())
+                .spawn(move || {
+                    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                        executor.preview(&session_id, &cancellation)
+                    }))
+                    .unwrap_or_else(|_| Err(ResumeFailure::unavailable()));
+                    let _ = sender.send(AppEvent::ResumeReviewed { generation, result });
+                })
+                .map(|_| ModelEffect::None)
+        }
+        ResumeEffect::Commit {
+            session_id,
+            expected_revision,
+        } => {
+            let generation = model.generation();
+            let cancellation = model.cancellation();
+            let Some(executor) = executor.cloned() else {
+                model.completed(generation, Err(ResumeFailure::unavailable()));
+                return Ok(ModelEffect::None);
+            };
+            let sender = sender.clone();
+            thread::Builder::new()
+                .name("termirust-tui-resume-command".into())
+                .spawn(move || {
+                    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                        executor.commit(&session_id, expected_revision, &cancellation)
+                    }))
+                    .unwrap_or_else(|_| Err(ResumeFailure::unavailable()));
+                    let _ = sender.send(AppEvent::ResumeCompleted { generation, result });
+                })
+                .map(|_| ModelEffect::None)
+        }
+    }
 }
 
 fn device_shortcut(model: &TuiModel, key: KeyEvent) -> bool {

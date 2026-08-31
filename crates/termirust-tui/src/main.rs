@@ -72,7 +72,8 @@ fn print_help() {
     println!();
     println!("Project, Session and paired Device control with durable terminal attachment.");
     println!("Locales: en-US, en-XA, ar-XB");
-    println!("Fleet keys: arrows/j/k, Left/Right, Tab/Shift+Tab, Enter, /, Esc, i, r, d, ?, q");
+    println!("Fleet keys: arrows/j/k, Left/Right, Tab/Shift+Tab, Enter, /, Esc, i, r, c, d, ?, q");
+    println!("Sessions: c reviews exact read-only Codex resume; Enter confirms; Esc cancels");
     println!("Devices: d open, arrows/j/k select, x review revoke, r refresh, f/Esc fleet");
     println!("Terminal escape: Ctrl+Space then Esc. Ctrl+Space then Space sends NUL.");
     println!("Destructive actions require visible review and exact current authority.");

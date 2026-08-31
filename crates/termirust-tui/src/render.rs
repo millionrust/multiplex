@@ -9,6 +9,7 @@ use crate::management::{
     CommandProgress, ConfirmationKind, ManagementDraft, ManagementIntent, ManagementModel,
 };
 use crate::model::{FleetHealth, LoadState, PaneFocus, ProjectAvailability, ScopeId, TuiModel};
+use crate::resume::{ResumeModel, ResumeProgress};
 use crate::{
     AttachedTerminal, DeviceProgress, DevicesModel, InteractiveLease, TuiAttachState, TuiDevice,
     TuiFocus,
@@ -88,6 +89,155 @@ pub fn render_devices(frame: &mut Frame<'_>, model: &DevicesModel, options: Rend
     ) {
         render_device_review(frame, centered(area, 72, 13), model, options);
     }
+}
+
+pub fn render_resume(frame: &mut Frame<'_>, model: &ResumeModel, options: RenderOptions) {
+    if !model.active() {
+        return;
+    }
+    let area = centered(frame.area(), 74, 16);
+    frame.render_widget(Clear, area);
+    let mut lines = match model.progress() {
+        ResumeProgress::Idle => vec![Line::from(localize(
+            options.locale,
+            "Preparing exact Session resume...",
+        ))],
+        ResumeProgress::LoadingReview => vec![
+            Line::from(localize(
+                options.locale,
+                "Validating the exact managed Codex occurrence and continuity state...",
+            )),
+            Line::from(localize(
+                options.locale,
+                "Esc cancels this read-only review without creating a replacement.",
+            )),
+        ],
+        ResumeProgress::Reviewing => model.review().map_or_else(
+            || vec![Line::from(localize(options.locale, "Review unavailable."))],
+            |review| {
+                vec![
+                    Line::from(format!(
+                        "{} {}",
+                        localize(options.locale, "Source:"),
+                        display_user(&review.source_title, "session", options)
+                    )),
+                    Line::from(format!(
+                        "{} {}",
+                        localize(options.locale, "Session ID:"),
+                        display_user(&review.source_session_id, "session ID", options)
+                    )),
+                    Line::from(format!(
+                        "{} {}",
+                        localize(options.locale, "Source revision:"),
+                        review.source_revision
+                    )),
+                    Line::from(format!(
+                        "{} {} {}",
+                        localize(options.locale, "Verified runtime:"),
+                        review.provider,
+                        review.provider_version
+                    )),
+                    Line::from(format!(
+                        "{} {}",
+                        localize(options.locale, "Permission policy:"),
+                        review.permission_policy
+                    )),
+                    Line::from(format!(
+                        "{} {}",
+                        localize(options.locale, "Replacement generation:"),
+                        review.replacement_generation
+                    )),
+                    Line::from(localize(
+                        options.locale,
+                        "A new durable read-only Session is created; the source remains unchanged.",
+                    )),
+                    Line::from(localize(
+                        options.locale,
+                        "Continuity is committed only after the replacement Host is ready.",
+                    )),
+                    Line::from(""),
+                    Line::from(localize(
+                        options.locale,
+                        "Enter resume once | Esc cancel (safe default)",
+                    )),
+                ]
+            },
+        ),
+        ResumeProgress::Resuming => vec![
+            Line::from(localize(
+                options.locale,
+                "Launching one revision-checked read-only replacement Session...",
+            )),
+            Line::from(localize(
+                options.locale,
+                "This command cannot be cancelled or retried silently. Wait for the exact result.",
+            )),
+        ],
+        ResumeProgress::Succeeded => model.result().map_or_else(
+            || vec![Line::from(localize(options.locale, "Result unavailable."))],
+            |result| {
+                vec![
+                    Line::from(localize(
+                        options.locale,
+                        "Exact Codex Session resumed successfully.",
+                    )),
+                    Line::from(format!(
+                        "{} {}",
+                        localize(options.locale, "Successor Session:"),
+                        display_user(&result.successor_session_id, "session ID", options)
+                    )),
+                    Line::from(format!(
+                        "{} {}  {} {}",
+                        localize(options.locale, "State:"),
+                        result.lifecycle,
+                        localize(options.locale, "revision"),
+                        result.successor_revision
+                    )),
+                    Line::from(localize(
+                        options.locale,
+                        "The durable replacement Host remains live with read-only permission.",
+                    )),
+                    Line::from(localize(
+                        options.locale,
+                        "The fleet is refreshed and selects the successor when visible.",
+                    )),
+                    Line::from(localize(options.locale, "Esc close")),
+                ]
+            },
+        ),
+        ResumeProgress::Failed(error) => {
+            let mut lines = vec![
+                Line::from(format!("[{}] {}", error.code, error.summary)),
+                Line::from(error.recovery.clone()),
+            ];
+            if let Some(revision) = error.conflict_revision {
+                lines.push(Line::from(format!(
+                    "{} {revision}",
+                    localize(options.locale, "Current revision:")
+                )));
+            }
+            lines.push(Line::from(localize(
+                options.locale,
+                "Esc closes this result. Refresh before reviewing resume again.",
+            )));
+            lines
+        }
+    };
+    lines.push(Line::from(Span::styled(
+        localize(
+            options.locale,
+            "Provider handles, paths, commands and terminal content are never shown.",
+        ),
+        muted(options),
+    )));
+    frame.render_widget(
+        Paragraph::new(lines).wrap(Wrap { trim: true }).block(panel(
+            localize(options.locale, "Continue exact Codex Session"),
+            true,
+            options,
+        )),
+        area,
+    );
 }
 
 fn render_devices_header(
@@ -1020,7 +1170,7 @@ fn render_status(frame: &mut Frame<'_>, area: Rect, model: &TuiModel, options: R
         Paragraph::new(vec![
             Line::from(summary),
             Line::from(Span::styled(
-                "n launch  e rename  p pin  m read  s stop  a archive/restore  x remove  d devices  ? help",
+                "n launch  c continue  e rename  p pin  m read  s stop  a archive/restore  x remove  d devices  ? help",
                 muted(options),
             )),
         ])
@@ -1039,7 +1189,7 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, options: RenderOptions) {
             ),
             Line::from("Terminal: Ctrl+Space then Esc detaches without stopping the Host."),
             Line::from(
-                "Fleet: n launch, e rename, p pin, m mark read, s stop, a archive/restore, x remove, d devices.",
+                "Fleet: n launch, c continue exact Codex, e rename, p pin, m read, s stop, a archive/restore, x remove, d devices.",
             ),
             Line::from("Management keys are never interpreted while terminal input has focus."),
             Line::from("Use --inline, --no-color or --recording-friendly when needed."),
@@ -1623,5 +1773,97 @@ mod tests {
             assert!(output.contains("Esc cancel (safe default)"));
             assert!(output.contains("must reconnect"));
         }
+    }
+
+    fn reviewed_resume_model() -> ResumeModel {
+        let session = FleetSession {
+            id: "00000000-0000-0000-0000-000000000007".into(),
+            project_id: "00000000-0000-0000-0000-000000000001".into(),
+            group_id: None,
+            title: "PRIVATE CODEX SESSION".into(),
+            state: "exited".into(),
+            activity: "done".into(),
+            unread: false,
+            pinned: false,
+            archived: false,
+            revision: 5,
+        };
+        let mut resume = ResumeModel::default();
+        resume.open(&session);
+        let generation = resume.generation();
+        resume.reviewed(
+            generation,
+            Ok(crate::ResumeReview {
+                source_session_id: session.id,
+                source_title: session.title,
+                source_revision: 7,
+                provider: "codex".into(),
+                provider_version: "0.150.1".into(),
+                permission_policy: "read_only".into(),
+                replacement_generation: 4,
+            }),
+        );
+        resume
+    }
+
+    fn rendered_resume(width: u16, height: u16, options: RenderOptions) -> String {
+        let backend = TestBackend::new(width, height);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let model = ready_model();
+        let resume = reviewed_resume_model();
+        terminal
+            .draw(|frame| {
+                render(frame, &model, options);
+                render_resume(frame, &resume, options);
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        (0..height)
+            .map(|y| {
+                (0..width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn resume_review_is_exact_compact_localized_and_recording_safe() {
+        for locale in [
+            TuiLocale::English,
+            TuiLocale::PseudoExpanded,
+            TuiLocale::PseudoRtl,
+        ] {
+            let output = rendered_resume(
+                80,
+                20,
+                RenderOptions {
+                    no_color: true,
+                    locale,
+                    ..RenderOptions::default()
+                },
+            );
+            assert!(output.contains("Continue exact Codex Session"));
+            assert!(output.contains("Source revision:"));
+            assert!(output.contains("0.150.1"));
+            assert!(output.contains("read_only"));
+            assert!(output.contains("Enter resume once"));
+            assert!(output.contains("Esc cancel (safe default)"));
+        }
+
+        let recording = rendered_resume(
+            100,
+            24,
+            RenderOptions {
+                no_color: true,
+                recording_friendly: true,
+                locale: TuiLocale::English,
+            },
+        );
+        assert!(recording.contains("[session hidden]"));
+        assert!(recording.contains("[session ID hidden]"));
+        assert!(!recording.contains("PRIVATE CODEX SESSION"));
+        assert!(!recording.contains("00000000-0000"));
     }
 }

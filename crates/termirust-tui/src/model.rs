@@ -248,6 +248,20 @@ impl TuiModel {
             .unwrap_or(0)
     }
 
+    pub fn select_visible_session(&mut self, session_id: &str) -> bool {
+        let visible = self.session_rows.iter().any(|index| {
+            self.snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.sessions.get(*index))
+                .is_some_and(|session| session.id == session_id)
+        });
+        if visible {
+            self.selected_session_id = Some(session_id.to_string());
+            self.focus = PaneFocus::Sessions;
+        }
+        visible
+    }
+
     pub fn filter(&self) -> &str {
         &self.filter
     }
@@ -674,5 +688,20 @@ mod tests {
         model.reduce(ModelAction::FilterCharacter('\u{1b}'));
         assert_eq!(model.filter().chars().count(), MAX_FILTER_SCALARS);
         assert!(!model.filter().contains('\u{1b}'));
+    }
+
+    #[test]
+    fn explicit_visible_session_selection_targets_refreshed_successor() {
+        let mut model = TuiModel::default();
+        model.reduce(ModelAction::BeginRefresh);
+        model.reduce(ModelAction::RefreshSucceeded {
+            generation: 1,
+            snapshot: snapshot(),
+        });
+        assert!(model.select_visible_session("session-b"));
+        assert_eq!(model.selected_session().unwrap().id, "session-b");
+        assert_eq!(model.focus(), PaneFocus::Sessions);
+        assert!(!model.select_visible_session("missing-session"));
+        assert_eq!(model.selected_session().unwrap().id, "session-b");
     }
 }

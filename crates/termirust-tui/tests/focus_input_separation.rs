@@ -8,7 +8,7 @@ fn management_shortcuts_are_literal_input_while_terminal_has_focus() {
     let mut input = TerminalInputModel::default();
     input.set_lease(true);
 
-    for shortcut in ['n', 'e', 'p', 'm', 's', 'a', 'x', 'd', 'f'] {
+    for shortcut in ['n', 'c', 'e', 'p', 'm', 's', 'a', 'x', 'd', 'f'] {
         assert_eq!(
             input.handle_key(
                 KeyEvent::new(KeyCode::Char(shortcut), KeyModifiers::NONE),
