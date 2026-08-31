@@ -8,14 +8,19 @@ use termirust_cli::{
     HostController, HostLaunchOutcome, HostLauncher, HostResizeRequest, LocalCommandService,
 };
 use termirust_domain::{
-    ActivityAggregate, AddProject, CommandId, ExecutableSpec, HostInstanceId, HostLifecycle,
+    ActivityAggregate, AddProject, CommandId, ControllerCapabilities, ControllerCapability,
+    ControllerDeviceAuthority, ControllerDeviceId, ControllerProtocolRange, DevicePublicKey,
+    DeviceStoreRevision, ExecutableSpec, HostIdentityGeneration, HostIdentityPublic,
+    HostIdentitySecretRef, HostIdentityState, HostInstanceId, HostLifecycle, HostPublicKey,
     HostedSession, HostedSessionId, HostedSessionState, LaunchPreset, OsStringValue,
-    OutputSequence, PermissionPolicy, PositionKey, PresetDraft, PresetId, PresetOrigin, PresetRisk,
-    ProjectId, Revision, SessionTitle, TitleSource, WorkingDirectoryRule,
+    OutputSequence, PairedDeviceRecord, PairedDeviceStatus, PairingOfferId, PermissionPolicy,
+    PositionKey, PresetDraft, PresetId, PresetOrigin, PresetRisk, ProjectId, Revision,
+    SessionTitle, TitleSource, WorkingDirectoryRule,
 };
 use termirust_session_host::LaunchDescriptor;
 use termirust_store::{
-    HostLease, HostMetadata, PresetRepository, ProjectRepository, SessionRepository,
+    ControllerDeviceRepository, ControllerDeviceSnapshot, HostLease, HostMetadata,
+    PresetRepository, ProjectRepository, SessionRepository,
 };
 use uuid::Uuid;
 
@@ -23,6 +28,8 @@ pub const PROJECT_ID: ProjectId = ProjectId::from_uuid(Uuid::from_u128(1));
 pub const PRESET_ID: PresetId = PresetId::from_uuid(Uuid::from_u128(2));
 pub const SESSION_ID: HostedSessionId = HostedSessionId::from_uuid(Uuid::from_u128(3));
 pub const LAUNCH_SESSION_ID: HostedSessionId = HostedSessionId::from_uuid(Uuid::from_u128(4));
+pub const DEVICE_ID: ControllerDeviceId = ControllerDeviceId::from_uuid(Uuid::from_u128(7));
+pub const OTHER_DEVICE_ID: ControllerDeviceId = ControllerDeviceId::from_uuid(Uuid::from_u128(8));
 const COMMAND_ID: CommandId = CommandId::from_uuid(Uuid::from_u128(5));
 const HOST_ID: HostInstanceId = HostInstanceId::from_uuid(Uuid::from_u128(6));
 
@@ -47,6 +54,10 @@ impl SeededStore {
             self.config_root.join("durable-sessions"),
         )
         .unwrap()
+    }
+
+    pub fn controller_devices(&self) -> ControllerDeviceRepository {
+        ControllerDeviceRepository::open(self.config_root.join("controller")).unwrap()
     }
 }
 
@@ -122,6 +133,56 @@ pub fn insert_session(
                 revision: Revision::ZERO,
             },
             revision,
+        )
+        .unwrap()
+}
+
+pub fn seed_controller_devices(seed: &SeededStore) -> ControllerDeviceSnapshot {
+    let repository = seed.controller_devices();
+    repository
+        .save(
+            DeviceStoreRevision::ZERO,
+            ControllerDeviceAuthority {
+                identity: Some(HostIdentityPublic::new(
+                    HostIdentityGeneration::INITIAL,
+                    HostPublicKey([0x11; 32]),
+                )),
+                secret_ref: Some(HostIdentitySecretRef::new("identity:SECRET_CANARY").unwrap()),
+                state: HostIdentityState::Ready,
+                devices: vec![
+                    PairedDeviceRecord {
+                        device_id: DEVICE_ID,
+                        public_key: DevicePublicKey([0xa5; 32]),
+                        display_name: "Jacob's iPhone".into(),
+                        capabilities: ControllerCapabilities::default()
+                            .with(ControllerCapability::ObserveSessions)
+                            .with(ControllerCapability::AttachOutput)
+                            .with(ControllerCapability::SendInput),
+                        protocol_range: ControllerProtocolRange::V1,
+                        created_at: 100,
+                        last_seen_at: Some(200),
+                        revocation_epoch: 0,
+                        identity_generation: HostIdentityGeneration::INITIAL,
+                        status: PairedDeviceStatus::Online,
+                        source_offer_id: PairingOfferId::from_uuid(Uuid::from_u128(9)),
+                    },
+                    PairedDeviceRecord {
+                        device_id: OTHER_DEVICE_ID,
+                        public_key: DevicePublicKey([0x5a; 32]),
+                        display_name: "Team tablet".into(),
+                        capabilities: ControllerCapabilities::default()
+                            .with(ControllerCapability::ObserveSessions),
+                        protocol_range: ControllerProtocolRange::V1,
+                        created_at: 101,
+                        last_seen_at: None,
+                        revocation_epoch: 0,
+                        identity_generation: HostIdentityGeneration::INITIAL,
+                        status: PairedDeviceStatus::Offline,
+                        source_offer_id: PairingOfferId::from_uuid(Uuid::from_u128(10)),
+                    },
+                ],
+                ..ControllerDeviceAuthority::default()
+            },
         )
         .unwrap()
 }

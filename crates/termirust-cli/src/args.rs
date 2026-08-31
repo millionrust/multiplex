@@ -5,8 +5,9 @@ use termirust_client::{
     SshControllerTarget, SshControllerTargetId, ValidatedDnsOrIp, ValidatedUser,
 };
 use termirust_domain::{
-    ActivityState, GroupId, HostedSessionId, HostedSessionState, OccupantGeneration,
-    OutputSequence, PresetId, ProjectId, Revision,
+    ActivityState, ControllerDeviceId, DeviceStoreRevision, GroupId, HostedSessionId,
+    HostedSessionState, OccupantGeneration, OutputSequence, PairedDeviceStatus, PresetId,
+    ProjectId, Revision,
 };
 use uuid::Uuid;
 
@@ -30,6 +31,15 @@ pub enum CliCommand {
     Help,
     Status,
     ProjectList,
+    DeviceList(DeviceListFilter),
+    DeviceShow {
+        device_id: ControllerDeviceId,
+    },
+    DeviceRevoke {
+        device_id: ControllerDeviceId,
+        expected_revision: Option<DeviceStoreRevision>,
+        confirmed: bool,
+    },
     PresetList {
         project_id: ProjectId,
     },
@@ -260,6 +270,11 @@ pub struct SessionListFilter {
     pub archived_only: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct DeviceListFilter {
+    pub status: Option<PairedDeviceStatus>,
+}
+
 pub fn parse_args(arguments: Vec<String>) -> Result<Invocation, CliError> {
     validate_bounds(&arguments)?;
     let mut json = false;
@@ -284,6 +299,35 @@ pub fn parse_args(arguments: Vec<String>) -> Result<Invocation, CliError> {
     let command = match filtered.as_slice() {
         [command] if command == "status" => CliCommand::Status,
         [scope, action] if scope == "project" && action == "list" => CliCommand::ProjectList,
+        [scope, action, rest @ ..] if scope == "device" && action == "list" => {
+            let options = parse_options(rest, &["--status"], &[])?;
+            CliCommand::DeviceList(DeviceListFilter {
+                status: options
+                    .value("--status")
+                    .map(parse_device_status)
+                    .transpose()?,
+            })
+        }
+        [scope, action, device] if scope == "device" && action == "show" => {
+            CliCommand::DeviceShow {
+                device_id: parse_device_id(device)?,
+            }
+        }
+        [scope, action, device, rest @ ..] if scope == "device" && action == "revoke" => {
+            let options = parse_options(rest, &["--expected-revision"], &["--yes"])?;
+            let expected_revision = optional_device_revision(&options)?;
+            let confirmed = options.flag("--yes");
+            if confirmed != expected_revision.is_some() {
+                return Err(usage(
+                    "device revoke commit requires --expected-revision and --yes together",
+                ));
+            }
+            CliCommand::DeviceRevoke {
+                device_id: parse_device_id(device)?,
+                expected_revision,
+                confirmed,
+            }
+        }
         [scope, action, rest @ ..] if scope == "preset" && action == "list" => {
             let options = parse_options(rest, &["--project"], &[])?;
             CliCommand::PresetList {
@@ -707,6 +751,36 @@ fn optional_revision(options: &ParsedOptions<'_>) -> Result<Option<Revision>, Cl
                 .map_err(|_| usage("expected revision must be an unsigned integer"))
         })
         .transpose()
+}
+
+fn optional_device_revision(
+    options: &ParsedOptions<'_>,
+) -> Result<Option<DeviceStoreRevision>, CliError> {
+    options
+        .value("--expected-revision")
+        .map(|value| {
+            value
+                .parse::<u64>()
+                .map(DeviceStoreRevision::new)
+                .map_err(|_| usage("expected revision must be an unsigned integer"))
+        })
+        .transpose()
+}
+
+fn parse_device_id(value: &str) -> Result<ControllerDeviceId, CliError> {
+    value
+        .parse::<Uuid>()
+        .map(ControllerDeviceId::from_uuid)
+        .map_err(|_| usage("device ID must be a canonical UUID"))
+}
+
+fn parse_device_status(value: &str) -> Result<PairedDeviceStatus, CliError> {
+    match value {
+        "offline" => Ok(PairedDeviceStatus::Offline),
+        "online" => Ok(PairedDeviceStatus::Online),
+        "revoked" => Ok(PairedDeviceStatus::Revoked),
+        _ => Err(usage("device status must be offline, online, or revoked")),
+    }
 }
 
 fn parse_state(value: &str) -> Result<HostedSessionState, CliError> {
@@ -1148,6 +1222,80 @@ mod tests {
             vec!["session", "resume", &id, "--yes"],
             vec!["session", "resume", &id, "--expected-revision", "7"],
             vec!["session", "resume", &id, "--yes", "--yes"],
+        ] {
+            assert_eq!(
+                parse_args(invalid.into_iter().map(str::to_string).collect())
+                    .unwrap_err()
+                    .code,
+                ErrorCode::Usage
+            );
+        }
+    }
+
+    #[test]
+    fn device_parser_bounds_filters_and_separates_revoke_preview_from_commit() {
+        let device_id = ControllerDeviceId::new();
+        let id = device_id.to_string();
+        assert_eq!(
+            parse_args(
+                ["device", "list", "--status", "offline"]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+            )
+            .unwrap()
+            .command,
+            CliCommand::DeviceList(DeviceListFilter {
+                status: Some(PairedDeviceStatus::Offline),
+            })
+        );
+        assert_eq!(
+            parse_args(
+                ["device", "show", &id]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+            )
+            .unwrap()
+            .command,
+            CliCommand::DeviceShow { device_id }
+        );
+        assert_eq!(
+            parse_args(
+                ["device", "revoke", &id]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+            )
+            .unwrap()
+            .command,
+            CliCommand::DeviceRevoke {
+                device_id,
+                expected_revision: None,
+                confirmed: false,
+            }
+        );
+        assert_eq!(
+            parse_args(
+                ["device", "revoke", &id, "--expected-revision", "9", "--yes",]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+            )
+            .unwrap()
+            .command,
+            CliCommand::DeviceRevoke {
+                device_id,
+                expected_revision: Some(DeviceStoreRevision::new(9)),
+                confirmed: true,
+            }
+        );
+        for invalid in [
+            vec!["device", "list", "--status", "unknown"],
+            vec!["device", "show", "not-a-device"],
+            vec!["device", "revoke", &id, "--yes"],
+            vec!["device", "revoke", &id, "--expected-revision", "9"],
+            vec!["device", "revoke", &id, "--yes", "--yes"],
         ] {
             assert_eq!(
                 parse_args(invalid.into_iter().map(str::to_string).collect())

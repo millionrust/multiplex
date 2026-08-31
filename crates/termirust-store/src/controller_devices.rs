@@ -110,6 +110,37 @@ impl Default for ControllerDeviceDocument {
 }
 
 impl ControllerDeviceRepository {
+    pub fn inspect(
+        root: impl Into<PathBuf>,
+    ) -> Result<Option<ControllerDeviceSnapshot>, ControllerDeviceStoreError> {
+        let repository = Self {
+            root: root.into(),
+            writer: Arc::new(SystemAtomicWriter),
+        };
+        match fs::symlink_metadata(&repository.root) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+                return Err(ControllerDeviceStoreError::UnsafeEntry);
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(io_error("inspect", error)),
+        }
+        match fs::symlink_metadata(repository.path()) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                return Err(ControllerDeviceStoreError::UnsafeEntry);
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(io_error("inspect", error)),
+        }
+        let document = repository.read_document()?;
+        Ok(Some(ControllerDeviceSnapshot {
+            revision: document.revision,
+            authority: document.authority,
+            durability: Durability::Full,
+        }))
+    }
+
     pub fn open(root: impl Into<PathBuf>) -> Result<Self, ControllerDeviceStoreError> {
         Self::open_with(root, Arc::new(SystemAtomicWriter))
     }
@@ -412,6 +443,26 @@ mod tests {
                 .authority
                 .state,
             HostIdentityState::Ready
+        );
+    }
+
+    #[test]
+    fn controller_devices_inspect_never_creates_missing_state() {
+        let fixture = tempfile::tempdir().unwrap();
+        let missing = fixture.path().join("missing");
+        assert_eq!(ControllerDeviceRepository::inspect(&missing).unwrap(), None);
+        assert!(!missing.exists());
+
+        let empty = fixture.path().join("empty");
+        fs::create_dir(&empty).unwrap();
+        assert_eq!(ControllerDeviceRepository::inspect(&empty).unwrap(), None);
+        assert!(fs::read_dir(&empty).unwrap().next().is_none());
+
+        let repository = ControllerDeviceRepository::open(&empty).unwrap();
+        let expected = repository.load().unwrap();
+        assert_eq!(
+            ControllerDeviceRepository::inspect(&empty).unwrap(),
+            Some(expected)
         );
     }
 

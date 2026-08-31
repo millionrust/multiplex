@@ -2,8 +2,8 @@ use std::fmt;
 
 use serde::Serialize;
 use termirust_domain::{
-    HostedSession, HostedSessionState, LaunchPreset, PermissionPolicy, PresetRisk, ProjectStatus,
-    ProjectSummary, Revision,
+    ControllerCapability, HostedSession, HostedSessionState, LaunchPreset, PairedDeviceRecord,
+    PairedDeviceStatus, PermissionPolicy, PresetRisk, ProjectStatus, ProjectSummary, Revision,
 };
 
 pub const CLI_JSON_SCHEMA_VERSION: u16 = 1;
@@ -131,6 +131,85 @@ pub struct ProjectView {
     pub name: String,
     pub status: String,
     pub revision: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct DeviceView {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    pub capabilities: Vec<String>,
+    pub protocol_minimum: u16,
+    pub protocol_maximum: u16,
+    pub created_at_unix_seconds: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_seen_at_unix_seconds: Option<u64>,
+    pub fingerprint_suffix: String,
+    pub identity_generation: u64,
+}
+
+impl From<&PairedDeviceRecord> for DeviceView {
+    fn from(value: &PairedDeviceRecord) -> Self {
+        let capabilities = [
+            (ControllerCapability::ObserveSessions, "observe_sessions"),
+            (ControllerCapability::AttachOutput, "attach_output"),
+            (ControllerCapability::SendInput, "send_input"),
+            (ControllerCapability::Resize, "resize"),
+            (
+                ControllerCapability::RespondToApproval,
+                "respond_to_approval",
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(capability, name)| {
+            value
+                .capabilities
+                .contains(capability)
+                .then_some(name.to_string())
+        })
+        .collect();
+        Self {
+            id: value.device_id.to_string(),
+            name: value.display_name.clone(),
+            status: device_status(value.status).to_string(),
+            capabilities,
+            protocol_minimum: value.protocol_range.minimum,
+            protocol_maximum: value.protocol_range.maximum,
+            created_at_unix_seconds: value.created_at,
+            last_seen_at_unix_seconds: value.last_seen_at,
+            fingerprint_suffix: value.fingerprint_suffix(),
+            identity_generation: value.identity_generation.get(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct DeviceListData {
+    pub repository_revision: u64,
+    pub devices: Vec<DeviceView>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct DeviceData {
+    pub repository_revision: u64,
+    pub device: DeviceView,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct DeviceRevocationPreviewData {
+    pub repository_revision: u64,
+    pub device: DeviceView,
+    pub confirmation_required: bool,
+    pub active_access_will_be_revoked: bool,
+    pub other_devices_reconnect: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct DeviceRevocationData {
+    pub repository_revision: u64,
+    pub device: DeviceView,
+    pub applied: bool,
+    pub active_access_revoked: bool,
 }
 
 impl From<&ProjectSummary> for ProjectView {
@@ -384,6 +463,10 @@ pub struct ControllerRemoteSessionView {
 pub enum CliData {
     Status(StatusData),
     Projects(ProjectListData),
+    Devices(DeviceListData),
+    Device(DeviceData),
+    DeviceRevocationPreview(DeviceRevocationPreviewData),
+    DeviceRevocation(DeviceRevocationData),
     Presets(PresetListData),
     Sessions(SessionListData),
     Session(SessionData),
@@ -456,6 +539,14 @@ fn activity_name(activity: termirust_domain::ActivityState) -> &'static str {
         Activity::NeedsInput => "needs_input",
         Activity::Done => "done",
         Activity::Failed => "failed",
+    }
+}
+
+fn device_status(status: PairedDeviceStatus) -> &'static str {
+    match status {
+        PairedDeviceStatus::Offline => "offline",
+        PairedDeviceStatus::Online => "online",
+        PairedDeviceStatus::Revoked => "revoked",
     }
 }
 

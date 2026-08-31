@@ -10,10 +10,14 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rand::RngCore as _;
 use termirust_client::{ClientError, ClientErrorCode, ConnectOptions, HostClient, LocalEndpoint};
+use termirust_controller_listener::{
+    ControllerDeviceService, ControllerDeviceServiceError, NoControllerChannels,
+};
 use termirust_domain::{
-    ActivityAggregate, CommandId, ContinuityLink, GroupId, HostInstanceId, HostLifecycle,
-    HostedSession, HostedSessionId, HostedSessionState, OutputSequence, PermissionPolicy,
-    PositionKey, PresetId, PresetRisk, ProjectId, ResumeError, ResumePlan, ResumeRequest, Revision,
+    ActivityAggregate, CommandId, ContinuityLink, ControllerDeviceError, ControllerDeviceId,
+    DeviceStoreRevision, GroupId, HostInstanceId, HostLifecycle, HostedSession, HostedSessionId,
+    HostedSessionState, OutputSequence, PairedDeviceStatus, PermissionPolicy, PositionKey,
+    PresetId, PresetRisk, ProjectId, ResumeError, ResumePlan, ResumeRequest, Revision,
     RuntimeCapability, RuntimeCapabilitySet, RuntimeDetectionResult, RuntimeDetectionStatus,
     SessionMutation, SessionStateError, SessionTitle, TitleSource, evaluate_resume, resolve_launch,
 };
@@ -23,7 +27,8 @@ use termirust_session_host::{
     build_codex_resume_plan, discover_codex_conversation_handle,
 };
 use termirust_store::{
-    ContinuityRepository, JournalLimits, PresetRepository, PresetSnapshot, ProjectRepository,
+    ContinuityRepository, ControllerDeviceRepository, ControllerDeviceSnapshot,
+    ControllerDeviceStoreError, JournalLimits, PresetRepository, PresetSnapshot, ProjectRepository,
     ProjectSnapshot, SessionRemovalManifest, SessionRepository, SessionSnapshot, StoreError,
     StoreHealth, read_host_metadata,
 };
@@ -32,12 +37,13 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     CLI_JSON_SCHEMA_VERSION, Cancellation, CliCommand, CliData, CliError, CommandService,
-    ControllerSshCommand, ErrorCode, MAX_RESPONSE_RECORDS, MAX_SESSION_WAIT_TIMEOUT_MS,
-    PresetListData, PresetView, ProjectListData, ProjectView, RemovalConfirmationKind,
-    SessionAttachData, SessionData, SessionInput, SessionInputData, SessionListData,
-    SessionListFilter, SessionMutationData, SessionRemovalPreviewData, SessionResizeData,
-    SessionResumeData, SessionResumePreviewData, SessionView, SessionWaitCondition,
-    SessionWaitConditionData, SessionWaitData, StatusData,
+    ControllerSshCommand, DeviceData, DeviceListData, DeviceListFilter, DeviceRevocationData,
+    DeviceRevocationPreviewData, DeviceView, ErrorCode, MAX_RESPONSE_RECORDS,
+    MAX_SESSION_WAIT_TIMEOUT_MS, PresetListData, PresetView, ProjectListData, ProjectView,
+    RemovalConfirmationKind, SessionAttachData, SessionData, SessionInput, SessionInputData,
+    SessionListData, SessionListFilter, SessionMutationData, SessionRemovalPreviewData,
+    SessionResizeData, SessionResumeData, SessionResumePreviewData, SessionView,
+    SessionWaitCondition, SessionWaitConditionData, SessionWaitData, StatusData,
 };
 
 const STORE_DIR_NAME: &str = "agent-workspace";
@@ -119,6 +125,10 @@ impl CliPaths {
 
     pub fn session_data_root(&self) -> &Path {
         &self.session_data_root
+    }
+
+    pub fn controller_root(&self) -> PathBuf {
+        self.config_root.join("controller")
     }
 
     pub fn with_codex_conversation_root(mut self, root: impl Into<PathBuf>) -> Self {
@@ -877,6 +887,114 @@ impl LocalCommandService {
         Ok(CliData::Projects(ProjectListData {
             projects: snapshot.projects.iter().map(ProjectView::from).collect(),
         }))
+    }
+
+    fn device_list(
+        &self,
+        filter: DeviceListFilter,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        require_not_cancelled(cancellation)?;
+        let Some(snapshot) = self.inspect_controller_devices()? else {
+            return Ok(CliData::Devices(DeviceListData {
+                repository_revision: 0,
+                devices: Vec::new(),
+            }));
+        };
+        let devices = snapshot
+            .authority
+            .devices
+            .iter()
+            .filter(|device| filter.status.is_none_or(|status| device.status == status))
+            .map(DeviceView::from)
+            .collect::<Vec<_>>();
+        bounded_records(devices.len())?;
+        require_not_cancelled(cancellation)?;
+        Ok(CliData::Devices(DeviceListData {
+            repository_revision: snapshot.revision.get(),
+            devices,
+        }))
+    }
+
+    fn device_show(
+        &self,
+        device_id: ControllerDeviceId,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        require_not_cancelled(cancellation)?;
+        let snapshot = self.require_controller_devices()?;
+        let device = require_device(&snapshot, device_id)?;
+        Ok(CliData::Device(DeviceData {
+            repository_revision: snapshot.revision.get(),
+            device: DeviceView::from(device),
+        }))
+    }
+
+    fn device_revoke(
+        &self,
+        device_id: ControllerDeviceId,
+        expected_revision: Option<DeviceStoreRevision>,
+        confirmed: bool,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        require_not_cancelled(cancellation)?;
+        let snapshot = self.require_controller_devices()?;
+        let device = require_device(&snapshot, device_id)?;
+        match (expected_revision, confirmed) {
+            (None, false) => {
+                require_device_not_revoked(device)?;
+                Ok(CliData::DeviceRevocationPreview(
+                    DeviceRevocationPreviewData {
+                        repository_revision: snapshot.revision.get(),
+                        device: DeviceView::from(device),
+                        confirmation_required: true,
+                        active_access_will_be_revoked: true,
+                        other_devices_reconnect: snapshot.authority.devices.iter().any(
+                            |candidate| {
+                                candidate.device_id != device_id
+                                    && candidate.status == PairedDeviceStatus::Online
+                            },
+                        ),
+                    },
+                ))
+            }
+            (Some(expected), true) => {
+                if expected != snapshot.revision {
+                    return Err(device_revision_conflict(snapshot.revision));
+                }
+                require_device_not_revoked(device)?;
+                require_not_cancelled(cancellation)?;
+                let repository = ControllerDeviceRepository::open(self.paths.controller_root())
+                    .map_err(map_controller_device_store)?;
+                let service =
+                    ControllerDeviceService::new(repository, Arc::new(NoControllerChannels));
+                let updated = service
+                    .revoke_at_revision(device_id, expected)
+                    .map_err(map_controller_device_service)?;
+                let device = require_device(&updated, device_id)?;
+                Ok(CliData::DeviceRevocation(DeviceRevocationData {
+                    repository_revision: updated.revision.get(),
+                    device: DeviceView::from(device),
+                    applied: true,
+                    active_access_revoked: true,
+                }))
+            }
+            _ => Err(CliError::new(
+                ErrorCode::InteractionRequired,
+                "device revocation requires an exact reviewed revision and confirmation",
+                "Review device revoke <id>, then rerun with --expected-revision N --yes.",
+            )),
+        }
+    }
+
+    fn inspect_controller_devices(&self) -> Result<Option<ControllerDeviceSnapshot>, CliError> {
+        ControllerDeviceRepository::inspect(self.paths.controller_root())
+            .map_err(map_controller_device_store)
+    }
+
+    fn require_controller_devices(&self) -> Result<ControllerDeviceSnapshot, CliError> {
+        self.inspect_controller_devices()?
+            .ok_or_else(|| unavailable("paired Controller device authority is unavailable"))
     }
 
     fn preset_list(&self, project_id: ProjectId) -> Result<CliData, CliError> {
@@ -2070,6 +2188,13 @@ impl CommandService for LocalCommandService {
             CliCommand::Help => Ok(crate::help_data()),
             CliCommand::Status => self.status(),
             CliCommand::ProjectList => self.project_list(),
+            CliCommand::DeviceList(filter) => self.device_list(filter, cancellation),
+            CliCommand::DeviceShow { device_id } => self.device_show(device_id, cancellation),
+            CliCommand::DeviceRevoke {
+                device_id,
+                expected_revision,
+                confirmed,
+            } => self.device_revoke(device_id, expected_revision, confirmed, cancellation),
             CliCommand::PresetList { project_id } => self.preset_list(project_id),
             CliCommand::SessionList(filter) => self.session_list(filter),
             CliCommand::SessionShow { session_id } => self.session_show(session_id),
@@ -2677,6 +2802,39 @@ fn require_session(
         .ok_or_else(|| unavailable("session is unavailable"))
 }
 
+fn require_device(
+    snapshot: &ControllerDeviceSnapshot,
+    id: ControllerDeviceId,
+) -> Result<&termirust_domain::PairedDeviceRecord, CliError> {
+    snapshot
+        .authority
+        .devices
+        .iter()
+        .find(|device| device.device_id == id)
+        .ok_or_else(|| unavailable("paired Controller device is unavailable"))
+}
+
+fn require_device_not_revoked(
+    device: &termirust_domain::PairedDeviceRecord,
+) -> Result<(), CliError> {
+    if device.status == PairedDeviceStatus::Revoked {
+        Err(validation(
+            "paired device is already revoked",
+            "Choose an active paired device from device list.",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn require_not_cancelled(cancellation: &Cancellation) -> Result<(), CliError> {
+    if cancellation.is_cancelled() {
+        Err(cancelled())
+    } else {
+        Ok(())
+    }
+}
+
 fn wait_condition_matches(condition: SessionWaitCondition, session: &HostedSession) -> bool {
     match condition {
         SessionWaitCondition::Lifecycle(state) => session.lifecycle == state,
@@ -2800,6 +2958,86 @@ fn map_store(error: StoreError) -> CliError {
         }
         _ => operation("local metadata operation failed"),
     }
+}
+
+fn map_controller_device_service(error: ControllerDeviceServiceError) -> CliError {
+    match error {
+        ControllerDeviceServiceError::Store(error) => map_controller_device_store(error),
+        ControllerDeviceServiceError::Domain(error) => map_controller_device_domain(error),
+    }
+}
+
+fn map_controller_device_store(error: ControllerDeviceStoreError) -> CliError {
+    match error {
+        ControllerDeviceStoreError::StaleRevision { actual, .. } => {
+            device_revision_conflict(actual)
+        }
+        ControllerDeviceStoreError::Newer { .. } => CliError::new(
+            ErrorCode::Incompatible,
+            "Controller device metadata was written by a newer version",
+            "Upgrade the CLI. The newer metadata was not modified.",
+        ),
+        ControllerDeviceStoreError::UnsafeEntry => CliError::new(
+            ErrorCode::PermissionDenied,
+            "Controller device metadata is not a safe regular file",
+            "Inspect the Controller data directory without following symbolic links.",
+        ),
+        ControllerDeviceStoreError::TooLarge | ControllerDeviceStoreError::RevisionOverflow => {
+            CliError::new(
+                ErrorCode::ResourceLimit,
+                "the Controller device authority reached a resource limit",
+                "Inspect paired devices in TermiRust desktop before retrying.",
+            )
+        }
+        ControllerDeviceStoreError::Corrupt => CliError::new(
+            ErrorCode::Incompatible,
+            "Controller device metadata is corrupt",
+            "Use TermiRust desktop recovery tools. The metadata was not modified.",
+        ),
+        ControllerDeviceStoreError::Io {
+            kind: std::io::ErrorKind::PermissionDenied,
+            ..
+        } => CliError::new(
+            ErrorCode::PermissionDenied,
+            "permission to access Controller device metadata was denied",
+            "Check ownership and user-only permissions, then retry.",
+        ),
+        ControllerDeviceStoreError::Io { .. } => CliError::new(
+            ErrorCode::OperationFailed,
+            "Controller device metadata could not be read or updated",
+            "Inspect paired-device status in TermiRust desktop before retrying.",
+        ),
+        ControllerDeviceStoreError::Domain(error) => map_controller_device_domain(error),
+    }
+}
+
+fn map_controller_device_domain(error: ControllerDeviceError) -> CliError {
+    match error {
+        ControllerDeviceError::DeviceNotFound => {
+            unavailable("paired Controller device is unavailable")
+        }
+        ControllerDeviceError::CounterOverflow | ControllerDeviceError::DeviceLimit => {
+            CliError::new(
+                ErrorCode::ResourceLimit,
+                "the Controller device authority reached a resource limit",
+                "Inspect paired devices in TermiRust desktop before retrying.",
+            )
+        }
+        _ => CliError::new(
+            ErrorCode::Incompatible,
+            "Controller device authority validation failed",
+            "Inspect Controller device status in TermiRust desktop. No mutation was retried.",
+        ),
+    }
+}
+
+fn device_revision_conflict(actual: DeviceStoreRevision) -> CliError {
+    CliError::new(
+        ErrorCode::Conflict,
+        "Controller device metadata changed before revocation committed",
+        "Review the device again and retry with the current repository revision.",
+    )
+    .with_revision(Revision::new(actual.get()))
 }
 
 pub(crate) fn map_client(error: ClientError) -> CliError {

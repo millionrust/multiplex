@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use args::{
     ApprovalDecision, CliCommand, ControllerSshAction, ControllerSshCommand,
-    DEFAULT_SESSION_WAIT_TIMEOUT_MS, Invocation, MAX_SESSION_INPUT_BYTES,
+    DEFAULT_SESSION_WAIT_TIMEOUT_MS, DeviceListFilter, Invocation, MAX_SESSION_INPUT_BYTES,
     MAX_SESSION_WAIT_TIMEOUT_MS, RemovalConfirmation, SessionInput, SessionListFilter,
     SessionWaitCondition, parse_args,
 };
@@ -191,6 +191,9 @@ pub(crate) fn help_data() -> CliData {
         commands: vec![
             "status [--json]".into(),
             "project list [--json]".into(),
+            "device list [--status <offline|online|revoked>] [--json]".into(),
+            "device show <ControllerDeviceId> [--json]".into(),
+            "device revoke <ControllerDeviceId> [--expected-revision N --yes] [--json]".into(),
             "preset list --project <ProjectId> [--json]".into(),
             "session list [--project <id>] [--group <id>] [--state <value>] [--archived] [--json]".into(),
             "session show <HostedSessionId> [--json]".into(),
@@ -213,7 +216,7 @@ pub(crate) fn help_data() -> CliData {
             "controller ssh --host <host> [--user <user>] [--port <port>] approval --session <id> --generation N --approval <id> --decision <allow|deny> [--json]".into(),
             "controller ssh --host <host> [--user <user>] [--port <port>] detach --session <id> --generation N [--json]".into(),
         ],
-        safety: "Local metadata and authenticated Host commands only. Session wait accepts lifecycle values shown by session show, or activity values unknown, idle, busy, needs_input, done, and failed. Local Session attach is read-only unless --write is explicit; human attach requires a TTY and detaches with Ctrl-] then d, while JSON attach never emits terminal bytes. Session resume previews without mutation and requires an exact reviewed revision plus --yes; the CLI replacement always uses the read-only Codex sandbox. Local Session input requires explicit bounded stdin and never echoes payload bytes. Local Session resize requires explicit dimensions from 1 to 1000. Stop requires --yes. Session removal requires a reviewed preview token, --yes, and bounded confirmation from stdin. Human SSH attach is interactive and detaches with Ctrl-] then d; JSON attach never emits terminal bytes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen project, preset, and session titles and may be sensitive.".into(),
+        safety: "Local metadata and authenticated Host commands only. Device list/show and revoke preview never create Controller state; revocation requires an exact reviewed repository revision plus --yes, revokes the selected device, and requires other connected devices to reconnect. Device keys and pairing routes are never output. Session wait accepts lifecycle values shown by session show, or activity values unknown, idle, busy, needs_input, done, and failed. Local Session attach is read-only unless --write is explicit; human attach requires a TTY and detaches with Ctrl-] then d, while JSON attach never emits terminal bytes. Session resume previews without mutation and requires an exact reviewed revision plus --yes; the CLI replacement always uses the read-only Codex sandbox. Local Session input requires explicit bounded stdin and never echoes payload bytes. Local Session resize requires explicit dimensions from 1 to 1000. Stop requires --yes. Session removal requires a reviewed preview token, --yes, and bounded confirmation from stdin. Human SSH attach is interactive and detaches with Ctrl-] then d; JSON attach never emits terminal bytes. SSH Controller input is read only from stdin. Mutations never silently retry conflicts or unknown completion. Output can contain user-chosen device, project, preset, and session titles and may be sensitive.".into(),
         exit_codes: vec![
             "0 success".into(),
             "2 usage or validation".into(),

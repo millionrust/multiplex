@@ -34,6 +34,7 @@ fn json(
 fn json_v1_golden() {
     let seed = seed_store();
     insert_session(&seed, termirust_domain::HostedSessionState::Exited, false);
+    let device_snapshot = seed_controller_devices(&seed);
     let mut service = service(
         &seed,
         Arc::new(Mutex::new(FakeLauncherState::default())),
@@ -52,6 +53,41 @@ fn json_v1_golden() {
     actual.insert(
         "project_list".into(),
         json(&mut service, &["project", "list"], &cancellation),
+    );
+    actual.insert(
+        "device_list".into(),
+        json(&mut service, &["device", "list"], &cancellation),
+    );
+    actual.insert(
+        "device_show".into(),
+        json(
+            &mut service,
+            &["device", "show", &DEVICE_ID.to_string()],
+            &cancellation,
+        ),
+    );
+    actual.insert(
+        "device_revoke_preview".into(),
+        json(
+            &mut service,
+            &["device", "revoke", &DEVICE_ID.to_string()],
+            &cancellation,
+        ),
+    );
+    actual.insert(
+        "device_revoke".into(),
+        json(
+            &mut service,
+            &[
+                "device",
+                "revoke",
+                &DEVICE_ID.to_string(),
+                "--expected-revision",
+                &device_snapshot.revision.get().to_string(),
+                "--yes",
+            ],
+            &cancellation,
+        ),
     );
     actual.insert(
         "preset_list".into(),

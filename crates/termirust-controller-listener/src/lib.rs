@@ -6,6 +6,7 @@
 mod authorization;
 mod bind;
 mod client_channel;
+mod devices;
 mod error;
 mod firewall;
 mod framing;
@@ -28,6 +29,10 @@ pub use bind::{
     SystemGeneratedPortSource, bind_selected_route,
 };
 pub use client_channel::ControllerClientChannel;
+pub use devices::{
+    ControllerChannelCloser, ControllerDeviceService, ControllerDeviceServiceError,
+    NoControllerChannels,
+};
 pub use error::{ListenerError, ListenerErrorCode};
 pub use firewall::{FirewallObservation, FirewallObserver, SystemFirewallObserver};
 pub use framing::{read_bounded_frame, write_bounded_frame};

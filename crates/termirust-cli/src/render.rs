@@ -92,6 +92,90 @@ fn render_human(data: &CliData, warnings: &[String], width: usize) -> String {
                 ]
             }),
         ),
+        CliData::Devices(data) => {
+            let mut text = format!(
+                "Paired devices\nRepository revision: {}",
+                data.repository_revision
+            );
+            text.push_str(&render_records(
+                "\nDevices",
+                data.devices.iter().map(device_fields),
+            ));
+            text
+        }
+        CliData::Device(data) => {
+            let mut text = format!(
+                "Paired device\nRepository revision: {}",
+                data.repository_revision
+            );
+            text.push_str(&render_records(
+                "\nDevice",
+                std::iter::once(device_fields(&data.device)),
+            ));
+            text
+        }
+        CliData::DeviceRevocationPreview(data) => {
+            let mut text = format!(
+                "Device revocation review\nRepository revision: {}",
+                data.repository_revision
+            );
+            let mut fields = device_fields(&data.device);
+            fields.extend([
+                (
+                    "Confirmation",
+                    if data.confirmation_required {
+                        "required"
+                    } else {
+                        "not required"
+                    }
+                    .into(),
+                ),
+                (
+                    "Active access",
+                    if data.active_access_will_be_revoked {
+                        "will be revoked"
+                    } else {
+                        "unchanged"
+                    }
+                    .into(),
+                ),
+                (
+                    "Other devices",
+                    if data.other_devices_reconnect {
+                        "must reconnect"
+                    } else {
+                        "unchanged"
+                    }
+                    .into(),
+                ),
+            ]);
+            text.push_str(&render_records("\nDevice", std::iter::once(fields)));
+            text.push_str(
+                "\n\nNo access was changed. To commit, rerun with this repository revision and --yes.",
+            );
+            text
+        }
+        CliData::DeviceRevocation(data) => {
+            let mut text = format!(
+                "Device revoked\nRepository revision: {}",
+                data.repository_revision
+            );
+            let mut fields = device_fields(&data.device);
+            fields.extend([
+                ("Applied", if data.applied { "yes" } else { "no" }.into()),
+                (
+                    "Active access",
+                    if data.active_access_revoked {
+                        "revoked"
+                    } else {
+                        "unchanged"
+                    }
+                    .into(),
+                ),
+            ]);
+            text.push_str(&render_records("\nDevice", std::iter::once(fields)));
+            text
+        }
         CliData::Presets(data) => {
             let mut text = format!("Presets for project {}", data.project_id);
             text.push_str(&render_records(
@@ -369,6 +453,38 @@ fn session_fields(session: &crate::SessionView) -> Vec<(&'static str, String)> {
             if session.archived { "yes" } else { "no" }.into(),
         ),
         ("Revision", session.revision.to_string()),
+    ]
+}
+
+fn device_fields(device: &crate::DeviceView) -> Vec<(&'static str, String)> {
+    vec![
+        ("ID", device.id.clone()),
+        ("Name", device.name.clone()),
+        ("Status", device.status.clone()),
+        (
+            "Capabilities",
+            if device.capabilities.is_empty() {
+                "none".into()
+            } else {
+                device.capabilities.join(", ")
+            },
+        ),
+        (
+            "Protocol",
+            format!("{} to {}", device.protocol_minimum, device.protocol_maximum),
+        ),
+        ("Created", device.created_at_unix_seconds.to_string()),
+        (
+            "Last seen",
+            device
+                .last_seen_at_unix_seconds
+                .map_or_else(|| "never".into(), |value| value.to_string()),
+        ),
+        ("Fingerprint suffix", device.fingerprint_suffix.clone()),
+        (
+            "Identity generation",
+            device.identity_generation.to_string(),
+        ),
     ]
 }
 
