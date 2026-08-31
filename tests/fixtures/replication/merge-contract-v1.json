@@ -79,7 +79,8 @@
             {
               "author": "device-a",
               "vector": { "device-a": 2 },
-              "operation": "delete"
+              "operation": "delete",
+              "sealed_payload": [162, 3, 23]
             }
           ]
         },
@@ -100,7 +101,8 @@
             {
               "author": "device-b",
               "vector": { "device-b": 1 },
-              "operation": "delete"
+              "operation": "delete",
+              "sealed_payload": [162, 4, 24]
             }
           ]
         }
@@ -167,7 +169,8 @@
             {
               "author": "device-rogue",
               "vector": { "device-rogue": 1 },
-              "operation": "delete"
+              "operation": "delete",
+              "sealed_payload": [165, 2, 52]
             }
           ]
         }

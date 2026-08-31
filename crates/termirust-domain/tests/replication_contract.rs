@@ -153,7 +153,7 @@ fn replication_merge_preserves_causal_maxima_conflicts_and_tombstones() {
     assert_eq!(removed.candidates.len(), 1);
     assert!(matches!(
         removed.candidates[0].operation,
-        ReplicationOperation::Delete
+        ReplicationOperation::Delete { .. }
     ));
 
     let delete_conflict = entry(&merged.document, "vaults", "vault-concurrent");
@@ -162,7 +162,7 @@ fn replication_merge_preserves_causal_maxima_conflicts_and_tombstones() {
         delete_conflict
             .candidates
             .iter()
-            .any(|candidate| matches!(candidate.operation, ReplicationOperation::Delete))
+            .any(|candidate| matches!(candidate.operation, ReplicationOperation::Delete { .. }))
     );
     assert!(
         delete_conflict
@@ -246,7 +246,10 @@ fn replication_hostile_inputs_fail_closed_without_content_leaks() {
 
     let mut equivocation = left.clone();
     let mut divergent = equivocation.entries[0].candidates[0].clone();
-    divergent.operation = ReplicationOperation::Delete;
+    divergent.operation = ReplicationOperation::Delete {
+        sealed_payload: SealedReplicationPayload::new(vec![222, 1, 1])
+            .expect("synthetic tombstone should fit"),
+    };
     equivocation.entries[0].candidates.push(divergent);
     assert_eq!(
         equivocation.validate(&policy),

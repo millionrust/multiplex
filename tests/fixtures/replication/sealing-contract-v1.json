@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "key_epoch": 7,
+  "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "workspace_id": "workspace-alpha",
+  "collection": "connections",
+  "record_id": "server-1",
+  "author": "device-a",
+  "vector": {
+    "device-a": 2,
+    "device-b": 1
+  },
+  "put_plaintext_hex": "7b227469746c65223a2253796e74686574696320686f7374222c22706f7274223a32327d",
+  "put_nonce_hex": "101112131415161718191a1b",
+  "put_envelope_hex": "545252530001010000000000000007101112131415161718191a1b0000003409eb0c0cbae8a6e12a5d383f24c87bb70e8fe76707fe63d2c72ffd8ffe1f8d70b4e69c04aee853b1d56e7a9762c2e2085d6bc440",
+  "delete_nonce_hex": "202122232425262728292a2b",
+  "delete_envelope_hex": "545252530001010000000000000007202122232425262728292a2b000000104b1272b0a228957051554cc1398d6937"
+}

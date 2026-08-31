@@ -33,10 +33,11 @@ replica may appear only as historical causality at or below its accepted counter
 zero cutoff for a device revoked before any accepted mutation. Unknown replicas and counters beyond
 revocation fail closed.
 
-This policy is semantic, not cryptographic. It cannot prove that a claimed author created a
-candidate or that a sealed payload is authentic. A later goal must bind records, workspace, schema,
-clock, author, key epoch, and operation into an audited authenticated-encryption/signature contract
-and platform-backed device authority before any untrusted transport is accepted.
+This policy is semantic, not cryptographic. E12.2's authenticated-sealing contract now binds the
+record, workspace, schema, clock, claimed author, key epoch, and operation against modification by
+an actor without the workspace epoch key. It does not individually sign authors. Device-key
+distribution, epoch authority, and any per-device signature contract must still be complete before
+an untrusted transport is accepted.
 
 ## Bounds and privacy
 
@@ -51,7 +52,7 @@ vector, payload, path, endpoint, or user content.
 
 ## Deferred work
 
-- audited authenticated encryption and device-key distribution
+- device-key distribution, epoch rotation, and optional per-device signatures
 - signed authority/key-epoch transitions and rollback protection
 - atomic replica repository, compaction, tombstone retention, and crash recovery
 - integration with the existing encrypted portable-bundle/shared-folder workflow

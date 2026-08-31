@@ -35,7 +35,7 @@ macro_rules! opaque_token {
                 &self.0
             }
 
-            fn validate(&self) -> Result<(), ReplicationError> {
+            pub fn validate(&self) -> Result<(), ReplicationError> {
                 if self.0.is_empty()
                     || self.0.len() > $maximum
                     || !self.0.bytes().all(|byte| {
@@ -91,7 +91,7 @@ impl ReplicationRecordKey {
         }
     }
 
-    fn validate(&self) -> Result<(), ReplicationError> {
+    pub fn validate(&self) -> Result<(), ReplicationError> {
         self.collection.validate()?;
         self.record_id.validate()
     }
@@ -135,6 +135,12 @@ impl ReplicationVersionVector {
 
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = (&ReplicationReplicaId, u64)> {
+        self.0
+            .iter()
+            .map(|(replica_id, counter)| (replica_id, *counter))
     }
 
     pub fn relation(&self, other: &Self) -> VersionRelation {
@@ -187,7 +193,7 @@ impl ReplicationVersionVector {
         Ok(())
     }
 
-    fn validate(&self) -> Result<(), ReplicationError> {
+    pub fn validate(&self) -> Result<(), ReplicationError> {
         if self.0.len() > MAX_REPLICATION_REPLICAS {
             return Err(ReplicationError::TooManyReplicaCounters);
         }
@@ -247,21 +253,25 @@ pub enum ReplicationOperation {
     Put {
         sealed_payload: SealedReplicationPayload,
     },
-    Delete,
+    Delete {
+        sealed_payload: SealedReplicationPayload,
+    },
 }
 
 impl ReplicationOperation {
     fn validate(&self) -> Result<(), ReplicationError> {
         match self {
-            Self::Put { sealed_payload } => sealed_payload.validate(),
-            Self::Delete => Ok(()),
+            Self::Put { sealed_payload } | Self::Delete { sealed_payload } => {
+                sealed_payload.validate()
+            }
         }
     }
 
     fn payload_len(&self) -> usize {
         match self {
-            Self::Put { sealed_payload } => sealed_payload.0.len(),
-            Self::Delete => 0,
+            Self::Put { sealed_payload } | Self::Delete { sealed_payload } => {
+                sealed_payload.0.len()
+            }
         }
     }
 }
@@ -562,7 +572,7 @@ fn reduce_candidates(
         ReplicationAuditOutcome::ConflictPreserved
     } else if matches!(
         maximal.first().map(|candidate| &candidate.operation),
-        Some(ReplicationOperation::Delete)
+        Some(ReplicationOperation::Delete { .. })
     ) {
         ReplicationAuditOutcome::Deleted
     } else if maximal.len() < candidates.len() {
