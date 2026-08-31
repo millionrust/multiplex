@@ -58,16 +58,17 @@ implicit in this crate.
 
 AEAD proves that a record came from an actor holding the workspace epoch key and that its claimed
 author metadata was not changed afterward. It does not cryptographically prove which individual
-device authored the record because authorized devices share epoch material. Per-device key
-wrapping, epoch rotation/revocation, rollback protection, and any individually attributable
-signature contract are separate work and must be complete before accepting an untrusted transport.
+device authored the record because authorized devices share epoch material. E12.3 adds
+device-specific authenticated wrapping for epoch distribution; enrollment, epoch
+rotation/revocation, rollback protection, and any individually attributable signature contract are
+separate work and must be complete before accepting an untrusted transport.
 
 Controller Noise static keys are not reused for replication. Existing mobile `encrypted_vault_key`
 strings remain placeholder metadata and are not treated as cryptographic wrapping.
 
 ## Deferred work
 
-- device-specific key wrapping/distribution and secure-store ownership
+- device enrollment and secure-store ownership for the E12.3 wrapping contract
 - epoch rotation, revocation, rollback prevention, and historical-key retention policy
 - optional per-device signatures if individual attribution is required
 - atomic repository, shared-folder transport, crash recovery, and compaction

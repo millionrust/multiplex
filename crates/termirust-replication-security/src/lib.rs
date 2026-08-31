@@ -11,6 +11,10 @@ use termirust_domain::{
 };
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
+mod wrapping;
+
+pub use wrapping::*;
+
 pub const REPLICATION_ENVELOPE_VERSION: u16 = 1;
 pub const REPLICATION_NONCE_BYTES: usize = 12;
 pub const REPLICATION_AUTH_TAG_BYTES: usize = 16;
@@ -59,9 +63,10 @@ pub struct ReplicationEpochKey {
 impl ReplicationEpochKey {
     pub fn from_bytes(
         epoch: ReplicationKeyEpoch,
-        bytes: [u8; 32],
+        mut bytes: [u8; 32],
     ) -> Result<Self, ReplicationCryptoError> {
         if bytes.iter().all(|byte| *byte == 0) {
+            bytes.zeroize();
             return Err(ReplicationCryptoError::InvalidKeyMaterial);
         }
         Ok(Self { epoch, bytes })
