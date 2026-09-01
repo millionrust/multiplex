@@ -14,7 +14,7 @@
   "machine_checks": {
     "wcag_contrast_pairs": "pass:50",
     "localization_catalogs": "pass:en-US,en-XA,ar-XB",
-    "whole_ui_legacy_copy": "fail:345",
+    "whole_ui_legacy_copy": "pass:0",
     "whole_ui_legacy_visuals": "fail:135",
     "deterministic_rendered_visuals": "unavailable"
   },
@@ -49,15 +49,6 @@
       "owning_surface": "cross-screen",
       "release_impact": "blocks whole-product visual reflow and contrast-rendering claims",
       "follow_up_goal": "21.1.8"
-    },
-    {
-      "id": "AUD-L10N-LEGACY-001",
-      "severity": "A1",
-      "case_selector": "whole UI source inventory",
-      "evidence": "the exact zero-legacy localization audit reports 345 immutable copy findings; generated en-US, en-XA and ar-XB catalogs remain internally valid",
-      "owning_surface": "cross-screen",
-      "release_impact": "blocks a complete whole-product localization claim",
-      "follow_up_goal": "21.1.9"
     },
     {
       "id": "AUD-TOKEN-LEGACY-001",

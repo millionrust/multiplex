@@ -70,6 +70,8 @@ activity-center-store-newer = ⟦Åçţîṽîţý ðåţå ŵåš ŵŕîţţé�
 activity-center-store-permission-denied = ⟦ŢéŕɱîŔûšţ çåññøţ ŕéåð îţš ļøçåļ Åçţîṽîţý ðåţå. Çĥéçķ ţĥé åþþ ðåţå ƒøļðéŕ þéŕɱîššîøñš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 activity-center-store-unavailable = ⟦Åçţîṽîţý ðåţå îš ţéɱþøŕåŕîļý ûñåṽåîļåƀļé. Šéššîøñš ŕéɱåîñ ûšåƀļé.~~~~~~~~~~~~~~~~~~~~~~~~⟧
 activity-center-title = ⟦Åçţîṽîţý Çéñţéŕ~~~~⟧
+activity-section-ready = ⟦Åçţîṽîţý ŕéåðý.~~~~⟧
+agent-arguments-placeholder = ⟦Øñé åŕĝûɱéñţ þéŕ ļîñé~~~~~~~⟧
 agent-canvas-action-menu = ⟦Ñøðé åçţîøñš~~~⟧
 agent-canvas-action-move-down = ⟦Ṁøṽé ðøŵñ~~⟧
 agent-canvas-action-move-left = ⟦Ṁøṽé ļéƒţ~~⟧
@@ -375,6 +377,11 @@ agent-canvas-state-permission-denied = ⟦Çåñṽåš åçţîøñ þéŕɱî�
 agent-canvas-state-ready = ⟦Çåñṽåš ŕéåðý~~~⟧
 agent-canvas-state-recovery = ⟦Çåñṽåš ŕéçøṽéŕý îš åṽåîļåƀļé~~~~~~~~~~⟧
 agent-canvas-title = ⟦Åĝéñţ Çåñṽåš~~~⟧
+agent-context-review-placeholder = ⟦Ŕéṽîéŵ çøñţéẋţ ƀéƒøŕé šéñðîñĝ~~~~~~~~~~⟧
+agent-executable-placeholder = ⟦Éẋéçûţåƀļé þåţĥ øŕ çøɱɱåñð ñåɱé~~~~~~~~~~~⟧
+agent-initial-prompt-placeholder = ⟦Øþţîøñåļ îñîţîåļ þŕøɱþţ~~~~~~~~⟧
+agent-prompt-placeholder = ⟦Šéñð å þŕøɱþţ øŕ ŕéṽîéŵéð çøñţéẋţ~~~~~~~~~~~~⟧
+agent-working-directory-placeholder = ⟦Ŕéþøšîţøŕý øŕ ŵøŕķîñĝ ðîŕéçţøŕý~~~~~~~~~~~⟧
 artifact-card-summary = ⟦Ðéţåîļš: ~~⟧{ $kind }⟦ · ⟧{ $size }⟦ · ⟧{ $state }
 artifact-created-label = ⟦Åððéð⟧
 artifact-error-cancelled = ⟦Åŕţîƒåçţ øþéŕåţîøñ çåñçéļļéð. Ñø þåŕţîåļ ŕéšûļţ ŵåš çøɱɱîţţéð.~~~~~~~~~~~~~~~~~~~~~~~⟧
@@ -448,6 +455,17 @@ artifact-type-file = ⟦Ƒîļé⟧
 artifact-type-jpeg = ⟦ĴÞÉĜ îɱåĝé~~⟧
 artifact-type-png = ⟦ÞÑĜ îɱåĝé~~⟧
 artifact-type-text = ⟦Þļåîñ ţéẋţ~~⟧
+autocomplete-applied-argument-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ åŕĝûɱéñţ.~~~~~~~~~~~~⟧
+autocomplete-applied-builtin-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ ƀûîļţîñ.~~~~~~~~~~~~⟧
+autocomplete-applied-context-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ çøñţéẋţ.~~~~~~~~~~~~⟧
+autocomplete-applied-history-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ ĥîšţøŕý.~~~~~~~~~~~~⟧
+autocomplete-applied-path-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ þåţĥ.~~~~~~~~~~~⟧
+autocomplete-applied-snippet-status = ⟦Åûţøçøɱþļéţé åþþļîéð ƒŕøɱ šñîþþéţ.~~~~~~~~~~~~⟧
+canvas-node-rename-placeholder = ⟦Ñøðé ţîţļé~~⟧
+canvas-note-editor-placeholder = ⟦Ŵŕîţé çøñţéẋţ, ðéçîšîøñš, çøɱɱåñðš, øŕ å ţåšķ ƀŕîéƒ~~~~~~~~~~~~~~~~~~~⟧
+canvas-project-editor-placeholder = ⟦Šéļéçţ å ÛŢƑ-8 ţéẋţ ƒîļé ţø ṽîéŵ øŕ éðîţ~~~~~~~~~~~~~~⟧
+certificate-file-choose-status = ⟦Çĥøøšé åñ ØþéñŠŠĤ ûšéŕ çéŕţîƒîçåţé ƒîļé.~~~~~~~~~~~~~~⟧
+certificate-file-selected-status = ⟦ØþéñŠŠĤ ûšéŕ çéŕţîƒîçåţé šéļéçţéð.~~~~~~~~~~~~⟧
 cli-settings-copy-path = ⟦Çøþý Þåţĥ~~⟧
 cli-settings-description = ⟦Îñšþéçţ åñð çøñţŕøļ ļøçåļ ðûŕåƀļé šéššîøñš ƒŕøɱ šçŕîþţš ŵîţĥøûţ øþéñîñĝ ţĥé ðéšķţøþ ÛÎ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 cli-settings-example = ⟦Çøþý ⟧{ $command }
@@ -465,6 +483,7 @@ cli-settings-state-available = ⟦Åṽåîļåƀļé~~⟧
 cli-settings-state-host-unavailable = ⟦Ĥøšţ ûñåṽåîļåƀļé~~~~~⟧
 cli-settings-state-unavailable = ⟦Ûñåṽåîļåƀļé~~~⟧
 cli-settings-title = ⟦Çøɱɱåñð Ļîñé~~~⟧
+command-terminal-required-error = ⟦Øþéñ å ţéŕɱîñåļ šéššîøñ ţø ŕûñ å çøɱɱåñð.~~~~~~~~~~~~~~~⟧
 common-browse = ⟦Ɓŕøŵšé~⟧
 common-cancel = ⟦Çåñçéļ~⟧
 common-close = ⟦Çļøšé⟧
@@ -537,6 +556,7 @@ dev-url-stale = ⟦Ţĥîš ÛŔĻ îš ðîšåƀļéð ƀéçåûšé îţš �
 development-locale-active = ⟦Åçţîṽé ðéṽéļøþɱéñţ ļøçåļé: ~~~~~~~~~⟧{ $locale }
 development-localization-hint = ⟦Þŕéṽîéŵ ţéẋţ éẋþåñšîøñ åñð ƀîðîŕéçţîøñåļ ļåýøûţ šţŕéšš ŵîţĥøûţ çĥåñĝîñĝ šåṽéð ƒøŕɱ ṽåļûéš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 development-localization-title = ⟦Þšéûðø-ļøçåļéš~~~~⟧
+devices-section-ready = ⟦Ðéṽîçéš ŕéåðý.~~~~⟧
 diagnostics-clear-action = ⟦Çļéåŕ ðîåĝñøšţîçš~~~~~⟧
 diagnostics-clear-notice = ⟦Çļéåŕ ŕéɱøṽéš øñļý ŢéŕɱîŔûšţ-øŵñéð ðîåĝñøšţîç ƒîļéš øñ å ƀéšţ-éƒƒøŕţ ƀåšîš. Çøþîéš ɱåý ŕéɱåîñ îñ ðéṽîçé ƀåçķûþš øŕ ƒîļéšýšţéɱ šñåþšĥøţš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 diagnostics-cleared = ⟦Ļøçåļ ðîåĝñøšţîç ŕéçøŕðš çļéåŕéð.~~~~~~~~~~~~⟧
@@ -577,6 +597,12 @@ diagnostics-status-disk-error = ⟦Ðîšķ øŕ þéŕɱîššîøñ éŕŕøŕ
 diagnostics-status-dropping = ⟦Ðŕøþþîñĝ éṽéñţš ƀéçåûšé ţĥé ƀøûñðéð ʠûéûé îš ƒûļļ~~~~~~~~~~~~~~~~~~⟧
 diagnostics-status-healthy = ⟦Ĥéåļţĥý~⟧
 diagnostics-usage-summary = { $bytes }⟦ åçŕøšš ~~⟧{ $files }⟦ ƒîļéš · ŕéţåîñéð ƒøŕ åţ ɱøšţ ~~~~~~~~~~⟧{ $days }⟦ ðåýš⟧
+durable-attaching-status = ⟦Åţţåçĥîñĝ ţø ðûŕåƀļé šéššîøñ...~~~~~~~~~~~⟧
+durable-host-metadata-invalid-error = ⟦Ţĥîš ðûŕåƀļé šéššîøñ ĥåš ñø ṽåļîð Ĥøšţ ɱéţåðåţå.~~~~~~~~~~~~~~~~~~⟧
+durable-legacy-reopen-error = ⟦Ļéĝåçý åþþ-åţţåçĥéð šéššîøñš çåññøţ ƀé ŕéøþéñéð åƒţéŕ ţĥéîŕ þŕøçéšš éẋîţš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+durable-restore-host-metadata-missing-error = ⟦Å ðûŕåƀļé ŵøŕķšþåçé þåñé îš ɱîššîñĝ ṽéŕîƒîéð Ĥøšţ ɱéţåðåţå; ñø þŕøçéšš ŵåš šţåŕţéð.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+durable-restore-session-metadata-missing-error = ⟦Å ðûŕåƀļé ŵøŕķšþåçé þåñé îš ɱîššîñĝ îţš šåṽéð šéššîøñ ɱéţåðåţå; ñø þŕøçéšš ŵåš šţåŕţéð.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+durable-retrying-status = ⟦Ŕéţŕýîñĝ ðûŕåƀļé Ĥøšţ åţţåçĥɱéñţ...~~~~~~~~~~~~⟧
 field-error = ⟦Éŕŕøŕ: ~⟧{ $reason }
 files-artifacts-authoritative-heading = ⟦Åļļ åûţĥøŕîţåţîṽé Šéššîøñš~~~~~~~~~⟧
 files-artifacts-count = { $count ->
@@ -697,24 +723,78 @@ health-store-version-label = ⟦Šţøŕé ƒøŕɱåţ~~~⟧
 health-unaffected-notice = ⟦Ŕéƀûîļð ŕéåðš åûţĥøŕîţåţîṽé ɱéţåðåţå åñð ŕéþļåçéš øñļý ţĥé šéļéçţéð ðéŕîṽéð îñðéẋ. Îţ ðøéš ñøţ çĥåñĝé þŕøĵéçţš, šéššîøñš, Ĥøšţ þŕøçéššéš, ĵøûŕñåļš, ţéŕɱîñåļ øûţþûţ, øŕ þŕøĵéçţ ƒîļéš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 host-address-field = ⟦Ĥøšţ øŕ ÎÞ åððŕéšš~~~~~~⟧
 host-agent-socket-field = ⟦ŠŠĤ åĝéñţ šøçķéţ~~~~~⟧
+host-assigning-vault-status = ⟦Åššîĝñîñĝ ţĥîš ĥøšţ ţø ~~~~~~~~⟧{ $vault }⟦.⟧
+host-auth-agent-description = ⟦Éɱþţý ûšéš ŠŠĤ_ÅÛŢĤ_ŠØÇĶ. Þŕîṽåţé ķéýš ŕéɱåîñ îñ ýøûŕ ļøçåļ åĝéñţ. Ƒøŕŵåŕðîñĝ ŕéʠûîŕéš å šéþåŕåţé øñé-çøññéçţîøñ åþþŕøṽåļ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-auth-agent-selected-status = ⟦Ûšîñĝ ŠŠĤ Åĝéñţ åûţĥéñţîçåţîøñ.~~~~~~~~~~~⟧
 host-auth-local-agent = ⟦Ļøçåļ ŠŠĤ åĝéñţ åûţĥéñţîçåţîøñ~~~~~~~~~~⟧
 host-auth-password = ⟦Þåššŵøŕð åûţĥéñţîçåţîøñ~~~~~~~~⟧
+host-auth-password-selected-status = ⟦Ûšîñĝ Þåššŵøŕð åûţĥéñţîçåţîøñ.~~~~~~~~~~⟧
 host-auth-private-key = ⟦Þŕîṽåţé ķéý åûţĥéñţîçåţîøñ~~~~~~~~~⟧
+host-auth-private-key-action = ⟦Þŕîṽåţé Ķéý~~~⟧
+host-auth-private-key-selected-status = ⟦Ûšîñĝ Þŕîṽåţé Ķéý åûţĥéñţîçåţîøñ.~~~~~~~~~~~~⟧
+host-auth-private-key-title = ⟦Þŕîṽåţé ķéý~~~⟧
+host-auth-selected-identity-status = ⟦Šéļéçţéð îðéñţîţý: ~~~~~~⟧{ $label }⟦ (⟧{ $kind }⟦)⟧
+host-auth-ssh-agent-action = ⟦ŠŠĤ Åĝéñţ~~⟧
+host-auth-stored-password-description = ⟦Å šåṽéð þåššŵøŕð îš åļŕéåðý åṽåîļåƀļé ƒŕøɱ ţĥé šýšţéɱ çŕéðéñţîåļ šţøŕé.~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-auth-title = ⟦Åûţĥ⟧
+host-batch-selection-cleared-status = ⟦Çļéåŕéð ĥøšţ ƀåţçĥ šéļéçţîøñ.~~~~~~~~~~⟧
+host-batch-selection-count-status = { $count ->
+    [many] ⟦Šéļéçţéð ~~⟧{ $count }⟦ ĥøšţš ƒøŕ ƀåţçĥ åçţîøñš.~~~~~~~~⟧
+    [one] ⟦Šéļéçţéð øñé ĥøšţ ƒøŕ ƀåţçĥ åçţîøñš.~~~~~~~~~~~~~⟧
+   *[other] ⟦Šéļéçţéð ~~⟧{ $count }⟦ ĥøšţš ƒøŕ ƀåţçĥ åçţîøñš.~~~~~~~~⟧
+    [zero] ⟦Ñø ĥøšţš šéļéçţéð ƒøŕ ƀåţçĥ åçţîøñš.~~~~~~~~~~~~~⟧
+    }
+host-bulk-group-target-status = ⟦Ɓûļķ ĝŕøûþ ţåŕĝéţ šéţ ţø '~~~~~~~~~⟧{ $group }⟦'. Šéļéçţ ĥøšţš åñð åþþļý ŵĥéñ ŕéåðý.~~~~~~~~~~~~~⟧
+host-color-tag-auto-action = ⟦Åûţø⟧
+host-color-tag-description = ⟦Ţåĝš ðŕîṽé ţĥé åṽåţåŕ ţîñţ øñ ĥøšţ çåŕðš åñð ţĥé šţåţûš ðøţ øñ çøññéçţéð þåñéš — ĥåñðý ƒøŕ þŕøð / šţåĝîñĝ / ðéṽ çøļøŕ-çøðîñĝ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-color-tag-title = ⟦Çøļøŕ ţåĝ~~⟧
+host-connect-view-files-status = ⟦Ţĥîš ĥøšţ ŵîļļ øþéñ îñ ţĥé ŕéɱøţé Ƒîļéš ṽîéŵ åƒţéŕ çøññéçţ.~~~~~~~~~~~~~~~~~~~~~~⟧
+host-connect-view-terminal-status = ⟦Ţĥîš ĥøšţ ŵîļļ øþéñ îñ ţĥé ţéŕɱîñåļ ṽîéŵ åƒţéŕ çøññéçţ.~~~~~~~~~~~~~~~~~~~~⟧
 host-delete-action = ⟦Ðéļéţé Ĥøšţ~~~⟧
 host-deselect-action = ⟦Ŕéɱøṽé Ĥøšţ ƒŕøɱ šéļéçţîøñ~~~~~~~~~⟧
+host-detach-other-clients-status = ⟦Çøññéçţîñĝ çåñ ðéţåçĥ øţĥéŕ çļîéñţš ƒŕøɱ ţĥé šåɱé ţɱûẋ šéššîøñ.~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-diagnostic-already-running-status = ⟦Ţĥåţ ĥøšţ îš åļŕéåðý ƀéîñĝ ðîåĝñøšéð.~~~~~~~~~~~~~⟧
 host-diagnostic-cancel = ⟦Çåñçéļ ðîåĝñøšţîç~~~~~⟧
 host-diagnostic-cancelled = ⟦Ðîåĝñøšţîç çåñçéļļéð~~~~~~⟧
+host-diagnostic-cancelling-status = ⟦Çåñçéļļîñĝ çøññéçţîøñ ðîåĝñøšţîç...~~~~~~~~~~~~⟧
+host-diagnostic-checking-channel = ⟦Çĥéçķîñĝ ŠŠĤ çĥåññéļ~~~~~~⟧
+host-diagnostic-checking-configuration = ⟦Çĥéçķîñĝ çøñƒîĝûŕåţîøñ~~~~~~~⟧
+host-diagnostic-checking-route-auth = ⟦Çĥéçķîñĝ ŕøûţé åñð åûţĥéñţîçåţîøñ~~~~~~~~~~~~⟧
+host-diagnostic-checking-sftp = ⟦Çĥéçķîñĝ ŠƑŢÞ~~~~⟧
+host-diagnostic-cleared-status = ⟦Çļéåŕéð ƒîñîšĥéð çøññéçţîøñ ðîåĝñøšţîçš.~~~~~~~~~~~~~~⟧
 host-diagnostic-failed = ⟦Çøññéçţîøñ ñééðš åţţéñţîøñ~~~~~~~~~⟧
 host-diagnostic-passed = ⟦Çøññéçţîøñ ĥéåļţĥý~~~~~~⟧
+host-diagnostic-passed-channel = ⟦ŠŠĤ çĥåññéļ þåššéð~~~~~~⟧
+host-diagnostic-passed-configuration = ⟦Çøñƒîĝûŕåţîøñ þåššéð~~~~~~⟧
+host-diagnostic-passed-route-auth = ⟦Ŕøûţé åñð åûţĥéñţîçåţîøñ þåššéð~~~~~~~~~~~⟧
+host-diagnostic-passed-sftp = ⟦ŠƑŢÞ þåššéð~~~⟧
+host-diagnostic-queue-full-error = ⟦Ţĥé ðîåĝñøšţîç ʠûéûé îš ƒûļļ. Ŵåîţ ƒøŕ å çĥéçķ ţø ƒîñîšĥ åñð ŕéţŕý.~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 host-diagnostic-queued = ⟦Ðîåĝñøšţîç ʠûéûéð~~~~~⟧
+host-diagnostic-restarted-status = ⟦Çøññéçţîøñ ðîåĝñøšţîç ŕéšţåŕţéð.~~~~~~~~~~~⟧
 host-diagnostic-retry = ⟦Ŕéţŕý ðîåĝñøšţîç~~~~~⟧
+host-diagnostic-route-direct = ⟦Ðîŕéçţ ŠŠĤ~~⟧
+host-diagnostic-route-http-proxy = ⟦ĤŢŢÞ ÇØÑÑÉÇŢ þŕøẋý~~~~~~⟧
+host-diagnostic-route-saved-jump = ⟦Šåṽéð ĵûɱþ ŕøûţé~~~~~⟧
+host-diagnostic-route-socks5-proxy = ⟦ŠØÇĶŠ5 þŕøẋý~~~⟧
 host-diagnostic-running = ⟦Çĥéçķîñĝ çøññéçţîøñ~~~~~~⟧
 host-diagnostic-stage-authentication = ⟦Ŕøûţé åñð åûţĥéñţîçåţîøñ~~~~~~~~⟧
 host-diagnostic-stage-channel = ⟦ŠŠĤ çĥåññéļ~~~⟧
 host-diagnostic-stage-configuration = ⟦Çøñƒîĝûŕåţîøñ~~~~⟧
 host-diagnostic-stage-sftp = ⟦ŠƑŢÞ⟧
+host-diagnostic-start-error = ⟦Ûñåƀļé ţø šţåŕţ ţĥé çøññéçţîøñ ðîåĝñøšţîç.~~~~~~~~~~~~~~~⟧
+host-diagnostic-waiting-status = ⟦Ŵåîţîñĝ ƒøŕ åñ åṽåîļåƀļé ðîåĝñøšţîç šļøţ~~~~~~~~~~~~~~⟧
+host-diagnostics-batch-limit-error = ⟦Ðîåĝñøšé šûþþøŕţš åţ ɱøšţ ~~~~~~~~~⟧{ $limit }⟦ ĥøšţš îñ øñé ƀåţçĥ. Ñåŕŕøŵ ţĥé šéļéçţîøñ åñð ŕéţŕý.~~~~~~~~~~~~~~~~~~~⟧
 host-diagnostics-clear = ⟦Çļéåŕ ƒîñîšĥéð~~~~⟧
+host-diagnostics-selection-required-error = ⟦Šéļéçţ åţ ļéåšţ øñé šåṽéð ĥøšţ ţø ðîåĝñøšé.~~~~~~~~~~~~~~~~⟧
+host-diagnostics-started-skipped-status = ⟦Šţåŕţéð ~~⟧{ $started }⟦ ðîåĝñøšţîç ŕûñš; ~~~~~~⟧{ $skipped }⟦ åļŕéåðý ŕûññîñĝ.~~~~~⟧
+host-diagnostics-started-status = { $started ->
+    [many] ⟦Šţåŕţéð ~~⟧{ $started }⟦ çøññéçţîøñ ðîåĝñøšţîçš.~~~~~~~~⟧
+    [one] ⟦Šţåŕţéð øñé çøññéçţîøñ ðîåĝñøšţîç.~~~~~~~~~~~~⟧
+   *[other] ⟦Šţåŕţéð ~~⟧{ $started }⟦ çøññéçţîøñ ðîåĝñøšţîçš.~~~~~~~~⟧
+    [zero] ⟦Šţåŕţéð ñø çøññéçţîøñ ðîåĝñøšţîçš.~~~~~~~~~~~~⟧
+    }
 host-diagnostics-title = ⟦Çøññéçţîøñ ðîåĝñøšţîçš~~~~~~~⟧
+host-draft-cleared-status = ⟦Ðŕåƒţ çļéåŕéð. Ðéƒîñé å ĥøšţ ţø šåṽé øŕ çøññéçţ.~~~~~~~~~~~~~~~~~~⟧
 host-edit-action = ⟦Éðîţ Ĥøšţ~~⟧
 host-editor-address-help = ⟦Ûšé ļøçåļĥøšţ, åñ ÎÞ åððŕéšš, øŕ å ðøɱåîñ. Éñţéŕ ţĥé ûšéŕñåɱé šéþåŕåţéļý.~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 host-editor-address-section = ⟦Åððŕéšš~⟧
@@ -751,11 +831,115 @@ host-editor-theme-tooltip = ⟦Šéļéçţ ţø çýçļé ţĥŕøûĝĥ ţé�
 host-editor-title = ⟦Ĥøšţ éðîţøŕ~~~⟧
 host-editor-username-help = ⟦Ţĥé åççøûñţ ñåɱé øñ ţĥé ŠŠĤ šéŕṽéŕ.~~~~~~~~~~~~⟧
 host-editor-vault-label = { $vault }⟦ ṽåûļţ~⟧
+host-environment-description = ⟦Øñé ĶÉÝ=ṽåļûé þéŕ ļîñé. Ṽåŕîåƀļéš åŕé éẋþøŕţéð îñţø ţĥé ŕéɱøţé šĥéļļ ƀéƒøŕé ţĥé šţåŕţûþ ðîŕéçţøŕý åñð çøɱɱåñð ŕûñ, ŵîţĥ þŕøþéŕ šîñĝļé-ʠûøţé éšçåþîñĝ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-environment-title = ⟦Éñṽîŕøñɱéñţ~~~⟧
+host-favorite-disabled-status = ⟦Ţĥîš ĥøšţ ŵîļļ åþþéåŕ îñ ţĥé ŕéĝûļåŕ ļîƀŕåŕý ĝŕøûþš.~~~~~~~~~~~~~~~~~~~⟧
+host-favorite-enabled-status = ⟦Ţĥîš ĥøšţ ŵîļļ ƀé šţåŕŕéð îñ ţĥé ļîƀŕåŕý.~~~~~~~~~~~~~~~⟧
+host-filter-no-matches-error = ⟦Ñø ĥøšţš ɱåţçĥ ţĥé çûŕŕéñţ ƒîļţéŕ.~~~~~~~~~~~~⟧
+host-filter-selected-count-status = { $count ->
+    [many] ⟦Šéļéçţéð ~~⟧{ $count }⟦ ĥøšţš ƒŕøɱ ţĥé çûŕŕéñţ ƒîļţéŕ.~~~~~~~~~~~⟧
+    [one] ⟦Šéļéçţéð øñé ĥøšţ ƒŕøɱ ţĥé çûŕŕéñţ ƒîļţéŕ.~~~~~~~~~~~~~~~⟧
+   *[other] ⟦Šéļéçţéð ~~⟧{ $count }⟦ ĥøšţš ƒŕøɱ ţĥé çûŕŕéñţ ƒîļţéŕ.~~~~~~~~~~~⟧
+    [zero] ⟦Šéļéçţéð ñø ĥøšţš ƒŕøɱ ţĥé çûŕŕéñţ ƒîļţéŕ.~~~~~~~~~~~~~~~⟧
+    }
+host-forward-added-status = ⟦Åððéð ƒøŕŵåŕð ŕûļé ~~~~~~⟧{ $rule }⟦.⟧
+host-forward-duplicate-error = ⟦Ƒøŕŵåŕð ŕûļé '~~~~⟧{ $rule }⟦' åļŕéåðý éẋîšţš.~~~~~⟧
+host-forward-fields-required-error = ⟦Éñţéŕ ļøçåļ þøŕţ, ŕéɱøţé ĥøšţ, åñð ŕéɱøţé þøŕţ ţø åðð å ŕûļé.~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-forward-kind-dynamic-status = ⟦Ƒøŕŵåŕð ŕûļé ţýþé šéţ ţø Ðýñåɱîç.~~~~~~~~~~~~⟧
+host-forward-kind-local-status = ⟦Ƒøŕŵåŕð ŕûļé ţýþé šéţ ţø Ļøçåļ.~~~~~~~~~~~⟧
+host-forward-kind-remote-status = ⟦Ƒøŕŵåŕð ŕûļé ţýþé šéţ ţø Ŕéɱøţé.~~~~~~~~~~~⟧
+host-forward-removed-status = ⟦Ŕéɱøṽéð ƒøŕŵåŕð ŕûļé ~~~~~~~⟧{ $rule }⟦.⟧
+host-group-command-chip = ⟦Çɱð: ⟧{ $value }
+host-group-defaults-ad-hoc-badge = ⟦Åð ĥøç~⟧
+host-group-defaults-delete-action = ⟦Ðéļéţé Ðéƒåûļţš~~~~⟧
+host-group-defaults-inheritance-description = ⟦Ɓļåñķ ĥøšţ ƒîéļðš çåñ îñĥéŕîţ ûšéŕñåɱé, ţåĝš, îðéñţîţý, ĵûɱþ ĥøšţ, šţåŕţûþ šéţţîñĝš, åñð šåṽéð ƒøŕŵåŕðîñĝ ŕûļéš ƒŕøɱ ţĥé ĝŕøûþ ðéƒåûļţš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-group-defaults-invalid-draft-error = ⟦Ĝŕøûþ ðéƒåûļţš ŕéʠûîŕé å ṽåļîð ðŕåƒţ çøñţéẋţ.~~~~~~~~~~~~~~~~⟧
+host-group-defaults-loaded-status = ⟦Ļøåðéð ðéƒåûļţš ƒøŕ ĝŕøûþ '~~~~~~~~~⟧{ $group }⟦'.⟧
+host-group-defaults-missing-error = ⟦Ñø šåṽéð ðéƒåûļţš éẋîšţ ƒøŕ ţĥîš ĝŕøûþ ýéţ.~~~~~~~~~~~~~~~~⟧
+host-group-defaults-missing-named-error = ⟦Ñø šåṽéð ðéƒåûļţš éẋîšţ ƒøŕ ĝŕøûþ '~~~~~~~~~~~~⟧{ $group }⟦'.⟧
+host-group-defaults-removed-status = ⟦Ŕéɱøṽéð ðéƒåûļţš ƒøŕ ĝŕøûþ '~~~~~~~~~~⟧{ $group }⟦'.⟧
+host-group-defaults-save-action = ⟦Šåṽé Ĝŕøûþ Ðéƒåûļţš~~~~~~⟧
+host-group-defaults-saved-badge = ⟦Šåṽéð⟧
+host-group-defaults-saved-status = ⟦Šåṽéð ðéƒåûļţš ƒøŕ ĝŕøûþ '~~~~~~~~~⟧{ $group }⟦'.⟧
+host-group-defaults-title = ⟦Ĝŕøûþ ðéƒåûļţš ƒøŕ '~~~~~~⟧{ $group }⟦'⟧
+host-group-directory-chip = ⟦Ðîŕ: ⟧{ $value }
+host-group-forward-chip = ⟦Ƒøŕŵåŕð: ~~⟧{ $value }
+host-group-forwards-chip = { $count ->
+    [many] { $count }⟦ Ƒøŕŵåŕðš~~⟧
+    [one] ⟦Øñé Ƒøŕŵåŕð~~~⟧
+   *[other] { $count }⟦ Ƒøŕŵåŕðš~~⟧
+    [zero] ⟦Ñø Ƒøŕŵåŕðš~~~⟧
+    }
+host-group-host-count = { $count ->
+    [many] { $count }⟦ ĥøšţš~⟧
+    [one] ⟦Øñé ĥøšţ~~⟧
+   *[other] { $count }⟦ ĥøšţš~⟧
+    [zero] ⟦Ñø ĥøšţš~~⟧
+    }
+host-group-identity-chip = ⟦Îðéñţîţý: ~~⟧{ $value }
+host-group-jump-chip = ⟦Ĵûɱþ: ~⟧{ $value }
+host-group-load-defaults-action = ⟦Ļøåð Ðéƒåûļţš~~~~⟧
+host-group-name-required-error = ⟦Éñţéŕ å ĝŕøûþ ñåɱé ƒîŕšţ.~~~~~~~~⟧
+host-group-no-visible-hosts-error = ⟦Ñø ṽîšîƀļé ĥøšţš åŕé îñ '~~~~~~~~⟧{ $group }⟦'.⟧
+host-group-select-hosts-action = ⟦Šéļéçţ Ĥøšţš~~~⟧
+host-group-selected-status = { $count ->
+    [many] ⟦Šéļéçţéð ~~⟧{ $count }⟦ ĥøšţš ƒŕøɱ '~~~~⟧{ $group }⟦'.⟧
+    [one] ⟦Šéļéçţéð øñé ĥøšţ ƒŕøɱ '~~~~~~~~⟧{ $group }⟦'.⟧
+   *[other] ⟦Šéļéçţéð ~~⟧{ $count }⟦ ĥøšţš ƒŕøɱ '~~~~⟧{ $group }⟦'.⟧
+    [zero] ⟦Šéļéçţéð ñø ĥøšţš ƒŕøɱ '~~~~~~~~⟧{ $group }⟦'.⟧
+    }
+host-group-tags-chip = ⟦Ţåĝš: ~⟧{ $value }
+host-group-use-bulk-action = ⟦Ûšé åš Ɓûļķ~~~⟧
+host-group-user-chip = ⟦Ûšéŕ: ~⟧{ $value }
+host-group-visible-total-count = { $visible }⟦ ṽîšîƀļé • ~~~⟧{ $total }⟦ ţøţåļ~⟧
+host-identities-empty-description = ⟦Ñø šåṽéð îðéñţîţîéš ýéţ. Åðð å ķéý ƒîļé øŕ ûšé øñé îɱþøŕţéð åţ ļåûñçĥ.~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-identities-title = ⟦Šåṽéð îðéñţîţîéš~~~~~⟧
+host-identity-default-status = ⟦Ûšîñĝ îðéñţîţý '~~~~~⟧{ $identity }⟦'.⟧
+host-identity-selected-badge = ⟦Šéļéçţéð~~⟧
+host-identity-selected-status = ⟦Îðéñţîţý '~~⟧{ $identity }⟦' šéļéçţéð.~~~⟧
+host-input-address-placeholder = ⟦ļøçåļĥøšţ, ÎÞ åððŕéšš, øŕ ðøɱåîñ~~~~~~~~~~~⟧
+host-input-agent-socket-placeholder = ⟦Øþţîøñåļ åĝéñţ šøçķéţ; éɱþţý ûšéš ŠŠĤ_ÅÛŢĤ_ŠØÇĶ~~~~~~~~~~~~~~~~~⟧
+host-input-certificate-placeholder = ⟦Øþţîøñåļ ØþéñŠŠĤ ûšéŕ çéŕţîƒîçåţé, é.ĝ. îð_éð25519-çéŕţ.þûƀ~~~~~~~~~~~~~~~~~~~~~~⟧
+host-input-display-name-placeholder = ⟦Ðîšþļåý ñåɱé, é.ĝ. Ļøçåļ Ṁåç Ţéšţ~~~~~~~~~~~~⟧
+host-input-environment-placeholder = ⟦ÅŴŠ_ÞŔØƑÎĻÉ=þŕøð\ñĻØĜ_ĻÉṼÉĻ=îñƒø (øñé ĶÉÝ=ṽåļûé þéŕ ļîñé)~~~~~~~~~~~~~~~~~~~~~⟧
+host-input-group-placeholder = ⟦Ƒøļðéŕ/ĝŕøûþ, é.ĝ. Ļøçåļ~~~~~~~~⟧
+host-input-jump-host-placeholder = ⟦Øþţîøñåļ šåṽéð ĥøšţ~~~~~~⟧
+host-input-key-passphrase-placeholder = ⟦Øþţîøñåļ ķéý þåššþĥŕåšé~~~~~~~~⟧
+host-input-key-path-placeholder = ⟦Þŕîṽåţé ķéý þåţĥ, é.ĝ. ~/.ššĥ/îð_éð25519~~~~~~~~~~~~~~⟧
+host-input-notes-placeholder = ⟦Øþţîøñåļ ñøţéš åƀøûţ ţĥîš ĥøšţ~~~~~~~~~~⟧
+host-input-password-placeholder = ⟦Þåššŵøŕð, øñļý îƒ ûšîñĝ þåššŵøŕð åûţĥ~~~~~~~~~~~~~⟧
+host-input-proxy-address-placeholder = ⟦Þŕøẋý ĥøšţñåɱé øŕ ÎÞ åððŕéšš~~~~~~~~~~⟧
+host-input-proxy-port-placeholder = ⟦1080 øŕ 3128~~~⟧
+host-input-startup-command-placeholder = ⟦ðøçķéŕ çøɱþøšé ļøĝš -ƒ~~~~~~~⟧
+host-input-tags-placeholder = ⟦þŕøð, ƀļûé, ķûƀéŕñéţéš~~~~~~~⟧
+host-input-username-placeholder = ⟦ŠŠĤ ûšéŕñåɱé, é.ĝ. ĵåçøƀ~~~~~~~~⟧
+host-keep-other-clients-status = ⟦Øţĥéŕ çļîéñţš ɱåý šţåý åţţåçĥéð ţø ţĥé šåɱé ţɱûẋ šéššîøñ.~~~~~~~~~~~~~~~~~~~~~⟧
 host-key-passphrase-field = ⟦Þŕîṽåţé ķéý þåššþĥŕåšé~~~~~~~⟧
 host-key-path-field = ⟦Þŕîṽåţé ķéý ƒîļé~~~~~⟧
 host-label-field = ⟦Ĥøšţ ñåɱé~~⟧
+host-library-priority-description = ⟦Šţåŕŕéð ĥøšţš šţåý þîññéð ţø ţĥé ţøþ øƒ ţĥé ļîƀŕåŕý ƒøŕ ýøûŕ ɱøšţ-ûšéð ɱåçĥîñéš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-library-priority-standard-action = ⟦Šţåñðåŕð~~⟧
+host-library-priority-starred-action = ⟦Šţåŕŕéð~⟧
+host-library-priority-title = ⟦Ļîƀŕåŕý þŕîøŕîţý~~~~~⟧
+host-named-starred-status = ⟦Šţåŕŕéð '~~⟧{ $host }⟦'.⟧
+host-named-unstarred-status = ⟦Ŕéɱøṽéð '~~⟧{ $host }⟦' ƒŕøɱ šţåŕŕéð ĥøšţš.~~~~~~~⟧
+host-network-route-direct-description = ⟦Çøññéçţ ðîŕéçţļý ţø ţĥîš ĥøšţ.~~~~~~~~~~⟧
+host-network-route-proxy-description = ⟦Ŕøûţé øñļý ţĥé ƒîŕšţ ŢÇÞ ĥøþ ţĥŕøûĝĥ ţĥîš þŕøẋý. ŠŠĤ šţîļļ ṽéŕîƒîéš åñð åûţĥéñţîçåţéš ţĥé ţåŕĝéţ éñð ţø éñð. Åûţĥéñţîçåţéð þŕøẋîéš åŕé ñøţ šûþþøŕţéð.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-network-route-title = ⟦Ñéţŵøŕķ Ŕøûţé~~~~⟧
+host-normal-shell-status = ⟦Ţĥîš ĥøšţ ŵîļļ øþéñ å ñøŕɱåļ ŠŠĤ šĥéļļ øñ çøññéçţ.~~~~~~~~~~~~~~~~~~⟧
 host-password-field = ⟦Þåššŵøŕð~~⟧
+host-persistent-session-description = ⟦Ķééþ ţĥé ŕéɱøţé ţéŕɱîñåļ ŕûññîñĝ åƒţéŕ çļøšîñĝ ţĥé ţåƀ øŕ ļøšîñĝ ţĥé ñéţŵøŕķ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-persistent-session-disable-action = ⟦Ðîšåƀļé~⟧
+host-persistent-session-enable-action = ⟦Éñåƀļé þéŕšîšţéñţ ţɱûẋ~~~~~~~⟧
+host-persistent-session-enabled-badge = ⟦ţɱûẋ éñåƀļéð~~~⟧
+host-persistent-session-requirements-description = ⟦Ŕéʠûîŕéš ţɱûẋ øñ ţĥé ŕéɱøţé ĥøšţ. Îƒ ţɱûẋ îš ɱîššîñĝ, ŢéŕɱîŔûšţ šĥøŵš îñšţåļļ ĥéļþ åñð øþéñš å ñøŕɱåļ šĥéļļ. Šţåŕţûþ çøɱɱåñðš ŕûñ øñļý ŵĥéñ ţĥé ţɱûẋ šéššîøñ îš ƒîŕšţ çŕéåţéð.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-persistent-session-title = ⟦Þéŕšîšţéñţ Šéššîøñ~~~~~~⟧
+host-persistent-tmux-status = ⟦Ţĥîš ĥøšţ ŵîļļ åţţåçĥ ţø å ñåɱéð ţɱûẋ šéššîøñ øñ çøññéçţ.~~~~~~~~~~~~~~~~~~~~~⟧
 host-port-field = ⟦ŠŠĤ þøŕţ~~⟧
+host-port-forward-add-action = ⟦Åðð Ŕûļé~~⟧
+host-port-forward-remove-action = ⟦Ŕéɱøṽé~⟧
+host-port-forwarding-description = ⟦Šåṽé ļøçåļ ţûññéļš, ŕéɱøţé ŕéṽéŕšé ţûññéļš, øŕ å ðýñåɱîç ŠØÇĶŠ5 þŕøẋý åñð ļåûñçĥ ţĥéɱ åûţøɱåţîçåļļý ŵîţĥ ţĥé ĥøšţ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-port-forwarding-title = ⟦Þøŕţ Ƒøŕŵåŕðîñĝ Ŕûļéš~~~~~~~⟧
 host-private-address = ⟦Þŕîṽåţé Ĥøšţ åððŕéšš~~~~~~⟧
 host-private-agent-socket = ⟦Þŕîṽåţé ŠŠĤ åĝéñţ šøçķéţ~~~~~~~~⟧
 host-private-diagnostic = ⟦Þŕîṽåţé çøññéçţîøñ ðîåĝñøšţîç~~~~~~~~~~⟧
@@ -764,11 +948,35 @@ host-private-row = ⟦Þŕîṽåţé Ĥøšţ~~~⟧
 host-private-username = ⟦Þŕîṽåţé ŠŠĤ ûšéŕñåɱé~~~~~~⟧
 host-private-value = ⟦Þŕîṽåţé Ĥøšţ ṽåļûé~~~~~~⟧
 host-recovery-impact = ⟦Ĥøšţ ļéåšé éṽîðéñçé: ~~~~~~~⟧{ $result }⟦; ⟧{ $peers }⟦ åûţĥéñţîçåţéð þééŕš. Å þŕîṽåţé ~~~~~~~~~~~⟧{ $bytes }⟦ ɱéţåðåţå ƀåçķûþ îš ŕéţåîñéð ƀéƒøŕé åñý çĥåñĝé.~~~~~~~~~~~~~~~~~⟧
+host-removed-status = ⟦Šåṽéð ĥøšţ ŕéɱøṽéð.~~~~~~⟧
+host-saved-groups-description = ⟦Šéļéçţ å ĝŕøûþ, ţåŕĝéţ îţ ƒøŕ ƀûļķ åššîĝñɱéñţ, øŕ ļøåð îţš ðéƒåûļţš îñţø ţĥé éðîţøŕ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-saved-groups-title = ⟦Šåṽéð Ĝŕøûþš~~~⟧
+host-search-focused-status = ⟦Ĥøšţ šéåŕçĥ ƒøçûšéð.~~~~~~⟧
 host-secret-set = ⟦Šéçŕéţ îš šéţ~~~~⟧
 host-select-action = ⟦Šéļéçţ Ĥøšţ~~~⟧
+host-selection-required-error = ⟦Šéļéçţ åţ ļéåšţ øñé ĥøšţ ƒîŕšţ.~~~~~~~~~~~⟧
+host-session-description = ⟦Çĥøøšé ŵĥéţĥéŕ ţĥîš ĥøšţ ļåñðš îñ Ţéŕɱîñåļ øŕ Ƒîļéš åƒţéŕ çøññéçţ, åñð šéţ ĥøŵ ɱåñý ţéŕɱîñåļ ŕøŵš ţø ķééþ îñ ļøçåļ šçŕøļļƀåçķ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-session-open-files-action = ⟦Øþéñ Ƒîļéš~~⟧
+host-session-open-terminal-action = ⟦Øþéñ Ţéŕɱîñåļ~~~~⟧
+host-session-title = ⟦Šéššîøñ~⟧
 host-star-action = ⟦Šţåŕ Ĥøšţ~~⟧
+host-starred-status = ⟦Ĥøšţ šţåŕŕéð.~~~~⟧
+host-startup-description = ⟦Ŵĥéñ ţĥé ŠŠĤ šĥéļļ øþéñš, ţĥé åþþ çåñ çĥåñĝé îñţø å šåṽéð ðîŕéçţøŕý åñð øþţîøñåļļý ŕûñ øñé šţåŕţûþ çøɱɱåñð.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-startup-title = ⟦Šţåŕţûþ~⟧
+host-tmux-attach-behavior-title = ⟦Åţţåçĥ ƀéĥåṽîøŕ~~~~⟧
+host-tmux-detach-others-action = ⟦Ðéţåçĥ øţĥéŕš~~~~⟧
+host-tmux-detach-others-warning = ⟦Ðéţåçĥ øţĥéŕš çåñ ðîšçøññéçţ åñøţĥéŕ ŢéŕɱîŔûšţ ŵîñðøŵ øŕ ţéŕɱîñåļ ƒŕøɱ ţĥîš ţɱûẋ šéššîøñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+host-tmux-session-name-field = ⟦Ţɱûẋ Šéššîøñ Ñåɱé~~~~~⟧
+host-tmux-share-attach-action = ⟦Šĥåŕé åţţåçĥ~~~⟧
 host-unstar-action = ⟦Ûñšţåŕ Ĥøšţ~~~⟧
+host-unstarred-status = ⟦Ĥøšţ ŕéɱøṽéð ƒŕøɱ ƒåṽøŕîţéš.~~~~~~~~~~⟧
 host-username-field = ⟦Ûšéŕñåɱé~~⟧
+host-vault-picker-title = ⟦Ṽåûļţ⟧
+hosted-session-detached = ⟦Ðéţåçĥéð; ţĥé ðûŕåƀļé šéššîøñ çøñţîñûéš îñ ţĥé ƀåçķĝŕøûñð~~~~~~~~~~~~~~~~~~~~~⟧
+hosted-session-launch-cancelled = ⟦Ļåûñçĥ çåñçéļļéð ƀéƒøŕé ţĥé ðûŕåƀļé Ĥøšţ ƀéçåɱé ŕéåðý~~~~~~~~~~~~~~~~~~~~⟧
+hosted-session-process-exited = ⟦Ðûŕåƀļé þŕøçéšš éẋîţéð; ŕéţåîñéð øûţþûţ îš ŕéåð-øñļý~~~~~~~~~~~~~~~~~~~⟧
+hosted-session-retained-read-only = ⟦Ŕéţåîñéð ðûŕåƀļé øûţþûţ îš ŕéåð-øñļý~~~~~~~~~~~~~⟧
+hosted-session-worker-start-error = ⟦Ûñåƀļé ţø šţåŕţ ðûŕåƀļé šéššîøñ ŵøŕķéŕ: ~~~~~~~~~~~~~~⟧{ $reason }
 hosts-add-action = ⟦Ñéŵ Ĥøšţ~~⟧
 hosts-add-tags-action = ⟦Åðð ţåĝš~~⟧
 hosts-agent-canvas-action = ⟦Åĝéñţ Çåñṽåš~~~⟧
@@ -793,6 +1001,34 @@ hosts-imported-count = { $count ->
    *[other] ⟦Îɱþøŕţéð ~~⟧{ $count }⟦ Ĥøšţš ƒŕøɱ ~/.ššĥ/çøñƒîĝ.~~~~~~~~~⟧
     [zero] ⟦Ñø Ĥøšţš ŵéŕé îɱþøŕţéð ƒŕøɱ ~/.ššĥ/çøñƒîĝ.~~~~~~~~~~~~~~~⟧
     }
+hosts-onboarding-add-key-action = ⟦Åðð Ķéý Ƒîļé~~~⟧
+hosts-onboarding-focus-search-action = ⟦Ƒøçûš Šéåŕçĥ~~~⟧
+hosts-onboarding-identity-count = { $count ->
+    [many] { $count }⟦ îðéñţîţîéš~~~⟧
+    [one] ⟦1 îðéñţîţý~~⟧
+   *[other] { $count }⟦ îðéñţîţîéš~~~⟧
+    [zero] ⟦0 îðéñţîţîéš~~~⟧
+    }
+hosts-onboarding-imported-count = { $count ->
+    [many] { $count }⟦ îɱþøŕţéð~~⟧
+    [one] ⟦1 îɱþøŕţéð~~⟧
+   *[other] { $count }⟦ îɱþøŕţéð~~⟧
+    [zero] ⟦0 îɱþøŕţéð~~⟧
+    }
+hosts-onboarding-quick-connect-description = ⟦Ɋûîçķ çøññéçţ ƒŕøɱ šéåŕçĥ: `ûšéŕ@ĥøšţ` øŕ `ššĥ ûšéŕ@ĥøšţ:þøŕţ`~~~~~~~~~~~~~~~~~~~~~~~⟧
+hosts-onboarding-saved-count = { $count ->
+    [many] { $count }⟦ šåṽéð~⟧
+    [one] ⟦1 šåṽéð~⟧
+   *[other] { $count }⟦ šåṽéð~⟧
+    [zero] ⟦0 šåṽéð~⟧
+    }
+hosts-onboarding-shortcuts-description = ⟦Šĥøŕţçûţš: ~~~⟧{ $modifier }⟦+1..7 ƒøŕ šéçţîøñš, ~~~~~~⟧{ $modifier }⟦+Ļ ƒøŕ ĥøšţ šéåŕçĥ, ~~~~~~⟧{ $modifier }⟦+Ķ ƒøŕ çøɱɱåñð þåļéţţé~~~~~~~⟧
+hosts-onboarding-snippet-count = { $count ->
+    [many] { $count }⟦ šñîþþéţš~~⟧
+    [one] ⟦1 šñîþþéţ~~⟧
+   *[other] { $count }⟦ šñîþþéţš~~⟧
+    [zero] ⟦0 šñîþþéţš~~⟧
+    }
 hosts-open-fleet-action = ⟦Øþéñ Ƒļééţ~~⟧
 hosts-open-fleet-tooltip = { $count ->
     [many] ⟦Øþéñ åļļ ~~⟧{ $count }⟦ ṽîšîƀļé Ĥøšţš îñ øñé ŠŠĤ Ƒļééţ çåñṽåš~~~~~~~~~~~~~~⟧
@@ -802,6 +1038,7 @@ hosts-open-fleet-tooltip = { $count ->
 hosts-provider-unavailable = { $provider }⟦ îñţéĝŕåţîøñ îš ñøţ åṽåîļåƀļé ýéţ.~~~~~~~~~~~~⟧
 hosts-quick-connect-action = ⟦Ɋûîçķ çøññéçţ~~~~⟧
 hosts-quick-connect-password-field = ⟦Øþţîøñåļ ʠûîçķ-çøññéçţ þåššŵøŕð~~~~~~~~~~~⟧
+hosts-recent-title = ⟦ŔÉÇÉÑŢ~⟧
 hosts-search-field = ⟦Šéåŕçĥ Ĥøšţš øŕ éñţéŕ ûšéŕ@ĥøšţ~~~~~~~~~~~⟧
 hosts-select-visible = ⟦Šéļéçţ ṽîšîƀļé~~~~⟧
 hosts-selected-count = { $count ->
@@ -818,6 +1055,7 @@ hosts-tags-help = ⟦Ţåĝš ĥéļþ ƒîļţéŕ Ĥøšţš åñð çåñ ƀ�
 hosts-terminal-action = ⟦Ţéŕɱîñåļ~~⟧
 hosts-title = ⟦Ĥøšţš & Çøññéçţîøñš~~~~~~⟧
 hosts-unstar-selected = ⟦Ûñšţåŕ šéļéçţéð~~~~⟧
+identity-added-status = ⟦Îðéñţîţý '~~⟧{ $identity }⟦' åððéð.~~⟧
 key-add-file-action = ⟦Åðð ķéý ƒîļé~~~⟧
 key-audit-unsaved-warning = ⟦Ţĥé ļøçåļ åûðîţ ŕéçøŕð çøûļð ñøţ ƀé šåṽéð.~~~~~~~~~~~~~~~⟧
 key-blank-passphrase-warning = ⟦Å ƀļåñķ þåššþĥŕåšé îš åļļøŵéð, ƀûţ åñ éñçŕýþţéð þŕîṽåţé ķéý îš šåƒéŕ îƒ ţĥé ƒîļé îš çøþîéð øŕ šţøļéñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
@@ -832,6 +1070,8 @@ key-deploy-action = ⟦Ðéþļøý þûƀļîç ķéý~~~~~⟧
 key-deployment-passphrase-placeholder = ⟦Þŕîṽåţé ķéý þåššþĥŕåšé, îƒ šéţ~~~~~~~~~~⟧
 key-destination-field = ⟦Ðéšţîñåţîøñ~~~⟧
 key-destination-value = ⟦Åûţĥéñţîçåţéð ûšéŕ'š ~/.ššĥ/åûţĥøŕîžéð_ķéýš~~~~~~~~~~~~~~~~⟧
+key-file-choose-status = ⟦Çĥøøšé å þŕîṽåţé ķéý ƒîļé.~~~~~~~~~⟧
+key-file-unsupported-error = ⟦Ţĥåţ ƒîļé ðøéš ñøţ ļøøķ ļîķé å šûþþøŕţéð þŕîṽåţé ķéý.~~~~~~~~~~~~~~~~~~~~⟧
 key-fingerprint-field = ⟦Ƒîñĝéŕþŕîñţ~~~⟧
 key-generate-action = ⟦Ĝéñéŕåţé ķéý~~~⟧
 key-generate-notice = ⟦ŢéŕɱîŔûšţ çŕéåţéš åñ Éð25519 þŕîṽåţé ķéý åñð ɱåţçĥîñĝ .þûƀ ƒîļé åţ ţĥé ðéšţîñåţîøñ ýøû çĥøøšé. Éẋîšţîñĝ ƒîļéš åŕé ñéṽéŕ øṽéŕŵŕîţţéñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
@@ -901,7 +1141,23 @@ keychain-password-empty-description = ⟦Šåṽé å Ĥøšţ ŵîţĥ þåšš
 keychain-password-empty-title = ⟦Ñø þåššŵøŕð îðéñţîţîéš šåṽéð~~~~~~~~~~⟧
 keychain-show-identities-action = ⟦Šĥøŵ îðéñţîţîéš~~~~⟧
 keychain-show-keys-action = ⟦Šĥøŵ ķéýš~~⟧
+known-hosts-already-removed-status = ⟦Ĥøšţ ŵåš åļŕéåðý ŕéɱøṽéð.~~~~~~~~⟧
+known-hosts-count = { $count ->
+    [many] { $count }⟦ ţŕûšţéð ĥøšţš~~~~⟧
+    [one] ⟦Øñé ţŕûšţéð ĥøšţ~~~~~⟧
+   *[other] { $count }⟦ ţŕûšţéð ĥøšţš~~~~⟧
+    [zero] ⟦Ñø ţŕûšţéð ĥøšţš~~~~~⟧
+    }
+known-hosts-description = ⟦Ĥøšţ ķéýš åŕé þîññéð øñ ƒîŕšţ çøññéçţ (ŢØƑÛ). Ŕéɱøṽé åñ éñţŕý ĥéŕé îƒ å šéŕṽéŕ ĥåš ļéĝîţîɱåţéļý çĥåñĝéð îţš ķéý.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+known-hosts-removed-status = ⟦Ŕéɱøṽéð ķñøŵñ ĥøšţ ~~~~~~⟧{ $endpoint }⟦.⟧
+known-hosts-section-ready = ⟦Ķñøŵñ Ĥøšţš ŕéåðý.~~~~~~⟧
+known-hosts-title = ⟦Ķñøŵñ Ĥøšţš~~~⟧
 last-updated = ⟦Ļåšţ ûþðåţéð ~~~~⟧{ $when }
+local-terminal-opening-status = ⟦Øþéñîñĝ ļøçåļ ţéŕɱîñåļ...~~~~~~~~⟧
+local-terminal-ready-status = ⟦Ļøçåļ ţéŕɱîñåļ ŕéåðý.~~~~~~~⟧
+local-terminal-reopening-status = ⟦Ŕéøþéñîñĝ ļøçåļ ţéŕɱîñåļ...~~~~~~~~~⟧
+local-terminal-split-launching-status = ⟦Ļåûñçĥîñĝ šþļîţ ļøçåļ ţéŕɱîñåļ...~~~~~~~~~~~~⟧
+logs-view-switched-status = ⟦Šŵîţçĥéð ţø Ļøĝš ṽîéŵ.~~~~~~~⟧
 new-session-action = ⟦Ñéŵ šéššîøñ~~~⟧
 new-session-cancel-start = ⟦Çåñçéļ šţåŕţ~~~⟧
 new-session-cancelled-clean = ⟦Šéššîøñ šţåŕţ çåñçéļļéð. Ţĥé åþþ-øŵñéð þŕøçéšš ŵåš šţøþþéð.~~~~~~~~~~~~~~~~~~~~~~⟧
@@ -979,6 +1235,7 @@ notification-summary-payload = { $count ->
     }
 notification-toggle-off = ⟦Øƒƒ⟧
 notification-toggle-on = ⟦Øñ⟧
+open-connections-action = ⟦Øþéñ Çøññéçţîøñš~~~~~⟧
 overlay-command-preview = ⟦Çøɱɱåñð: ~~⟧{ $command }
 overlay-paste-action = ⟦Þåšţé⟧
 overlay-paste-confirmation = ⟦Þåšţé ~⟧{ $count }⟦ ļîñéš îñţø ţĥé åçţîṽé þåñé?~~~~~~~~~~⟧
@@ -1000,6 +1257,11 @@ palette-snippet-detail = ⟦Šñîþþéţ · ~~⟧{ $command }
 palette-startup-path = ⟦Šţåŕţûþ þåţĥ~~~⟧
 palette-systemd-unit = ⟦Šýšţéɱð ûñîţ~~~⟧
 palette-this-target = ⟦Ţĥîš ţåŕĝéţ~~~⟧
+pane-already-own-workspace-error = ⟦Ţĥîš þåñé îš åļŕéåðý îñ îţš øŵñ ŵøŕķšþåçé.~~~~~~~~~~~~~~~⟧
+pane-closed-status = ⟦Þåñé çļøšéð.~~~⟧
+pane-detached-new-workspace-status = ⟦Þåñé ðéţåçĥéð îñţø å ñéŵ ŵøŕķšþåçé ţåƀ.~~~~~~~~~~~~~~⟧
+pane-rename-placeholder = ⟦Þåñé ñåɱé~~⟧
+pane-renamed-status = ⟦Þåñé ŕéñåɱéð ţø ~~~~~⟧{ $title }⟦.⟧
 path-unavailable = ⟦Çåññøţ øþéñ ~~~⟧{ $path }
 preset-accept-action = ⟦Åççéþţ šûĝĝéšţîøñ~~~~~⟧
 preset-accepted-status = ⟦Åððéð ðéţéçţéð þŕéšéţ ~~~~~~~⟧{ $name }⟦. Ñøţĥîñĝ ŵåš ļåûñçĥéð.~~~~~~~~⟧
@@ -1123,6 +1385,7 @@ projects-ready-status = ⟦Þŕøĵéçţ ļîƀŕåŕý ŕéåðý.~~~~~~~⟧
 projects-shortcut-description = ⟦Øþéñ Þŕøĵéçţš~~~~⟧
 projects-subtitle = ⟦Øŕĝåñîžé šţåƀļé ƒøļðéŕš ƒøŕ ļøçåļ ŵøŕķ.~~~~~~~~~~~~~~⟧
 projects-title = ⟦Þŕøĵéçţš & Šéššîøñš~~~~~~⟧
+quick-connect-auth-required-error = ⟦Ɋûîçķ çøññéçţ ñééðš å þåššŵøŕð, å šţøŕéð šýšţéɱ þåššŵøŕð, øŕ åñ ŠŠĤ ķéý îñ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧{ $directory }⟦.⟧
 recovery-confirm-action = ⟦Çøñƒîŕɱ ŕéçøṽéŕý~~~~~⟧
 recovery-description = ⟦Ŕéṽîéŵ ţĥé éẋåçţ éṽîðéñçé, åƒƒéçţéð ɱéţåðåţå, åñð þŕîṽåţé ƀåçķûþ ƀéƒøŕé ɱåķîñĝ å ŕéçøṽéŕý çĥåñĝé.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 recovery-impact = ⟦Þļåñ: ŕéšţøŕé ~~~~⟧{ $changed }⟦ ɱéţåðåţå ƒîļéš, ļéåṽé ~~~~~~~~⟧{ $unchanged }⟦ ûñçĥåñĝéð, åñð ŕéţåîñ å þŕîṽåţé ~~~~~~~~~~~~⟧{ $bytes }⟦ çûŕŕéñţ-šţåţé ƀåçķûþ.~~~~~~~⟧
@@ -1251,6 +1514,16 @@ session-count = { $count ->
    *[other] { $count }⟦ åçţîṽé šéššîøñš~~~~~⟧
     [zero] ⟦Ñø åçţîṽé šéššîøñš~~~~~~⟧
     }
+session-history-active-status = ⟦Åçţîṽé~⟧
+session-history-count = { $count ->
+    [many] { $count }⟦ šéššîøñš~~⟧
+    [one] ⟦Øñé šéššîøñ~~~⟧
+   *[other] { $count }⟦ šéššîøñš~~⟧
+    [zero] ⟦Ñø šéššîøñš~~~⟧
+    }
+session-history-section-ready = ⟦Ļøĝš ŕéåðý.~~~⟧
+session-history-started-duration = ⟦Šţåŕţéð ~~⟧{ $started }⟦  Ðûŕåţîøñ ~~~⟧{ $duration }
+session-history-title = ⟦Šéššîøñ Ĥîšţøŕý~~~~⟧
 session-library-active-view = ⟦Åçţîṽé~⟧
 session-library-activity-busy = ⟦Ɓûšý⟧
 session-library-activity-done = ⟦Ðøñé⟧
@@ -1335,6 +1608,7 @@ session-sidebar-empty = ⟦Ñø šéššîøñš ƒøŕ ţĥîš Þŕøĵéçţ 
 session-sidebar-select-project = ⟦Šéļéçţ å Þŕøĵéçţ ţø øŕĝåñîžé îţš šéššîøñš.~~~~~~~~~~~~~~~⟧
 session-sidebar-subtitle = ⟦Øŕĝåñîžé šéššîøñ ŕéçøŕðš ŵîţĥøûţ çĥåñĝîñĝ ŕûññîñĝ þŕøçéššéš øŕ ŵøŕķîñĝ ðîŕéçţøŕîéš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 session-sidebar-title = ⟦Šéššîøñš~~⟧
+sessions-section-ready = ⟦Šéššîøñš ŕéåðý.~~~~⟧
 settings-approve-mobile-action = ⟦Åþþŕøṽé ɱøƀîļé ðéṽîçé~~~~~~~⟧
 settings-attempts-option = { $count }⟦ åţţéɱþţš~~⟧
 settings-auto-copy-value = ⟦Åûţø çøþý~~⟧
@@ -1550,33 +1824,61 @@ settings-welcome-reset-status = ⟦Ŵéļçøɱé þåñéļ ŕéšéţ. Øþé�
 settings-welcome-visible = ⟦Ŵéļçøɱé þåñéļ ṽîšîƀļé~~~~~~~⟧
 sftp-back-terminal-action = ⟦Ɓåçķ ţø ţéŕɱîñåļ~~~~~⟧
 sftp-cancel-transfer-action = ⟦Çåñçéļ ţŕåñšƒéŕ~~~~⟧
+sftp-cancelled-before-start-status = ⟦Çåñçéļļéð ƀéƒøŕé ţŕåñšƒéŕ šţåŕţéð~~~~~~~~~~~~⟧
+sftp-cancelled-resumable-status = ⟦Çåñçéļļéð; ṽéŕîƒîéð šţåĝîñĝ çåñ ƀé ŕéšûɱéð~~~~~~~~~~~~~~~⟧
 sftp-checksum = ⟦ŠĤÅ-256 ~~⟧{ $checksum }
 sftp-close-host-picker-action = ⟦Ɓåçķ ţø ƒîļéš~~~~⟧
 sftp-column-kind = ⟦Ķîñð⟧
 sftp-column-modified = ⟦Ðåţé ɱøðîƒîéð~~~~⟧
 sftp-column-name = ⟦Ñåɱé⟧
 sftp-column-size = ⟦Šîžé⟧
+sftp-conflict-choice-status = ⟦Çĥøøšé Ŕéþļåçé, Šķîþ, øŕ Ŕéšûɱé ƀéƒøŕé ţĥé ţŕåñšƒéŕ çåñ çøñţîñûé.~~~~~~~~~~~~~~~~~~~~~~~~⟧
 sftp-conflict-description = ⟦Ţĥé ðéšţîñåţîøñ çøñţåîñš ~~~~~~~~⟧{ $size }⟦. Ñøţĥîñĝ ĥåš ƀééñ çĥåñĝéð.~~~~~~~~~⟧
 sftp-connect-empty-description = ⟦Šéļéçţ å šåṽéð ŠŠĤ Ĥøšţ ţø ɱåñåĝé îţš ƒîļéš ŵîţĥ ŠƑŢÞ.~~~~~~~~~~~~~~~~~~~~⟧
 sftp-connect-empty-title = ⟦Çøññéçţ ţø å Ĥøšţ~~~~~⟧
 sftp-connect-host-action = ⟦Çøññéçţ ţø Ĥøšţ~~~~⟧
 sftp-delete-action = ⟦Ðéļéţé~⟧
+sftp-delete-selection-required-error = ⟦Šéļéçţ å ŕéɱøţé ƒîļé øŕ ƒøļðéŕ ƒîŕšţ.~~~~~~~~~~~~~⟧
+sftp-delete-start-error = ⟦Ûñåƀļé ţø šţåŕţ ŕéɱøţé ðéļéţé: ~~~~~~~~~~~⟧{ $reason }
+sftp-deleting-path-status = ⟦Ðéļéţîñĝ ~~⟧{ $path }⟦...⟧
+sftp-destination-exists-status = ⟦Ðéšţîñåţîøñ åļŕéåðý éẋîšţš~~~~~~~~~⟧
 sftp-directory-empty-description = ⟦Øþéñ åñøţĥéŕ ðîŕéçţøŕý, ûþļøåð å ƒîļé, øŕ ŕéţûŕñ ţø ţĥé ţéŕɱîñåļ.~~~~~~~~~~~~~~~~~~~~~~~~⟧
 sftp-directory-empty-title = ⟦Ţĥîš ðîŕéçţøŕý îš éɱþţý~~~~~~~~⟧
+sftp-directory-load-start-error = ⟦Ûñåƀļé ţø šţåŕţ ŕéɱøţé ðîŕéçţøŕý ļøåð: ~~~~~~~~~~~~~~⟧{ $reason }
 sftp-download-action = ⟦Ðøŵñļøåð~~⟧
+sftp-download-complete-digest-status = ⟦Ðøŵñļøåð çøɱþļéţé. ŠĤÅ-256 ~~~~~~~~~⟧{ $digest }⟦...⟧
+sftp-download-complete-verified-status = ⟦Ðøŵñļøåð çøɱþļéţé åñð ṽéŕîƒîéð~~~~~~~~~~⟧
+sftp-download-in-progress-status = ⟦Ðøŵñļøåð îñ þŕøĝŕéšš~~~~~~⟧
+sftp-download-published-cleanup-warning-status = ⟦Ðøŵñļøåð þûƀļîšĥéð åñð ṽéŕîƒîéð, ƀûţ åñ åþþ-øŵñéð ƀåçķûþ çøûļð ñøţ ƀé ŕéɱøṽéð.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+sftp-download-queued-behind-status = { $count ->
+    [many] ⟦Ðøŵñļøåð ʠûéûéð ƀéĥîñð ~~~~~~~~⟧{ $count }⟦ ţŕåñšƒéŕš~~⟧
+    [one] ⟦Ðøŵñļøåð ʠûéûéð ƀéĥîñð øñé ţŕåñšƒéŕ~~~~~~~~~~~~⟧
+   *[other] ⟦Ðøŵñļøåð ʠûéûéð ƀéĥîñð ~~~~~~~~⟧{ $count }⟦ ţŕåñšƒéŕš~~⟧
+    [zero] ⟦Ðøŵñļøåð šţåŕţîñĝ...~~~~~~⟧
+    }
+sftp-download-resuming-status = ⟦Ŕéšûɱîñĝ ðøŵñļøåð~~~~~⟧
+sftp-download-start-error = ⟦Ûñåƀļé ţø šţåŕţ ðøŵñļøåð: ~~~~~~~~~⟧{ $reason }
+sftp-download-starting-status = ⟦Ðøŵñļøåð šţåŕţîñĝ...~~~~~~⟧
+sftp-download-verified-cleanup-needed-status = ⟦Ðøŵñļøåð ṽéŕîƒîéð; øļð ƀåçķûþ çļéåñûþ îš šţîļļ ñééðéð~~~~~~~~~~~~~~~~~~~~⟧
 sftp-file-kind = ⟦Ƒîļé⟧
+sftp-file-selection-required-error = ⟦Šéļéçţ å ŕéɱøţé ƒîļé ƒîŕšţ.~~~~~~~~~⟧
 sftp-filter-action = ⟦Ƒîļţéŕ~⟧
 sftp-filter-field = ⟦Ƒîļţéŕ ļøçåļ ƒîļéš~~~~~~⟧
+sftp-folder-download-unsupported-error = ⟦Ƒøļðéŕš åŕé ñøţ ðøŵñļøåðåƀļé ýéţ. Øþéñ ţĥé ƒøļðéŕ îñšţéåð.~~~~~~~~~~~~~~~~~~~~~~⟧
 sftp-folder-kind = ⟦Ƒøļðéŕ~⟧
+sftp-folder-required-error = ⟦Øñļý ƒøļðéŕš çåñ ƀé øþéñéð îñ ţĥé ŕéɱøţé ƀŕøŵšéŕ.~~~~~~~~~~~~~~~~~~⟧
+sftp-folder-selection-required-error = ⟦Šéļéçţ å ƒøļðéŕ ƒîŕšţ.~~~~~~~⟧
 sftp-host-picker-title = ⟦Šéļéçţ åñ ŠƑŢÞ Ĥøšţ~~~~~~⟧
 sftp-host-summary = ⟦ŠŠĤ · ~⟧{ $username }⟦@⟧{ $endpoint }
 sftp-library-title = ⟦Ļøçåļ åñð ŕéɱøţé ƒîļéš~~~~~~~⟧
 sftp-loading-directory = ⟦Ļøåðîñĝ ŕéɱøţé ðîŕéçţøŕý…~~~~~~~~⟧
+sftp-loading-endpoint-status = ⟦Ļøåðîñĝ ŕéɱøţé ƒîļéš ƒŕøɱ ~~~~~~~~~⟧{ $endpoint }⟦...⟧
 sftp-local-pane = ⟦Ļøçåļ ƒîļéš~~~⟧
 sftp-open-files-action = ⟦Øþéñ ƒîļéš~~⟧
 sftp-open-folder-action = ⟦Øþéñ ƒøļðéŕ~~~⟧
 sftp-open-local-action = ⟦Øþéñ îñ ƒîļé ɱåñåĝéŕ~~~~~~⟧
 sftp-opened-local-folder = ⟦Øþéñéð ~⟧{ $path }⟦ îñ ţĥé šýšţéɱ ƒîļé ɱåñåĝéŕ.~~~~~~~~~~⟧
+sftp-opening-path-status = ⟦Øþéñîñĝ ~~⟧{ $path }⟦...⟧
 sftp-parent-action = ⟦Þåŕéñţ ðîŕéçţøŕý~~~~~⟧
 sftp-private-entry = ⟦Þŕîṽåţé ƒîļé éñţŕý~~~~~~⟧
 sftp-private-host = ⟦Þŕîṽåţé ŠƑŢÞ Ĥøšţ~~~~~⟧
@@ -1598,6 +1900,7 @@ sftp-select-host-action = ⟦Šéļéçţ Ĥøšţ~~~⟧
 sftp-selected-file = ⟦Šéļéçţéð ƒîļé: ~~~~⟧{ $path }⟦ · ⟧{ $size }
 sftp-selected-folder = ⟦Šéļéçţéð ƒøļðéŕ: ~~~~~⟧{ $path }
 sftp-skip-action = ⟦Šķîþ⟧
+sftp-ssh-session-required-error = ⟦Ŕéɱøţé ƒîļéš åŕé øñļý åṽåîļåƀļé ƒøŕ ŠŠĤ šéššîøñš.~~~~~~~~~~~~~~~~~~⟧
 sftp-state-cancel-requested = ⟦Çåñçéļļåţîøñ ŕéʠûéšţéð. Ŵåîţîñĝ ƒøŕ ţĥé ţŕåñšƒéŕ ƀøûñðåŕý…~~~~~~~~~~~~~~~~~~~~~~⟧
 sftp-state-cancelled = ⟦Ţŕåñšƒéŕ çåñçéļļéð. Ŕéṽîéŵ ŕéţåîñéð šţåĝîñĝ éṽîðéñçé ƀéƒøŕé ŕéţŕýîñĝ.~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 sftp-state-completed = ⟦Ţŕåñšƒéŕ çøɱþļéţé åñð ṽéŕîƒîéð.~~~~~~~~~~~⟧
@@ -1621,29 +1924,59 @@ sftp-state-timeout = ⟦Ţĥé ŠƑŢÞ øþéŕåţîøñ ţîɱéð øûţ. É
 sftp-state-transferring = ⟦Ţŕåñšƒéŕŕîñĝ ƒîļé ðåţå…~~~~~~~~⟧
 sftp-symlink-kind = ⟦Šýɱļîñķ~⟧
 sftp-syncing-status = ⟦Šýñçîñĝ~⟧
+sftp-terminal-view-status = ⟦Ɓåçķ ţø ţéŕɱîñåļ ṽîéŵ.~~~~~~~⟧
+sftp-transfer-action-invalid-error = ⟦Ţĥé šéļéçţéð ŠƑŢÞ åçţîøñ îš ñøţ å ţŕåñšƒéŕ.~~~~~~~~~~~~~~~~⟧
+sftp-transfer-active-error = ⟦Ƒîñîšĥ øŕ çåñçéļ ţĥé çûŕŕéñţ ţŕåñšƒéŕ ƀéƒøŕé šţåŕţîñĝ åñøţĥéŕ ĥéŕé.~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+sftp-transfer-cancel-requested-status = ⟦ŠƑŢÞ ţŕåñšƒéŕ çåñçéļļåţîøñ ŕéʠûéšţéð.~~~~~~~~~~~~~⟧
+sftp-transfer-cancelled-status = ⟦ŠƑŢÞ ţŕåñšƒéŕ çåñçéļļéð.~~~~~~~~⟧
 sftp-transfer-progress = { $transferred }⟦ øƒ ⟧{ $total }⟦ · ⟧{ $percent }⟦%⟧
 sftp-transfer-progress-resumed = { $transferred }⟦ øƒ ⟧{ $total }⟦ · ⟧{ $percent }⟦% · ŕéšûɱéð åţ ~~~~⟧{ $resumed }
+sftp-transfer-queued-download = ⟦Ðøŵñļøåð ʠûéûéð~~~~⟧
+sftp-transfer-queued-upload = ⟦Ûþļøåð ʠûéûéð~~~~⟧
+sftp-transfer-skipped-download = ⟦Ðøŵñļøåð šķîþþéð; ðéšţîñåţîøñ ŵåš ûñçĥåñĝéð.~~~~~~~~~~~~~~~~⟧
+sftp-transfer-skipped-upload = ⟦Ûþļøåð šķîþþéð; ðéšţîñåţîøñ ŵåš ûñçĥåñĝéð.~~~~~~~~~~~~~~~⟧
 sftp-transfer-waiting = ⟦ŵåîţîñĝ~⟧
 sftp-upload-action = ⟦Ûþļøåð~⟧
+sftp-upload-complete-digest-status = ⟦Ûþļøåð çøɱþļéţé. ŠĤÅ-256 ~~~~~~~~⟧{ $digest }⟦...⟧
+sftp-upload-complete-verified-status = ⟦Ûþļøåð çøɱþļéţé åñð ṽéŕîƒîéð~~~~~~~~~~⟧
+sftp-upload-in-progress-status = ⟦Ûþļøåð îñ þŕøĝŕéšš~~~~~~⟧
+sftp-upload-published-cleanup-warning-status = ⟦Ûþļøåð þûƀļîšĥéð åñð ṽéŕîƒîéð, ƀûţ åñ åþþ-øŵñéð ƀåçķûþ çøûļð ñøţ ƀé ŕéɱøṽéð.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+sftp-upload-queued-behind-status = { $count ->
+    [many] ⟦Ûþļøåð ʠûéûéð ƀéĥîñð ~~~~~~~⟧{ $count }⟦ ţŕåñšƒéŕš~~⟧
+    [one] ⟦Ûþļøåð ʠûéûéð ƀéĥîñð øñé ţŕåñšƒéŕ~~~~~~~~~~~~⟧
+   *[other] ⟦Ûþļøåð ʠûéûéð ƀéĥîñð ~~~~~~~⟧{ $count }⟦ ţŕåñšƒéŕš~~⟧
+    [zero] ⟦Ûþļøåð šţåŕţîñĝ...~~~~~~⟧
+    }
+sftp-upload-resuming-status = ⟦Ŕéšûɱîñĝ ûþļøåð~~~~⟧
+sftp-upload-start-error = ⟦Ûñåƀļé ţø šţåŕţ ûþļøåð: ~~~~~~~~⟧{ $reason }
+sftp-upload-starting-status = ⟦Ûþļøåð šţåŕţîñĝ...~~~~~~⟧
+sftp-upload-verified-cleanup-needed-status = ⟦Ûþļøåð ṽéŕîƒîéð; øļð ƀåçķûþ çļéåñûþ îš šţîļļ ñééðéð~~~~~~~~~~~~~~~~~~~⟧
 sftp-workspace-local-description = ⟦ŠƑŢÞ åþþļîéš øñļý ţø ŠŠĤ Ĥøšţš. Ŕéţûŕñ ţø ţĥé ţéŕɱîñåļ ţø çøñţîñûé ļøçåļ ŵøŕķ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 sftp-workspace-local-title = ⟦Ŕéɱøţé ƒîļéš åŕé ûñåṽåîļåƀļé ƒøŕ ļøçåļ šĥéļļš~~~~~~~~~~~~~~~~⟧
 sftp-workspace-open-description = ⟦Ɓŕøŵšé ţĥîš ŠŠĤ Ĥøšţ øṽéŕ ŠƑŢÞ, ûþļøåð øŕ ðøŵñļøåð ƒîļéš, øŕ ŕéţûŕñ ţø ţĥé ţéŕɱîñåļ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 sftp-workspace-open-title = ⟦Øþéñ ƒîļéš ƒøŕ ţĥîš Ĥøšţ~~~~~~~~⟧
 sftp-workspace-title = ⟦Ŕéɱøţé ƒîļéš~~~⟧
 shell-app-title = ⟦ŢéŕɱîŔûšţ~~⟧
+shell-bulk-group-placeholder = ⟦Ɓûļķ ĝŕøûþ ñåɱé~~~~⟧
+shell-connect-username-placeholder = ⟦Ûšéŕñåɱé~~⟧
+shell-create-host-address-placeholder = ⟦Ţýþé ÎÞ øŕ Ĥøšţñåɱé~~~~~~⟧
 shell-duplicate-window-error = ⟦Ûñåƀļé ţø øþéñ ðûþļîçåţé ŵîñðøŵ: ~~~~~~~~~~~~⟧{ $reason }
 shell-duplicate-window-progress = ⟦Ðûþļîçåţîñĝ ~~~⟧{ $target }⟦ îñ å ñéŵ ŵîñðøŵ…~~~~~⟧
+shell-host-search-placeholder = ⟦Ƒîñð å ĥøšţ, ĝŕøûþ, ţåĝ, øŕ ššĥ ûšéŕ@ĥøšţñåɱé...~~~~~~~~~~~~~~~~~~⟧
 shell-layout-canvas-label = ⟦Çåñṽåš~⟧
 shell-layout-canvas-tooltip = ⟦Åŕŕåñĝé ţéŕɱîñåļš åñð åĝéñţš øñ å çåñṽåš~~~~~~~~~~~~~~⟧
 shell-layout-split-label = ⟦Šþļîţ⟧
 shell-layout-split-tooltip = ⟦Åŕŕåñĝé ţĥîš ŵøŕķšþåçé åš šþļîţ þåñéš~~~~~~~~~~~~~⟧
 shell-palette-result = ⟦Þåļéţţé ŕéšûļţ~~~~⟧
+shell-quick-connect-password-placeholder = ⟦Þåššŵøŕð~~⟧
 shell-region-content = ⟦Çûŕŕéñţ çøñţéñţ~~~~⟧
 shell-region-inspector = ⟦Îñšþéçţøŕ~~⟧
 shell-region-primary-navigation = ⟦Þŕîɱåŕý ñåṽîĝåţîøñ~~~~~~⟧
 shell-region-status = ⟦Åþþļîçåţîøñ šţåţûš~~~~~~⟧
 shell-region-window-chrome = ⟦Ŵîñðøŵ çøñţŕøļš åñð ŵøŕķšþåçéš~~~~~~~~~~⟧
+shell-sftp-filter-placeholder = ⟦Ƒîļţéŕ ƒîļéš~~~⟧
 shell-skip-content = ⟦Šķîþ ţø çûŕŕéñţ çøñţéñţ~~~~~~~~⟧
+shell-terminal-search-placeholder = ⟦Šéåŕçĥ ţéŕɱîñåļ øûţþûţ~~~~~~~⟧
 shell-tmux-fallback = ⟦ŢéŕɱîŔûšţ øþéñéð å ñøŕɱåļ šĥéļļ ƒøŕ ñøŵ.~~~~~~~~~~~~~~⟧
 shell-tmux-install-generic = ⟦Îñšţåļļ ţɱûẋ ŵîţĥ ţĥîš šýšţéɱ þåçķåĝé ɱåñåĝéŕ.~~~~~~~~~~~~~~~~~⟧
 shell-tmux-install-guidance = ⟦Îñšţåļļ ţɱûẋ øñ ţĥé ŕéɱøţé ɱåçĥîñé, ţĥéñ ŕéçøññéçţ:~~~~~~~~~~~~~~~~~~~⟧
@@ -1670,6 +2003,9 @@ snippet-error-stale = ⟦Ţĥé šéļéçţéð Šñîþþéţ çĥåñĝéð �
 snippet-error-stale-terminal = ⟦Ţĥé šéļéçţéð Šñîþþéţ øŕ ţéŕɱîñåļ çĥåñĝéð. Ŕéṽîéŵ ţĥé îñšéŕţîøñ åĝåîñ.~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 snippet-error-terminal-required = ⟦Øþéñ åñð ƒøçûš å ţéŕɱîñåļ ƀéƒøŕé îñšéŕţîñĝ å Šñîþþéţ.~~~~~~~~~~~~~~~~~~~~⟧
 snippet-group-field = ⟦Ĝŕøûþ⟧
+snippet-input-command-placeholder = ⟦šûðø šýšţéɱçţļ ŕéšţåŕţ åþþ~~~~~~~~~⟧
+snippet-input-group-placeholder = ⟦Øþš / Ðéþļøý~~~⟧
+snippet-input-label-placeholder = ⟦Ŕéšţåŕţ šéŕṽîçé~~~~⟧
 snippet-insert-action = ⟦Îñšéŕţ åš ţéẋţ~~~~⟧
 snippet-insert-cancelled = ⟦Šñîþþéţ îñšéŕţîøñ çåñçéļļéð. Ñø ţéŕɱîñåļ ţéẋţ ŵåš šéñţ.~~~~~~~~~~~~~~~~~~~~⟧
 snippet-insert-review-summary = { $count ->
@@ -1709,20 +2045,32 @@ snippet-select-action = ⟦Šéļéçţ Šñîþþéţ~~~~⟧
 snippet-unpin-action-label = ⟦Ûñþîñ⟧
 snippet-unpinned-status = ⟦Šñîþþéţ ŕéɱøṽéð ƒŕøɱ ŵøŕķšþåçé ʠûîçķ åçţîøñš.~~~~~~~~~~~~~~~~⟧
 snippets-title = ⟦Šñîþþéţš~~⟧
+ssh-config-host-read-only-status = ⟦Îɱþøŕţéð ŠŠĤ çøñƒîĝ ĥøšţš åŕé ŕéåð ƒŕøɱ ~~~~~~~~~~~~~~⟧{ $path }⟦. Éðîţ ţĥé çøñƒîĝ øŕ šåṽé å ļøçåļ çøþý îñšţéåð.~~~~~~~~~~~~~~~~~⟧
 status-connecting = ⟦Çøññéçţîñĝ ţø ~~~~⟧{ $host }⟦…⟧
 status-ready = ⟦Ŕéåðý⟧
 terminal-announcement-attention = ⟦Ţéŕɱîñåļ ñééðš åţţéñţîøñ~~~~~~~~⟧
 terminal-announcement-gap = ⟦Ŕéţåîñéð ţéŕɱîñåļ øûţþûţ ĥåš å ĝåþ~~~~~~~~~~~~⟧
 terminal-announcement-output = ⟦Ñéŵ ţéŕɱîñåļ øûţþûţ îš åṽåîļåƀļé~~~~~~~~~~~⟧
 terminal-announcement-truncated = ⟦Øļðéŕ ţéŕɱîñåļ ŕéṽîéŵ øûţþûţ ŵåš ŕéɱøṽéð~~~~~~~~~~~~~~⟧
+terminal-cleared-status = ⟦Ţéŕɱîñåļ çļéåŕéð.~~~~~⟧
 terminal-exit-action = ⟦Ļéåṽé ţéŕɱîñåļ ƒøçûš~~~~~~⟧
 terminal-input-action = ⟦Ûšé ţéŕɱîñåļ îñþûţ~~~~~~⟧
+terminal-multiline-paste-confirm-status = { $count ->
+    [many] { $count }⟦ ļîñéš øñ ţĥé çļîþƀøåŕð. Çøñƒîŕɱ ţø šéñð ţø ţĥé åçţîṽé þåñé.~~~~~~~~~~~~~~~~~~~~~~⟧
+    [one] ⟦Øñé ļîñé îš øñ ţĥé çļîþƀøåŕð. Çøñƒîŕɱ ţø šéñð îţ ţø ţĥé åçţîṽé þåñé.~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+   *[other] { $count }⟦ ļîñéš øñ ţĥé çļîþƀøåŕð. Çøñƒîŕɱ ţø šéñð ţø ţĥé åçţîṽé þåñé.~~~~~~~~~~~~~~~~~~~~~~⟧
+    [zero] ⟦Ñø ļîñéš åŕé øñ ţĥé çļîþƀøåŕð.~~~~~~~~~~⟧
+    }
+terminal-multiline-paste-delivered-status = ⟦Ṁûļţî-ļîñé þåšţé ðéļîṽéŕéð.~~~~~~~~~⟧
 terminal-pane = ⟦Ţéŕɱîñåļ þåñé~~~~⟧
+terminal-paste-cancelled-status = ⟦Þåšţé çåñçéļļéð.~~~~~⟧
 terminal-read-only = ⟦Ŕéåð øñļý~~⟧
 terminal-review-action = ⟦Ŕéṽîéŵ ţéŕɱîñåļ øûţþûţ~~~~~~~⟧
 terminal-review-cursor = ⟦Ţéŕɱîñåļ ŕéṽîéŵ þøšîţîøñ~~~~~~~~⟧
 terminal-review-next = ⟦Ñéẋţ ŕéṽîéŵ ļîñé~~~~~⟧
 terminal-review-previous = ⟦Þŕéṽîøûš ŕéṽîéŵ ļîñé~~~~~~⟧
+terminal-selection-copied-status = ⟦Šéļéçţîøñ çøþîéð ţø çļîþƀøåŕð.~~~~~~~~~~⟧
+terminal-ssh-input-send-error = ⟦Ûñåƀļé ţø šéñð îñþûţ ţø ţĥé ŠŠĤ ŕûñţîɱé.~~~~~~~~~~~~~~⟧
 terminal-state-backpressured = ⟦Îñþûţ ƀåçķþŕéššûŕéð~~~~~~⟧
 terminal-state-connecting = ⟦Çøññéçţîñĝ~~⟧
 terminal-state-detached = ⟦Ðéţåçĥéð~~⟧
@@ -1735,6 +2083,7 @@ terminal-state-permission-denied = ⟦Þéŕɱîššîøñ ðéñîéð~~~~~⟧
 terminal-state-recovery = ⟦Ŕéçøṽéŕîñĝ~~⟧
 terminal-state-replaying = ⟦Ŕéþļåýîñĝ šåṽéð øûţþûţ~~~~~~~⟧
 terminal-writer-held = ⟦Ŵŕîţéŕ~⟧
+tmux-session-deleted-status = ⟦Ðéļéţéð ţɱûẋ šéššîøñ ~~~~~~~⟧{ $session }⟦.⟧
 transcript-export-action = ⟦Éẋþøŕţ ţŕåñšçŕîþţ~~~~~⟧
 transcript-export-unavailable-contract = ⟦Ûñåṽåîļåƀļé: ñø åþþŕøṽéð ţŕåñšçŕîþţ çøñţŕåçţ éẋîšţš ƒøŕ ţĥîš þŕøṽîðéŕ åñð ṽéŕšîøñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 transcript-export-unavailable-pending = ⟦Ûñåṽåîļåƀļé: ţĥîš ţŕåñšçŕîþţ çøñţŕåçţ îš åŵåîţîñĝ åþþŕøṽåļ.~~~~~~~~~~~~~~~~~~~~~~⟧
@@ -1755,6 +2104,8 @@ vault-host-count = { $count ->
    *[other] { $count }⟦ Ĥøšţš~⟧
     [zero] ⟦Ñø Ĥøšţš~~⟧
     }
+vault-input-description-placeholder = ⟦Šĥåŕéð îñƒŕåšţŕûçţûŕé åççéšš~~~~~~~~~~⟧
+vault-input-label-placeholder = ⟦Øþš Ţéåɱ~~⟧
 vault-key-count = { $count ->
     [many] { $count }⟦ ķéýš⟧
     [one] ⟦1 ķéý⟧
@@ -1797,9 +2148,11 @@ vault-member-count = { $count ->
     }
 vault-member-delete-action = ⟦Ŕéɱøṽé ɱéɱƀéŕ~~~~⟧
 vault-member-email-field = ⟦Ṁéɱƀéŕ éɱåîļ~~~⟧
+vault-member-email-placeholder = ⟦åļéẋ@çøɱþåñý.çøɱ~~~~~⟧
 vault-member-email-required = ⟦Ṁéɱƀéŕ éɱåîļ îš ŕéʠûîŕéð.~~~~~~~~⟧
 vault-member-loaded = ⟦Ļøåðéð Ṽåûļţ ɱéɱƀéŕ.~~~~~~⟧
 vault-member-name-field = ⟦Ṁéɱƀéŕ ñåɱé~~~⟧
+vault-member-name-placeholder = ⟦Åļéẋ Ŕîṽéŕå~~~⟧
 vault-member-name-required = ⟦Ṁéɱƀéŕ ñåɱé øŕ éɱåîļ îš ŕéʠûîŕéð.~~~~~~~~~~~~⟧
 vault-member-private-row = ⟦Þŕîṽåţé ɱéɱƀéŕ~~~~⟧
 vault-member-removed = ⟦Ṽåûļţ ɱéɱƀéŕ ŕéɱøṽéð.~~~~~~~⟧
@@ -1827,6 +2180,29 @@ vault-snippet-count = { $count ->
     }
 vaults-description = ⟦Ṽåûļţš åŕé ţĥé ţøþ-ļéṽéļ çøñţåîñéŕš ƒøŕ Ĥøšţš, îðéñţîţîéš, åñð Šñîþþéţš. Šĥåŕéð Ṽåûļţš åŕé ļøçåļ-øñļý ɱéţåðåţå ƒøŕ ñøŵ; šýñç çøɱéš ļåţéŕ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 vaults-title = ⟦Ṽåûļţš~⟧
+workspace-broadcast-disabled-status = ⟦Ɓŕøåðçåšţ îñþûţ ðîšåƀļéð.~~~~~~~~⟧
+workspace-broadcast-enabled-status = ⟦Ɓŕøåðçåšţîñĝ îñþûţ ţø éṽéŕý þåñé îñ ţĥîš ŵøŕķšþåçé.~~~~~~~~~~~~~~~~~~~⟧
+workspace-broadcast-started-status = ⟦Ṁûļţîþļåýéŕ-šţýļé ƀŕøåðçåšţ îñþûţ šţåŕţéð ƒøŕ ţĥîš ŵøŕķšþåçé.~~~~~~~~~~~~~~~~~~~~~~~⟧
+workspace-closed-status = ⟦Ŵøŕķšþåçé çļøšéð.~~~~~⟧
+workspace-closed-to-hosts-status = ⟦Ŵøŕķšþåçé çļøšéð. Ɓåçķ ţø ĥøšţš.~~~~~~~~~~~⟧
+workspace-disconnecting-status = ⟦Ðîšçøññéçţîñĝ ŵøŕķšþåçé...~~~~~~~~~⟧
+workspace-duplicating-new-tab-status = ⟦Ðûþļîçåţîñĝ ~~~⟧{ $endpoint }⟦ îñ å ñéŵ ţåƀ...~~~~~⟧
+workspace-merge-canvas-selection-error = ⟦Ţĥîš ţåƀ ĥåš Çåñṽåš šéššîøñš ţĥåţ åŕé ñøţ šéļéçţéð ƒøŕ Šþļîţ. Øþéñ ţĥé ţåƀ åñð çĥøøšé ŵĥîçĥ šéššîøñš ţø ɱøṽé ƀéƒøŕé ɱéŕĝîñĝ îţ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+workspace-merged-into-split-status = ⟦Ṁéŕĝéð ţåƀ îñţø å šþļîţ.~~~~~~~~⟧
+workspace-no-disconnected-panes-status = ⟦Ñø ðîšçøññéçţéð þåñéš ţø ŕéçøññéçţ.~~~~~~~~~~~~⟧
+workspace-reconnecting-panes-status = { $count ->
+    [many] ⟦Ŕéçøññéçţîñĝ ~~~~⟧{ $count }⟦ þåñéš...~~⟧
+    [one] ⟦Ŕéçøññéçţîñĝ øñé þåñé...~~~~~~~~⟧
+   *[other] ⟦Ŕéçøññéçţîñĝ ~~~~⟧{ $count }⟦ þåñéš...~~⟧
+    [zero] ⟦Ñø þåñéš ŕéçøññéçţîñĝ.~~~~~~~⟧
+    }
+workspace-rename-placeholder = ⟦Ŵøŕķšþåçé ñåɱé~~~~⟧
+workspace-renamed-status = ⟦Ŵøŕķšþåçé ŕéñåɱéð ţø ~~~~~~~⟧{ $title }⟦.⟧
+workspace-restore-many-many-status = ⟦Ŕéšţøŕéð ~~⟧{ $workspaces }⟦ ŵøŕķšþåçéš åñð ~~~~~⟧{ $panes }⟦ þåñéš.~⟧
+workspace-restore-many-one-status = ⟦Ŕéšţøŕéð ~~⟧{ $workspaces }⟦ ŵøŕķšþåçéš åñð øñé þåñé.~~~~~~~~⟧
+workspace-restore-one-many-status = ⟦Ŕéšţøŕéð øñé ŵøŕķšþåçé åñð ~~~~~~~~~⟧{ $panes }⟦ þåñéš.~⟧
+workspace-restore-one-one-status = ⟦Ŕéšţøŕéð øñé ŵøŕķšþåçé åñð øñé þåñé.~~~~~~~~~~~~~⟧
+workspace-split-cap-error = ⟦Šþļîţ þåñéš åŕé çåþþéð åţ ~~~~~~~~~⟧{ $limit }⟦ ƒøŕ ñøŵ.~~⟧
 worktree-base-field = ⟦Ɓåšé ƀŕåñçĥ øŕ ŕéƒ~~~~~~⟧
 worktree-base-placeholder = ⟦Ļéåṽé éɱþţý ţø ûšé ţĥé çøñƒîĝûŕéð ɱåîñļîñé~~~~~~~~~~~~~~~⟧
 worktree-branch-field = ⟦Ñéŵ ƀŕåñçĥ~~⟧

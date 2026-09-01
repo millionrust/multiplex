@@ -1114,18 +1114,14 @@ impl TermiRustApp {
                             .text_size(px(22.))
                             .font_semibold()
                             .text_color(theme::text_main())
-                            .child("Known Hosts"),
+                            .child(localization::known_hosts_title()),
                     )
                     .when(!entries.is_empty(), |this| {
                         this.child(
                             div()
                                 .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                 .text_color(theme::text_muted())
-                                .child(format!(
-                                    "{} trusted {}",
-                                    entries.len(),
-                                    if entries.len() == 1 { "host" } else { "hosts" }
-                                )),
+                                .child(localization::known_hosts_count(entries.len())),
                         )
                     }),
             )
@@ -1134,7 +1130,7 @@ impl TermiRustApp {
                     .text_size(px(14.))
                     .line_height(relative(1.5))
                     .text_color(theme::text_muted())
-                    .child("Host keys are pinned on first connect (TOFU). Remove an entry here if a server has legitimately changed its key."),
+                    .child(localization::known_hosts_description()),
             )
             .child(
                 v_flex()
@@ -1193,15 +1189,15 @@ impl TermiRustApp {
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         match this.known_hosts.remove(&remove_endpoint) {
                                             Ok(true) => {
-                                                this.status_message = format!(
-                                                    "Removed known host '{}'.",
-                                                    remove_endpoint
-                                                );
+                                                this.status_message =
+                                                    localization::known_hosts_removed_status(
+                                                        remove_endpoint.clone(),
+                                                    );
                                                 this.error_message.clear();
                                             }
                                             Ok(false) => {
-                                                this.status_message =
-                                                    "Host was already removed.".to_string();
+                                                this.status_message = localization::
+                                                    known_hosts_already_removed_status();
                                             }
                                             Err(e) => {
                                                 this.error_message = e.to_string();
@@ -1233,7 +1229,7 @@ impl TermiRustApp {
                                                 theme::ActionTone::Accent,
                                                 cx,
                                             ))
-                                            .label("Open Connections")
+                                            .label(localization::open_connections_action())
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.nav_section = NavSection::Hosts;
                                                 cx.notify();
@@ -1264,7 +1260,7 @@ impl TermiRustApp {
                             .text_size(px(22.))
                             .font_semibold()
                             .text_color(theme::text_main())
-                            .child("Session History"),
+                            .child(localization::session_history_title()),
                     )
                     .when(!logs.is_empty(), |this| {
                         this.child(
@@ -1272,7 +1268,7 @@ impl TermiRustApp {
                                 div()
                                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .text_color(theme::text_muted())
-                                    .child(format!("{} sessions", logs.len())),
+                                    .child(localization::session_history_count(logs.len())),
                             ),
                         )
                     }),
@@ -1318,7 +1314,7 @@ impl TermiRustApp {
                                     ),
                             )
                             .child(self.status_badge(
-                                "Active",
+                                localization::session_history_active_status(),
                                 theme::library_bg(),
                                 theme::success(),
                             ))
@@ -1386,8 +1382,7 @@ impl TermiRustApp {
                                                     div()
                                                         .text_size(px(theme::TYPE_CAPTION_SIZE))
                                                         .text_color(theme::text_muted())
-                                                        .child(format!(
-                                                            "Started {}  Duration {}",
+                                                        .child(localization::session_history_started_duration(
                                                             entry.started_display(),
                                                             entry.duration_display(),
                                                         )),
@@ -1435,7 +1430,7 @@ impl TermiRustApp {
                                                 theme::ActionTone::Accent,
                                                 _cx,
                                             ))
-                                            .label("Open Connections")
+                                            .label(localization::open_connections_action())
                                             .on_click(_cx.listener(|this, _, _, cx| {
                                                 this.nav_section = NavSection::Hosts;
                                                 cx.notify();

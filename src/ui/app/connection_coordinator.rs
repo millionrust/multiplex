@@ -10,6 +10,7 @@ use crate::sftp::{
 };
 use crate::ssh::{SessionRuntimeHandle, SshEvent, spawn_session};
 use crate::storage::KnownHostStore;
+use crate::ui::localization;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ConnectionWorkerKind {
@@ -568,7 +569,12 @@ impl ConnectionCoordinator {
             },
             SftpEvent::TransferSkipped { direction, .. } => SftpEventProjection::Complete {
                 context,
-                status: format!("{} skipped; destination was unchanged.", direction.label()),
+                status: match direction {
+                    SftpTransferDirection::Upload => localization::sftp_transfer_skipped_upload(),
+                    SftpTransferDirection::Download => {
+                        localization::sftp_transfer_skipped_download()
+                    }
+                },
                 refresh_directory: false,
             },
             SftpEvent::TransferCancelled {

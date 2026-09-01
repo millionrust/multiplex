@@ -209,6 +209,9 @@ pub fn write_copy_baseline(root: &Path, baseline_path: &Path) -> Result<usize, C
     let mut output = String::from(
         "# Immutable inventory of pre-MessageId user-facing copy. Normal verification never updates this file.\nversion = 1\n\n",
     );
+    if findings.is_empty() {
+        output.push_str("exceptions = []\n");
+    }
     for finding in &findings {
         output.push_str("[[exceptions]]\n");
         output.push_str(&format!("file = {:?}\n", finding.file));
@@ -612,5 +615,28 @@ mod localization_lint_tests {
             }],
         };
         assert!(compare_baseline(&findings, &stale).is_err());
+    }
+
+    #[test]
+    fn empty_copy_baseline_writer_round_trips_through_reader() {
+        let root = std::env::temp_dir().join(format!(
+            "termirust-empty-copy-baseline-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let ui = root.join("src/ui");
+        fs::create_dir_all(&ui).unwrap();
+        fs::write(ui.join("empty.rs"), "pub fn empty() {}\n").unwrap();
+        let baseline_path = root.join("legacy-user-copy.toml");
+
+        assert_eq!(write_copy_baseline(&root, &baseline_path).unwrap(), 0);
+        assert_eq!(verify_copy_baseline(&root, &baseline_path).unwrap(), 0);
+        assert!(
+            fs::read_to_string(&baseline_path)
+                .unwrap()
+                .contains("exceptions = []")
+        );
+
+        fs::remove_dir_all(root).unwrap();
     }
 }

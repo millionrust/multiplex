@@ -2122,6 +2122,480 @@ static_message!(
     SessionLibraryStoreUnavailableArgs
 );
 
+static_message!(sftp_transfer_skipped_upload, SftpTransferSkippedUploadArgs);
+static_message!(
+    sftp_transfer_skipped_download,
+    SftpTransferSkippedDownloadArgs
+);
+
+pub fn hosted_session_worker_start_error(reason: impl Into<String>) -> String {
+    text(&HostedSessionWorkerStartErrorArgs::new(UserData::new(
+        reason,
+    )))
+}
+
+static_message!(
+    hosted_session_launch_cancelled,
+    HostedSessionLaunchCancelledArgs
+);
+static_message!(hosted_session_detached, HostedSessionDetachedArgs);
+static_message!(
+    hosted_session_process_exited,
+    HostedSessionProcessExitedArgs
+);
+static_message!(
+    hosted_session_retained_read_only,
+    HostedSessionRetainedReadOnlyArgs
+);
+static_message!(known_hosts_title, KnownHostsTitleArgs);
+
+pub fn known_hosts_count(count: usize) -> String {
+    text(&KnownHostsCountArgs::new(Count(count as u64)))
+}
+
+static_message!(known_hosts_description, KnownHostsDescriptionArgs);
+
+pub fn known_hosts_removed_status(endpoint: impl Into<String>) -> String {
+    text(&KnownHostsRemovedStatusArgs::new(UserData::new(endpoint)))
+}
+
+static_message!(
+    known_hosts_already_removed_status,
+    KnownHostsAlreadyRemovedStatusArgs
+);
+static_message!(open_connections_action, OpenConnectionsActionArgs);
+static_message!(session_history_title, SessionHistoryTitleArgs);
+
+pub fn session_history_count(count: usize) -> String {
+    text(&SessionHistoryCountArgs::new(Count(count as u64)))
+}
+
+static_message!(
+    session_history_active_status,
+    SessionHistoryActiveStatusArgs
+);
+
+pub fn session_history_started_duration(
+    started: impl Into<String>,
+    duration: impl Into<String>,
+) -> String {
+    text(&SessionHistoryStartedDurationArgs::new(
+        Text::new(started),
+        Text::new(duration),
+    ))
+}
+
+static_message!(
+    host_input_display_name_placeholder,
+    HostInputDisplayNamePlaceholderArgs
+);
+static_message!(host_input_group_placeholder, HostInputGroupPlaceholderArgs);
+static_message!(host_input_tags_placeholder, HostInputTagsPlaceholderArgs);
+static_message!(
+    host_input_jump_host_placeholder,
+    HostInputJumpHostPlaceholderArgs
+);
+static_message!(
+    host_input_startup_command_placeholder,
+    HostInputStartupCommandPlaceholderArgs
+);
+static_message!(
+    host_input_address_placeholder,
+    HostInputAddressPlaceholderArgs
+);
+static_message!(
+    host_input_username_placeholder,
+    HostInputUsernamePlaceholderArgs
+);
+static_message!(
+    host_input_proxy_address_placeholder,
+    HostInputProxyAddressPlaceholderArgs
+);
+static_message!(
+    host_input_password_placeholder,
+    HostInputPasswordPlaceholderArgs
+);
+static_message!(
+    host_input_key_path_placeholder,
+    HostInputKeyPathPlaceholderArgs
+);
+static_message!(
+    host_input_certificate_placeholder,
+    HostInputCertificatePlaceholderArgs
+);
+static_message!(
+    host_input_agent_socket_placeholder,
+    HostInputAgentSocketPlaceholderArgs
+);
+static_message!(
+    host_input_key_passphrase_placeholder,
+    HostInputKeyPassphrasePlaceholderArgs
+);
+static_message!(host_input_notes_placeholder, HostInputNotesPlaceholderArgs);
+static_message!(
+    host_input_environment_placeholder,
+    HostInputEnvironmentPlaceholderArgs
+);
+
+pub fn host_group_defaults_saved_status(group: impl Into<String>) -> String {
+    text(&HostGroupDefaultsSavedStatusArgs::new(UserData::new(group)))
+}
+
+pub fn host_group_defaults_loaded_status(group: impl Into<String>) -> String {
+    text(&HostGroupDefaultsLoadedStatusArgs::new(UserData::new(
+        group,
+    )))
+}
+
+pub fn host_group_defaults_missing_named_error(group: impl Into<String>) -> String {
+    text(&HostGroupDefaultsMissingNamedErrorArgs::new(UserData::new(
+        group,
+    )))
+}
+
+pub fn host_group_defaults_removed_status(group: impl Into<String>) -> String {
+    text(&HostGroupDefaultsRemovedStatusArgs::new(UserData::new(
+        group,
+    )))
+}
+
+pub fn host_group_no_visible_hosts_error(group: impl Into<String>) -> String {
+    text(&HostGroupNoVisibleHostsErrorArgs::new(UserData::new(group)))
+}
+
+pub fn host_group_selected_status(count: usize, group: impl Into<String>) -> String {
+    text(&HostGroupSelectedStatusArgs::new(
+        Count(count as u64),
+        UserData::new(group),
+    ))
+}
+
+pub fn host_bulk_group_target_status(group: impl Into<String>) -> String {
+    text(&HostBulkGroupTargetStatusArgs::new(UserData::new(group)))
+}
+
+pub fn host_identity_default_status(identity: impl Into<String>) -> String {
+    text(&HostIdentityDefaultStatusArgs::new(UserData::new(identity)))
+}
+
+pub fn host_identity_selected_status(identity: impl Into<String>) -> String {
+    text(&HostIdentitySelectedStatusArgs::new(UserData::new(
+        identity,
+    )))
+}
+
+pub fn host_forward_duplicate_error(rule: impl Into<String>) -> String {
+    text(&HostForwardDuplicateErrorArgs::new(UserData::new(rule)))
+}
+
+pub fn host_forward_added_status(rule: impl Into<String>) -> String {
+    text(&HostForwardAddedStatusArgs::new(UserData::new(rule)))
+}
+
+pub fn host_forward_removed_status(rule: impl Into<String>) -> String {
+    text(&HostForwardRemovedStatusArgs::new(UserData::new(rule)))
+}
+
+pub fn host_batch_selection_count_status(count: usize) -> String {
+    text(&HostBatchSelectionCountStatusArgs::new(Count(count as u64)))
+}
+
+pub fn host_filter_selected_count_status(count: usize) -> String {
+    text(&HostFilterSelectedCountStatusArgs::new(Count(count as u64)))
+}
+
+pub fn host_diagnostics_batch_limit_error(limit: usize) -> String {
+    text(&HostDiagnosticsBatchLimitErrorArgs::new(Count(
+        limit as u64,
+    )))
+}
+
+pub fn host_diagnostics_started_status(started: usize) -> String {
+    text(&HostDiagnosticsStartedStatusArgs::new(Count(
+        started as u64,
+    )))
+}
+
+pub fn host_diagnostics_started_skipped_status(started: usize, skipped: usize) -> String {
+    text(&HostDiagnosticsStartedSkippedStatusArgs::new(
+        Count(started as u64),
+        Count(skipped as u64),
+    ))
+}
+
+pub fn host_named_starred_status(host: impl Into<String>) -> String {
+    text(&HostNamedStarredStatusArgs::new(UserData::new(host)))
+}
+
+pub fn host_named_unstarred_status(host: impl Into<String>) -> String {
+    text(&HostNamedUnstarredStatusArgs::new(UserData::new(host)))
+}
+
+pub fn identity_added_status(identity: impl Into<String>) -> String {
+    text(&IdentityAddedStatusArgs::new(UserData::new(identity)))
+}
+
+pub fn ssh_config_host_read_only_status(path: impl Into<String>) -> String {
+    text(&SshConfigHostReadOnlyStatusArgs::new(UserData::new(path)))
+}
+
+pub fn workspace_restore_status(workspaces: usize, panes: usize) -> String {
+    match (workspaces, panes) {
+        (1, 1) => text(&WorkspaceRestoreOneOneStatusArgs::new()),
+        (1, panes) => text(&WorkspaceRestoreOneManyStatusArgs::new(Count(panes as u64))),
+        (workspaces, 1) => text(&WorkspaceRestoreManyOneStatusArgs::new(Count(
+            workspaces as u64,
+        ))),
+        (workspaces, panes) => text(&WorkspaceRestoreManyManyStatusArgs::new(
+            Count(workspaces as u64),
+            Count(panes as u64),
+        )),
+    }
+}
+
+pub fn workspace_renamed_status(title: impl Into<String>) -> String {
+    text(&WorkspaceRenamedStatusArgs::new(UserData::new(title)))
+}
+
+pub fn pane_renamed_status(title: impl Into<String>) -> String {
+    text(&PaneRenamedStatusArgs::new(UserData::new(title)))
+}
+
+pub fn sftp_loading_endpoint_status(endpoint: impl Into<String>) -> String {
+    text(&SftpLoadingEndpointStatusArgs::new(UserData::new(endpoint)))
+}
+
+pub fn sftp_directory_load_start_error(reason: impl Into<String>) -> String {
+    text(&SftpDirectoryLoadStartErrorArgs::new(UserData::new(reason)))
+}
+
+pub fn sftp_opening_path_status(path: impl Into<String>) -> String {
+    text(&SftpOpeningPathStatusArgs::new(UserData::new(path)))
+}
+
+pub fn sftp_transfer_start_error(
+    direction: crate::sftp::SftpTransferDirection,
+    reason: impl Into<String>,
+) -> String {
+    let reason = UserData::new(reason);
+    match direction {
+        crate::sftp::SftpTransferDirection::Upload => text(&SftpUploadStartErrorArgs::new(reason)),
+        crate::sftp::SftpTransferDirection::Download => {
+            text(&SftpDownloadStartErrorArgs::new(reason))
+        }
+    }
+}
+
+pub fn sftp_deleting_path_status(path: impl Into<String>) -> String {
+    text(&SftpDeletingPathStatusArgs::new(UserData::new(path)))
+}
+
+pub fn sftp_delete_start_error(reason: impl Into<String>) -> String {
+    text(&SftpDeleteStartErrorArgs::new(UserData::new(reason)))
+}
+
+#[allow(dead_code)]
+pub fn workspace_reconnecting_panes_status(count: usize) -> String {
+    text(&WorkspaceReconnectingPanesStatusArgs::new(Count(
+        count as u64,
+    )))
+}
+
+pub fn quick_connect_auth_required_error(directory: impl Into<String>) -> String {
+    text(&QuickConnectAuthRequiredErrorArgs::new(UserData::new(
+        directory,
+    )))
+}
+
+pub fn workspace_split_cap_error(limit: usize) -> String {
+    text(&WorkspaceSplitCapErrorArgs::new(Count(limit as u64)))
+}
+
+pub fn tmux_session_deleted_status(session: impl Into<String>) -> String {
+    text(&TmuxSessionDeletedStatusArgs::new(UserData::new(session)))
+}
+
+pub fn sftp_transfer_queued_behind_status(
+    direction: crate::sftp::SftpTransferDirection,
+    count: usize,
+) -> String {
+    let count = Count(count as u64);
+    match direction {
+        crate::sftp::SftpTransferDirection::Upload => {
+            text(&SftpUploadQueuedBehindStatusArgs::new(count))
+        }
+        crate::sftp::SftpTransferDirection::Download => {
+            text(&SftpDownloadQueuedBehindStatusArgs::new(count))
+        }
+    }
+}
+
+pub fn sftp_transfer_verified_status(
+    direction: crate::sftp::SftpTransferDirection,
+    cleanup_warning: bool,
+) -> String {
+    static_message(match (direction, cleanup_warning) {
+        (crate::sftp::SftpTransferDirection::Upload, true) => {
+            MessageId::SftpUploadVerifiedCleanupNeededStatus
+        }
+        (crate::sftp::SftpTransferDirection::Download, true) => {
+            MessageId::SftpDownloadVerifiedCleanupNeededStatus
+        }
+        (crate::sftp::SftpTransferDirection::Upload, false) => {
+            MessageId::SftpUploadCompleteVerifiedStatus
+        }
+        (crate::sftp::SftpTransferDirection::Download, false) => {
+            MessageId::SftpDownloadCompleteVerifiedStatus
+        }
+    })
+}
+
+pub fn sftp_transfer_completed_status(
+    direction: crate::sftp::SftpTransferDirection,
+    cleanup_warning: bool,
+    digest: impl Into<String>,
+) -> String {
+    if cleanup_warning {
+        return static_message(match direction {
+            crate::sftp::SftpTransferDirection::Upload => {
+                MessageId::SftpUploadPublishedCleanupWarningStatus
+            }
+            crate::sftp::SftpTransferDirection::Download => {
+                MessageId::SftpDownloadPublishedCleanupWarningStatus
+            }
+        });
+    }
+
+    let digest = UserData::new(digest);
+    match direction {
+        crate::sftp::SftpTransferDirection::Upload => {
+            text(&SftpUploadCompleteDigestStatusArgs::new(digest))
+        }
+        crate::sftp::SftpTransferDirection::Download => {
+            text(&SftpDownloadCompleteDigestStatusArgs::new(digest))
+        }
+    }
+}
+
+pub fn workspace_duplicating_new_tab_status(endpoint: impl Into<String>) -> String {
+    text(&WorkspaceDuplicatingNewTabStatusArgs::new(UserData::new(
+        endpoint,
+    )))
+}
+
+#[allow(dead_code)]
+pub fn autocomplete_applied_status(source: crate::ui::autocomplete::AutocompleteSource) -> String {
+    static_message(match source {
+        crate::ui::autocomplete::AutocompleteSource::Path => {
+            MessageId::AutocompleteAppliedPathStatus
+        }
+        crate::ui::autocomplete::AutocompleteSource::Context => {
+            MessageId::AutocompleteAppliedContextStatus
+        }
+        crate::ui::autocomplete::AutocompleteSource::Argument => {
+            MessageId::AutocompleteAppliedArgumentStatus
+        }
+        crate::ui::autocomplete::AutocompleteSource::History => {
+            MessageId::AutocompleteAppliedHistoryStatus
+        }
+        crate::ui::autocomplete::AutocompleteSource::Snippet => {
+            MessageId::AutocompleteAppliedSnippetStatus
+        }
+        crate::ui::autocomplete::AutocompleteSource::Builtin => {
+            MessageId::AutocompleteAppliedBuiltinStatus
+        }
+    })
+}
+
+pub fn terminal_multiline_paste_confirm_status(count: usize) -> String {
+    text(&TerminalMultilinePasteConfirmStatusArgs::new(Count(
+        count as u64,
+    )))
+}
+
+pub fn host_group_user_chip(value: impl Into<String>) -> String {
+    text(&HostGroupUserChipArgs::new(UserData::new(value)))
+}
+
+pub fn host_group_tags_chip(value: impl Into<String>) -> String {
+    text(&HostGroupTagsChipArgs::new(UserData::new(value)))
+}
+
+pub fn host_group_identity_chip(value: impl Into<String>) -> String {
+    text(&HostGroupIdentityChipArgs::new(UserData::new(value)))
+}
+
+pub fn host_group_jump_chip(value: impl Into<String>) -> String {
+    text(&HostGroupJumpChipArgs::new(UserData::new(value)))
+}
+
+pub fn host_group_directory_chip(value: impl Into<String>) -> String {
+    text(&HostGroupDirectoryChipArgs::new(UserData::new(value)))
+}
+
+pub fn host_group_command_chip(value: impl Into<String>) -> String {
+    text(&HostGroupCommandChipArgs::new(UserData::new(value)))
+}
+
+pub fn host_group_forward_chip(value: impl Into<String>) -> String {
+    text(&HostGroupForwardChipArgs::new(UserData::new(value)))
+}
+
+pub fn host_group_forwards_chip(count: usize) -> String {
+    text(&HostGroupForwardsChipArgs::new(Count(count as u64)))
+}
+
+pub fn host_group_host_count(count: usize) -> String {
+    text(&HostGroupHostCountArgs::new(Count(count as u64)))
+}
+
+pub fn host_group_visible_total_count(visible: usize, total: usize) -> String {
+    text(&HostGroupVisibleTotalCountArgs::new(
+        Count(visible as u64),
+        Count(total as u64),
+    ))
+}
+
+pub fn host_assigning_vault_status(vault: impl Into<String>) -> String {
+    text(&HostAssigningVaultStatusArgs::new(UserData::new(vault)))
+}
+
+pub fn host_group_defaults_title(group: impl Into<String>) -> String {
+    text(&HostGroupDefaultsTitleArgs::new(UserData::new(group)))
+}
+
+pub fn host_auth_selected_identity_status(
+    label: impl Into<String>,
+    kind: impl Into<String>,
+) -> String {
+    text(&HostAuthSelectedIdentityStatusArgs::new(
+        UserData::new(label),
+        UserData::new(kind),
+    ))
+}
+
+pub fn hosts_onboarding_saved_count(count: usize) -> String {
+    text(&HostsOnboardingSavedCountArgs::new(Count(count as u64)))
+}
+
+pub fn hosts_onboarding_imported_count(count: usize) -> String {
+    text(&HostsOnboardingImportedCountArgs::new(Count(count as u64)))
+}
+
+pub fn hosts_onboarding_identity_count(count: usize) -> String {
+    text(&HostsOnboardingIdentityCountArgs::new(Count(count as u64)))
+}
+
+pub fn hosts_onboarding_snippet_count(count: usize) -> String {
+    text(&HostsOnboardingSnippetCountArgs::new(Count(count as u64)))
+}
+
+pub fn hosts_onboarding_shortcuts_description(modifier: impl Into<String>) -> String {
+    text(&HostsOnboardingShortcutsDescriptionArgs::new(Text::new(
+        modifier,
+    )))
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
@@ -2186,5 +2660,42 @@ mod tests {
         set_development_locale("en-US").unwrap();
         assert!(set_development_locale("fr-FR").is_err());
         assert_eq!(current_locale(), Locale::EnUs);
+    }
+
+    #[test]
+    fn whole_ui_messages_preserve_plural_pseudo_and_rtl_contracts() {
+        let _guard = LOCALE_TEST_LOCK.lock().unwrap();
+
+        set_development_locale("en-US").unwrap();
+        assert_eq!(
+            workspace_reconnecting_panes_status(1),
+            "Reconnecting one pane..."
+        );
+        assert_eq!(
+            workspace_reconnecting_panes_status(3),
+            "Reconnecting 3 panes..."
+        );
+        assert_eq!(hosts_onboarding_identity_count(1), "1 identity");
+        assert_eq!(hosts_onboarding_identity_count(4), "4 identities");
+
+        let identity_label = "build@example";
+        let identity_kind = "ED25519 key";
+        let english = host_auth_selected_identity_status(identity_label, identity_kind);
+        assert!(english.contains(identity_label));
+        assert!(english.contains(identity_kind));
+
+        set_development_locale("en-XA").unwrap();
+        let expanded = host_auth_selected_identity_status(identity_label, identity_kind);
+        assert_ne!(expanded, english);
+        assert!(expanded.contains(identity_label));
+        assert!(expanded.contains(identity_kind));
+
+        set_development_locale("ar-XB").unwrap();
+        let bidirectional = host_auth_selected_identity_status(identity_label, identity_kind);
+        assert_eq!(current_locale().direction(), TextDirection::RightToLeft);
+        assert!(bidirectional.contains(identity_label));
+        assert!(bidirectional.contains(identity_kind));
+
+        set_development_locale("en-US").unwrap();
     }
 }

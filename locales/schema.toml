@@ -8740,3 +8740,1876 @@ description = "Terminal output gap"
 id = "terminal-announcement-truncated"
 context = "Screen-reader announcement that the bounded terminal review dropped old output."
 description = "Terminal review truncated"
+
+# Goal 21.1.9 whole-UI legacy-copy migration.
+[[messages]]
+id = "sftp-transfer-skipped-upload"
+context = "Status after an upload conflict is skipped because the destination is unchanged."
+description = "Upload skipped status"
+
+[[messages]]
+id = "sftp-transfer-skipped-download"
+context = "Status after a download conflict is skipped because the destination is unchanged."
+description = "Download skipped status"
+
+[[messages]]
+id = "hosted-session-worker-start-error"
+context = "Error when the local durable-session worker cannot start."
+description = "Durable worker start error"
+[[messages.args]]
+name = "reason"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "hosted-session-launch-cancelled"
+context = "Status after durable Host launch is cancelled before readiness."
+description = "Durable launch cancelled"
+
+[[messages]]
+id = "hosted-session-detached"
+context = "Status after detaching while a durable session continues in the background."
+description = "Durable session detached"
+
+[[messages]]
+id = "hosted-session-process-exited"
+context = "Status after a durable process exits while retained output remains readable."
+description = "Durable process exited"
+
+[[messages]]
+id = "hosted-session-retained-read-only"
+context = "Status when only retained durable output remains available."
+description = "Retained durable output read only"
+
+[[messages]]
+id = "known-hosts-title"
+context = "Heading for pinned SSH host keys."
+description = "Known Hosts title"
+
+[[messages]]
+id = "known-hosts-count"
+context = "Number of pinned SSH host keys."
+description = "Known Hosts count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "known-hosts-description"
+context = "Explanation of trust-on-first-use host key pinning and removal."
+description = "Known Hosts explanation"
+
+[[messages]]
+id = "known-hosts-removed-status"
+context = "Status after removing a pinned endpoint supplied by the user."
+description = "Known Host removed status"
+[[messages.args]]
+name = "endpoint"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "known-hosts-already-removed-status"
+context = "Status when a pinned host key was already absent."
+description = "Known Host already removed"
+
+[[messages]]
+id = "open-connections-action"
+context = "Shared action that opens the Connections screen."
+description = "Open Connections action"
+
+[[messages]]
+id = "session-history-title"
+context = "Heading for retained SSH connection history."
+description = "Session History title"
+
+[[messages]]
+id = "session-history-count"
+context = "Number of retained SSH connection-history entries."
+description = "Session History count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "session-history-active-status"
+context = "Status badge for a currently active connection."
+description = "Active connection status"
+
+[[messages]]
+id = "session-history-started-duration"
+context = "Connection-history metadata showing its start time and duration."
+description = "Session start and duration"
+[[messages.args]]
+name = "started"
+type = "Text"
+sensitivity = "public"
+bidi = "isolate"
+[[messages.args]]
+name = "duration"
+type = "Text"
+sensitivity = "public"
+bidi = "isolate"
+
+[[messages]]
+id = "host-input-display-name-placeholder"
+context = "Example placeholder for a saved Host display name."
+description = "Host display name placeholder"
+
+[[messages]]
+id = "host-input-group-placeholder"
+context = "Example placeholder for a saved Host folder or group."
+description = "Host group placeholder"
+
+[[messages]]
+id = "host-input-tags-placeholder"
+context = "Example placeholder for comma-separated Host tags."
+description = "Host tags placeholder"
+
+[[messages]]
+id = "host-input-jump-host-placeholder"
+context = "Placeholder for an optional saved jump Host."
+description = "Jump Host placeholder"
+
+[[messages]]
+id = "host-input-startup-command-placeholder"
+context = "Example placeholder for a Host startup command."
+description = "Host startup command placeholder"
+
+[[messages]]
+id = "host-input-address-placeholder"
+context = "Placeholder for an SSH hostname, IP address, or domain."
+description = "Host address placeholder"
+
+[[messages]]
+id = "host-input-username-placeholder"
+context = "Example placeholder for an SSH username."
+description = "SSH username placeholder"
+
+[[messages]]
+id = "host-input-proxy-address-placeholder"
+context = "Placeholder for an outbound proxy hostname or IP address."
+description = "Proxy address placeholder"
+
+[[messages]]
+id = "host-input-password-placeholder"
+context = "Placeholder for a password used only by password authentication."
+description = "Password placeholder"
+
+[[messages]]
+id = "host-input-key-path-placeholder"
+context = "Example placeholder for a private key path."
+description = "Private key path placeholder"
+
+[[messages]]
+id = "host-input-certificate-placeholder"
+context = "Example placeholder for an optional OpenSSH user certificate."
+description = "OpenSSH certificate placeholder"
+
+[[messages]]
+id = "host-input-agent-socket-placeholder"
+context = "Placeholder for an optional SSH agent socket."
+description = "SSH agent socket placeholder"
+
+[[messages]]
+id = "host-input-key-passphrase-placeholder"
+context = "Placeholder for an optional private-key passphrase."
+description = "Key passphrase placeholder"
+
+[[messages]]
+id = "host-input-notes-placeholder"
+context = "Placeholder for optional notes about a saved Host."
+description = "Host notes placeholder"
+
+[[messages]]
+id = "host-input-environment-placeholder"
+context = "Example placeholder for one environment variable per line."
+description = "Host environment placeholder"
+
+[[messages]]
+id = "host-input-proxy-port-placeholder"
+context = "Example placeholder for common outbound proxy ports."
+description = "Proxy port placeholder"
+
+[[messages]]
+id = "snippet-input-label-placeholder"
+context = "Example placeholder for a saved Snippet name."
+description = "Snippet name placeholder"
+
+[[messages]]
+id = "snippet-input-group-placeholder"
+context = "Example placeholder for a saved Snippet group."
+description = "Snippet group placeholder"
+
+[[messages]]
+id = "snippet-input-command-placeholder"
+context = "Example placeholder for a saved Snippet command."
+description = "Snippet command placeholder"
+
+[[messages]]
+id = "vault-input-label-placeholder"
+context = "Example placeholder for a Vault name."
+description = "Vault name placeholder"
+
+[[messages]]
+id = "vault-input-description-placeholder"
+context = "Example placeholder for a Vault description."
+description = "Vault description placeholder"
+
+[[messages]]
+id = "vault-member-name-placeholder"
+context = "Example placeholder for a Vault member name."
+description = "Vault member name placeholder"
+
+[[messages]]
+id = "vault-member-email-placeholder"
+context = "Example placeholder for a Vault member email address."
+description = "Vault member email placeholder"
+
+[[messages]]
+id = "shell-host-search-placeholder"
+context = "Placeholder for Host, group, tag, and SSH quick-connect search."
+description = "Host search placeholder"
+
+[[messages]]
+id = "shell-quick-connect-password-placeholder"
+context = "Placeholder for the quick-connect password field."
+description = "Quick-connect password placeholder"
+
+[[messages]]
+id = "shell-create-host-address-placeholder"
+context = "Placeholder for the first Host address entered during creation."
+description = "Create Host address placeholder"
+
+[[messages]]
+id = "shell-connect-username-placeholder"
+context = "Placeholder for the SSH connect username."
+description = "Connect username placeholder"
+
+[[messages]]
+id = "shell-sftp-filter-placeholder"
+context = "Placeholder for filtering local files in an SFTP flow."
+description = "SFTP file filter placeholder"
+
+[[messages]]
+id = "shell-bulk-group-placeholder"
+context = "Placeholder for a group applied to selected Hosts."
+description = "Bulk Host group placeholder"
+
+[[messages]]
+id = "shell-terminal-search-placeholder"
+context = "Placeholder for search within terminal output."
+description = "Terminal search placeholder"
+
+[[messages]]
+id = "agent-working-directory-placeholder"
+context = "Placeholder for an agent repository or working directory."
+description = "Agent working directory placeholder"
+
+[[messages]]
+id = "agent-executable-placeholder"
+context = "Placeholder for an agent executable path or command name."
+description = "Agent executable placeholder"
+
+[[messages]]
+id = "agent-arguments-placeholder"
+context = "Placeholder explaining that agent arguments are entered one per line."
+description = "Agent arguments placeholder"
+
+[[messages]]
+id = "agent-initial-prompt-placeholder"
+context = "Placeholder for an optional initial agent prompt."
+description = "Agent initial prompt placeholder"
+
+[[messages]]
+id = "agent-prompt-placeholder"
+context = "Placeholder for sending a prompt or reviewed context to an agent."
+description = "Agent prompt placeholder"
+
+[[messages]]
+id = "agent-context-review-placeholder"
+context = "Placeholder for reviewing context before sending it to an agent."
+description = "Agent context review placeholder"
+
+[[messages]]
+id = "sftp-transfer-queued-upload"
+context = "Status when an SFTP upload is queued."
+description = "Upload queued status"
+
+[[messages]]
+id = "sftp-transfer-queued-download"
+context = "Status when an SFTP download is queued."
+description = "Download queued status"
+
+[[messages]]
+id = "canvas-project-editor-placeholder"
+context = "Placeholder before a UTF-8 project file is selected for viewing or editing."
+description = "Canvas project editor placeholder"
+
+[[messages]]
+id = "canvas-note-editor-placeholder"
+context = "Placeholder for a Canvas note containing context, decisions, commands, or a task brief."
+description = "Canvas note editor placeholder"
+
+[[messages]]
+id = "workspace-rename-placeholder"
+context = "Placeholder for renaming a workspace."
+description = "Workspace rename placeholder"
+
+[[messages]]
+id = "pane-rename-placeholder"
+context = "Placeholder for renaming a terminal pane."
+description = "Pane rename placeholder"
+
+[[messages]]
+id = "canvas-node-rename-placeholder"
+context = "Placeholder for renaming a Canvas node."
+description = "Canvas node rename placeholder"
+
+[[messages]]
+id = "host-auth-password-selected-status"
+context = "Status after selecting password authentication for a Host."
+description = "Password authentication selected"
+
+[[messages]]
+id = "host-auth-private-key-selected-status"
+context = "Status after selecting private-key authentication for a Host."
+description = "Private key authentication selected"
+
+[[messages]]
+id = "host-auth-agent-selected-status"
+context = "Status after selecting local SSH-agent authentication for a Host."
+description = "SSH agent authentication selected"
+
+[[messages]]
+id = "host-connect-view-files-status"
+context = "Status when a Host is configured to open its remote Files view after connection."
+description = "Open Host in Files"
+
+[[messages]]
+id = "host-connect-view-terminal-status"
+context = "Status when a Host is configured to open its terminal after connection."
+description = "Open Host in terminal"
+
+[[messages]]
+id = "host-persistent-tmux-status"
+context = "Status when a Host is configured to attach to a named tmux session."
+description = "Persistent tmux enabled"
+
+[[messages]]
+id = "host-normal-shell-status"
+context = "Status when a Host is configured to open a normal SSH shell."
+description = "Persistent tmux disabled"
+
+[[messages]]
+id = "host-detach-other-clients-status"
+context = "Warning when connecting may detach other clients from the same tmux session."
+description = "Detach other tmux clients enabled"
+
+[[messages]]
+id = "host-keep-other-clients-status"
+context = "Status when other clients may remain attached to the same tmux session."
+description = "Detach other tmux clients disabled"
+
+[[messages]]
+id = "host-favorite-enabled-status"
+context = "Status when a Host will be starred in the library."
+description = "Host favorite enabled"
+
+[[messages]]
+id = "host-favorite-disabled-status"
+context = "Status when a Host will remain in regular library groups."
+description = "Host favorite disabled"
+
+[[messages]]
+id = "host-group-defaults-invalid-draft-error"
+context = "Error when Host group defaults cannot be saved from an invalid draft."
+description = "Invalid Host group defaults draft"
+
+[[messages]]
+id = "host-group-name-required-error"
+context = "Error when a Host group operation needs a group name."
+description = "Host group name required"
+
+[[messages]]
+id = "host-group-defaults-saved-status"
+context = "Status after saving defaults for a user-named Host group."
+description = "Host group defaults saved"
+[[messages.args]]
+name = "group"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-group-defaults-missing-error"
+context = "Error when the current Host group has no saved defaults."
+description = "Host group defaults missing"
+
+[[messages]]
+id = "host-group-defaults-loaded-status"
+context = "Status after loading defaults for a user-named Host group."
+description = "Host group defaults loaded"
+[[messages.args]]
+name = "group"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-group-defaults-missing-named-error"
+context = "Error when a user-named Host group has no saved defaults."
+description = "Named Host group defaults missing"
+[[messages.args]]
+name = "group"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-group-defaults-removed-status"
+context = "Status after removing defaults for a user-named Host group."
+description = "Host group defaults removed"
+[[messages.args]]
+name = "group"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-group-no-visible-hosts-error"
+context = "Error when a user-named group has no Hosts visible under the current filter."
+description = "No visible Hosts in group"
+[[messages.args]]
+name = "group"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-group-selected-status"
+context = "Status after selecting visible Hosts from a user-named group."
+description = "Visible Hosts selected from group"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "group"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-bulk-group-target-status"
+context = "Status after choosing a user-named group as the pending bulk assignment target."
+description = "Bulk Host group target"
+[[messages.args]]
+name = "group"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-identity-default-status"
+context = "Status after choosing a user-named default SSH identity."
+description = "Default SSH identity selected"
+[[messages.args]]
+name = "identity"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-identity-selected-status"
+context = "Status after explicitly choosing a user-named SSH identity."
+description = "SSH identity selected"
+[[messages.args]]
+name = "identity"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-draft-cleared-status"
+context = "Status after clearing the Host editor draft."
+description = "Host draft cleared"
+
+[[messages]]
+id = "host-forward-kind-local-status"
+context = "Status after selecting a local port-forward rule."
+description = "Local forward selected"
+
+[[messages]]
+id = "host-forward-kind-dynamic-status"
+context = "Status after selecting a dynamic SOCKS port-forward rule."
+description = "Dynamic forward selected"
+
+[[messages]]
+id = "host-forward-kind-remote-status"
+context = "Status after selecting a remote reverse port-forward rule."
+description = "Remote forward selected"
+
+[[messages]]
+id = "host-forward-duplicate-error"
+context = "Error when a rendered port-forward rule already exists."
+description = "Duplicate forward rule"
+[[messages.args]]
+name = "rule"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-forward-added-status"
+context = "Status after adding a rendered port-forward rule."
+description = "Forward rule added"
+[[messages.args]]
+name = "rule"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-forward-fields-required-error"
+context = "Error when required local and remote forwarding fields are missing."
+description = "Forward fields required"
+
+[[messages]]
+id = "host-forward-removed-status"
+context = "Status after removing a rendered port-forward rule."
+description = "Forward rule removed"
+[[messages.args]]
+name = "rule"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "command-terminal-required-error"
+context = "Error when a command action requires an open terminal session."
+description = "Open terminal required"
+
+[[messages]]
+id = "host-batch-selection-cleared-status"
+context = "Status after clearing the saved Host batch selection."
+description = "Host batch selection cleared"
+
+[[messages]]
+id = "host-batch-selection-count-status"
+context = "Number of saved Hosts selected for batch actions."
+description = "Host batch selection count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "host-filter-no-matches-error"
+context = "Error when no saved Hosts match the current filter."
+description = "No Hosts match filter"
+
+[[messages]]
+id = "host-filter-selected-count-status"
+context = "Number of saved Hosts selected from the current filter."
+description = "Filtered Host selection count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "host-diagnostics-selection-required-error"
+context = "Error when diagnostics are requested without selecting a saved Host."
+description = "Diagnostic Host selection required"
+
+[[messages]]
+id = "host-diagnostics-batch-limit-error"
+context = "Error when a Host diagnostic batch exceeds its bounded limit."
+description = "Diagnostic batch limit"
+[[messages.args]]
+name = "limit"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "host-diagnostics-started-status"
+context = "Number of connection diagnostics started."
+description = "Diagnostics started"
+plural_arg = "started"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "started"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "host-diagnostics-started-skipped-status"
+context = "Diagnostic runs started and runs skipped because they were already active."
+description = "Diagnostics started and skipped"
+[[messages.args]]
+name = "started"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "skipped"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "host-diagnostic-route-socks5-proxy"
+context = "Connection diagnostic route using a SOCKS5 proxy."
+description = "SOCKS5 diagnostic route"
+
+[[messages]]
+id = "host-diagnostic-route-http-proxy"
+context = "Connection diagnostic route using an HTTP CONNECT proxy."
+description = "HTTP CONNECT diagnostic route"
+
+[[messages]]
+id = "host-diagnostic-route-saved-jump"
+context = "Connection diagnostic route using the Host's saved jump route."
+description = "Saved jump diagnostic route"
+
+[[messages]]
+id = "host-diagnostic-route-direct"
+context = "Connection diagnostic route using direct SSH."
+description = "Direct SSH diagnostic route"
+
+[[messages]]
+id = "host-diagnostic-waiting-status"
+context = "Status while a connection diagnostic waits for a bounded worker slot."
+description = "Diagnostic waiting status"
+
+[[messages]]
+id = "host-diagnostic-cancelling-status"
+context = "Status after cancellation is requested for a connection diagnostic."
+description = "Diagnostic cancelling status"
+
+[[messages]]
+id = "host-diagnostic-restarted-status"
+context = "Status after restarting a connection diagnostic."
+description = "Diagnostic restarted status"
+
+[[messages]]
+id = "host-diagnostic-already-running-status"
+context = "Status when a Host already has an active connection diagnostic."
+description = "Diagnostic already running"
+
+[[messages]]
+id = "host-diagnostic-queue-full-error"
+context = "Recovery guidance when the bounded connection diagnostic queue is full."
+description = "Diagnostic queue full"
+
+[[messages]]
+id = "host-diagnostic-start-error"
+context = "Error when a connection diagnostic cannot start."
+description = "Diagnostic start error"
+
+[[messages]]
+id = "host-diagnostic-cleared-status"
+context = "Status after clearing finished connection diagnostics."
+description = "Finished diagnostics cleared"
+
+[[messages]]
+id = "host-diagnostic-checking-configuration"
+context = "Connection diagnostic progress while checking configuration."
+description = "Checking diagnostic configuration"
+
+[[messages]]
+id = "host-diagnostic-checking-route-auth"
+context = "Connection diagnostic progress while checking route and authentication."
+description = "Checking diagnostic route and authentication"
+
+[[messages]]
+id = "host-diagnostic-checking-channel"
+context = "Connection diagnostic progress while checking the SSH channel."
+description = "Checking diagnostic SSH channel"
+
+[[messages]]
+id = "host-diagnostic-checking-sftp"
+context = "Connection diagnostic progress while checking SFTP."
+description = "Checking diagnostic SFTP"
+
+[[messages]]
+id = "host-diagnostic-passed-configuration"
+context = "Connection diagnostic status after configuration passes."
+description = "Diagnostic configuration passed"
+
+[[messages]]
+id = "host-diagnostic-passed-route-auth"
+context = "Connection diagnostic status after route and authentication pass."
+description = "Diagnostic route and authentication passed"
+
+[[messages]]
+id = "host-diagnostic-passed-channel"
+context = "Connection diagnostic status after the SSH channel passes."
+description = "Diagnostic SSH channel passed"
+
+[[messages]]
+id = "host-diagnostic-passed-sftp"
+context = "Connection diagnostic status after SFTP passes."
+description = "Diagnostic SFTP passed"
+
+[[messages]]
+id = "host-starred-status"
+context = "Status after starring the Host currently open in the editor."
+description = "Current Host starred"
+
+[[messages]]
+id = "host-unstarred-status"
+context = "Status after removing the Host currently open in the editor from favorites."
+description = "Current Host unstarred"
+
+[[messages]]
+id = "host-named-starred-status"
+context = "Status after starring a user-named Host outside the editor."
+description = "Named Host starred"
+[[messages.args]]
+name = "host"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-named-unstarred-status"
+context = "Status after removing a user-named Host outside the editor from favorites."
+description = "Named Host unstarred"
+[[messages.args]]
+name = "host"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-selection-required-error"
+context = "Error when a bulk Host action requires at least one selected Host."
+description = "Host selection required"
+
+[[messages]]
+id = "key-file-choose-status"
+context = "Status before opening the private-key file picker."
+description = "Choose private key"
+
+[[messages]]
+id = "certificate-file-choose-status"
+context = "Status before opening the OpenSSH user-certificate file picker."
+description = "Choose SSH certificate"
+
+[[messages]]
+id = "certificate-file-selected-status"
+context = "Status after selecting a valid OpenSSH user certificate."
+description = "SSH certificate selected"
+
+[[messages]]
+id = "identity-added-status"
+context = "Status after adding a user-named SSH identity."
+description = "SSH identity added"
+[[messages.args]]
+name = "identity"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "key-file-unsupported-error"
+context = "Error when a selected file is not a supported private key."
+description = "Unsupported private key"
+
+[[messages]]
+id = "ssh-config-host-read-only-status"
+context = "Guidance when an imported SSH config Host cannot be removed from the app."
+description = "SSH config Host read only"
+[[messages.args]]
+name = "path"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-removed-status"
+context = "Status after removing a saved Host."
+description = "Saved Host removed"
+
+[[messages]]
+id = "activity-section-ready"
+context = "Status after opening the Activity section."
+description = "Activity section ready"
+
+[[messages]]
+id = "sessions-section-ready"
+context = "Status after opening the Sessions section."
+description = "Sessions section ready"
+
+[[messages]]
+id = "devices-section-ready"
+context = "Status after opening the Devices section."
+description = "Devices section ready"
+
+[[messages]]
+id = "known-hosts-section-ready"
+context = "Status after opening the Known Hosts section."
+description = "Known Hosts section ready"
+
+[[messages]]
+id = "session-history-section-ready"
+context = "Status after opening the connection Logs section."
+description = "Session History section ready"
+
+[[messages]]
+id = "durable-restore-session-metadata-missing-error"
+context = "Recovery error when a durable workspace pane lacks saved session metadata."
+description = "Durable session metadata missing"
+
+[[messages]]
+id = "durable-restore-host-metadata-missing-error"
+context = "Recovery error when a durable workspace pane lacks verified Host metadata."
+description = "Durable Host metadata missing"
+
+[[messages]]
+id = "workspace-restore-one-one-status"
+context = "Status after restoring exactly one workspace and one pane."
+description = "One workspace and pane restored"
+
+[[messages]]
+id = "workspace-restore-one-many-status"
+context = "Status after restoring one workspace and multiple panes."
+description = "One workspace and multiple panes restored"
+[[messages.args]]
+name = "panes"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "workspace-restore-many-one-status"
+context = "Status after restoring multiple workspaces and one pane."
+description = "Multiple workspaces and one pane restored"
+[[messages.args]]
+name = "workspaces"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "workspace-restore-many-many-status"
+context = "Status after restoring multiple workspaces and panes."
+description = "Multiple workspaces and panes restored"
+[[messages.args]]
+name = "workspaces"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "panes"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "workspace-renamed-status"
+context = "Status after renaming a workspace with a user-supplied title."
+description = "Workspace renamed"
+[[messages.args]]
+name = "title"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "pane-renamed-status"
+context = "Status after renaming a pane with a user-supplied title."
+description = "Pane renamed"
+[[messages.args]]
+name = "title"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "sftp-ssh-session-required-error"
+context = "Error when remote files are requested for a local shell."
+description = "SSH session required for remote files"
+
+[[messages]]
+id = "sftp-loading-endpoint-status"
+context = "Status while loading remote files from a user-supplied endpoint."
+description = "Loading remote endpoint"
+[[messages.args]]
+name = "endpoint"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "sftp-terminal-view-status"
+context = "Status after returning from remote Files to terminal view."
+description = "Back to terminal view"
+
+[[messages]]
+id = "sftp-directory-load-start-error"
+context = "Error when a remote directory load cannot start."
+description = "Remote directory load start error"
+[[messages.args]]
+name = "reason"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "sftp-folder-selection-required-error"
+context = "Error when opening a remote folder without a selection."
+description = "Remote folder selection required"
+
+[[messages]]
+id = "sftp-folder-required-error"
+context = "Error when attempting to open a file as a remote folder."
+description = "Remote folder required"
+
+[[messages]]
+id = "sftp-opening-path-status"
+context = "Status while opening a user-supplied remote path."
+description = "Opening remote path"
+[[messages.args]]
+name = "path"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "sftp-file-selection-required-error"
+context = "Error when downloading without selecting a remote file."
+description = "Remote file selection required"
+
+[[messages]]
+id = "sftp-folder-download-unsupported-error"
+context = "Guidance when a folder is selected for a currently unsupported download."
+description = "Folder download unsupported"
+
+[[messages]]
+id = "sftp-transfer-active-error"
+context = "Error when starting another SFTP transfer in a workspace that already has one."
+description = "SFTP transfer already active"
+
+[[messages]]
+id = "sftp-transfer-action-invalid-error"
+context = "Error when an internal SFTP action is not a transfer."
+description = "Invalid SFTP transfer action"
+
+[[messages]]
+id = "sftp-upload-start-error"
+context = "Error when an SFTP upload cannot start."
+description = "SFTP upload start error"
+[[messages.args]]
+name = "reason"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "sftp-download-start-error"
+context = "Error when an SFTP download cannot start."
+description = "SFTP download start error"
+[[messages.args]]
+name = "reason"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "sftp-transfer-cancel-requested-status"
+context = "Status after requesting cancellation of an SFTP transfer."
+description = "SFTP cancellation requested"
+
+[[messages]]
+id = "sftp-delete-selection-required-error"
+context = "Error when deleting without selecting a remote file or folder."
+description = "Remote delete selection required"
+
+[[messages]]
+id = "sftp-deleting-path-status"
+context = "Status while deleting a user-supplied remote path."
+description = "Deleting remote path"
+[[messages.args]]
+name = "path"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "sftp-delete-start-error"
+context = "Error when a remote delete cannot start."
+description = "Remote delete start error"
+[[messages.args]]
+name = "reason"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "durable-legacy-reopen-error"
+context = "Error when attempting to reopen an exited legacy app-attached session."
+description = "Legacy durable reopen unsupported"
+
+[[messages]]
+id = "durable-host-metadata-invalid-error"
+context = "Error when a durable session lacks valid Host metadata."
+description = "Invalid durable Host metadata"
+
+[[messages]]
+id = "durable-attaching-status"
+context = "Status while attaching to a durable session."
+description = "Attaching to durable session"
+
+[[messages]]
+id = "durable-retrying-status"
+context = "Status while retrying durable Host attachment."
+description = "Retrying durable Host attachment"
+
+[[messages]]
+id = "local-terminal-opening-status"
+context = "Status while opening a local terminal."
+description = "Opening local terminal"
+
+[[messages]]
+id = "local-terminal-reopening-status"
+context = "Status while reopening a local terminal."
+description = "Reopening local terminal"
+
+[[messages]]
+id = "workspace-no-disconnected-panes-status"
+context = "Status when reconnect all finds no disconnected panes."
+description = "No panes to reconnect"
+
+[[messages]]
+id = "workspace-reconnecting-panes-status"
+context = "Number of workspace panes being reconnected."
+description = "Reconnecting panes"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "quick-connect-auth-required-error"
+context = "Guidance when quick connect has no password, credential, or SSH key."
+description = "Quick connect authentication required"
+[[messages.args]]
+name = "directory"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "workspace-split-cap-error"
+context = "Error when a workspace reaches its current split-pane cap."
+description = "Split pane cap"
+[[messages.args]]
+name = "limit"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "local-terminal-split-launching-status"
+context = "Status while launching a local terminal in a split pane."
+description = "Launching split local terminal"
+
+[[messages]]
+id = "workspace-disconnecting-status"
+context = "Status while disconnecting every pane in a workspace."
+description = "Disconnecting workspace"
+
+[[messages]]
+id = "pane-closed-status"
+context = "Status after closing one pane while its workspace remains."
+description = "Pane closed"
+
+[[messages]]
+id = "workspace-closed-to-hosts-status"
+context = "Status after closing the last workspace and returning to Hosts."
+description = "Workspace closed to Hosts"
+
+[[messages]]
+id = "workspace-closed-status"
+context = "Status after closing a workspace while another remains active."
+description = "Workspace closed"
+
+[[messages]]
+id = "local-terminal-ready-status"
+context = "Status after a local terminal connects and is ready."
+description = "Local terminal ready"
+
+[[messages]]
+id = "tmux-session-deleted-status"
+context = "Status after deleting a user-named tmux session."
+description = "tmux session deleted"
+[[messages.args]]
+name = "session"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "sftp-upload-starting-status"
+context = "SFTP transfer status while an upload starts."
+description = "Upload starting"
+
+[[messages]]
+id = "sftp-download-starting-status"
+context = "SFTP transfer status while a download starts."
+description = "Download starting"
+
+[[messages]]
+id = "sftp-upload-queued-behind-status"
+context = "Number of SFTP transfers queued ahead of an upload."
+description = "Upload queued behind transfers"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "sftp-download-queued-behind-status"
+context = "Number of SFTP transfers queued ahead of a download."
+description = "Download queued behind transfers"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "sftp-upload-resuming-status"
+context = "SFTP transfer status while resuming an upload."
+description = "Upload resuming"
+
+[[messages]]
+id = "sftp-download-resuming-status"
+context = "SFTP transfer status while resuming a download."
+description = "Download resuming"
+
+[[messages]]
+id = "sftp-upload-in-progress-status"
+context = "SFTP transfer status while an upload is in progress."
+description = "Upload in progress"
+
+[[messages]]
+id = "sftp-download-in-progress-status"
+context = "SFTP transfer status while a download is in progress."
+description = "Download in progress"
+
+[[messages]]
+id = "sftp-destination-exists-status"
+context = "SFTP transfer status when the destination already exists."
+description = "Destination exists"
+
+[[messages]]
+id = "sftp-conflict-choice-status"
+context = "SFTP transfer guidance after a destination conflict."
+description = "Choose conflict resolution"
+
+[[messages]]
+id = "sftp-cancelled-resumable-status"
+context = "SFTP transfer status when cancellation retained verified staging data."
+description = "Cancelled transfer can resume"
+
+[[messages]]
+id = "sftp-cancelled-before-start-status"
+context = "SFTP transfer status when cancellation happened before data transfer."
+description = "Cancelled before transfer started"
+
+[[messages]]
+id = "sftp-transfer-cancelled-status"
+context = "Application status after an SFTP transfer is cancelled."
+description = "SFTP transfer cancelled"
+
+[[messages]]
+id = "sftp-upload-verified-cleanup-needed-status"
+context = "SFTP upload status after verification when old backup cleanup remains."
+description = "Upload verified with cleanup remaining"
+
+[[messages]]
+id = "sftp-download-verified-cleanup-needed-status"
+context = "SFTP download status after verification when old backup cleanup remains."
+description = "Download verified with cleanup remaining"
+
+[[messages]]
+id = "sftp-upload-complete-verified-status"
+context = "SFTP upload status after successful integrity verification."
+description = "Upload complete and verified"
+
+[[messages]]
+id = "sftp-download-complete-verified-status"
+context = "SFTP download status after successful integrity verification."
+description = "Download complete and verified"
+
+[[messages]]
+id = "sftp-upload-published-cleanup-warning-status"
+context = "Application status after a verified upload whose app-owned backup could not be removed."
+description = "Upload published with cleanup warning"
+
+[[messages]]
+id = "sftp-download-published-cleanup-warning-status"
+context = "Application status after a verified download whose app-owned backup could not be removed."
+description = "Download published with cleanup warning"
+
+[[messages]]
+id = "sftp-upload-complete-digest-status"
+context = "Application status after a verified upload, with a shortened SHA-256 digest."
+description = "Upload complete with digest"
+[[messages.args]]
+name = "digest"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "sftp-download-complete-digest-status"
+context = "Application status after a verified download, with a shortened SHA-256 digest."
+description = "Download complete with digest"
+[[messages.args]]
+name = "digest"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "terminal-cleared-status"
+context = "Status after clearing a terminal pane."
+description = "Terminal cleared"
+
+[[messages]]
+id = "workspace-merge-canvas-selection-error"
+context = "Error when merging a Canvas tab whose sessions are not all selected for Split."
+description = "Canvas sessions must be selected before merge"
+
+[[messages]]
+id = "workspace-merged-into-split-status"
+context = "Status after merging a tab into a split workspace."
+description = "Tab merged into split"
+
+[[messages]]
+id = "pane-already-own-workspace-error"
+context = "Error when detaching a pane that already owns its workspace."
+description = "Pane already in own workspace"
+
+[[messages]]
+id = "pane-detached-new-workspace-status"
+context = "Status after detaching a pane into a new workspace tab."
+description = "Pane detached into workspace"
+
+[[messages]]
+id = "workspace-duplicating-new-tab-status"
+context = "Status while duplicating a remote endpoint into a new tab."
+description = "Duplicating endpoint into tab"
+[[messages.args]]
+name = "endpoint"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "workspace-broadcast-started-status"
+context = "Status after starting workspace-wide broadcast input."
+description = "Broadcast input started"
+
+[[messages]]
+id = "workspace-broadcast-enabled-status"
+context = "Status while workspace-wide broadcast input is enabled."
+description = "Broadcast input enabled"
+
+[[messages]]
+id = "workspace-broadcast-disabled-status"
+context = "Status after disabling workspace-wide broadcast input."
+description = "Broadcast input disabled"
+
+[[messages]]
+id = "terminal-ssh-input-send-error"
+context = "Error when input cannot be sent to the SSH runtime."
+description = "Unable to send SSH input"
+
+[[messages]]
+id = "autocomplete-applied-path-status"
+context = "Status after applying a path autocomplete candidate."
+description = "Path autocomplete applied"
+
+[[messages]]
+id = "autocomplete-applied-context-status"
+context = "Status after applying a terminal-context autocomplete candidate."
+description = "Context autocomplete applied"
+
+[[messages]]
+id = "autocomplete-applied-argument-status"
+context = "Status after applying a command-argument autocomplete candidate."
+description = "Argument autocomplete applied"
+
+[[messages]]
+id = "autocomplete-applied-history-status"
+context = "Status after applying a command-history autocomplete candidate."
+description = "History autocomplete applied"
+
+[[messages]]
+id = "autocomplete-applied-snippet-status"
+context = "Status after applying a saved-snippet autocomplete candidate."
+description = "Snippet autocomplete applied"
+
+[[messages]]
+id = "autocomplete-applied-builtin-status"
+context = "Status after applying a built-in autocomplete candidate."
+description = "Built-in autocomplete applied"
+
+[[messages]]
+id = "terminal-selection-copied-status"
+context = "Status after copying selected terminal text."
+description = "Terminal selection copied"
+
+[[messages]]
+id = "terminal-multiline-paste-confirm-status"
+context = "Confirmation status for a multiline terminal paste."
+description = "Confirm multiline paste"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "terminal-multiline-paste-delivered-status"
+context = "Status after delivering a confirmed multiline paste."
+description = "Multiline paste delivered"
+
+[[messages]]
+id = "terminal-paste-cancelled-status"
+context = "Status after cancelling a pending terminal paste."
+description = "Terminal paste cancelled"
+
+[[messages]]
+id = "host-saved-groups-title"
+context = "Heading above saved Host groups."
+description = "Saved groups heading"
+
+[[messages]]
+id = "host-saved-groups-description"
+context = "Guidance above saved Host group cards."
+description = "Saved groups guidance"
+
+[[messages]]
+id = "host-group-user-chip"
+context = "Saved Host group metadata chip containing its username."
+description = "Group username"
+[[messages.args]]
+name = "value"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-group-tags-chip"
+context = "Saved Host group metadata chip containing its tags."
+description = "Group tags"
+[[messages.args]]
+name = "value"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-group-identity-chip"
+context = "Saved Host group metadata chip containing its identity."
+description = "Group identity"
+[[messages.args]]
+name = "value"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-group-jump-chip"
+context = "Saved Host group metadata chip containing its jump Host."
+description = "Group jump Host"
+[[messages.args]]
+name = "value"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-group-directory-chip"
+context = "Saved Host group metadata chip containing its startup directory."
+description = "Group startup directory"
+[[messages.args]]
+name = "value"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-group-command-chip"
+context = "Saved Host group metadata chip containing its startup command."
+description = "Group startup command"
+[[messages.args]]
+name = "value"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-group-forward-chip"
+context = "Saved Host group metadata chip containing one forwarding rule."
+description = "Group forwarding rule"
+[[messages.args]]
+name = "value"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-group-forwards-chip"
+context = "Saved Host group metadata chip containing its forwarding rule count."
+description = "Group forwarding rule count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "host-group-host-count"
+context = "Saved Host group badge containing its total Host count."
+description = "Group Host count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "host-group-visible-total-count"
+context = "Saved Host group badge containing visible and total Host counts."
+description = "Group visible and total counts"
+[[messages.args]]
+name = "visible"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "total"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "host-group-select-hosts-action"
+context = "Action selecting visible Hosts in a saved group."
+description = "Select group Hosts"
+
+[[messages]]
+id = "host-group-use-bulk-action"
+context = "Action choosing a saved group for bulk Host assignment."
+description = "Use group for bulk assignment"
+
+[[messages]]
+id = "host-group-load-defaults-action"
+context = "Action loading a saved group's defaults into the Host editor."
+description = "Load group defaults"
+
+[[messages]]
+id = "host-identities-title"
+context = "Heading above saved identities in the Host editor."
+description = "Saved identities heading"
+
+[[messages]]
+id = "host-identities-empty-description"
+context = "Host editor guidance when no saved identities exist."
+description = "No saved identities guidance"
+
+[[messages]]
+id = "host-identity-selected-badge"
+context = "Badge on the selected saved identity."
+description = "Selected identity"
+
+[[messages]]
+id = "host-vault-picker-title"
+context = "Heading above the Host editor Vault picker."
+description = "Vault picker heading"
+
+[[messages]]
+id = "host-persistent-session-title"
+context = "Heading for persistent tmux settings in the Host editor."
+description = "Persistent session heading"
+
+[[messages]]
+id = "host-persistent-session-enabled-badge"
+context = "Badge shown when persistent tmux is enabled."
+description = "tmux enabled"
+
+[[messages]]
+id = "host-persistent-session-description"
+context = "Description of persistent tmux behavior in the Host editor."
+description = "Persistent session description"
+
+[[messages]]
+id = "host-persistent-session-disable-action"
+context = "Action disabling persistent tmux for a Host."
+description = "Disable persistent session"
+
+[[messages]]
+id = "host-persistent-session-enable-action"
+context = "Action enabling persistent tmux for a Host."
+description = "Enable persistent session"
+
+[[messages]]
+id = "host-tmux-session-name-field"
+context = "Label for a Host's tmux session name."
+description = "tmux session name field"
+
+[[messages]]
+id = "host-tmux-attach-behavior-title"
+context = "Heading above tmux attach behavior options."
+description = "tmux attach behavior heading"
+
+[[messages]]
+id = "host-tmux-detach-others-action"
+context = "tmux attach option that detaches other clients."
+description = "Detach other tmux clients"
+
+[[messages]]
+id = "host-tmux-share-attach-action"
+context = "tmux attach option that allows other clients to remain attached."
+description = "Share tmux attachment"
+
+[[messages]]
+id = "host-persistent-session-requirements-description"
+context = "Host editor guidance about remote tmux requirements and fallback behavior."
+description = "Persistent session requirements"
+
+[[messages]]
+id = "host-tmux-detach-others-warning"
+context = "Warning that detaching other tmux clients may disconnect another terminal."
+description = "Detach other clients warning"
+
+[[messages]]
+id = "host-color-tag-title"
+context = "Heading above Host color tag choices."
+description = "Color tag heading"
+
+[[messages]]
+id = "host-color-tag-auto-action"
+context = "Action allowing the Host color tag to be selected automatically."
+description = "Automatic color tag"
+
+[[messages]]
+id = "host-color-tag-description"
+context = "Host editor guidance about where color tags appear."
+description = "Color tag guidance"
+
+[[messages]]
+id = "host-library-priority-title"
+context = "Heading above Host library priority choices."
+description = "Library priority heading"
+
+[[messages]]
+id = "host-library-priority-starred-action"
+context = "Host library priority option that pins a Host."
+description = "Starred Host priority"
+
+[[messages]]
+id = "host-library-priority-standard-action"
+context = "Host library priority option that does not pin a Host."
+description = "Standard Host priority"
+
+[[messages]]
+id = "host-library-priority-description"
+context = "Host editor guidance about starred Hosts."
+description = "Starred Host guidance"
+
+[[messages]]
+id = "host-assigning-vault-status"
+context = "Status while assigning a Host to a user-named Vault."
+description = "Assigning Host to Vault"
+[[messages.args]]
+name = "vault"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-group-defaults-title"
+context = "Heading above defaults for a user-named Host group."
+description = "Group defaults heading"
+[[messages.args]]
+name = "group"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-group-defaults-saved-badge"
+context = "Badge indicating a Host group has saved defaults."
+description = "Saved group defaults"
+
+[[messages]]
+id = "host-group-defaults-ad-hoc-badge"
+context = "Badge indicating a Host group does not have saved defaults."
+description = "Ad hoc group defaults"
+
+[[messages]]
+id = "host-group-defaults-save-action"
+context = "Action saving the current Host draft as group defaults."
+description = "Save group defaults"
+
+[[messages]]
+id = "host-group-defaults-delete-action"
+context = "Action deleting saved Host group defaults."
+description = "Delete group defaults"
+
+[[messages]]
+id = "host-group-defaults-inheritance-description"
+context = "Host editor guidance about fields inherited from group defaults."
+description = "Group defaults inheritance guidance"
+
+[[messages]]
+id = "host-startup-title"
+context = "Heading above Host startup directory and command settings."
+description = "Host startup heading"
+
+[[messages]]
+id = "host-startup-description"
+context = "Host editor guidance about startup directory and command behavior."
+description = "Host startup guidance"
+
+[[messages]]
+id = "host-environment-title"
+context = "Label for multiline Host environment settings."
+description = "Host environment heading"
+
+[[messages]]
+id = "host-environment-description"
+context = "Host editor guidance about environment syntax and shell escaping."
+description = "Host environment guidance"
+
+[[messages]]
+id = "host-session-title"
+context = "Heading above Host initial view and scrollback settings."
+description = "Host session heading"
+
+[[messages]]
+id = "host-session-open-terminal-action"
+context = "Host initial-view option that opens the terminal."
+description = "Open terminal on connect"
+
+[[messages]]
+id = "host-session-open-files-action"
+context = "Host initial-view option that opens remote files."
+description = "Open files on connect"
+
+[[messages]]
+id = "host-session-description"
+context = "Host editor guidance about initial view and local scrollback."
+description = "Host session guidance"
+
+[[messages]]
+id = "host-network-route-title"
+context = "Heading above Host outbound network route settings."
+description = "Network route heading"
+
+[[messages]]
+id = "host-network-route-direct-description"
+context = "Host editor description for a direct network route."
+description = "Direct route guidance"
+
+[[messages]]
+id = "host-network-route-proxy-description"
+context = "Host editor description for an outbound proxy route."
+description = "Proxy route guidance"
+
+[[messages]]
+id = "host-port-forwarding-title"
+context = "Heading above saved Host port forwarding rules."
+description = "Port forwarding heading"
+
+[[messages]]
+id = "host-port-forwarding-description"
+context = "Host editor guidance about saved forwarding rule types."
+description = "Port forwarding guidance"
+
+[[messages]]
+id = "host-port-forward-remove-action"
+context = "Action removing one Host port forwarding rule."
+description = "Remove forwarding rule"
+
+[[messages]]
+id = "host-port-forward-add-action"
+context = "Action adding one Host port forwarding rule."
+description = "Add forwarding rule"
+
+[[messages]]
+id = "host-auth-title"
+context = "Heading above Host authentication choices."
+description = "Host authentication heading"
+
+[[messages]]
+id = "host-auth-private-key-action"
+context = "Host authentication option using a private key."
+description = "Private key authentication"
+
+[[messages]]
+id = "host-auth-ssh-agent-action"
+context = "Host authentication option using a local SSH agent."
+description = "SSH agent authentication"
+
+[[messages]]
+id = "host-auth-stored-password-description"
+context = "Host editor status when a saved system credential is available."
+description = "Stored password available"
+
+[[messages]]
+id = "host-auth-private-key-title"
+context = "Heading above Host private key selection."
+description = "Private key heading"
+
+[[messages]]
+id = "host-auth-selected-identity-status"
+context = "Host editor status containing the selected identity label and kind."
+description = "Selected identity status"
+[[messages.args]]
+name = "label"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "kind"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "host-auth-agent-description"
+context = "Host editor guidance about local SSH-agent defaults, key privacy, and forwarding approval."
+description = "SSH agent authentication guidance"
+
+[[messages]]
+id = "hosts-onboarding-saved-count"
+context = "Compact count of saved Hosts in onboarding."
+description = "Saved Host count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "hosts-onboarding-imported-count"
+context = "Compact count of imported Hosts in onboarding."
+description = "Imported Host count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "hosts-onboarding-identity-count"
+context = "Compact count of saved identities in onboarding."
+description = "Saved identity count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "hosts-onboarding-snippet-count"
+context = "Compact count of saved Snippets in onboarding."
+description = "Saved Snippet count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "hosts-onboarding-add-key-action"
+context = "Hosts onboarding action opening the key-file picker."
+description = "Add key file"
+
+[[messages]]
+id = "hosts-onboarding-focus-search-action"
+context = "Hosts onboarding action focusing Host search."
+description = "Focus Host search"
+
+[[messages]]
+id = "host-search-focused-status"
+context = "Status after focusing Host search."
+description = "Host search focused"
+
+[[messages]]
+id = "hosts-onboarding-quick-connect-description"
+context = "Hosts onboarding guidance showing accepted quick-connect syntax."
+description = "Quick connect syntax"
+
+[[messages]]
+id = "hosts-onboarding-shortcuts-description"
+context = "Hosts onboarding guidance listing primary keyboard shortcuts."
+description = "Host onboarding shortcuts"
+[[messages.args]]
+name = "modifier"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "hosts-recent-title"
+context = "Heading above recently connected Hosts."
+description = "Recent Hosts heading"
+
+[[messages]]
+id = "logs-view-switched-status"
+context = "Status after switching to the Logs library view."
+description = "Switched to Logs"

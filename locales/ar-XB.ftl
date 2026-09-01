@@ -70,6 +70,8 @@ activity-center-store-newer = ⁧.ylefas ti nepo ot ppa eht etadpU .noisrev tsuR
 activity-center-store-permission-denied = ⁧.snoissimrep redlof atad ppa eht kcehC .atad ytivitcA lacol sti daer tonnac tsuRimreT⁩
 activity-center-store-unavailable = ⁧.elbasu niamer snoisseS .elbaliavanu yliraropmet si atad ytivitcA⁩
 activity-center-title = ⁧retneC ytivitcA⁩
+activity-section-ready = ⁧.ydaer ytivitcA⁩
+agent-arguments-placeholder = ⁧enil rep tnemugra enO⁩
 agent-canvas-action-menu = ⁧snoitca edoN⁩
 agent-canvas-action-move-down = ⁧nwod evoM⁩
 agent-canvas-action-move-left = ⁧tfel evoM⁩
@@ -375,6 +377,11 @@ agent-canvas-state-permission-denied = ⁧deined noissimrep noitca savnaC⁩
 agent-canvas-state-ready = ⁧ydaer savnaC⁩
 agent-canvas-state-recovery = ⁧elbaliava si yrevocer savnaC⁩
 agent-canvas-title = ⁧savnaC tnegA⁩
+agent-context-review-placeholder = ⁧gnidnes erofeb txetnoc weiveR⁩
+agent-executable-placeholder = ⁧eman dnammoc ro htap elbatucexE⁩
+agent-initial-prompt-placeholder = ⁧tpmorp laitini lanoitpO⁩
+agent-prompt-placeholder = ⁧txetnoc deweiver ro tpmorp a dneS⁩
+agent-working-directory-placeholder = ⁧yrotcerid gnikrow ro yrotisopeR⁩
 artifact-card-summary = ⁧ :sliateD⁩{ $kind }⁧ · ⁩{ $size }⁧ · ⁩{ $state }
 artifact-created-label = ⁧deddA⁩
 artifact-error-cancelled = ⁧.dettimmoc saw tluser laitrap oN .dellecnac noitarepo tcafitrA⁩
@@ -448,6 +455,17 @@ artifact-type-file = ⁧eliF⁩
 artifact-type-jpeg = ⁧egami GEPJ⁩
 artifact-type-png = ⁧egami GNP⁩
 artifact-type-text = ⁧txet nialP⁩
+autocomplete-applied-argument-status = ⁧.tnemugra morf deilppa etelpmocotuA⁩
+autocomplete-applied-builtin-status = ⁧.nitliub morf deilppa etelpmocotuA⁩
+autocomplete-applied-context-status = ⁧.txetnoc morf deilppa etelpmocotuA⁩
+autocomplete-applied-history-status = ⁧.yrotsih morf deilppa etelpmocotuA⁩
+autocomplete-applied-path-status = ⁧.htap morf deilppa etelpmocotuA⁩
+autocomplete-applied-snippet-status = ⁧.teppins morf deilppa etelpmocotuA⁩
+canvas-node-rename-placeholder = ⁧eltit edoN⁩
+canvas-note-editor-placeholder = ⁧feirb ksat a ro ,sdnammoc ,snoisiced ,txetnoc etirW⁩
+canvas-project-editor-placeholder = ⁧tide ro weiv ot elif txet 8-FTU a tceleS⁩
+certificate-file-choose-status = ⁧.elif etacifitrec resu HSSnepO na esoohC⁩
+certificate-file-selected-status = ⁧.detceles etacifitrec resu HSSnepO⁩
 cli-settings-copy-path = ⁧htaP ypoC⁩
 cli-settings-description = ⁧.IU potksed eht gninepo tuohtiw stpircs morf snoisses elbarud lacol lortnoc dna tcepsnI⁩
 cli-settings-example = ⁧ ypoC⁩{ $command }
@@ -465,6 +483,7 @@ cli-settings-state-available = ⁧elbaliavA⁩
 cli-settings-state-host-unavailable = ⁧elbaliavanu tsoH⁩
 cli-settings-state-unavailable = ⁧elbaliavanU⁩
 cli-settings-title = ⁧eniL dnammoC⁩
+command-terminal-required-error = ⁧.dnammoc a nur ot noisses lanimret a nepO⁩
 common-browse = ⁧esworB⁩
 common-cancel = ⁧lecnaC⁩
 common-close = ⁧esolC⁩
@@ -537,6 +556,7 @@ dev-url-stale = ⁧.elbaliava regnol on si ecnatsni tsoH tcaxe sti esuaceb delba
 development-locale-active = ⁧ :elacol tnempoleved evitcA⁩{ $locale }
 development-localization-hint = ⁧.seulav mrof devas gnignahc tuohtiw sserts tuoyal lanoitceridib dna noisnapxe txet weiverP⁩
 development-localization-title = ⁧selacol-oduesP⁩
+devices-section-ready = ⁧.ydaer seciveD⁩
 diagnostics-clear-action = ⁧scitsongaid raelC⁩
 diagnostics-clear-notice = ⁧.stohspans metsyselif ro spukcab ecived ni niamer yam seipoC .sisab troffe-tseb a no selif citsongaid denwo-tsuRimreT ylno sevomer raelC⁩
 diagnostics-cleared = ⁧.deraelc sdrocer citsongaid lacoL⁩
@@ -577,6 +597,12 @@ diagnostics-status-disk-error = ⁧rorre noissimrep ro ksiD⁩
 diagnostics-status-dropping = ⁧lluf si eueuq dednuob eht esuaceb stneve gnipporD⁩
 diagnostics-status-healthy = ⁧yhtlaeH⁩
 diagnostics-usage-summary = { $bytes }⁧ ssorca ⁩{ $files }⁧ tsom ta rof deniater · selif ⁩{ $days }⁧syad ⁩
+durable-attaching-status = ⁧...noisses elbarud ot gnihcattA⁩
+durable-host-metadata-invalid-error = ⁧.atadatem tsoH dilav on sah noisses elbarud sihT⁩
+durable-legacy-reopen-error = ⁧.stixe ssecorp rieht retfa denepoer eb tonnac snoisses dehcatta-ppa ycageL⁩
+durable-restore-host-metadata-missing-error = ⁧.detrats saw ssecorp on ;atadatem tsoH deifirev gnissim si enap ecapskrow elbarud A⁩
+durable-restore-session-metadata-missing-error = ⁧.detrats saw ssecorp on ;atadatem noisses devas sti gnissim si enap ecapskrow elbarud A⁩
+durable-retrying-status = ⁧...tnemhcatta tsoH elbarud gniyrteR⁩
 field-error = ⁧ :rorrE⁩{ $reason }
 files-artifacts-authoritative-heading = ⁧snoisseS evitatirohtua llA⁩
 files-artifacts-count = { $count ->
@@ -697,24 +723,78 @@ health-store-version-label = ⁧tamrof erotS⁩
 health-unaffected-notice = ⁧.selif tcejorp ro ,tuptuo lanimret ,slanruoj ,sessecorp tsoH ,snoisses ,stcejorp egnahc ton seod tI .xedni devired detceles eht ylno secalper dna atadatem evitatirohtua sdaer dliubeR⁩
 host-address-field = ⁧sserdda PI ro tsoH⁩
 host-agent-socket-field = ⁧tekcos tnega HSS⁩
+host-assigning-vault-status = ⁧ ot tsoh siht gningissA⁩{ $vault }⁧.⁩
+host-auth-agent-description = ⁧.lavorppa noitcennoc-eno etarapes a seriuqer gnidrawroF .tnega lacol ruoy ni niamer syek etavirP .KCOS_HTUA_HSS sesu ytpmE⁩
+host-auth-agent-selected-status = ⁧.noitacitnehtua tnegA HSS gnisU⁩
 host-auth-local-agent = ⁧noitacitnehtua tnega HSS lacoL⁩
 host-auth-password = ⁧noitacitnehtua drowssaP⁩
+host-auth-password-selected-status = ⁧.noitacitnehtua drowssaP gnisU⁩
 host-auth-private-key = ⁧noitacitnehtua yek etavirP⁩
+host-auth-private-key-action = ⁧yeK etavirP⁩
+host-auth-private-key-selected-status = ⁧.noitacitnehtua yeK etavirP gnisU⁩
+host-auth-private-key-title = ⁧yek etavirP⁩
+host-auth-selected-identity-status = ⁧ :ytitnedi detceleS⁩{ $label }⁧) ⁩{ $kind }⁧(⁩
+host-auth-ssh-agent-action = ⁧tnegA HSS⁩
+host-auth-stored-password-description = ⁧.erots laitnederc metsys eht morf elbaliava ydaerla si drowssap devas A⁩
+host-auth-title = ⁧htuA⁩
+host-batch-selection-cleared-status = ⁧.noitceles hctab tsoh deraelC⁩
+host-batch-selection-count-status = { $count ->
+    [many] ⁧ detceleS⁩{ $count }⁧.snoitca hctab rof stsoh ⁩
+    [one] ⁧.snoitca hctab rof tsoh eno detceleS⁩
+   *[other] ⁧ detceleS⁩{ $count }⁧.snoitca hctab rof stsoh ⁩
+    [zero] ⁧.snoitca hctab rof detceles stsoh oN⁩
+    }
+host-bulk-group-target-status = ⁧' ot tes tegrat puorg kluB⁩{ $group }⁧.ydaer nehw ylppa dna stsoh tceleS .'⁩
+host-color-tag-auto-action = ⁧otuA⁩
+host-color-tag-description = ⁧.gnidoc-roloc ved / gnigats / dorp rof ydnah — senap detcennoc no tod sutats eht dna sdrac tsoh no tnit ratava eht evird sgaT⁩
+host-color-tag-title = ⁧gat roloC⁩
+host-connect-view-files-status = ⁧.tcennoc retfa weiv seliF etomer eht ni nepo lliw tsoh sihT⁩
+host-connect-view-terminal-status = ⁧.tcennoc retfa weiv lanimret eht ni nepo lliw tsoh sihT⁩
 host-delete-action = ⁧tsoH eteleD⁩
 host-deselect-action = ⁧noitceles morf tsoH evomeR⁩
+host-detach-other-clients-status = ⁧.noisses xumt emas eht morf stneilc rehto hcated nac gnitcennoC⁩
+host-diagnostic-already-running-status = ⁧.desongaid gnieb ydaerla si tsoh tahT⁩
 host-diagnostic-cancel = ⁧citsongaid lecnaC⁩
 host-diagnostic-cancelled = ⁧dellecnac citsongaiD⁩
+host-diagnostic-cancelling-status = ⁧...citsongaid noitcennoc gnillecnaC⁩
+host-diagnostic-checking-channel = ⁧lennahc HSS gnikcehC⁩
+host-diagnostic-checking-configuration = ⁧noitarugifnoc gnikcehC⁩
+host-diagnostic-checking-route-auth = ⁧noitacitnehtua dna etuor gnikcehC⁩
+host-diagnostic-checking-sftp = ⁧PTFS gnikcehC⁩
+host-diagnostic-cleared-status = ⁧.scitsongaid noitcennoc dehsinif deraelC⁩
 host-diagnostic-failed = ⁧noitnetta sdeen noitcennoC⁩
 host-diagnostic-passed = ⁧yhtlaeh noitcennoC⁩
+host-diagnostic-passed-channel = ⁧dessap lennahc HSS⁩
+host-diagnostic-passed-configuration = ⁧dessap noitarugifnoC⁩
+host-diagnostic-passed-route-auth = ⁧dessap noitacitnehtua dna etuoR⁩
+host-diagnostic-passed-sftp = ⁧dessap PTFS⁩
+host-diagnostic-queue-full-error = ⁧.yrter dna hsinif ot kcehc a rof tiaW .lluf si eueuq citsongaid ehT⁩
 host-diagnostic-queued = ⁧deueuq citsongaiD⁩
+host-diagnostic-restarted-status = ⁧.detratser citsongaid noitcennoC⁩
 host-diagnostic-retry = ⁧citsongaid yrteR⁩
+host-diagnostic-route-direct = ⁧HSS tceriD⁩
+host-diagnostic-route-http-proxy = ⁧yxorp TCENNOC PTTH⁩
+host-diagnostic-route-saved-jump = ⁧etuor pmuj devaS⁩
+host-diagnostic-route-socks5-proxy = ⁧yxorp 5SKCOS⁩
 host-diagnostic-running = ⁧noitcennoc gnikcehC⁩
 host-diagnostic-stage-authentication = ⁧noitacitnehtua dna etuoR⁩
 host-diagnostic-stage-channel = ⁧lennahc HSS⁩
 host-diagnostic-stage-configuration = ⁧noitarugifnoC⁩
 host-diagnostic-stage-sftp = ⁧PTFS⁩
+host-diagnostic-start-error = ⁧.citsongaid noitcennoc eht trats ot elbanU⁩
+host-diagnostic-waiting-status = ⁧tols citsongaid elbaliava na rof gnitiaW⁩
+host-diagnostics-batch-limit-error = ⁧ tsom ta stroppus esongaiD⁩{ $limit }⁧.yrter dna noitceles eht worraN .hctab eno ni stsoh ⁩
 host-diagnostics-clear = ⁧dehsinif raelC⁩
+host-diagnostics-selection-required-error = ⁧.esongaid ot tsoh devas eno tsael ta tceleS⁩
+host-diagnostics-started-skipped-status = ⁧ detratS⁩{ $started }⁧ ;snur citsongaid ⁩{ $skipped }⁧.gninnur ydaerla ⁩
+host-diagnostics-started-status = { $started ->
+    [many] ⁧ detratS⁩{ $started }⁧.scitsongaid noitcennoc ⁩
+    [one] ⁧.citsongaid noitcennoc eno detratS⁩
+   *[other] ⁧ detratS⁩{ $started }⁧.scitsongaid noitcennoc ⁩
+    [zero] ⁧.scitsongaid noitcennoc on detratS⁩
+    }
 host-diagnostics-title = ⁧scitsongaid noitcennoC⁩
+host-draft-cleared-status = ⁧.tcennoc ro evas ot tsoh a enifeD .deraelc tfarD⁩
 host-edit-action = ⁧tsoH tidE⁩
 host-editor-address-help = ⁧.yletarapes emanresu eht retnE .niamod a ro ,sserdda PI na ,tsohlacol esU⁩
 host-editor-address-section = ⁧sserddA⁩
@@ -751,11 +831,115 @@ host-editor-theme-tooltip = ⁧.semeht lanimret hguorht elcyc ot tceleS⁩
 host-editor-title = ⁧rotide tsoH⁩
 host-editor-username-help = ⁧.revres HSS eht no eman tnuocca ehT⁩
 host-editor-vault-label = { $vault }⁧tluav ⁩
+host-environment-description = ⁧.gnipacse etouq-elgnis reporp htiw ,nur dnammoc dna yrotcerid putrats eht erofeb llehs etomer eht otni detropxe era selbairaV .enil rep eulav=YEK enO⁩
+host-environment-title = ⁧tnemnorivnE⁩
+host-favorite-disabled-status = ⁧.spuorg yrarbil raluger eht ni raeppa lliw tsoh sihT⁩
+host-favorite-enabled-status = ⁧.yrarbil eht ni derrats eb lliw tsoh sihT⁩
+host-filter-no-matches-error = ⁧.retlif tnerruc eht hctam stsoh oN⁩
+host-filter-selected-count-status = { $count ->
+    [many] ⁧ detceleS⁩{ $count }⁧.retlif tnerruc eht morf stsoh ⁩
+    [one] ⁧.retlif tnerruc eht morf tsoh eno detceleS⁩
+   *[other] ⁧ detceleS⁩{ $count }⁧.retlif tnerruc eht morf stsoh ⁩
+    [zero] ⁧.retlif tnerruc eht morf stsoh on detceleS⁩
+    }
+host-forward-added-status = ⁧ elur drawrof deddA⁩{ $rule }⁧.⁩
+host-forward-duplicate-error = ⁧' elur drawroF⁩{ $rule }⁧.stsixe ydaerla '⁩
+host-forward-fields-required-error = ⁧.elur a dda ot trop etomer dna ,tsoh etomer ,trop lacol retnE⁩
+host-forward-kind-dynamic-status = ⁧.cimanyD ot tes epyt elur drawroF⁩
+host-forward-kind-local-status = ⁧.lacoL ot tes epyt elur drawroF⁩
+host-forward-kind-remote-status = ⁧.etomeR ot tes epyt elur drawroF⁩
+host-forward-removed-status = ⁧ elur drawrof devomeR⁩{ $rule }⁧.⁩
+host-group-command-chip = ⁧ :dmC⁩{ $value }
+host-group-defaults-ad-hoc-badge = ⁧coh dA⁩
+host-group-defaults-delete-action = ⁧stluafeD eteleD⁩
+host-group-defaults-inheritance-description = ⁧.stluafed puorg eht morf selur gnidrawrof devas dna ,sgnittes putrats ,tsoh pmuj ,ytitnedi ,sgat ,emanresu tirehni nac sdleif tsoh knalB⁩
+host-group-defaults-invalid-draft-error = ⁧.txetnoc tfard dilav a eriuqer stluafed puorG⁩
+host-group-defaults-loaded-status = ⁧' puorg rof stluafed dedaoL⁩{ $group }⁧.'⁩
+host-group-defaults-missing-error = ⁧.tey puorg siht rof tsixe stluafed devas oN⁩
+host-group-defaults-missing-named-error = ⁧' puorg rof tsixe stluafed devas oN⁩{ $group }⁧.'⁩
+host-group-defaults-removed-status = ⁧' puorg rof stluafed devomeR⁩{ $group }⁧.'⁩
+host-group-defaults-save-action = ⁧stluafeD puorG evaS⁩
+host-group-defaults-saved-badge = ⁧devaS⁩
+host-group-defaults-saved-status = ⁧' puorg rof stluafed devaS⁩{ $group }⁧.'⁩
+host-group-defaults-title = ⁧' rof stluafed puorG⁩{ $group }⁧'⁩
+host-group-directory-chip = ⁧ :riD⁩{ $value }
+host-group-forward-chip = ⁧ :drawroF⁩{ $value }
+host-group-forwards-chip = { $count ->
+    [many] { $count }⁧sdrawroF ⁩
+    [one] ⁧drawroF enO⁩
+   *[other] { $count }⁧sdrawroF ⁩
+    [zero] ⁧sdrawroF oN⁩
+    }
+host-group-host-count = { $count ->
+    [many] { $count }⁧stsoh ⁩
+    [one] ⁧tsoh enO⁩
+   *[other] { $count }⁧stsoh ⁩
+    [zero] ⁧stsoh oN⁩
+    }
+host-group-identity-chip = ⁧ :ytitnedI⁩{ $value }
+host-group-jump-chip = ⁧ :pmuJ⁩{ $value }
+host-group-load-defaults-action = ⁧stluafeD daoL⁩
+host-group-name-required-error = ⁧.tsrif eman puorg a retnE⁩
+host-group-no-visible-hosts-error = ⁧' ni era stsoh elbisiv oN⁩{ $group }⁧.'⁩
+host-group-select-hosts-action = ⁧stsoH tceleS⁩
+host-group-selected-status = { $count ->
+    [many] ⁧ detceleS⁩{ $count }⁧' morf stsoh ⁩{ $group }⁧.'⁩
+    [one] ⁧' morf tsoh eno detceleS⁩{ $group }⁧.'⁩
+   *[other] ⁧ detceleS⁩{ $count }⁧' morf stsoh ⁩{ $group }⁧.'⁩
+    [zero] ⁧' morf stsoh on detceleS⁩{ $group }⁧.'⁩
+    }
+host-group-tags-chip = ⁧ :sgaT⁩{ $value }
+host-group-use-bulk-action = ⁧kluB sa esU⁩
+host-group-user-chip = ⁧ :resU⁩{ $value }
+host-group-visible-total-count = { $visible }⁧ • elbisiv ⁩{ $total }⁧latot ⁩
+host-identities-empty-description = ⁧.hcnual ta detropmi eno esu ro elif yek a ddA .tey seititnedi devas oN⁩
+host-identities-title = ⁧seititnedi devaS⁩
+host-identity-default-status = ⁧' ytitnedi gnisU⁩{ $identity }⁧.'⁩
+host-identity-selected-badge = ⁧detceleS⁩
+host-identity-selected-status = ⁧' ytitnedI⁩{ $identity }⁧.detceles '⁩
+host-input-address-placeholder = ⁧niamod ro ,sserdda PI ,tsohlacol⁩
+host-input-agent-socket-placeholder = ⁧KCOS_HTUA_HSS sesu ytpme ;tekcos tnega lanoitpO⁩
+host-input-certificate-placeholder = ⁧bup.trec-91552de_di .g.e ,etacifitrec resu HSSnepO lanoitpO⁩
+host-input-display-name-placeholder = ⁧tseT caM lacoL .g.e ,eman yalpsiD⁩
+host-input-environment-placeholder = ⁧(enil rep eulav=YEK eno) ofni=LEVEL_GOLn\dorp=ELIFORP_SWA⁩
+host-input-group-placeholder = ⁧lacoL .g.e ,puorg/redloF⁩
+host-input-jump-host-placeholder = ⁧tsoh devas lanoitpO⁩
+host-input-key-passphrase-placeholder = ⁧esarhpssap yek lanoitpO⁩
+host-input-key-path-placeholder = ⁧91552de_di/hss./~ .g.e ,htap yek etavirP⁩
+host-input-notes-placeholder = ⁧tsoh siht tuoba seton lanoitpO⁩
+host-input-password-placeholder = ⁧htua drowssap gnisu fi ylno ,drowssaP⁩
+host-input-proxy-address-placeholder = ⁧sserdda PI ro emantsoh yxorP⁩
+host-input-proxy-port-placeholder = ⁧8213 ro 0801⁩
+host-input-startup-command-placeholder = ⁧f- sgol esopmoc rekcod⁩
+host-input-tags-placeholder = ⁧setenrebuk ,eulb ,dorp⁩
+host-input-username-placeholder = ⁧bocaj .g.e ,emanresu HSS⁩
+host-keep-other-clients-status = ⁧.noisses xumt emas eht ot dehcatta yats yam stneilc rehtO⁩
 host-key-passphrase-field = ⁧esarhpssap yek etavirP⁩
 host-key-path-field = ⁧elif yek etavirP⁩
 host-label-field = ⁧eman tsoH⁩
+host-library-priority-description = ⁧.senihcam desu-tsom ruoy rof yrarbil eht fo pot eht ot dennip yats stsoh derratS⁩
+host-library-priority-standard-action = ⁧dradnatS⁩
+host-library-priority-starred-action = ⁧derratS⁩
+host-library-priority-title = ⁧ytiroirp yrarbiL⁩
+host-named-starred-status = ⁧' derratS⁩{ $host }⁧.'⁩
+host-named-unstarred-status = ⁧' devomeR⁩{ $host }⁧.stsoh derrats morf '⁩
+host-network-route-direct-description = ⁧.tsoh siht ot yltcerid tcennoC⁩
+host-network-route-proxy-description = ⁧.detroppus ton era seixorp detacitnehtuA .dne ot dne tegrat eht setacitnehtua dna seifirev llits HSS .yxorp siht hguorht poh PCT tsrif eht ylno etuoR⁩
+host-network-route-title = ⁧etuoR krowteN⁩
+host-normal-shell-status = ⁧.tcennoc no llehs HSS lamron a nepo lliw tsoh sihT⁩
 host-password-field = ⁧drowssaP⁩
+host-persistent-session-description = ⁧.krowten eht gnisol ro bat eht gnisolc retfa gninnur lanimret etomer eht peeK⁩
+host-persistent-session-disable-action = ⁧elbasiD⁩
+host-persistent-session-enable-action = ⁧xumt tnetsisrep elbanE⁩
+host-persistent-session-enabled-badge = ⁧delbane xumt⁩
+host-persistent-session-requirements-description = ⁧.detaerc tsrif si noisses xumt eht nehw ylno nur sdnammoc putratS .llehs lamron a snepo dna pleh llatsni swohs tsuRimreT ,gnissim si xumt fI .tsoh etomer eht no xumt seriuqeR⁩
+host-persistent-session-title = ⁧noisseS tnetsisreP⁩
+host-persistent-tmux-status = ⁧.tcennoc no noisses xumt deman a ot hcatta lliw tsoh sihT⁩
 host-port-field = ⁧trop HSS⁩
+host-port-forward-add-action = ⁧eluR ddA⁩
+host-port-forward-remove-action = ⁧evomeR⁩
+host-port-forwarding-description = ⁧.tsoh eht htiw yllacitamotua meht hcnual dna yxorp 5SKCOS cimanyd a ro ,slennut esrever etomer ,slennut lacol evaS⁩
+host-port-forwarding-title = ⁧seluR gnidrawroF troP⁩
 host-private-address = ⁧sserdda tsoH etavirP⁩
 host-private-agent-socket = ⁧tekcos tnega HSS etavirP⁩
 host-private-diagnostic = ⁧citsongaid noitcennoc etavirP⁩
@@ -764,11 +948,35 @@ host-private-row = ⁧tsoH etavirP⁩
 host-private-username = ⁧emanresu HSS etavirP⁩
 host-private-value = ⁧eulav tsoH etavirP⁩
 host-recovery-impact = ⁧ :ecnedive esael tsoH⁩{ $result }⁧ ;⁩{ $peers }⁧ etavirp A .sreep detacitnehtua ⁩{ $bytes }⁧.egnahc yna erofeb deniater si pukcab atadatem ⁩
+host-removed-status = ⁧.devomer tsoh devaS⁩
+host-saved-groups-description = ⁧.rotide eht otni stluafed sti daol ro ,tnemngissa klub rof ti tegrat ,puorg a tceleS⁩
+host-saved-groups-title = ⁧spuorG devaS⁩
+host-search-focused-status = ⁧.desucof hcraes tsoH⁩
 host-secret-set = ⁧tes si terceS⁩
 host-select-action = ⁧tsoH tceleS⁩
+host-selection-required-error = ⁧.tsrif tsoh eno tsael ta tceleS⁩
+host-session-description = ⁧.kcabllorcs lacol ni peek ot swor lanimret ynam woh tes dna ,tcennoc retfa seliF ro lanimreT ni sdnal tsoh siht rehtehw esoohC⁩
+host-session-open-files-action = ⁧seliF nepO⁩
+host-session-open-terminal-action = ⁧lanimreT nepO⁩
+host-session-title = ⁧noisseS⁩
 host-star-action = ⁧tsoH ratS⁩
+host-starred-status = ⁧.derrats tsoH⁩
+host-startup-description = ⁧.dnammoc putrats eno nur yllanoitpo dna yrotcerid devas a otni egnahc nac ppa eht ,snepo llehs HSS eht nehW⁩
+host-startup-title = ⁧putratS⁩
+host-tmux-attach-behavior-title = ⁧roivaheb hcattA⁩
+host-tmux-detach-others-action = ⁧srehto hcateD⁩
+host-tmux-detach-others-warning = ⁧.noisses xumt siht morf lanimret ro wodniw tsuRimreT rehtona tcennocsid nac srehto hcateD⁩
+host-tmux-session-name-field = ⁧emaN noisseS xumT⁩
+host-tmux-share-attach-action = ⁧hcatta erahS⁩
 host-unstar-action = ⁧tsoH ratsnU⁩
+host-unstarred-status = ⁧.setirovaf morf devomer tsoH⁩
 host-username-field = ⁧emanresU⁩
+host-vault-picker-title = ⁧tluaV⁩
+hosted-session-detached = ⁧dnuorgkcab eht ni seunitnoc noisses elbarud eht ;dehcateD⁩
+hosted-session-launch-cancelled = ⁧ydaer emaceb tsoH elbarud eht erofeb dellecnac hcnuaL⁩
+hosted-session-process-exited = ⁧ylno-daer si tuptuo deniater ;detixe ssecorp elbaruD⁩
+hosted-session-retained-read-only = ⁧ylno-daer si tuptuo elbarud deniateR⁩
+hosted-session-worker-start-error = ⁧ :rekrow noisses elbarud trats ot elbanU⁩{ $reason }
 hosts-add-action = ⁧tsoH weN⁩
 hosts-add-tags-action = ⁧sgat ddA⁩
 hosts-agent-canvas-action = ⁧savnaC tnegA⁩
@@ -793,6 +1001,34 @@ hosts-imported-count = { $count ->
    *[other] ⁧ detropmI⁩{ $count }⁧.gifnoc/hss./~ morf stsoH ⁩
     [zero] ⁧.gifnoc/hss./~ morf detropmi erew stsoH oN⁩
     }
+hosts-onboarding-add-key-action = ⁧eliF yeK ddA⁩
+hosts-onboarding-focus-search-action = ⁧hcraeS sucoF⁩
+hosts-onboarding-identity-count = { $count ->
+    [many] { $count }⁧seititnedi ⁩
+    [one] ⁧ytitnedi 1⁩
+   *[other] { $count }⁧seititnedi ⁩
+    [zero] ⁧seititnedi 0⁩
+    }
+hosts-onboarding-imported-count = { $count ->
+    [many] { $count }⁧detropmi ⁩
+    [one] ⁧detropmi 1⁩
+   *[other] { $count }⁧detropmi ⁩
+    [zero] ⁧detropmi 0⁩
+    }
+hosts-onboarding-quick-connect-description = ⁧`trop:tsoh@resu hss` ro `tsoh@resu` :hcraes morf tcennoc kciuQ⁩
+hosts-onboarding-saved-count = { $count ->
+    [many] { $count }⁧devas ⁩
+    [one] ⁧devas 1⁩
+   *[other] { $count }⁧devas ⁩
+    [zero] ⁧devas 0⁩
+    }
+hosts-onboarding-shortcuts-description = ⁧ :stuctrohS⁩{ $modifier }⁧ ,snoitces rof 7..1+⁩{ $modifier }⁧ ,hcraes tsoh rof L+⁩{ $modifier }⁧ettelap dnammoc rof K+⁩
+hosts-onboarding-snippet-count = { $count ->
+    [many] { $count }⁧steppins ⁩
+    [one] ⁧teppins 1⁩
+   *[other] { $count }⁧steppins ⁩
+    [zero] ⁧steppins 0⁩
+    }
 hosts-open-fleet-action = ⁧teelF nepO⁩
 hosts-open-fleet-tooltip = { $count ->
     [many] ⁧ lla nepO⁩{ $count }⁧savnac teelF HSS eno ni stsoH elbisiv ⁩
@@ -802,6 +1038,7 @@ hosts-open-fleet-tooltip = { $count ->
 hosts-provider-unavailable = { $provider }⁧.tey elbaliava ton si noitargetni ⁩
 hosts-quick-connect-action = ⁧tcennoc kciuQ⁩
 hosts-quick-connect-password-field = ⁧drowssap tcennoc-kciuq lanoitpO⁩
+hosts-recent-title = ⁧TNECER⁩
 hosts-search-field = ⁧tsoh@resu retne ro stsoH hcraeS⁩
 hosts-select-visible = ⁧elbisiv tceleS⁩
 hosts-selected-count = { $count ->
@@ -818,6 +1055,7 @@ hosts-tags-help = ⁧.rotide tsoH eht ni degnahc eb nac dna stsoH retlif pleh sg
 hosts-terminal-action = ⁧lanimreT⁩
 hosts-title = ⁧snoitcennoC & stsoH⁩
 hosts-unstar-selected = ⁧detceles ratsnU⁩
+identity-added-status = ⁧' ytitnedI⁩{ $identity }⁧.dedda '⁩
 key-add-file-action = ⁧elif yek ddA⁩
 key-audit-unsaved-warning = ⁧.devas eb ton dluoc drocer tidua lacol ehT⁩
 key-blank-passphrase-warning = ⁧.nelots ro deipoc si elif eht fi refas si yek etavirp detpyrcne na tub ,dewolla si esarhpssap knalb A⁩
@@ -832,6 +1070,8 @@ key-deploy-action = ⁧yek cilbup yolpeD⁩
 key-deployment-passphrase-placeholder = ⁧tes fi ,esarhpssap yek etavirP⁩
 key-destination-field = ⁧noitanitseD⁩
 key-destination-value = ⁧syek_dezirohtua/hss./~ s'resu detacitnehtuA⁩
+key-file-choose-status = ⁧.elif yek etavirp a esoohC⁩
+key-file-unsupported-error = ⁧.yek etavirp detroppus a ekil kool ton seod elif tahT⁩
 key-fingerprint-field = ⁧tnirpregniF⁩
 key-generate-action = ⁧yek etareneG⁩
 key-generate-notice = ⁧.nettirwrevo reven era selif gnitsixE .esoohc uoy noitanitsed eht ta elif bup. gnihctam dna yek etavirp 91552dE na setaerc tsuRimreT⁩
@@ -901,7 +1141,23 @@ keychain-password-empty-description = ⁧.ereh ecnerefer laitnederc eruces sti p
 keychain-password-empty-title = ⁧devas seititnedi drowssap oN⁩
 keychain-show-identities-action = ⁧seititnedi wohS⁩
 keychain-show-keys-action = ⁧syek wohS⁩
+known-hosts-already-removed-status = ⁧.devomer ydaerla saw tsoH⁩
+known-hosts-count = { $count ->
+    [many] { $count }⁧stsoh detsurt ⁩
+    [one] ⁧tsoh detsurt enO⁩
+   *[other] { $count }⁧stsoh detsurt ⁩
+    [zero] ⁧stsoh detsurt oN⁩
+    }
+known-hosts-description = ⁧.yek sti degnahc yletamitigel sah revres a fi ereh yrtne na evomeR .(UFOT) tcennoc tsrif no dennip era syek tsoH⁩
+known-hosts-removed-status = ⁧ tsoh nwonk devomeR⁩{ $endpoint }⁧.⁩
+known-hosts-section-ready = ⁧.ydaer stsoH nwonK⁩
+known-hosts-title = ⁧stsoH nwonK⁩
 last-updated = ⁧ detadpu tsaL⁩{ $when }
+local-terminal-opening-status = ⁧...lanimret lacol gninepO⁩
+local-terminal-ready-status = ⁧.ydaer lanimret lacoL⁩
+local-terminal-reopening-status = ⁧...lanimret lacol gninepoeR⁩
+local-terminal-split-launching-status = ⁧...lanimret lacol tilps gnihcnuaL⁩
+logs-view-switched-status = ⁧.weiv sgoL ot dehctiwS⁩
 new-session-action = ⁧noisses weN⁩
 new-session-cancel-start = ⁧trats lecnaC⁩
 new-session-cancelled-clean = ⁧.deppots saw ssecorp denwo-ppa ehT .dellecnac trats noisseS⁩
@@ -979,6 +1235,7 @@ notification-summary-payload = { $count ->
     }
 notification-toggle-off = ⁧ffO⁩
 notification-toggle-on = ⁧nO⁩
+open-connections-action = ⁧snoitcennoC nepO⁩
 overlay-command-preview = ⁧ :dnammoC⁩{ $command }
 overlay-paste-action = ⁧etsaP⁩
 overlay-paste-confirmation = ⁧ etsaP⁩{ $count }⁧?enap evitca eht otni senil ⁩
@@ -1000,6 +1257,11 @@ palette-snippet-detail = ⁧ · teppinS⁩{ $command }
 palette-startup-path = ⁧htap putratS⁩
 palette-systemd-unit = ⁧tinu dmetsyS⁩
 palette-this-target = ⁧tegrat sihT⁩
+pane-already-own-workspace-error = ⁧.ecapskrow nwo sti ni ydaerla si enap sihT⁩
+pane-closed-status = ⁧.desolc enaP⁩
+pane-detached-new-workspace-status = ⁧.bat ecapskrow wen a otni dehcated enaP⁩
+pane-rename-placeholder = ⁧eman enaP⁩
+pane-renamed-status = ⁧ ot demaner enaP⁩{ $title }⁧.⁩
 path-unavailable = ⁧ nepo tonnaC⁩{ $path }
 preset-accept-action = ⁧noitseggus tpeccA⁩
 preset-accepted-status = ⁧ teserp detceted deddA⁩{ $name }⁧.dehcnual saw gnihtoN .⁩
@@ -1123,6 +1385,7 @@ projects-ready-status = ⁧.ydaer yrarbil tcejorP⁩
 projects-shortcut-description = ⁧stcejorP nepO⁩
 projects-subtitle = ⁧.krow lacol rof sredlof elbats ezinagrO⁩
 projects-title = ⁧snoisseS & stcejorP⁩
+quick-connect-auth-required-error = ⁧ ni yek HSS na ro ,drowssap metsys derots a ,drowssap a sdeen tcennoc kciuQ⁩{ $directory }⁧.⁩
 recovery-confirm-action = ⁧yrevocer mrifnoC⁩
 recovery-description = ⁧.egnahc yrevocer a gnikam erofeb pukcab etavirp dna ,atadatem detceffa ,ecnedive tcaxe eht weiveR⁩
 recovery-impact = ⁧ erotser :nalP⁩{ $changed }⁧ evael ,selif atadatem ⁩{ $unchanged }⁧ etavirp a niater dna ,degnahcnu ⁩{ $bytes }⁧.pukcab etats-tnerruc ⁩
@@ -1251,6 +1514,16 @@ session-count = { $count ->
    *[other] { $count }⁧snoisses evitca ⁩
     [zero] ⁧snoisses evitca oN⁩
     }
+session-history-active-status = ⁧evitcA⁩
+session-history-count = { $count ->
+    [many] { $count }⁧snoisses ⁩
+    [one] ⁧noisses enO⁩
+   *[other] { $count }⁧snoisses ⁩
+    [zero] ⁧snoisses oN⁩
+    }
+session-history-section-ready = ⁧.ydaer sgoL⁩
+session-history-started-duration = ⁧ detratS⁩{ $started }⁧ noitaruD  ⁩{ $duration }
+session-history-title = ⁧yrotsiH noisseS⁩
 session-library-active-view = ⁧evitcA⁩
 session-library-activity-busy = ⁧ysuB⁩
 session-library-activity-done = ⁧enoD⁩
@@ -1335,6 +1608,7 @@ session-sidebar-empty = ⁧.wor tcejorP eht morf eno tratS .tey tcejorP siht rof
 session-sidebar-select-project = ⁧.snoisses sti ezinagro ot tcejorP a tceleS⁩
 session-sidebar-subtitle = ⁧.seirotcerid gnikrow ro sessecorp gninnur gnignahc tuohtiw sdrocer noisses ezinagrO⁩
 session-sidebar-title = ⁧snoisseS⁩
+sessions-section-ready = ⁧.ydaer snoisseS⁩
 settings-approve-mobile-action = ⁧ecived elibom evorppA⁩
 settings-attempts-option = { $count }⁧stpmetta ⁩
 settings-auto-copy-value = ⁧ypoc otuA⁩
@@ -1550,33 +1824,61 @@ settings-welcome-reset-status = ⁧.ti weiv ot snoitcennoC nepO .teser lenap emo
 settings-welcome-visible = ⁧elbisiv lenap emocleW⁩
 sftp-back-terminal-action = ⁧lanimret ot kcaB⁩
 sftp-cancel-transfer-action = ⁧refsnart lecnaC⁩
+sftp-cancelled-before-start-status = ⁧detrats refsnart erofeb dellecnaC⁩
+sftp-cancelled-resumable-status = ⁧demuser eb nac gnigats deifirev ;dellecnaC⁩
 sftp-checksum = ⁧ 652-AHS⁩{ $checksum }
 sftp-close-host-picker-action = ⁧selif ot kcaB⁩
 sftp-column-kind = ⁧dniK⁩
 sftp-column-modified = ⁧deifidom etaD⁩
 sftp-column-name = ⁧emaN⁩
 sftp-column-size = ⁧eziS⁩
+sftp-conflict-choice-status = ⁧.eunitnoc nac refsnart eht erofeb emuseR ro ,pikS ,ecalpeR esoohC⁩
 sftp-conflict-description = ⁧ sniatnoc noitanitsed ehT⁩{ $size }⁧.degnahc neeb sah gnihtoN .⁩
 sftp-connect-empty-description = ⁧.PTFS htiw selif sti eganam ot tsoH HSS devas a tceleS⁩
 sftp-connect-empty-title = ⁧tsoH a ot tcennoC⁩
 sftp-connect-host-action = ⁧tsoH ot tcennoC⁩
 sftp-delete-action = ⁧eteleD⁩
+sftp-delete-selection-required-error = ⁧.tsrif redlof ro elif etomer a tceleS⁩
+sftp-delete-start-error = ⁧ :eteled etomer trats ot elbanU⁩{ $reason }
+sftp-deleting-path-status = ⁧ gniteleD⁩{ $path }⁧...⁩
+sftp-destination-exists-status = ⁧stsixe ydaerla noitanitseD⁩
 sftp-directory-empty-description = ⁧.lanimret eht ot nruter ro ,elif a daolpu ,yrotcerid rehtona nepO⁩
 sftp-directory-empty-title = ⁧ytpme si yrotcerid sihT⁩
+sftp-directory-load-start-error = ⁧ :daol yrotcerid etomer trats ot elbanU⁩{ $reason }
 sftp-download-action = ⁧daolnwoD⁩
+sftp-download-complete-digest-status = ⁧ 652-AHS .etelpmoc daolnwoD⁩{ $digest }⁧...⁩
+sftp-download-complete-verified-status = ⁧deifirev dna etelpmoc daolnwoD⁩
+sftp-download-in-progress-status = ⁧ssergorp ni daolnwoD⁩
+sftp-download-published-cleanup-warning-status = ⁧.devomer eb ton dluoc pukcab denwo-ppa na tub ,deifirev dna dehsilbup daolnwoD⁩
+sftp-download-queued-behind-status = { $count ->
+    [many] ⁧ dniheb deueuq daolnwoD⁩{ $count }⁧srefsnart ⁩
+    [one] ⁧refsnart eno dniheb deueuq daolnwoD⁩
+   *[other] ⁧ dniheb deueuq daolnwoD⁩{ $count }⁧srefsnart ⁩
+    [zero] ⁧...gnitrats daolnwoD⁩
+    }
+sftp-download-resuming-status = ⁧daolnwod gnimuseR⁩
+sftp-download-start-error = ⁧ :daolnwod trats ot elbanU⁩{ $reason }
+sftp-download-starting-status = ⁧...gnitrats daolnwoD⁩
+sftp-download-verified-cleanup-needed-status = ⁧dedeen llits si punaelc pukcab dlo ;deifirev daolnwoD⁩
 sftp-file-kind = ⁧eliF⁩
+sftp-file-selection-required-error = ⁧.tsrif elif etomer a tceleS⁩
 sftp-filter-action = ⁧retliF⁩
 sftp-filter-field = ⁧selif lacol retliF⁩
+sftp-folder-download-unsupported-error = ⁧.daetsni redlof eht nepO .tey elbadaolnwod ton era sredloF⁩
 sftp-folder-kind = ⁧redloF⁩
+sftp-folder-required-error = ⁧.resworb etomer eht ni denepo eb nac sredlof ylnO⁩
+sftp-folder-selection-required-error = ⁧.tsrif redlof a tceleS⁩
 sftp-host-picker-title = ⁧tsoH PTFS na tceleS⁩
 sftp-host-summary = ⁧ · HSS⁩{ $username }⁧@⁩{ $endpoint }
 sftp-library-title = ⁧selif etomer dna lacoL⁩
 sftp-loading-directory = ⁧…yrotcerid etomer gnidaoL⁩
+sftp-loading-endpoint-status = ⁧ morf selif etomer gnidaoL⁩{ $endpoint }⁧...⁩
 sftp-local-pane = ⁧selif lacoL⁩
 sftp-open-files-action = ⁧selif nepO⁩
 sftp-open-folder-action = ⁧redlof nepO⁩
 sftp-open-local-action = ⁧reganam elif ni nepO⁩
 sftp-opened-local-folder = ⁧ denepO⁩{ $path }⁧.reganam elif metsys eht ni ⁩
+sftp-opening-path-status = ⁧ gninepO⁩{ $path }⁧...⁩
 sftp-parent-action = ⁧yrotcerid tneraP⁩
 sftp-private-entry = ⁧yrtne elif etavirP⁩
 sftp-private-host = ⁧tsoH PTFS etavirP⁩
@@ -1598,6 +1900,7 @@ sftp-select-host-action = ⁧tsoH tceleS⁩
 sftp-selected-file = ⁧ :elif detceleS⁩{ $path }⁧ · ⁩{ $size }
 sftp-selected-folder = ⁧ :redlof detceleS⁩{ $path }
 sftp-skip-action = ⁧pikS⁩
+sftp-ssh-session-required-error = ⁧.snoisses HSS rof elbaliava ylno era selif etomeR⁩
 sftp-state-cancel-requested = ⁧…yradnuob refsnart eht rof gnitiaW .detseuqer noitallecnaC⁩
 sftp-state-cancelled = ⁧.gniyrter erofeb ecnedive gnigats deniater weiveR .dellecnac refsnarT⁩
 sftp-state-completed = ⁧.deifirev dna etelpmoc refsnarT⁩
@@ -1621,29 +1924,59 @@ sftp-state-timeout = ⁧.devreserp erew selif gnitsixE .tuo demit noitarepo PTFS
 sftp-state-transferring = ⁧…atad elif gnirrefsnarT⁩
 sftp-symlink-kind = ⁧knilmyS⁩
 sftp-syncing-status = ⁧gnicnyS⁩
+sftp-terminal-view-status = ⁧.weiv lanimret ot kcaB⁩
+sftp-transfer-action-invalid-error = ⁧.refsnart a ton si noitca PTFS detceles ehT⁩
+sftp-transfer-active-error = ⁧.ereh rehtona gnitrats erofeb refsnart tnerruc eht lecnac ro hsiniF⁩
+sftp-transfer-cancel-requested-status = ⁧.detseuqer noitallecnac refsnart PTFS⁩
+sftp-transfer-cancelled-status = ⁧.dellecnac refsnart PTFS⁩
 sftp-transfer-progress = { $transferred }⁧ fo ⁩{ $total }⁧ · ⁩{ $percent }⁧%⁩
 sftp-transfer-progress-resumed = { $transferred }⁧ fo ⁩{ $total }⁧ · ⁩{ $percent }⁧ ta demuser · %⁩{ $resumed }
+sftp-transfer-queued-download = ⁧deueuq daolnwoD⁩
+sftp-transfer-queued-upload = ⁧deueuq daolpU⁩
+sftp-transfer-skipped-download = ⁧.degnahcnu saw noitanitsed ;deppiks daolnwoD⁩
+sftp-transfer-skipped-upload = ⁧.degnahcnu saw noitanitsed ;deppiks daolpU⁩
 sftp-transfer-waiting = ⁧gnitiaw⁩
 sftp-upload-action = ⁧daolpU⁩
+sftp-upload-complete-digest-status = ⁧ 652-AHS .etelpmoc daolpU⁩{ $digest }⁧...⁩
+sftp-upload-complete-verified-status = ⁧deifirev dna etelpmoc daolpU⁩
+sftp-upload-in-progress-status = ⁧ssergorp ni daolpU⁩
+sftp-upload-published-cleanup-warning-status = ⁧.devomer eb ton dluoc pukcab denwo-ppa na tub ,deifirev dna dehsilbup daolpU⁩
+sftp-upload-queued-behind-status = { $count ->
+    [many] ⁧ dniheb deueuq daolpU⁩{ $count }⁧srefsnart ⁩
+    [one] ⁧refsnart eno dniheb deueuq daolpU⁩
+   *[other] ⁧ dniheb deueuq daolpU⁩{ $count }⁧srefsnart ⁩
+    [zero] ⁧...gnitrats daolpU⁩
+    }
+sftp-upload-resuming-status = ⁧daolpu gnimuseR⁩
+sftp-upload-start-error = ⁧ :daolpu trats ot elbanU⁩{ $reason }
+sftp-upload-starting-status = ⁧...gnitrats daolpU⁩
+sftp-upload-verified-cleanup-needed-status = ⁧dedeen llits si punaelc pukcab dlo ;deifirev daolpU⁩
 sftp-workspace-local-description = ⁧.krow lacol eunitnoc ot lanimret eht ot nruteR .stsoH HSS ot ylno seilppa PTFS⁩
 sftp-workspace-local-title = ⁧sllehs lacol rof elbaliavanu era selif etomeR⁩
 sftp-workspace-open-description = ⁧.lanimret eht ot nruter ro ,selif daolnwod ro daolpu ,PTFS revo tsoH HSS siht esworB⁩
 sftp-workspace-open-title = ⁧tsoH siht rof selif nepO⁩
 sftp-workspace-title = ⁧selif etomeR⁩
 shell-app-title = ⁧tsuRimreT⁩
+shell-bulk-group-placeholder = ⁧eman puorg kluB⁩
+shell-connect-username-placeholder = ⁧emanresU⁩
+shell-create-host-address-placeholder = ⁧emantsoH ro PI epyT⁩
 shell-duplicate-window-error = ⁧ :wodniw etacilpud nepo ot elbanU⁩{ $reason }
 shell-duplicate-window-progress = ⁧ gnitacilpuD⁩{ $target }⁧…wodniw wen a ni ⁩
+shell-host-search-placeholder = ⁧...emantsoh@resu hss ro ,gat ,puorg ,tsoh a dniF⁩
 shell-layout-canvas-label = ⁧savnaC⁩
 shell-layout-canvas-tooltip = ⁧savnac a no stnega dna slanimret egnarrA⁩
 shell-layout-split-label = ⁧tilpS⁩
 shell-layout-split-tooltip = ⁧senap tilps sa ecapskrow siht egnarrA⁩
 shell-palette-result = ⁧tluser ettelaP⁩
+shell-quick-connect-password-placeholder = ⁧drowssaP⁩
 shell-region-content = ⁧tnetnoc tnerruC⁩
 shell-region-inspector = ⁧rotcepsnI⁩
 shell-region-primary-navigation = ⁧noitagivan yramirP⁩
 shell-region-status = ⁧sutats noitacilppA⁩
 shell-region-window-chrome = ⁧secapskrow dna slortnoc wodniW⁩
+shell-sftp-filter-placeholder = ⁧selif retliF⁩
 shell-skip-content = ⁧tnetnoc tnerruc ot pikS⁩
+shell-terminal-search-placeholder = ⁧tuptuo lanimret hcraeS⁩
 shell-tmux-fallback = ⁧.won rof llehs lamron a denepo tsuRimreT⁩
 shell-tmux-install-generic = ⁧.reganam egakcap metsys siht htiw xumt llatsnI⁩
 shell-tmux-install-guidance = ⁧:tcennocer neht ,enihcam etomer eht no xumt llatsnI⁩
@@ -1670,6 +2003,9 @@ snippet-error-stale = ⁧.elbaliava regnol on si ro degnahc teppinS detceles ehT
 snippet-error-stale-terminal = ⁧.niaga noitresni eht weiveR .degnahc lanimret ro teppinS detceles ehT⁩
 snippet-error-terminal-required = ⁧.teppinS a gnitresni erofeb lanimret a sucof dna nepO⁩
 snippet-group-field = ⁧puorG⁩
+snippet-input-command-placeholder = ⁧ppa tratser ltcmetsys odus⁩
+snippet-input-group-placeholder = ⁧yolpeD / spO⁩
+snippet-input-label-placeholder = ⁧ecivres tratseR⁩
 snippet-insert-action = ⁧txet sa tresnI⁩
 snippet-insert-cancelled = ⁧.tnes saw txet lanimret oN .dellecnac noitresni teppinS⁩
 snippet-insert-review-summary = { $count ->
@@ -1709,20 +2045,32 @@ snippet-select-action = ⁧teppinS tceleS⁩
 snippet-unpin-action-label = ⁧nipnU⁩
 snippet-unpinned-status = ⁧.snoitca kciuq ecapskrow morf devomer teppinS⁩
 snippets-title = ⁧steppinS⁩
+ssh-config-host-read-only-status = ⁧ morf daer era stsoh gifnoc HSS detropmI⁩{ $path }⁧.daetsni ypoc lacol a evas ro gifnoc eht tidE .⁩
 status-connecting = ⁧ ot gnitcennoC⁩{ $host }⁧…⁩
 status-ready = ⁧ydaeR⁩
 terminal-announcement-attention = ⁧noitnetta sdeen lanimreT⁩
 terminal-announcement-gap = ⁧pag a sah tuptuo lanimret deniateR⁩
 terminal-announcement-output = ⁧elbaliava si tuptuo lanimret weN⁩
 terminal-announcement-truncated = ⁧devomer saw tuptuo weiver lanimret redlO⁩
+terminal-cleared-status = ⁧.deraelc lanimreT⁩
 terminal-exit-action = ⁧sucof lanimret evaeL⁩
 terminal-input-action = ⁧tupni lanimret esU⁩
+terminal-multiline-paste-confirm-status = { $count ->
+    [many] { $count }⁧.enap evitca eht ot dnes ot mrifnoC .draobpilc eht no senil ⁩
+    [one] ⁧.enap evitca eht ot ti dnes ot mrifnoC .draobpilc eht no si enil enO⁩
+   *[other] { $count }⁧.enap evitca eht ot dnes ot mrifnoC .draobpilc eht no senil ⁩
+    [zero] ⁧.draobpilc eht no era senil oN⁩
+    }
+terminal-multiline-paste-delivered-status = ⁧.dereviled etsap enil-itluM⁩
 terminal-pane = ⁧enap lanimreT⁩
+terminal-paste-cancelled-status = ⁧.dellecnac etsaP⁩
 terminal-read-only = ⁧ylno daeR⁩
 terminal-review-action = ⁧tuptuo lanimret weiveR⁩
 terminal-review-cursor = ⁧noitisop weiver lanimreT⁩
 terminal-review-next = ⁧enil weiver txeN⁩
 terminal-review-previous = ⁧enil weiver suoiverP⁩
+terminal-selection-copied-status = ⁧.draobpilc ot deipoc noitceleS⁩
+terminal-ssh-input-send-error = ⁧.emitnur HSS eht ot tupni dnes ot elbanU⁩
 terminal-state-backpressured = ⁧derusserpkcab tupnI⁩
 terminal-state-connecting = ⁧gnitcennoC⁩
 terminal-state-detached = ⁧dehcateD⁩
@@ -1735,6 +2083,7 @@ terminal-state-permission-denied = ⁧deined noissimreP⁩
 terminal-state-recovery = ⁧gnirevoceR⁩
 terminal-state-replaying = ⁧tuptuo devas gniyalpeR⁩
 terminal-writer-held = ⁧retirW⁩
+tmux-session-deleted-status = ⁧ noisses xumt deteleD⁩{ $session }⁧.⁩
 transcript-export-action = ⁧tpircsnart tropxE⁩
 transcript-export-unavailable-contract = ⁧.noisrev dna redivorp siht rof stsixe tcartnoc tpircsnart devorppa on :elbaliavanU⁩
 transcript-export-unavailable-pending = ⁧.lavorppa gnitiawa si tcartnoc tpircsnart siht :elbaliavanU⁩
@@ -1755,6 +2104,8 @@ vault-host-count = { $count ->
    *[other] { $count }⁧stsoH ⁩
     [zero] ⁧stsoH oN⁩
     }
+vault-input-description-placeholder = ⁧ssecca erutcurtsarfni derahS⁩
+vault-input-label-placeholder = ⁧maeT spO⁩
 vault-key-count = { $count ->
     [many] { $count }⁧syek ⁩
     [one] ⁧yek 1⁩
@@ -1797,9 +2148,11 @@ vault-member-count = { $count ->
     }
 vault-member-delete-action = ⁧rebmem evomeR⁩
 vault-member-email-field = ⁧liame rebmeM⁩
+vault-member-email-placeholder = ⁧moc.ynapmoc@xela⁩
 vault-member-email-required = ⁧.deriuqer si liame rebmeM⁩
 vault-member-loaded = ⁧.rebmem tluaV dedaoL⁩
 vault-member-name-field = ⁧eman rebmeM⁩
+vault-member-name-placeholder = ⁧areviR xelA⁩
 vault-member-name-required = ⁧.deriuqer si liame ro eman rebmeM⁩
 vault-member-private-row = ⁧rebmem etavirP⁩
 vault-member-removed = ⁧.devomer rebmem tluaV⁩
@@ -1827,6 +2180,29 @@ vault-snippet-count = { $count ->
     }
 vaults-description = ⁧.retal semoc cnys ;won rof atadatem ylno-lacol era stluaV derahS .steppinS dna ,seititnedi ,stsoH rof sreniatnoc level-pot eht era stluaV⁩
 vaults-title = ⁧stluaV⁩
+workspace-broadcast-disabled-status = ⁧.delbasid tupni tsacdaorB⁩
+workspace-broadcast-enabled-status = ⁧.ecapskrow siht ni enap yreve ot tupni gnitsacdaorB⁩
+workspace-broadcast-started-status = ⁧.ecapskrow siht rof detrats tupni tsacdaorb elyts-reyalpitluM⁩
+workspace-closed-status = ⁧.desolc ecapskroW⁩
+workspace-closed-to-hosts-status = ⁧.stsoh ot kcaB .desolc ecapskroW⁩
+workspace-disconnecting-status = ⁧...ecapskrow gnitcennocsiD⁩
+workspace-duplicating-new-tab-status = ⁧ gnitacilpuD⁩{ $endpoint }⁧...bat wen a ni ⁩
+workspace-merge-canvas-selection-error = ⁧.ti gnigrem erofeb evom ot snoisses hcihw esoohc dna bat eht nepO .tilpS rof detceles ton era taht snoisses savnaC sah bat sihT⁩
+workspace-merged-into-split-status = ⁧.tilps a otni bat degreM⁩
+workspace-no-disconnected-panes-status = ⁧.tcennocer ot senap detcennocsid oN⁩
+workspace-reconnecting-panes-status = { $count ->
+    [many] ⁧ gnitcennoceR⁩{ $count }⁧...senap ⁩
+    [one] ⁧...enap eno gnitcennoceR⁩
+   *[other] ⁧ gnitcennoceR⁩{ $count }⁧...senap ⁩
+    [zero] ⁧.gnitcennocer senap oN⁩
+    }
+workspace-rename-placeholder = ⁧eman ecapskroW⁩
+workspace-renamed-status = ⁧ ot demaner ecapskroW⁩{ $title }⁧.⁩
+workspace-restore-many-many-status = ⁧ derotseR⁩{ $workspaces }⁧ dna secapskrow ⁩{ $panes }⁧.senap ⁩
+workspace-restore-many-one-status = ⁧ derotseR⁩{ $workspaces }⁧.enap eno dna secapskrow ⁩
+workspace-restore-one-many-status = ⁧ dna ecapskrow eno derotseR⁩{ $panes }⁧.senap ⁩
+workspace-restore-one-one-status = ⁧.enap eno dna ecapskrow eno derotseR⁩
+workspace-split-cap-error = ⁧ ta deppac era senap tilpS⁩{ $limit }⁧.won rof ⁩
 worktree-base-field = ⁧fer ro hcnarb esaB⁩
 worktree-base-placeholder = ⁧enilniam derugifnoc eht esu ot ytpme evaeL⁩
 worktree-branch-field = ⁧hcnarb weN⁩

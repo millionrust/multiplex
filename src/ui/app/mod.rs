@@ -342,42 +342,62 @@ impl DraftInputs {
     fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
         Self {
             label: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("Display name, e.g. Local Mac Test")
+                InputState::new(window, cx)
+                    .placeholder(localization::host_input_display_name_placeholder())
             }),
-            group: cx.new(|cx| InputState::new(window, cx).placeholder("Folder/group, e.g. Local")),
-            tags: cx.new(|cx| InputState::new(window, cx).placeholder("prod, blue, kubernetes")),
-            jump_host: cx.new(|cx| InputState::new(window, cx).placeholder("Optional saved host")),
+            group: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(localization::host_input_group_placeholder())
+            }),
+            tags: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::host_input_tags_placeholder())
+            }),
+            jump_host: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(localization::host_input_jump_host_placeholder())
+            }),
             startup_directory: cx.new(|cx| InputState::new(window, cx).placeholder("/var/www/app")),
-            startup_command: cx
-                .new(|cx| InputState::new(window, cx).placeholder("docker compose logs -f")),
+            startup_command: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(localization::host_input_startup_command_placeholder())
+            }),
             persistent_session_name: cx
                 .new(|cx| InputState::new(window, cx).placeholder("tr-profile-...")),
             terminal_scrollback_rows: cx.new(|cx| InputState::new(window, cx).placeholder("10000")),
             host: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("localhost, IP address, or domain")
+                InputState::new(window, cx)
+                    .placeholder(localization::host_input_address_placeholder())
             }),
             port: cx.new(|cx| InputState::new(window, cx).default_value("22")),
-            username: cx
-                .new(|cx| InputState::new(window, cx).placeholder("SSH username, e.g. jacob")),
-            outbound_proxy_host: cx
-                .new(|cx| InputState::new(window, cx).placeholder("Proxy hostname or IP address")),
-            outbound_proxy_port: cx
-                .new(|cx| InputState::new(window, cx).placeholder("1080 or 3128")),
+            username: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(localization::host_input_username_placeholder())
+            }),
+            outbound_proxy_host: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder(localization::host_input_proxy_address_placeholder())
+            }),
+            outbound_proxy_port: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::HostInputProxyPortPlaceholder,
+                ))
+            }),
             password: cx.new(|cx| {
                 InputState::new(window, cx)
                     .masked(true)
-                    .placeholder("Password, only if using password auth")
+                    .placeholder(localization::host_input_password_placeholder())
             }),
             key_path: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("Private key path, e.g. ~/.ssh/id_ed25519")
+                InputState::new(window, cx)
+                    .placeholder(localization::host_input_key_path_placeholder())
             }),
             certificate_path: cx.new(|cx| {
                 InputState::new(window, cx)
-                    .placeholder("Optional OpenSSH user certificate, e.g. id_ed25519-cert.pub")
+                    .placeholder(localization::host_input_certificate_placeholder())
             }),
             identity_agent: cx.new(|cx| {
                 InputState::new(window, cx)
-                    .placeholder("Optional agent socket; empty uses SSH_AUTH_SOCK")
+                    .placeholder(localization::host_input_agent_socket_placeholder())
             }),
             forward_local_port: cx.new(|cx| InputState::new(window, cx).placeholder("15432")),
             forward_remote_host: cx.new(|cx| InputState::new(window, cx).placeholder("127.0.0.1")),
@@ -385,14 +405,15 @@ impl DraftInputs {
             key_passphrase: cx.new(|cx| {
                 InputState::new(window, cx)
                     .masked(true)
-                    .placeholder("Optional key passphrase")
+                    .placeholder(localization::host_input_key_passphrase_placeholder())
             }),
             description: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("Optional notes about this host")
+                InputState::new(window, cx)
+                    .placeholder(localization::host_input_notes_placeholder())
             }),
             environment: cx.new(|cx| {
                 InputState::new(window, cx)
-                    .placeholder("AWS_PROFILE=prod\\nLOG_LEVEL=info (one KEY=value per line)")
+                    .placeholder(localization::host_input_environment_placeholder())
             }),
         }
     }
@@ -451,10 +472,21 @@ struct VaultMemberInputs {
 impl SnippetInputs {
     fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
         Self {
-            label: cx.new(|cx| InputState::new(window, cx).placeholder("Restart service")),
-            group: cx.new(|cx| InputState::new(window, cx).placeholder("Ops / Deploy")),
-            command: cx
-                .new(|cx| InputState::new(window, cx).placeholder("sudo systemctl restart app")),
+            label: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::SnippetInputLabelPlaceholder,
+                ))
+            }),
+            group: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::SnippetInputGroupPlaceholder,
+                ))
+            }),
+            command: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::SnippetInputCommandPlaceholder,
+                ))
+            }),
         }
     }
 }
@@ -539,9 +571,16 @@ impl SettingsInputs {
 impl VaultInputs {
     fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
         Self {
-            label: cx.new(|cx| InputState::new(window, cx).placeholder("Ops Team")),
-            description: cx
-                .new(|cx| InputState::new(window, cx).placeholder("Shared infrastructure access")),
+            label: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::VaultInputLabelPlaceholder,
+                ))
+            }),
+            description: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::VaultInputDescriptionPlaceholder,
+                ))
+            }),
         }
     }
 }
@@ -549,8 +588,16 @@ impl VaultInputs {
 impl VaultMemberInputs {
     fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
         Self {
-            name: cx.new(|cx| InputState::new(window, cx).placeholder("Alex Rivera")),
-            email: cx.new(|cx| InputState::new(window, cx).placeholder("alex@company.com")),
+            name: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::VaultMemberNamePlaceholder,
+                ))
+            }),
+            email: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::VaultMemberEmailPlaceholder,
+                ))
+            }),
         }
     }
 }
@@ -559,54 +606,87 @@ impl ShellInputs {
     fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
         Self {
             host_search: cx.new(|cx| {
-                InputState::new(window, cx)
-                    .placeholder("Find a host, group, tag, or ssh user@hostname...")
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::ShellHostSearchPlaceholder,
+                ))
             }),
             quick_connect_password: cx.new(|cx| {
                 InputState::new(window, cx)
                     .masked(true)
-                    .placeholder("Password")
+                    .placeholder(localization::static_message(
+                        MessageId::ShellQuickConnectPasswordPlaceholder,
+                    ))
             }),
-            create_host_address: cx
-                .new(|cx| InputState::new(window, cx).placeholder("Type IP or Hostname")),
-            connect_username: cx.new(|cx| InputState::new(window, cx).placeholder("Username")),
+            create_host_address: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::ShellCreateHostAddressPlaceholder,
+                ))
+            }),
+            connect_username: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::ShellConnectUsernamePlaceholder,
+                ))
+            }),
             protocol_ssh_port: cx.new(|cx| InputState::new(window, cx).default_value("22")),
-            sftp_local_filter: cx.new(|cx| InputState::new(window, cx).placeholder("Filter files")),
-            bulk_group: cx.new(|cx| InputState::new(window, cx).placeholder("Bulk group name")),
-            terminal_search: cx
-                .new(|cx| InputState::new(window, cx).placeholder("Search terminal output")),
+            sftp_local_filter: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::ShellSftpFilterPlaceholder,
+                ))
+            }),
+            bulk_group: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::ShellBulkGroupPlaceholder,
+                ))
+            }),
+            terminal_search: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::ShellTerminalSearchPlaceholder,
+                ))
+            }),
             command_palette: cx.new(|cx| {
                 InputState::new(window, cx).placeholder(localization::global_palette_placeholder())
             }),
             agent_working_directory: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("Repository or working directory")
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::AgentWorkingDirectoryPlaceholder,
+                ))
             }),
             agent_executable: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("Executable path or command name")
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::AgentExecutablePlaceholder,
+                ))
             }),
             agent_arguments: cx.new(|cx| {
                 InputState::new(window, cx)
                     .multi_line(true)
                     .auto_grow(2, 5)
-                    .placeholder("One argument per line")
+                    .placeholder(localization::static_message(
+                        MessageId::AgentArgumentsPlaceholder,
+                    ))
             }),
             agent_initial_prompt: cx.new(|cx| {
                 InputState::new(window, cx)
                     .multi_line(true)
                     .auto_grow(3, 8)
-                    .placeholder("Optional initial prompt")
+                    .placeholder(localization::static_message(
+                        MessageId::AgentInitialPromptPlaceholder,
+                    ))
             }),
             structured_agent_prompt: cx.new(|cx| {
                 InputState::new(window, cx)
                     .multi_line(true)
                     .auto_grow(2, 6)
-                    .placeholder("Send a prompt or reviewed context")
+                    .placeholder(localization::static_message(
+                        MessageId::AgentPromptPlaceholder,
+                    ))
             }),
             context_handoff_preview: cx.new(|cx| {
                 InputState::new(window, cx)
                     .multi_line(true)
                     .auto_grow(10, 22)
-                    .placeholder("Review context before sending")
+                    .placeholder(localization::static_message(
+                        MessageId::AgentContextReviewPlaceholder,
+                    ))
             }),
         }
     }
@@ -1076,7 +1156,10 @@ impl WorkspaceSftpTransfer {
             request,
             control: Some(control),
             direction,
-            status: format!("{} queued", direction.label()),
+            status: localization::static_message(match direction {
+                SftpTransferDirection::Upload => MessageId::SftpTransferQueuedUpload,
+                SftpTransferDirection::Download => MessageId::SftpTransferQueuedDownload,
+            }),
             transferred_bytes: 0,
             total_bytes: 0,
             resumed_from: 0,
@@ -1359,11 +1442,12 @@ impl TermiRustApp {
         let (event_tx, event_rx) = mpsc::channel();
         let session_coordinator = SessionCoordinator::new(event_tx.clone());
         let (sftp_event_tx, sftp_event_rx) = mpsc::channel();
-        let canvas_project_editor_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .multi_line(true)
-                .placeholder("Select a UTF-8 text file to view or edit")
-        });
+        let canvas_project_editor_input =
+            cx.new(|cx| {
+                InputState::new(window, cx).multi_line(true).placeholder(
+                    localization::static_message(MessageId::CanvasProjectEditorPlaceholder),
+                )
+            });
         let canvas_project_editor_subscription = cx.subscribe(
             &canvas_project_editor_input,
             |_, _, event: &InputEvent, cx| {
@@ -1372,11 +1456,12 @@ impl TermiRustApp {
                 }
             },
         );
-        let canvas_note_editor_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .multi_line(true)
-                .placeholder("Write context, decisions, commands, or a task brief")
-        });
+        let canvas_note_editor_input =
+            cx.new(|cx| {
+                InputState::new(window, cx).multi_line(true).placeholder(
+                    localization::static_message(MessageId::CanvasNoteEditorPlaceholder),
+                )
+            });
         let canvas_note_editor_subscription = cx.subscribe(
             &canvas_note_editor_input,
             |this, _, event: &InputEvent, cx| {
@@ -1631,12 +1716,22 @@ impl TermiRustApp {
             tab_rename_workspace_id: None,
             open_workspace_tab_menu: None,
             pane_context_menu: None,
-            tab_rename_input: cx
-                .new(|cx| InputState::new(window, cx).placeholder("Workspace name")),
+            tab_rename_input: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::WorkspaceRenamePlaceholder,
+                ))
+            }),
             pane_rename_id: None,
-            pane_rename_input: cx.new(|cx| InputState::new(window, cx).placeholder("Pane name")),
-            canvas_node_rename_input: cx
-                .new(|cx| InputState::new(window, cx).placeholder("Node title")),
+            pane_rename_input: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::PaneRenamePlaceholder,
+                ))
+            }),
+            canvas_node_rename_input: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::CanvasNodeRenamePlaceholder,
+                ))
+            }),
             canvas_note_editor_input,
             canvas_project_editor_input,
             pending_paste: None,
@@ -2000,29 +2095,33 @@ impl TermiRustApp {
 
     fn set_auth_mode(&mut self, auth_mode: AuthMode, cx: &mut Context<Self>) {
         self.draft_auth_mode = auth_mode;
-        self.status_message = format!("Using {} authentication.", auth_mode.label());
+        self.status_message = localization::static_message(match auth_mode {
+            AuthMode::Password => MessageId::HostAuthPasswordSelectedStatus,
+            AuthMode::PrivateKey => MessageId::HostAuthPrivateKeySelectedStatus,
+            AuthMode::LocalAgent => MessageId::HostAuthAgentSelectedStatus,
+        });
         self.error_message.clear();
         cx.notify();
     }
 
     fn set_draft_connect_view(&mut self, start_in_files: bool, cx: &mut Context<Self>) {
         self.draft_start_in_files = start_in_files;
-        self.status_message = if start_in_files {
-            "This host will open in the remote Files view after connect.".to_string()
+        self.status_message = localization::static_message(if start_in_files {
+            MessageId::HostConnectViewFilesStatus
         } else {
-            "This host will open in the terminal view after connect.".to_string()
-        };
+            MessageId::HostConnectViewTerminalStatus
+        });
         self.error_message.clear();
         cx.notify();
     }
 
     fn set_draft_persistent_session(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.draft_persistent_session = enabled;
-        self.status_message = if enabled {
-            "This host will attach to a named tmux session on connect.".to_string()
+        self.status_message = localization::static_message(if enabled {
+            MessageId::HostPersistentTmuxStatus
         } else {
-            "This host will open a normal SSH shell on connect.".to_string()
-        };
+            MessageId::HostNormalShellStatus
+        });
         self.error_message.clear();
         cx.notify();
     }
@@ -2033,35 +2132,37 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) {
         self.draft_persistent_session_detach_others = detach_others;
-        self.status_message = if detach_others {
-            "Connecting can detach other clients from the same tmux session.".to_string()
+        self.status_message = localization::static_message(if detach_others {
+            MessageId::HostDetachOtherClientsStatus
         } else {
-            "Other clients may stay attached to the same tmux session.".to_string()
-        };
+            MessageId::HostKeepOtherClientsStatus
+        });
         self.error_message.clear();
         cx.notify();
     }
 
     fn toggle_draft_profile_favorite(&mut self, favorite: bool, cx: &mut Context<Self>) {
         self.draft_profile_favorite = favorite;
-        self.status_message = if favorite {
-            "This host will be starred in the library.".to_string()
+        self.status_message = localization::static_message(if favorite {
+            MessageId::HostFavoriteEnabledStatus
         } else {
-            "This host will appear in the regular library groups.".to_string()
-        };
+            MessageId::HostFavoriteDisabledStatus
+        });
         self.error_message.clear();
         cx.notify();
     }
 
     fn save_group_defaults_from_draft(&mut self, cx: &mut Context<Self>) {
         let Ok(draft) = self.current_profile_draft_raw(cx) else {
-            self.error_message = "Group defaults require a valid draft context.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::HostGroupDefaultsInvalidDraftError);
             cx.notify();
             return;
         };
         let label = draft.group.trim().to_string();
         if label.is_empty() {
-            self.error_message = "Enter a group name first.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::HostGroupNameRequiredError);
             cx.notify();
             return;
         }
@@ -2091,7 +2192,7 @@ impl TermiRustApp {
             return;
         }
 
-        self.status_message = format!("Saved defaults for group '{}'.", label);
+        self.status_message = localization::host_group_defaults_saved_status(label);
         self.error_message.clear();
         cx.notify();
     }
@@ -2099,7 +2200,8 @@ impl TermiRustApp {
     fn apply_group_defaults_to_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let label = self.inputs.group.read(cx).value().trim().to_string();
         let Some(group) = self.host_group_by_label(&label).cloned() else {
-            self.error_message = "No saved defaults exist for this group yet.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::HostGroupDefaultsMissingError);
             cx.notify();
             return;
         };
@@ -2149,7 +2251,7 @@ impl TermiRustApp {
                 merge_port_forward_rules(&self.draft_port_forward_rules, &group.port_forward_rules);
         }
 
-        self.status_message = format!("Loaded defaults for group '{}'.", group.display_name());
+        self.status_message = localization::host_group_defaults_loaded_status(group.display_name());
         self.error_message.clear();
         cx.notify();
     }
@@ -2157,12 +2259,13 @@ impl TermiRustApp {
     fn remove_group_defaults(&mut self, cx: &mut Context<Self>) {
         let label = self.inputs.group.read(cx).value().trim().to_string();
         if label.is_empty() {
-            self.error_message = "Enter a group name first.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::HostGroupNameRequiredError);
             cx.notify();
             return;
         }
         if !self.saved.remove_host_group(&label) {
-            self.error_message = format!("No saved defaults exist for group '{}'.", label);
+            self.error_message = localization::host_group_defaults_missing_named_error(label);
             cx.notify();
             return;
         }
@@ -2172,7 +2275,7 @@ impl TermiRustApp {
             return;
         }
 
-        self.status_message = format!("Removed defaults for group '{}'.", label);
+        self.status_message = localization::host_group_defaults_removed_status(label);
         self.error_message.clear();
         cx.notify();
     }
@@ -2245,16 +2348,13 @@ impl TermiRustApp {
     fn select_filtered_group_hosts(&mut self, group_name: &str, cx: &mut Context<Self>) {
         let ids = self.filtered_profile_ids_for_group(group_name, cx);
         if ids.is_empty() {
-            self.error_message = format!("No visible hosts are in '{}'.", group_name);
+            self.error_message = localization::host_group_no_visible_hosts_error(group_name);
             cx.notify();
             return;
         }
         self.selected_host_ids = ids.into_iter().collect();
-        self.status_message = format!(
-            "Selected {} host(s) from '{}'.",
-            self.selected_host_ids.len(),
-            group_name
-        );
+        self.status_message =
+            localization::host_group_selected_status(self.selected_host_ids.len(), group_name);
         self.error_message.clear();
         cx.notify();
     }
@@ -2266,10 +2366,7 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) {
         self.set_bulk_group_input(group_name.to_string(), window, cx);
-        self.status_message = format!(
-            "Bulk group target set to '{}'. Select hosts and apply when ready.",
-            group_name
-        );
+        self.status_message = localization::host_bulk_group_target_status(group_name);
         self.error_message.clear();
         cx.notify();
     }
@@ -2512,7 +2609,7 @@ impl TermiRustApp {
 
         self.draft_identity_id = Some(identity.id.clone());
         Self::set_input_value(&self.inputs.key_path, identity.key_path.clone(), window, cx);
-        self.status_message = format!("Using identity '{}'.", identity.label);
+        self.status_message = localization::host_identity_default_status(identity.label);
         self.error_message.clear();
         true
     }
@@ -2528,7 +2625,7 @@ impl TermiRustApp {
         self.draft_auth_mode = AuthMode::PrivateKey;
         self.draft_identity_id = Some(identity.id.clone());
         Self::set_input_value(&self.inputs.key_path, identity.key_path.clone(), window, cx);
-        self.status_message = format!("Identity '{}' selected.", identity.label);
+        self.status_message = localization::host_identity_selected_status(identity.label.clone());
         self.error_message.clear();
         cx.notify();
     }
@@ -2719,7 +2816,7 @@ impl TermiRustApp {
         self.selected_profile_id = None;
         self.saved.selected_profile_id = None;
         self.show_editor_panel = true;
-        self.status_message = "Draft cleared. Define a host to save or connect.".into();
+        self.status_message = localization::static_message(MessageId::HostDraftClearedStatus);
         self.error_message.clear();
         cx.notify();
     }
@@ -2727,7 +2824,11 @@ impl TermiRustApp {
     fn set_draft_port_forward_kind(&mut self, kind: PortForwardKind, cx: &mut Context<Self>) {
         self.draft_port_forward_kind = kind;
         self.error_message.clear();
-        self.status_message = format!("Forward rule type set to {}.", kind.label());
+        self.status_message = localization::static_message(match kind {
+            PortForwardKind::Local => MessageId::HostForwardKindLocalStatus,
+            PortForwardKind::Dynamic => MessageId::HostForwardKindDynamicStatus,
+            PortForwardKind::Remote => MessageId::HostForwardKindRemoteStatus,
+        });
         cx.notify();
     }
 
@@ -2755,7 +2856,7 @@ impl TermiRustApp {
                     .any(|existing| existing == &rule)
                 {
                     self.error_message =
-                        format!("Forward rule '{}' already exists.", rule.display_name());
+                        localization::host_forward_duplicate_error(rule.display_name());
                     cx.notify();
                     return;
                 }
@@ -2765,13 +2866,13 @@ impl TermiRustApp {
                 Self::set_input_value(&self.inputs.forward_local_port, "", window, cx);
                 Self::set_input_value(&self.inputs.forward_remote_host, "", window, cx);
                 Self::set_input_value(&self.inputs.forward_remote_port, "", window, cx);
-                self.status_message = format!("Added forward rule {label}.");
+                self.status_message = localization::host_forward_added_status(label);
                 self.error_message.clear();
                 cx.notify();
             }
             Ok(None) => {
                 self.error_message =
-                    "Enter local port, remote host, and remote port to add a rule.".to_string();
+                    localization::static_message(MessageId::HostForwardFieldsRequiredError);
                 cx.notify();
             }
             Err(error) => {
@@ -2792,7 +2893,7 @@ impl TermiRustApp {
         }
 
         let removed = self.draft_port_forward_rules.remove(index);
-        self.status_message = format!("Removed forward rule {}.", removed.display_name());
+        self.status_message = localization::host_forward_removed_status(removed.display_name());
         self.error_message.clear();
         if self.draft_port_forward_rules.is_empty() {
             Self::set_input_value(&self.inputs.forward_local_port, "", window, cx);
@@ -3267,7 +3368,8 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) -> bool {
         let Some(pane_id) = self.active_pane().map(|pane| pane.id) else {
-            self.error_message = "Open a terminal session to run a command.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::CommandTerminalRequiredError);
             cx.notify();
             return false;
         };
@@ -3552,12 +3654,9 @@ impl TermiRustApp {
             self.selected_host_ids.remove(profile_id);
         }
         self.status_message = if self.selected_host_ids.is_empty() {
-            "Cleared host batch selection.".to_string()
+            localization::static_message(MessageId::HostBatchSelectionClearedStatus)
         } else {
-            format!(
-                "Selected {} host(s) for batch actions.",
-                self.selected_host_ids.len()
-            )
+            localization::host_batch_selection_count_status(self.selected_host_ids.len())
         };
         self.error_message.clear();
         cx.notify();
@@ -3565,7 +3664,8 @@ impl TermiRustApp {
 
     fn clear_host_batch_selection(&mut self, cx: &mut Context<Self>) {
         self.selected_host_ids.clear();
-        self.status_message = "Cleared host batch selection.".to_string();
+        self.status_message =
+            localization::static_message(MessageId::HostBatchSelectionClearedStatus);
         self.error_message.clear();
         cx.notify();
     }
@@ -3573,22 +3673,21 @@ impl TermiRustApp {
     fn select_all_filtered_hosts(&mut self, cx: &mut Context<Self>) {
         let ids = self.filtered_profile_ids(cx);
         if ids.is_empty() {
-            self.error_message = "No hosts match the current filter.".to_string();
+            self.error_message = localization::static_message(MessageId::HostFilterNoMatchesError);
             cx.notify();
             return;
         }
         self.selected_host_ids = ids.into_iter().collect();
-        self.status_message = format!(
-            "Selected {} host(s) from the current filter.",
-            self.selected_host_ids.len()
-        );
+        self.status_message =
+            localization::host_filter_selected_count_status(self.selected_host_ids.len());
         self.error_message.clear();
         cx.notify();
     }
 
     fn diagnose_selected_hosts(&mut self, cx: &mut Context<Self>) {
         if self.selected_host_ids.is_empty() {
-            self.error_message = "Select at least one saved host to diagnose.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::HostDiagnosticsSelectionRequiredError);
             cx.notify();
             return;
         }
@@ -3602,9 +3701,8 @@ impl TermiRustApp {
             .take(MAX_DIAGNOSTIC_BATCH + 1)
             .collect::<Vec<_>>();
         if profile_ids.len() > MAX_DIAGNOSTIC_BATCH {
-            self.error_message = format!(
-                "Diagnose supports at most {MAX_DIAGNOSTIC_BATCH} hosts in one batch. Narrow the selection and retry."
-            );
+            self.error_message =
+                localization::host_diagnostics_batch_limit_error(MAX_DIAGNOSTIC_BATCH);
             cx.notify();
             return;
         }
@@ -3627,9 +3725,9 @@ impl TermiRustApp {
         }
 
         self.status_message = if skipped > 0 {
-            format!("Started {started} diagnostic(s); {skipped} already running.")
+            localization::host_diagnostics_started_skipped_status(started, skipped)
         } else {
-            format!("Started {started} connection diagnostic(s).")
+            localization::host_diagnostics_started_status(started)
         };
         self.error_message = failures.into_iter().next().unwrap_or_default();
         cx.notify();
@@ -3652,11 +3750,15 @@ impl TermiRustApp {
         let address = request.address();
         let title = request.title.clone();
         let route = if request.jump_host.is_some() {
-            "Saved jump route".to_string()
+            localization::static_message(MessageId::HostDiagnosticRouteSavedJump)
         } else if let Some(proxy) = request.outbound_proxy.as_ref() {
-            format!("{} proxy", proxy.kind().label())
+            localization::static_message(match proxy.kind() {
+                OutboundProxyKind::Socks5 => MessageId::HostDiagnosticRouteSocks5Proxy,
+                OutboundProxyKind::HttpConnect => MessageId::HostDiagnosticRouteHttpProxy,
+                OutboundProxyKind::Direct => MessageId::HostDiagnosticRouteDirect,
+            })
         } else {
-            "Direct SSH".to_string()
+            localization::static_message(MessageId::HostDiagnosticRouteDirect)
         };
         let control = self
             .connection_diagnostic_manager
@@ -3675,7 +3777,7 @@ impl TermiRustApp {
                 status: ConnectionDiagnosticStatus::Queued,
                 stage: DiagnosticStage::Configuration,
                 failure_kind: None,
-                message: "Waiting for an available diagnostic slot".to_string(),
+                message: localization::static_message(MessageId::HostDiagnosticWaitingStatus),
                 recovery: String::new(),
                 elapsed: Duration::ZERO,
                 control: Some(control),
@@ -3692,7 +3794,8 @@ impl TermiRustApp {
             .and_then(|row| row.control.clone())
         {
             control.cancel();
-            self.status_message = "Cancelling connection diagnostic...".to_string();
+            self.status_message =
+                localization::static_message(MessageId::HostDiagnosticCancellingStatus);
             self.error_message.clear();
             cx.notify();
         }
@@ -3701,19 +3804,21 @@ impl TermiRustApp {
     fn retry_connection_diagnostic(&mut self, profile_id: &str, cx: &mut Context<Self>) {
         match self.submit_connection_diagnostic(profile_id) {
             Ok(()) => {
-                self.status_message = "Connection diagnostic restarted.".to_string();
+                self.status_message =
+                    localization::static_message(MessageId::HostDiagnosticRestartedStatus);
                 self.error_message.clear();
             }
             Err(DiagnosticSubmitError::AlreadyRunning) => {
-                self.status_message = "That host is already being diagnosed.".to_string();
+                self.status_message =
+                    localization::static_message(MessageId::HostDiagnosticAlreadyRunningStatus);
             }
             Err(DiagnosticSubmitError::QueueFull) => {
                 self.error_message =
-                    "The diagnostic queue is full. Wait for a check to finish and retry."
-                        .to_string();
+                    localization::static_message(MessageId::HostDiagnosticQueueFullError);
             }
             Err(DiagnosticSubmitError::ManagerStopped) => {
-                self.error_message = "Unable to start the connection diagnostic.".to_string();
+                self.error_message =
+                    localization::static_message(MessageId::HostDiagnosticStartError);
             }
             Err(DiagnosticSubmitError::InvalidConfiguration(message)) => {
                 self.error_message = message;
@@ -3725,7 +3830,7 @@ impl TermiRustApp {
     fn clear_finished_connection_diagnostics(&mut self, cx: &mut Context<Self>) {
         self.connection_diagnostics
             .retain(|row| row.status.is_active());
-        self.status_message = "Cleared finished connection diagnostics.".to_string();
+        self.status_message = localization::static_message(MessageId::HostDiagnosticClearedStatus);
         self.error_message.clear();
         cx.notify();
     }
@@ -3765,7 +3870,18 @@ impl TermiRustApp {
                     {
                         row.status = ConnectionDiagnosticStatus::Running;
                         row.stage = stage;
-                        row.message = format!("Checking {}", stage.label().to_ascii_lowercase());
+                        row.message = localization::static_message(match stage {
+                            DiagnosticStage::Configuration => {
+                                MessageId::HostDiagnosticCheckingConfiguration
+                            }
+                            DiagnosticStage::RouteAndAuthentication => {
+                                MessageId::HostDiagnosticCheckingRouteAuth
+                            }
+                            DiagnosticStage::SessionChannel => {
+                                MessageId::HostDiagnosticCheckingChannel
+                            }
+                            DiagnosticStage::Sftp => MessageId::HostDiagnosticCheckingSftp,
+                        });
                     }
                 }
                 DiagnosticEvent::StagePassed {
@@ -3780,7 +3896,18 @@ impl TermiRustApp {
                     {
                         row.stage = stage;
                         row.elapsed = elapsed;
-                        row.message = format!("{} passed", stage.label());
+                        row.message = localization::static_message(match stage {
+                            DiagnosticStage::Configuration => {
+                                MessageId::HostDiagnosticPassedConfiguration
+                            }
+                            DiagnosticStage::RouteAndAuthentication => {
+                                MessageId::HostDiagnosticPassedRouteAuth
+                            }
+                            DiagnosticStage::SessionChannel => {
+                                MessageId::HostDiagnosticPassedChannel
+                            }
+                            DiagnosticStage::Sftp => MessageId::HostDiagnosticPassedSftp,
+                        });
                     }
                 }
                 DiagnosticEvent::Completed {
@@ -3885,20 +4012,20 @@ impl TermiRustApp {
 
         if self.selected_profile_id.as_deref() == Some(profile_id) {
             self.load_profile_into_inputs(profile_id, window, cx);
-            self.status_message = if favorite {
-                "Host starred.".to_string()
+            self.status_message = localization::static_message(if favorite {
+                MessageId::HostStarredStatus
             } else {
-                "Host removed from favorites.".to_string()
-            };
+                MessageId::HostUnstarredStatus
+            });
             self.error_message.clear();
             cx.notify();
             return;
         }
 
         self.status_message = if favorite {
-            format!("Starred '{}'.", profile_label)
+            localization::host_named_starred_status(profile_label)
         } else {
-            format!("Removed '{}' from starred hosts.", profile_label)
+            localization::host_named_unstarred_status(profile_label)
         };
         self.error_message.clear();
         cx.notify();
@@ -3911,7 +4038,8 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) {
         if self.selected_host_ids.is_empty() {
-            self.error_message = "Select at least one host first.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::HostSelectionRequiredError);
             cx.notify();
             return;
         }
@@ -3969,7 +4097,8 @@ impl TermiRustApp {
 
     fn bulk_assign_selected_hosts_group(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.selected_host_ids.is_empty() {
-            self.error_message = "Select at least one host first.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::HostSelectionRequiredError);
             cx.notify();
             return;
         }
@@ -4038,7 +4167,7 @@ impl TermiRustApp {
     }
 
     fn pick_key_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.status_message = "Choose a private key file.".to_string();
+        self.status_message = localization::static_message(MessageId::KeyFileChooseStatus);
         self.error_message.clear();
         cx.notify();
 
@@ -4067,7 +4196,7 @@ impl TermiRustApp {
     }
 
     fn pick_certificate_file(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.status_message = "Choose an OpenSSH user certificate file.".to_string();
+        self.status_message = localization::static_message(MessageId::CertificateFileChooseStatus);
         self.error_message.clear();
         cx.notify();
 
@@ -4110,7 +4239,8 @@ impl TermiRustApp {
                     cx,
                 );
                 self.draft_auth_mode = AuthMode::PrivateKey;
-                self.status_message = "OpenSSH user certificate selected.".to_string();
+                self.status_message =
+                    localization::static_message(MessageId::CertificateFileSelectedStatus);
                 self.error_message.clear();
             }
             Err(error) => self.error_message = error.to_string(),
@@ -4137,13 +4267,13 @@ impl TermiRustApp {
                     return;
                 }
                 self.use_identity(&identity, window, cx);
-                self.status_message = format!("Identity '{}' added.", label);
+                self.status_message = localization::identity_added_status(label);
                 self.error_message.clear();
                 cx.notify();
             }
             Ok(None) => {
                 self.error_message =
-                    "That file does not look like a supported private key.".to_string();
+                    localization::static_message(MessageId::KeyFileUnsupportedError);
                 cx.notify();
             }
             Err(error) => {
@@ -4278,10 +4408,8 @@ impl TermiRustApp {
             .is_some_and(|profile| profile.source == ProfileSource::SshConfig)
         {
             self.error_message.clear();
-            self.status_message = format!(
-                "Imported SSH config hosts are read from {}. Edit the config or save a local copy instead.",
-                ssh_config_path_label()
-            );
+            self.status_message =
+                localization::ssh_config_host_read_only_status(ssh_config_path_label());
             cx.notify();
             return;
         }
@@ -4304,7 +4432,7 @@ impl TermiRustApp {
         self.selected_profile_id = None;
         self.show_editor_panel = false;
         self.clear_profile_form(window, cx);
-        self.status_message = "Saved host removed.".to_string();
+        self.status_message = localization::static_message(MessageId::HostRemovedStatus);
         self.error_message.clear();
         cx.notify();
     }
@@ -4587,7 +4715,7 @@ impl TermiRustApp {
         self.palette_presentation.reset();
         self.command_palette_origin_focus = None;
         self.global_search.cancel();
-        self.status_message = "Host library ready.".to_string();
+        self.status_message = localization::static_message(MessageId::HostsStateReady);
         self.error_message.clear();
         self.persist_runtime_state();
         cx.notify();
@@ -4614,8 +4742,20 @@ impl TermiRustApp {
         self.error_message.clear();
         self.status_message = match section {
             NavSection::Projects => localization::projects_ready_status(),
+            NavSection::Activity => localization::static_message(MessageId::ActivitySectionReady),
+            NavSection::Sessions => localization::static_message(MessageId::SessionsSectionReady),
+            NavSection::Devices => localization::static_message(MessageId::DevicesSectionReady),
             NavSection::Presets => localization::presets_ready_status(),
-            _ => format!("{} ready.", section.label()),
+            NavSection::Hosts => localization::static_message(MessageId::HostsStateReady),
+            NavSection::Sftp => localization::static_message(MessageId::SftpStateReady),
+            NavSection::Vaults | NavSection::Keychain | NavSection::Snippets => {
+                localization::static_message(MessageId::VaultKeySnippetStateReady)
+            }
+            NavSection::Settings => localization::static_message(MessageId::SettingsStateReady),
+            NavSection::KnownHosts => {
+                localization::static_message(MessageId::KnownHostsSectionReady)
+            }
+            NavSection::Logs => localization::static_message(MessageId::SessionHistorySectionReady),
         };
         self.persist_runtime_state();
         cx.notify();
@@ -5540,13 +5680,13 @@ impl TermiRustApp {
     fn remove_known_host_entry(&mut self, endpoint: &str, cx: &mut Context<Self>) -> bool {
         match self.known_hosts.remove(endpoint) {
             Ok(true) => {
-                self.status_message = format!("Removed known host '{}'.", endpoint);
+                self.status_message = localization::known_hosts_removed_status(endpoint);
                 self.error_message.clear();
                 cx.notify();
                 true
             }
             Ok(false) => {
-                self.status_message = "Host was already removed.".to_string();
+                self.status_message = localization::known_hosts_already_removed_status();
                 self.error_message.clear();
                 cx.notify();
                 false
@@ -6003,9 +6143,9 @@ impl TermiRustApp {
                         .find(|session| session.id == session_id)
                         .cloned()
                     else {
-                        self.error_message =
-                            "A durable workspace pane is missing its saved session metadata; no process was started."
-                                .to_string();
+                        self.error_message = localization::static_message(
+                            MessageId::DurableRestoreSessionMetadataMissingError,
+                        );
                         continue;
                     };
                     let Some(pane_id) = self.spawn_saved_durable_pane(
@@ -6014,9 +6154,9 @@ impl TermiRustApp {
                         window,
                         cx,
                     ) else {
-                        self.error_message =
-                            "A durable workspace pane is missing verified Host metadata; no process was started."
-                                .to_string();
+                        self.error_message = localization::static_message(
+                            MessageId::DurableRestoreHostMetadataMissingError,
+                        );
                         continue;
                     };
                     pane_id
@@ -6091,16 +6231,9 @@ impl TermiRustApp {
         }
 
         if !restored_workspace_ids.is_empty() {
-            self.status_message = format!(
-                "Restored {} workspace{} and {} pane{}.",
+            self.status_message = localization::workspace_restore_status(
                 restored_workspace_ids.len(),
-                if restored_workspace_ids.len() == 1 {
-                    ""
-                } else {
-                    "s"
-                },
                 restored_panes,
-                if restored_panes == 1 { "" } else { "s" }
             );
             self.error_message.clear();
             self.persist_runtime_state();
@@ -6244,7 +6377,7 @@ impl TermiRustApp {
         }
         self.tab_rename_workspace_id = None;
         self.persist_runtime_state();
-        self.status_message = format!("Workspace renamed to {new_title}.");
+        self.status_message = localization::workspace_renamed_status(new_title);
         self.error_message.clear();
         if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
             if let Some(pane) = self.pane(pane_id) {
@@ -6294,7 +6427,7 @@ impl TermiRustApp {
         }
         self.pane_rename_id = None;
         self.persist_runtime_state();
-        self.status_message = format!("Pane renamed to {new_title}.");
+        self.status_message = localization::pane_renamed_status(new_title);
         self.error_message.clear();
         if let Some(pane) = self.pane(pane_id) {
             pane.terminal_focus.focus(window);
@@ -6410,7 +6543,8 @@ impl TermiRustApp {
             return;
         };
         if pane.request.is_local_shell() {
-            self.error_message = "Remote files are only available for SSH sessions.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::SftpSshSessionRequiredError);
             cx.notify();
             return;
         }
@@ -6436,7 +6570,7 @@ impl TermiRustApp {
             }
         }
 
-        self.status_message = format!("Loading remote files from {endpoint}...");
+        self.status_message = localization::sftp_loading_endpoint_status(endpoint);
         self.error_message.clear();
         self.load_workspace_directory(workspace_id, path);
         cx.notify();
@@ -6459,7 +6593,7 @@ impl TermiRustApp {
         if let Some(workspace) = self.workspace_mut(workspace_id) {
             workspace.view_mode = WorkspaceViewMode::Terminal;
         }
-        self.status_message = "Back to terminal view.".to_string();
+        self.status_message = localization::static_message(MessageId::SftpTerminalViewStatus);
         self.error_message.clear();
         cx.notify();
     }
@@ -6493,7 +6627,7 @@ impl TermiRustApp {
                 browser.loading = false;
                 browser.pending_operation_id = None;
             }
-            self.error_message = format!("Unable to start remote directory load: {error:#}");
+            self.error_message = localization::sftp_directory_load_start_error(error.to_string());
         }
     }
 
@@ -6528,17 +6662,18 @@ impl TermiRustApp {
             return;
         };
         let Some(entry) = self.selected_workspace_sftp_entry(workspace_id) else {
-            self.error_message = "Select a folder first.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::SftpFolderSelectionRequiredError);
             cx.notify();
             return;
         };
         if !entry.is_dir {
-            self.error_message = "Only folders can be opened in the remote browser.".to_string();
+            self.error_message = localization::static_message(MessageId::SftpFolderRequiredError);
             cx.notify();
             return;
         }
 
-        self.status_message = format!("Opening {}...", entry.path);
+        self.status_message = localization::sftp_opening_path_status(entry.path.clone());
         self.error_message.clear();
         self.load_workspace_directory(workspace_id, entry.path);
         cx.notify();
@@ -6556,7 +6691,7 @@ impl TermiRustApp {
             return;
         };
 
-        self.status_message = format!("Opening {parent_path}...");
+        self.status_message = localization::sftp_opening_path_status(parent_path.clone());
         self.error_message.clear();
         self.load_workspace_directory(workspace_id, parent_path);
         cx.notify();
@@ -6597,13 +6732,14 @@ impl TermiRustApp {
             return;
         };
         let Some(entry) = self.selected_workspace_sftp_entry(workspace_id) else {
-            self.error_message = "Select a remote file first.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::SftpFileSelectionRequiredError);
             cx.notify();
             return;
         };
         if entry.is_dir {
             self.error_message =
-                "Folders are not downloadable yet. Open the folder instead.".to_string();
+                localization::static_message(MessageId::SftpFolderDownloadUnsupportedError);
             cx.notify();
             return;
         }
@@ -6646,8 +6782,7 @@ impl TermiRustApp {
             .and_then(|browser| browser.transfer.as_ref())
             .is_some_and(|transfer| transfer.active);
         if already_active {
-            self.error_message =
-                "Finish or cancel the current transfer before starting another here.".to_string();
+            self.error_message = localization::static_message(MessageId::SftpTransferActiveError);
             cx.notify();
             return;
         }
@@ -6660,14 +6795,19 @@ impl TermiRustApp {
                     browser.transfer =
                         Some(WorkspaceSftpTransfer::queued(operation, control, direction));
                 }
-                self.status_message = format!("{} queued.", direction.label());
+                self.status_message = localization::static_message(match direction {
+                    SftpTransferDirection::Upload => MessageId::SftpTransferQueuedUpload,
+                    SftpTransferDirection::Download => MessageId::SftpTransferQueuedDownload,
+                });
                 self.error_message.clear();
             }
             Ok(None) => {
-                self.error_message = "The selected SFTP action is not a transfer.".to_string();
+                self.error_message =
+                    localization::static_message(MessageId::SftpTransferActionInvalidError);
             }
             Err(error) => {
-                self.error_message = format!("Unable to start {}: {error:#}", direction.label());
+                self.error_message =
+                    localization::sftp_transfer_start_error(direction, error.to_string());
             }
         }
         cx.notify();
@@ -6688,7 +6828,8 @@ impl TermiRustApp {
             {
                 transfer.status = "Cancellation requested...".to_string();
             }
-            self.status_message = "SFTP transfer cancellation requested.".to_string();
+            self.status_message =
+                localization::static_message(MessageId::SftpTransferCancelRequestedStatus);
             cx.notify();
         }
     }
@@ -6739,7 +6880,8 @@ impl TermiRustApp {
             return;
         };
         let Some(entry) = self.selected_workspace_sftp_entry(workspace_id) else {
-            self.error_message = "Select a remote file or folder first.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::SftpDeleteSelectionRequiredError);
             cx.notify();
             return;
         };
@@ -6760,7 +6902,7 @@ impl TermiRustApp {
             browser.pending_operation_id = Some(operation_id);
         }
 
-        self.status_message = format!("Deleting {}...", entry.path);
+        self.status_message = localization::sftp_deleting_path_status(entry.path.clone());
         self.error_message.clear();
         if let Err(error) = self
             .connection_coordinator
@@ -6779,7 +6921,7 @@ impl TermiRustApp {
                 browser.loading = false;
                 browser.pending_operation_id = None;
             }
-            self.error_message = format!("Unable to start remote delete: {error:#}");
+            self.error_message = localization::sftp_delete_start_error(error.to_string());
         }
         cx.notify();
     }
@@ -6961,9 +7103,7 @@ impl TermiRustApp {
             return false;
         };
         if saved_session.route != termirust_domain::SessionLaunchRoute::DurableHost {
-            self.error_message =
-                "Legacy app-attached sessions cannot be reopened after their process exits."
-                    .to_string();
+            self.error_message = localization::static_message(MessageId::DurableLegacyReopenError);
             cx.notify();
             return false;
         }
@@ -6978,12 +7118,13 @@ impl TermiRustApp {
         let Some(pane_id) =
             self.spawn_saved_durable_pane(request.clone(), &saved_session, window, cx)
         else {
-            self.error_message = "This durable session has no valid Host metadata.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::DurableHostMetadataInvalidError);
             cx.notify();
             return false;
         };
         self.open_spawned_pane_workspace(&request, pane_id);
-        self.status_message = "Attaching to durable session...".to_string();
+        self.status_message = localization::static_message(MessageId::DurableAttachingStatus);
         self.error_message.clear();
         self.persist_runtime_state();
         cx.notify();
@@ -7011,7 +7152,8 @@ impl TermiRustApp {
             return;
         };
         let Some(host) = saved_session.and_then(|saved| saved.durable_host) else {
-            self.error_message = "This durable session has no valid Host metadata.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::DurableHostMetadataInvalidError);
             cx.notify();
             return;
         };
@@ -7048,7 +7190,7 @@ impl TermiRustApp {
                 termirust_domain::HostedSessionState::Attaching,
             ),
         );
-        self.status_message = "Retrying durable Host attachment...".to_string();
+        self.status_message = localization::static_message(MessageId::DurableRetryingStatus);
         self.error_message.clear();
         cx.notify();
     }
@@ -7112,7 +7254,7 @@ impl TermiRustApp {
         };
         self.show_editor_panel = false;
         self.mark_onboarding_complete();
-        self.status_message = "Opening local terminal...".to_string();
+        self.status_message = localization::static_message(MessageId::LocalTerminalOpeningStatus);
         self.error_message.clear();
         self.set_terminal_search_input("", window, cx);
         self.sync_terminal_layout(window, cx);
@@ -7130,7 +7272,7 @@ impl TermiRustApp {
         }
 
         self.set_workspace_layout_mode(WorkspaceLayoutMode::Canvas, window, cx);
-        self.status_message = "Agent Canvas ready.".to_string();
+        self.status_message = localization::static_message(MessageId::AgentCanvasStateReady);
         self.error_message.clear();
         cx.notify();
     }
@@ -7236,7 +7378,7 @@ impl TermiRustApp {
                 self.show_editor_panel = false;
                 self.mark_onboarding_complete();
                 self.status_message = if request.kind == ConnectionKind::LocalShell {
-                    "Opening local terminal...".to_string()
+                    localization::static_message(MessageId::LocalTerminalOpeningStatus)
                 } else {
                     localization::status_connecting(request.address())
                 };
@@ -7386,7 +7528,7 @@ impl TermiRustApp {
         self.panes.retain(|p| p.id != pane_id);
 
         self.status_message = if request.kind == ConnectionKind::LocalShell {
-            "Reopening local terminal...".to_string()
+            localization::static_message(MessageId::LocalTerminalReopeningStatus)
         } else {
             format!("Reconnecting to {}...", request.address())
         };
@@ -7421,14 +7563,12 @@ impl TermiRustApp {
         }
 
         if reconnect_count == 0 {
-            self.status_message = "No disconnected panes to reconnect.".to_string();
+            self.status_message =
+                localization::static_message(MessageId::WorkspaceNoDisconnectedPanesStatus);
             cx.notify();
         } else {
-            self.status_message = format!(
-                "Reconnecting {} pane{}...",
-                reconnect_count,
-                if reconnect_count == 1 { "" } else { "s" }
-            );
+            self.status_message =
+                localization::workspace_reconnecting_panes_status(reconnect_count);
             cx.notify();
         }
     }
@@ -7459,10 +7599,8 @@ impl TermiRustApp {
                 passphrase: None,
             }
         } else {
-            self.error_message = format!(
-                "Quick connect needs a password, a stored system password, or an SSH key in {}.",
-                ssh_directory_label()
-            );
+            self.error_message =
+                localization::quick_connect_auth_required_error(ssh_directory_label());
             cx.notify();
             return;
         };
@@ -7528,7 +7666,7 @@ impl TermiRustApp {
             return;
         };
         if workspace.pane_ids.len() >= MAX_SPLIT_PANES {
-            self.error_message = format!("Split panes are capped at {} for now.", MAX_SPLIT_PANES);
+            self.error_message = localization::workspace_split_cap_error(MAX_SPLIT_PANES);
             cx.notify();
             return;
         }
@@ -7564,7 +7702,7 @@ impl TermiRustApp {
         self.active_workspace_id = Some(workspace_id);
         self.pane_context_menu = None;
         self.status_message = if request.kind == ConnectionKind::LocalShell {
-            "Launching split local terminal...".to_string()
+            localization::static_message(MessageId::LocalTerminalSplitLaunchingStatus)
         } else {
             format!("Launching split pane for {}...", request.address())
         };
@@ -7606,7 +7744,7 @@ impl TermiRustApp {
             }
         }
 
-        self.status_message = "Disconnecting workspace...".to_string();
+        self.status_message = localization::static_message(MessageId::WorkspaceDisconnectingStatus);
         self.error_message.clear();
         cx.notify();
     }
@@ -7663,7 +7801,7 @@ impl TermiRustApp {
         if remove_workspace {
             self.close_workspace(workspace_id, cx);
         } else {
-            self.status_message = "Pane closed.".to_string();
+            self.status_message = localization::static_message(MessageId::PaneClosedStatus);
             self.error_message.clear();
             self.persist_runtime_state();
             cx.notify();
@@ -7743,9 +7881,10 @@ impl TermiRustApp {
         }
 
         if self.active_workspace_id.is_none() {
-            self.status_message = "Workspace closed. Back to hosts.".to_string();
+            self.status_message =
+                localization::static_message(MessageId::WorkspaceClosedToHostsStatus);
         } else {
-            self.status_message = "Workspace closed.".to_string();
+            self.status_message = localization::static_message(MessageId::WorkspaceClosedStatus);
         }
         self.error_message.clear();
         self.persist_runtime_state();
@@ -7895,7 +8034,7 @@ impl TermiRustApp {
                         self.open_workspace_files_for_pane(workspace_id, session_id, cx);
                     }
                     self.status_message = if local_shell {
-                        "Local terminal ready.".to_string()
+                        localization::static_message(MessageId::LocalTerminalReadyStatus)
                     } else if open_files_on_connect && ran_startup && trusted_new_host {
                         "SSH session connected. Files view opened, new host key trusted and pinned, startup actions queued.".to_string()
                     } else if open_files_on_connect && ran_startup {
@@ -8121,7 +8260,7 @@ impl TermiRustApp {
                         "[app] event: TmuxSessionKilled session_id={session_id} session_name={session_name}"
                     );
                     self.close_pane(session_id, cx);
-                    self.status_message = format!("Deleted tmux session {session_name}.");
+                    self.status_message = localization::tmux_session_deleted_status(session_name);
                     self.error_message.clear();
                 }
                 SshEvent::Disconnected {
@@ -8287,11 +8426,18 @@ impl TermiRustApp {
                     {
                         transfer.direction = direction;
                         transfer.status = if queued_ahead == 0 {
-                            format!("{} starting...", direction.label())
+                            localization::static_message(match direction {
+                                SftpTransferDirection::Upload => {
+                                    MessageId::SftpUploadStartingStatus
+                                }
+                                SftpTransferDirection::Download => {
+                                    MessageId::SftpDownloadStartingStatus
+                                }
+                            })
                         } else {
-                            format!(
-                                "{} queued behind {queued_ahead} transfer(s)",
-                                direction.label()
+                            localization::sftp_transfer_queued_behind_status(
+                                direction,
+                                queued_ahead,
                             )
                         };
                         transfer.active = true;
@@ -8314,9 +8460,23 @@ impl TermiRustApp {
                         transfer.transferred_bytes = resumed_from;
                         transfer.resumed_from = resumed_from;
                         transfer.status = if resumed_from > 0 {
-                            format!("Resuming {}", direction.label().to_ascii_lowercase())
+                            localization::static_message(match direction {
+                                SftpTransferDirection::Upload => {
+                                    MessageId::SftpUploadResumingStatus
+                                }
+                                SftpTransferDirection::Download => {
+                                    MessageId::SftpDownloadResumingStatus
+                                }
+                            })
                         } else {
-                            format!("{} in progress", direction.label())
+                            localization::static_message(match direction {
+                                SftpTransferDirection::Upload => {
+                                    MessageId::SftpUploadInProgressStatus
+                                }
+                                SftpTransferDirection::Download => {
+                                    MessageId::SftpDownloadInProgressStatus
+                                }
+                            })
                         };
                         transfer.active = true;
                         transfer.conflict = None;
@@ -8338,7 +8498,12 @@ impl TermiRustApp {
                         transfer.transferred_bytes =
                             transfer.transferred_bytes.max(transferred_bytes);
                         transfer.total_bytes = total_bytes;
-                        transfer.status = format!("{} in progress", direction.label());
+                        transfer.status = localization::static_message(match direction {
+                            SftpTransferDirection::Upload => MessageId::SftpUploadInProgressStatus,
+                            SftpTransferDirection::Download => {
+                                MessageId::SftpDownloadInProgressStatus
+                            }
+                        });
                     }
                 }
                 SftpEventProjection::TransferConflict {
@@ -8356,15 +8521,15 @@ impl TermiRustApp {
                         transfer.direction = direction;
                         transfer.active = false;
                         transfer.control = None;
-                        transfer.status = "Destination already exists".to_string();
+                        transfer.status =
+                            localization::static_message(MessageId::SftpDestinationExistsStatus);
                         transfer.conflict = Some(WorkspaceSftpConflict {
                             existing_bytes,
                             resume_available,
                         });
                     }
                     self.status_message =
-                        "Choose Replace, Skip, or Resume before the transfer can continue."
-                            .to_string();
+                        localization::static_message(MessageId::SftpConflictChoiceStatus);
                 }
                 SftpEventProjection::TransferCancelled {
                     context,
@@ -8383,12 +8548,13 @@ impl TermiRustApp {
                         transfer.control = None;
                         transfer.transferred_bytes = transferred_bytes;
                         transfer.status = if staging_retained {
-                            "Cancelled; verified staging can be resumed".to_string()
+                            localization::static_message(MessageId::SftpCancelledResumableStatus)
                         } else {
-                            "Cancelled before transfer started".to_string()
+                            localization::static_message(MessageId::SftpCancelledBeforeStartStatus)
                         };
                     }
-                    self.status_message = "SFTP transfer cancelled.".to_string();
+                    self.status_message =
+                        localization::static_message(MessageId::SftpTransferCancelledStatus);
                 }
                 SftpEventProjection::TransferComplete {
                     context,
@@ -8410,29 +8576,16 @@ impl TermiRustApp {
                         transfer.transferred_bytes = transferred_bytes;
                         transfer.total_bytes = transferred_bytes;
                         transfer.resumed_from = resumed_from;
-                        transfer.status = if cleanup_warning {
-                            format!(
-                                "{} verified; old backup cleanup is still needed",
-                                direction.label()
-                            )
-                        } else {
-                            format!("{} complete and verified", direction.label())
-                        };
+                        transfer.status =
+                            localization::sftp_transfer_verified_status(direction, cleanup_warning);
                         transfer.sha256 = Some(sha256.clone());
                         transfer.conflict = None;
                     }
-                    self.status_message = if cleanup_warning {
-                        format!(
-                            "{} published and verified, but an app-owned backup could not be removed.",
-                            direction.label()
-                        )
-                    } else {
-                        format!(
-                            "{} complete. SHA-256 {}...",
-                            direction.label(),
-                            &sha256[..sha256.len().min(12)]
-                        )
-                    };
+                    self.status_message = localization::sftp_transfer_completed_status(
+                        direction,
+                        cleanup_warning,
+                        &sha256[..sha256.len().min(12)],
+                    );
                     self.error_message.clear();
                     if direction == SftpTransferDirection::Upload {
                         sftp_directories_to_refresh.insert(context.workspace_id);
@@ -8776,7 +8929,7 @@ impl TermiRustApp {
         }
         let bytes = b"\x1b[H\x1b[2J\x1b[3J".to_vec();
         let _ = self.send_input_bytes(pane_id, bytes, cx);
-        self.status_message = "Terminal cleared.".to_string();
+        self.status_message = localization::static_message(MessageId::TerminalClearedStatus);
         self.error_message.clear();
         cx.notify();
     }
@@ -8814,8 +8967,7 @@ impl TermiRustApp {
         let source_count = self.workspaces[source_index].pane_ids.len();
         if source_count != source_layout_count {
             self.error_message =
-                "This tab has Canvas sessions that are not selected for Split. Open the tab and choose which sessions to move before merging it."
-                    .to_string();
+                localization::static_message(MessageId::WorkspaceMergeCanvasSelectionError);
             self.split_drop_target = None;
             cx.notify();
             return;
@@ -8825,7 +8977,7 @@ impl TermiRustApp {
             .map(|workspace| workspace.pane_ids.len())
             .unwrap_or(0);
         if target_count + source_count > MAX_SPLIT_PANES {
-            self.error_message = format!("Split panes are capped at {MAX_SPLIT_PANES} for now.");
+            self.error_message = localization::workspace_split_cap_error(MAX_SPLIT_PANES);
             self.split_drop_target = None;
             cx.notify();
             return;
@@ -8855,7 +9007,8 @@ impl TermiRustApp {
         }
         self.active_workspace_id = Some(target_workspace_id);
         self.split_drop_target = None;
-        self.status_message = "Merged tab into a split.".to_string();
+        self.status_message =
+            localization::static_message(MessageId::WorkspaceMergedIntoSplitStatus);
         self.error_message.clear();
         self.sync_terminal_layout(window, cx);
         if let Some(pane) = self.pane(first_source_pane) {
@@ -8879,7 +9032,8 @@ impl TermiRustApp {
             .map(|workspace| workspace.pane_ids.len() <= 1)
             .unwrap_or(true);
         if single_pane {
-            self.error_message = "This pane is already in its own workspace.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::PaneAlreadyOwnWorkspaceError);
             cx.notify();
             return;
         }
@@ -8938,7 +9092,8 @@ impl TermiRustApp {
             connect_failure: None,
         });
         self.active_workspace_id = Some(new_workspace_id);
-        self.status_message = "Pane detached into a new workspace tab.".to_string();
+        self.status_message =
+            localization::static_message(MessageId::PaneDetachedNewWorkspaceStatus);
         self.error_message.clear();
         self.sync_terminal_layout(window, cx);
         if let Some(pane) = self.pane(pane_id) {
@@ -8965,7 +9120,7 @@ impl TermiRustApp {
             return;
         };
         self.open_workspace_tab_menu = None;
-        self.status_message = format!("Duplicating {} in a new tab...", request.address());
+        self.status_message = localization::workspace_duplicating_new_tab_status(request.address());
         self.error_message.clear();
         self.sync_terminal_layout(window, cx);
         if let Some(pane) = self.pane(pane_id) {
@@ -8992,7 +9147,7 @@ impl TermiRustApp {
             workspace.broadcast_input = true;
         }
         self.status_message =
-            "Multiplayer-style broadcast input started for this workspace.".to_string();
+            localization::static_message(MessageId::WorkspaceBroadcastStartedStatus);
         self.error_message.clear();
         cx.notify();
     }
@@ -9004,9 +9159,9 @@ impl TermiRustApp {
             now_on = workspace.broadcast_input;
         }
         self.status_message = if now_on {
-            "Broadcasting input to every pane in this workspace.".to_string()
+            localization::static_message(MessageId::WorkspaceBroadcastEnabledStatus)
         } else {
-            "Broadcast input disabled.".to_string()
+            localization::static_message(MessageId::WorkspaceBroadcastDisabledStatus)
         };
         self.error_message.clear();
         cx.notify();
@@ -9038,7 +9193,7 @@ impl TermiRustApp {
             .send(SessionCommand::Input(data.clone()))
             .is_err()
         {
-            self.error_message = "Unable to send input to the SSH runtime.".to_string();
+            self.error_message = localization::static_message(MessageId::TerminalSshInputSendError);
             cx.notify();
             return false;
         }
@@ -9507,7 +9662,7 @@ impl TermiRustApp {
         let mut bytes = vec![0x7f; current_input.chars().count()];
         bytes.extend_from_slice(command.as_bytes());
         if self.send_input_bytes(pane_id, bytes, cx) {
-            self.status_message = format!("Autocomplete applied from {}.", source.label());
+            self.status_message = localization::autocomplete_applied_status(source);
             self.error_message.clear();
             cx.notify();
             return true;
@@ -9659,7 +9814,8 @@ impl TermiRustApp {
             return false;
         }
         cx.write_to_clipboard(ClipboardItem::new_string(text));
-        self.status_message = "Selection copied to clipboard.".to_string();
+        self.status_message =
+            localization::static_message(MessageId::TerminalSelectionCopiedStatus);
         self.error_message.clear();
         true
     }
@@ -9692,8 +9848,7 @@ impl TermiRustApp {
                 text: text.clone(),
             });
             let line_count = text.matches('\n').count() + 1;
-            self.status_message =
-                format!("{line_count} lines on the clipboard. Confirm to send to the active pane.");
+            self.status_message = localization::terminal_multiline_paste_confirm_status(line_count);
             self.error_message.clear();
             cx.notify();
             return true;
@@ -9734,7 +9889,8 @@ impl TermiRustApp {
         };
         let result = self.send_paste_bytes(pending.pane_id, pending.text, cx);
         if result {
-            self.status_message = "Multi-line paste delivered.".to_string();
+            self.status_message =
+                localization::static_message(MessageId::TerminalMultilinePasteDeliveredStatus);
         }
         cx.notify();
         result
@@ -9742,7 +9898,8 @@ impl TermiRustApp {
 
     fn cancel_pending_paste(&mut self, cx: &mut Context<Self>) {
         if self.pending_paste.take().is_some() {
-            self.status_message = "Paste cancelled.".to_string();
+            self.status_message =
+                localization::static_message(MessageId::TerminalPasteCancelledStatus);
             self.error_message.clear();
             cx.notify();
         }
@@ -10239,203 +10396,230 @@ impl TermiRustApp {
                                 .text_size(px(15.))
                                 .font_semibold()
                                 .text_color(theme::text_main())
-                                .child("Saved Groups"),
+                                .child(localization::static_message(
+                                    MessageId::HostSavedGroupsTitle,
+                                )),
                         )
                         .child(
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child(
-                                    "Select a group, target it for bulk assignment, or load its defaults into the editor.",
-                                ),
+                                .child(localization::static_message(
+                                    MessageId::HostSavedGroupsDescription,
+                                )),
                         ),
                 )
                 .child(
-                    div()
-                        .w_full()
-                        .flex()
-                        .flex_wrap()
-                        .gap_3()
-                        .children(self.saved.host_groups.iter().enumerate().map(|(index, group)| {
-                            let group_name = group.label.clone();
-                            let select_group_name = group.label.clone();
-                            let bulk_group_name = group.label.clone();
-                            let load_group_name = group.label.clone();
-                            let (visible_count, total_count) = self.group_host_counts(&group.label, cx);
-                            let mut chips = Vec::new();
-                            if let Some(username) = group.username.as_deref() {
-                                chips.push(
-                                    self.status_badge(
-                                        format!("User: {}", username),
-                                        theme::library_bg(),
-                                        theme::slate(),
-                                    )
-                                    .into_any_element(),
-                                );
-                            }
-                            if !group.tags.is_empty() {
-                                chips.push(
-                                    self.status_badge(
-                                        format!("Tags: {}", group.tags.join(", ")),
-                                        theme::library_bg(),
-                                        theme::slate(),
-                                    )
-                                    .into_any_element(),
-                                );
-                            }
-                            if let Some(identity_id) = group.identity_id.as_deref() {
-                                if let Some(identity) = self.identity_by_id(identity_id) {
+                    div().w_full().flex().flex_wrap().gap_3().children(
+                        self.saved
+                            .host_groups
+                            .iter()
+                            .enumerate()
+                            .map(|(index, group)| {
+                                let group_name = group.label.clone();
+                                let select_group_name = group.label.clone();
+                                let bulk_group_name = group.label.clone();
+                                let load_group_name = group.label.clone();
+                                let (visible_count, total_count) =
+                                    self.group_host_counts(&group.label, cx);
+                                let mut chips = Vec::new();
+                                if let Some(username) = group.username.as_deref() {
                                     chips.push(
                                         self.status_badge(
-                                            format!("Identity: {}", identity.label),
+                                            localization::host_group_user_chip(username),
+                                            theme::library_bg(),
+                                            theme::slate(),
+                                        )
+                                        .into_any_element(),
+                                    );
+                                }
+                                if !group.tags.is_empty() {
+                                    chips.push(
+                                        self.status_badge(
+                                            localization::host_group_tags_chip(
+                                                group.tags.join(", "),
+                                            ),
+                                            theme::library_bg(),
+                                            theme::slate(),
+                                        )
+                                        .into_any_element(),
+                                    );
+                                }
+                                if let Some(identity_id) = group.identity_id.as_deref()
+                                    && let Some(identity) = self.identity_by_id(identity_id)
+                                {
+                                    chips.push(
+                                        self.status_badge(
+                                            localization::host_group_identity_chip(
+                                                identity.label.clone(),
+                                            ),
                                             theme::library_bg(),
                                             theme::success(),
                                         )
                                         .into_any_element(),
                                     );
                                 }
-                            }
-                            if let Some(jump_host_id) = group.jump_host_id.as_deref() {
-                                if let Some(jump_host) = self.jump_host_display_name(jump_host_id) {
+                                if let Some(jump_host_id) = group.jump_host_id.as_deref()
+                                    && let Some(jump_host) =
+                                        self.jump_host_display_name(jump_host_id)
+                                {
                                     chips.push(
                                         self.status_badge(
-                                            format!("Jump: {}", jump_host),
+                                            localization::host_group_jump_chip(jump_host),
                                             theme::library_bg(),
                                             theme::accent(),
                                         )
                                         .into_any_element(),
                                     );
                                 }
-                            }
-                            if let Some(directory) = group.startup_directory.as_deref() {
-                                chips.push(
-                                    self.status_badge(
-                                        format!("Dir: {}", directory),
-                                        theme::library_bg(),
-                                        theme::warning(),
-                                    )
-                                    .into_any_element(),
-                                );
-                            }
-                            if let Some(command) = group.startup_command.as_deref() {
-                                chips.push(
-                                    self.status_badge(
-                                        format!("Cmd: {}", command),
-                                        theme::library_bg(),
-                                        theme::warning(),
-                                    )
-                                    .into_any_element(),
-                                );
-                            }
-                            if !group.port_forward_rules.is_empty() {
-                                chips.push(
-                                    self.status_badge(
-                                        if group.port_forward_rules.len() == 1 {
-                                            format!(
-                                                "Forward: {}",
-                                                group.port_forward_rules[0].display_name()
-                                            )
-                                        } else {
-                                            format!("{} Forwards", group.port_forward_rules.len())
-                                        },
-                                        theme::library_bg(),
-                                        theme::warning(),
-                                    )
-                                    .into_any_element(),
-                                );
-                            }
-
-                            v_flex()
-                                .id(("saved-group-card", index))
-                                .min_w(px(HOST_CARD_WIDTH))
-                                .max_w(px(HOST_CARD_WIDTH * 1.3))
-                                .flex_1()
-                                .gap_3()
-                                .p_4()
-                                .rounded(px(theme::CARD_RADIUS))
-                                .bg(theme::library_card())
-                                .border_1()
-                                .border_color(theme::border())
-                                .child(
-                                    h_flex()
-                                        .justify_between()
-                                        .items_center()
-                                        .child(
-                                            div()
-                                                .text_size(px(15.))
-                                                .font_semibold()
-                                                .text_color(theme::text_main())
-                                                .child(group_name),
+                                if let Some(directory) = group.startup_directory.as_deref() {
+                                    chips.push(
+                                        self.status_badge(
+                                            localization::host_group_directory_chip(directory),
+                                            theme::library_bg(),
+                                            theme::warning(),
                                         )
-                                        .child(self.status_badge(
-                                            if visible_count == total_count {
-                                                format!("{} hosts", total_count)
+                                        .into_any_element(),
+                                    );
+                                }
+                                if let Some(command) = group.startup_command.as_deref() {
+                                    chips.push(
+                                        self.status_badge(
+                                            localization::host_group_command_chip(command),
+                                            theme::library_bg(),
+                                            theme::warning(),
+                                        )
+                                        .into_any_element(),
+                                    );
+                                }
+                                if !group.port_forward_rules.is_empty() {
+                                    chips.push(
+                                        self.status_badge(
+                                            if group.port_forward_rules.len() == 1 {
+                                                localization::host_group_forward_chip(
+                                                    group.port_forward_rules[0].display_name(),
+                                                )
                                             } else {
-                                                format!("{} visible • {} total", visible_count, total_count)
+                                                localization::host_group_forwards_chip(
+                                                    group.port_forward_rules.len(),
+                                                )
                                             },
                                             theme::library_bg(),
-                                            theme::text_muted(),
-                                        )),
-                                )
-                                .when(!chips.is_empty(), |this| {
-                                    this.child(h_flex().gap_2().flex_wrap().children(chips))
-                                })
-                                .child(
-                                    h_flex()
-                                        .gap_2()
-                                        .flex_wrap()
-                                        .child(
-                                            Button::new(("saved-group-select", index))
-                                                .small()
-                                                .custom(Self::action_button_style(
-                                                    theme::ActionTone::Neutral,
-                                                    cx,
-                                                ))
-                                                .label("Select Hosts")
-                                                .on_click(cx.listener(move |this, _, _, cx| {
-                                                    this.select_filtered_group_hosts(
-                                                        &select_group_name,
-                                                        cx,
-                                                    );
-                                                })),
+                                            theme::warning(),
                                         )
-                                        .child(
-                                            Button::new(("saved-group-bulk", index))
-                                                .small()
-                                                .custom(Self::action_button_style(
-                                                    theme::ActionTone::AccentSoft,
-                                                    cx,
-                                                ))
-                                                .label("Use as Bulk")
-                                                .on_click(cx.listener(move |this, _, window, cx| {
-                                                    this.prepare_bulk_group_assignment(
-                                                        &bulk_group_name,
-                                                        window,
+                                        .into_any_element(),
+                                    );
+                                }
+
+                                v_flex()
+                                    .id(("saved-group-card", index))
+                                    .min_w(px(HOST_CARD_WIDTH))
+                                    .max_w(px(HOST_CARD_WIDTH * 1.3))
+                                    .flex_1()
+                                    .gap_3()
+                                    .p_4()
+                                    .rounded(px(theme::CARD_RADIUS))
+                                    .bg(theme::library_card())
+                                    .border_1()
+                                    .border_color(theme::border())
+                                    .child(
+                                        h_flex()
+                                            .justify_between()
+                                            .items_center()
+                                            .child(
+                                                div()
+                                                    .text_size(px(15.))
+                                                    .font_semibold()
+                                                    .text_color(theme::text_main())
+                                                    .child(group_name),
+                                            )
+                                            .child(self.status_badge(
+                                                if visible_count == total_count {
+                                                    localization::host_group_host_count(total_count)
+                                                } else {
+                                                    localization::host_group_visible_total_count(
+                                                        visible_count,
+                                                        total_count,
+                                                    )
+                                                },
+                                                theme::library_bg(),
+                                                theme::text_muted(),
+                                            )),
+                                    )
+                                    .when(!chips.is_empty(), |this| {
+                                        this.child(h_flex().gap_2().flex_wrap().children(chips))
+                                    })
+                                    .child(
+                                        h_flex()
+                                            .gap_2()
+                                            .flex_wrap()
+                                            .child(
+                                                Button::new(("saved-group-select", index))
+                                                    .small()
+                                                    .custom(Self::action_button_style(
+                                                        theme::ActionTone::Neutral,
                                                         cx,
-                                                    );
-                                                })),
-                                        )
-                                        .child(
-                                            Button::new(("saved-group-load", index))
-                                                .small()
-                                                .custom(Self::action_button_style(
-                                                    theme::ActionTone::Neutral,
-                                                    cx,
-                                                ))
-                                                .label("Load Defaults")
-                                                .on_click(cx.listener(move |this, _, window, cx| {
-                                                    Self::set_input_value(
-                                                        &this.inputs.group,
-                                                        load_group_name.clone(),
-                                                        window,
+                                                    ))
+                                                    .label(localization::static_message(
+                                                        MessageId::HostGroupSelectHostsAction,
+                                                    ))
+                                                    .on_click(cx.listener(
+                                                        move |this, _, _, cx| {
+                                                            this.select_filtered_group_hosts(
+                                                                &select_group_name,
+                                                                cx,
+                                                            );
+                                                        },
+                                                    )),
+                                            )
+                                            .child(
+                                                Button::new(("saved-group-bulk", index))
+                                                    .small()
+                                                    .custom(Self::action_button_style(
+                                                        theme::ActionTone::AccentSoft,
                                                         cx,
-                                                    );
-                                                    this.apply_group_defaults_to_editor(window, cx);
-                                                })),
-                                        ),
-                                )
-                                .into_any_element()
-                        })),
+                                                    ))
+                                                    .label(localization::static_message(
+                                                        MessageId::HostGroupUseBulkAction,
+                                                    ))
+                                                    .on_click(cx.listener(
+                                                        move |this, _, window, cx| {
+                                                            this.prepare_bulk_group_assignment(
+                                                                &bulk_group_name,
+                                                                window,
+                                                                cx,
+                                                            );
+                                                        },
+                                                    )),
+                                            )
+                                            .child(
+                                                Button::new(("saved-group-load", index))
+                                                    .small()
+                                                    .custom(Self::action_button_style(
+                                                        theme::ActionTone::Neutral,
+                                                        cx,
+                                                    ))
+                                                    .label(localization::static_message(
+                                                        MessageId::HostGroupLoadDefaultsAction,
+                                                    ))
+                                                    .on_click(cx.listener(
+                                                        move |this, _, window, cx| {
+                                                            Self::set_input_value(
+                                                                &this.inputs.group,
+                                                                load_group_name.clone(),
+                                                                window,
+                                                                cx,
+                                                            );
+                                                            this.apply_group_defaults_to_editor(
+                                                                window, cx,
+                                                            );
+                                                        },
+                                                    )),
+                                            ),
+                                    )
+                                    .into_any_element()
+                            }),
+                    ),
                 ),
         )
     }
@@ -10451,7 +10635,7 @@ impl TermiRustApp {
                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .font_medium()
                     .text_color(theme::text_main())
-                    .child("Saved identities"),
+                    .child(localization::static_message(MessageId::HostIdentitiesTitle)),
             )
             .when(identities.is_empty(), |this| {
                 this.child(
@@ -10463,7 +10647,9 @@ impl TermiRustApp {
                         .border_color(theme::border())
                         .text_size(px(theme::TYPE_CAPTION_SIZE))
                         .text_color(theme::text_muted())
-                        .child("No saved identities yet. Add a key file or use one imported at launch."),
+                        .child(localization::static_message(
+                            MessageId::HostIdentitiesEmptyDescription,
+                        )),
                 )
             })
             .when(!identities.is_empty(), |this| {
@@ -10472,92 +10658,96 @@ impl TermiRustApp {
                         .max_h(px(148.))
                         .overflow_y_scrollbar()
                         .gap_2()
-                        .children(identities.iter().enumerate().map(
-                            |(index, identity)| {
-                                let display_identity = identity.clone();
-                                let click_identity = identity.clone();
-                                let is_selected = display_identity.key_path == selected_path;
+                        .children(identities.iter().enumerate().map(|(index, identity)| {
+                            let display_identity = identity.clone();
+                            let click_identity = identity.clone();
+                            let is_selected = display_identity.key_path == selected_path;
 
-                                h_flex()
-                                    .id(("editor-identity", index))
-                                    .w_full()
-                                    .justify_between()
-                                    .items_center()
-                                    .gap_2()
-                                    .p_2()
-                                    .rounded(px(12.))
-                                    .bg(if is_selected {
-                                        theme::accent_soft()
-                                    } else {
-                                        theme::with_alpha(theme::hover(), 0.72)
-                                    })
-                                    .border_1()
-                                    .border_color(if is_selected {
-                                        theme::with_alpha(theme::accent(), 0.42)
-                                    } else {
-                                        theme::border()
-                                    })
-                                    .cursor_pointer()
-                                    .hover(|style| style.bg(theme::hover()))
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.use_identity(&click_identity, window, cx);
-                                    }))
-                                    .child(
-                                        v_flex()
-                                            .gap(px(1.))
-                                            .child(
-                                                h_flex()
-                                                    .gap_2()
-                                                    .items_center()
-                                                    .child(
-                                                        div()
-                                                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                                            .font_semibold()
-                                                            .text_color(theme::text_main())
-                                                            .child(display_identity.label.clone()),
-                                                    )
-                                                    .when(index == 0, |this| {
+                            h_flex()
+                                .id(("editor-identity", index))
+                                .w_full()
+                                .justify_between()
+                                .items_center()
+                                .gap_2()
+                                .p_2()
+                                .rounded(px(12.))
+                                .bg(if is_selected {
+                                    theme::accent_soft()
+                                } else {
+                                    theme::with_alpha(theme::hover(), 0.72)
+                                })
+                                .border_1()
+                                .border_color(if is_selected {
+                                    theme::with_alpha(theme::accent(), 0.42)
+                                } else {
+                                    theme::border()
+                                })
+                                .cursor_pointer()
+                                .hover(|style| style.bg(theme::hover()))
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.use_identity(&click_identity, window, cx);
+                                }))
+                                .child(
+                                    v_flex()
+                                        .gap(px(1.))
+                                        .child(
+                                            h_flex()
+                                                .gap_2()
+                                                .items_center()
+                                                .child(
+                                                    div()
+                                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                                        .font_semibold()
+                                                        .text_color(theme::text_main())
+                                                        .child(display_identity.label.clone()),
+                                                )
+                                                .when(index == 0, |this| {
+                                                    this.child(self.status_badge(
+                                                        localization::static_message(
+                                                            MessageId::KeyDefaultBadge,
+                                                        ),
+                                                        theme::library_card(),
+                                                        theme::accent(),
+                                                    ))
+                                                })
+                                                .when(
+                                                    display_identity.source
+                                                        == crate::models::IdentitySource::Imported,
+                                                    |this| {
                                                         this.child(self.status_badge(
-                                                            "Default",
+                                                            localization::static_message(
+                                                                MessageId::KeySourceImported,
+                                                            ),
                                                             theme::library_card(),
-                                                            theme::accent(),
+                                                            theme::slate(),
                                                         ))
-                                                    })
-                                                    .when(
-                                                        display_identity.source
-                                                            == crate::models::IdentitySource::Imported,
-                                                        |this| {
-                                                            this.child(self.status_badge(
-                                                                "Imported",
-                                                                theme::library_card(),
-                                                                theme::slate(),
-                                                            ))
-                                                        },
-                                                    )
-                                                    .when(is_selected, |this| {
-                                                        this.child(self.status_badge(
-                                                            "Selected",
-                                                            theme::library_card(),
-                                                            theme::success(),
-                                                        ))
-                                                    }),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                                    .text_color(theme::text_muted())
-                                                    .child(display_identity.kind.clone()),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(px(11.))
-                                                    .text_color(theme::text_muted())
-                                                    .child(display_identity.key_path.clone()),
-                                            ),
-                                    )
-                                    .into_any_element()
-                            },
-                        )),
+                                                    },
+                                                )
+                                                .when(is_selected, |this| {
+                                                    this.child(self.status_badge(
+                                                        localization::static_message(
+                                                            MessageId::HostIdentitySelectedBadge,
+                                                        ),
+                                                        theme::library_card(),
+                                                        theme::success(),
+                                                    ))
+                                                }),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                                .text_color(theme::text_muted())
+                                                .child(display_identity.kind.clone()),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(11.))
+                                                .text_color(theme::text_muted())
+                                                .child(display_identity.key_path.clone()),
+                                        ),
+                                )
+                                .into_any_element()
+                        })),
                 )
             })
     }
@@ -10578,7 +10768,9 @@ impl TermiRustApp {
                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .font_medium()
                     .text_color(theme::text_main())
-                    .child("Vault"),
+                    .child(localization::static_message(
+                        MessageId::HostVaultPickerTitle,
+                    )),
             )
             .child(
                 h_flex()
@@ -10668,11 +10860,15 @@ impl TermiRustApp {
                                     .text_size(px(14.))
                                     .font_semibold()
                                     .text_color(theme::text_main())
-                                    .child("Persistent Session"),
+                                    .child(localization::static_message(
+                                        MessageId::HostPersistentSessionTitle,
+                                    )),
                             )
                             .when(self.draft_persistent_session, |this| {
                                 this.child(self.status_badge(
-                                    "tmux enabled",
+                                    localization::static_message(
+                                        MessageId::HostPersistentSessionEnabledBadge,
+                                    ),
                                     theme::library_card(),
                                     theme::success(),
                                 ))
@@ -10683,18 +10879,18 @@ impl TermiRustApp {
                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .line_height(relative(1.45))
                             .text_color(theme::text_muted())
-                            .child(
-                                "Keep the remote terminal running after closing the tab or losing the network.",
-                            ),
+                            .child(localization::static_message(
+                                MessageId::HostPersistentSessionDescription,
+                            )),
                     )
                     .child(
                         div()
                             .id("persistent-session-toggle")
                             .debug_selector(|| "persistent-session-toggle".to_string())
                             .w_full()
-                            .h(px(
-                                theme::current_design_tokens().control_height_compact().0,
-                            ))
+                            .h(px(theme::current_design_tokens()
+                                .control_height_compact()
+                                .0))
                             .px_3()
                             .rounded(px(theme::CONTROL_RADIUS))
                             .border_1()
@@ -10727,9 +10923,13 @@ impl TermiRustApp {
                                         theme::text_on_dark()
                                     })
                                     .child(if self.draft_persistent_session {
-                                        "Disable"
+                                        localization::static_message(
+                                            MessageId::HostPersistentSessionDisableAction,
+                                        )
                                     } else {
-                                        "Enable persistent tmux"
+                                        localization::static_message(
+                                            MessageId::HostPersistentSessionEnableAction,
+                                        )
                                     }),
                             ),
                     ),
@@ -10741,12 +10941,12 @@ impl TermiRustApp {
                         .child(
                             v_flex()
                                 .gap_2()
-                                .child(
-                                    self.form_field(
-                                        "Tmux Session Name",
-                                        Input::new(&self.inputs.persistent_session_name),
-                                    )
-                                )
+                                .child(self.form_field(
+                                    localization::static_message(
+                                        MessageId::HostTmuxSessionNameField,
+                                    ),
+                                    Input::new(&self.inputs.persistent_session_name),
+                                ))
                                 .child(
                                     v_flex()
                                         .gap_2()
@@ -10754,7 +10954,9 @@ impl TermiRustApp {
                                             div()
                                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                                 .text_color(theme::text_muted())
-                                                .child("Attach behavior"),
+                                                .child(localization::static_message(
+                                                    MessageId::HostTmuxAttachBehaviorTitle,
+                                                )),
                                         )
                                         .child(h_flex().gap_2().children(
                                             [false, true].into_iter().map(|detach_others| {
@@ -10768,18 +10970,20 @@ impl TermiRustApp {
                                                 .small()
                                                 .custom(Self::segmented_button_style(active, cx))
                                                 .label(if detach_others {
-                                                    "Detach others"
+                                                    localization::static_message(
+                                                        MessageId::HostTmuxDetachOthersAction,
+                                                    )
                                                 } else {
-                                                    "Share attach"
+                                                    localization::static_message(
+                                                        MessageId::HostTmuxShareAttachAction,
+                                                    )
                                                 })
-                                                .on_click(cx.listener(
-                                                    move |this, _, _, cx| {
-                                                        this.set_draft_persistent_session_detach_others(
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.set_draft_persistent_session_detach_others(
                                                             detach_others,
                                                             cx,
                                                         );
-                                                    },
-                                                ))
+                                                }))
                                                 .into_any_element()
                                             }),
                                         )),
@@ -10790,9 +10994,9 @@ impl TermiRustApp {
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .line_height(relative(1.45))
                                 .text_color(theme::text_muted())
-                                .child(
-                                    "Requires tmux on the remote host. If tmux is missing, TermiRust shows install help and opens a normal shell. Startup commands run only when the tmux session is first created.",
-                                ),
+                                .child(localization::static_message(
+                                    MessageId::HostPersistentSessionRequirementsDescription,
+                                )),
                         ),
                 )
             })
@@ -10803,9 +11007,9 @@ impl TermiRustApp {
                         div()
                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::warning())
-                            .child(
-                                "Detach others can disconnect another TermiRust window or terminal from this tmux session.",
-                            ),
+                            .child(localization::static_message(
+                                MessageId::HostTmuxDetachOthersWarning,
+                            )),
                     )
                 },
             )
@@ -10858,7 +11062,9 @@ impl TermiRustApp {
                             .text_size(px(theme::TYPE_BODY_SIZE))
                             .font_medium()
                             .text_color(theme::text_main())
-                            .child("Color tag"),
+                            .child(localization::static_message(
+                                MessageId::HostColorTagTitle,
+                            )),
                     )
                     .child(
                         h_flex()
@@ -10885,7 +11091,9 @@ impl TermiRustApp {
                                     .hover(|style| style.bg(theme::hover()))
                                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .text_color(theme::text_main())
-                                    .child("Auto")
+                                    .child(localization::static_message(
+                                        MessageId::HostColorTagAutoAction,
+                                    ))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.draft_color_tag = None;
                                         cx.notify();
@@ -10933,9 +11141,9 @@ impl TermiRustApp {
                         div()
                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
-                            .child(
-                                "Tags drive the avatar tint on host cards and the status dot on connected panes — handy for prod / staging / dev color-coding.",
-                            ),
+                            .child(localization::static_message(
+                                MessageId::HostColorTagDescription,
+                            )),
                     ),
             )
             .child(
@@ -10946,7 +11154,9 @@ impl TermiRustApp {
                             .text_size(px(14.))
                             .font_medium()
                             .text_color(theme::text_main())
-                            .child("Library priority"),
+                            .child(localization::static_message(
+                                MessageId::HostLibraryPriorityTitle,
+                            )),
                     )
                     .child(
                         h_flex()
@@ -10956,7 +11166,11 @@ impl TermiRustApp {
                                 Button::new(("draft-profile-favorite", favorite as usize))
                                     .small()
                                     .custom(Self::segmented_button_style(active, cx))
-                                    .label(if favorite { "Starred" } else { "Standard" })
+                                    .label(localization::static_message(if favorite {
+                                        MessageId::HostLibraryPriorityStarredAction
+                                    } else {
+                                        MessageId::HostLibraryPriorityStandardAction
+                                    }))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.toggle_draft_profile_favorite(favorite, cx);
                                     }))
@@ -10967,9 +11181,9 @@ impl TermiRustApp {
                         div()
                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
-                            .child(
-                                "Starred hosts stay pinned to the top of the library for your most-used machines.",
-                            ),
+                            .child(localization::static_message(
+                                MessageId::HostLibraryPriorityDescription,
+                            )),
                     ),
             )
             .child(self.render_vault_picker(
@@ -10977,8 +11191,9 @@ impl TermiRustApp {
                 |vault_id, this, _, cx| {
                     this.draft_vault_id = Some(vault_id.clone());
                     this.selected_vault_id = Some(vault_id.clone());
-                    this.status_message =
-                        format!("Assigning this host to {}.", this.effective_vault_name(Some(&vault_id)));
+                    this.status_message = localization::host_assigning_vault_status(
+                        this.effective_vault_name(Some(&vault_id)),
+                    );
                     this.error_message.clear();
                     cx.notify();
                 },
@@ -11001,18 +11216,24 @@ impl TermiRustApp {
                                     div()
                                         .text_size(px(theme::TYPE_CAPTION_SIZE))
                                         .text_color(theme::text_muted())
-                                        .child(format!("Group defaults for '{}'", group_name)),
+                                        .child(localization::host_group_defaults_title(
+                                            group_name.clone(),
+                                        )),
                                 )
                                 .when(saved_group.is_some(), |this| {
                                     this.child(self.status_badge(
-                                        "Saved",
+                                        localization::static_message(
+                                            MessageId::HostGroupDefaultsSavedBadge,
+                                        ),
                                         theme::library_bg(),
                                         theme::success(),
                                     ))
                                 })
                                 .when(saved_group.is_none(), |this| {
                                     this.child(self.status_badge(
-                                        "Ad hoc",
+                                        localization::static_message(
+                                            MessageId::HostGroupDefaultsAdHocBadge,
+                                        ),
                                         theme::library_bg(),
                                         theme::text_muted(),
                                     ))
@@ -11023,7 +11244,7 @@ impl TermiRustApp {
                             if let Some(username) = group.username.as_deref() {
                                 chips.push(
                                     self.status_badge(
-                                        format!("User: {}", username),
+                                        localization::host_group_user_chip(username),
                                         theme::library_bg(),
                                         theme::slate(),
                                     )
@@ -11033,41 +11254,43 @@ impl TermiRustApp {
                             if !group.tags.is_empty() {
                                 chips.push(
                                     self.status_badge(
-                                        format!("Tags: {}", group.tags.join(", ")),
+                                        localization::host_group_tags_chip(group.tags.join(", ")),
                                         theme::library_bg(),
                                         theme::slate(),
                                     )
                                     .into_any_element(),
                                 );
                             }
-                            if let Some(identity_id) = group.identity_id.as_deref() {
-                                if let Some(identity) = self.identity_by_id(identity_id) {
-                                    chips.push(
-                                        self.status_badge(
-                                            format!("Identity: {}", identity.label),
-                                            theme::library_bg(),
-                                            theme::success(),
-                                        )
-                                        .into_any_element(),
-                                    );
-                                }
+                            if let Some(identity_id) = group.identity_id.as_deref()
+                                && let Some(identity) = self.identity_by_id(identity_id)
+                            {
+                                chips.push(
+                                    self.status_badge(
+                                        localization::host_group_identity_chip(
+                                            identity.label.clone(),
+                                        ),
+                                        theme::library_bg(),
+                                        theme::success(),
+                                    )
+                                    .into_any_element(),
+                                );
                             }
-                            if let Some(jump_host_id) = group.jump_host_id.as_deref() {
-                                if let Some(jump_host) = self.jump_host_display_name(jump_host_id) {
-                                    chips.push(
-                                        self.status_badge(
-                                            format!("Jump: {}", jump_host),
-                                            theme::library_bg(),
-                                            theme::accent(),
-                                        )
-                                        .into_any_element(),
-                                    );
-                                }
+                            if let Some(jump_host_id) = group.jump_host_id.as_deref()
+                                && let Some(jump_host) = self.jump_host_display_name(jump_host_id)
+                            {
+                                chips.push(
+                                    self.status_badge(
+                                        localization::host_group_jump_chip(jump_host),
+                                        theme::library_bg(),
+                                        theme::accent(),
+                                    )
+                                    .into_any_element(),
+                                );
                             }
                             if let Some(directory) = group.startup_directory.as_deref() {
                                 chips.push(
                                     self.status_badge(
-                                        format!("Dir: {}", directory),
+                                        localization::host_group_directory_chip(directory),
                                         theme::library_bg(),
                                         theme::warning(),
                                     )
@@ -11077,7 +11300,7 @@ impl TermiRustApp {
                             if let Some(command) = group.startup_command.as_deref() {
                                 chips.push(
                                     self.status_badge(
-                                        format!("Cmd: {}", command),
+                                        localization::host_group_command_chip(command),
                                         theme::library_bg(),
                                         theme::warning(),
                                     )
@@ -11086,9 +11309,13 @@ impl TermiRustApp {
                             }
                             if !group.port_forward_rules.is_empty() {
                                 let label = if group.port_forward_rules.len() == 1 {
-                                    format!("Forward: {}", group.port_forward_rules[0].display_name())
+                                    localization::host_group_forward_chip(
+                                        group.port_forward_rules[0].display_name(),
+                                    )
                                 } else {
-                                    format!("{} Forwards", group.port_forward_rules.len())
+                                    localization::host_group_forwards_chip(
+                                        group.port_forward_rules.len(),
+                                    )
                                 };
                                 chips.push(
                                     self.status_badge(
@@ -11114,7 +11341,9 @@ impl TermiRustApp {
                                             theme::ActionTone::AccentSoft,
                                             cx,
                                         ))
-                                        .label("Save Group Defaults")
+                                        .label(localization::static_message(
+                                            MessageId::HostGroupDefaultsSaveAction,
+                                        ))
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.save_group_defaults_from_draft(cx);
                                         })),
@@ -11127,7 +11356,9 @@ impl TermiRustApp {
                                                 theme::ActionTone::Neutral,
                                                 cx,
                                             ))
-                                            .label("Load Defaults")
+                                            .label(localization::static_message(
+                                                MessageId::HostGroupLoadDefaultsAction,
+                                            ))
                                             .on_click(cx.listener(|this, _, window, cx| {
                                                 this.apply_group_defaults_to_editor(window, cx);
                                             })),
@@ -11139,7 +11370,9 @@ impl TermiRustApp {
                                                 theme::ActionTone::Danger,
                                                 cx,
                                             ))
-                                            .label("Delete Defaults")
+                                            .label(localization::static_message(
+                                                MessageId::HostGroupDefaultsDeleteAction,
+                                            ))
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.remove_group_defaults(cx);
                                             })),
@@ -11150,9 +11383,9 @@ impl TermiRustApp {
                         div()
                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
-                            .child(
-                                    "Blank host fields can inherit username, tags, identity, jump host, startup settings, and saved forwarding rules from the group defaults.",
-                                ),
+                            .child(localization::static_message(
+                                MessageId::HostGroupDefaultsInheritanceDescription,
+                            )),
                         ),
                 )
             })
@@ -11174,7 +11407,9 @@ impl TermiRustApp {
                             .text_size(px(14.))
                             .font_medium()
                             .text_color(theme::text_main())
-                            .child("Startup"),
+                            .child(localization::static_message(
+                                MessageId::HostStartupTitle,
+                            )),
                     )
                     .child(
                         h_flex()
@@ -11198,25 +11433,25 @@ impl TermiRustApp {
                         div()
                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
-                            .child(
-                                "When the SSH shell opens, the app can change into a saved directory and optionally run one startup command.",
-                            ),
+                            .child(localization::static_message(
+                                MessageId::HostStartupDescription,
+                            )),
                     ),
             )
             .child(
                 v_flex()
                     .gap_2()
                     .child(self.form_field(
-                        "Environment",
+                        localization::static_message(MessageId::HostEnvironmentTitle),
                         Input::new(&self.inputs.environment),
                     ))
                     .child(
                         div()
                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
-                            .child(
-                                "One KEY=value per line. Variables are exported into the remote shell before the startup directory and command run, with proper single-quote escaping.",
-                            ),
+                            .child(localization::static_message(
+                                MessageId::HostEnvironmentDescription,
+                            )),
                     ),
             )
             .child(
@@ -11227,7 +11462,9 @@ impl TermiRustApp {
                             .text_size(px(14.))
                             .font_medium()
                             .text_color(theme::text_main())
-                            .child("Session"),
+                            .child(localization::static_message(
+                                MessageId::HostSessionTitle,
+                            )),
                     )
                     .child(
                         h_flex()
@@ -11257,7 +11494,9 @@ impl TermiRustApp {
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.set_draft_connect_view(false, cx);
                                     }))
-                                    .child("Open Terminal"),
+                                    .child(localization::static_message(
+                                        MessageId::HostSessionOpenTerminalAction,
+                                    )),
                             )
                             .child(
                                 div()
@@ -11282,7 +11521,9 @@ impl TermiRustApp {
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.set_draft_connect_view(true, cx);
                                     }))
-                                    .child("Open Files"),
+                                    .child(localization::static_message(
+                                        MessageId::HostSessionOpenFilesAction,
+                                    )),
                             ),
                     )
                     .child(
@@ -11295,9 +11536,9 @@ impl TermiRustApp {
                         div()
                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
-                            .child(
-                                "Choose whether this host lands in Terminal or Files after connect, and set how many terminal rows to keep in local scrollback.",
-                            ),
+                            .child(localization::static_message(
+                                MessageId::HostSessionDescription,
+                            )),
                     ),
             )
             .child(self.form_field_with_id(
@@ -11335,7 +11576,9 @@ impl TermiRustApp {
                             .text_size(px(14.))
                             .font_medium()
                             .text_color(theme::text_main())
-                            .child("Network Route"),
+                            .child(localization::static_message(
+                                MessageId::HostNetworkRouteTitle,
+                            )),
                     )
                     .child(
                         h_flex()
@@ -11395,11 +11638,13 @@ impl TermiRustApp {
                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .line_height(relative(1.4))
                             .text_color(theme::text_muted())
-                            .child(if self.draft_outbound_proxy_kind == OutboundProxyKind::Direct {
-                                "Connect directly to this host."
+                            .child(localization::static_message(
+                                if self.draft_outbound_proxy_kind == OutboundProxyKind::Direct {
+                                    MessageId::HostNetworkRouteDirectDescription
                             } else {
-                                "Route only the first TCP hop through this proxy. SSH still verifies and authenticates the target end to end. Authenticated proxies are not supported."
-                            }),
+                                    MessageId::HostNetworkRouteProxyDescription
+                                },
+                            )),
                     ),
             )
             .child(
@@ -11410,13 +11655,17 @@ impl TermiRustApp {
                             .text_size(px(14.))
                             .font_medium()
                             .text_color(theme::text_main())
-                            .child("Port Forwarding Rules"),
+                            .child(localization::static_message(
+                                MessageId::HostPortForwardingTitle,
+                            )),
                     )
                     .child(
                         div()
                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
-                            .child("Save local tunnels, remote reverse tunnels, or a dynamic SOCKS5 proxy and launch them automatically with the host."),
+                            .child(localization::static_message(
+                                MessageId::HostPortForwardingDescription,
+                            )),
                     )
                     .child(
                         h_flex()
@@ -11490,7 +11739,9 @@ impl TermiRustApp {
                                                             theme::ActionTone::Danger,
                                                             cx,
                                                         ))
-                                                        .label("Remove")
+                                                        .label(localization::static_message(
+                                                            MessageId::HostPortForwardRemoveAction,
+                                                        ))
                                                         .on_click(cx.listener(
                                                             move |this, _, window, cx| {
                                                                 this.remove_draft_port_forward_rule(
@@ -11559,7 +11810,9 @@ impl TermiRustApp {
                                         theme::ActionTone::Accent,
                                         cx,
                                     ))
-                                    .label("Add Rule")
+                                    .label(localization::static_message(
+                                        MessageId::HostPortForwardAddAction,
+                                    ))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.add_draft_port_forward_rule(window, cx);
                                     })),
@@ -11590,7 +11843,7 @@ impl TermiRustApp {
                             .text_size(px(14.))
                             .font_medium()
                             .text_color(theme::text_main())
-                            .child("Auth"),
+                            .child(localization::static_message(MessageId::HostAuthTitle)),
                     )
                     .child(
                         h_flex()
@@ -11620,7 +11873,9 @@ impl TermiRustApp {
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.set_auth_mode(AuthMode::Password, cx);
                                     }))
-                                    .child("Password"),
+                                    .child(localization::static_message(
+                                        MessageId::HostPasswordField,
+                                    )),
                             )
                             .child(
                                 div()
@@ -11646,7 +11901,9 @@ impl TermiRustApp {
                                         this.set_auth_mode(AuthMode::PrivateKey, cx);
                                         let _ = this.ensure_default_identity_selected(window, cx);
                                     }))
-                                    .child("Private Key"),
+                                    .child(localization::static_message(
+                                        MessageId::HostAuthPrivateKeyAction,
+                                    )),
                             )
                             .child(
                                 div()
@@ -11671,7 +11928,9 @@ impl TermiRustApp {
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.set_auth_mode(AuthMode::LocalAgent, cx);
                                     }))
-                                    .child("SSH Agent"),
+                                    .child(localization::static_message(
+                                        MessageId::HostAuthSshAgentAction,
+                                    )),
                             ),
                     ),
             )
@@ -11690,7 +11949,9 @@ impl TermiRustApp {
                                 div()
                                     .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .text_color(theme::success())
-                                    .child("A saved password is already available from the system credential store."),
+                                    .child(localization::static_message(
+                                        MessageId::HostAuthStoredPasswordDescription,
+                                    )),
                             )
                         }),
                 )
@@ -11705,7 +11966,9 @@ impl TermiRustApp {
                                 .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                 .font_medium()
                                 .text_color(theme::text_main())
-                                .child("Private key"),
+                                .child(localization::static_message(
+                                    MessageId::HostAuthPrivateKeyTitle,
+                                )),
                         )
                         .child(
                             h_flex()
@@ -11722,7 +11985,9 @@ impl TermiRustApp {
                                         .small()
                                         .ghost()
                                         .icon(IconName::FolderOpen)
-                                        .label("Browse")
+                                        .label(localization::static_message(
+                                            MessageId::CommonBrowse,
+                                        ))
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.pick_key_file(window, cx);
                                         })),
@@ -11733,9 +11998,9 @@ impl TermiRustApp {
                                 div()
                                     .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .text_color(theme::success())
-                                    .child(format!(
-                                        "Selected identity: {} ({})",
-                                        identity.label, identity.kind
+                                    .child(localization::host_auth_selected_identity_status(
+                                        identity.label,
+                                        identity.kind,
                                     )),
                             )
                         })
@@ -11752,7 +12017,9 @@ impl TermiRustApp {
                                         .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                         .font_medium()
                                         .text_color(theme::text_main())
-                                        .child("OpenSSH user certificate (optional)"),
+                                        .child(localization::static_message(
+                                            MessageId::HostEditorCertificateField,
+                                        )),
                                 )
                                 .child(
                                     h_flex()
@@ -11768,7 +12035,9 @@ impl TermiRustApp {
                                                 .small()
                                                 .ghost()
                                                 .icon(IconName::FolderOpen)
-                                                .label("Browse")
+                                                .label(localization::static_message(
+                                                    MessageId::CommonBrowse,
+                                                ))
                                                 .on_click(cx.listener(
                                                     |this, _, window, cx| {
                                                         this.pick_certificate_file(window, cx);
@@ -11794,9 +12063,9 @@ impl TermiRustApp {
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child(
-                                    "Empty uses SSH_AUTH_SOCK. Private keys remain in your local agent. Forwarding requires a separate one-connection approval.",
-                                ),
+                                .child(localization::static_message(
+                                    MessageId::HostAuthAgentDescription,
+                                )),
                         ),
                 )
             })
@@ -11998,11 +12267,10 @@ impl TermiRustApp {
                             Button::new("hosts-onboarding-dismiss")
                                 .debug_selector(|| "hosts-onboarding-dismiss".to_string())
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Neutral,
-                                    cx,
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label(localization::static_message(
+                                    MessageId::ActivityCenterDismissAction,
                                 ))
-                                .label("Dismiss")
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.dismiss_onboarding(cx);
                                 })),
@@ -12013,22 +12281,22 @@ impl TermiRustApp {
                         .gap_2()
                         .flex_wrap()
                         .child(self.status_badge(
-                            format!("{saved_hosts} saved"),
+                            localization::hosts_onboarding_saved_count(saved_hosts),
                             theme::library_bg(),
                             theme::text_muted(),
                         ))
                         .child(self.status_badge(
-                            format!("{imported_hosts} imported"),
+                            localization::hosts_onboarding_imported_count(imported_hosts),
                             theme::library_bg(),
                             theme::accent(),
                         ))
                         .child(self.status_badge(
-                            format!("{identities} identities"),
+                            localization::hosts_onboarding_identity_count(identities),
                             theme::library_bg(),
                             theme::success(),
                         ))
                         .child(self.status_badge(
-                            format!("{snippets} snippets"),
+                            localization::hosts_onboarding_snippet_count(snippets),
                             theme::library_bg(),
                             theme::warning(),
                         )),
@@ -12041,11 +12309,8 @@ impl TermiRustApp {
                             Button::new("hosts-onboarding-new")
                                 .debug_selector(|| "hosts-onboarding-new".to_string())
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Accent,
-                                    cx,
-                                ))
-                                .label("New Host")
+                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                                .label(localization::static_message(MessageId::HostsAddAction))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.open_editor_for_new_host(window, cx);
                                 })),
@@ -12054,12 +12319,11 @@ impl TermiRustApp {
                             Button::new("hosts-onboarding-key")
                                 .debug_selector(|| "hosts-onboarding-key".to_string())
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                ))
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                                 .icon(IconName::FolderOpen)
-                                .label("Add Key File")
+                                .label(localization::static_message(
+                                    MessageId::HostsOnboardingAddKeyAction,
+                                ))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.pick_key_file(window, cx);
                                     this.nav_section = NavSection::Hosts;
@@ -12077,7 +12341,9 @@ impl TermiRustApp {
                                     cx,
                                 ))
                                 .icon(IconName::Map)
-                                .label("Agent Canvas")
+                                .label(localization::static_message(
+                                    MessageId::HostsAgentCanvasAction,
+                                ))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.open_agent_canvas(window, cx);
                                 })),
@@ -12086,12 +12352,11 @@ impl TermiRustApp {
                             Button::new("hosts-onboarding-local")
                                 .debug_selector(|| "hosts-onboarding-local".to_string())
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                ))
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                                 .icon(IconName::SquareTerminal)
-                                .label("Local Terminal")
+                                .label(localization::static_message(
+                                    MessageId::AgentCanvasCopyLocalTerminal,
+                                ))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.open_local_terminal(window, cx);
                                 })),
@@ -12105,10 +12370,14 @@ impl TermiRustApp {
                                         theme::ActionTone::Neutral,
                                         cx,
                                     ))
-                                    .label("Focus Search")
+                                    .label(localization::static_message(
+                                        MessageId::HostsOnboardingFocusSearchAction,
+                                    ))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.focus_host_search(window, cx);
-                                        this.status_message = "Host search focused.".to_string();
+                                        this.status_message = localization::static_message(
+                                            MessageId::HostSearchFocusedStatus,
+                                        );
                                         this.error_message.clear();
                                         cx.notify();
                                     })),
@@ -12123,17 +12392,16 @@ impl TermiRustApp {
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child("Quick connect from search: `user@host` or `ssh user@host:port`"),
+                                .child(localization::static_message(
+                                    MessageId::HostsOnboardingQuickConnectDescription,
+                                )),
                         )
                         .child(
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child(format!(
-                                    "Shortcuts: {}+1..7 for sections, {}+L for host search, {}+K for command palette",
+                                .child(localization::hosts_onboarding_shortcuts_description(
                                     primary_shortcut_label(),
-                                    primary_shortcut_label(),
-                                    primary_shortcut_label()
                                 )),
                         ),
                 ),
@@ -12171,7 +12439,7 @@ impl TermiRustApp {
                         .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                         .font_medium()
                         .text_color(theme::text_muted())
-                        .child("RECENT"),
+                        .child(localization::static_message(MessageId::HostsRecentTitle)),
                 )
                 .child(
                     h_flex()
@@ -12701,15 +12969,13 @@ impl TermiRustApp {
                 // Cmd+L: from library → focus host search; from workspace → go to logs
                 if self.active_workspace_id.is_some() {
                     self.activate_library_section(NavSection::Logs, window, cx);
-                    self.status_message = "Switched to Logs view.".to_string();
-                } else if self.nav_section == NavSection::Logs {
-                    self.activate_library_section(NavSection::Hosts, window, cx);
-                    self.focus_host_search(window, cx);
-                    self.status_message = "Host search focused.".to_string();
+                    self.status_message =
+                        localization::static_message(MessageId::LogsViewSwitchedStatus);
                 } else {
                     self.activate_library_section(NavSection::Hosts, window, cx);
                     self.focus_host_search(window, cx);
-                    self.status_message = "Host search focused.".to_string();
+                    self.status_message =
+                        localization::static_message(MessageId::HostSearchFocusedStatus);
                 }
                 self.error_message.clear();
                 cx.notify();
@@ -13029,6 +13295,7 @@ mod tests {
     use std::path::Path;
     use std::time::{Duration, Instant};
     use termirust_domain::HostedSessionId;
+    use termirust_ui_contract::MessageId;
     use vt100::MouseProtocolMode;
 
     fn keyboard_palette_result(
@@ -22413,10 +22680,23 @@ sleep 1
             app.read_with(cx, |app, _| {
                 assert_eq!(app.active_workspace_id, None);
                 assert_eq!(app.nav_section, expected);
-                let expected_status = if expected == NavSection::Projects {
-                    localization::projects_ready_status()
-                } else {
-                    format!("{} ready.", expected.label())
+                let expected_status = match expected {
+                    NavSection::Activity => {
+                        localization::static_message(MessageId::ActivitySectionReady)
+                    }
+                    NavSection::Projects => localization::projects_ready_status(),
+                    NavSection::Hosts => localization::static_message(MessageId::HostsStateReady),
+                    NavSection::Sessions => {
+                        localization::static_message(MessageId::SessionsSectionReady)
+                    }
+                    NavSection::Sftp => localization::static_message(MessageId::SftpStateReady),
+                    NavSection::Devices => {
+                        localization::static_message(MessageId::DevicesSectionReady)
+                    }
+                    NavSection::Settings => {
+                        localization::static_message(MessageId::SettingsStateReady)
+                    }
+                    _ => unreachable!("primary navigation test covers only primary sections"),
                 };
                 assert_eq!(app.status_message, expected_status);
             });
@@ -25595,7 +25875,7 @@ sleep 1
             assert_eq!(app.current_key_path(cx), docker_ssh_private_key_path());
             assert_eq!(
                 app.status_message,
-                "Identity '000 Use Button Key' selected."
+                localization::host_identity_selected_status("000 Use Button Key")
             );
             assert!(app.error_message.is_empty());
         });
@@ -25657,7 +25937,10 @@ sleep 1
             assert_eq!(app.draft_auth_mode, AuthMode::PrivateKey);
             assert_eq!(app.draft_identity_id.as_deref(), Some("identity-rendered"));
             assert_eq!(app.current_key_path(cx), docker_ssh_private_key_path());
-            assert_eq!(app.status_message, "Identity '000 Rendered Key' selected.");
+            assert_eq!(
+                app.status_message,
+                localization::host_identity_selected_status("000 Rendered Key")
+            );
             assert!(app.error_message.is_empty());
         });
 
@@ -26451,7 +26734,10 @@ sleep 1
                 .find(|profile| profile.id == "grid-host")
                 .expect("profile should exist");
             assert!(profile.favorite);
-            assert_eq!(app.status_message, "Starred 'Grid Host'.");
+            assert_eq!(
+                app.status_message,
+                localization::host_named_starred_status("Grid Host")
+            );
             assert!(app.error_message.is_empty());
         });
 
@@ -26614,7 +26900,10 @@ sleep 1
                     .iter()
                     .all(|(saved, _)| saved != &endpoint)
             );
-            assert_eq!(app.status_message, "Removed known host 'example.com:22'.");
+            assert_eq!(
+                app.status_message,
+                localization::known_hosts_removed_status("example.com:22")
+            );
             assert!(app.error_message.is_empty());
         });
     }
@@ -26726,7 +27015,10 @@ sleep 1
 
         app.read_with(cx, |app, _| {
             assert!(app.selected_host_ids.contains("inline-host"));
-            assert_eq!(app.status_message, "Selected 1 host(s) for batch actions.");
+            assert_eq!(
+                app.status_message,
+                localization::host_batch_selection_count_status(1)
+            );
             assert!(!app.show_editor_panel);
             assert!(app.error_message.is_empty());
         });
@@ -26759,7 +27051,10 @@ sleep 1
                 .find(|profile| profile.id == "inline-host")
                 .expect("profile should exist");
             assert!(profile.favorite);
-            assert_eq!(app.status_message, "Starred 'Inline Host'.");
+            assert_eq!(
+                app.status_message,
+                localization::host_named_starred_status("Inline Host")
+            );
             assert!(!app.show_editor_panel);
             assert!(app.error_message.is_empty());
         });
@@ -26770,7 +27065,10 @@ sleep 1
 
         app.read_with(cx, |app, _| {
             assert!(app.selected_host_ids.contains("inline-host"));
-            assert_eq!(app.status_message, "Selected 1 host(s) for batch actions.");
+            assert_eq!(
+                app.status_message,
+                localization::host_batch_selection_count_status(1)
+            );
             assert!(!app.show_editor_panel);
             assert!(app.error_message.is_empty());
         });

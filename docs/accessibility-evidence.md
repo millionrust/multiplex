@@ -41,7 +41,7 @@ the frozen inventory; terminal, security and destructive cases use full matrix e
 |---|---:|---|---|---|
 | `AUD-AX-MANUAL-001` | A1 | Human-audible keyboard-only and VoiceOver traversal is not recorded for every frozen route. Automated semantics are not substituted for this evidence. | 21.1.7 | Blocks whole-product WCAG/VoiceOver claims. |
 | `AUD-VISUAL-001` | A1 | No deterministic GPUI screenshot baseline/capture driver exists for all 100/200/400% theme and reflow cases. | 21.1.8 | Blocks whole-product visual reflow/rendered-contrast claims. |
-| `AUD-L10N-LEGACY-001` | A1 | Whole-UI zero-copy audit reports 345 legacy copy findings. Catalog validation still passes. | 21.1.9 | Blocks complete whole-product localization claims. |
+| `AUD-L10N-LEGACY-001` | A1 | Closed by Goal 21.1.9. The exact whole-UI scan reports zero legacy copy findings; en-US, en-XA, and ar-XB catalogs and typed arguments validate. | 21.1.9 | Resolved; guarded by `verify-localization.sh --zero-legacy` and `--no-new-baseline`. |
 | `AUD-TOKEN-LEGACY-001` | A1 | Whole-UI zero-token audit reports 135 visual literals after named exceptions. | 21.1.10 | Blocks complete whole-product token consistency claims. |
 
 The machine-readable register is `tests/ui/audit-results.json`. No application defect was fixed and

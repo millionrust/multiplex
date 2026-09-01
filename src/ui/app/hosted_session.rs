@@ -28,6 +28,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver};
 use tokio_util::sync::CancellationToken;
 
 use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent};
+use crate::ui::localization;
 
 const HOST_READY_DEADLINE: Duration = Duration::from_secs(5);
 const CONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(
@@ -196,7 +197,7 @@ pub(super) fn spawn_durable_session(
     if let Err(error) = result {
         let _ = fallback.send(SshEvent::Error {
             session_id: pane_id,
-            message: format!("Unable to start durable session worker: {error}"),
+            message: localization::hosted_session_worker_start_error(error.to_string()),
         });
     }
     SessionRuntimeHandle { command_tx }
@@ -311,7 +312,7 @@ fn launch_host_process(
             terminate_unready_host(&mut process);
             let _ = event_tx.send(SshEvent::Disconnected {
                 session_id: spec.pane_id,
-                message: "Launch cancelled before the durable Host became ready".to_string(),
+                message: localization::hosted_session_launch_cancelled(),
             });
             return Ok(false);
         }
@@ -555,7 +556,7 @@ async fn attach_loop(
                     let _ = client.detach(&cancel).await;
                     let _ = event_tx.send(SshEvent::Disconnected {
                         session_id: spec.pane_id,
-                        message: "Detached; the durable session continues in the background".to_string(),
+                        message: localization::hosted_session_detached(),
                     });
                     return Ok(());
                 }
@@ -652,7 +653,7 @@ async fn attach_loop(
                     ));
                     let _ = event_tx.send(SshEvent::Disconnected {
                         session_id: spec.pane_id,
-                        message: "Durable process exited; retained output is read-only".to_string(),
+                        message: localization::hosted_session_process_exited(),
                     });
                     return Ok(());
                 }
@@ -847,7 +848,7 @@ async fn replay_retained_output(
         .map_err(|_| "Application event channel closed".to_string())?;
     let _ = event_tx.send(SshEvent::Disconnected {
         session_id: spec.pane_id,
-        message: "Retained durable output is read-only".to_string(),
+        message: localization::hosted_session_retained_read_only(),
     });
     Ok(true)
 }

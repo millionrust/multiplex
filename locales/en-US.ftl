@@ -1884,3 +1884,379 @@ terminal-announcement-output = New terminal output is available
 terminal-announcement-attention = Terminal needs attention
 terminal-announcement-gap = Retained terminal output has a gap
 terminal-announcement-truncated = Older terminal review output was removed
+sftp-transfer-skipped-upload = Upload skipped; destination was unchanged.
+sftp-transfer-skipped-download = Download skipped; destination was unchanged.
+hosted-session-worker-start-error = Unable to start durable session worker: { $reason }
+hosted-session-launch-cancelled = Launch cancelled before the durable Host became ready
+hosted-session-detached = Detached; the durable session continues in the background
+hosted-session-process-exited = Durable process exited; retained output is read-only
+hosted-session-retained-read-only = Retained durable output is read-only
+known-hosts-title = Known Hosts
+known-hosts-count = { $count ->
+    [zero] No trusted hosts
+    [one] One trusted host
+    [many] { $count } trusted hosts
+   *[other] { $count } trusted hosts
+    }
+known-hosts-description = Host keys are pinned on first connect (TOFU). Remove an entry here if a server has legitimately changed its key.
+known-hosts-removed-status = Removed known host { $endpoint }.
+known-hosts-already-removed-status = Host was already removed.
+open-connections-action = Open Connections
+session-history-title = Session History
+session-history-count = { $count ->
+    [zero] No sessions
+    [one] One session
+    [many] { $count } sessions
+   *[other] { $count } sessions
+    }
+session-history-active-status = Active
+session-history-started-duration = Started { $started }  Duration { $duration }
+host-input-display-name-placeholder = Display name, e.g. Local Mac Test
+host-input-group-placeholder = Folder/group, e.g. Local
+host-input-tags-placeholder = prod, blue, kubernetes
+host-input-jump-host-placeholder = Optional saved host
+host-input-startup-command-placeholder = docker compose logs -f
+host-input-address-placeholder = localhost, IP address, or domain
+host-input-username-placeholder = SSH username, e.g. jacob
+host-input-proxy-address-placeholder = Proxy hostname or IP address
+host-input-password-placeholder = Password, only if using password auth
+host-input-key-path-placeholder = Private key path, e.g. ~/.ssh/id_ed25519
+host-input-certificate-placeholder = Optional OpenSSH user certificate, e.g. id_ed25519-cert.pub
+host-input-agent-socket-placeholder = Optional agent socket; empty uses SSH_AUTH_SOCK
+host-input-key-passphrase-placeholder = Optional key passphrase
+host-input-notes-placeholder = Optional notes about this host
+host-input-environment-placeholder = AWS_PROFILE=prod\nLOG_LEVEL=info (one KEY=value per line)
+host-input-proxy-port-placeholder = 1080 or 3128
+snippet-input-label-placeholder = Restart service
+snippet-input-group-placeholder = Ops / Deploy
+snippet-input-command-placeholder = sudo systemctl restart app
+vault-input-label-placeholder = Ops Team
+vault-input-description-placeholder = Shared infrastructure access
+vault-member-name-placeholder = Alex Rivera
+vault-member-email-placeholder = alex@company.com
+shell-host-search-placeholder = Find a host, group, tag, or ssh user@hostname...
+shell-quick-connect-password-placeholder = Password
+shell-create-host-address-placeholder = Type IP or Hostname
+shell-connect-username-placeholder = Username
+shell-sftp-filter-placeholder = Filter files
+shell-bulk-group-placeholder = Bulk group name
+shell-terminal-search-placeholder = Search terminal output
+agent-working-directory-placeholder = Repository or working directory
+agent-executable-placeholder = Executable path or command name
+agent-arguments-placeholder = One argument per line
+agent-initial-prompt-placeholder = Optional initial prompt
+agent-prompt-placeholder = Send a prompt or reviewed context
+agent-context-review-placeholder = Review context before sending
+sftp-transfer-queued-upload = Upload queued
+sftp-transfer-queued-download = Download queued
+canvas-project-editor-placeholder = Select a UTF-8 text file to view or edit
+canvas-note-editor-placeholder = Write context, decisions, commands, or a task brief
+workspace-rename-placeholder = Workspace name
+pane-rename-placeholder = Pane name
+canvas-node-rename-placeholder = Node title
+host-auth-password-selected-status = Using Password authentication.
+host-auth-private-key-selected-status = Using Private Key authentication.
+host-auth-agent-selected-status = Using SSH Agent authentication.
+host-connect-view-files-status = This host will open in the remote Files view after connect.
+host-connect-view-terminal-status = This host will open in the terminal view after connect.
+host-persistent-tmux-status = This host will attach to a named tmux session on connect.
+host-normal-shell-status = This host will open a normal SSH shell on connect.
+host-detach-other-clients-status = Connecting can detach other clients from the same tmux session.
+host-keep-other-clients-status = Other clients may stay attached to the same tmux session.
+host-favorite-enabled-status = This host will be starred in the library.
+host-favorite-disabled-status = This host will appear in the regular library groups.
+host-group-defaults-invalid-draft-error = Group defaults require a valid draft context.
+host-group-name-required-error = Enter a group name first.
+host-group-defaults-saved-status = Saved defaults for group '{ $group }'.
+host-group-defaults-missing-error = No saved defaults exist for this group yet.
+host-group-defaults-loaded-status = Loaded defaults for group '{ $group }'.
+host-group-defaults-missing-named-error = No saved defaults exist for group '{ $group }'.
+host-group-defaults-removed-status = Removed defaults for group '{ $group }'.
+host-group-no-visible-hosts-error = No visible hosts are in '{ $group }'.
+host-group-selected-status = { $count ->
+    [zero] Selected no hosts from '{ $group }'.
+    [one] Selected one host from '{ $group }'.
+    [many] Selected { $count } hosts from '{ $group }'.
+   *[other] Selected { $count } hosts from '{ $group }'.
+    }
+host-bulk-group-target-status = Bulk group target set to '{ $group }'. Select hosts and apply when ready.
+host-identity-default-status = Using identity '{ $identity }'.
+host-identity-selected-status = Identity '{ $identity }' selected.
+host-draft-cleared-status = Draft cleared. Define a host to save or connect.
+host-forward-kind-local-status = Forward rule type set to Local.
+host-forward-kind-dynamic-status = Forward rule type set to Dynamic.
+host-forward-kind-remote-status = Forward rule type set to Remote.
+host-forward-duplicate-error = Forward rule '{ $rule }' already exists.
+host-forward-added-status = Added forward rule { $rule }.
+host-forward-fields-required-error = Enter local port, remote host, and remote port to add a rule.
+host-forward-removed-status = Removed forward rule { $rule }.
+command-terminal-required-error = Open a terminal session to run a command.
+host-batch-selection-cleared-status = Cleared host batch selection.
+host-batch-selection-count-status = { $count ->
+    [zero] No hosts selected for batch actions.
+    [one] Selected one host for batch actions.
+    [many] Selected { $count } hosts for batch actions.
+   *[other] Selected { $count } hosts for batch actions.
+    }
+host-filter-no-matches-error = No hosts match the current filter.
+host-filter-selected-count-status = { $count ->
+    [zero] Selected no hosts from the current filter.
+    [one] Selected one host from the current filter.
+    [many] Selected { $count } hosts from the current filter.
+   *[other] Selected { $count } hosts from the current filter.
+    }
+host-diagnostics-selection-required-error = Select at least one saved host to diagnose.
+host-diagnostics-batch-limit-error = Diagnose supports at most { $limit } hosts in one batch. Narrow the selection and retry.
+host-diagnostics-started-status = { $started ->
+    [zero] Started no connection diagnostics.
+    [one] Started one connection diagnostic.
+    [many] Started { $started } connection diagnostics.
+   *[other] Started { $started } connection diagnostics.
+    }
+host-diagnostics-started-skipped-status = Started { $started } diagnostic runs; { $skipped } already running.
+host-diagnostic-route-socks5-proxy = SOCKS5 proxy
+host-diagnostic-route-http-proxy = HTTP CONNECT proxy
+host-diagnostic-route-saved-jump = Saved jump route
+host-diagnostic-route-direct = Direct SSH
+host-diagnostic-waiting-status = Waiting for an available diagnostic slot
+host-diagnostic-cancelling-status = Cancelling connection diagnostic...
+host-diagnostic-restarted-status = Connection diagnostic restarted.
+host-diagnostic-already-running-status = That host is already being diagnosed.
+host-diagnostic-queue-full-error = The diagnostic queue is full. Wait for a check to finish and retry.
+host-diagnostic-start-error = Unable to start the connection diagnostic.
+host-diagnostic-cleared-status = Cleared finished connection diagnostics.
+host-diagnostic-checking-configuration = Checking configuration
+host-diagnostic-checking-route-auth = Checking route and authentication
+host-diagnostic-checking-channel = Checking SSH channel
+host-diagnostic-checking-sftp = Checking SFTP
+host-diagnostic-passed-configuration = Configuration passed
+host-diagnostic-passed-route-auth = Route and authentication passed
+host-diagnostic-passed-channel = SSH channel passed
+host-diagnostic-passed-sftp = SFTP passed
+host-starred-status = Host starred.
+host-unstarred-status = Host removed from favorites.
+host-named-starred-status = Starred '{ $host }'.
+host-named-unstarred-status = Removed '{ $host }' from starred hosts.
+host-selection-required-error = Select at least one host first.
+key-file-choose-status = Choose a private key file.
+certificate-file-choose-status = Choose an OpenSSH user certificate file.
+certificate-file-selected-status = OpenSSH user certificate selected.
+identity-added-status = Identity '{ $identity }' added.
+key-file-unsupported-error = That file does not look like a supported private key.
+ssh-config-host-read-only-status = Imported SSH config hosts are read from { $path }. Edit the config or save a local copy instead.
+host-removed-status = Saved host removed.
+activity-section-ready = Activity ready.
+sessions-section-ready = Sessions ready.
+devices-section-ready = Devices ready.
+known-hosts-section-ready = Known Hosts ready.
+session-history-section-ready = Logs ready.
+durable-restore-session-metadata-missing-error = A durable workspace pane is missing its saved session metadata; no process was started.
+durable-restore-host-metadata-missing-error = A durable workspace pane is missing verified Host metadata; no process was started.
+workspace-restore-one-one-status = Restored one workspace and one pane.
+workspace-restore-one-many-status = Restored one workspace and { $panes } panes.
+workspace-restore-many-one-status = Restored { $workspaces } workspaces and one pane.
+workspace-restore-many-many-status = Restored { $workspaces } workspaces and { $panes } panes.
+workspace-renamed-status = Workspace renamed to { $title }.
+pane-renamed-status = Pane renamed to { $title }.
+sftp-ssh-session-required-error = Remote files are only available for SSH sessions.
+sftp-loading-endpoint-status = Loading remote files from { $endpoint }...
+sftp-terminal-view-status = Back to terminal view.
+sftp-directory-load-start-error = Unable to start remote directory load: { $reason }
+sftp-folder-selection-required-error = Select a folder first.
+sftp-folder-required-error = Only folders can be opened in the remote browser.
+sftp-opening-path-status = Opening { $path }...
+sftp-file-selection-required-error = Select a remote file first.
+sftp-folder-download-unsupported-error = Folders are not downloadable yet. Open the folder instead.
+sftp-transfer-active-error = Finish or cancel the current transfer before starting another here.
+sftp-transfer-action-invalid-error = The selected SFTP action is not a transfer.
+sftp-upload-start-error = Unable to start upload: { $reason }
+sftp-download-start-error = Unable to start download: { $reason }
+sftp-transfer-cancel-requested-status = SFTP transfer cancellation requested.
+sftp-delete-selection-required-error = Select a remote file or folder first.
+sftp-deleting-path-status = Deleting { $path }...
+sftp-delete-start-error = Unable to start remote delete: { $reason }
+durable-legacy-reopen-error = Legacy app-attached sessions cannot be reopened after their process exits.
+durable-host-metadata-invalid-error = This durable session has no valid Host metadata.
+durable-attaching-status = Attaching to durable session...
+durable-retrying-status = Retrying durable Host attachment...
+local-terminal-opening-status = Opening local terminal...
+local-terminal-reopening-status = Reopening local terminal...
+workspace-no-disconnected-panes-status = No disconnected panes to reconnect.
+workspace-reconnecting-panes-status = { $count ->
+    [zero] No panes reconnecting.
+    [one] Reconnecting one pane...
+    [many] Reconnecting { $count } panes...
+   *[other] Reconnecting { $count } panes...
+    }
+quick-connect-auth-required-error = Quick connect needs a password, a stored system password, or an SSH key in { $directory }.
+workspace-split-cap-error = Split panes are capped at { $limit } for now.
+local-terminal-split-launching-status = Launching split local terminal...
+workspace-disconnecting-status = Disconnecting workspace...
+pane-closed-status = Pane closed.
+workspace-closed-to-hosts-status = Workspace closed. Back to hosts.
+workspace-closed-status = Workspace closed.
+local-terminal-ready-status = Local terminal ready.
+tmux-session-deleted-status = Deleted tmux session { $session }.
+sftp-upload-starting-status = Upload starting...
+sftp-download-starting-status = Download starting...
+sftp-upload-queued-behind-status = { $count ->
+    [zero] Upload starting...
+    [one] Upload queued behind one transfer
+    [many] Upload queued behind { $count } transfers
+   *[other] Upload queued behind { $count } transfers
+    }
+sftp-download-queued-behind-status = { $count ->
+    [zero] Download starting...
+    [one] Download queued behind one transfer
+    [many] Download queued behind { $count } transfers
+   *[other] Download queued behind { $count } transfers
+    }
+sftp-upload-resuming-status = Resuming upload
+sftp-download-resuming-status = Resuming download
+sftp-upload-in-progress-status = Upload in progress
+sftp-download-in-progress-status = Download in progress
+sftp-destination-exists-status = Destination already exists
+sftp-conflict-choice-status = Choose Replace, Skip, or Resume before the transfer can continue.
+sftp-cancelled-resumable-status = Cancelled; verified staging can be resumed
+sftp-cancelled-before-start-status = Cancelled before transfer started
+sftp-transfer-cancelled-status = SFTP transfer cancelled.
+sftp-upload-verified-cleanup-needed-status = Upload verified; old backup cleanup is still needed
+sftp-download-verified-cleanup-needed-status = Download verified; old backup cleanup is still needed
+sftp-upload-complete-verified-status = Upload complete and verified
+sftp-download-complete-verified-status = Download complete and verified
+sftp-upload-published-cleanup-warning-status = Upload published and verified, but an app-owned backup could not be removed.
+sftp-download-published-cleanup-warning-status = Download published and verified, but an app-owned backup could not be removed.
+sftp-upload-complete-digest-status = Upload complete. SHA-256 { $digest }...
+sftp-download-complete-digest-status = Download complete. SHA-256 { $digest }...
+terminal-cleared-status = Terminal cleared.
+workspace-merge-canvas-selection-error = This tab has Canvas sessions that are not selected for Split. Open the tab and choose which sessions to move before merging it.
+workspace-merged-into-split-status = Merged tab into a split.
+pane-already-own-workspace-error = This pane is already in its own workspace.
+pane-detached-new-workspace-status = Pane detached into a new workspace tab.
+workspace-duplicating-new-tab-status = Duplicating { $endpoint } in a new tab...
+workspace-broadcast-started-status = Multiplayer-style broadcast input started for this workspace.
+workspace-broadcast-enabled-status = Broadcasting input to every pane in this workspace.
+workspace-broadcast-disabled-status = Broadcast input disabled.
+terminal-ssh-input-send-error = Unable to send input to the SSH runtime.
+autocomplete-applied-path-status = Autocomplete applied from path.
+autocomplete-applied-context-status = Autocomplete applied from context.
+autocomplete-applied-argument-status = Autocomplete applied from argument.
+autocomplete-applied-history-status = Autocomplete applied from history.
+autocomplete-applied-snippet-status = Autocomplete applied from snippet.
+autocomplete-applied-builtin-status = Autocomplete applied from builtin.
+terminal-selection-copied-status = Selection copied to clipboard.
+terminal-multiline-paste-confirm-status = { $count ->
+    [zero] No lines are on the clipboard.
+    [one] One line is on the clipboard. Confirm to send it to the active pane.
+    [many] { $count } lines on the clipboard. Confirm to send to the active pane.
+   *[other] { $count } lines on the clipboard. Confirm to send to the active pane.
+    }
+terminal-multiline-paste-delivered-status = Multi-line paste delivered.
+terminal-paste-cancelled-status = Paste cancelled.
+host-saved-groups-title = Saved Groups
+host-saved-groups-description = Select a group, target it for bulk assignment, or load its defaults into the editor.
+host-group-user-chip = User: { $value }
+host-group-tags-chip = Tags: { $value }
+host-group-identity-chip = Identity: { $value }
+host-group-jump-chip = Jump: { $value }
+host-group-directory-chip = Dir: { $value }
+host-group-command-chip = Cmd: { $value }
+host-group-forward-chip = Forward: { $value }
+host-group-forwards-chip = { $count ->
+    [zero] No Forwards
+    [one] One Forward
+    [many] { $count } Forwards
+   *[other] { $count } Forwards
+    }
+host-group-host-count = { $count ->
+    [zero] No hosts
+    [one] One host
+    [many] { $count } hosts
+   *[other] { $count } hosts
+    }
+host-group-visible-total-count = { $visible } visible • { $total } total
+host-group-select-hosts-action = Select Hosts
+host-group-use-bulk-action = Use as Bulk
+host-group-load-defaults-action = Load Defaults
+host-identities-title = Saved identities
+host-identities-empty-description = No saved identities yet. Add a key file or use one imported at launch.
+host-identity-selected-badge = Selected
+host-vault-picker-title = Vault
+host-persistent-session-title = Persistent Session
+host-persistent-session-enabled-badge = tmux enabled
+host-persistent-session-description = Keep the remote terminal running after closing the tab or losing the network.
+host-persistent-session-disable-action = Disable
+host-persistent-session-enable-action = Enable persistent tmux
+host-tmux-session-name-field = Tmux Session Name
+host-tmux-attach-behavior-title = Attach behavior
+host-tmux-detach-others-action = Detach others
+host-tmux-share-attach-action = Share attach
+host-persistent-session-requirements-description = Requires tmux on the remote host. If tmux is missing, TermiRust shows install help and opens a normal shell. Startup commands run only when the tmux session is first created.
+host-tmux-detach-others-warning = Detach others can disconnect another TermiRust window or terminal from this tmux session.
+host-color-tag-title = Color tag
+host-color-tag-auto-action = Auto
+host-color-tag-description = Tags drive the avatar tint on host cards and the status dot on connected panes — handy for prod / staging / dev color-coding.
+host-library-priority-title = Library priority
+host-library-priority-starred-action = Starred
+host-library-priority-standard-action = Standard
+host-library-priority-description = Starred hosts stay pinned to the top of the library for your most-used machines.
+host-assigning-vault-status = Assigning this host to { $vault }.
+host-group-defaults-title = Group defaults for '{ $group }'
+host-group-defaults-saved-badge = Saved
+host-group-defaults-ad-hoc-badge = Ad hoc
+host-group-defaults-save-action = Save Group Defaults
+host-group-defaults-delete-action = Delete Defaults
+host-group-defaults-inheritance-description = Blank host fields can inherit username, tags, identity, jump host, startup settings, and saved forwarding rules from the group defaults.
+host-startup-title = Startup
+host-startup-description = When the SSH shell opens, the app can change into a saved directory and optionally run one startup command.
+host-environment-title = Environment
+host-environment-description = One KEY=value per line. Variables are exported into the remote shell before the startup directory and command run, with proper single-quote escaping.
+host-session-title = Session
+host-session-open-terminal-action = Open Terminal
+host-session-open-files-action = Open Files
+host-session-description = Choose whether this host lands in Terminal or Files after connect, and set how many terminal rows to keep in local scrollback.
+host-network-route-title = Network Route
+host-network-route-direct-description = Connect directly to this host.
+host-network-route-proxy-description = Route only the first TCP hop through this proxy. SSH still verifies and authenticates the target end to end. Authenticated proxies are not supported.
+host-port-forwarding-title = Port Forwarding Rules
+host-port-forwarding-description = Save local tunnels, remote reverse tunnels, or a dynamic SOCKS5 proxy and launch them automatically with the host.
+host-port-forward-remove-action = Remove
+host-port-forward-add-action = Add Rule
+host-auth-title = Auth
+host-auth-private-key-action = Private Key
+host-auth-ssh-agent-action = SSH Agent
+host-auth-stored-password-description = A saved password is already available from the system credential store.
+host-auth-private-key-title = Private key
+host-auth-selected-identity-status = Selected identity: { $label } ({ $kind })
+host-auth-agent-description = Empty uses SSH_AUTH_SOCK. Private keys remain in your local agent. Forwarding requires a separate one-connection approval.
+hosts-onboarding-saved-count = { $count ->
+    [zero] 0 saved
+    [one] 1 saved
+    [many] { $count } saved
+   *[other] { $count } saved
+    }
+hosts-onboarding-imported-count = { $count ->
+    [zero] 0 imported
+    [one] 1 imported
+    [many] { $count } imported
+   *[other] { $count } imported
+    }
+hosts-onboarding-identity-count = { $count ->
+    [zero] 0 identities
+    [one] 1 identity
+    [many] { $count } identities
+   *[other] { $count } identities
+    }
+hosts-onboarding-snippet-count = { $count ->
+    [zero] 0 snippets
+    [one] 1 snippet
+    [many] { $count } snippets
+   *[other] { $count } snippets
+    }
+hosts-onboarding-add-key-action = Add Key File
+hosts-onboarding-focus-search-action = Focus Search
+host-search-focused-status = Host search focused.
+hosts-onboarding-quick-connect-description = Quick connect from search: `user@host` or `ssh user@host:port`
+hosts-onboarding-shortcuts-description = Shortcuts: { $modifier }+1..7 for sections, { $modifier }+L for host search, { $modifier }+K for command palette
+hosts-recent-title = RECENT
+logs-view-switched-status = Switched to Logs view.
