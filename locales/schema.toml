@@ -496,6 +496,167 @@ type = "Count"
 sensitivity = "public"
 bidi = "none"
 
+[[messages]]
+id = "agent-canvas-title"
+context = "Accessible landmark title for an Agent Canvas workspace."
+description = "Agent Canvas title"
+[[messages]]
+id = "agent-canvas-state-ready"
+context = "Agent Canvas ready status."
+description = "Canvas ready status"
+[[messages]]
+id = "agent-canvas-state-loading"
+context = "Agent Canvas loading status."
+description = "Canvas loading status"
+[[messages]]
+id = "agent-canvas-state-empty"
+context = "Agent Canvas empty status."
+description = "Canvas empty status"
+[[messages]]
+id = "agent-canvas-state-partial"
+context = "Agent Canvas partial-layout status."
+description = "Canvas partial status"
+[[messages]]
+id = "agent-canvas-state-offline"
+context = "Agent Canvas Host-offline status."
+description = "Canvas offline status"
+[[messages]]
+id = "agent-canvas-state-permission-denied"
+context = "Agent Canvas permission-denied status."
+description = "Canvas permission status"
+[[messages]]
+id = "agent-canvas-state-error"
+context = "Agent Canvas error status."
+description = "Canvas error status"
+[[messages]]
+id = "agent-canvas-state-recovery"
+context = "Agent Canvas recovery status."
+description = "Canvas recovery status"
+[[messages]]
+id = "agent-canvas-graph-view"
+context = "Tab that presents Canvas nodes spatially."
+description = "Canvas graph view"
+[[messages]]
+id = "agent-canvas-list-view"
+context = "Tab that presents Canvas nodes as an accessible list and inspector."
+description = "Canvas list view"
+[[messages]]
+id = "agent-canvas-node-list"
+context = "Accessible name for the equivalent Canvas node list."
+description = "Canvas node list"
+[[messages]]
+id = "agent-canvas-edge-list"
+context = "Accessible name for Canvas relationships."
+description = "Canvas edge list"
+[[messages]]
+id = "agent-canvas-private-node"
+context = "Recording-friendly replacement for a user-supplied Canvas node title."
+description = "Private Canvas node"
+[[messages]]
+id = "agent-canvas-node-terminal"
+context = "Canvas terminal node type."
+description = "Terminal node"
+[[messages]]
+id = "agent-canvas-node-agent"
+context = "Canvas coding-agent node type."
+description = "Agent node"
+[[messages]]
+id = "agent-canvas-node-note"
+context = "Canvas sticky-note node type."
+description = "Note node"
+[[messages]]
+id = "agent-canvas-node-group"
+context = "Canvas group-frame node type."
+description = "Group node"
+[[messages]]
+id = "agent-canvas-node-state-idle"
+context = "Canvas node idle state."
+description = "Idle state"
+[[messages]]
+id = "agent-canvas-node-state-running"
+context = "Canvas node running state."
+description = "Running state"
+[[messages]]
+id = "agent-canvas-node-state-succeeded"
+context = "Canvas node successful completion state."
+description = "Succeeded state"
+[[messages]]
+id = "agent-canvas-node-state-failed"
+context = "Canvas node failed state."
+description = "Failed state"
+[[messages]]
+id = "agent-canvas-node-state-cancelled"
+context = "Canvas node cancelled state."
+description = "Cancelled state"
+[[messages]]
+id = "agent-canvas-node-state-blocked"
+context = "Canvas node blocked state."
+description = "Blocked state"
+[[messages]]
+id = "agent-canvas-node-state-disconnected"
+context = "Canvas node disconnected state."
+description = "Disconnected state"
+[[messages]]
+id = "agent-canvas-node-state-editing"
+context = "Canvas note editing state."
+description = "Editing state"
+[[messages]]
+id = "agent-canvas-node-state-saved"
+context = "Canvas note saved state."
+description = "Saved state"
+[[messages]]
+id = "agent-canvas-node-state-frame"
+context = "Canvas group-frame state."
+description = "Frame state"
+[[messages]]
+id = "agent-canvas-node-state-error"
+context = "Generic Canvas node error state."
+description = "Error state"
+[[messages]]
+id = "agent-canvas-action-open"
+context = "Keyboard-accessible action that opens or focuses a Canvas node."
+description = "Open Canvas node"
+[[messages]]
+id = "agent-canvas-action-menu"
+context = "Keyboard-accessible action that opens a Canvas node menu."
+description = "Canvas node menu"
+[[messages]]
+id = "agent-canvas-action-move-up"
+context = "Keyboard alternative that moves a Canvas node upward."
+description = "Move Canvas node up"
+[[messages]]
+id = "agent-canvas-action-move-down"
+context = "Keyboard alternative that moves a Canvas node downward."
+description = "Move Canvas node down"
+[[messages]]
+id = "agent-canvas-action-move-left"
+context = "Keyboard alternative that moves a Canvas node left."
+description = "Move Canvas node left"
+[[messages]]
+id = "agent-canvas-action-move-right"
+context = "Keyboard alternative that moves a Canvas node right."
+description = "Move Canvas node right"
+[[messages]]
+id = "agent-canvas-action-rename"
+context = "Keyboard-accessible action that renames a Canvas node."
+description = "Rename Canvas node"
+[[messages]]
+id = "agent-canvas-action-toggle-collapsed"
+context = "Keyboard-accessible action that expands or collapses a Canvas node."
+description = "Toggle Canvas node collapse"
+[[messages]]
+id = "agent-canvas-action-remove"
+context = "Keyboard-accessible action that opens reviewed Canvas node removal."
+description = "Remove Canvas node"
+[[messages]]
+id = "agent-canvas-edge-context"
+context = "Accessible Canvas context-link type."
+description = "Context link"
+[[messages]]
+id = "agent-canvas-edge-dependency"
+context = "Accessible Canvas dependency-link type."
+description = "Dependency link"
+
 # Settings built-surface controls, actions, values, and stable operation feedback.
 [[messages]]
 id = "settings-mobile-devices-title"
@@ -7002,3 +7163,1459 @@ name = "count"
 type = "Count"
 sensitivity = "public"
 bidi = "none"
+
+# Goal 21.1.5.1 Agent Canvas runtime copy migration.
+[[messages]]
+id = "agent-canvas-copy-add"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-add-a-terminal-agent-note-or-group"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-add-editable-context-that-can-be-linked-to-an-agent"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-add-to-canvas"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-add-to-canvas-2"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-add-your-first-canvas-node"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-agent-activity"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-agent-executable-path-is-not-valid-utf-8"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-agent-selection-copied"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-allow-once"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-another-workspace-already-has-an-active-dependency-run"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-approval-required"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-attach-or-create-a-local-tmux-session-that-survives-closing-termirust"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-automatic-isolated-worktrees-are-local-only-choose-shared-directory-or-r"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-back"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-broadcast-on"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-browse-edit-and-inspect-git-changes-in-the-project-folder"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-coding-agents"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-cancel-active-turn"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-cancel-context-link-creation"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-cancel-dependency-creation"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-canvas-layout-change-redone"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-canvas-layout-change-undone"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-canvas-node-title-updated"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-change-note-color"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-check-again"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-choose-sessions-for-split"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-choose-a-git-repository-before-creating-an-isolated-worktree"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-choose-a-git-repository-or-working-directory"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-choose-a-project-folder-before-opening-local-project-files"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-choose-a-context-target"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-choose-at-least-one-session-for-split-view"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-choose-dependency-target"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-choose-link-target"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-choose-the-agent-working-directory"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-choose-the-next-agent"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-close-project-files"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-close-terminal"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-close-active-terminal"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-close-activity"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-close-every-agent-and-terminal-using-this-worktree-before-removing-it"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-close-fleet-panel"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-close-links"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-close-menu"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-close-terminal-2"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-close-this-node-and-leave-tmux-running"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-close-worktree-manager"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-confirm-kill"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-confirm-tmux-session-deletion"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-context-is-ready-confirm-the-guarded-paste-to-deliver-it"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-context-link-created-select-the-target-and-choose-review-context"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-context-link-creation-cancelled"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-context-source-selected-use-the-link-action-on-a-target-node"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-context-source-selected-choose-this-action-on-the-target-node"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-copied-the-selected-file-diff"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-copy-selected-agent-output"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-copy-selected-file-diff"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-copy-worktree-path"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-create-dependency-link"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-delete-note"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-delete-link-keep-both-nodes"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-delete-note-2"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-delete-sticky-note"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-deny"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-dependency-changed-dependency-scheduling-stopped-active-agent-turns-cont"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-dependency-created-dependency-scheduling-stopped-active-agent-turns-cont"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-dependency-creation-cancelled"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-dependency-deleted-and-scheduling-stopped-active-agent-turns-continue"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-dependency-graph-contains-a-cycle-and-cannot-run"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-dependency-run-finished"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-dependency-run-started-ready-tasks"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-dependency-source-selected-choose-the-node-that-must-run-after-it"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-detach-from-canvas"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-detached-from-canvas-the-tmux-session-is-still-running"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-disable"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-disable-this-link"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-disconnect"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-disconnect-all"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-disconnect-client"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-disconnect-every-active-ssh-client-persistent-tmux-sessions-stay-on-thei"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-disconnect-this-ssh-client-and-keep-its-node"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-disconnected-the-ssh-client-its-canvas-node-was-kept"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-disconnected-the-client-use-reconnect-to-attach-this-node-again"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-drag-nodes-into-a-frame-and-move-them-together"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-enable"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-enter-a-task-before-queuing-it"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-every-fleet-host-is-already-connected"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-every-fleet-host-is-already-disconnected"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-expand-node"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-experience"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-fit-all-nodes"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-git-status-selected-diff"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-group-frame"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-group-frame-added-drag-nodes-into-it-then-move-the-frame-to-move-them-to"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-host-groups"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-initial-prompt"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-inspect-git-status"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-inspect-and-clean-up-isolated-agent-worktrees"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-inspect-enable-disable-or-delete-canvas-links"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-jump-to-latest-output"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-keep-the-node-so-it-can-reconnect-later"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-keep-worktree-and-branch"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-kill-tmux-session"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-launch-agent"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-local"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-local-terminal"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-managed-worktrees"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-mark-task-complete-and-keep-its-worktree"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-more-node-actions"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-new-agent"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-next"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-no-context-or-dependency-links-in-this-workspace"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-no-isolated-agent-worktrees-have-been-created"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-no-queued-task-is-ready-check-dependency-states-and-queued-prompts"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-no-structured-agents-are-running-in-this-canvas"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-note"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-organize"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-overview"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-open-split"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-open-a-canvas-workspace-before-adding-a-persistent-terminal"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-open-a-canvas-workspace-before-adding-a-saved-host"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-open-a-canvas-workspace-before-launching-an-agent"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-open-a-canvas-workspace-before-opening-the-worktree"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-open-a-canvas-workspace-before-running-dependencies"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-open-parent-folder"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-open-terminal-in-worktree"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-opened-a-local-terminal-on-the-canvas"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-opened-a-terminal-in-the-managed-worktree"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-opened-local-project-files"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-opened-project-file"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-permanently-stop-this-tmux-session"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-persistent-local-terminal"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-prev"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-project-files-and-git-status-refreshed"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-queue"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-queue-task-for-dependency-orchestration"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-reconnect-offline"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-reconnect-this-host"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-redo-the-last-canvas-layout-change"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-refresh-files-and-git-status"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-remote-worktree-creation-is-not-automatic-choose-shared-directory-or-rea"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-remove-clean-unused-worktree"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-repository-isolation"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-reset-zoom"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-restart"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-revert-unsaved-editor-changes"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-reverted-unsaved-editor-changes"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-review-an-incoming-context-link-before-sending"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-review-context"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-review-incoming-context"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-reviewed-context-sent-to-the-structured-agent"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-run-queued-tasks-when-dependencies-are-satisfied"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-run-workflow"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-runs-on"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-saved-hosts"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-ssh-fleet"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-save-note"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-save-or-revert-the-open-file-before-closing-project-files"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-save-or-revert-the-open-file-before-selecting-another-path"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-save-or-revert-the-open-project-file-before-changing-folders"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-save-or-revert-the-open-project-file-before-opening-agent-activity"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-select-a-target-node-first"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-send-keyboard-input-to-every-connected-pane-in-this-workspace"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-send-prompt"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-send-reviewed-context"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-start-a-new-process-from-this-saved-agent-definition"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-stay-in-canvas"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-sticky-note"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-sticky-note-saved"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-stop-and-close-agent"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-structured"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-structured-agent-closed-and-its-dependency-run-stopped-its-worktree-was-k"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-structured-agent-restarted"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-structured-mode-is-available-for-codex-claude-code-and-gemini-cli"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-structured-session-is-not-running"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-task-queued-for-dependency-orchestration"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-task-queued-for-dependency-run"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-that-canvas-link-no-longer-exists"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-that-canvas-node-is-no-longer-available"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-that-fleet-host-is-already-disconnected"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-that-managed-worktree-is-no-longer-registered"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-that-saved-host-no-longer-exists"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-the-ssh-session-is-no-longer-available"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-the-reviewed-context-link-no-longer-exists"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-the-selected-node-has-no-incoming-context-link-link-a-source-to-it-first"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-the-selected-remote-host-no-longer-exists"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-the-selected-sessions-are-no-longer-available"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-the-structured-agent-definition-is-unavailable"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-the-target-agent-is-not-running"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-this-connection-has-no-tmux-session-name-so-termirust-cannot-kill-it-saf"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-unsaved"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-unable-to-add-the-persistent-terminal-to-this-canvas"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-undo-the-last-move-resize-rename-or-collapse"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-view-workspace-links"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-wait-for-the-active-turn-to-finish-or-restart-the-disconnected-agent-bef"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-worktree-marked-active"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-worktree-path-copied"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-zoom-in"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-zoom-out"
+context = "Canvas."
+description = "Copy"
+
+# Goal 21.1.5.1 Agent Canvas runtime copy migration.
+[[messages]]
+id = "agent-canvas-copy-broadcast-input"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-canvas-link-disabled"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-canvas-link-enabled"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-close-persistent-terminal"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-collapse-node"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-connection-is-already-in-progress"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-copy-all-agent-output"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-create-a-reviewed-context-link-from-this-node"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-edit-note"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-enable-this-link"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-remove-group"
+context = "Canvas."
+description = "Copy"
+[[messages]]
+id = "agent-canvas-copy-remove-group-frame"
+context = "Canvas."
+description = "Copy"
+
+# Goal 21.1.5.1 Agent Canvas parameterized copy migration.
+[[messages]]
+id = "agent-canvas-dynamic-added-added-host-from-to-this-canvas"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value3"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-attached-persistent-local-tmux-session-session-n"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-canvas-links"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-choose-1-sessions-unselected-sessions-keep-runni"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-closed-active-terminal"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-closing-ends-its-active-local-process-or-ssh-con"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-connect-every-host-in-group-label-that-is-not-al"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-connecting-to-on-the-canvas"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-deleted-note"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-every-host-in-is-already-on-this-canvas"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-focused"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-launching"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-links"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-opening-fleet-size-ssh-host-in-the-fleet-canvas"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value3"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-persistent-local-terminal-needs-tmux-error"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-project-files-current-label"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-project-folder-does-not-exist"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-project-folder-set-to-directory-new-local-termin"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-reconnecting-count-fleet-host"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-removed-clean-worktree"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-requested-deletion-of-tmux-session-session-name"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-review-context-from"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-reviewed-context-is-bytes-this-link-allows-at-mo"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-saved"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-showing-of-sessions-in-split-all-sessions-remain"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-split-view-can-show-at-most-sessions-deselect-on"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-starting-structured-provider-label-session"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-the-isolated-worktree-was-kept-but-the-agent-cou"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-unable-to-inspect-worktree-error"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-unable-to-open-project-folder-error"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-unable-to-restart-agent-error"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-working-directory-does-not-exist"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-worktree-directory-does-not-exist-path"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-worktree-was-not-removed-error"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-worktrees"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-current-match-matches"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-group-label-host-count"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-kind-label"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-location-context-incoming-context-in-dependencie"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value3"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value4"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value5"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-source-label-is-the-source-click-the-arrow-actio"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-source-label-will-run-first-click-the-agent-that"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-source-target"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-state-path-summary"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-zoom-percent"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-and-its-context-links-will-be-deleted"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-changed-on-disk-reopen-it-before-saving-so-exter"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-connected-total-persistent-tmux"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value3"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-connecting"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-errors"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-items"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-of-selected"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-offline"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-online"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "agent-canvas-dynamic-running-queued-attention-unread"
+context = "Canvas."
+description = "Copy"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value3"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value4"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"

@@ -3,6 +3,7 @@ use std::fmt;
 use std::num::NonZeroU64;
 use std::time::{Duration, Instant};
 
+use crate::agent_canvas_surface::{AgentCanvasAccessibilityCommand, AgentCanvasSemanticSnapshot};
 use crate::host_connection_surface::{
     HostConnectionAccessibilityCommand, HostConnectionSemanticSnapshot,
 };
@@ -455,6 +456,7 @@ pub enum ShellAccessibilityCommand {
     Sftp(SftpAccessibilityCommand),
     VaultKeySnippet(VaultKeySnippetAccessibilityCommand),
     Settings(SettingsAccessibilityCommand),
+    AgentCanvas(AgentCanvasAccessibilityCommand),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -472,6 +474,7 @@ pub struct ShellSemanticSnapshot {
     pub sftp: Option<SftpSemanticSnapshot>,
     pub vault_key_snippet: Option<VaultKeySnippetSemanticSnapshot>,
     pub settings: Option<SettingsSemanticSnapshot>,
+    pub agent_canvas: Option<AgentCanvasSemanticSnapshot>,
 }
 
 impl Default for ShellSemanticSnapshot {
@@ -490,6 +493,7 @@ impl Default for ShellSemanticSnapshot {
             sftp: None,
             vault_key_snippet: None,
             settings: None,
+            agent_canvas: None,
         }
     }
 }
@@ -577,6 +581,11 @@ impl ShellSemanticSnapshot {
             && let Some(settings) = self.settings.as_ref()
         {
             nodes.extend(settings.try_nodes(shell_region_node(ShellRegionId::Content))?);
+        }
+        if !self.palette_open
+            && let Some(agent_canvas) = self.agent_canvas.as_ref()
+        {
+            nodes.extend(agent_canvas.try_nodes(shell_region_node(ShellRegionId::Content))?);
         }
 
         if self.palette_open {
@@ -716,6 +725,16 @@ impl ShellSemanticSnapshot {
                     .routes()
                     .into_iter()
                     .map(|(key, command)| (key, ShellAccessibilityCommand::Settings(command))),
+            );
+        }
+        if !self.palette_open
+            && let Some(agent_canvas) = self.agent_canvas.as_ref()
+        {
+            routes.extend(
+                agent_canvas
+                    .routes()?
+                    .into_iter()
+                    .map(|(key, command)| (key, ShellAccessibilityCommand::AgentCanvas(command))),
             );
         }
         if self.palette_open {

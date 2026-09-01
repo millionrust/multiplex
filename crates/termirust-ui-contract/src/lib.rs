@@ -1,4 +1,5 @@
 pub mod accessibility_lab;
+pub mod agent_canvas_surface;
 mod contract;
 pub mod generated;
 pub mod host_connection_surface;
@@ -16,6 +17,7 @@ pub mod vault_key_snippet_surface;
 pub mod worktree_artifact_surface;
 
 pub use accessibility_lab::*;
+pub use agent_canvas_surface::*;
 pub use contract::{
     ContractError, GenerationArtifacts, TokenManifest, generate_artifacts, load_manifest,
     parse_manifest,

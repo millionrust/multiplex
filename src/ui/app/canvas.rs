@@ -13,6 +13,13 @@ use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Disableable as _, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
+use termirust_ui_contract::{
+    AgentCanvasAccessibilityCommand, AgentCanvasPresentationMode, AgentCanvasSemanticSnapshot,
+    AgentCanvasSurfaceState, CanvasAlternativeEdge, CanvasAlternativeEdgeKind,
+    CanvasAlternativeNodeKind, CanvasAlternativeNodeState, CanvasAlternativeRow,
+    CanvasEdgeSemanticId, CanvasMoveDirection, CanvasNodeAction, CanvasNodeSemanticId,
+    canvas_revision_matches,
+};
 
 use crate::agents::{
     AgentApprovalRequest, AgentEvent, AgentExecutableStatus, AgentRole, AgentRunState,
@@ -57,10 +64,10 @@ use super::project::{
     read_project_file as read_canvas_project_file, write_project_file as write_canvas_project_file,
 };
 
-pub(super) const CANVAS_TOOLBAR_HEIGHT: f32 = 44.0;
+pub(super) const CANVAS_TOOLBAR_HEIGHT: f32 = theme::CANVAS_TOOLBAR_HEIGHT;
 const CANVAS_RENDER_OVERSCAN: f32 = 96.0;
-const CANVAS_KEYBOARD_REVEAL_PADDING: f32 = 24.0;
-pub(super) const CANVAS_NODE_HEADER_HEIGHT: f32 = 34.0;
+const CANVAS_KEYBOARD_REVEAL_PADDING: f32 = theme::CANVAS_KEYBOARD_REVEAL_PADDING;
+pub(super) const CANVAS_NODE_HEADER_HEIGHT: f32 = theme::CANVAS_NODE_HEADER_HEIGHT;
 pub(super) const CANVAS_NODE_GUTTER: f32 = 28.0;
 #[cfg(test)]
 pub(super) const CANVAS_V1_SUPPORTED_NODE_COUNT: usize = 20;
@@ -68,20 +75,31 @@ pub(super) const CANVAS_V1_SUPPORTED_NODE_COUNT: usize = 20;
 pub(super) const CANVAS_V1_SUPPORTED_EDGE_COUNT: usize = 40;
 const CANVAS_PLACEMENT_STEP_X: f32 = CANVAS_DEFAULT_NODE_WIDTH + CANVAS_NODE_GUTTER;
 const CANVAS_PLACEMENT_STEP_Y: f32 = CANVAS_DEFAULT_NODE_HEIGHT + CANVAS_NODE_GUTTER;
-const CANVAS_FIT_PADDING: f32 = 48.0;
-const STRUCTURED_TRANSCRIPT_FONT_SIZE: f32 = 12.0;
-const STRUCTURED_TRANSCRIPT_LINE_HEIGHT: f32 = 20.0;
-const STRUCTURED_TRANSCRIPT_PADDING: f32 = 12.0;
+const CANVAS_FIT_PADDING: f32 = theme::CANVAS_FIT_PADDING;
+const STRUCTURED_TRANSCRIPT_FONT_SIZE: f32 = theme::CANVAS_TRANSCRIPT_FONT_SIZE;
+const STRUCTURED_TRANSCRIPT_LINE_HEIGHT: f32 = theme::CANVAS_TRANSCRIPT_LINE_HEIGHT;
+const STRUCTURED_TRANSCRIPT_PADDING: f32 = theme::CANVAS_TRANSCRIPT_PADDING;
 const CANVAS_LAYOUT_HISTORY_LIMIT: usize = 50;
-const CANVAS_MINIMAP_WIDTH: f32 = 184.0;
-const CANVAS_MINIMAP_HEIGHT: f32 = 116.0;
-const CANVAS_MINIMAP_PADDING: f32 = 8.0;
-const CANVAS_MINIMAP_MARGIN: f32 = 12.0;
-const CANVAS_PROJECT_PANEL_WIDTH: f32 = 520.0;
-const CANVAS_NOTE_WIDTH: f32 = 420.0;
-const CANVAS_NOTE_HEIGHT: f32 = 300.0;
-const CANVAS_GROUP_WIDTH: f32 = 900.0;
-const CANVAS_GROUP_HEIGHT: f32 = 600.0;
+const CANVAS_MINIMAP_WIDTH: f32 = theme::CANVAS_MINIMAP_WIDTH;
+const CANVAS_MINIMAP_HEIGHT: f32 = theme::CANVAS_MINIMAP_HEIGHT;
+const CANVAS_MINIMAP_PADDING: f32 = theme::CANVAS_MINIMAP_PADDING;
+const CANVAS_MINIMAP_MARGIN: f32 = theme::CANVAS_MINIMAP_MARGIN;
+const CANVAS_PROJECT_PANEL_WIDTH: f32 = theme::CANVAS_PROJECT_PANEL_WIDTH;
+const CANVAS_NOTE_WIDTH: f32 = theme::CANVAS_NOTE_WIDTH;
+const CANVAS_NOTE_HEIGHT: f32 = theme::CANVAS_NOTE_HEIGHT;
+const CANVAS_GROUP_WIDTH: f32 = theme::CANVAS_GROUP_WIDTH;
+const CANVAS_GROUP_HEIGHT: f32 = theme::CANVAS_GROUP_HEIGHT;
+
+macro_rules! canvas_list_action_button {
+    ($id:expr, $icon:expr, $message:expr, $handler:expr $(,)?) => {
+        Button::new($id)
+            .xsmall()
+            .ghost()
+            .icon($icon)
+            .tooltip(localization::static_message($message))
+            .on_click($handler)
+    };
+}
 
 fn canvas_project_directory_label(directory: Option<&str>) -> String {
     let Some(directory) = directory else {
@@ -763,6 +781,31 @@ impl Default for CanvasWorkspaceState {
 }
 
 impl CanvasWorkspaceState {
+    fn semantic_revision(&self) -> u64 {
+        let mut revision = 0xcbf2_9ce4_8422_2325_u64;
+        let mut mix = |bytes: &[u8]| {
+            for byte in bytes {
+                revision ^= u64::from(*byte);
+                revision = revision.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        };
+        for node in &self.nodes {
+            mix(node.id.as_str().as_bytes());
+            mix(&node.rect.x.to_bits().to_le_bytes());
+            mix(&node.rect.y.to_bits().to_le_bytes());
+            mix(&node.rect.width.to_bits().to_le_bytes());
+            mix(&node.rect.height.to_bits().to_le_bytes());
+            mix(&[u8::from(node.collapsed)]);
+        }
+        for edge in &self.edges {
+            mix(edge.id.as_str().as_bytes());
+            mix(edge.source.as_str().as_bytes());
+            mix(edge.target.as_str().as_bytes());
+            mix(&[u8::from(edge.enabled)]);
+        }
+        revision.max(1)
+    }
+
     fn layout_snapshot(&self) -> CanvasLayoutSnapshot {
         CanvasLayoutSnapshot {
             nodes: self
@@ -1125,7 +1168,10 @@ impl CanvasWorkspaceState {
                 height: CANVAS_NOTE_HEIGHT,
             },
             z_index: self.next_z_index,
-            title: Some("Note".to_string()),
+            title: Some(
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyNote)
+                    .to_string(),
+            ),
             collapsed: false,
         });
         self.next_z_index = self.next_z_index.saturating_add(1);
@@ -1157,7 +1203,12 @@ impl CanvasWorkspaceState {
                 height: CANVAS_GROUP_HEIGHT,
             },
             z_index: self.next_z_index,
-            title: Some("Group".to_string()),
+            title: Some(
+                localization::static_message(
+                    termirust_ui_contract::MessageId::HostEditorGroupField,
+                )
+                .to_string(),
+            ),
             collapsed: false,
         });
         self.next_z_index = self.next_z_index.saturating_add(1);
@@ -1165,6 +1216,28 @@ impl CanvasWorkspaceState {
     }
 
     pub(super) fn remove_node(&mut self, node_id: &CanvasNodeId) {
+        let removed_index = self.nodes.iter().position(|node| &node.id == node_id);
+        let graph_neighbor = self
+            .edges
+            .iter()
+            .filter(|edge| edge.enabled)
+            .find_map(|edge| {
+                if &edge.source == node_id {
+                    Some(edge.target.clone())
+                } else if &edge.target == node_id {
+                    Some(edge.source.clone())
+                } else {
+                    None
+                }
+            });
+        let parent_group = self.nodes.iter().find_map(|node| match &node.kind {
+            CanvasNodeKind::Group { member_ids }
+                if member_ids.iter().any(|member| member == node_id) =>
+            {
+                Some(node.id.clone())
+            }
+            _ => None,
+        });
         self.nodes.retain(|node| &node.id != node_id);
         for node in &mut self.nodes {
             if let CanvasNodeKind::Group { member_ids } = &mut node.kind {
@@ -1174,7 +1247,16 @@ impl CanvasWorkspaceState {
         self.edges
             .retain(|edge| &edge.source != node_id && &edge.target != node_id);
         if self.selected_node_id.as_ref() == Some(node_id) {
-            self.selected_node_id = None;
+            self.selected_node_id = graph_neighbor
+                .filter(|candidate| self.node(candidate).is_some())
+                .or_else(|| parent_group.filter(|candidate| self.node(candidate).is_some()))
+                .or_else(|| {
+                    removed_index.and_then(|index| {
+                        self.nodes
+                            .get(index.min(self.nodes.len().saturating_sub(1)))
+                            .map(|node| node.id.clone())
+                    })
+                });
         }
     }
 
@@ -1605,6 +1687,286 @@ fn point_from_pixels(position: Point<gpui::Pixels>) -> CanvasPoint {
 }
 
 impl TermiRustApp {
+    pub(super) fn agent_canvas_semantic_snapshot(&self) -> Option<AgentCanvasSemanticSnapshot> {
+        let workspace = self.active_workspace()?;
+        if workspace.layout_mode != WorkspaceLayoutMode::Canvas {
+            return None;
+        }
+        let recording_friendly = self.activity_center.policy().recording_friendly;
+        let rows = workspace
+            .canvas
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(index, node)| {
+                let parent =
+                    workspace
+                        .canvas
+                        .nodes
+                        .iter()
+                        .find_map(|candidate| match &candidate.kind {
+                            CanvasNodeKind::Group { member_ids }
+                                if member_ids.iter().any(|member| member == &node.id) =>
+                            {
+                                Some(CanvasNodeSemanticId::from_stable_key(candidate.id.as_str()))
+                            }
+                            _ => None,
+                        });
+                CanvasAlternativeRow {
+                    id: CanvasNodeSemanticId::from_stable_key(node.id.as_str()),
+                    explicit_order: u32::try_from(index).ok(),
+                    kind: match node.kind {
+                        CanvasNodeKind::Terminal { .. } => CanvasAlternativeNodeKind::Terminal,
+                        CanvasNodeKind::Agent { .. } => CanvasAlternativeNodeKind::Agent,
+                        CanvasNodeKind::Note { .. } => CanvasAlternativeNodeKind::Note,
+                        CanvasNodeKind::Group { .. } => CanvasAlternativeNodeKind::Group,
+                    },
+                    state: self.canvas_alternative_node_state(node),
+                    title: (!recording_friendly).then(|| self.canvas_node_label(&node.id)),
+                    parent,
+                    x: node.rect.x.round().clamp(i32::MIN as f32, i32::MAX as f32) as i32,
+                    y: node.rect.y.round().clamp(i32::MIN as f32, i32::MAX as f32) as i32,
+                    width: node.rect.width.round().clamp(0.0, u32::MAX as f32) as u32,
+                    height: node.rect.height.round().clamp(0.0, u32::MAX as f32) as u32,
+                    selected: workspace.canvas.selected_node_id.as_ref() == Some(&node.id),
+                    collapsed: node.collapsed,
+                    actions: [
+                        CanvasNodeAction::Open,
+                        CanvasNodeAction::OpenMenu,
+                        CanvasNodeAction::MoveUp,
+                        CanvasNodeAction::MoveDown,
+                        CanvasNodeAction::MoveLeft,
+                        CanvasNodeAction::MoveRight,
+                        CanvasNodeAction::Rename,
+                        CanvasNodeAction::ToggleCollapsed,
+                        CanvasNodeAction::Remove,
+                    ]
+                    .into_iter()
+                    .collect(),
+                }
+            })
+            .collect::<Vec<_>>();
+        let edges = workspace
+            .canvas
+            .edges
+            .iter()
+            .map(|edge| CanvasAlternativeEdge {
+                id: CanvasEdgeSemanticId::from_stable_key(edge.id.as_str()),
+                source: CanvasNodeSemanticId::from_stable_key(edge.source.as_str()),
+                target: CanvasNodeSemanticId::from_stable_key(edge.target.as_str()),
+                kind: match edge.kind {
+                    CanvasEdgeKind::Context => CanvasAlternativeEdgeKind::Context,
+                    CanvasEdgeKind::Dependency => CanvasAlternativeEdgeKind::Dependency,
+                },
+                enabled: edge.enabled,
+            })
+            .collect::<Vec<_>>();
+        let state = if rows.is_empty() {
+            AgentCanvasSurfaceState::Empty
+        } else if rows
+            .iter()
+            .any(|row| row.state == CanvasAlternativeNodeState::Disconnected)
+        {
+            AgentCanvasSurfaceState::Offline
+        } else if rows.iter().any(|row| {
+            matches!(
+                row.state,
+                CanvasAlternativeNodeState::Failed
+                    | CanvasAlternativeNodeState::Blocked
+                    | CanvasAlternativeNodeState::Error
+            )
+        }) {
+            AgentCanvasSurfaceState::Partial
+        } else {
+            AgentCanvasSurfaceState::Ready
+        };
+        let revision = workspace.canvas.semantic_revision();
+        Some(AgentCanvasSemanticSnapshot {
+            generation: revision,
+            revision,
+            workspace_id: workspace.id,
+            state,
+            mode: if self.canvas_accessible_list_open {
+                AgentCanvasPresentationMode::ListInspector
+            } else {
+                AgentCanvasPresentationMode::Graph
+            },
+            recording_friendly,
+            focused: workspace
+                .canvas
+                .selected_node_id
+                .as_ref()
+                .map(|id| CanvasNodeSemanticId::from_stable_key(id.as_str())),
+            rows,
+            edges,
+        })
+    }
+
+    fn canvas_alternative_node_state(&self, node: &CanvasNode) -> CanvasAlternativeNodeState {
+        if let Some(runtime) = self.structured_agents.get(&node.id) {
+            return match runtime.state {
+                AgentRunState::Idle => CanvasAlternativeNodeState::Idle,
+                AgentRunState::Starting
+                | AgentRunState::Running
+                | AgentRunState::WaitingForApproval => CanvasAlternativeNodeState::Running,
+                AgentRunState::Succeeded => CanvasAlternativeNodeState::Succeeded,
+                AgentRunState::Failed => CanvasAlternativeNodeState::Failed,
+                AgentRunState::Cancelled => CanvasAlternativeNodeState::Cancelled,
+                AgentRunState::Blocked => CanvasAlternativeNodeState::Blocked,
+                AgentRunState::Disconnected => CanvasAlternativeNodeState::Disconnected,
+            };
+        }
+        if let Some(pane) = node.kind.pane_id().and_then(|pane_id| self.pane(pane_id)) {
+            return if pane.connected {
+                CanvasAlternativeNodeState::Running
+            } else if pane.closed && !pane.user_closed {
+                CanvasAlternativeNodeState::Disconnected
+            } else if pane.status == "Error" {
+                CanvasAlternativeNodeState::Error
+            } else {
+                CanvasAlternativeNodeState::Idle
+            };
+        }
+        match node.kind {
+            CanvasNodeKind::Note { .. } => {
+                if self.canvas_note_edit_id.as_ref() == Some(&node.id) {
+                    CanvasAlternativeNodeState::Editing
+                } else {
+                    CanvasAlternativeNodeState::Saved
+                }
+            }
+            CanvasNodeKind::Group { .. } => CanvasAlternativeNodeState::Frame,
+            _ => CanvasAlternativeNodeState::Idle,
+        }
+    }
+
+    fn canvas_node_id_for_semantic(&self, semantic: CanvasNodeSemanticId) -> Option<CanvasNodeId> {
+        self.active_workspace()?
+            .canvas
+            .nodes
+            .iter()
+            .find(|node| CanvasNodeSemanticId::from_stable_key(node.id.as_str()) == semantic)
+            .map(|node| node.id.clone())
+    }
+
+    pub(super) fn handle_agent_canvas_accessibility_command(
+        &mut self,
+        command: AgentCanvasAccessibilityCommand,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match command {
+            AgentCanvasAccessibilityCommand::SetMode(mode) => {
+                self.canvas_accessible_list_open =
+                    mode == AgentCanvasPresentationMode::ListInspector;
+                cx.notify();
+            }
+            AgentCanvasAccessibilityCommand::FocusNode(id)
+            | AgentCanvasAccessibilityCommand::OpenNode(id) => {
+                if let Some(node_id) = self.canvas_node_id_for_semantic(id) {
+                    self.focus_canvas_activity_node(node_id, window, cx);
+                }
+            }
+            AgentCanvasAccessibilityCommand::OpenNodeMenu(id) => {
+                if let Some(node_id) = self.canvas_node_id_for_semantic(id) {
+                    self.canvas_node_menu_id = Some(node_id);
+                    cx.notify();
+                }
+            }
+            AgentCanvasAccessibilityCommand::MoveNode {
+                node,
+                direction,
+                expected_revision,
+            } => {
+                self.move_canvas_node_with_keyboard(node, direction, expected_revision, window, cx)
+            }
+            AgentCanvasAccessibilityCommand::RenameNode(id) => {
+                if let Some(node_id) = self.canvas_node_id_for_semantic(id) {
+                    self.start_canvas_node_rename(node_id, window, cx);
+                }
+            }
+            AgentCanvasAccessibilityCommand::ToggleCollapsed {
+                node,
+                expected_revision,
+            } => {
+                if self.canvas_semantic_revision_matches(expected_revision)
+                    && let Some(node_id) = self.canvas_node_id_for_semantic(node)
+                {
+                    self.toggle_canvas_node_collapsed(node_id, cx);
+                }
+            }
+            AgentCanvasAccessibilityCommand::RequestRemove {
+                node,
+                expected_revision,
+            } => {
+                if self.canvas_semantic_revision_matches(expected_revision)
+                    && let Some(node_id) = self.canvas_node_id_for_semantic(node)
+                {
+                    let is_content = self.active_workspace().and_then(|workspace| {
+                        workspace.canvas.node(&node_id).map(|node| {
+                            matches!(
+                                node.kind,
+                                CanvasNodeKind::Note { .. } | CanvasNodeKind::Group { .. }
+                            )
+                        })
+                    });
+                    if is_content == Some(true) {
+                        self.request_canvas_content_node_delete(node_id, cx);
+                    } else {
+                        self.canvas_node_menu_id = Some(node_id);
+                        cx.notify();
+                    }
+                }
+            }
+        }
+    }
+
+    fn canvas_semantic_revision_matches(&mut self, expected: u64) -> bool {
+        let current = self
+            .active_workspace()
+            .map(|workspace| workspace.canvas.semantic_revision())
+            .unwrap_or_default();
+        if canvas_revision_matches(expected, current) {
+            true
+        } else {
+            self.error_message = localization::static_message(
+                termirust_ui_contract::MessageId::AgentCanvasStateRecovery,
+            );
+            false
+        }
+    }
+
+    fn move_canvas_node_with_keyboard(
+        &mut self,
+        semantic: CanvasNodeSemanticId,
+        direction: CanvasMoveDirection,
+        expected_revision: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.canvas_semantic_revision_matches(expected_revision) {
+            cx.notify();
+            return;
+        }
+        let Some(node_id) = self.canvas_node_id_for_semantic(semantic) else {
+            return;
+        };
+        if let Some(workspace) = self.active_workspace_mut() {
+            workspace.canvas.record_layout_history();
+            if let Some(node) = workspace.canvas.node_mut(&node_id) {
+                match direction {
+                    CanvasMoveDirection::Up => node.rect.y -= theme::CANVAS_KEYBOARD_MOVE_STEP,
+                    CanvasMoveDirection::Down => node.rect.y += theme::CANVAS_KEYBOARD_MOVE_STEP,
+                    CanvasMoveDirection::Left => node.rect.x -= theme::CANVAS_KEYBOARD_MOVE_STEP,
+                    CanvasMoveDirection::Right => node.rect.x += theme::CANVAS_KEYBOARD_MOVE_STEP,
+                }
+            }
+            workspace.canvas.refresh_group_membership_for_node(&node_id);
+        }
+        self.persist_runtime_state();
+        self.focus_canvas_activity_node(node_id, window, cx);
+    }
+
     pub(super) fn request_canvas_pane_close(&mut self, pane_id: u64, cx: &mut Context<Self>) {
         let Some((persistent_session, session_name, connected, title)) =
             self.pane(pane_id).map(|pane| {
@@ -1656,7 +2018,7 @@ impl TermiRustApp {
         };
         self.close_pane(pending.pane_id, cx);
         self.status_message =
-            "Detached from canvas; the tmux session is still running.".to_string();
+            localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDetachedFromCanvasTheTmuxSessionIsStillRunning).to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -1675,7 +2037,7 @@ impl TermiRustApp {
         }
         self.persist_runtime_state();
         self.status_message =
-            "Disconnected the client; use Reconnect to attach this node again.".to_string();
+            localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDisconnectedTheClientUseReconnectToAttachThisNodeAgain).to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -1693,7 +2055,7 @@ impl TermiRustApp {
         };
         let Some(session_name) = pending.session_name else {
             self.error_message =
-                "This connection has no tmux session name, so TermiRust cannot kill it safely."
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyThisConnectionHasNoTmuxSessionNameSoTermirustCannotKillItSaf)
                     .to_string();
             cx.notify();
             return;
@@ -1707,7 +2069,10 @@ impl TermiRustApp {
                 .is_ok()
         });
         if !sent {
-            self.error_message = "The SSH session is no longer available.".to_string();
+            self.error_message = localization::static_message(
+                termirust_ui_contract::MessageId::AgentCanvasCopyTheSshSessionIsNoLongerAvailable,
+            )
+            .to_string();
             cx.notify();
             return;
         }
@@ -1716,7 +2081,7 @@ impl TermiRustApp {
             pane.auto_reconnect_at = None;
             pane.status = "Killing tmux".to_string();
         }
-        self.status_message = format!("Requested deletion of tmux session {session_name}.");
+        self.status_message = localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicRequestedDeletionOfTmuxSessionSessionName, vec![(session_name).to_string()]);
         self.error_message.clear();
         cx.notify();
     }
@@ -1766,7 +2131,10 @@ impl TermiRustApp {
         });
         if renamed {
             self.persist_runtime_state();
-            self.status_message = "Canvas node title updated.".to_string();
+            self.status_message = localization::static_message(
+                termirust_ui_contract::MessageId::AgentCanvasCopyCanvasNodeTitleUpdated,
+            )
+            .to_string();
             self.error_message.clear();
         }
         self.focus_canvas_node_terminal(&node_id, window);
@@ -1914,7 +2282,10 @@ impl TermiRustApp {
             return;
         };
         self.close_pane(pending.pane_id, cx);
-        self.status_message = format!("Closed active terminal {}.", pending.title);
+        self.status_message = localization::dynamic_user_data_message(
+            termirust_ui_contract::MessageId::AgentCanvasDynamicClosedActiveTerminal,
+            vec![(pending.title).to_string()],
+        );
         self.error_message.clear();
         cx.notify();
     }
@@ -1931,10 +2302,7 @@ impl TermiRustApp {
             chooser.selected_pane_ids.remove(index);
             self.error_message.clear();
         } else if chooser.selected_pane_ids.len() >= super::MAX_SPLIT_PANES {
-            self.error_message = format!(
-                "Split view can show at most {} sessions. Deselect one first.",
-                super::MAX_SPLIT_PANES
-            );
+            self.error_message = localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicSplitViewCanShowAtMostSessionsDeselectOn, vec![(super::MAX_SPLIT_PANES).to_string()]);
         } else {
             chooser.selected_pane_ids.push(pane_id);
             self.error_message.clear();
@@ -1951,7 +2319,7 @@ impl TermiRustApp {
             return;
         };
         if chooser.selected_pane_ids.is_empty() {
-            self.error_message = "Choose at least one session for Split view.".to_string();
+            self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyChooseAtLeastOneSessionForSplitView).to_string();
             self.split_pane_chooser = Some(chooser);
             cx.notify();
             return;
@@ -1978,15 +2346,12 @@ impl TermiRustApp {
                 Some((selected_pane_ids.len(), workspace.pane_ids.len()))
             })
         else {
-            self.error_message = "The selected sessions are no longer available.".to_string();
+            self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyTheSelectedSessionsAreNoLongerAvailable).to_string();
             cx.notify();
             return;
         };
         self.canvas_interaction = None;
-        self.status_message = format!(
-            "Showing {} of {} sessions in Split. All sessions remain available in Canvas.",
-            selected_count, total_count
-        );
+        self.status_message = localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicShowingOfSessionsInSplitAllSessionsRemain, vec![(selected_count).to_string(), (total_count).to_string()]);
         self.error_message.clear();
         self.persist_runtime_state();
         self.sync_terminal_layout(window, cx);
@@ -2218,7 +2583,10 @@ impl TermiRustApp {
             found = true;
         }
         if !found {
-            self.error_message = "That canvas node is no longer available.".to_string();
+            self.error_message = localization::static_message(
+                termirust_ui_contract::MessageId::AgentCanvasCopyThatCanvasNodeIsNoLongerAvailable,
+            )
+            .to_string();
             cx.notify();
             return;
         }
@@ -2232,7 +2600,10 @@ impl TermiRustApp {
             focus.focus(window);
         }
         self.canvas_activity_open = false;
-        self.status_message = format!("Focused {}.", self.canvas_node_label(&node_id));
+        self.status_message = localization::dynamic_user_data_message(
+            termirust_ui_contract::MessageId::AgentCanvasDynamicFocused,
+            vec![(self.canvas_node_label(&node_id)).to_string()],
+        );
         self.error_message.clear();
         self.persist_runtime_state();
         self.sync_terminal_layout(window, cx);
@@ -2345,7 +2716,10 @@ impl TermiRustApp {
             return;
         }
         self.canvas_interaction = None;
-        self.status_message = "Canvas layout change undone.".to_string();
+        self.status_message = localization::static_message(
+            termirust_ui_contract::MessageId::AgentCanvasCopyCanvasLayoutChangeUndone,
+        )
+        .to_string();
         self.error_message.clear();
         self.persist_runtime_state();
         self.sync_terminal_layout(window, cx);
@@ -2360,7 +2734,10 @@ impl TermiRustApp {
             return;
         }
         self.canvas_interaction = None;
-        self.status_message = "Canvas layout change redone.".to_string();
+        self.status_message = localization::static_message(
+            termirust_ui_contract::MessageId::AgentCanvasCopyCanvasLayoutChangeRedone,
+        )
+        .to_string();
         self.error_message.clear();
         self.persist_runtime_state();
         self.sync_terminal_layout(window, cx);
@@ -2408,7 +2785,7 @@ impl TermiRustApp {
         {
             return;
         }
-        let delta = event.delta.pixel_delta(px(16.0));
+        let delta = event.delta.pixel_delta(px(theme::SPACE_5));
         let dx: f32 = delta.x.into();
         let dy: f32 = delta.y.into();
         if let Some(workspace) = self.workspace_mut(workspace_id) {
@@ -2546,7 +2923,10 @@ impl TermiRustApp {
             return;
         }
         self.canvas_add_menu_open = false;
-        self.status_message = "Opened a local terminal on the canvas.".to_string();
+        self.status_message = localization::static_message(
+            termirust_ui_contract::MessageId::AgentCanvasCopyOpenedALocalTerminalOnTheCanvas,
+        )
+        .to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -2606,7 +2986,10 @@ impl TermiRustApp {
             self.focus_canvas_node_terminal(node_id, window);
         }
         self.persist_runtime_state();
-        self.status_message = "Sticky note saved.".to_string();
+        self.status_message = localization::static_message(
+            termirust_ui_contract::MessageId::AgentCanvasCopyStickyNoteSaved,
+        )
+        .to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -2667,7 +3050,7 @@ impl TermiRustApp {
         self.canvas_add_menu_open = false;
         self.persist_runtime_state();
         self.status_message =
-            "Group frame added. Drag nodes into it, then move the frame to move them together."
+            localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyGroupFrameAddedDragNodesIntoItThenMoveTheFrameToMoveThemTo)
                 .to_string();
         self.error_message.clear();
         cx.notify();
@@ -2681,17 +3064,14 @@ impl TermiRustApp {
         let version = match local_tmux_version() {
             Ok(version) => version,
             Err(error) => {
-                self.error_message = format!(
-                    "Persistent Local Terminal needs tmux. {error:#}. {}",
-                    local_tmux_install_guidance()
-                );
+                self.error_message = localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicPersistentLocalTerminalNeedsTmuxError, vec![(error).to_string(), (local_tmux_install_guidance()).to_string()]);
                 cx.notify();
                 return;
             }
         };
         let Some(workspace_id) = self.active_workspace_id else {
             self.error_message =
-                "Open a Canvas workspace before adding a persistent terminal.".to_string();
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyOpenACanvasWorkspaceBeforeAddingAPersistentTerminal).to_string();
             cx.notify();
             return;
         };
@@ -2714,13 +3094,13 @@ impl TermiRustApp {
             .is_none()
         {
             self.error_message =
-                "Unable to add the persistent terminal to this canvas.".to_string();
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyUnableToAddThePersistentTerminalToThisCanvas).to_string();
             cx.notify();
             return;
         }
         self.canvas_add_menu_open = false;
         self.status_message =
-            format!("Attached persistent local tmux session {session_name} using {version}.");
+            localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicAttachedPersistentLocalTmuxSessionSessionN, vec![(session_name).to_string(), (version).to_string()]);
         self.error_message.clear();
         cx.notify();
     }
@@ -2779,7 +3159,10 @@ impl TermiRustApp {
             .find(|profile| profile.id == profile_id)
             .cloned()
         else {
-            self.error_message = "That saved host no longer exists.".to_string();
+            self.error_message = localization::static_message(
+                termirust_ui_contract::MessageId::AgentCanvasCopyThatSavedHostNoLongerExists,
+            )
+            .to_string();
             cx.notify();
             return;
         };
@@ -2795,12 +3178,15 @@ impl TermiRustApp {
             .add_request_to_canvas(request, None, window, cx)
             .is_none()
         {
-            self.error_message = "Open a Canvas workspace before adding a saved host.".to_string();
+            self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyOpenACanvasWorkspaceBeforeAddingASavedHost).to_string();
             cx.notify();
             return;
         }
         self.canvas_add_menu_open = false;
-        self.status_message = format!("Connecting to {} on the canvas...", profile.display_name());
+        self.status_message = localization::dynamic_user_data_message(
+            termirust_ui_contract::MessageId::AgentCanvasDynamicConnectingToOnTheCanvas,
+            vec![(profile.display_name()).to_string()],
+        );
         self.error_message.clear();
         cx.notify();
     }
@@ -2881,11 +3267,7 @@ impl TermiRustApp {
         self.canvas_fleet_workspace_id = Some(workspace_id);
         self.pending_canvas_fleet_disconnect = false;
         self.mark_onboarding_complete();
-        self.status_message = format!(
-            "Opening {fleet_size} SSH host{} in the {} fleet canvas...",
-            if fleet_size == 1 { "" } else { "s" },
-            group_label.trim()
-        );
+        self.status_message = localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicOpeningFleetSizeSshHostInTheFleetCanvas, vec![(fleet_size).to_string(), (if fleet_size == 1 { "" } else { "s" }).to_string(), (group_label.trim()).to_string()]);
         self.error_message.clear();
         self.persist_runtime_state();
         cx.notify();
@@ -2912,10 +3294,7 @@ impl TermiRustApp {
             .collect::<Vec<_>>();
         if profiles.is_empty() {
             self.canvas_add_menu_open = false;
-            self.status_message = format!(
-                "Every host in {} is already on this canvas.",
-                group_label.trim()
-            );
+            self.status_message = localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicEveryHostInIsAlreadyOnThisCanvas, vec![(group_label.trim()).to_string()]);
             self.error_message.clear();
             cx.notify();
             return;
@@ -2941,10 +3320,13 @@ impl TermiRustApp {
         self.canvas_fleet_open = true;
         self.canvas_fleet_workspace_id = self.active_workspace_id;
         self.pending_canvas_fleet_disconnect = false;
-        self.status_message = format!(
-            "Added {added} host{} from {} to this canvas.",
-            if added == 1 { "" } else { "s" },
-            group_label.trim()
+        self.status_message = localization::dynamic_user_data_message(
+            termirust_ui_contract::MessageId::AgentCanvasDynamicAddedAddedHostFromToThisCanvas,
+            vec![
+                (added).to_string(),
+                (if added == 1 { "" } else { "s" }).to_string(),
+                (group_label.trim()).to_string(),
+            ],
         );
         self.error_message.clear();
         cx.notify();
@@ -2975,7 +3357,7 @@ impl TermiRustApp {
     pub(super) fn pick_canvas_project_directory(&mut self, cx: &mut Context<Self>) {
         if self.canvas_project_editor_is_dirty(cx) {
             self.error_message =
-                "Save or revert the open project file before changing folders.".to_string();
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopySaveOrRevertTheOpenProjectFileBeforeChangingFolders).to_string();
             cx.notify();
             return;
         }
@@ -2985,7 +3367,10 @@ impl TermiRustApp {
             return;
         };
         if !path.is_dir() {
-            self.error_message = format!("Project folder does not exist: {}", path.display());
+            self.error_message = localization::dynamic_user_data_message(
+                termirust_ui_contract::MessageId::AgentCanvasDynamicProjectFolderDoesNotExist,
+                vec![(path.display()).to_string()],
+            );
             cx.notify();
             return;
         }
@@ -2993,17 +3378,22 @@ impl TermiRustApp {
         let directory = path.display().to_string();
         if let Some(workspace) = self.active_workspace_mut() {
             workspace.project_directory = Some(directory.clone());
-            if workspace.title == "Local Terminal" || workspace.title == "Agent Canvas" {
-                if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
-                    workspace.title = name.to_string();
-                }
+            let title_is_default = workspace.title
+                == localization::static_message(
+                    termirust_ui_contract::MessageId::AgentCanvasCopyLocalTerminal,
+                )
+                || workspace.title
+                    == localization::static_message(
+                        termirust_ui_contract::MessageId::AgentCanvasTitle,
+                    );
+            if title_is_default && let Some(name) = path.file_name().and_then(|name| name.to_str())
+            {
+                workspace.title = name.to_string();
             }
         }
         self.canvas_project_panel = None;
         self.persist_runtime_state();
-        self.status_message = format!(
-            "Project folder set to {directory}. New local terminals and agents will open there."
-        );
+        self.status_message = localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicProjectFolderSetToDirectoryNewLocalTermin, vec![(directory).to_string()]);
         self.error_message.clear();
         cx.notify();
     }
@@ -3020,7 +3410,7 @@ impl TermiRustApp {
         if self.canvas_project_panel.is_some() {
             if self.canvas_project_editor_is_dirty(cx) {
                 self.error_message =
-                    "Save or revert the open file before closing Project Files.".to_string();
+                    localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopySaveOrRevertTheOpenFileBeforeClosingProjectFiles).to_string();
                 cx.notify();
                 return;
             }
@@ -3037,14 +3427,14 @@ impl TermiRustApp {
             })
         else {
             self.error_message =
-                "Choose a Project Folder before opening local project files.".to_string();
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyChooseAProjectFolderBeforeOpeningLocalProjectFiles).to_string();
             cx.notify();
             return;
         };
         let root = match PathBuf::from(project_directory).canonicalize() {
             Ok(path) => path,
             Err(error) => {
-                self.error_message = format!("Unable to open project folder: {error}");
+                self.error_message = localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicUnableToOpenProjectFolderError, vec![(error).to_string()]);
                 cx.notify();
                 return;
             }
@@ -3075,7 +3465,10 @@ impl TermiRustApp {
         self.canvas_links_open = false;
         self.worktree_manager_open = false;
         self.error_message.clear();
-        self.status_message = "Opened local project files.".to_string();
+        self.status_message = localization::static_message(
+            termirust_ui_contract::MessageId::AgentCanvasCopyOpenedLocalProjectFiles,
+        )
+        .to_string();
         cx.notify();
     }
 
@@ -3094,7 +3487,10 @@ impl TermiRustApp {
         (panel.git_status, panel.git_diff) =
             canvas_project_git_snapshot(&panel.root, panel.selected_file.as_deref());
         self.error_message.clear();
-        self.status_message = "Project files and Git status refreshed.".to_string();
+        self.status_message = localization::static_message(
+            termirust_ui_contract::MessageId::AgentCanvasCopyProjectFilesAndGitStatusRefreshed,
+        )
+        .to_string();
         cx.notify();
     }
 
@@ -3106,7 +3502,7 @@ impl TermiRustApp {
     ) {
         if self.canvas_project_editor_is_dirty(cx) {
             self.error_message =
-                "Save or revert the open file before selecting another path.".to_string();
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopySaveOrRevertTheOpenFileBeforeSelectingAnotherPath).to_string();
             cx.notify();
             return;
         }
@@ -3137,7 +3533,10 @@ impl TermiRustApp {
                     canvas_project_git_snapshot(&panel.root, panel.selected_file.as_deref());
                 Self::set_input_value(&self.canvas_project_editor_input, contents, window, cx);
                 self.error_message.clear();
-                self.status_message = "Opened project file.".to_string();
+                self.status_message = localization::static_message(
+                    termirust_ui_contract::MessageId::AgentCanvasCopyOpenedProjectFile,
+                )
+                .to_string();
             }
             Err(error) => self.error_message = error.to_string(),
         }
@@ -3173,10 +3572,7 @@ impl TermiRustApp {
         };
         match read_canvas_project_file(&root, &path) {
             Ok(on_disk) if on_disk != original_contents => {
-                self.error_message = format!(
-                    "{} changed on disk. Reopen it before saving so external agent changes are not overwritten.",
-                    path.display()
-                );
+                self.error_message = localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicChangedOnDiskReopenItBeforeSavingSoExter, vec![(path.display()).to_string()]);
                 cx.notify();
                 return;
             }
@@ -3194,7 +3590,10 @@ impl TermiRustApp {
                     (panel.git_status, panel.git_diff) =
                         canvas_project_git_snapshot(&panel.root, panel.selected_file.as_deref());
                 }
-                self.status_message = format!("Saved {}.", path.display());
+                self.status_message = localization::dynamic_user_data_message(
+                    termirust_ui_contract::MessageId::AgentCanvasDynamicSaved,
+                    vec![(path.display()).to_string()],
+                );
                 self.error_message.clear();
             }
             Err(error) => self.error_message = error.to_string(),
@@ -3211,7 +3610,10 @@ impl TermiRustApp {
             return;
         };
         Self::set_input_value(&self.canvas_project_editor_input, contents, window, cx);
-        self.status_message = "Reverted unsaved editor changes.".to_string();
+        self.status_message = localization::static_message(
+            termirust_ui_contract::MessageId::AgentCanvasCopyRevertedUnsavedEditorChanges,
+        )
+        .to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -3226,7 +3628,10 @@ impl TermiRustApp {
             return;
         };
         cx.write_to_clipboard(ClipboardItem::new_string(diff));
-        self.status_message = "Copied the selected file diff.".to_string();
+        self.status_message = localization::static_message(
+            termirust_ui_contract::MessageId::AgentCanvasCopyCopiedTheSelectedFileDiff,
+        )
+        .to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -3238,7 +3643,10 @@ impl TermiRustApp {
             return;
         };
         if !path.is_dir() {
-            self.error_message = format!("Working directory does not exist: {}", path.display());
+            self.error_message = localization::dynamic_user_data_message(
+                termirust_ui_contract::MessageId::AgentCanvasDynamicWorkingDirectoryDoesNotExist,
+                vec![(path.display()).to_string()],
+            );
             cx.notify();
             return;
         }
@@ -3345,7 +3753,7 @@ impl TermiRustApp {
                 )
             {
                 self.error_message =
-                    "Structured mode is available for Codex, Claude Code, and Gemini CLI."
+                    localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyStructuredModeIsAvailableForCodexClaudeCodeAndGeminiCli)
                         .to_string();
                 cx.notify();
                 return;
@@ -3515,7 +3923,7 @@ impl TermiRustApp {
                     let Some(source_directory) = launch.working_directory.as_deref() else {
                         self.agent_creation = Some(state);
                         self.error_message =
-                            "Choose a Git repository before creating an isolated worktree."
+                            localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyChooseAGitRepositoryBeforeCreatingAnIsolatedWorktree)
                                 .to_string();
                         cx.notify();
                         return;
@@ -3551,9 +3959,7 @@ impl TermiRustApp {
                         Ok(launch) => launch,
                         Err(error) => {
                             self.agent_creation = Some(state);
-                            self.error_message = format!(
-                                "The isolated worktree was kept, but the agent could not launch: {error}"
-                            );
+                            self.error_message = localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicTheIsolatedWorktreeWasKeptButTheAgentCou, vec![(error).to_string()]);
                             cx.notify();
                             return;
                         }
@@ -3589,7 +3995,7 @@ impl TermiRustApp {
                 }
                 let Some(program) = launch.executable.to_str().map(ToString::to_string) else {
                     self.agent_creation = Some(state);
-                    self.error_message = "Agent executable path is not valid UTF-8.".to_string();
+                    self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyAgentExecutablePathIsNotValidUtf8).to_string();
                     cx.notify();
                     return;
                 };
@@ -3607,7 +4013,7 @@ impl TermiRustApp {
             AgentLocation::SavedHost { profile_id } => {
                 if definition.worktree == SavedWorktreePolicy::Isolated {
                     self.agent_creation = Some(state);
-                    self.error_message = "Remote worktree creation is not automatic. Choose Shared directory or Read only for this host.".to_string();
+                    self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyRemoteWorktreeCreationIsNotAutomaticChooseSharedDirectoryOrRea).to_string();
                     cx.notify();
                     return;
                 }
@@ -3619,7 +4025,7 @@ impl TermiRustApp {
                     .cloned()
                 else {
                     self.agent_creation = Some(state);
-                    self.error_message = "The selected remote host no longer exists.".to_string();
+                    self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyTheSelectedRemoteHostNoLongerExists).to_string();
                     cx.notify();
                     return;
                 };
@@ -3671,12 +4077,15 @@ impl TermiRustApp {
             .is_none()
         {
             self.agent_creation = Some(state);
-            self.error_message = "Open a Canvas workspace before launching an agent.".to_string();
+            self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyOpenACanvasWorkspaceBeforeLaunchingAnAgent).to_string();
             cx.notify();
             return;
         }
         self.canvas_add_menu_open = false;
-        self.status_message = format!("Launching {}...", definition.provider.label());
+        self.status_message = localization::dynamic_user_data_message(
+            termirust_ui_contract::MessageId::AgentCanvasDynamicLaunching,
+            vec![(definition.provider.label()).to_string()],
+        );
         self.error_message.clear();
         cx.notify();
     }
@@ -3699,16 +4108,13 @@ impl TermiRustApp {
                 else {
                     self.agent_creation = Some(creation);
                     self.error_message =
-                        "Choose a Git repository or working directory.".to_string();
+                        localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyChooseAGitRepositoryOrWorkingDirectory).to_string();
                     cx.notify();
                     return;
                 };
                 if !working_directory.is_dir() {
                     self.agent_creation = Some(creation);
-                    self.error_message = format!(
-                        "Working directory does not exist: {}",
-                        working_directory.display()
-                    );
+                    self.error_message = localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicWorkingDirectoryDoesNotExist, vec![(working_directory.display()).to_string()]);
                     cx.notify();
                     return;
                 }
@@ -3746,7 +4152,7 @@ impl TermiRustApp {
                 if definition.worktree == SavedWorktreePolicy::Isolated =>
             {
                 self.agent_creation = Some(creation);
-                self.error_message = "Automatic isolated worktrees are local-only. Choose Shared directory or Read only for the remote host.".to_string();
+                self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyAutomaticIsolatedWorktreesAreLocalOnlyChooseSharedDirectoryOrR).to_string();
                 cx.notify();
                 return;
             }
@@ -3765,7 +4171,7 @@ impl TermiRustApp {
         };
         let Some(workspace_id) = self.active_workspace_id else {
             self.agent_creation = Some(creation);
-            self.error_message = "Open a Canvas workspace before launching an agent.".to_string();
+            self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyOpenACanvasWorkspaceBeforeLaunchingAnAgent).to_string();
             cx.notify();
             return;
         };
@@ -3796,7 +4202,7 @@ impl TermiRustApp {
             ),
         );
         self.canvas_add_menu_open = false;
-        self.status_message = format!("Starting structured {provider_label} session...");
+        self.status_message = localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicStartingStructuredProviderLabelSession, vec![(provider_label).to_string()]);
         self.error_message.clear();
         self.persist_runtime_state();
         cx.notify();
@@ -4181,7 +4587,10 @@ impl TermiRustApp {
         };
         cx.write_to_clipboard(ClipboardItem::new_string(text));
         self.status_message = if copied_selection {
-            "Agent selection copied.".to_string()
+            localization::static_message(
+                termirust_ui_contract::MessageId::AgentCanvasCopyAgentSelectionCopied,
+            )
+            .to_string()
         } else {
             "Agent output copied.".to_string()
         };
@@ -4209,7 +4618,7 @@ impl TermiRustApp {
             })
         });
         let Some(definition) = definition else {
-            self.error_message = "The structured agent definition is unavailable.".to_string();
+            self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyTheStructuredAgentDefinitionIsUnavailable).to_string();
             cx.notify();
             return;
         };
@@ -4221,10 +4630,18 @@ impl TermiRustApp {
                     node_id,
                     StructuredAgentRuntime::new(handle, None, transcript_focus),
                 );
-                self.status_message = "Structured agent restarted.".to_string();
+                self.status_message = localization::static_message(
+                    termirust_ui_contract::MessageId::AgentCanvasCopyStructuredAgentRestarted,
+                )
+                .to_string();
                 self.error_message.clear();
             }
-            Err(error) => self.error_message = format!("Unable to restart agent: {error:#}"),
+            Err(error) => {
+                self.error_message = localization::dynamic_user_data_message(
+                    termirust_ui_contract::MessageId::AgentCanvasDynamicUnableToRestartAgentError,
+                    vec![(error).to_string()],
+                )
+            }
         }
         cx.notify();
     }
@@ -4277,7 +4694,7 @@ impl TermiRustApp {
         }
         self.persist_runtime_state();
         self.status_message = if orchestration_workspace_closed {
-            "Structured agent closed and its dependency run stopped. Its worktree was kept."
+            localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyStructuredAgentClosedAndItsDependencyRunStoppedItsWorktreeWasK)
                 .to_string()
         } else {
             "Structured agent closed. Its worktree was kept.".to_string()
@@ -4296,11 +4713,21 @@ impl TermiRustApp {
                 .node(&node_id)
                 .and_then(|node| match node.kind {
                     CanvasNodeKind::Note { .. } => Some((
-                        node.title.clone().unwrap_or_else(|| "Note".to_string()),
+                        node.title.clone().unwrap_or_else(|| {
+                            localization::static_message(
+                                termirust_ui_contract::MessageId::AgentCanvasCopyNote,
+                            )
+                            .to_string()
+                        }),
                         true,
                     )),
                     CanvasNodeKind::Group { .. } => Some((
-                        node.title.clone().unwrap_or_else(|| "Group".to_string()),
+                        node.title.clone().unwrap_or_else(|| {
+                            localization::static_message(
+                                termirust_ui_contract::MessageId::HostEditorGroupField,
+                            )
+                            .to_string()
+                        }),
                         false,
                     )),
                     _ => None,
@@ -4334,7 +4761,10 @@ impl TermiRustApp {
             .take_if(|source| source == &pending.node_id);
         self.persist_runtime_state();
         self.status_message = if pending.is_note {
-            format!("Deleted note {}.", pending.title)
+            localization::dynamic_user_data_message(
+                termirust_ui_contract::MessageId::AgentCanvasDynamicDeletedNote,
+                vec![(pending.title).to_string()],
+            )
         } else {
             format!("Removed group {}. Its nodes were kept.", pending.title)
         };
@@ -4437,7 +4867,7 @@ impl TermiRustApp {
             self.pending_dependency_source = None;
             self.pending_context_source = Some(node_id);
             self.status_message =
-                "Context source selected. Use the link action on a target node.".to_string();
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyContextSourceSelectedUseTheLinkActionOnATargetNode).to_string();
             self.error_message.clear();
             cx.notify();
             return;
@@ -4458,7 +4888,7 @@ impl TermiRustApp {
         match result {
             Ok(_) => {
                 self.status_message =
-                    "Context link created. Select the target and choose Review context."
+                    localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyContextLinkCreatedSelectTheTargetAndChooseReviewContext)
                         .to_string();
                 self.error_message.clear();
                 self.persist_runtime_state();
@@ -4473,7 +4903,7 @@ impl TermiRustApp {
             self.pending_context_source = None;
             self.pending_dependency_source = Some(node_id);
             self.status_message =
-                "Dependency source selected. Choose the node that must run after it.".to_string();
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDependencySourceSelectedChooseTheNodeThatMustRunAfterIt).to_string();
             self.error_message.clear();
             cx.notify();
             return;
@@ -4494,7 +4924,7 @@ impl TermiRustApp {
         match result {
             Ok(_) => {
                 self.status_message = if self.stop_active_workspace_orchestration() {
-                    "Dependency created. Dependency scheduling stopped; active agent turns continue."
+                    localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDependencyCreatedDependencySchedulingStoppedActiveAgentTurnsCont)
                         .to_string()
                 } else {
                     "Dependency created.".to_string()
@@ -4509,14 +4939,20 @@ impl TermiRustApp {
 
     fn cancel_canvas_dependency_link(&mut self, cx: &mut Context<Self>) {
         self.pending_dependency_source = None;
-        self.status_message = "Dependency creation cancelled.".to_string();
+        self.status_message = localization::static_message(
+            termirust_ui_contract::MessageId::AgentCanvasCopyDependencyCreationCancelled,
+        )
+        .to_string();
         self.error_message.clear();
         cx.notify();
     }
 
     fn cancel_canvas_context_link(&mut self, cx: &mut Context<Self>) {
         self.pending_context_source = None;
-        self.status_message = "Context link creation cancelled.".to_string();
+        self.status_message = localization::static_message(
+            termirust_ui_contract::MessageId::AgentCanvasCopyContextLinkCreationCancelled,
+        )
+        .to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -4546,7 +4982,10 @@ impl TermiRustApp {
             .trim()
             .to_string();
         if prompt.is_empty() {
-            self.error_message = "Enter a task before queuing it.".to_string();
+            self.error_message = localization::static_message(
+                termirust_ui_contract::MessageId::AgentCanvasCopyEnterATaskBeforeQueuingIt,
+            )
+            .to_string();
             cx.notify();
             return;
         }
@@ -4556,7 +4995,7 @@ impl TermiRustApp {
             .and_then(|runtime| agent_state_after_queue(runtime.state))
         else {
             self.error_message =
-                "Wait for the active turn to finish or restart the disconnected agent before queuing a task."
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyWaitForTheActiveTurnToFinishOrRestartTheDisconnectedAgentBef)
                     .to_string();
             cx.notify();
             return;
@@ -4567,7 +5006,7 @@ impl TermiRustApp {
             runtime.diagnostic = None;
             runtime.approval = None;
             Self::set_input_value(&self.shell_inputs.structured_agent_prompt, "", window, cx);
-            self.status_message = "Task queued for dependency orchestration.".to_string();
+            self.status_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyTaskQueuedForDependencyOrchestration).to_string();
             self.error_message.clear();
         }
         cx.notify();
@@ -4575,7 +5014,7 @@ impl TermiRustApp {
 
     fn start_dependency_orchestration(&mut self, cx: &mut Context<Self>) {
         let Some(workspace_id) = self.active_workspace_id else {
-            self.error_message = "Open a Canvas workspace before running dependencies.".to_string();
+            self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyOpenACanvasWorkspaceBeforeRunningDependencies).to_string();
             cx.notify();
             return;
         };
@@ -4584,7 +5023,7 @@ impl TermiRustApp {
             .is_some_and(|running_workspace_id| running_workspace_id != workspace_id)
         {
             self.error_message =
-                "Another workspace already has an active dependency run.".to_string();
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyAnotherWorkspaceAlreadyHasAnActiveDependencyRun).to_string();
             cx.notify();
             return;
         }
@@ -4614,7 +5053,7 @@ impl TermiRustApp {
             && self.orchestration_workspace_id == Some(workspace_id)
         {
             self.status_message =
-                "No queued task is ready. Check dependency states and queued prompts.".to_string();
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyNoQueuedTaskIsReadyCheckDependencyStatesAndQueuedPrompts).to_string();
         }
         cx.notify();
     }
@@ -4640,7 +5079,7 @@ impl TermiRustApp {
             let schedule = schedule_dependency_dag(&agents, &edges, 2);
             if schedule.cycle_detected {
                 self.error_message =
-                    "Dependency graph contains a cycle and cannot run.".to_string();
+                    localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDependencyGraphContainsACycleAndCannotRun).to_string();
                 self.orchestration_workspace_id = None;
                 return false;
             }
@@ -4710,12 +5149,18 @@ impl TermiRustApp {
         if !pending && !running {
             self.orchestration_workspace_id = None;
             self.status_message = if blocked_count == 0 {
-                "Dependency run finished.".to_string()
+                localization::static_message(
+                    termirust_ui_contract::MessageId::AgentCanvasCopyDependencyRunFinished,
+                )
+                .to_string()
             } else {
                 format!("Dependency run finished with {blocked_count} blocked task(s).")
             };
         } else if dispatched {
-            self.status_message = "Dependency run started ready tasks.".to_string();
+            self.status_message = localization::static_message(
+                termirust_ui_contract::MessageId::AgentCanvasCopyDependencyRunStartedReadyTasks,
+            )
+            .to_string();
         }
         dispatched
     }
@@ -4729,7 +5174,10 @@ impl TermiRustApp {
             return;
         };
         let Some(target) = workspace.canvas.selected_node_id.clone() else {
-            self.error_message = "Select a target node first.".to_string();
+            self.error_message = localization::static_message(
+                termirust_ui_contract::MessageId::AgentCanvasCopySelectATargetNodeFirst,
+            )
+            .to_string();
             cx.notify();
             return;
         };
@@ -4743,7 +5191,7 @@ impl TermiRustApp {
             .cloned()
         else {
             self.error_message =
-                "The selected node has no incoming context link. Link a source to it first."
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyTheSelectedNodeHasNoIncomingContextLinkLinkASourceToItFirst)
                     .to_string();
             cx.notify();
             return;
@@ -4835,7 +5283,7 @@ impl TermiRustApp {
                 .map(|edge| edge.source.clone())
         });
         let Some(edge_source) = edge_source else {
-            self.error_message = "The reviewed context link no longer exists.".to_string();
+            self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyTheReviewedContextLinkNoLongerExists).to_string();
             cx.notify();
             return;
         };
@@ -4856,11 +5304,7 @@ impl TermiRustApp {
             .and_then(|edge| edge.context_policy.clone())
             .unwrap_or_default();
         if text.len() > policy.max_bytes {
-            self.error_message = format!(
-                "Reviewed context is {} bytes; this link allows at most {} bytes.",
-                text.len(),
-                policy.max_bytes
-            );
+            self.error_message = localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicReviewedContextIsBytesThisLinkAllowsAtMo, vec![(text.len()).to_string(), (policy.max_bytes).to_string()]);
             cx.notify();
             return;
         }
@@ -4870,7 +5314,7 @@ impl TermiRustApp {
                 cx.notify();
                 return;
             }
-            self.status_message = "Reviewed context sent to the structured agent.".to_string();
+            self.status_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyReviewedContextSentToTheStructuredAgent).to_string();
         } else {
             let target_pane_id = self.active_workspace().and_then(|workspace| {
                 workspace
@@ -4881,13 +5325,16 @@ impl TermiRustApp {
                     .and_then(|node| node.kind.pane_id())
             });
             let Some(pane_id) = target_pane_id else {
-                self.error_message = "The target agent is not running.".to_string();
+                self.error_message = localization::static_message(
+                    termirust_ui_contract::MessageId::AgentCanvasCopyTheTargetAgentIsNotRunning,
+                )
+                .to_string();
                 cx.notify();
                 return;
             };
             self.pending_paste = Some(super::PendingPaste { pane_id, text });
             self.status_message =
-                "Context is ready. Confirm the guarded paste to deliver it.".to_string();
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyContextIsReadyConfirmTheGuardedPasteToDeliverIt).to_string();
         }
         self.context_handoff_review = None;
         self.error_message.clear();
@@ -4936,13 +5383,13 @@ impl TermiRustApp {
             .id("canvas-add-menu")
             .debug_selector(|| "canvas-add-menu".to_string())
             .absolute()
-            .top(px(10.0))
-            .left(px(12.0))
-            .w(px(300.0))
+            .top(px(theme::TYPE_NANO_SIZE))
+            .left(px(theme::TYPE_CAPTION_SIZE))
+            .w(px(theme::CANVAS_COMPACT_PANEL_WIDTH))
             .max_w(relative(0.9))
             .max_h(relative(0.92))
             .overflow_hidden()
-            .rounded(px(7.0))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
             .border_color(theme::border_dark())
             .bg(theme::library_card())
@@ -4955,7 +5402,7 @@ impl TermiRustApp {
             })
             .child(
                 h_flex()
-                    .h(px(40.0))
+                    .h(px(theme::CANVAS_CONTROL_HEIGHT))
                     .px_3()
                     .items_center()
                     .justify_between()
@@ -4963,17 +5410,17 @@ impl TermiRustApp {
                     .border_color(theme::border_dark())
                     .child(
                         div()
-                            .text_size(px(12.0))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
-                            .child("Add to canvas"),
+                            .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyAddToCanvas2)),
                     )
                     .child(
                         Button::new("canvas-add-close")
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Close")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::CommonClose))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.canvas_add_menu_open = false;
                                 cx.notify();
@@ -4994,7 +5441,7 @@ impl TermiRustApp {
                             .w_full()
                             .justify_start()
                             .icon(IconName::SquareTerminal)
-                            .label("Local Terminal")
+                            .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyLocalTerminal))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.add_local_terminal_to_canvas(window, cx);
                             })),
@@ -5006,9 +5453,9 @@ impl TermiRustApp {
                             .w_full()
                             .justify_start()
                             .icon(IconName::Redo2)
-                            .label("Persistent Local Terminal")
+                            .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyPersistentLocalTerminal))
                             .tooltip(
-                                "Attach or create a local tmux session that survives closing TermiRust",
+                                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyAttachOrCreateALocalTmuxSessionThatSurvivesClosingTermirust),
                             )
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.add_persistent_local_terminal_to_canvas(window, cx);
@@ -5020,10 +5467,10 @@ impl TermiRustApp {
                                 .px_2()
                                 .pt_2()
                                 .pb_1()
-                                .text_size(px(10.0))
+                                .text_size(px(theme::TYPE_NANO_SIZE))
                                 .font_semibold()
                                 .text_color(theme::text_muted())
-                                .child("HOST GROUPS"),
+                                .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyHostGroups)),
                         )
                     })
                     .children(host_groups.into_iter().enumerate().map(
@@ -5037,10 +5484,8 @@ impl TermiRustApp {
                                 .w_full()
                                 .justify_start()
                                 .icon(IconName::Globe)
-                                .label(format!("{group_label} ({host_count})"))
-                                .tooltip(format!(
-                                    "Connect every host in {group_label} that is not already on this canvas"
-                                ))
+                                .label(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicGroupLabelHostCount, vec![(group_label).to_string(), (host_count).to_string()]))
+                                .tooltip(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicConnectEveryHostInGroupLabelThatIsNotAl, vec![(group_label).to_string()]))
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     this.add_saved_host_group_to_canvas(
                                         &add_group_label,
@@ -5055,10 +5500,10 @@ impl TermiRustApp {
                             .px_2()
                             .pt_2()
                             .pb_1()
-                            .text_size(px(10.0))
+                            .text_size(px(theme::TYPE_NANO_SIZE))
                             .font_semibold()
                             .text_color(theme::text_muted())
-                            .child("ORGANIZE"),
+                            .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyOrganize)),
                     )
                     .child(
                         Button::new("canvas-add-note")
@@ -5067,8 +5512,8 @@ impl TermiRustApp {
                             .w_full()
                             .justify_start()
                             .icon(IconName::File)
-                            .label("Sticky Note")
-                            .tooltip("Add editable context that can be linked to an agent")
+                            .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyStickyNote))
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyAddEditableContextThatCanBeLinkedToAnAgent))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.add_note_to_canvas(window, cx);
                             })),
@@ -5080,8 +5525,8 @@ impl TermiRustApp {
                             .w_full()
                             .justify_start()
                             .icon(IconName::Frame)
-                            .label("Group Frame")
-                            .tooltip("Drag nodes into a frame and move them together")
+                            .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyGroupFrame))
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDragNodesIntoAFrameAndMoveThemTogether))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.add_group_to_canvas(window, cx);
                             })),
@@ -5091,10 +5536,10 @@ impl TermiRustApp {
                             .px_2()
                             .pt_2()
                             .pb_1()
-                            .text_size(px(10.0))
+                            .text_size(px(theme::TYPE_NANO_SIZE))
                             .font_semibold()
                             .text_color(theme::text_muted())
-                            .child("CODING AGENTS"),
+                            .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCodingAgents)),
                     )
                     .children(
                         [
@@ -5124,10 +5569,10 @@ impl TermiRustApp {
                                 .px_2()
                                 .pt_2()
                                 .pb_1()
-                                .text_size(px(10.0))
+                                .text_size(px(theme::TYPE_NANO_SIZE))
                                 .font_semibold()
                                 .text_color(theme::text_muted())
-                                .child("SAVED HOSTS"),
+                                .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopySavedHosts)),
                         )
                     })
                     .children(profiles.into_iter().enumerate().map(|(index, profile)| {
@@ -5198,20 +5643,20 @@ impl TermiRustApp {
         v_flex()
             .id("agent-creation-panel")
             .absolute()
-            .top(px(10.0))
-            .left(px(12.0))
-            .w(px(520.0))
+            .top(px(theme::TYPE_NANO_SIZE))
+            .left(px(theme::TYPE_CAPTION_SIZE))
+            .w(px(theme::CANVAS_PROJECT_PANEL_WIDTH))
             .max_w(relative(0.9))
             .max_h(relative(0.92))
             .overflow_hidden()
-            .rounded(px(7.0))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
             .border_color(theme::border_dark())
             .bg(theme::library_card())
             .shadow_lg()
             .child(
                 h_flex()
-                    .h(px(44.0))
+                    .h(px(theme::CANVAS_TOOLBAR_HEIGHT))
                     .px_3()
                     .items_center()
                     .justify_between()
@@ -5223,15 +5668,15 @@ impl TermiRustApp {
                             .items_center()
                             .child(
                                 Icon::new(IconName::Bot)
-                                    .size(px(15.0))
+                                    .size(px(theme::CANVAS_COMPACT_ICON_SIZE))
                                     .text_color(theme::accent()),
                             )
                             .child(
                                 div()
-                                    .text_size(px(13.0))
+                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_main())
-                                    .child("New agent"),
+                                    .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyNewAgent)),
                             ),
                     )
                     .child(
@@ -5239,7 +5684,7 @@ impl TermiRustApp {
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Close")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::CommonClose))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.agent_creation = None;
                                 cx.notify();
@@ -5259,10 +5704,10 @@ impl TermiRustApp {
                             .gap_1()
                             .child(
                                 div()
-                                    .text_size(px(11.0))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_muted())
-                                    .child("Provider"),
+                                    .child(localization::static_message(termirust_ui_contract::MessageId::SessionResumeProviderField)),
                             )
                             .child(
                                 h_flex().gap_1().children(
@@ -5294,10 +5739,10 @@ impl TermiRustApp {
                             .gap_1()
                             .child(
                                 div()
-                                    .text_size(px(11.0))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_muted())
-                                    .child("Experience"),
+                                    .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyExperience)),
                             )
                             .child(
                                 h_flex()
@@ -5312,7 +5757,7 @@ impl TermiRustApp {
                                                 backend == AgentBackendKind::InteractivePty,
                                                 cx,
                                             ))
-                                            .label("Interactive terminal")
+                                            .label(localization::static_message(termirust_ui_contract::MessageId::RuntimeCapabilityInteractive))
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.set_agent_backend(
                                                     AgentBackendKind::InteractivePty,
@@ -5330,7 +5775,7 @@ impl TermiRustApp {
                                                 backend == AgentBackendKind::Structured,
                                                 cx,
                                             ))
-                                            .label("Structured")
+                                            .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyStructured))
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.set_agent_backend(
                                                     AgentBackendKind::Structured,
@@ -5345,10 +5790,10 @@ impl TermiRustApp {
                             .gap_1()
                             .child(
                                 div()
-                                    .text_size(px(11.0))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_muted())
-                                    .child("Runs on"),
+                                    .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyRunsOn)),
                             )
                             .child(
                                 h_flex()
@@ -5360,7 +5805,7 @@ impl TermiRustApp {
                                                 matches!(location, AgentLocation::Local),
                                                 cx,
                                             ))
-                                            .label("Local")
+                                            .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyLocal))
                                             .on_click(cx.listener(|this, _, _, cx| {
                                                 this.set_agent_creation_location(
                                                     AgentLocation::Local,
@@ -5397,10 +5842,10 @@ impl TermiRustApp {
                             .gap_1()
                             .child(
                                 div()
-                                    .text_size(px(11.0))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_muted())
-                                    .child("Working directory"),
+                                    .child(localization::static_message(termirust_ui_contract::MessageId::PresetWorkingDirectoryField)),
                             )
                             .child(
                                 h_flex()
@@ -5417,8 +5862,8 @@ impl TermiRustApp {
                                             .small()
                                             .ghost()
                                             .icon(IconName::FolderOpen)
-                                            .label("Browse")
-                                            .tooltip("Choose the agent working directory")
+                                            .label(localization::static_message(termirust_ui_contract::MessageId::CommonBrowse))
+                                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyChooseTheAgentWorkingDirectory))
                                             .on_click(cx.listener(|this, _, window, cx| {
                                                 this.pick_agent_working_directory(window, cx);
                                             })),
@@ -5431,10 +5876,10 @@ impl TermiRustApp {
                                 .gap_1()
                                 .child(
                                     div()
-                                        .text_size(px(11.0))
+                                        .text_size(px(theme::TYPE_MICRO_SIZE))
                                         .font_semibold()
                                         .text_color(theme::text_muted())
-                                        .child("Executable"),
+                                        .child(localization::static_message(termirust_ui_contract::MessageId::PresetExecutableField)),
                                 )
                                 .child(Input::new(&self.shell_inputs.agent_executable).small()),
                         )
@@ -5444,10 +5889,10 @@ impl TermiRustApp {
                             .gap_1()
                             .child(
                                 div()
-                                    .text_size(px(11.0))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_muted())
-                                    .child("Arguments"),
+                                    .child(localization::static_message(termirust_ui_contract::MessageId::PresetArgumentsField)),
                             )
                             .child(Input::new(&self.shell_inputs.agent_arguments)),
                     )
@@ -5456,10 +5901,10 @@ impl TermiRustApp {
                             .gap_1()
                             .child(
                                 div()
-                                    .text_size(px(11.0))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_muted())
-                                    .child("Initial prompt"),
+                                    .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyInitialPrompt)),
                             )
                             .child(Input::new(&self.shell_inputs.agent_initial_prompt)),
                     )
@@ -5468,10 +5913,10 @@ impl TermiRustApp {
                             .gap_1()
                             .child(
                                 div()
-                                    .text_size(px(11.0))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_muted())
-                                    .child("Permission policy"),
+                                    .child(localization::static_message(termirust_ui_contract::MessageId::PresetPermissionField)),
                             )
                             .child(
                                 h_flex().gap_1().children(
@@ -5504,10 +5949,10 @@ impl TermiRustApp {
                             .gap_1()
                             .child(
                                 div()
-                                    .text_size(px(11.0))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_muted())
-                                    .child("Repository isolation"),
+                                    .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyRepositoryIsolation)),
                             )
                             .child(
                                 h_flex().gap_1().children(
@@ -5542,7 +5987,7 @@ impl TermiRustApp {
                             .child(
                                 div()
                                     .flex_1()
-                                    .text_size(px(10.0))
+                                    .text_size(px(theme::TYPE_NANO_SIZE))
                                     .text_color(theme::text_muted())
                                     .child(status_text),
                             )
@@ -5550,7 +5995,7 @@ impl TermiRustApp {
                                 Button::new("agent-check-executable")
                                     .xsmall()
                                     .ghost()
-                                    .label("Check again")
+                                    .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCheckAgain))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.check_agent_executable(cx);
                                     })),
@@ -5563,7 +6008,7 @@ impl TermiRustApp {
                                 .small()
                                 .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                                 .icon(IconName::ArrowRight)
-                                .label("Launch Agent")
+                                .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyLaunchAgent))
                                 .disabled(!can_launch)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.launch_agent_creation(window, cx);
@@ -5616,7 +6061,7 @@ impl TermiRustApp {
             && self.canvas_project_editor_is_dirty(cx)
         {
             self.error_message =
-                "Save or revert the open project file before opening Agent Activity.".to_string();
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopySaveOrRevertTheOpenProjectFileBeforeOpeningAgentActivity).to_string();
             cx.notify();
             return;
         }
@@ -5736,7 +6181,10 @@ impl TermiRustApp {
             .map(|pane| pane.pane_id)
             .collect::<Vec<_>>();
         if pane_ids.is_empty() {
-            self.status_message = "Every fleet host is already connected.".to_string();
+            self.status_message = localization::static_message(
+                termirust_ui_contract::MessageId::AgentCanvasCopyEveryFleetHostIsAlreadyConnected,
+            )
+            .to_string();
             self.error_message.clear();
             cx.notify();
             return;
@@ -5745,9 +6193,12 @@ impl TermiRustApp {
         for pane_id in pane_ids {
             self.reconnect_pane(pane_id, window, cx);
         }
-        self.status_message = format!(
-            "Reconnecting {count} fleet host{}...",
-            if count == 1 { "" } else { "s" }
+        self.status_message = localization::dynamic_user_data_message(
+            termirust_ui_contract::MessageId::AgentCanvasDynamicReconnectingCountFleetHost,
+            vec![
+                (count).to_string(),
+                (if count == 1 { "" } else { "s" }).to_string(),
+            ],
         );
         self.error_message.clear();
         cx.notify();
@@ -5773,10 +6224,13 @@ impl TermiRustApp {
         if self.disconnect_canvas_fleet_pane(pane_id) {
             self.persist_runtime_state();
             self.status_message =
-                "Disconnected the SSH client; its canvas node was kept.".to_string();
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDisconnectedTheSshClientItsCanvasNodeWasKept).to_string();
             self.error_message.clear();
         } else {
-            self.status_message = "That fleet host is already disconnected.".to_string();
+            self.status_message = localization::static_message(
+                termirust_ui_contract::MessageId::AgentCanvasCopyThatFleetHostIsAlreadyDisconnected,
+            )
+            .to_string();
         }
         cx.notify();
     }
@@ -5800,7 +6254,7 @@ impl TermiRustApp {
         self.pending_canvas_fleet_disconnect = false;
         self.persist_runtime_state();
         self.status_message = if disconnected == 0 {
-            "Every fleet host is already disconnected.".to_string()
+            localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyEveryFleetHostIsAlreadyDisconnected).to_string()
         } else {
             format!(
                 "Disconnected {disconnected} fleet host{}. Persistent tmux sessions remain on their hosts.",
@@ -5850,8 +6304,14 @@ impl TermiRustApp {
                         CanvasNodeKind::Agent { definition, .. } => {
                             definition.provider.label().to_string()
                         }
-                        CanvasNodeKind::Note { .. } => "Note".to_string(),
-                        CanvasNodeKind::Group { .. } => "Group".to_string(),
+                        CanvasNodeKind::Note { .. } => localization::static_message(
+                            termirust_ui_contract::MessageId::AgentCanvasCopyNote,
+                        )
+                        .to_string(),
+                        CanvasNodeKind::Group { .. } => localization::static_message(
+                            termirust_ui_contract::MessageId::HostEditorGroupField,
+                        )
+                        .to_string(),
                     })
             })
             .unwrap_or_else(|| "Unknown node".to_string())
@@ -5885,7 +6345,10 @@ impl TermiRustApp {
             ..
         } = decision
         else {
-            self.error_message = "That canvas link no longer exists.".to_string();
+            self.error_message = localization::static_message(
+                termirust_ui_contract::MessageId::AgentCanvasCopyThatCanvasLinkNoLongerExists,
+            )
+            .to_string();
             cx.notify();
             return;
         };
@@ -5895,11 +6358,11 @@ impl TermiRustApp {
         self.persist_runtime_state();
         let scheduling_stopped = dependency_changed && self.stop_active_workspace_orchestration();
         self.status_message = if scheduling_stopped {
-            "Dependency changed. Dependency scheduling stopped; active agent turns continue."
+            localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDependencyChangedDependencySchedulingStoppedActiveAgentTurnsCont)
         } else if enabled {
-            "Canvas link enabled."
+            localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCanvasLinkEnabled)
         } else {
-            "Canvas link disabled."
+            localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCanvasLinkDisabled)
         }
         .to_string();
         self.error_message.clear();
@@ -5929,7 +6392,10 @@ impl TermiRustApp {
             ..
         } = decision
         else {
-            self.error_message = "That canvas link no longer exists.".to_string();
+            self.error_message = localization::static_message(
+                termirust_ui_contract::MessageId::AgentCanvasCopyThatCanvasLinkNoLongerExists,
+            )
+            .to_string();
             cx.notify();
             return;
         };
@@ -5938,7 +6404,7 @@ impl TermiRustApp {
         }
         self.persist_runtime_state();
         self.status_message = if dependency_removed && self.stop_active_workspace_orchestration() {
-            "Dependency deleted and scheduling stopped; active agent turns continue.".to_string()
+            localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDependencyDeletedAndSchedulingStoppedActiveAgentTurnsContinue).to_string()
         } else {
             "Canvas link deleted; nodes and sessions were kept.".to_string()
         };
@@ -5984,11 +6450,11 @@ impl TermiRustApp {
             .absolute()
             .top(px(menu_y))
             .left(px(menu_x))
-            .w(px(300.0))
+            .w(px(theme::CANVAS_COMPACT_PANEL_WIDTH))
             .max_w(relative(0.9))
             .max_h(relative(0.92))
             .overflow_hidden()
-            .rounded(px(7.0))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
             .border_color(theme::border_dark())
             .bg(theme::library_card())
@@ -5998,7 +6464,7 @@ impl TermiRustApp {
             })
             .child(
                 h_flex()
-                    .h(px(40.0))
+                    .h(px(theme::CANVAS_CONTROL_HEIGHT))
                     .px_3()
                     .items_center()
                     .justify_between()
@@ -6010,7 +6476,7 @@ impl TermiRustApp {
                             .overflow_hidden()
                             .whitespace_nowrap()
                             .text_ellipsis()
-                            .text_size(px(12.0))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
                             .child(label),
@@ -6021,7 +6487,7 @@ impl TermiRustApp {
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Close menu")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCloseMenu))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 cx.stop_propagation();
                                 this.canvas_node_menu_id = None;
@@ -6042,7 +6508,7 @@ impl TermiRustApp {
                             .small()
                             .ghost()
                             .icon(IconName::ALargeSmall)
-                            .label("Rename")
+                            .label(localization::static_message(termirust_ui_contract::MessageId::SessionLibraryRenameAction))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 cx.stop_propagation();
                                 this.canvas_node_menu_id = None;
@@ -6056,7 +6522,7 @@ impl TermiRustApp {
                                 .small()
                                 .ghost()
                                 .icon(IconName::Building2)
-                                .label("Create dependency link")
+                                .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCreateDependencyLink))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     cx.stop_propagation();
                                     this.canvas_node_menu_id = None;
@@ -6070,7 +6536,7 @@ impl TermiRustApp {
                                 .small()
                                 .ghost()
                                 .icon(IconName::Eye)
-                                .label("Review incoming context")
+                                .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyReviewIncomingContext))
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     cx.stop_propagation();
                                     this.canvas_node_menu_id = None;
@@ -6088,7 +6554,7 @@ impl TermiRustApp {
                                 .small()
                                 .ghost()
                                 .icon(IconName::Palette)
-                                .label("Change note color")
+                                .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyChangeNoteColor))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     cx.stop_propagation();
                                     if let Some(workspace) = this.active_workspace_mut() {
@@ -6105,7 +6571,7 @@ impl TermiRustApp {
                             .small()
                             .ghost()
                             .icon(IconName::Inspector)
-                            .label("View workspace links")
+                            .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyViewWorkspaceLinks))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 cx.stop_propagation();
                                 this.canvas_node_menu_id = None;
@@ -6120,9 +6586,9 @@ impl TermiRustApp {
                                 .ghost()
                                 .icon(IconName::Delete)
                                 .label(if is_note {
-                                    "Delete note"
+                                    localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDeleteNote2)
                                 } else {
-                                    "Remove group"
+                                    localization::static_message(termirust_ui_contract::MessageId::GroupRemoveAction)
                                 })
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     cx.stop_propagation();
@@ -6151,13 +6617,13 @@ impl TermiRustApp {
             .id("canvas-fleet-panel")
             .debug_selector(|| "canvas-fleet-panel".to_string())
             .absolute()
-            .top(px(12.0))
-            .left(px(12.0))
-            .w(px(560.0))
+            .top(px(theme::TYPE_CAPTION_SIZE))
+            .left(px(theme::TYPE_CAPTION_SIZE))
+            .w(px(theme::CANVAS_PANEL_WIDE_WIDTH))
             .max_w(relative(0.92))
             .max_h(relative(0.92))
             .overflow_hidden()
-            .rounded(px(7.0))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
             .border_color(theme::border_dark())
             .bg(theme::library_card())
@@ -6170,7 +6636,7 @@ impl TermiRustApp {
             })
             .child(
                 h_flex()
-                    .min_h(px(48.0))
+                    .min_h(px(theme::SPACE_8))
                     .px_3()
                     .gap_3()
                     .items_center()
@@ -6182,19 +6648,16 @@ impl TermiRustApp {
                             .min_w_0()
                             .child(
                                 div()
-                                    .text_size(px(13.0))
+                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_main())
-                                    .child("SSH Fleet"),
+                                    .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopySshFleet)),
                             )
                             .child(
                                 div()
-                                    .text_size(px(10.0))
+                                    .text_size(px(theme::TYPE_NANO_SIZE))
                                     .text_color(theme::text_muted())
-                                    .child(format!(
-                                        "{} connected / {} total / {} persistent tmux",
-                                        summary.connected, summary.total, summary.persistent
-                                    )),
+                                    .child(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicConnectedTotalPersistentTmux, vec![(summary.connected).to_string(), (summary.total).to_string(), (summary.persistent).to_string()])),
                             ),
                     )
                     .child(
@@ -6203,7 +6666,7 @@ impl TermiRustApp {
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Close fleet panel")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCloseFleetPanel))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.canvas_fleet_open = false;
                                 this.pending_canvas_fleet_disconnect = false;
@@ -6220,27 +6683,27 @@ impl TermiRustApp {
                     .border_b_1()
                     .border_color(theme::border_dark())
                     .child(self.status_badge(
-                        format!("{} online", summary.connected),
+                        localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicOnline, vec![(summary.connected).to_string()]),
                         theme::library_bg(),
                         theme::success(),
                     ))
                     .when(summary.connecting > 0, |row| {
                         row.child(self.status_badge(
-                            format!("{} connecting", summary.connecting),
+                            localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicConnecting, vec![(summary.connecting).to_string()]),
                             theme::library_bg(),
                             theme::warning(),
                         ))
                     })
                     .when(summary.offline > 0, |row| {
                         row.child(self.status_badge(
-                            format!("{} offline", summary.offline),
+                            localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicOffline, vec![(summary.offline).to_string()]),
                             theme::library_bg(),
                             theme::text_muted(),
                         ))
                     })
                     .when(summary.errors > 0, |row| {
                         row.child(self.status_badge(
-                            format!("{} errors", summary.errors),
+                            localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicErrors, vec![(summary.errors).to_string()]),
                             theme::library_bg(),
                             theme::danger(),
                         ))
@@ -6260,7 +6723,7 @@ impl TermiRustApp {
                             .small()
                             .ghost()
                             .icon(IconName::Redo2)
-                            .label("Reconnect Offline")
+                            .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyReconnectOffline))
                             .disabled(summary.offline + summary.errors == 0)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.reconnect_canvas_fleet(window, cx);
@@ -6280,11 +6743,11 @@ impl TermiRustApp {
                             ))
                             .icon(IconName::ArrowRight)
                             .label(if broadcast_input {
-                                "Broadcast On"
+                                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyBroadcastOn)
                             } else {
-                                "Broadcast Input"
+                                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyBroadcastInput)
                             })
-                            .tooltip("Send keyboard input to every connected pane in this workspace")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopySendKeyboardInputToEveryConnectedPaneInThisWorkspace))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.toggle_workspace_broadcast(workspace_id, cx);
                             })),
@@ -6295,7 +6758,7 @@ impl TermiRustApp {
                             .small()
                             .ghost()
                             .icon(IconName::Delete)
-                            .label("Disconnect All")
+                            .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDisconnectAll))
                             .disabled(summary.connected == 0)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.pending_canvas_fleet_disconnect = true;
@@ -6317,10 +6780,10 @@ impl TermiRustApp {
                         .child(
                             div()
                                 .flex_1()
-                                .min_w(px(240.0))
-                                .text_size(px(10.0))
+                                .min_w(px(theme::CANVAS_MIN_PANEL_WIDTH))
+                                .text_size(px(theme::TYPE_NANO_SIZE))
                                 .text_color(theme::text_main())
-                                .child("Disconnect every active SSH client? Persistent tmux sessions stay on their hosts."),
+                                .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDisconnectEveryActiveSshClientPersistentTmuxSessionsStayOnThei)),
                         )
                         .child(
                             h_flex()
@@ -6346,7 +6809,7 @@ impl TermiRustApp {
                                             theme::ActionTone::Danger,
                                             cx,
                                         ))
-                                        .label("Disconnect")
+                                        .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDisconnect))
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.confirm_disconnect_canvas_fleet(cx);
                                         })),
@@ -6390,7 +6853,7 @@ impl TermiRustApp {
                         h_flex()
                             .id(SharedString::from(format!("canvas-fleet-row-{pane_id}")))
                             .debug_selector(move || format!("canvas-fleet-row-{pane_id}"))
-                            .min_h(px(54.0))
+                            .min_h(px(theme::CANVAS_SUMMARY_ROW_HEIGHT))
                             .px_3()
                             .py_2()
                             .gap_3()
@@ -6412,14 +6875,14 @@ impl TermiRustApp {
                                                     .overflow_hidden()
                                                     .whitespace_nowrap()
                                                     .text_ellipsis()
-                                                    .text_size(px(11.0))
+                                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                                     .font_semibold()
                                                     .text_color(theme::text_main())
                                                     .child(pane.title),
                                             )
                                             .child(
                                                 div()
-                                                    .text_size(px(9.0))
+                                                    .text_size(px(theme::CANVAS_NANO_SIZE))
                                                     .text_color(status_color)
                                                     .child(pane.status),
                                             ),
@@ -6429,14 +6892,14 @@ impl TermiRustApp {
                                             .gap_2()
                                             .child(
                                                 div()
-                                                    .text_size(px(9.0))
+                                                    .text_size(px(theme::CANVAS_NANO_SIZE))
                                                     .text_color(theme::text_muted())
                                                     .child(pane.endpoint),
                                             )
                                             .when(pane.persistent, |details| {
                                                 details.child(
                                                     div()
-                                                        .text_size(px(9.0))
+                                                        .text_size(px(theme::CANVAS_NANO_SIZE))
                                                         .text_color(theme::accent())
                                                         .child(tmux_label),
                                                 )
@@ -6448,7 +6911,7 @@ impl TermiRustApp {
                                     .xsmall()
                                     .ghost()
                                     .icon(IconName::Close)
-                                    .tooltip("Disconnect this SSH client and keep its node")
+                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDisconnectThisSshClientAndKeepItsNode))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.disconnect_one_canvas_fleet_pane(action_pane_id, cx);
                                     }))
@@ -6460,9 +6923,9 @@ impl TermiRustApp {
                                     .icon(IconName::Redo2)
                                     .disabled(!reconnectable)
                                     .tooltip(if reconnectable {
-                                        "Reconnect this host"
+                                        localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyReconnectThisHost)
                                     } else {
-                                        "Connection is already in progress"
+                                        localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyConnectionIsAlreadyInProgress)
                                     })
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.reconnect_pane(action_pane_id, window, cx);
@@ -6573,13 +7036,13 @@ impl TermiRustApp {
             .id("canvas-activity-panel")
             .debug_selector(|| "canvas-activity-panel".to_string())
             .absolute()
-            .top(px(12.0))
-            .right(px(12.0))
-            .w(px(440.0))
+            .top(px(theme::TYPE_CAPTION_SIZE))
+            .right(px(theme::TYPE_CAPTION_SIZE))
+            .w(px(theme::CANVAS_DIALOG_NARROW_WIDTH))
             .max_w(relative(0.9))
             .max_h(relative(0.92))
             .overflow_hidden()
-            .rounded(px(7.0))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
             .border_color(theme::border_dark())
             .bg(theme::library_card())
@@ -6589,7 +7052,7 @@ impl TermiRustApp {
             })
             .child(
                 h_flex()
-                    .h(px(48.0))
+                    .h(px(theme::SPACE_8))
                     .px_3()
                     .items_center()
                     .justify_between()
@@ -6599,22 +7062,16 @@ impl TermiRustApp {
                         v_flex()
                             .child(
                                 div()
-                                    .text_size(px(13.0))
+                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_main())
-                                    .child("Agent Activity"),
+                                    .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyAgentActivity)),
                             )
                             .child(
                                 div()
-                                    .text_size(px(10.0))
+                                    .text_size(px(theme::TYPE_NANO_SIZE))
                                     .text_color(theme::text_muted())
-                                    .child(format!(
-                                        "{} running / {} queued / {} attention / {} unread",
-                                        summary.running,
-                                        summary.queued,
-                                        summary.attention,
-                                        summary.unread
-                                    )),
+                                    .child(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicRunningQueuedAttentionUnread, vec![(summary.running).to_string(), (summary.queued).to_string(), (summary.attention).to_string(), (summary.unread).to_string()])),
                             ),
                     )
                     .child(
@@ -6623,7 +7080,7 @@ impl TermiRustApp {
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Close activity")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCloseActivity))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.canvas_activity_open = false;
                                 cx.notify();
@@ -6643,14 +7100,14 @@ impl TermiRustApp {
                                 .gap_2()
                                 .child(
                                     Icon::new(IconName::Inbox)
-                                        .size(px(18.0))
+                                        .size(px(theme::CANVAS_METADATA_LINE_HEIGHT))
                                         .text_color(theme::text_muted()),
                                 )
                                 .child(
                                     div()
-                                        .text_size(px(11.0))
+                                        .text_size(px(theme::TYPE_MICRO_SIZE))
                                         .text_color(theme::text_muted())
-                                        .child("No structured agents are running in this canvas."),
+                                        .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyNoStructuredAgentsAreRunningInThisCanvas)),
                                 ),
                         )
                     })
@@ -6689,7 +7146,7 @@ impl TermiRustApp {
                                 .debug_selector(move || selector.clone())
                                 .p_2()
                                 .gap_1()
-                                .rounded(px(5.0))
+                                .rounded(px(theme::CANVAS_EDGE_LABEL_RADIUS))
                                 .border_l_2()
                                 .border_color(if needs_attention {
                                     theme::warning()
@@ -6720,7 +7177,7 @@ impl TermiRustApp {
                                                 .overflow_hidden()
                                                 .whitespace_nowrap()
                                                 .text_ellipsis()
-                                                .text_size(px(11.0))
+                                                .text_size(px(theme::TYPE_MICRO_SIZE))
                                                 .font_semibold()
                                                 .text_color(theme::text_main())
                                                 .child(title),
@@ -6732,20 +7189,20 @@ impl TermiRustApp {
                                                 .when(unread, |status| {
                                                     status.child(
                                                         Icon::new(IconName::Bell)
-                                                            .size(px(11.0))
+                                                            .size(px(theme::TYPE_MICRO_SIZE))
                                                             .text_color(theme::accent()),
                                                     )
                                                 })
                                                 .when(needs_attention, |status| {
                                                     status.child(
                                                         Icon::new(IconName::TriangleAlert)
-                                                            .size(px(11.0))
+                                                            .size(px(theme::TYPE_MICRO_SIZE))
                                                             .text_color(theme::warning()),
                                                     )
                                                 })
                                                 .child(
                                                     div()
-                                                        .text_size(px(10.0))
+                                                        .text_size(px(theme::TYPE_NANO_SIZE))
                                                         .font_semibold()
                                                         .text_color(state_color)
                                                         .child(state.label()),
@@ -6754,17 +7211,14 @@ impl TermiRustApp {
                                 )
                                 .child(
                                     div()
-                                        .text_size(px(10.0))
+                                        .text_size(px(theme::TYPE_NANO_SIZE))
                                         .text_color(theme::text_muted())
-                                        .child(format!(
-                                            "{location} / Context {incoming_context} in / Dependencies {incoming_dependencies} in, {outgoing_dependencies} out{}",
-                                            if queued { " / Task queued" } else { "" }
-                                        )),
+                                        .child(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicLocationContextIncomingContextInDependencie, vec![(location).to_string(), (incoming_context).to_string(), (incoming_dependencies).to_string(), (outgoing_dependencies).to_string(), (if queued { " / Task queued" } else { "" }).to_string()])),
                                 )
                                 .when_some(detail, |row, detail| {
                                     row.child(
                                         div()
-                                            .text_size(px(10.0))
+                                            .text_size(px(theme::TYPE_NANO_SIZE))
                                             .text_color(if needs_attention {
                                                 theme::warning()
                                             } else {
@@ -6787,20 +7241,20 @@ impl TermiRustApp {
         v_flex()
             .id("canvas-links-panel")
             .absolute()
-            .top(px(12.0))
-            .right(px(12.0))
-            .w(px(500.0))
+            .top(px(theme::TYPE_CAPTION_SIZE))
+            .right(px(theme::TYPE_CAPTION_SIZE))
+            .w(px(theme::CANVAS_DIALOG_WIDTH))
             .max_w(relative(0.9))
             .max_h(relative(0.92))
             .overflow_hidden()
-            .rounded(px(7.0))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
             .border_color(theme::border_dark())
             .bg(theme::library_card())
             .shadow_lg()
             .child(
                 h_flex()
-                    .h(px(44.0))
+                    .h(px(theme::CANVAS_TOOLBAR_HEIGHT))
                     .px_3()
                     .items_center()
                     .justify_between()
@@ -6808,17 +7262,17 @@ impl TermiRustApp {
                     .border_color(theme::border_dark())
                     .child(
                         div()
-                            .text_size(px(13.0))
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
-                            .child(format!("Canvas Links ({})", edges.len())),
+                            .child(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicCanvasLinks, vec![(edges.len()).to_string()])),
                     )
                     .child(
                         Button::new("canvas-links-close")
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Close links")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCloseLinks))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.canvas_links_open = false;
                                 cx.notify();
@@ -6834,9 +7288,9 @@ impl TermiRustApp {
                         list.child(
                             div()
                                 .py_4()
-                                .text_size(px(11.0))
+                                .text_size(px(theme::TYPE_MICRO_SIZE))
                                 .text_color(theme::text_muted())
-                                .child("No context or dependency links in this workspace."),
+                                .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyNoContextOrDependencyLinksInThisWorkspace)),
                         )
                     })
                     .children(edges.into_iter().map(|edge| {
@@ -6853,7 +7307,7 @@ impl TermiRustApp {
                                 "canvas-link-row-{}",
                                 edge.id.as_str()
                             )))
-                            .min_h(px(46.0))
+                            .min_h(px(theme::CANVAS_LIST_ROW_MIN_HEIGHT))
                             .px_2()
                             .gap_2()
                             .items_center()
@@ -6866,23 +7320,20 @@ impl TermiRustApp {
                                     .gap_1()
                                     .child(
                                         div()
-                                            .text_size(px(11.0))
+                                            .text_size(px(theme::TYPE_MICRO_SIZE))
                                             .font_semibold()
                                             .text_color(theme::text_main())
-                                            .child(format!("{source} -> {target}")),
+                                            .child(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicSourceTarget, vec![(source).to_string(), (target).to_string()])),
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(10.0))
+                                            .text_size(px(theme::TYPE_NANO_SIZE))
                                             .text_color(if edge.enabled {
                                                 theme::success()
                                             } else {
                                                 theme::text_muted()
                                             })
-                                            .child(format!(
-                                                "{kind_label} / {}",
-                                                if edge.enabled { "Enabled" } else { "Disabled" }
-                                            )),
+                                            .child(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicKindLabel, vec![(kind_label).to_string(), (if edge.enabled { localization::static_message(termirust_ui_contract::MessageId::PresetEnabledField) } else { localization::static_message(termirust_ui_contract::MessageId::PresetStatusDisabled) }).to_string()])),
                                     ),
                             )
                             .child(
@@ -6892,11 +7343,11 @@ impl TermiRustApp {
                                 )))
                                 .xsmall()
                                 .ghost()
-                                .label(if edge.enabled { "Disable" } else { "Enable" })
+                                .label(if edge.enabled { localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDisable) } else { localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyEnable) })
                                 .tooltip(if edge.enabled {
-                                    "Disable this link"
+                                    localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDisableThisLink)
                                 } else {
-                                    "Enable this link"
+                                    localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyEnableThisLink)
                                 })
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
@@ -6916,7 +7367,7 @@ impl TermiRustApp {
                                 .xsmall()
                                 .ghost()
                                 .icon(IconName::Delete)
-                                .tooltip("Delete link; keep both nodes")
+                                .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDeleteLinkKeepBothNodes))
                                 .on_click(cx.listener(
                                     move |this, _, _, cx| {
                                         this.remove_canvas_edge(delete_id.clone(), cx);
@@ -6936,7 +7387,7 @@ impl TermiRustApp {
             .find(|worktree| worktree.path == path)
             .cloned()
         else {
-            self.error_message = "That managed worktree is no longer registered.".to_string();
+            self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyThatManagedWorktreeIsNoLongerRegistered).to_string();
             cx.notify();
             return;
         };
@@ -6959,20 +7410,29 @@ impl TermiRustApp {
                     if status.changed_paths == 1 { "" } else { "s" }
                 );
                 self.status_message = if status.diff_summary.is_empty() {
-                    format!("{state} {path_summary}.")
+                    localization::dynamic_user_data_message(
+                        termirust_ui_contract::MessageId::AgentCanvasDynamicStatePathSummary,
+                        vec![(state).to_string(), (path_summary).to_string()],
+                    )
                 } else {
                     format!("{state} {path_summary}; {}.", status.diff_summary)
                 };
                 self.error_message.clear();
             }
-            Err(error) => self.error_message = format!("Unable to inspect worktree: {error:#}"),
+            Err(error) => self.error_message = localization::dynamic_user_data_message(
+                termirust_ui_contract::MessageId::AgentCanvasDynamicUnableToInspectWorktreeError,
+                vec![(error).to_string()],
+            ),
         }
         cx.notify();
     }
 
     fn copy_managed_worktree_path(&mut self, path: String, cx: &mut Context<Self>) {
         cx.write_to_clipboard(ClipboardItem::new_string(path));
-        self.status_message = "Worktree path copied.".to_string();
+        self.status_message = localization::static_message(
+            termirust_ui_contract::MessageId::AgentCanvasCopyWorktreePathCopied,
+        )
+        .to_string();
         self.error_message.clear();
         cx.notify();
     }
@@ -6989,7 +7449,7 @@ impl TermiRustApp {
             .iter_mut()
             .find(|worktree| worktree.path == path)
         else {
-            self.error_message = "That managed worktree is no longer registered.".to_string();
+            self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyThatManagedWorktreeIsNoLongerRegistered).to_string();
             cx.notify();
             return;
         };
@@ -7010,7 +7470,10 @@ impl TermiRustApp {
         }
         self.persist_runtime_state();
         self.status_message = match disposition {
-            SavedManagedWorktreeDisposition::Active => "Worktree marked active.".to_string(),
+            SavedManagedWorktreeDisposition::Active => localization::static_message(
+                termirust_ui_contract::MessageId::AgentCanvasCopyWorktreeMarkedActive,
+            )
+            .to_string(),
             SavedManagedWorktreeDisposition::Complete => {
                 "Task marked complete. The worktree and branch were kept.".to_string()
             }
@@ -7029,7 +7492,7 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) {
         if !std::path::Path::new(&path).is_dir() {
-            self.error_message = format!("Worktree directory does not exist: {path}");
+            self.error_message = localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicWorktreeDirectoryDoesNotExistPath, vec![(path).to_string()]);
             cx.notify();
             return;
         }
@@ -7041,10 +7504,10 @@ impl TermiRustApp {
             .is_some()
         {
             self.worktree_manager_open = false;
-            self.status_message = "Opened a terminal in the managed worktree.".to_string();
+            self.status_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyOpenedATerminalInTheManagedWorktree).to_string();
             self.error_message.clear();
         } else {
-            self.error_message = "Open a Canvas workspace before opening the worktree.".to_string();
+            self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyOpenACanvasWorkspaceBeforeOpeningTheWorktree).to_string();
         }
         cx.notify();
     }
@@ -7071,7 +7534,7 @@ impl TermiRustApp {
         });
         if referenced_by_agent || referenced_by_terminal {
             self.error_message =
-                "Close every agent and terminal using this worktree before removing it."
+                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCloseEveryAgentAndTerminalUsingThisWorktreeBeforeRemovingIt)
                     .to_string();
             cx.notify();
             return;
@@ -7083,7 +7546,7 @@ impl TermiRustApp {
             .find(|worktree| worktree.path == path)
             .cloned()
         else {
-            self.error_message = "That managed worktree is no longer registered.".to_string();
+            self.error_message = localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyThatManagedWorktreeIsNoLongerRegistered).to_string();
             cx.notify();
             return;
         };
@@ -7099,11 +7562,17 @@ impl TermiRustApp {
             Ok(()) => {
                 self.saved.forget_managed_agent_worktree(path);
                 self.persist_runtime_state();
-                self.status_message = format!("Removed clean worktree {}.", worktree.branch);
+                self.status_message = localization::dynamic_user_data_message(
+                    termirust_ui_contract::MessageId::AgentCanvasDynamicRemovedCleanWorktree,
+                    vec![(worktree.branch).to_string()],
+                );
                 self.error_message.clear();
             }
             Err(error) => {
-                self.error_message = format!("Worktree was not removed: {error:#}");
+                self.error_message = localization::dynamic_user_data_message(
+                    termirust_ui_contract::MessageId::AgentCanvasDynamicWorktreeWasNotRemovedError,
+                    vec![(error).to_string()],
+                );
             }
         }
         cx.notify();
@@ -7114,20 +7583,20 @@ impl TermiRustApp {
         v_flex()
             .id("managed-worktree-panel")
             .absolute()
-            .top(px(10.0))
-            .left(px(12.0))
-            .w(px(620.0))
+            .top(px(theme::TYPE_NANO_SIZE))
+            .left(px(theme::TYPE_CAPTION_SIZE))
+            .w(px(theme::CANVAS_PROJECT_FILES_WIDTH))
             .max_w(relative(0.9))
             .max_h(relative(0.92))
             .overflow_hidden()
-            .rounded(px(7.0))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
             .border_color(theme::border_dark())
             .bg(theme::library_card())
             .shadow_lg()
             .child(
                 h_flex()
-                    .h(px(42.0))
+                    .h(px(theme::CANVAS_PANEL_HEADER_COMPACT))
                     .px_3()
                     .items_center()
                     .justify_between()
@@ -7135,17 +7604,17 @@ impl TermiRustApp {
                     .border_color(theme::border_dark())
                     .child(
                         div()
-                            .text_size(px(13.0))
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .font_semibold()
                             .text_color(theme::text_on_dark())
-                            .child("Managed worktrees"),
+                            .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyManagedWorktrees)),
                     )
                     .child(
                         Button::new("managed-worktree-close")
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Close worktree manager")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCloseWorktreeManager))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.worktree_manager_open = false;
                                 cx.notify();
@@ -7162,9 +7631,9 @@ impl TermiRustApp {
                         list.child(
                             div()
                                 .py_4()
-                                .text_size(px(11.0))
+                                .text_size(px(theme::TYPE_MICRO_SIZE))
                                 .text_color(theme::text_muted())
-                                .child("No isolated agent worktrees have been created."),
+                                .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyNoIsolatedAgentWorktreesHaveBeenCreated)),
                         )
                     })
                     .children(worktrees.into_iter().enumerate().map(|(index, worktree)| {
@@ -7184,7 +7653,7 @@ impl TermiRustApp {
                             .p_2()
                             .gap_2()
                             .items_center()
-                            .rounded(px(6.0))
+                            .rounded(px(theme::CONTROL_RADIUS))
                             .border_1()
                             .border_color(theme::border_dark())
                             .child(
@@ -7193,7 +7662,7 @@ impl TermiRustApp {
                                     .min_w_0()
                                     .child(
                                         div()
-                                            .text_size(px(11.0))
+                                            .text_size(px(theme::TYPE_MICRO_SIZE))
                                             .font_semibold()
                                             .text_color(theme::text_on_dark())
                                             .child(format!(
@@ -7206,7 +7675,7 @@ impl TermiRustApp {
                                             .overflow_hidden()
                                             .whitespace_nowrap()
                                             .text_ellipsis()
-                                            .text_size(px(10.0))
+                                            .text_size(px(theme::TYPE_NANO_SIZE))
                                             .text_color(theme::text_muted())
                                             .child(worktree.path),
                                     ),
@@ -7216,7 +7685,7 @@ impl TermiRustApp {
                                     .xsmall()
                                     .ghost()
                                     .icon(IconName::Inspector)
-                                    .tooltip("Inspect Git status")
+                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyInspectGitStatus))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.inspect_managed_worktree(&inspect_path, cx);
                                     })),
@@ -7226,7 +7695,7 @@ impl TermiRustApp {
                                     .xsmall()
                                     .ghost()
                                     .icon(IconName::Copy)
-                                    .tooltip("Copy worktree path")
+                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCopyWorktreePath))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.copy_managed_worktree_path(copy_path.clone(), cx);
                                     })),
@@ -7236,7 +7705,7 @@ impl TermiRustApp {
                                     .xsmall()
                                     .ghost()
                                     .icon(IconName::SquareTerminal)
-                                    .tooltip("Open terminal in worktree")
+                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyOpenTerminalInWorktree))
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.open_managed_worktree_terminal(
                                             open_path.clone(),
@@ -7250,7 +7719,7 @@ impl TermiRustApp {
                                     .xsmall()
                                     .ghost()
                                     .icon(IconName::Check)
-                                    .tooltip("Mark task complete and keep its worktree")
+                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyMarkTaskCompleteAndKeepItsWorktree))
                                     .disabled(matches!(
                                         disposition,
                                         SavedManagedWorktreeDisposition::Complete
@@ -7268,7 +7737,7 @@ impl TermiRustApp {
                                     .xsmall()
                                     .ghost()
                                     .icon(IconName::GitHub)
-                                    .tooltip("Keep worktree and branch")
+                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyKeepWorktreeAndBranch))
                                     .disabled(matches!(
                                         disposition,
                                         SavedManagedWorktreeDisposition::Kept
@@ -7286,7 +7755,7 @@ impl TermiRustApp {
                                     .xsmall()
                                     .ghost()
                                     .icon(IconName::Delete)
-                                    .tooltip("Remove clean unused worktree")
+                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyRemoveCleanUnusedWorktree))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.remove_registered_worktree(&remove_path, cx);
                                     })),
@@ -7414,10 +7883,40 @@ impl TermiRustApp {
                             .small()
                             .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                             .icon(IconName::Plus)
-                            .label("Add")
-                            .tooltip("Add a terminal, agent, note, or group")
+                            .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyAdd))
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyAddATerminalAgentNoteOrGroup))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_canvas_add_menu(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("canvas-accessible-view")
+                            .debug_selector(|| "canvas-accessible-view".to_string())
+                            .small()
+                            .ghost()
+                            .icon(if self.canvas_accessible_list_open {
+                                IconName::Map
+                            } else {
+                                IconName::Inspector
+                            })
+                            .label(localization::static_message(
+                                if self.canvas_accessible_list_open {
+                                    termirust_ui_contract::MessageId::AgentCanvasGraphView
+                                } else {
+                                    termirust_ui_contract::MessageId::AgentCanvasListView
+                                },
+                            ))
+                            .tooltip(localization::static_message(
+                                if self.canvas_accessible_list_open {
+                                    termirust_ui_contract::MessageId::AgentCanvasGraphView
+                                } else {
+                                    termirust_ui_contract::MessageId::AgentCanvasListView
+                                },
+                            ))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.canvas_accessible_list_open =
+                                    !this.canvas_accessible_list_open;
+                                cx.notify();
                             })),
                     )
                     .when(fleet_summary.total > 1, |toolbar| {
@@ -7465,8 +7964,8 @@ impl TermiRustApp {
                             } else {
                                 IconName::PanelRightOpen
                             })
-                            .label("Files")
-                            .tooltip("Browse, edit, and inspect Git changes in the project folder")
+                            .label(localization::static_message(termirust_ui_contract::MessageId::SessionLibraryRemoveFiles))
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyBrowseEditAndInspectGitChangesInTheProjectFolder))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.toggle_canvas_project_panel(window, cx);
                             })),
@@ -7477,8 +7976,8 @@ impl TermiRustApp {
                             .small()
                             .ghost()
                             .icon(IconName::ArrowRight)
-                            .when(!compact_toolbar, |button| button.label("Review context"))
-                            .tooltip("Review an incoming context link before sending")
+                            .when(!compact_toolbar, |button| button.label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyReviewContext)))
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyReviewAnIncomingContextLinkBeforeSending))
                             .disabled(!can_review_context)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.open_context_review_for_selected(window, cx);
@@ -7490,8 +7989,8 @@ impl TermiRustApp {
                             .small()
                             .ghost()
                             .icon(IconName::Building2)
-                            .when(!compact_toolbar, |button| button.label("Run workflow"))
-                            .tooltip("Run queued tasks when dependencies are satisfied")
+                            .when(!compact_toolbar, |button| button.label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyRunWorkflow)))
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyRunQueuedTasksWhenDependenciesAreSatisfied))
                             .disabled(!can_run_workflow)
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.start_dependency_orchestration(cx);
@@ -7523,14 +8022,11 @@ impl TermiRustApp {
                             .ghost()
                             .icon(IconName::ArrowRight)
                             .when(!compact_toolbar, |button| {
-                                button.label(format!(
-                                    "Links ({})",
-                                    self.active_workspace()
+                                button.label(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicLinks, vec![(self.active_workspace()
                                         .map(|workspace| workspace.canvas.edges.len())
-                                        .unwrap_or_default()
-                                ))
+                                        .unwrap_or_default()).to_string()]))
                             })
-                            .tooltip("Inspect, enable, disable, or delete canvas links")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyInspectEnableDisableOrDeleteCanvasLinks))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_canvas_links(cx);
                             })),
@@ -7541,12 +8037,9 @@ impl TermiRustApp {
                             .ghost()
                             .icon(IconName::GitHub)
                             .when(!compact_toolbar, |button| {
-                                button.label(format!(
-                                    "Worktrees ({})",
-                                    self.saved.managed_agent_worktrees.len()
-                                ))
+                                button.label(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicWorktrees, vec![(self.saved.managed_agent_worktrees.len()).to_string()]))
                             })
-                            .tooltip("Inspect and clean up isolated agent worktrees")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyInspectAndCleanUpIsolatedAgentWorktrees))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_worktree_manager(cx);
                             })),
@@ -7554,17 +8047,17 @@ impl TermiRustApp {
                     .when(self.pending_context_source.is_some(), |toolbar| {
                         toolbar.child(
                             div()
-                                .text_size(px(10.0))
+                                .text_size(px(theme::TYPE_NANO_SIZE))
                                 .text_color(theme::warning())
-                                .child("Choose link target"),
+                                .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyChooseLinkTarget)),
                         )
                     })
                     .when(self.pending_dependency_source.is_some(), |toolbar| {
                         toolbar.child(
                             div()
-                                .text_size(px(10.0))
+                                .text_size(px(theme::TYPE_NANO_SIZE))
                                 .text_color(theme::warning())
-                                .child("Choose dependency target"),
+                                .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyChooseDependencyTarget)),
                         )
                     }),
             )
@@ -7578,7 +8071,7 @@ impl TermiRustApp {
                             .xsmall()
                             .ghost()
                             .icon(IconName::Undo2)
-                            .tooltip("Undo the last move, resize, rename, or collapse")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyUndoTheLastMoveResizeRenameOrCollapse))
                             .disabled(!can_undo_layout)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.undo_canvas_layout(window, cx);
@@ -7590,19 +8083,25 @@ impl TermiRustApp {
                             .xsmall()
                             .ghost()
                             .icon(IconName::Redo2)
-                            .tooltip("Redo the last canvas layout change")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyRedoTheLastCanvasLayoutChange))
                             .disabled(!can_redo_layout)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.redo_canvas_layout(window, cx);
                             })),
                     )
-                    .child(div().h(px(18.0)).w(px(1.0)).mx_1().bg(theme::border_dark()))
+                    .child(
+                        div()
+                            .h(px(theme::CANVAS_METADATA_LINE_HEIGHT))
+                            .w(px(theme::BORDER_HAIRLINE))
+                            .mx_1()
+                            .bg(theme::border_dark()),
+                    )
                     .child(
                         Button::new("canvas-zoom-out")
                             .xsmall()
                             .ghost()
                             .icon(IconName::Minus)
-                            .tooltip("Zoom out")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyZoomOut))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.zoom_canvas(0.85, window, cx);
                             })),
@@ -7611,8 +8110,8 @@ impl TermiRustApp {
                         Button::new("canvas-zoom-reset")
                             .xsmall()
                             .ghost()
-                            .label(format!("{zoom_percent}%"))
-                            .tooltip("Reset zoom")
+                            .label(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicZoomPercent, vec![(zoom_percent).to_string()]))
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyResetZoom))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.reset_canvas_zoom(window, cx);
                             })),
@@ -7622,7 +8121,7 @@ impl TermiRustApp {
                             .xsmall()
                             .ghost()
                             .icon(IconName::Plus)
-                            .tooltip("Zoom in")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyZoomIn))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.zoom_canvas(1.15, window, cx);
                             })),
@@ -7632,7 +8131,7 @@ impl TermiRustApp {
                             .xsmall()
                             .ghost()
                             .icon(IconName::Maximize)
-                            .tooltip("Fit all nodes")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyFitAllNodes))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.fit_canvas(window, cx);
                             })),
@@ -7685,13 +8184,13 @@ impl TermiRustApp {
             .id("canvas-project-panel")
             .debug_selector(|| "canvas-project-panel".to_string())
             .absolute()
-            .top(px(12.0))
-            .right(px(12.0))
-            .bottom(px(12.0))
+            .top(px(theme::TYPE_CAPTION_SIZE))
+            .right(px(theme::TYPE_CAPTION_SIZE))
+            .bottom(px(theme::TYPE_CAPTION_SIZE))
             .w(px(panel_width))
             .min_h_0()
             .overflow_hidden()
-            .rounded(px(7.0))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
             .border_color(theme::border())
             .bg(theme::terminal_panel())
@@ -7701,7 +8200,7 @@ impl TermiRustApp {
             })
             .child(
                 h_flex()
-                    .h(px(42.0))
+                    .h(px(theme::CANVAS_PANEL_HEADER_COMPACT))
                     .px_3()
                     .gap_2()
                     .items_center()
@@ -7714,7 +8213,7 @@ impl TermiRustApp {
                             .gap_2()
                             .child(
                                 Icon::new(IconName::FolderOpen)
-                                    .size(px(14.0))
+                                    .size(px(theme::TYPE_BODY_SIZE))
                                     .text_color(theme::accent()),
                             )
                             .child(
@@ -7723,10 +8222,10 @@ impl TermiRustApp {
                                     .overflow_hidden()
                                     .whitespace_nowrap()
                                     .text_ellipsis()
-                                    .text_size(px(12.0))
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_on_dark())
-                                    .child(format!("Project Files / {current_label}")),
+                                    .child(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicProjectFilesCurrentLabel, vec![(current_label).to_string()])),
                             ),
                     )
                     .child(
@@ -7737,7 +8236,7 @@ impl TermiRustApp {
                                     .xsmall()
                                     .ghost()
                                     .icon(IconName::Redo2)
-                                    .tooltip("Refresh files and Git status")
+                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyRefreshFilesAndGitStatus))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.refresh_canvas_project_panel(cx);
                                     })),
@@ -7748,7 +8247,7 @@ impl TermiRustApp {
                                     .xsmall()
                                     .ghost()
                                     .icon(IconName::Close)
-                                    .tooltip("Close Project Files")
+                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCloseProjectFiles))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.toggle_canvas_project_panel(window, cx);
                                     })),
@@ -7761,14 +8260,14 @@ impl TermiRustApp {
                     .min_h_0()
                     .child(
                         v_flex()
-                            .w(px(188.0))
+                            .w(px(theme::CANVAS_INSPECTOR_WIDTH))
                             .h_full()
                             .min_h_0()
                             .border_r_1()
                             .border_color(theme::border_dark())
                             .child(
                                 h_flex()
-                                    .h(px(34.0))
+                                    .h(px(theme::CANVAS_NODE_HEADER_HEIGHT))
                                     .px_2()
                                     .gap_1()
                                     .items_center()
@@ -7779,7 +8278,7 @@ impl TermiRustApp {
                                             .xsmall()
                                             .ghost()
                                             .icon(IconName::ChevronUp)
-                                            .tooltip("Open parent folder")
+                                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyOpenParentFolder))
                                             .disabled(!can_go_up)
                                             .on_click(cx.listener(|this, _, window, cx| {
                                                 this.navigate_canvas_project_up(window, cx);
@@ -7787,9 +8286,9 @@ impl TermiRustApp {
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(10.0))
+                                            .text_size(px(theme::TYPE_NANO_SIZE))
                                             .text_color(theme::text_muted())
-                                            .child(format!("{} items", panel.entries.len())),
+                                            .child(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicItems, vec![(panel.entries.len()).to_string()])),
                                     ),
                             )
                             .child(v_flex().flex_1().min_h_0().overflow_y_scrollbar().children(
@@ -7802,7 +8301,7 @@ impl TermiRustApp {
                                         .debug_selector(move || {
                                             format!("canvas-project-entry-{index}")
                                         })
-                                        .h(px(30.0))
+                                        .h(px(theme::CANVAS_DENSE_ROW_HEIGHT))
                                         .w_full()
                                         .px_2()
                                         .gap_2()
@@ -7822,7 +8321,7 @@ impl TermiRustApp {
                                             } else {
                                                 IconName::File
                                             })
-                                            .size(px(12.0))
+                                            .size(px(theme::TYPE_CAPTION_SIZE))
                                             .text_color(if entry.is_directory {
                                                 theme::warning()
                                             } else {
@@ -7835,7 +8334,7 @@ impl TermiRustApp {
                                                 .overflow_hidden()
                                                 .whitespace_nowrap()
                                                 .text_ellipsis()
-                                                .text_size(px(11.0))
+                                                .text_size(px(theme::TYPE_MICRO_SIZE))
                                                 .text_color(theme::text_on_dark())
                                                 .child(entry.name.clone()),
                                         )
@@ -7857,7 +8356,7 @@ impl TermiRustApp {
                             .min_h_0()
                             .child(
                                 h_flex()
-                                    .h(px(38.0))
+                                    .h(px(theme::CANVAS_ACTION_ROW_HEIGHT))
                                     .px_2()
                                     .gap_2()
                                     .items_center()
@@ -7874,7 +8373,7 @@ impl TermiRustApp {
                                                     .overflow_hidden()
                                                     .whitespace_nowrap()
                                                     .text_ellipsis()
-                                                    .text_size(px(11.0))
+                                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                                     .font_semibold()
                                                     .text_color(theme::text_on_dark())
                                                     .child(selected_label),
@@ -7883,14 +8382,14 @@ impl TermiRustApp {
                                                 header.child(
                                                     div()
                                                         .px_1()
-                                                        .rounded(px(3.0))
+                                                        .rounded(px(theme::CANVAS_PROGRESS_RADIUS))
                                                         .bg(theme::with_alpha(
                                                             theme::warning(),
                                                             0.16,
                                                         ))
-                                                        .text_size(px(9.0))
+                                                        .text_size(px(theme::CANVAS_NANO_SIZE))
                                                         .text_color(theme::warning())
-                                                        .child("UNSAVED"),
+                                                        .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyUnsaved)),
                                                 )
                                             }),
                                     )
@@ -7902,7 +8401,7 @@ impl TermiRustApp {
                                                     .xsmall()
                                                     .ghost()
                                                     .icon(IconName::Undo2)
-                                                    .tooltip("Revert unsaved editor changes")
+                                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyRevertUnsavedEditorChanges))
                                                     .disabled(!dirty)
                                                     .on_click(cx.listener(
                                                         |this, _, window, cx| {
@@ -7936,7 +8435,7 @@ impl TermiRustApp {
                             .child(
                                 div()
                                     .flex_1()
-                                    .min_h(px(160.0))
+                                    .min_h(px(theme::CANVAS_INSPECTOR_MIN_HEIGHT))
                                     .p_2()
                                     .bg(theme::terminal_bg())
                                     .child(
@@ -7947,29 +8446,29 @@ impl TermiRustApp {
                             )
                             .child(
                                 v_flex()
-                                    .h(px(180.0))
+                                    .h(px(theme::CANVAS_INSPECTOR_HEIGHT))
                                     .min_h_0()
                                     .border_t_1()
                                     .border_color(theme::border_dark())
                                     .child(
                                         h_flex()
-                                            .h(px(34.0))
+                                            .h(px(theme::CANVAS_NODE_HEADER_HEIGHT))
                                             .px_2()
                                             .items_center()
                                             .justify_between()
                                             .child(
                                                 div()
-                                                    .text_size(px(10.0))
+                                                    .text_size(px(theme::TYPE_NANO_SIZE))
                                                     .font_semibold()
                                                     .text_color(theme::text_muted())
-                                                    .child("GIT STATUS / SELECTED DIFF"),
+                                                    .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyGitStatusSelectedDiff)),
                                             )
                                             .child(
                                                 Button::new("canvas-project-copy-diff")
                                                     .xsmall()
                                                     .ghost()
                                                     .icon(IconName::Copy)
-                                                    .tooltip("Copy selected file diff")
+                                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCopySelectedFileDiff))
                                                     .disabled(panel.git_diff.is_empty())
                                                     .on_click(cx.listener(|this, _, _, cx| {
                                                         this.copy_canvas_project_diff(cx);
@@ -7989,7 +8488,7 @@ impl TermiRustApp {
                                                     div()
                                                         .whitespace_nowrap()
                                                         .font_family(self.terminal_font_family(cx))
-                                                        .text_size(px(10.0))
+                                                        .text_size(px(theme::TYPE_NANO_SIZE))
                                                         .text_color(theme::text_muted())
                                                         .child(display_terminal_text(line))
                                                 },
@@ -7999,7 +8498,7 @@ impl TermiRustApp {
                                                     div()
                                                         .whitespace_nowrap()
                                                         .font_family(self.terminal_font_family(cx))
-                                                        .text_size(px(10.0))
+                                                        .text_size(px(theme::TYPE_NANO_SIZE))
                                                         .text_color(theme::text_on_dark())
                                                         .child(display_terminal_text(line))
                                                 },
@@ -8093,7 +8592,7 @@ impl TermiRustApp {
             .w(px(CANVAS_MINIMAP_WIDTH))
             .h(px(CANVAS_MINIMAP_HEIGHT))
             .overflow_hidden()
-            .rounded(px(6.0))
+            .rounded(px(theme::CONTROL_RADIUS))
             .border_1()
             .border_color(theme::with_alpha(theme::border(), 0.9))
             .bg(theme::with_alpha(theme::terminal_panel(), 0.94))
@@ -8126,7 +8625,7 @@ impl TermiRustApp {
                     .top(px(rect.y))
                     .w(px(rect.width))
                     .h(px(rect.height))
-                    .rounded(px(2.0))
+                    .rounded(px(theme::SPACE_1))
                     .bg(color),
             );
         }
@@ -8138,22 +8637,24 @@ impl TermiRustApp {
                     .top(px(viewport_rect.y))
                     .w(px(viewport_rect.width))
                     .h(px(viewport_rect.height))
-                    .rounded(px(2.0))
+                    .rounded(px(theme::SPACE_1))
                     .border_2()
                     .border_color(theme::with_alpha(theme::focus_ring(), 0.9)),
             )
             .child(
                 div()
                     .absolute()
-                    .left(px(7.0))
-                    .top(px(5.0))
+                    .left(px(theme::CANVAS_POPOVER_RADIUS))
+                    .top(px(theme::CANVAS_EDGE_LABEL_RADIUS))
                     .px_1()
-                    .rounded(px(3.0))
+                    .rounded(px(theme::CANVAS_PROGRESS_RADIUS))
                     .bg(theme::with_alpha(theme::terminal_panel(), 0.88))
-                    .text_size(px(9.0))
+                    .text_size(px(theme::CANVAS_NANO_SIZE))
                     .font_semibold()
                     .text_color(theme::text_muted())
-                    .child("OVERVIEW"),
+                    .child(localization::static_message(
+                        termirust_ui_contract::MessageId::AgentCanvasCopyOverview,
+                    )),
             )
             .into_any_element()
     }
@@ -8197,7 +8698,7 @@ impl TermiRustApp {
                         dependency_color
                     };
                     let offset = ((target.x - source.x).abs() * 0.45).max(48.0);
-                    let mut builder = PathBuilder::stroke(px(2.0));
+                    let mut builder = PathBuilder::stroke(px(theme::SPACE_1));
                     builder.move_to(point(px(source.x), px(source.y)));
                     builder.cubic_bezier_to(
                         point(px(target.x), px(target.y)),
@@ -8208,7 +8709,7 @@ impl TermiRustApp {
                         window.paint_path(path, color);
                     }
 
-                    let mut arrow = PathBuilder::stroke(px(2.0));
+                    let mut arrow = PathBuilder::stroke(px(theme::SPACE_1));
                     arrow.move_to(point(px(target.x - 9.0), px(target.y - 6.0)));
                     arrow.line_to(point(px(target.x), px(target.y)));
                     arrow.line_to(point(px(target.x - 9.0), px(target.y + 6.0)));
@@ -8229,14 +8730,20 @@ impl TermiRustApp {
                 .pane(*pane_id)
                 .map(|pane| {
                     if pane.request.is_local_shell() {
-                        "Local".to_string()
+                        localization::static_message(
+                            termirust_ui_contract::MessageId::AgentCanvasCopyLocal,
+                        )
+                        .to_string()
                     } else {
                         pane.request.host.clone()
                     }
                 })
                 .unwrap_or_else(|| "Unavailable".to_string()),
             CanvasNodeKind::Agent { definition, .. } => match &definition.location {
-                AgentLocation::Local => "Local".to_string(),
+                AgentLocation::Local => localization::static_message(
+                    termirust_ui_contract::MessageId::AgentCanvasCopyLocal,
+                )
+                .to_string(),
                 AgentLocation::SavedHost { profile_id } => self
                     .saved
                     .profiles
@@ -8281,8 +8788,14 @@ impl TermiRustApp {
             .unwrap_or_else(|| match &node.kind {
                 CanvasNodeKind::Terminal { .. } => "Terminal".to_string(),
                 CanvasNodeKind::Agent { .. } => "Agent".to_string(),
-                CanvasNodeKind::Note { .. } => "Note".to_string(),
-                CanvasNodeKind::Group { .. } => "Group".to_string(),
+                CanvasNodeKind::Note { .. } => localization::static_message(
+                    termirust_ui_contract::MessageId::AgentCanvasCopyNote,
+                )
+                .to_string(),
+                CanvasNodeKind::Group { .. } => localization::static_message(
+                    termirust_ui_contract::MessageId::HostEditorGroupField,
+                )
+                .to_string(),
             });
         let location = self.canvas_node_location_label(node);
         let (status, needs_attention, unread_output) = self
@@ -8387,7 +8900,7 @@ impl TermiRustApp {
             .w(px(screen.width))
             .h(px(screen.height))
             .overflow_hidden()
-            .rounded(px(7.0))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
             .when(selected || dependency_source || context_source, |node| {
                 node.border_2()
@@ -8480,13 +8993,13 @@ impl TermiRustApp {
                                     CanvasNodeKind::Note { .. } => IconName::File,
                                     CanvasNodeKind::Group { .. } => IconName::Frame,
                                 })
-                                .size(px(14.0))
+                                .size(px(theme::TYPE_BODY_SIZE))
                                 .text_color(theme::accent()),
                             )
                             .when(renaming, |header| {
                                 header.child(
                                     div()
-                                        .w(px(180.0))
+                                        .w(px(theme::CANVAS_INSPECTOR_HEIGHT))
                                         .child(Input::new(&self.canvas_node_rename_input).small()),
                                 )
                             })
@@ -8497,7 +9010,7 @@ impl TermiRustApp {
                                         .overflow_hidden()
                                         .whitespace_nowrap()
                                         .text_ellipsis()
-                                        .text_size(px(12.0))
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
                                         .font_semibold()
                                         .text_color(theme::text_on_dark())
                                         .child(title),
@@ -8509,21 +9022,21 @@ impl TermiRustApp {
                                     .overflow_hidden()
                                     .whitespace_nowrap()
                                     .text_ellipsis()
-                                    .text_size(px(10.0))
+                                    .text_size(px(theme::TYPE_NANO_SIZE))
                                     .text_color(theme::text_muted_dark())
                                     .child(subtitle),
                             )
                             .when(needs_attention, |header| {
                                 header.child(
                                     Icon::new(IconName::TriangleAlert)
-                                        .size(px(12.0))
+                                        .size(px(theme::TYPE_CAPTION_SIZE))
                                         .text_color(theme::warning()),
                                 )
                             })
                             .when(unread_output, |header| {
                                 header.child(
                                     Icon::new(IconName::Bell)
-                                        .size(px(12.0))
+                                        .size(px(theme::TYPE_CAPTION_SIZE))
                                         .text_color(theme::accent()),
                                 )
                             }),
@@ -8549,9 +9062,9 @@ impl TermiRustApp {
                                         IconName::ALargeSmall
                                     })
                                     .tooltip(if editing_note {
-                                        "Save note"
+                                        localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopySaveNote)
                                     } else {
-                                        "Edit note"
+                                        localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyEditNote)
                                     })
                                     .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                         cx.stop_propagation();
@@ -8592,7 +9105,7 @@ impl TermiRustApp {
                                                 .xsmall()
                                                 .ghost()
                                                 .icon(IconName::ArrowDown)
-                                                .tooltip("Jump to latest output")
+                                                .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyJumpToLatestOutput))
                                                 .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                                     cx.stop_propagation()
                                                 })
@@ -8620,9 +9133,9 @@ impl TermiRustApp {
                                             .ghost()
                                             .icon(IconName::Copy)
                                             .tooltip(if has_selection {
-                                                "Copy selected agent output"
+                                                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCopySelectedAgentOutput)
                                             } else {
-                                                "Copy all agent output"
+                                                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCopyAllAgentOutput)
                                             })
                                             .disabled(!has_output)
                                             .on_mouse_down(MouseButton::Left, |_, _, cx| {
@@ -8651,9 +9164,9 @@ impl TermiRustApp {
                                     IconName::ChevronUp
                                 })
                                 .tooltip(if node.collapsed {
-                                    "Expand node"
+                                    localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyExpandNode)
                                 } else {
-                                    "Collapse node"
+                                    localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCollapseNode)
                                 })
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                     cx.stop_propagation();
@@ -8682,9 +9195,9 @@ impl TermiRustApp {
                                 .ghost()
                                 .icon(IconName::ArrowRight)
                                 .tooltip(if context_source {
-                                    "Context source selected; choose this action on the target node"
+                                    localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyContextSourceSelectedChooseThisActionOnTheTargetNode)
                                 } else {
-                                    "Create a reviewed context link from this node"
+                                    localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCreateAReviewedContextLinkFromThisNode)
                                 })
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                     cx.stop_propagation();
@@ -8703,7 +9216,7 @@ impl TermiRustApp {
                                     .xsmall()
                                     .ghost()
                                     .icon(IconName::Ellipsis)
-                                    .tooltip("More node actions")
+                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyMoreNodeActions))
                                     .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                         cx.stop_propagation();
                                     })
@@ -8719,7 +9232,7 @@ impl TermiRustApp {
                                 .xsmall()
                                 .ghost()
                                 .icon(IconName::Close)
-                                .tooltip("Close terminal")
+                                .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCloseTerminal2))
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                     cx.stop_propagation();
                                 })
@@ -8738,7 +9251,7 @@ impl TermiRustApp {
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Stop and close agent")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyStopAndCloseAgent))
                             .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                 cx.stop_propagation();
                             })
@@ -8764,9 +9277,9 @@ impl TermiRustApp {
                             .ghost()
                             .icon(IconName::Close)
                             .tooltip(if is_note {
-                                "Delete note"
+                                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDeleteNote2)
                             } else {
-                                "Remove group"
+                                localization::static_message(termirust_ui_contract::MessageId::GroupRemoveAction)
                             })
                             .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                 cx.stop_propagation();
@@ -8834,13 +9347,13 @@ impl TermiRustApp {
                             .p_3()
                             .gap_1()
                             .overflow_y_scroll()
-                            .text_size(px(13.0))
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .text_color(theme::text_on_dark())
-                            .children(
-                                lines
-                                    .into_iter()
-                                    .map(|line| div().min_h(px(18.0)).child(line)),
-                            ),
+                            .children(lines.into_iter().map(|line| {
+                                div()
+                                    .min_h(px(theme::CANVAS_METADATA_LINE_HEIGHT))
+                                    .child(line)
+                            })),
                     )
                 };
             }
@@ -8852,7 +9365,7 @@ impl TermiRustApp {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .text_size(px(11.0))
+                        .text_size(px(theme::TYPE_MICRO_SIZE))
                         .text_color(theme::text_muted_dark())
                         .child(format!(
                             "{} {}",
@@ -8869,9 +9382,9 @@ impl TermiRustApp {
                     )))
                     .debug_selector(move || resize_selector.clone())
                     .absolute()
-                    .right(px(0.0))
-                    .bottom(px(0.0))
-                    .size(px(18.0))
+                    .right(px(theme::SPACE_0))
+                    .bottom(px(theme::SPACE_0))
+                    .size(px(theme::CANVAS_METADATA_LINE_HEIGHT))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -8890,7 +9403,7 @@ impl TermiRustApp {
                     )
                     .child(
                         Icon::new(IconName::ResizeCorner)
-                            .size(px(12.0))
+                            .size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted_dark()),
                     ),
             );
@@ -8988,9 +9501,9 @@ impl TermiRustApp {
                 .gap_2()
                 .child(
                     div()
-                        .text_size(px(11.0))
+                        .text_size(px(theme::TYPE_MICRO_SIZE))
                         .text_color(theme::text_muted_dark())
-                        .child("Structured session is not running"),
+                        .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyStructuredSessionIsNotRunning)),
                 )
                 .child(
                     Button::new(SharedString::from(format!(
@@ -9001,8 +9514,8 @@ impl TermiRustApp {
                     .small()
                     .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                     .icon(IconName::Redo2)
-                    .label("Restart")
-                    .tooltip("Start a new process from this saved agent definition")
+                    .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyRestart))
+                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyStartANewProcessFromThisSavedAgentDefinition))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.restart_structured_agent(restart_id.clone(), cx);
                     })),
@@ -9142,9 +9655,9 @@ impl TermiRustApp {
                         .mb_2()
                         .px_2()
                         .py_1()
-                        .rounded(px(5.0))
+                        .rounded(px(theme::CANVAS_EDGE_LABEL_RADIUS))
                         .bg(theme::with_alpha(theme::danger(), 0.16))
-                        .text_size(px(10.0))
+                        .text_size(px(theme::TYPE_NANO_SIZE))
                         .text_color(theme::danger())
                         .child(diagnostic),
                 )
@@ -9156,11 +9669,11 @@ impl TermiRustApp {
                         .mb_2()
                         .px_2()
                         .py_1()
-                        .rounded(px(5.0))
+                        .rounded(px(theme::CANVAS_EDGE_LABEL_RADIUS))
                         .bg(theme::with_alpha(theme::accent(), 0.14))
-                        .text_size(px(10.0))
+                        .text_size(px(theme::TYPE_NANO_SIZE))
                         .text_color(theme::accent())
-                        .child("Task queued for dependency run"),
+                        .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyTaskQueuedForDependencyRun)),
                 )
             })
             .when_some(approval, |body, approval| {
@@ -9172,20 +9685,20 @@ impl TermiRustApp {
                         .mb_2()
                         .p_2()
                         .gap_2()
-                        .rounded(px(6.0))
+                        .rounded(px(theme::CONTROL_RADIUS))
                         .border_1()
                         .border_color(theme::warning())
                         .bg(theme::with_alpha(theme::warning(), 0.12))
                         .child(
                             div()
-                                .text_size(px(11.0))
+                                .text_size(px(theme::TYPE_MICRO_SIZE))
                                 .font_semibold()
                                 .text_color(theme::text_on_dark())
-                                .child("Approval required"),
+                                .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyApprovalRequired)),
                         )
                         .child(
                             div()
-                                .text_size(px(10.0))
+                                .text_size(px(theme::TYPE_NANO_SIZE))
                                 .text_color(theme::text_muted_dark())
                                 .child(approval.operation),
                         )
@@ -9200,7 +9713,7 @@ impl TermiRustApp {
                                     )))
                                     .xsmall()
                                     .ghost()
-                                    .label("Deny")
+                                    .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDeny))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.respond_structured_agent_approval(
                                             deny_id.clone(),
@@ -9219,7 +9732,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Accent,
                                         cx,
                                     ))
-                                    .label("Allow once")
+                                    .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyAllowOnce))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.respond_structured_agent_approval(
                                             allow_id.clone(),
@@ -9252,8 +9765,8 @@ impl TermiRustApp {
                             )))
                             .xsmall()
                             .ghost()
-                            .label("Queue")
-                            .tooltip("Queue task for dependency orchestration")
+                            .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyQueue))
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyQueueTaskForDependencyOrchestration))
                             .on_click(cx.listener(
                                 move |this, _, window, cx| {
                                     this.queue_structured_agent_task(queue_id.clone(), window, cx);
@@ -9268,7 +9781,7 @@ impl TermiRustApp {
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Cancel active turn")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCancelActiveTurn))
                             .on_click(cx.listener(
                                 move |this, _, _, cx| {
                                     this.cancel_structured_agent(cancel_id.clone(), cx);
@@ -9283,7 +9796,7 @@ impl TermiRustApp {
                             .xsmall()
                             .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                             .icon(IconName::ArrowRight)
-                            .tooltip("Send prompt")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopySendPrompt))
                             .on_click(cx.listener(
                                 move |this, _, window, cx| {
                                     this.send_structured_agent_prompt(send_id.clone(), window, cx);
@@ -9310,20 +9823,20 @@ impl TermiRustApp {
         v_flex()
             .id("context-handoff-review")
             .absolute()
-            .top(px(12.0))
-            .right(px(12.0))
-            .w(px(560.0))
+            .top(px(theme::TYPE_CAPTION_SIZE))
+            .right(px(theme::TYPE_CAPTION_SIZE))
+            .w(px(theme::CANVAS_PANEL_WIDE_WIDTH))
             .max_w(relative(0.9))
             .max_h(relative(0.92))
             .overflow_hidden()
-            .rounded(px(7.0))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
             .border_color(theme::border_dark())
             .bg(theme::library_card())
             .shadow_lg()
             .child(
                 h_flex()
-                    .h(px(44.0))
+                    .h(px(theme::CANVAS_TOOLBAR_HEIGHT))
                     .px_3()
                     .items_center()
                     .justify_between()
@@ -9331,17 +9844,17 @@ impl TermiRustApp {
                     .border_color(theme::border_dark())
                     .child(
                         div()
-                            .text_size(px(13.0))
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
-                            .child(format!("Review context from {}", review.source_label)),
+                            .child(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicReviewContextFrom, vec![(review.source_label).to_string()])),
                     )
                     .child(
                         Button::new("context-review-close")
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Cancel")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::CommonCancel))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.context_handoff_review = None;
                                 cx.notify();
@@ -9354,7 +9867,7 @@ impl TermiRustApp {
                     .gap_2()
                     .child(
                         div()
-                            .text_size(px(10.0))
+                            .text_size(px(theme::TYPE_NANO_SIZE))
                             .text_color(theme::text_muted())
                             .child(details),
                     )
@@ -9381,7 +9894,7 @@ impl TermiRustApp {
                                         cx,
                                     ))
                                     .icon(IconName::ArrowRight)
-                                    .label("Send reviewed context")
+                                    .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopySendReviewedContext))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.send_context_handoff(cx);
                                     })),
@@ -9400,11 +9913,11 @@ impl TermiRustApp {
         v_flex()
             .id("canvas-tmux-close-dialog")
             .absolute()
-            .top(px(12.0))
-            .right(px(12.0))
-            .w(px(500.0))
+            .top(px(theme::TYPE_CAPTION_SIZE))
+            .right(px(theme::TYPE_CAPTION_SIZE))
+            .w(px(theme::CANVAS_DIALOG_WIDTH))
             .max_w(relative(0.9))
-            .rounded(px(7.0))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
             .border_color(if pending.confirm_kill {
                 theme::danger()
@@ -9415,7 +9928,7 @@ impl TermiRustApp {
             .shadow_lg()
             .child(
                 h_flex()
-                    .h(px(44.0))
+                    .h(px(theme::CANVAS_TOOLBAR_HEIGHT))
                     .px_3()
                     .items_center()
                     .justify_between()
@@ -9423,13 +9936,13 @@ impl TermiRustApp {
                     .border_color(theme::border_dark())
                     .child(
                         div()
-                            .text_size(px(13.0))
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
                             .child(if pending.confirm_kill {
-                                "Confirm tmux session deletion"
+                                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyConfirmTmuxSessionDeletion)
                             } else {
-                                "Close persistent terminal"
+                                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyClosePersistentTerminal)
                             }),
                     )
                     .child(
@@ -9437,7 +9950,7 @@ impl TermiRustApp {
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Cancel")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::CommonCancel))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.pending_tmux_close = None;
                                 cx.notify();
@@ -9450,7 +9963,7 @@ impl TermiRustApp {
                     .gap_3()
                     .child(
                         div()
-                            .text_size(px(11.0))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(if pending.confirm_kill {
                                 theme::danger()
                             } else {
@@ -9475,8 +9988,8 @@ impl TermiRustApp {
                                         theme::ActionTone::Accent,
                                         cx,
                                     ))
-                                    .label("Detach from Canvas")
-                                    .tooltip("Close this node and leave tmux running")
+                                    .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDetachFromCanvas))
+                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCloseThisNodeAndLeaveTmuxRunning))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.detach_tmux_node_from_canvas(cx);
                                     })),
@@ -9485,8 +9998,8 @@ impl TermiRustApp {
                                 Button::new("canvas-tmux-disconnect-client")
                                     .small()
                                     .ghost()
-                                    .label("Disconnect Client")
-                                    .tooltip("Keep the node so it can reconnect later")
+                                    .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDisconnectClient))
+                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyKeepTheNodeSoItCanReconnectLater))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.disconnect_tmux_client(cx);
                                     })),
@@ -9498,8 +10011,8 @@ impl TermiRustApp {
                                         theme::ActionTone::Danger,
                                         cx,
                                     ))
-                                    .label("Kill tmux Session...")
-                                    .tooltip("Permanently stop this tmux session")
+                                    .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyKillTmuxSession))
+                                    .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyPermanentlyStopThisTmuxSession))
                                     .disabled(!can_kill)
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.request_tmux_kill_confirmation(cx);
@@ -9515,7 +10028,7 @@ impl TermiRustApp {
                                     Button::new("canvas-tmux-kill-back")
                                         .small()
                                         .ghost()
-                                        .label("Back")
+                                        .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyBack))
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             if let Some(pending) = this.pending_tmux_close.as_mut() {
                                                 pending.confirm_kill = false;
@@ -9530,7 +10043,7 @@ impl TermiRustApp {
                                             theme::ActionTone::Danger,
                                             cx,
                                         ))
-                                        .label("Confirm Kill")
+                                        .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyConfirmKill))
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.confirm_tmux_session_kill(cx);
                                         })),
@@ -9549,18 +10062,18 @@ impl TermiRustApp {
             .id("canvas-pane-close-dialog")
             .debug_selector(|| "canvas-pane-close-dialog".to_string())
             .absolute()
-            .top(px(12.0))
-            .right(px(12.0))
-            .w(px(460.0))
+            .top(px(theme::TYPE_CAPTION_SIZE))
+            .right(px(theme::TYPE_CAPTION_SIZE))
+            .w(px(theme::CANVAS_PANEL_MEDIUM_WIDTH))
             .max_w(relative(0.9))
-            .rounded(px(7.0))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
             .border_color(theme::danger())
             .bg(theme::library_card())
             .shadow_lg()
             .child(
                 h_flex()
-                    .h(px(44.0))
+                    .h(px(theme::CANVAS_TOOLBAR_HEIGHT))
                     .px_3()
                     .items_center()
                     .justify_between()
@@ -9568,17 +10081,17 @@ impl TermiRustApp {
                     .border_color(theme::border_dark())
                     .child(
                         div()
-                            .text_size(px(13.0))
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
-                            .child("Close active terminal?"),
+                            .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCloseActiveTerminal)),
                     )
                     .child(
                         Button::new("canvas-pane-close-cancel-icon")
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Cancel")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::CommonCancel))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.pending_canvas_pane_close = None;
                                 cx.notify();
@@ -9591,12 +10104,9 @@ impl TermiRustApp {
                     .gap_3()
                     .child(
                         div()
-                            .text_size(px(11.0))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
-                            .child(format!(
-                                "Closing {} ends its active local process or SSH connection.",
-                                pending.title
-                            )),
+                            .child(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicClosingEndsItsActiveLocalProcessOrSshCon, vec![(pending.title).to_string()])),
                     )
                     .child(
                         h_flex()
@@ -9621,7 +10131,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Danger,
                                         cx,
                                     ))
-                                    .label("Close Terminal")
+                                    .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCloseTerminal))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.confirm_canvas_pane_close(cx);
                                     })),
@@ -9639,18 +10149,18 @@ impl TermiRustApp {
             .id("canvas-content-node-delete-dialog")
             .debug_selector(|| "canvas-content-node-delete-dialog".to_string())
             .absolute()
-            .top(px(12.0))
-            .right(px(12.0))
-            .w(px(460.0))
+            .top(px(theme::TYPE_CAPTION_SIZE))
+            .right(px(theme::TYPE_CAPTION_SIZE))
+            .w(px(theme::CANVAS_PANEL_MEDIUM_WIDTH))
             .max_w(relative(0.9))
-            .rounded(px(7.0))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
             .border_color(theme::danger())
             .bg(theme::library_card())
             .shadow_lg()
             .child(
                 h_flex()
-                    .h(px(44.0))
+                    .h(px(theme::CANVAS_TOOLBAR_HEIGHT))
                     .px_3()
                     .items_center()
                     .justify_between()
@@ -9658,13 +10168,13 @@ impl TermiRustApp {
                     .border_color(theme::border_dark())
                     .child(
                         div()
-                            .text_size(px(13.0))
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
                             .child(if pending.is_note {
-                                "Delete sticky note?"
+                                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDeleteStickyNote)
                             } else {
-                                "Remove group frame?"
+                                localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyRemoveGroupFrame)
                             }),
                     )
                     .child(
@@ -9672,7 +10182,7 @@ impl TermiRustApp {
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Cancel")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::CommonCancel))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.pending_canvas_node_delete = None;
                                 cx.notify();
@@ -9685,10 +10195,10 @@ impl TermiRustApp {
                     .gap_3()
                     .child(
                         div()
-                            .text_size(px(11.0))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
                             .child(if pending.is_note {
-                                format!("{} and its context links will be deleted.", pending.title)
+                                localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicAndItsContextLinksWillBeDeleted, vec![(pending.title).to_string()])
                             } else {
                                 format!(
                                     "{} will be removed; its member nodes stay open.",
@@ -9725,9 +10235,9 @@ impl TermiRustApp {
                                     ))
                                     .icon(IconName::Delete)
                                     .label(if pending.is_note {
-                                        "Delete Note"
+                                        localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyDeleteNote)
                                     } else {
-                                        "Remove Group"
+                                        localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyRemoveGroup)
                                     })
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.confirm_canvas_content_node_delete(cx);
@@ -9754,7 +10264,10 @@ impl TermiRustApp {
                         pane_id,
                         pane.title.clone(),
                         if pane.request.is_local_shell() {
-                            "Local".to_string()
+                            localization::static_message(
+                                termirust_ui_contract::MessageId::AgentCanvasCopyLocal,
+                            )
+                            .to_string()
                         } else {
                             pane.endpoint.clone()
                         },
@@ -9765,20 +10278,20 @@ impl TermiRustApp {
         v_flex()
             .id("canvas-split-pane-chooser")
             .absolute()
-            .top(px(12.0))
-            .right(px(12.0))
-            .w(px(540.0))
+            .top(px(theme::TYPE_CAPTION_SIZE))
+            .right(px(theme::TYPE_CAPTION_SIZE))
+            .w(px(theme::CANVAS_PANEL_LARGE_WIDTH))
             .max_w(relative(0.9))
             .max_h(relative(0.92))
             .overflow_hidden()
-            .rounded(px(7.0))
+            .rounded(px(theme::CANVAS_POPOVER_RADIUS))
             .border_1()
             .border_color(theme::border_dark())
             .bg(theme::library_card())
             .shadow_lg()
             .child(
                 h_flex()
-                    .h(px(44.0))
+                    .h(px(theme::CANVAS_TOOLBAR_HEIGHT))
                     .px_3()
                     .items_center()
                     .justify_between()
@@ -9786,17 +10299,17 @@ impl TermiRustApp {
                     .border_color(theme::border_dark())
                     .child(
                         div()
-                            .text_size(px(13.0))
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
-                            .child("Choose Sessions for Split"),
+                            .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyChooseSessionsForSplit)),
                     )
                     .child(
                         Button::new("canvas-split-pane-chooser-close")
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Stay in Canvas")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyStayInCanvas))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.split_pane_chooser = None;
                                 cx.notify();
@@ -9810,12 +10323,9 @@ impl TermiRustApp {
                     .min_h_0()
                     .child(
                         div()
-                            .text_size(px(11.0))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
-                            .child(format!(
-                                "Choose 1-{} sessions. Unselected sessions keep running and remain on the Canvas.",
-                                super::MAX_SPLIT_PANES
-                            )),
+                            .child(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicChoose1SessionsUnselectedSessionsKeepRunni, vec![(super::MAX_SPLIT_PANES).to_string()])),
                     )
                     .child(
                         v_flex()
@@ -9825,7 +10335,7 @@ impl TermiRustApp {
                                 let is_selected = selected.contains(&pane_id);
                                 h_flex()
                                     .id(("canvas-split-pane-choice", pane_id))
-                                    .min_h(px(48.0))
+                                    .min_h(px(theme::SPACE_8))
                                     .px_2()
                                     .gap_2()
                                     .items_center()
@@ -9843,7 +10353,7 @@ impl TermiRustApp {
                                         } else {
                                             IconName::SquareTerminal
                                         })
-                                        .size(px(14.0))
+                                        .size(px(theme::TYPE_BODY_SIZE))
                                         .text_color(if is_selected {
                                             theme::accent()
                                         } else {
@@ -9856,14 +10366,14 @@ impl TermiRustApp {
                                             .min_w_0()
                                             .child(
                                                 div()
-                                                    .text_size(px(11.0))
+                                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                                     .font_semibold()
                                                     .text_color(theme::text_main())
                                                     .child(title),
                                             )
                                             .child(
                                                 div()
-                                                    .text_size(px(10.0))
+                                                    .text_size(px(theme::TYPE_NANO_SIZE))
                                                     .text_color(theme::text_muted())
                                                     .child(endpoint),
                                             ),
@@ -9879,13 +10389,9 @@ impl TermiRustApp {
                             .justify_between()
                             .child(
                                 div()
-                                    .text_size(px(10.0))
+                                    .text_size(px(theme::TYPE_NANO_SIZE))
                                     .text_color(theme::text_muted())
-                                    .child(format!(
-                                        "{} of {} selected",
-                                        selected.len(),
-                                        super::MAX_SPLIT_PANES
-                                    )),
+                                    .child(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicOfSelected, vec![(selected.len()).to_string(), (super::MAX_SPLIT_PANES).to_string()])),
                             )
                             .child(
                                 h_flex()
@@ -9908,7 +10414,7 @@ impl TermiRustApp {
                                                 cx,
                                             ))
                                             .icon(IconName::Check)
-                                            .label("Open Split")
+                                            .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyOpenSplit))
                                             .disabled(selected.is_empty())
                                             .on_click(cx.listener(|this, _, window, cx| {
                                                 this.confirm_split_pane_choice(window, cx);
@@ -9920,6 +10426,267 @@ impl TermiRustApp {
             .into_any_element()
     }
 
+    fn render_canvas_accessible_list(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let Some(snapshot) = self.agent_canvas_semantic_snapshot() else {
+            return div().into_any_element();
+        };
+        let mut rows = snapshot.rows.clone();
+        rows.sort_by(|left, right| {
+            left.explicit_order
+                .is_none()
+                .cmp(&right.explicit_order.is_none())
+                .then_with(|| left.explicit_order.cmp(&right.explicit_order))
+                .then_with(|| left.y.cmp(&right.y))
+                .then_with(|| left.x.cmp(&right.x))
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        let state_label = localization::static_message(snapshot.state.message());
+        let revision = snapshot.revision;
+        v_flex()
+            .id("canvas-accessible-list")
+            .debug_selector(|| "canvas-accessible-list".to_string())
+            .flex_1()
+            .min_h_0()
+            .w_full()
+            .overflow_y_scroll()
+            .bg(theme::library_bg())
+            .p_3()
+            .gap_2()
+            .child(
+                h_flex()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_HEADING_SIZE))
+                                    .font_semibold()
+                                    .text_color(theme::text_main())
+                                    .child(localization::static_message(
+                                        termirust_ui_contract::MessageId::AgentCanvasNodeList,
+                                    )),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(state_label),
+                            ),
+                    )
+                    .child(
+                        Button::new("canvas-list-return-graph")
+                            .small()
+                            .ghost()
+                            .icon(IconName::Map)
+                            .label(localization::static_message(
+                                termirust_ui_contract::MessageId::AgentCanvasGraphView,
+                            ))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.canvas_accessible_list_open = false;
+                                cx.notify();
+                            })),
+                    ),
+            )
+            .when(rows.is_empty(), |list| {
+                list.child(div().p_4().text_color(theme::text_muted()).child(
+                    localization::static_message(
+                        termirust_ui_contract::MessageId::AgentCanvasStateEmpty,
+                    ),
+                ))
+            })
+            .children(rows.into_iter().enumerate().map(|(index, row)| {
+                let title = row.title.unwrap_or_else(|| {
+                    localization::static_message(if snapshot.recording_friendly {
+                        termirust_ui_contract::MessageId::AgentCanvasPrivateNode
+                    } else {
+                        canvas_alternative_kind_message(row.kind)
+                    })
+                });
+                let state =
+                    localization::static_message(canvas_alternative_state_message(row.state));
+                let semantic = row.id;
+                let focus_semantic = semantic;
+                let up_semantic = semantic;
+                let down_semantic = semantic;
+                let left_semantic = semantic;
+                let right_semantic = semantic;
+                let rename_semantic = semantic;
+                let collapse_semantic = semantic;
+                let menu_semantic = semantic;
+                h_flex()
+                    .id(("canvas-list-row", index))
+                    .debug_selector(move || format!("canvas-list-row-{index}"))
+                    .min_h(px(theme::SHELL_NAVIGATION_ROW_HEIGHT))
+                    .w_full()
+                    .px_3()
+                    .py_2()
+                    .gap_3()
+                    .items_center()
+                    .rounded(px(theme::CONTROL_RADIUS))
+                    .border_1()
+                    .border_color(if row.selected {
+                        theme::focus_ring()
+                    } else {
+                        theme::border()
+                    })
+                    .bg(theme::library_card())
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.handle_agent_canvas_accessibility_command(
+                            AgentCanvasAccessibilityCommand::FocusNode(focus_semantic),
+                            window,
+                            cx,
+                        );
+                    }))
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_BODY_SIZE))
+                                    .font_medium()
+                                    .text_color(theme::text_main())
+                                    .child(title),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                    .text_color(theme::text_muted())
+                                    .child(localization::static_message(
+                                        canvas_alternative_kind_message(row.kind),
+                                    ))
+                                    .child(state),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .child(canvas_list_action_button!(
+                                ("canvas-list-up", index),
+                                IconName::ChevronUp,
+                                termirust_ui_contract::MessageId::AgentCanvasActionMoveUp,
+                                cx.listener(move |this, _, window, cx| {
+                                    this.handle_agent_canvas_accessibility_command(
+                                        AgentCanvasAccessibilityCommand::MoveNode {
+                                            node: up_semantic,
+                                            direction: CanvasMoveDirection::Up,
+                                            expected_revision: revision,
+                                        },
+                                        window,
+                                        cx,
+                                    );
+                                }),
+                            ))
+                            .child(canvas_list_action_button!(
+                                ("canvas-list-down", index),
+                                IconName::ChevronDown,
+                                termirust_ui_contract::MessageId::AgentCanvasActionMoveDown,
+                                cx.listener(move |this, _, window, cx| {
+                                    this.handle_agent_canvas_accessibility_command(
+                                        AgentCanvasAccessibilityCommand::MoveNode {
+                                            node: down_semantic,
+                                            direction: CanvasMoveDirection::Down,
+                                            expected_revision: revision,
+                                        },
+                                        window,
+                                        cx,
+                                    );
+                                }),
+                            ))
+                            .child(canvas_list_action_button!(
+                                ("canvas-list-left", index),
+                                IconName::ArrowLeft,
+                                termirust_ui_contract::MessageId::AgentCanvasActionMoveLeft,
+                                cx.listener(move |this, _, window, cx| {
+                                    this.handle_agent_canvas_accessibility_command(
+                                        AgentCanvasAccessibilityCommand::MoveNode {
+                                            node: left_semantic,
+                                            direction: CanvasMoveDirection::Left,
+                                            expected_revision: revision,
+                                        },
+                                        window,
+                                        cx,
+                                    );
+                                }),
+                            ))
+                            .child(canvas_list_action_button!(
+                                ("canvas-list-right", index),
+                                IconName::ArrowRight,
+                                termirust_ui_contract::MessageId::AgentCanvasActionMoveRight,
+                                cx.listener(move |this, _, window, cx| {
+                                    this.handle_agent_canvas_accessibility_command(
+                                        AgentCanvasAccessibilityCommand::MoveNode {
+                                            node: right_semantic,
+                                            direction: CanvasMoveDirection::Right,
+                                            expected_revision: revision,
+                                        },
+                                        window,
+                                        cx,
+                                    );
+                                }),
+                            ))
+                            .child(canvas_list_action_button!(
+                                ("canvas-list-rename", index),
+                                IconName::ALargeSmall,
+                                termirust_ui_contract::MessageId::AgentCanvasActionRename,
+                                cx.listener(move |this, _, window, cx| {
+                                    this.handle_agent_canvas_accessibility_command(
+                                        AgentCanvasAccessibilityCommand::RenameNode(
+                                            rename_semantic,
+                                        ),
+                                        window,
+                                        cx,
+                                    );
+                                }),
+                            ))
+                            .child(canvas_list_action_button!(
+                                ("canvas-list-collapse", index),
+                                if row.collapsed {
+                                    IconName::ChevronDown
+                                } else {
+                                    IconName::ChevronUp
+                                },
+                                termirust_ui_contract::MessageId::AgentCanvasActionToggleCollapsed,
+                                cx.listener(move |this, _, window, cx| {
+                                    this.handle_agent_canvas_accessibility_command(
+                                        AgentCanvasAccessibilityCommand::ToggleCollapsed {
+                                            node: collapse_semantic,
+                                            expected_revision: revision,
+                                        },
+                                        window,
+                                        cx,
+                                    );
+                                }),
+                            ))
+                            .child(canvas_list_action_button!(
+                                ("canvas-list-menu", index),
+                                IconName::Ellipsis,
+                                termirust_ui_contract::MessageId::AgentCanvasActionMenu,
+                                cx.listener(move |this, _, window, cx| {
+                                    this.handle_agent_canvas_accessibility_command(
+                                        AgentCanvasAccessibilityCommand::OpenNodeMenu(
+                                            menu_semantic,
+                                        ),
+                                        window,
+                                        cx,
+                                    );
+                                }),
+                            )),
+                    )
+                    .into_any_element()
+            }))
+            .into_any_element()
+    }
+
     pub(super) fn render_canvas_workspace(
         &self,
         window: &mut Window,
@@ -9928,6 +10695,14 @@ impl TermiRustApp {
         let Some(workspace) = self.active_workspace() else {
             return v_flex().flex_1();
         };
+        if self.canvas_accessible_list_open {
+            return v_flex()
+                .flex_1()
+                .min_h_0()
+                .bg(theme::library_bg())
+                .child(self.render_canvas_toolbar(window, cx))
+                .child(self.render_canvas_accessible_list(window, cx));
+        }
         let workspace_id = workspace.id;
         let viewport = window.viewport_size();
         let viewport_width = f32::from(viewport.width);
@@ -10008,22 +10783,22 @@ impl TermiRustApp {
                     .gap_3()
                     .child(
                         Icon::new(IconName::Map)
-                            .size(px(26.0))
+                            .size(px(theme::CANVAS_EMPTY_ICON_SIZE))
                             .text_color(theme::accent()),
                     )
                     .child(
                         div()
-                            .text_size(px(14.0))
+                            .text_size(px(theme::TYPE_BODY_SIZE))
                             .font_semibold()
                             .text_color(theme::text_on_dark())
-                            .child("Add your first canvas node"),
+                            .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyAddYourFirstCanvasNode)),
                     )
                     .child(
                         Button::new("canvas-empty-add")
                             .small()
                             .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                             .icon(IconName::Plus)
-                            .label("Add to Canvas")
+                            .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyAddToCanvas))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.toggle_canvas_add_menu(cx);
                             })),
@@ -10055,14 +10830,14 @@ impl TermiRustApp {
                 h_flex()
                     .id("canvas-context-target-prompt")
                     .absolute()
-                    .top(px(12.0))
-                    .left(px(12.0))
+                    .top(px(theme::TYPE_CAPTION_SIZE))
+                    .left(px(theme::TYPE_CAPTION_SIZE))
                     .max_w(relative(0.8))
                     .px_3()
                     .py_2()
                     .gap_3()
                     .items_center()
-                    .rounded(px(7.0))
+                    .rounded(px(theme::CANVAS_POPOVER_RADIUS))
                     .border_1()
                     .border_color(theme::accent())
                     .bg(theme::library_card())
@@ -10075,18 +10850,16 @@ impl TermiRustApp {
                             .min_w_0()
                             .child(
                                 div()
-                                    .text_size(px(12.0))
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_main())
-                                    .child("Choose a context target"),
+                                    .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyChooseAContextTarget)),
                             )
                             .child(
                                 div()
-                                    .text_size(px(10.0))
+                                    .text_size(px(theme::TYPE_NANO_SIZE))
                                     .text_color(theme::text_muted())
-                                    .child(format!(
-                                        "{source_label} is the source. Click the arrow action on the node that should receive its reviewed context."
-                                    )),
+                                    .child(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicSourceLabelIsTheSourceClickTheArrowActio, vec![(source_label).to_string()])),
                             ),
                     )
                     .child(
@@ -10094,7 +10867,7 @@ impl TermiRustApp {
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Cancel context link creation")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCancelContextLinkCreation))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 cx.stop_propagation();
                                 this.cancel_canvas_context_link(cx);
@@ -10108,14 +10881,14 @@ impl TermiRustApp {
                 h_flex()
                     .id("canvas-dependency-target-prompt")
                     .absolute()
-                    .top(px(12.0))
-                    .left(px(12.0))
+                    .top(px(theme::TYPE_CAPTION_SIZE))
+                    .left(px(theme::TYPE_CAPTION_SIZE))
                     .max_w(relative(0.8))
                     .px_3()
                     .py_2()
                     .gap_3()
                     .items_center()
-                    .rounded(px(7.0))
+                    .rounded(px(theme::CANVAS_POPOVER_RADIUS))
                     .border_1()
                     .border_color(theme::warning())
                     .bg(theme::library_card())
@@ -10128,18 +10901,16 @@ impl TermiRustApp {
                             .min_w_0()
                             .child(
                                 div()
-                                    .text_size(px(12.0))
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_main())
-                                    .child("Choose the next agent"),
+                                    .child(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyChooseTheNextAgent)),
                             )
                             .child(
                                 div()
-                                    .text_size(px(10.0))
+                                    .text_size(px(theme::TYPE_NANO_SIZE))
                                     .text_color(theme::text_muted())
-                                    .child(format!(
-                                        "{source_label} will run first. Click the agent that should run after it."
-                                    )),
+                                    .child(localization::dynamic_user_data_message(termirust_ui_contract::MessageId::AgentCanvasDynamicSourceLabelWillRunFirstClickTheAgentThat, vec![(source_label).to_string()])),
                             ),
                     )
                     .child(
@@ -10147,7 +10918,7 @@ impl TermiRustApp {
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)
-                            .tooltip("Cancel dependency creation")
+                            .tooltip(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyCancelDependencyCreation))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 cx.stop_propagation();
                                 this.cancel_canvas_dependency_link(cx);
@@ -10183,6 +10954,59 @@ impl TermiRustApp {
             .bg(theme::terminal_bg())
             .child(self.render_canvas_toolbar(window, cx))
             .child(body)
+    }
+}
+
+fn canvas_alternative_kind_message(
+    kind: CanvasAlternativeNodeKind,
+) -> termirust_ui_contract::MessageId {
+    match kind {
+        CanvasAlternativeNodeKind::Terminal => {
+            termirust_ui_contract::MessageId::AgentCanvasNodeTerminal
+        }
+        CanvasAlternativeNodeKind::Agent => termirust_ui_contract::MessageId::AgentCanvasNodeAgent,
+        CanvasAlternativeNodeKind::Note => termirust_ui_contract::MessageId::AgentCanvasNodeNote,
+        CanvasAlternativeNodeKind::Group => termirust_ui_contract::MessageId::AgentCanvasNodeGroup,
+    }
+}
+
+fn canvas_alternative_state_message(
+    state: CanvasAlternativeNodeState,
+) -> termirust_ui_contract::MessageId {
+    match state {
+        CanvasAlternativeNodeState::Idle => {
+            termirust_ui_contract::MessageId::AgentCanvasNodeStateIdle
+        }
+        CanvasAlternativeNodeState::Running => {
+            termirust_ui_contract::MessageId::AgentCanvasNodeStateRunning
+        }
+        CanvasAlternativeNodeState::Succeeded => {
+            termirust_ui_contract::MessageId::AgentCanvasNodeStateSucceeded
+        }
+        CanvasAlternativeNodeState::Failed => {
+            termirust_ui_contract::MessageId::AgentCanvasNodeStateFailed
+        }
+        CanvasAlternativeNodeState::Cancelled => {
+            termirust_ui_contract::MessageId::AgentCanvasNodeStateCancelled
+        }
+        CanvasAlternativeNodeState::Blocked => {
+            termirust_ui_contract::MessageId::AgentCanvasNodeStateBlocked
+        }
+        CanvasAlternativeNodeState::Disconnected => {
+            termirust_ui_contract::MessageId::AgentCanvasNodeStateDisconnected
+        }
+        CanvasAlternativeNodeState::Editing => {
+            termirust_ui_contract::MessageId::AgentCanvasNodeStateEditing
+        }
+        CanvasAlternativeNodeState::Saved => {
+            termirust_ui_contract::MessageId::AgentCanvasNodeStateSaved
+        }
+        CanvasAlternativeNodeState::Frame => {
+            termirust_ui_contract::MessageId::AgentCanvasNodeStateFrame
+        }
+        CanvasAlternativeNodeState::Error => {
+            termirust_ui_contract::MessageId::AgentCanvasNodeStateError
+        }
     }
 }
 

@@ -69,13 +69,18 @@ impl TermiRustApp {
                     div()
                         .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                         .text_color(theme::text_muted_dark())
-                        .child(format!("{current_match}/{matches}")),
+                        .child(localization::dynamic_user_data_message(
+                            termirust_ui_contract::MessageId::AgentCanvasDynamicCurrentMatchMatches,
+                            vec![(current_match).to_string(), (matches).to_string()],
+                        )),
                 )
                 .child(
                     Button::new("workspace-search-prev")
                         .ghost()
                         .small()
-                        .label("Prev")
+                        .label(localization::static_message(
+                            termirust_ui_contract::MessageId::AgentCanvasCopyPrev,
+                        ))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.jump_workspace_search(-1, cx);
                         })),
@@ -84,7 +89,9 @@ impl TermiRustApp {
                     Button::new("workspace-search-next")
                         .ghost()
                         .small()
-                        .label("Next")
+                        .label(localization::static_message(
+                            termirust_ui_contract::MessageId::AgentCanvasCopyNext,
+                        ))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.jump_workspace_search(1, cx);
                         })),
@@ -881,7 +888,7 @@ impl TermiRustApp {
             .id(("terminal-pane", pane.id))
             .relative()
             .size_full()
-            .rounded(px(10.))
+            .rounded(px(theme::TYPE_NANO_SIZE))
             .border_1()
             .border_color(if is_active_pane {
                 theme::focus_ring()
@@ -1036,8 +1043,8 @@ impl TermiRustApp {
                 this.child(
                     div()
                         .absolute()
-                        .top(px(10.))
-                        .right(px(10.))
+                        .top(px(theme::TYPE_NANO_SIZE))
+                        .right(px(theme::TYPE_NANO_SIZE))
                         .child(self.status_badge("tmux", theme::terminal_bg(), theme::accent())),
                 )
             })
@@ -1049,18 +1056,32 @@ impl TermiRustApp {
                         .border_2()
                         .border_color(theme::accent())
                         .map(|d| match zone {
-                            DropZone::Left => d.left(px(0.)).top(px(0.)).h_full().w(relative(0.5)),
-                            DropZone::Right => {
-                                d.right(px(0.)).top(px(0.)).h_full().w(relative(0.5))
-                            }
-                            DropZone::Top => d.top(px(0.)).left(px(0.)).w_full().h(relative(0.5)),
-                            DropZone::Bottom => {
-                                d.bottom(px(0.)).left(px(0.)).w_full().h(relative(0.5))
-                            }
+                            DropZone::Left => d
+                                .left(px(theme::SPACE_0))
+                                .top(px(theme::SPACE_0))
+                                .h_full()
+                                .w(relative(0.5)),
+                            DropZone::Right => d
+                                .right(px(theme::SPACE_0))
+                                .top(px(theme::SPACE_0))
+                                .h_full()
+                                .w(relative(0.5)),
+                            DropZone::Top => d
+                                .top(px(theme::SPACE_0))
+                                .left(px(theme::SPACE_0))
+                                .w_full()
+                                .h(relative(0.5)),
+                            DropZone::Bottom => d
+                                .bottom(px(theme::SPACE_0))
+                                .left(px(theme::SPACE_0))
+                                .w_full()
+                                .h(relative(0.5)),
                         })
                         .with_animation(
                             ("split-drop-zone", pane.id),
-                            Animation::new(Duration::from_millis(140)),
+                            Animation::new(Duration::from_millis(
+                                theme::CANVAS_DROP_ANIMATION_MILLIS,
+                            )),
                             |element, delta| element.opacity(delta),
                         ),
                 )
@@ -1078,7 +1099,7 @@ impl TermiRustApp {
                 .child(
                     self.render_workspace_empty_state(
                         Icon::new(IconName::SquareTerminal)
-                            .size(px(24.))
+                            .size(px(theme::SPACE_6))
                             .text_color(theme::accent()),
                         "Open a host to start a workspace",
                         "Select a saved host from the library, use quick connect, or open a local terminal to start working.",
@@ -1094,7 +1115,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Accent,
                                         cx,
                                     ))
-                                    .label("Local Terminal")
+                                    .label(localization::static_message(termirust_ui_contract::MessageId::AgentCanvasCopyLocalTerminal))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.open_local_terminal(window, cx);
                                     })),
@@ -1106,7 +1127,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Neutral,
                                         cx,
                                     ))
-                                    .label("New Host")
+                                    .label(localization::static_message(termirust_ui_contract::MessageId::HostsAddAction))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.open_editor_for_new_host(window, cx);
                                     })),
@@ -1250,12 +1271,20 @@ impl TermiRustApp {
                 }),
             );
         match axis {
-            SplitAxis::Horizontal => base
-                .cursor(CursorStyle::ResizeLeftRight)
-                .child(div().w(px(2.)).h(px(40.)).rounded(px(1.)).bg(grip)),
-            SplitAxis::Vertical => base
-                .cursor(CursorStyle::ResizeUpDown)
-                .child(div().h(px(2.)).w(px(40.)).rounded(px(1.)).bg(grip)),
+            SplitAxis::Horizontal => base.cursor(CursorStyle::ResizeLeftRight).child(
+                div()
+                    .w(px(theme::SPACE_1))
+                    .h(px(theme::CANVAS_CONTROL_HEIGHT))
+                    .rounded(px(theme::BORDER_HAIRLINE))
+                    .bg(grip),
+            ),
+            SplitAxis::Vertical => base.cursor(CursorStyle::ResizeUpDown).child(
+                div()
+                    .h(px(theme::SPACE_1))
+                    .w(px(theme::CANVAS_CONTROL_HEIGHT))
+                    .rounded(px(theme::BORDER_HAIRLINE))
+                    .bg(grip),
+            ),
         }
     }
 

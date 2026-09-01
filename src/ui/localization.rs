@@ -44,6 +44,24 @@ pub fn static_message(id: MessageId) -> String {
     message_id(id).unwrap_or_default()
 }
 
+pub fn dynamic_user_data_message(id: MessageId, values: Vec<String>) -> String {
+    const NAMES: [&str; 8] = [
+        "value1", "value2", "value3", "value4", "value5", "value6", "value7", "value8",
+    ];
+    if values.len() > NAMES.len() {
+        return String::new();
+    }
+    let arguments = values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| Argument::new(NAMES[index], ArgumentValue::UserData(value)))
+        .collect::<Vec<_>>();
+    active_localizer()
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .format_arguments(id, &arguments)
+}
+
 pub fn settings_search_count(count: usize) -> String {
     text(&SettingsSearchCountArgs::new(Count(count as u64)))
 }

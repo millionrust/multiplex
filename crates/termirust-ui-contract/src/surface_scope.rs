@@ -63,6 +63,16 @@ pub fn files_for_surface(surface: &str) -> Option<&'static [SurfaceFile]> {
                 marked: true,
             },
         ]),
+        "agent-canvas" => Some(&[
+            SurfaceFile {
+                path: "src/ui/app/canvas.rs",
+                marked: false,
+            },
+            SurfaceFile {
+                path: "src/ui/app/workspace.rs",
+                marked: false,
+            },
+        ]),
         _ => None,
     }
 }

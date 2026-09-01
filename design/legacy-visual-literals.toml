@@ -2,1662 +2,6 @@
 version = 1
 
 [[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 60
-category = "dimension"
-fingerprint = "sha256:ecdf744c80376374e0124fcd0116338a2f5ced85b37c7f4d982ab0941d9ecf0c"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 62
-category = "spacing"
-fingerprint = "sha256:0eb8ff12dc389c7df7bf341f06cc4b7d71dba65b091459e583155dfd9874c81c"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 63
-category = "dimension"
-fingerprint = "sha256:7a9f6a6ba1565523abb343608bb36334b3ba9b18bc6a3f74d0dcc9730abfad0e"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 71
-category = "spacing"
-fingerprint = "sha256:0121b56d02c62e5adc97a2a66fc4261d20805f45506ce891f42377a601d6f633"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 72
-category = "font"
-fingerprint = "sha256:0597542f8186ed794227ea4734b65cb5cf6fae3ba69daaa2678108961f26231b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 73
-category = "dimension"
-fingerprint = "sha256:d8b3c43e8d9f5f3358bd84fabe03c5462183ba3ec6633f934e8feebd277783e0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 74
-category = "spacing"
-fingerprint = "sha256:fafcc46bc2ab16773029f23f3c64b7570cccedd3957b493c92ae97510118a7eb"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 76
-category = "dimension"
-fingerprint = "sha256:0bcc77ea97cca4ebae8448f7646493a6de7c2775ab72d0bfc94aa934bf27310a"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 77
-category = "dimension"
-fingerprint = "sha256:6473183334a9366dca9dd2eaacf818672c73dda0ab67211ee484b4dbc5454cb2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 78
-category = "spacing"
-fingerprint = "sha256:cadecded37086c4b36169cf719da637bc64d2ed216991dffa5bb2e5632d30225"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 79
-category = "spacing"
-fingerprint = "sha256:971f02cb3b7a345011acbba0ac9443461d009afcfb7465b3f490119270162977"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 80
-category = "dimension"
-fingerprint = "sha256:d175575997f01557b4c91e0b6f3481e427ae67a1f17e9d72bb813ef32b142ca3"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 81
-category = "dimension"
-fingerprint = "sha256:999b6454a3318e35bd56d2507527779209f33ec5328a8fa771bf6c638d6da9c0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 82
-category = "dimension"
-fingerprint = "sha256:ec04d6eb893907cdd1394031453fa349f2efe47a6656c1ceec0745454415f93b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 83
-category = "dimension"
-fingerprint = "sha256:d185cd9b970cabefa0a10ce55ed3e7fc1f7467c9f302e273c3d9c0742732a559"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 84
-category = "dimension"
-fingerprint = "sha256:2b2a423bb6ef37cb47fc1f209123363d5f42aa684cc0504e653cfed985550c4e"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 2411
-category = "dimension"
-fingerprint = "sha256:f7c0b0c62fe8b67b619aea57e085d5e68ea9cd7cb87436c724c8b310902a5e6b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 4939
-category = "dimension"
-fingerprint = "sha256:bae010b66327e608a3547bff97a1435a515c31cd8c894eb9ef9e13e02cc415ed"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 4940
-category = "dimension"
-fingerprint = "sha256:40b809a525e1a54b953b17aca91eb6625d01de35c28a136aaf4dd6890759baf0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 4941
-category = "dimension"
-fingerprint = "sha256:9cdcd7877c1a6b01be39386f80a5ab83c2b930c43265595f44f81c1914c75023"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 4945
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 4958
-category = "dimension"
-fingerprint = "sha256:07dbd02b8b1cc43858ae7700293f590999abc8fec15a7e6265e7d855f325c883"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 4966
-category = "font"
-fingerprint = "sha256:c5340ca91887b42524e84f3e49c70f82d3c321f48e61222d89ff3f18410c1efb"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5023
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5058
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5094
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5127
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5201
-category = "dimension"
-fingerprint = "sha256:bae010b66327e608a3547bff97a1435a515c31cd8c894eb9ef9e13e02cc415ed"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5202
-category = "dimension"
-fingerprint = "sha256:40b809a525e1a54b953b17aca91eb6625d01de35c28a136aaf4dd6890759baf0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5203
-category = "dimension"
-fingerprint = "sha256:1dca2b7caa5917361c8157969f38fdf273526fd3d10aa8f49bf8f90608eb1149"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5207
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5214
-category = "dimension"
-fingerprint = "sha256:154fa43a580647a94783ad67a6b04a7e242b07b717697e322f03932e5944d3be"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5226
-category = "dimension"
-fingerprint = "sha256:74e3f350fc0cdc47b798024ec8866836078ea509f5fddd1fffcbf29180d5e96f"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5231
-category = "font"
-fingerprint = "sha256:f94645f412723dac28922a405758075768e943f6718c91af64bb6e108c613d8b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5262
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5297
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5348
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5400
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5434
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5447
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5459
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5471
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5507
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5545
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5987
-category = "dimension"
-fingerprint = "sha256:9cdcd7877c1a6b01be39386f80a5ab83c2b930c43265595f44f81c1914c75023"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 5991
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6001
-category = "dimension"
-fingerprint = "sha256:07dbd02b8b1cc43858ae7700293f590999abc8fec15a7e6265e7d855f325c883"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6013
-category = "font"
-fingerprint = "sha256:c5340ca91887b42524e84f3e49c70f82d3c321f48e61222d89ff3f18410c1efb"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6154
-category = "dimension"
-fingerprint = "sha256:297e0efe47f84b6b4f0fa2481589180638ad4ac039cddc9939b2fcfbcbc441e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6155
-category = "dimension"
-fingerprint = "sha256:40b809a525e1a54b953b17aca91eb6625d01de35c28a136aaf4dd6890759baf0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6156
-category = "dimension"
-fingerprint = "sha256:ad34240ffb9d72d0f422125fda28c8d866186248a28c00d9f364227d62905b2f"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6160
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6173
-category = "dimension"
-fingerprint = "sha256:238d762ead584bff52e47bce9372691267f244f61c221fd52ff3ea09f07748fc"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6185
-category = "font"
-fingerprint = "sha256:f94645f412723dac28922a405758075768e943f6718c91af64bb6e108c613d8b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6192
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6320
-category = "dimension"
-fingerprint = "sha256:3efe83a51f88b3194149d749677badfd6022dfe624b0a5ce6571d9a1116b3ea3"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6321
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6393
-category = "dimension"
-fingerprint = "sha256:34296ca4f7b69af823211bfa33f273483cced573ac5e9ddb10272780bdda135b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6415
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6422
-category = "font"
-fingerprint = "sha256:2d196e7f1a1f043c1a3aa28bd0d1823a27ca23c789318daee60f35e8714a1cd5"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6432
-category = "font"
-fingerprint = "sha256:2d196e7f1a1f043c1a3aa28bd0d1823a27ca23c789318daee60f35e8714a1cd5"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6439
-category = "font"
-fingerprint = "sha256:2d196e7f1a1f043c1a3aa28bd0d1823a27ca23c789318daee60f35e8714a1cd5"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6576
-category = "dimension"
-fingerprint = "sha256:297e0efe47f84b6b4f0fa2481589180638ad4ac039cddc9939b2fcfbcbc441e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6577
-category = "dimension"
-fingerprint = "sha256:45ab0ec22345c96c9306e20f1cf33614b6faf486c110c2d303174eef33f429d6"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6578
-category = "dimension"
-fingerprint = "sha256:9d099c03907d2f67fcc06f8768789f8bbfd61fa49c541c7fa82599d6e8dbe74b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6582
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6592
-category = "dimension"
-fingerprint = "sha256:cc40052bc89e7c1aa7f0a6b9d002e102c8d3162f844ff285e54a47b78d64e1af"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6602
-category = "font"
-fingerprint = "sha256:f94645f412723dac28922a405758075768e943f6718c91af64bb6e108c613d8b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6609
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6646
-category = "dimension"
-fingerprint = "sha256:ff2b0be23106442631e20b244d73db6bffa1fa3287a0ad07ed9a134be3097329"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6651
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6692
-category = "radius"
-fingerprint = "sha256:1475d2668679a8120e857eedc115735f53593857815d53aed48c81a667ea0cdd"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6723
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6735
-category = "dimension"
-fingerprint = "sha256:a86a7e2fa0045cb3187a24e8c044c61be0e49dedbf30e420e7ac61f5380ae62a"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6742
-category = "dimension"
-fingerprint = "sha256:a86a7e2fa0045cb3187a24e8c044c61be0e49dedbf30e420e7ac61f5380ae62a"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6748
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6757
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6767
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6790
-category = "dimension"
-fingerprint = "sha256:297e0efe47f84b6b4f0fa2481589180638ad4ac039cddc9939b2fcfbcbc441e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6791
-category = "dimension"
-fingerprint = "sha256:45ab0ec22345c96c9306e20f1cf33614b6faf486c110c2d303174eef33f429d6"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6792
-category = "dimension"
-fingerprint = "sha256:ee34e8377db1e01cba3751e5baba415d6ba0801ded01cae805f4e7cdbea8f7ff"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6796
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6803
-category = "dimension"
-fingerprint = "sha256:154fa43a580647a94783ad67a6b04a7e242b07b717697e322f03932e5944d3be"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6811
-category = "font"
-fingerprint = "sha256:f94645f412723dac28922a405758075768e943f6718c91af64bb6e108c613d8b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6837
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6856
-category = "dimension"
-fingerprint = "sha256:a804b1475705d7a0b8fd122ca8e12a5b710a0e25b7c46770caad940a29e7a87f"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6869
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 6876
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7117
-category = "dimension"
-fingerprint = "sha256:bae010b66327e608a3547bff97a1435a515c31cd8c894eb9ef9e13e02cc415ed"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7118
-category = "dimension"
-fingerprint = "sha256:40b809a525e1a54b953b17aca91eb6625d01de35c28a136aaf4dd6890759baf0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7119
-category = "dimension"
-fingerprint = "sha256:ad37f493353be6d77de8d914b23a8a78bba91e690310ce67819418431203b8be"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7123
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7130
-category = "dimension"
-fingerprint = "sha256:140c91268f7f32f7feb128927665ddc20b90da204624351d1014d2a5c6dbe121"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7138
-category = "font"
-fingerprint = "sha256:f94645f412723dac28922a405758075768e943f6718c91af64bb6e108c613d8b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7165
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7187
-category = "radius"
-fingerprint = "sha256:442cce489b8d3730f8888ac4fa488430e652aabf7b39e63309eb1aa1d7513a59"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7196
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7209
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7557
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7565
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7599
-category = "dimension"
-fingerprint = "sha256:f235c80f0e229313d11785f7e3e4e8465dec800f741480d57045b57018707a72"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7688
-category = "dimension"
-fingerprint = "sha256:297e0efe47f84b6b4f0fa2481589180638ad4ac039cddc9939b2fcfbcbc441e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7689
-category = "dimension"
-fingerprint = "sha256:45ab0ec22345c96c9306e20f1cf33614b6faf486c110c2d303174eef33f429d6"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7690
-category = "dimension"
-fingerprint = "sha256:95f6627376f792657dc22f5083303a798472ba7e4eabedec1ff9a5a17a72e826"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7694
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7704
-category = "dimension"
-fingerprint = "sha256:140c91268f7f32f7feb128927665ddc20b90da204624351d1014d2a5c6dbe121"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7717
-category = "dimension"
-fingerprint = "sha256:ba9ce33f3267dbb04f662cecc0942a395f528413fb492e739c987a9ca8963244"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7726
-category = "font"
-fingerprint = "sha256:c5340ca91887b42524e84f3e49c70f82d3c321f48e61222d89ff3f18410c1efb"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7764
-category = "dimension"
-fingerprint = "sha256:376b063186a963d684da9639ff1ee0ab55b8b0049f03ae2c2d3ea4ca6a52ecfc"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7771
-category = "dimension"
-fingerprint = "sha256:e53fb691c1e16535320bc51479c7cb5943a085e182e3624367ad944d7306ae1e"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7790
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7805
-category = "dimension"
-fingerprint = "sha256:7ccc6db6d9c0445f8d14c14d937cce37db2de891f61af68772c794ab9f4bccb8"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7825
-category = "dimension"
-fingerprint = "sha256:2387e45def4f9623c4820bd8edc0222fe32e22610edb604aefc905fc6e2eaee2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7838
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7860
-category = "dimension"
-fingerprint = "sha256:b540ba743184c5db49f2a88ce46ea3fca62d2c36c09a5ee55e91589b26e9ba75"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7877
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7886
-category = "radius"
-fingerprint = "sha256:aa18c42f4b94bbe1e1a07018a0b44df6917272236b0d50f048dd31958ca45ff5"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7891
-category = "font"
-fingerprint = "sha256:2d196e7f1a1f043c1a3aa28bd0d1823a27ca23c789318daee60f35e8714a1cd5"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7939
-category = "dimension"
-fingerprint = "sha256:027ce9a654fc356edb189266526302d3a82d9a9f27f66207b735da11b6ff4247"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7950
-category = "dimension"
-fingerprint = "sha256:2ebd34d01fec1d671c02c39e4c797893e19a45677cf3286c85c5852cc012a7ef"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7956
-category = "dimension"
-fingerprint = "sha256:e53fb691c1e16535320bc51479c7cb5943a085e182e3624367ad944d7306ae1e"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7962
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 7992
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8002
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8096
-category = "radius"
-fingerprint = "sha256:442cce489b8d3730f8888ac4fa488430e652aabf7b39e63309eb1aa1d7513a59"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8129
-category = "radius"
-fingerprint = "sha256:813c1aa3272602f67003406331fca2308edbf01c1945d07c867e523c886277f9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8141
-category = "radius"
-fingerprint = "sha256:813c1aa3272602f67003406331fca2308edbf01c1945d07c867e523c886277f9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8148
-category = "dimension"
-fingerprint = "sha256:e90b3b156eda28331d4ca231d69775bfd3091fb3cf675e81efde6e25bfa04fb3"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8149
-category = "dimension"
-fingerprint = "sha256:7e32b81f3815b9b2d0a32f20aaec1f826938574e0de1234108762630f059b1de"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8151
-category = "radius"
-fingerprint = "sha256:aa18c42f4b94bbe1e1a07018a0b44df6917272236b0d50f048dd31958ca45ff5"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8153
-category = "font"
-fingerprint = "sha256:2d196e7f1a1f043c1a3aa28bd0d1823a27ca23c789318daee60f35e8714a1cd5"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8200
-category = "dimension"
-fingerprint = "sha256:0b68de57f09bd7d25a07b3f42bf3f539f69d80c52a160225106af29227776377"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8211
-category = "dimension"
-fingerprint = "sha256:43d808676852d5d5f2867229597fa1424e0d732e47e314cbb6a28ba8d7d8a584"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8390
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8483
-category = "dimension"
-fingerprint = "sha256:ba9ce33f3267dbb04f662cecc0942a395f528413fb492e739c987a9ca8963244"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8489
-category = "dimension"
-fingerprint = "sha256:f531fff7fd8f334c7df6b8f5e5000c2873abd51fdabf3a6b2a23f1dfcc197f31"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8500
-category = "font"
-fingerprint = "sha256:c5340ca91887b42524e84f3e49c70f82d3c321f48e61222d89ff3f18410c1efb"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8512
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8519
-category = "dimension"
-fingerprint = "sha256:2387e45def4f9623c4820bd8edc0222fe32e22610edb604aefc905fc6e2eaee2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8526
-category = "dimension"
-fingerprint = "sha256:2387e45def4f9623c4820bd8edc0222fe32e22610edb604aefc905fc6e2eaee2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8837
-category = "font"
-fingerprint = "sha256:f94645f412723dac28922a405758075768e943f6718c91af64bb6e108c613d8b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8842
-category = "dimension"
-fingerprint = "sha256:6ede535c8b030f8bc624acea69626ad5dc5208f2d720db168537697d17796c6d"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8855
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8872
-category = "dimension"
-fingerprint = "sha256:f6743ee4dd2216d72a5c5268f612371a7b29cc0346f0e9a9a25329c1f0c1c2b3"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8873
-category = "dimension"
-fingerprint = "sha256:54433ed06072a6ec0644953f8a8fa545c2ed554f51482d4cdee77a5c4915293e"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8874
-category = "dimension"
-fingerprint = "sha256:ff2b0be23106442631e20b244d73db6bffa1fa3287a0ad07ed9a134be3097329"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8893
-category = "dimension"
-fingerprint = "sha256:2387e45def4f9623c4820bd8edc0222fe32e22610edb604aefc905fc6e2eaee2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 8991
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9145
-category = "radius"
-fingerprint = "sha256:1475d2668679a8120e857eedc115735f53593857815d53aed48c81a667ea0cdd"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9147
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9159
-category = "radius"
-fingerprint = "sha256:1475d2668679a8120e857eedc115735f53593857815d53aed48c81a667ea0cdd"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9161
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9175
-category = "radius"
-fingerprint = "sha256:442cce489b8d3730f8888ac4fa488430e652aabf7b39e63309eb1aa1d7513a59"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9181
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9188
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9313
-category = "dimension"
-fingerprint = "sha256:297e0efe47f84b6b4f0fa2481589180638ad4ac039cddc9939b2fcfbcbc441e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9314
-category = "dimension"
-fingerprint = "sha256:45ab0ec22345c96c9306e20f1cf33614b6faf486c110c2d303174eef33f429d6"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9315
-category = "dimension"
-fingerprint = "sha256:ad34240ffb9d72d0f422125fda28c8d866186248a28c00d9f364227d62905b2f"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9319
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9326
-category = "dimension"
-fingerprint = "sha256:154fa43a580647a94783ad67a6b04a7e242b07b717697e322f03932e5944d3be"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9334
-category = "font"
-fingerprint = "sha256:f94645f412723dac28922a405758075768e943f6718c91af64bb6e108c613d8b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9357
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9403
-category = "dimension"
-fingerprint = "sha256:297e0efe47f84b6b4f0fa2481589180638ad4ac039cddc9939b2fcfbcbc441e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9404
-category = "dimension"
-fingerprint = "sha256:45ab0ec22345c96c9306e20f1cf33614b6faf486c110c2d303174eef33f429d6"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9405
-category = "dimension"
-fingerprint = "sha256:ee34e8377db1e01cba3751e5baba415d6ba0801ded01cae805f4e7cdbea8f7ff"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9407
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9418
-category = "dimension"
-fingerprint = "sha256:154fa43a580647a94783ad67a6b04a7e242b07b717697e322f03932e5944d3be"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9426
-category = "font"
-fingerprint = "sha256:f94645f412723dac28922a405758075768e943f6718c91af64bb6e108c613d8b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9453
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9552
-category = "dimension"
-fingerprint = "sha256:297e0efe47f84b6b4f0fa2481589180638ad4ac039cddc9939b2fcfbcbc441e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9553
-category = "dimension"
-fingerprint = "sha256:45ab0ec22345c96c9306e20f1cf33614b6faf486c110c2d303174eef33f429d6"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9554
-category = "dimension"
-fingerprint = "sha256:db6c0fd5496e4d6ccd5764966e5a534c03c7c05787f3962d2c8f1500bcd13463"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9556
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9563
-category = "dimension"
-fingerprint = "sha256:154fa43a580647a94783ad67a6b04a7e242b07b717697e322f03932e5944d3be"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9571
-category = "font"
-fingerprint = "sha256:f94645f412723dac28922a405758075768e943f6718c91af64bb6e108c613d8b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9594
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9642
-category = "dimension"
-fingerprint = "sha256:297e0efe47f84b6b4f0fa2481589180638ad4ac039cddc9939b2fcfbcbc441e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9643
-category = "dimension"
-fingerprint = "sha256:45ab0ec22345c96c9306e20f1cf33614b6faf486c110c2d303174eef33f429d6"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9644
-category = "dimension"
-fingerprint = "sha256:db6c0fd5496e4d6ccd5764966e5a534c03c7c05787f3962d2c8f1500bcd13463"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9646
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9653
-category = "dimension"
-fingerprint = "sha256:154fa43a580647a94783ad67a6b04a7e242b07b717697e322f03932e5944d3be"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9661
-category = "font"
-fingerprint = "sha256:f94645f412723dac28922a405758075768e943f6718c91af64bb6e108c613d8b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9688
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9768
-category = "dimension"
-fingerprint = "sha256:297e0efe47f84b6b4f0fa2481589180638ad4ac039cddc9939b2fcfbcbc441e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9769
-category = "dimension"
-fingerprint = "sha256:45ab0ec22345c96c9306e20f1cf33614b6faf486c110c2d303174eef33f429d6"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9770
-category = "dimension"
-fingerprint = "sha256:673f44dbc5e206c7df9d63535fc616316eefe484364613145df051919ac3e483"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9774
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9781
-category = "dimension"
-fingerprint = "sha256:154fa43a580647a94783ad67a6b04a7e242b07b717697e322f03932e5944d3be"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9789
-category = "font"
-fingerprint = "sha256:f94645f412723dac28922a405758075768e943f6718c91af64bb6e108c613d8b"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9813
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9828
-category = "dimension"
-fingerprint = "sha256:238d762ead584bff52e47bce9372691267f244f61c221fd52ff3ea09f07748fc"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9846
-category = "dimension"
-fingerprint = "sha256:ba9ce33f3267dbb04f662cecc0942a395f528413fb492e739c987a9ca8963244"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9859
-category = "font"
-fingerprint = "sha256:96bb1816b3f84a655b3994252d7fbe02dacafee486b883271270d0763a32ab76"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9866
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 9882
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 10011
-category = "dimension"
-fingerprint = "sha256:d97767feb23c5ff61d2964ed45fd02b4aa1cff97f5afda1c47f002cb2a44c0bd"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 10016
-category = "font"
-fingerprint = "sha256:125cdc21e97f374d511609e05599920064b2ae35ab803f4a127ff09f579b796f"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 10058
-category = "dimension"
-fingerprint = "sha256:297e0efe47f84b6b4f0fa2481589180638ad4ac039cddc9939b2fcfbcbc441e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 10059
-category = "dimension"
-fingerprint = "sha256:40b809a525e1a54b953b17aca91eb6625d01de35c28a136aaf4dd6890759baf0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 10065
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 10078
-category = "font"
-fingerprint = "sha256:c5340ca91887b42524e84f3e49c70f82d3c321f48e61222d89ff3f18410c1efb"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 10085
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 10111
-category = "dimension"
-fingerprint = "sha256:297e0efe47f84b6b4f0fa2481589180638ad4ac039cddc9939b2fcfbcbc441e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 10112
-category = "dimension"
-fingerprint = "sha256:40b809a525e1a54b953b17aca91eb6625d01de35c28a136aaf4dd6890759baf0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 10118
-category = "radius"
-fingerprint = "sha256:1e9bd30e7168ba54cb8e09c58d2988ba01e456c6580645a2a79121b7ad3e2bd9"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 10131
-category = "font"
-fingerprint = "sha256:c5340ca91887b42524e84f3e49c70f82d3c321f48e61222d89ff3f18410c1efb"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/canvas.rs"
-line = 10138
-category = "font"
-fingerprint = "sha256:8fd703e087c3db1b4277d7e23eb2d62cc9c724fcd0a6388724ac33a1b04f5286"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
 file = "src/ui/app/library.rs"
 line = 1114
 category = "font"
@@ -1875,7 +219,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 1636
+line = 1638
 category = "motion"
 fingerprint = "sha256:7f81b814b1066abc3656045062de59ce31e07891108ce085fb9a54d03b1008db"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1883,7 +227,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 1662
+line = 1664
 category = "motion"
 fingerprint = "sha256:9d7e5c3aa1bd3d3d34434793dd2551d8eaea34b6dafe880157943678b7d129fd"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1891,7 +235,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 5864
+line = 5872
 category = "motion"
 fingerprint = "sha256:081a817c8e399f49c437cfa9a9b231e18938fb2f1154e08a53d12befebad41d5"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1899,7 +243,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 5881
+line = 5889
 category = "motion"
 fingerprint = "sha256:48b39b8d55ba77b85ab1d468ca26add977ae0d3b8c5e34a9a3de70847745aa57"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1907,7 +251,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 9997
+line = 10005
 category = "font"
 fingerprint = "sha256:59928e8224f4eac2b948d1fecf2e0a7d11888282c1b879d12f7d127c0239e0aa"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1915,7 +259,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10123
+line = 10131
 category = "font"
 fingerprint = "sha256:59928e8224f4eac2b948d1fecf2e0a7d11888282c1b879d12f7d127c0239e0aa"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1923,7 +267,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10218
+line = 10226
 category = "radius"
 fingerprint = "sha256:805a2cda9d805ae6a58add656c87779e73bb726f8dec2753b1305011b1070f14"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1931,7 +275,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10230
+line = 10238
 category = "dimension"
 fingerprint = "sha256:1b898adaa76a0f6a7974ced52783e015bf5fa32e7b42ff90f467aaf7f452de4d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1939,7 +283,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10246
+line = 10254
 category = "radius"
 fingerprint = "sha256:805a2cda9d805ae6a58add656c87779e73bb726f8dec2753b1305011b1070f14"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1947,7 +291,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10265
+line = 10273
 category = "spacing"
 fingerprint = "sha256:97164bd9a469c384d9ad80014e081939cd53235376eebc01a8bd111daed76ac6"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1955,7 +299,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10311
+line = 10319
 category = "font"
 fingerprint = "sha256:132c1a8dbcb6c03903fe13f75d6375228a386ee2d8c11b84107238aabbf14b52"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1963,7 +307,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10353
+line = 10361
 category = "spacing"
 fingerprint = "sha256:5c3f35367492914a14dc8e7893c80a63b47d5ed30ca1e721810b88918e54e1d4"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1971,7 +315,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10354
+line = 10362
 category = "radius"
 fingerprint = "sha256:3c300db576835443d868a42f2b7c54d2688736d5fc340e2ad19560b49c1cab0f"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1979,7 +323,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10426
+line = 10434
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1987,7 +331,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10629
+line = 10637
 category = "spacing"
 fingerprint = "sha256:1b947e65247064e11f26aacc3f71392485f4a4027c4280ea4935751a27889b1c"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -1995,7 +339,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10630
+line = 10638
 category = "radius"
 fingerprint = "sha256:3c300db576835443d868a42f2b7c54d2688736d5fc340e2ad19560b49c1cab0f"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2003,7 +347,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10658
+line = 10666
 category = "dimension"
 fingerprint = "sha256:463260380f6c57a8efad7c141b5d9c50a7e3b95b3e445e045716c34f9436ebc3"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2011,7 +355,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10663
+line = 10671
 category = "radius"
 fingerprint = "sha256:3c300db576835443d868a42f2b7c54d2688736d5fc340e2ad19560b49c1cab0f"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2019,7 +363,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10674
+line = 10682
 category = "radius"
 fingerprint = "sha256:cb6ac2924a085fc14c7284d7b155dfe8e169f48879b1e9468319bb7f545c2a37"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2027,7 +371,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10704
+line = 10712
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2035,7 +379,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10932
+line = 10940
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2043,7 +387,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10985
+line = 10993
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2051,7 +395,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 10999
+line = 11007
 category = "dimension"
 fingerprint = "sha256:463260380f6c57a8efad7c141b5d9c50a7e3b95b3e445e045716c34f9436ebc3"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2059,7 +403,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11004
+line = 11012
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2067,7 +411,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11024
+line = 11032
 category = "dimension"
 fingerprint = "sha256:463260380f6c57a8efad7c141b5d9c50a7e3b95b3e445e045716c34f9436ebc3"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2075,7 +419,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11029
+line = 11037
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2083,7 +427,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11093
+line = 11101
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2091,7 +435,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11100
+line = 11108
 category = "spacing"
 fingerprint = "sha256:565de1473e3b6b44d76a09e6e9049280b5458c9d43d1183ec22574105b38f47c"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2099,7 +443,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11168
+line = 11176
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2107,7 +451,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11181
+line = 11189
 category = "spacing"
 fingerprint = "sha256:565de1473e3b6b44d76a09e6e9049280b5458c9d43d1183ec22574105b38f47c"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2115,7 +459,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11222
+line = 11230
 category = "spacing"
 fingerprint = "sha256:d38c336cb354f1a97474e2ce83791c3696a6c915c1288d503f2657660c80a24a"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2123,7 +467,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11223
+line = 11231
 category = "radius"
 fingerprint = "sha256:b7450dea7075cf6b686ff3073de435be9f485993cb1474be7567f2d52f630c1c"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2131,7 +475,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11348
+line = 11356
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2139,7 +483,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11355
+line = 11363
 category = "spacing"
 fingerprint = "sha256:565de1473e3b6b44d76a09e6e9049280b5458c9d43d1183ec22574105b38f47c"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2147,7 +491,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11362
+line = 11370
 category = "dimension"
 fingerprint = "sha256:463260380f6c57a8efad7c141b5d9c50a7e3b95b3e445e045716c34f9436ebc3"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2155,7 +499,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11367
+line = 11375
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2163,7 +507,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11387
+line = 11395
 category = "dimension"
 fingerprint = "sha256:463260380f6c57a8efad7c141b5d9c50a7e3b95b3e445e045716c34f9436ebc3"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2171,7 +515,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11392
+line = 11400
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2179,7 +523,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11413
+line = 11421
 category = "dimension"
 fingerprint = "sha256:463260380f6c57a8efad7c141b5d9c50a7e3b95b3e445e045716c34f9436ebc3"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2187,7 +531,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11418
+line = 11426
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2195,7 +539,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11597
+line = 11605
 category = "dimension"
 fingerprint = "sha256:7220d93b0978a529d89fb8a9526dcba624985525a13772f8333e7d73c7b96b2b"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2203,7 +547,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11607
+line = 11615
 category = "dimension"
 fingerprint = "sha256:0c290b67c29b35a2cc042e421a85338ae3e9683f5e316fd023b2999a40dd277a"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2211,7 +555,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11608
+line = 11616
 category = "radius"
 fingerprint = "sha256:215de26fad78a456f8602dd612dbd58d022f2a817f2237ddc60dd7b616463851"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2219,7 +563,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11619
+line = 11627
 category = "font"
 fingerprint = "sha256:47e8b2f9020d085378d8d29da7f3d2eb9e4d46bb1bf283fe68a71e985df65a0f"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2227,7 +571,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11626
+line = 11634
 category = "dimension"
 fingerprint = "sha256:7141de1a6c85b6f34842e965f29c86f7db55de68679f7b2f6be12d60584b183d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2235,7 +579,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11646
+line = 11654
 category = "dimension"
 fingerprint = "sha256:7220d93b0978a529d89fb8a9526dcba624985525a13772f8333e7d73c7b96b2b"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2243,7 +587,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11656
+line = 11664
 category = "dimension"
 fingerprint = "sha256:0c290b67c29b35a2cc042e421a85338ae3e9683f5e316fd023b2999a40dd277a"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2251,7 +595,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11657
+line = 11665
 category = "radius"
 fingerprint = "sha256:215de26fad78a456f8602dd612dbd58d022f2a817f2237ddc60dd7b616463851"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2259,7 +603,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11668
+line = 11676
 category = "font"
 fingerprint = "sha256:47e8b2f9020d085378d8d29da7f3d2eb9e4d46bb1bf283fe68a71e985df65a0f"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2267,7 +611,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11675
+line = 11683
 category = "dimension"
 fingerprint = "sha256:7141de1a6c85b6f34842e965f29c86f7db55de68679f7b2f6be12d60584b183d"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2275,7 +619,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11735
+line = 11743
 category = "dimension"
 fingerprint = "sha256:f7d0fa0a4bd0045d639c6fcb8a30bf752dbdaf945208837e88641569d59cb5ce"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2283,7 +627,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11740
+line = 11748
 category = "font"
 fingerprint = "sha256:3ca31d5f15b9eb4e868670786de0528d85b6b5b3c4e9219a83f632845d4ea9c0"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2291,7 +635,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11748
+line = 11756
 category = "dimension"
 fingerprint = "sha256:7823f8fd7cf20d7170239814a2c60bf706da6ba7feca23e6332d7fd431685594"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2299,7 +643,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11951
+line = 11959
 category = "spacing"
 fingerprint = "sha256:4e554a94732adac9430bf0d72ad8fd9bf0d5af836ea58b506356b9df2bcd6104"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2307,7 +651,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 11961
+line = 11969
 category = "radius"
 fingerprint = "sha256:27742f3e9d81ca92e0d73181fea4dce7acabec73f9505996ab6ef55728ce8cc1"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2315,7 +659,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 12018
+line = 12026
 category = "radius"
 fingerprint = "sha256:3c300db576835443d868a42f2b7c54d2688736d5fc340e2ad19560b49c1cab0f"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2323,7 +667,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 12518
+line = 12530
 category = "dimension"
 fingerprint = "sha256:74c27c80633b95a0d3029c8f89ff27dc1699a97b4a7fe56eda2309c0c74d13ac"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2331,7 +675,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 12519
+line = 12531
 category = "dimension"
 fingerprint = "sha256:710b0b0531872e390d2b7e3eaf279f0b99c69f8907a296e142789192ac48a6cb"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2339,7 +683,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 12532
+line = 12544
 category = "dimension"
 fingerprint = "sha256:92f13cfbfb0492fd761dd4c4a591060325001746771ebb0d076ec19eae8dcf40"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2347,7 +691,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 12533
+line = 12545
 category = "dimension"
 fingerprint = "sha256:a737aed4761e2fa70935020b0d1811ef076b463fad65cf1aeef37bda06e77890"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2355,7 +699,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 12535
+line = 12547
 category = "dimension"
 fingerprint = "sha256:e7d6304751295f22b9995a2e8e0022992f4ab3778614075169f8165b226671f2"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2363,7 +707,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 12550
+line = 12562
 category = "dimension"
 fingerprint = "sha256:04fd0a2886e42552d2e58b4f73726be231fc05660840670e5ad9cef7eb7b433f"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2371,7 +715,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 12557
+line = 12569
 category = "font"
 fingerprint = "sha256:3ca31d5f15b9eb4e868670786de0528d85b6b5b3c4e9219a83f632845d4ea9c0"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2379,7 +723,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 13098
+line = 13110
 category = "motion"
 fingerprint = "sha256:0a9fed97aef9cc9cea077beaaac181c372cf660e01d06b26139bebd1982d364c"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2387,7 +731,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 13150
+line = 13162
 category = "dimension"
 fingerprint = "sha256:305e5ff73ca4dfb97aa0c20b4ed5db8ef14b1e9d0314d9e8c64c53edc9a7d0f1"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2395,7 +739,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 13268
+line = 13280
 category = "motion"
 fingerprint = "sha256:f744dcf73af1f3e55eab8dd85e9e59ccbb859930b2a34c29303c78048c22b0a6"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2403,7 +747,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 13313
+line = 13325
 category = "motion"
 fingerprint = "sha256:f744dcf73af1f3e55eab8dd85e9e59ccbb859930b2a34c29303c78048c22b0a6"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2411,7 +755,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 13330
+line = 13342
 category = "motion"
 fingerprint = "sha256:f744dcf73af1f3e55eab8dd85e9e59ccbb859930b2a34c29303c78048c22b0a6"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2419,7 +763,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 13347
+line = 13359
 category = "motion"
 fingerprint = "sha256:f744dcf73af1f3e55eab8dd85e9e59ccbb859930b2a34c29303c78048c22b0a6"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2427,7 +771,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 14825
+line = 14837
 category = "dimension"
 fingerprint = "sha256:abd37bfac7f7325348281969bea21c901940b3a95ec80dca57964d7093a65371"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2435,7 +779,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 14998
+line = 15010
 category = "dimension"
 fingerprint = "sha256:5a114eaccd7b065ab20d24398012538252b871b13f09995f7944804ed3ed2980"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2443,7 +787,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 15148
+line = 15160
 category = "dimension"
 fingerprint = "sha256:af11115a43a018d3f95aff6631fdb263b727add63d0dfa3d0c7994f38e6bc228"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2451,7 +795,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 15170
+line = 15182
 category = "dimension"
 fingerprint = "sha256:36991e1f652d62e73ad54769304a46baea909d553c12f3c42c572a04a379a352"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2459,7 +803,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 15171
+line = 15183
 category = "dimension"
 fingerprint = "sha256:930c3e8d32c58f92a4b7bbd27208340572e29ac39e7a606a4a5ded4c0beb1868"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2467,7 +811,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 15172
+line = 15184
 category = "dimension"
 fingerprint = "sha256:5219d64c95af1c20ae62bd950dbebf0e112552426fceed0442b2e88745cb25d7"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2475,7 +819,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 15173
+line = 15185
 category = "dimension"
 fingerprint = "sha256:ec9bd2051c36ea4aa82fdc8f4387272b246537ed8cd7e3e37f7865c534cc775e"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2483,7 +827,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 15191
+line = 15203
 category = "dimension"
 fingerprint = "sha256:abd37bfac7f7325348281969bea21c901940b3a95ec80dca57964d7093a65371"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2491,7 +835,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 15235
+line = 15247
 category = "dimension"
 fingerprint = "sha256:af11115a43a018d3f95aff6631fdb263b727add63d0dfa3d0c7994f38e6bc228"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2499,7 +843,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 15240
+line = 15252
 category = "dimension"
 fingerprint = "sha256:ba5e7fa1f2b948465ed1f5b8f49704e3c95e973fe3b5e4b7b9acf2c0ee66e7c8"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2507,7 +851,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 15241
+line = 15253
 category = "dimension"
 fingerprint = "sha256:49b197baed9d4a850a9a0b6fac590e3336281ab87e259ad3df7904b561d030ad"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2515,7 +859,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 15242
+line = 15254
 category = "dimension"
 fingerprint = "sha256:ddd4e54efd39633a1a06cc25c11c2abf2b1f19e3fce07f2ddbbccd0a452016da"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2523,7 +867,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 15243
+line = 15255
 category = "dimension"
 fingerprint = "sha256:9137cd5a916865fcd4ca1884e3e56a804c43c36a1de3d91318ff92a00493afa0"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2531,7 +875,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 15244
+line = 15256
 category = "dimension"
 fingerprint = "sha256:abd37bfac7f7325348281969bea21c901940b3a95ec80dca57964d7093a65371"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2539,7 +883,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 15532
+line = 15544
 category = "dimension"
 fingerprint = "sha256:20dc7865b89a31af2f7a22fc026cd29a851398840541508a18dca4202ae2d293"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2547,7 +891,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 16406
+line = 16418
 category = "dimension"
 fingerprint = "sha256:73bd483b5b28862b5aa6d79de47ad1b48caef533b27874f2d8aaab004fa14dd5"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2555,7 +899,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 16410
+line = 16422
 category = "dimension"
 fingerprint = "sha256:a7d99f5f710889ef78335856606e31498d56fa63c6cf85edc4b92b9dd746d973"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2563,7 +907,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 16444
+line = 16456
 category = "dimension"
 fingerprint = "sha256:792964922b2b1d66d67a4f8359165314fd4adfbf4b54a2e588495e2218a20544"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2571,7 +915,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 16448
+line = 16460
 category = "dimension"
 fingerprint = "sha256:711d5dfaf9fd02cfaea29487b82a2b4d4fb6ccaafe71b6b9368eb6d9f86dda96"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2579,7 +923,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 17985
+line = 17997
 category = "motion"
 fingerprint = "sha256:6f836483a42d64133a530b7c6ad335d2bdc638e5349e77e094e96a5b26599061"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2587,7 +931,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 18064
+line = 18076
 category = "motion"
 fingerprint = "sha256:6f836483a42d64133a530b7c6ad335d2bdc638e5349e77e094e96a5b26599061"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2595,7 +939,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 18173
+line = 18185
 category = "motion"
 fingerprint = "sha256:6f836483a42d64133a530b7c6ad335d2bdc638e5349e77e094e96a5b26599061"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2603,7 +947,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 20126
+line = 20138
 category = "dimension"
 fingerprint = "sha256:f6ee17533087a1948e8f94da46127c4b1fdb29811a2a117ee7666a175c28b229"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2611,7 +955,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 20714
+line = 20726
 category = "dimension"
 fingerprint = "sha256:aaf1d84de33402885e2f8979f640ea2b7b0b7d8ab53068511a782cdd80da3a94"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2619,7 +963,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 20738
+line = 20750
 category = "dimension"
 fingerprint = "sha256:d91cc57b31c52699b4359fa615c1b9798023c9d612eb33a84d14591f79b493a1"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2627,7 +971,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 20807
+line = 20819
 category = "dimension"
 fingerprint = "sha256:aaf1d84de33402885e2f8979f640ea2b7b0b7d8ab53068511a782cdd80da3a94"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2635,7 +979,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 20835
+line = 20847
 category = "dimension"
 fingerprint = "sha256:e3684461ab0895be4044f51276385c5452751d393e7328ef64b117f1d421ac12"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2643,7 +987,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 20866
+line = 20878
 category = "dimension"
 fingerprint = "sha256:b67829653a191001fa3ab060e1e820a05fc828bc6f4965b117aa6308c95f5d3a"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2651,7 +995,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 20885
+line = 20897
 category = "dimension"
 fingerprint = "sha256:143f53fccd611657629dc162bc26ae6d4741f7e068cfbbfbbae91ba0e86035fd"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2659,7 +1003,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 21870
+line = 21882
 category = "dimension"
 fingerprint = "sha256:de7b76f42fd7cfb95485e53e1285a6c25cda68830e86122cf49dc74d9c5bb146"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2667,7 +1011,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 21922
+line = 21934
 category = "dimension"
 fingerprint = "sha256:aaf1d84de33402885e2f8979f640ea2b7b0b7d8ab53068511a782cdd80da3a94"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2675,7 +1019,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 21937
+line = 21949
 category = "dimension"
 fingerprint = "sha256:e3684461ab0895be4044f51276385c5452751d393e7328ef64b117f1d421ac12"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2683,7 +1027,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 22025
+line = 22037
 category = "dimension"
 fingerprint = "sha256:9bb6e4757ec8d1ff982df01411f4b35ddbb3b13a7a44e98b2cf6470e27f4695b"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2691,7 +1035,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 24544
+line = 24556
 category = "dimension"
 fingerprint = "sha256:a7ea7d7cb6f086179fb27b69b99c80be7462c60dc0e88b9744eb1284719186b2"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2699,7 +1043,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 27054
+line = 27068
 category = "dimension"
 fingerprint = "sha256:9bb6e4757ec8d1ff982df01411f4b35ddbb3b13a7a44e98b2cf6470e27f4695b"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2707,7 +1051,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 27344
+line = 27358
 category = "dimension"
 fingerprint = "sha256:5d4fb1935b1ca40a9aeeac84a149863118525025548ce14b23485f1f661323a6"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2715,7 +1059,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 27354
+line = 27368
 category = "dimension"
 fingerprint = "sha256:581174401721a66c17aa5c0e45e2ec80e8222dd235cc3c6ae8c8d27a65ecbffd"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2723,7 +1067,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 27356
+line = 27370
 category = "dimension"
 fingerprint = "sha256:2fa7dc327986625f7c89f1429c4375878ea8a4aa99f8fab20742773ee5dc4116"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2731,7 +1075,7 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 28018
+line = 28032
 category = "dimension"
 fingerprint = "sha256:9d3e0a498aadd6f2101d99433c9d458b8b6c35c3895adc77d4d6cc24b5ca4dff"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
@@ -2739,96 +1083,8 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 28020
+line = 28034
 category = "motion"
 fingerprint = "sha256:1e03f8eee42d4bd1c408d0dca56a994d6085c459032ea35d3ea7bda9f5c828a8"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 884
-category = "radius"
-fingerprint = "sha256:b7450dea7075cf6b686ff3073de435be9f485993cb1474be7567f2d52f630c1c"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 1039
-category = "dimension"
-fingerprint = "sha256:9e56674984c268159799c2ea1e1b5d66a5216b57bacaf3f10fdc450fd2c17de2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 1040
-category = "dimension"
-fingerprint = "sha256:8c6cbad98a11fd8efef30240de50db7fc939bf802cdde734a01128e78ffdc877"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 1052
-category = "dimension"
-fingerprint = "sha256:fa4b25bca8995eaba6f04babe8d33706c778049e4df9f31755cc342f30294c2e"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 1054
-category = "dimension"
-fingerprint = "sha256:e63f252a1450c0c15b8f5f31d07d53bd1d2362ef16a16db709af1e6fbc638dd5"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 1056
-category = "dimension"
-fingerprint = "sha256:3a183c4c74be27900051ec1d99cab592802cd3ff7921e74adeef192632cfb63c"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 1058
-category = "dimension"
-fingerprint = "sha256:a3fe68376f0563e331978098f21429f6b63c544f2f97d3a0acd9583c040cfa0d"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 1063
-category = "motion"
-fingerprint = "sha256:f9375a121ebb0355b79359c880f8e63ba3d73f684a16cfa78c6bcd7a00376994"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 1081
-category = "dimension"
-fingerprint = "sha256:6ff0e9c4cdbaff52f6cbf8c859c8f49bed164f88ecccfac94176dfadb8f26274"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 1255
-category = "radius"
-fingerprint = "sha256:f6eeb872e50b9d8a19c87301870ff405067f5419500a032aacff686734d406df"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 1258
-category = "radius"
-fingerprint = "sha256:eef415a408619c6a614b1262d75c225418de3f8c52a979d4302af9cace64e532"
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
 owner = "G21.1"

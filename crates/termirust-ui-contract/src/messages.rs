@@ -8,7 +8,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 const SUPPORTED_SCHEMA_VERSION: u16 = 1;
-const MAX_SCHEMA_BYTES: usize = 256 * 1024;
+const MAX_SCHEMA_BYTES: usize = 384 * 1024;
 const MAX_CATALOG_BYTES: usize = 512 * 1024;
 const MAX_MESSAGES: usize = 2_048;
 const MAX_ARGS_PER_MESSAGE: usize = 16;
@@ -1264,6 +1264,19 @@ impl Localizer {
         self.try_format(id, &[])
     }
 
+    pub fn format_arguments(&self, id: MessageId, arguments: &[Argument<'_>]) -> String {
+        match self.try_format(id, arguments) {
+            Ok(formatted) => formatted,
+            Err(_) => {
+                eprintln!(
+                    "[localization] formatting failed for MessageId={}",
+                    id.key()
+                );
+                format!("[{}]", id.key())
+            }
+        }
+    }
+
     fn try_format(
         &self,
         id: MessageId,
@@ -1576,6 +1589,27 @@ mod localization_tests {
         assert_eq!(
             Localizer::try_new("en-US").unwrap().format(&WrongType),
             "[status-connecting]"
+        );
+    }
+
+    #[test]
+    fn localization_dynamic_arguments_remain_schema_checked_and_isolated() {
+        let localizer = Localizer::try_new("en-US").unwrap();
+        let arguments = [
+            Argument::new("value1", ArgumentValue::UserData("2")),
+            Argument::new("value2", ArgumentValue::UserData("15")),
+        ];
+        assert_eq!(
+            localizer
+                .format_arguments(MessageId::AgentCanvasDynamicCurrentMatchMatches, &arguments,),
+            format!("Match {FSI}2{PDI} of {FSI}15{PDI}")
+        );
+        assert_eq!(
+            localizer.format_arguments(
+                MessageId::AgentCanvasDynamicCurrentMatchMatches,
+                &arguments[..1],
+            ),
+            "[agent-canvas-dynamic-current-match-matches]"
         );
     }
 

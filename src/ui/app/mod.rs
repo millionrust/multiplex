@@ -1231,6 +1231,7 @@ pub struct TermiRustApp {
     canvas_add_menu_open: bool,
     canvas_links_open: bool,
     canvas_activity_open: bool,
+    canvas_accessible_list_open: bool,
     canvas_fleet_open: bool,
     canvas_fleet_workspace_id: Option<u64>,
     pending_canvas_fleet_disconnect: bool,
@@ -1552,6 +1553,7 @@ impl TermiRustApp {
             canvas_add_menu_open: false,
             canvas_links_open: false,
             canvas_activity_open: false,
+            canvas_accessible_list_open: false,
             canvas_fleet_open: false,
             canvas_fleet_workspace_id: None,
             pending_canvas_fleet_disconnect: false,
@@ -1780,6 +1782,9 @@ impl TermiRustApp {
                 }
                 ShellAccessibilityCommand::Settings(command) => {
                     self.handle_settings_accessibility_command(command, event.value, window, cx);
+                }
+                ShellAccessibilityCommand::AgentCanvas(command) => {
+                    self.handle_agent_canvas_accessibility_command(command, window, cx);
                 }
             }
         }
@@ -12092,6 +12097,9 @@ impl Render for TermiRustApp {
         let settings = background_surface_available
             .then(|| self.settings_semantic_snapshot(cx))
             .flatten();
+        let agent_canvas = background_surface_available
+            .then(|| self.agent_canvas_semantic_snapshot())
+            .flatten();
         self.shell_accessibility.sync(ShellSemanticSnapshot {
             generation: 1,
             inspector_visible: self.show_editor_panel || worktree_modal_open || host_modal_open,
@@ -12110,6 +12118,7 @@ impl Render for TermiRustApp {
             sftp,
             vault_key_snippet,
             settings,
+            agent_canvas,
         });
 
         // When the active workspace changes, scroll the tab strip so the

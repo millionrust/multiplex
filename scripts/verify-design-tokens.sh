@@ -13,7 +13,7 @@ elif [[ $# -eq 3 && "${1:-}" == "--surface" && -n "${2:-}" && "${3:-}" == "--zer
 else
   echo "Usage: $0 --all-ui --no-new-baseline" >&2
   echo "   or: $0 --paths src/ui/a.rs,src/ui/b.rs --zero-legacy" >&2
-  echo "   or: $0 --surface vault-keys-snippets|settings --zero-legacy" >&2
+  echo "   or: $0 --surface vault-keys-snippets|settings|agent-canvas --zero-legacy" >&2
   exit 2
 fi
 
