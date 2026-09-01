@@ -40,6 +40,10 @@ pub fn message_id(id: MessageId) -> Option<String> {
         .ok()
 }
 
+pub fn static_message(id: MessageId) -> String {
+    message_id(id).unwrap_or_default()
+}
+
 pub fn set_development_locale(locale: &str) -> Result<Locale, String> {
     let locale = match locale
         .trim()
@@ -107,6 +111,81 @@ pub fn common_retry() -> String {
 
 pub fn sftp_opened_local_folder(path: impl Into<String>) -> String {
     text(&SftpOpenedLocalFolderArgs::new(UserData::new(path)))
+}
+
+pub fn snippet_prompt_placeholder(name: impl Into<String>) -> String {
+    text(&SnippetPromptPlaceholderArgs::new(UserData::new(name)))
+}
+
+pub fn snippet_prompts_required(count: usize) -> String {
+    text(&SnippetPromptsRequiredArgs::new(Count(count as u64)))
+}
+
+pub fn snippet_insert_review_summary(count: usize, target: impl Into<String>) -> String {
+    text(&SnippetInsertReviewSummaryArgs::new(
+        Count(count as u64),
+        UserData::new(target),
+    ))
+}
+
+pub fn snippet_count(count: usize) -> String {
+    text(&SnippetCountArgs::new(Count(count as u64)))
+}
+
+pub fn snippet_assigned_vault(vault: impl Into<String>) -> String {
+    text(&SnippetAssignedVaultArgs::new(UserData::new(vault)))
+}
+
+pub fn snippet_loaded_status(name: impl Into<String>) -> String {
+    text(&SnippetLoadedStatusArgs::new(UserData::new(name)))
+}
+
+pub fn snippet_saved_status(name: impl Into<String>) -> String {
+    text(&SnippetSavedStatusArgs::new(UserData::new(name)))
+}
+
+pub fn vault_host_count(count: usize) -> String {
+    text(&VaultHostCountArgs::new(Count(count as u64)))
+}
+
+pub fn vault_key_count(count: usize) -> String {
+    text(&VaultKeyCountArgs::new(Count(count as u64)))
+}
+
+pub fn vault_snippet_count(count: usize) -> String {
+    text(&VaultSnippetCountArgs::new(Count(count as u64)))
+}
+
+pub fn vault_member_count(count: usize) -> String {
+    text(&VaultMemberCountArgs::new(Count(count as u64)))
+}
+
+pub fn vault_loaded_status(name: impl Into<String>) -> String {
+    text(&VaultLoadedStatusArgs::new(UserData::new(name)))
+}
+
+pub fn vault_exists_error(name: impl Into<String>) -> String {
+    text(&VaultExistsErrorArgs::new(UserData::new(name)))
+}
+
+pub fn vault_saved_status(name: impl Into<String>) -> String {
+    text(&VaultSavedStatusArgs::new(UserData::new(name)))
+}
+
+pub fn vault_member_saved_status(name: impl Into<String>) -> String {
+    text(&VaultMemberSavedStatusArgs::new(UserData::new(name)))
+}
+
+pub fn key_host_summary(
+    username: impl Into<String>,
+    endpoint: impl Into<String>,
+    auth: impl Into<String>,
+) -> String {
+    text(&KeyHostSummaryArgs::new(
+        UserData::new(username),
+        UserData::new(endpoint),
+        Text::new(auth),
+    ))
 }
 
 pub fn sftp_host_summary(username: impl Into<String>, endpoint: impl Into<String>) -> String {
@@ -205,6 +284,32 @@ macro_rules! static_message {
         }
     };
 }
+
+static_message!(snippet_error_stale, SnippetErrorStaleArgs);
+static_message!(
+    snippet_error_terminal_required,
+    SnippetErrorTerminalRequiredArgs
+);
+static_message!(snippet_error_stale_terminal, SnippetErrorStaleTerminalArgs);
+static_message!(snippet_error_oversize, SnippetErrorOversizeArgs);
+static_message!(
+    snippet_multiline_review_required,
+    SnippetMultilineReviewRequiredArgs
+);
+static_message!(snippet_inserted_as_text, SnippetInsertedAsTextArgs);
+static_message!(snippet_prompts_cancelled, SnippetPromptsCancelledArgs);
+static_message!(
+    snippet_error_multiline_unsupported,
+    SnippetErrorMultilineUnsupportedArgs
+);
+static_message!(snippet_insert_cancelled, SnippetInsertCancelledArgs);
+static_message!(snippet_insert_review_title, SnippetInsertReviewTitleArgs);
+static_message!(snippet_insert_action, SnippetInsertActionArgs);
+static_message!(
+    snippet_confirm_insert_action,
+    SnippetConfirmInsertActionArgs
+);
+static_message!(snippet_cancel_insert_action, SnippetCancelInsertActionArgs);
 
 static_message!(cli_settings_title, CliSettingsTitleArgs);
 static_message!(shell_app_title, ShellAppTitleArgs);

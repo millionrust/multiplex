@@ -10,6 +10,7 @@ use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Disableable, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
+use termirust_ui_contract::MessageId;
 
 use crate::models::{
     AuthMode, DEFAULT_VAULT_ID, SessionLogEntry, SessionLogStatus, ThemePreset, VaultKind,
@@ -23,7 +24,12 @@ use crate::ui::localization;
 use crate::ui::theme;
 use crate::ui::util::{format_relative_time, short_host_key};
 
+fn library_copy(id: MessageId) -> String {
+    localization::message_id(id).unwrap_or_default()
+}
+
 impl TermiRustApp {
+    // termirust-ui-surface:vault-keys-snippets:start
     fn keychain_tab_control(&self, cx: &Context<Self>) -> Div {
         let tab = self.keychain_tab;
         h_flex()
@@ -35,13 +41,13 @@ impl TermiRustApp {
                     .id("keychain-tab-keys")
                     .debug_selector(|| "keychain-tab-keys".to_string())
                     .flex_1()
-                    .h(px(28.))
+                    .h(px(theme::SENSITIVE_TAB_HEIGHT))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .gap(px(6.))
+                    .gap(px(theme::SPACE_DENSE))
                     .rounded(px(theme::CONTROL_RADIUS))
-                    .text_size(px(14.))
+                    .text_size(px(theme::TYPE_BODY_SIZE))
                     .font_medium()
                     .cursor_pointer()
                     .when(tab == KeychainTab::Keys, |this| {
@@ -56,27 +62,29 @@ impl TermiRustApp {
                         this.keychain_tab = KeychainTab::Keys;
                         cx.notify();
                     }))
-                    .child(app_icon(ICON_KEY).size(px(12.)).text_color(
-                        if tab == KeychainTab::Keys {
-                            theme::accent()
-                        } else {
-                            theme::text_muted()
-                        },
-                    ))
-                    .child("Keys"),
+                    .child(
+                        app_icon(ICON_KEY)
+                            .size(px(theme::ICON_SIZE_SMALL))
+                            .text_color(if tab == KeychainTab::Keys {
+                                theme::accent()
+                            } else {
+                                theme::text_muted()
+                            }),
+                    )
+                    .child(library_copy(MessageId::KeychainKeysTitle)),
             )
             .child(
                 div()
                     .id("keychain-tab-identities")
                     .debug_selector(|| "keychain-tab-identities".to_string())
                     .flex_1()
-                    .h(px(28.))
+                    .h(px(theme::SENSITIVE_TAB_HEIGHT))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .gap(px(6.))
+                    .gap(px(theme::SPACE_DENSE))
                     .rounded(px(theme::CONTROL_RADIUS))
-                    .text_size(px(14.))
+                    .text_size(px(theme::TYPE_BODY_SIZE))
                     .font_medium()
                     .cursor_pointer()
                     .when(tab == KeychainTab::Identities, |this| {
@@ -91,14 +99,16 @@ impl TermiRustApp {
                         this.keychain_tab = KeychainTab::Identities;
                         cx.notify();
                     }))
-                    .child(Icon::new(IconName::User).size(px(12.)).text_color(
-                        if tab == KeychainTab::Identities {
-                            theme::accent()
-                        } else {
-                            theme::text_muted()
-                        },
-                    ))
-                    .child("Identities"),
+                    .child(
+                        Icon::new(IconName::User)
+                            .size(px(theme::ICON_SIZE_SMALL))
+                            .text_color(if tab == KeychainTab::Identities {
+                                theme::accent()
+                            } else {
+                                theme::text_muted()
+                            }),
+                    )
+                    .child(library_copy(MessageId::KeychainIdentitiesTitle)),
             )
     }
 
@@ -114,9 +124,9 @@ impl TermiRustApp {
                     .items_center()
                     .child(
                         div()
-                            .text_size(px(14.))
+                            .text_size(px(theme::TYPE_BODY_SIZE))
                             .text_color(theme::text_muted())
-                            .child("Reusable identities for host authentication."),
+                            .child(library_copy(MessageId::KeychainKeysDescription)),
                     )
                     .child(
                         h_flex()
@@ -147,7 +157,7 @@ impl TermiRustApp {
                                         cx,
                                     ))
                                     .icon(IconName::Plus)
-                                    .label("Generate Key")
+                                    .label(library_copy(MessageId::KeyGenerateAction))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.open_key_generation(window, cx);
                                     })),
@@ -158,7 +168,7 @@ impl TermiRustApp {
                                     .small()
                                     .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                                     .icon(IconName::FolderOpen)
-                                    .label("Add Key File")
+                                    .label(library_copy(MessageId::KeyAddFileAction))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.pick_key_file(window, cx);
                                         this.nav_section = NavSection::Hosts;
@@ -210,28 +220,28 @@ impl TermiRustApp {
                                         .items_center()
                                         .child(
                                             div()
-                                                .size(px(36.))
-                                                .rounded(px(12.))
+                                                .size(px(theme::SENSITIVE_ICON_TILE_SIZE))
+                                                .rounded(px(theme::CARD_RADIUS))
                                                 .bg(theme::with_alpha(theme::accent(), 0.1))
                                                 .flex()
                                                 .items_center()
                                                 .justify_center()
                                                 .child(
                                                     app_icon(ICON_KEY)
-                                                        .size(px(16.))
+                                                        .size(px(theme::ICON_SIZE_DEFAULT))
                                                         .text_color(theme::accent()),
                                                 ),
                                         )
                                         .child(
                                             v_flex()
-                                                .gap(px(2.))
+                                                .gap(px(theme::SPACE_FINE))
                                                 .child(
                                                     h_flex()
                                                         .gap_2()
                                                         .items_center()
                                                         .child(
                                                             div()
-                                                                .text_size(px(14.))
+                                                                .text_size(px(theme::TYPE_BODY_SIZE))
                                                                 .font_semibold()
                                                                 .text_color(theme::text_main())
                                                                 .child(
@@ -248,7 +258,7 @@ impl TermiRustApp {
                                                                 == crate::models::IdentitySource::Imported,
                                                             |this| {
                                                                 this.child(self.status_badge(
-                                                                    "Imported",
+                                                                    library_copy(MessageId::KeySourceImported),
                                                                     theme::library_bg(),
                                                                     theme::accent(),
                                                                 ))
@@ -259,7 +269,7 @@ impl TermiRustApp {
                                                                 == crate::models::IdentitySource::Generated,
                                                             |this| {
                                                                 this.child(self.status_badge(
-                                                                    "Generated",
+                                                                    library_copy(MessageId::KeySourceGenerated),
                                                                     theme::library_bg(),
                                                                     theme::success(),
                                                                 ))
@@ -267,7 +277,7 @@ impl TermiRustApp {
                                                         )
                                                         .when(index == 0, |this| {
                                                             this.child(self.status_badge(
-                                                                "Default",
+                                                                library_copy(MessageId::KeyDefaultBadge),
                                                                 theme::library_bg(),
                                                                 theme::accent(),
                                                             ))
@@ -309,7 +319,7 @@ impl TermiRustApp {
                                                         theme::ActionTone::Accent,
                                                         cx,
                                                     ))
-                                                    .label("Deploy")
+                                                    .label(library_copy(MessageId::KeyDeployAction))
                                                     .on_click(cx.listener(
                                                         move |this, _, window, cx| {
                                                             this.open_key_host_picker(
@@ -331,7 +341,7 @@ impl TermiRustApp {
                                                         theme::ActionTone::Neutral,
                                                         cx,
                                                     ))
-                                                    .label("Remove")
+                                                    .label(library_copy(MessageId::KeyRemoveRemoteAction))
                                                     .on_click(cx.listener(
                                                         move |this, _, window, cx| {
                                                             this.open_key_host_picker(
@@ -354,7 +364,7 @@ impl TermiRustApp {
                                                     theme::ActionTone::AccentSoft,
                                                     cx,
                                                 ))
-                                                .label("Use")
+                                                .label(library_copy(MessageId::KeyUseAction))
                                                 .on_click(cx.listener(
                                                     move |this, _, window, cx| {
                                                         this.use_identity(
@@ -373,10 +383,10 @@ impl TermiRustApp {
                         this.child(
                             self.render_library_empty_state(
                                 app_icon(ICON_KEY)
-                                    .size(px(24.))
+                                    .size(px(theme::ICON_SIZE_LARGE))
                                     .text_color(theme::accent()),
-                                "No identities available",
-                                "Add a key file to build a reusable identity library for your hosts.",
+                                library_copy(MessageId::KeychainEmptyTitle),
+                                library_copy(MessageId::KeychainEmptyDescription),
                             )
                             .child(
                                 h_flex()
@@ -393,7 +403,7 @@ impl TermiRustApp {
                                                 cx,
                                             ))
                                             .icon(IconName::Plus)
-                                            .label("Generate Key")
+                                            .label(library_copy(MessageId::KeyGenerateAction))
                                             .on_click(cx.listener(|this, _, window, cx| {
                                                 this.open_key_generation(window, cx);
                                             })),
@@ -407,7 +417,7 @@ impl TermiRustApp {
                                                 cx,
                                             ))
                                             .icon(IconName::FolderOpen)
-                                            .label("Add Key File")
+                                            .label(library_copy(MessageId::KeyAddFileAction))
                                             .on_click(cx.listener(|this, _, window, cx| {
                                                 this.pick_key_file(window, cx);
                                                 this.nav_section = NavSection::Hosts;
@@ -439,9 +449,9 @@ impl TermiRustApp {
                     .items_center()
                     .child(
                         div()
-                            .text_size(px(14.))
+                            .text_size(px(theme::TYPE_BODY_SIZE))
                             .text_color(theme::text_muted())
-                            .child("Saved host identities with password authentication."),
+                            .child(library_copy(MessageId::KeychainIdentitiesDescription)),
                     )
                     .child(
                         div()
@@ -494,24 +504,24 @@ impl TermiRustApp {
                                             .items_center()
                                             .child(
                                                 div()
-                                                    .size(px(36.))
-                                                    .rounded(px(12.))
+                                                    .size(px(theme::SENSITIVE_ICON_TILE_SIZE))
+                                                    .rounded(px(theme::CARD_RADIUS))
                                                     .bg(theme::with_alpha(theme::accent(), 0.1))
                                                     .flex()
                                                     .items_center()
                                                     .justify_center()
                                                     .child(
                                                         Icon::new(IconName::User)
-                                                            .size(px(16.))
+                                                            .size(px(theme::ICON_SIZE_DEFAULT))
                                                             .text_color(theme::accent()),
                                                     ),
                                             )
                                             .child(
                                                 v_flex()
-                                                    .gap(px(2.))
+                                                    .gap(px(theme::SPACE_FINE))
                                                     .child(
                                                         div()
-                                                            .text_size(px(14.))
+                                                            .text_size(px(theme::TYPE_BODY_SIZE))
                                                             .font_semibold()
                                                             .text_color(theme::text_main())
                                                             .child(profile.display_name()),
@@ -544,30 +554,27 @@ impl TermiRustApp {
                         this.child(
                             self.render_library_empty_state(
                                 Icon::new(IconName::User)
-                                    .size(px(24.))
+                                    .size(px(theme::ICON_SIZE_LARGE))
                                     .text_color(theme::accent()),
-                                "No password identities saved",
-                                "Save a host with password authentication to keep its secure credential reference here.",
+                                library_copy(MessageId::KeychainPasswordEmptyTitle),
+                                library_copy(MessageId::KeychainPasswordEmptyDescription),
                             )
                             .child(
-                                h_flex()
-                                    .gap_2()
-                                    .justify_center()
-                                    .child(
-                                        Button::new("password-identities-open-hosts")
-                                            .debug_selector(|| {
-                                                "password-identities-open-hosts".to_string()
-                                            })
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Accent,
-                                                cx,
-                                            ))
-                                            .label("New Host")
-                                            .on_click(cx.listener(|this, _, window, cx| {
-                                                this.open_editor_for_new_host(window, cx);
-                                            })),
-                                    ),
+                                h_flex().gap_2().justify_center().child(
+                                    Button::new("password-identities-open-hosts")
+                                        .debug_selector(|| {
+                                            "password-identities-open-hosts".to_string()
+                                        })
+                                        .small()
+                                        .custom(Self::action_button_style(
+                                            theme::ActionTone::Accent,
+                                            cx,
+                                        ))
+                                        .label(library_copy(MessageId::KeychainNewHostAction))
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.open_editor_for_new_host(window, cx);
+                                        })),
+                                ),
                             ),
                         )
                     }),
@@ -585,10 +592,10 @@ impl TermiRustApp {
             .child(
                 h_flex().justify_between().items_center().child(
                     div()
-                        .text_size(px(22.))
+                        .text_size(px(theme::TYPE_HEADING_SIZE))
                         .font_semibold()
                         .text_color(theme::text_main())
-                        .child("Keys"),
+                        .child(library_copy(MessageId::KeychainKeysTitle)),
                 ),
             )
             .child(self.keychain_tab_control(cx))
@@ -620,10 +627,10 @@ impl TermiRustApp {
                     .items_center()
                     .child(
                         div()
-                            .text_size(px(22.))
+                            .text_size(px(theme::TYPE_HEADING_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
-                            .child("Vaults"),
+                            .child(library_copy(MessageId::VaultsTitle)),
                     )
                     .child(
                         div()
@@ -638,10 +645,10 @@ impl TermiRustApp {
             )
             .child(
                 div()
-                    .text_size(px(14.))
+                    .text_size(px(theme::TYPE_BODY_SIZE))
                     .line_height(relative(1.5))
                     .text_color(theme::text_muted())
-                    .child("Vaults are the top-level containers for hosts, identities, and snippets. Shared vaults are local-only metadata for now; sync comes later."),
+                    .child(library_copy(MessageId::VaultsDescription)),
             )
             .child(
                 v_flex()
@@ -651,9 +658,12 @@ impl TermiRustApp {
                     .bg(theme::library_card())
                     .border_1()
                     .border_color(theme::border())
-                    .child(self.form_field("Name", Input::new(&self.vault_inputs.label)))
                     .child(self.form_field(
-                        "Description",
+                        library_copy(MessageId::VaultNameField),
+                        Input::new(&self.vault_inputs.label),
+                    ))
+                    .child(self.form_field(
+                        library_copy(MessageId::VaultDescriptionField),
                         Input::new(&self.vault_inputs.description),
                     ))
                     .when_some(selected_vault.as_ref(), |this, vault| {
@@ -667,10 +677,10 @@ impl TermiRustApp {
                                         .items_center()
                                         .child(
                                             div()
-                                                .text_size(px(14.))
+                                                .text_size(px(theme::TYPE_BODY_SIZE))
                                                 .font_medium()
                                                 .text_color(theme::text_main())
-                                                .child("Members"),
+                                                .child(library_copy(MessageId::VaultMembersTitle)),
                                         )
                                         .child(
                                             div()
@@ -691,22 +701,22 @@ impl TermiRustApp {
                                     this.child(
                                         div()
                                             .p_3()
-                                            .rounded(px(12.))
+                                            .rounded(px(theme::CARD_RADIUS))
                                             .bg(theme::with_alpha(theme::hover(), 0.72))
                                             .border_1()
                                             .border_color(theme::border())
                                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                                             .text_color(theme::text_muted())
-                                            .child("The personal vault is device-local and keeps a single owner profile."),
+                                            .child(library_copy(MessageId::VaultPersonalNotice)),
                                     )
                                 })
                                 .when(!vault.is_personal(), |this| {
                                     this.child(self.form_field(
-                                        "Member Name",
+                                        library_copy(MessageId::VaultMemberNameField),
                                         Input::new(&self.vault_member_inputs.name),
                                     ))
                                     .child(self.form_field(
-                                        "Member Email",
+                                        library_copy(MessageId::VaultMemberEmailField),
                                         Input::new(&self.vault_member_inputs.email),
                                     ))
                                     .child(
@@ -717,12 +727,13 @@ impl TermiRustApp {
                                                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                                     .font_medium()
                                                     .text_color(theme::text_main())
-                                                    .child("Role"),
+                                                    .child(library_copy(
+                                                        MessageId::VaultMemberRoleField,
+                                                    )),
                                             )
                                             .child(
-                                                h_flex()
-                                                    .gap_2()
-                                                    .children([
+                                                h_flex().gap_2().children(
+                                                    [
                                                         VaultMemberRole::Owner,
                                                         VaultMemberRole::Editor,
                                                         VaultMemberRole::Viewer,
@@ -730,36 +741,50 @@ impl TermiRustApp {
                                                     .into_iter()
                                                     .enumerate()
                                                     .map(|(index, role)| {
-                                                        let selected = self.draft_vault_member_role == role;
+                                                        let selected =
+                                                            self.draft_vault_member_role == role;
                                                         div()
                                                             .id(("vault-member-role", index))
                                                             .debug_selector(move || {
                                                                 format!("vault-member-role-{index}")
                                                             })
                                                             .px_3()
-                                                            .py(px(7.))
-                                                            .rounded(px(999.))
+                                                            .py(px(
+                                                                theme::SENSITIVE_MEMBER_PADDING_Y,
+                                                            ))
+                                                            .rounded(px(theme::PILL_RADIUS))
                                                             .bg(if selected {
                                                                 theme::accent_soft()
                                                             } else {
-                                                                theme::with_alpha(theme::hover(), 0.72)
+                                                                theme::with_alpha(
+                                                                    theme::hover(),
+                                                                    0.72,
+                                                                )
                                                             })
                                                             .border_1()
                                                             .border_color(if selected {
-                                                                theme::with_alpha(theme::accent(), 0.42)
+                                                                theme::with_alpha(
+                                                                    theme::accent(),
+                                                                    0.42,
+                                                                )
                                                             } else {
                                                                 theme::border()
                                                             })
                                                             .cursor_pointer()
                                                             .hover(|style| style.bg(theme::hover()))
-                                                            .on_click(cx.listener(move |this, _, _, cx| {
-                                                                this.draft_vault_member_role = role;
-                                                                this.error_message.clear();
-                                                                cx.notify();
-                                                            }))
+                                                            .on_click(cx.listener(
+                                                                move |this, _, _, cx| {
+                                                                    this.draft_vault_member_role =
+                                                                        role;
+                                                                    this.error_message.clear();
+                                                                    cx.notify();
+                                                                },
+                                                            ))
                                                             .child(
                                                                 div()
-                                                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                                                    .text_size(px(
+                                                                        theme::TYPE_BODY_SMALL_SIZE,
+                                                                    ))
                                                                     .font_medium()
                                                                     .text_color(if selected {
                                                                         theme::text_main()
@@ -769,7 +794,8 @@ impl TermiRustApp {
                                                                     .child(role.label()),
                                                             )
                                                             .into_any_element()
-                                                    })),
+                                                    }),
+                                                ),
                                             )
                                             .child(
                                                 h_flex()
@@ -784,10 +810,16 @@ impl TermiRustApp {
                                                                 theme::ActionTone::Neutral,
                                                                 cx,
                                                             ))
-                                                            .label("Clear Member")
-                                                            .on_click(cx.listener(|this, _, window, cx| {
-                                                                this.clear_vault_member_form(window, cx);
-                                                            })),
+                                                            .label(library_copy(
+                                                                MessageId::VaultMemberClearAction,
+                                                            ))
+                                                            .on_click(cx.listener(
+                                                                |this, _, window, cx| {
+                                                                    this.clear_vault_member_form(
+                                                                        window, cx,
+                                                                    );
+                                                                },
+                                                            )),
                                                     )
                                                     .child(
                                                         Button::new("vault-member-save")
@@ -799,101 +831,119 @@ impl TermiRustApp {
                                                                 theme::ActionTone::Accent,
                                                                 cx,
                                                             ))
-                                                            .label("Save Member")
-                                                            .on_click(cx.listener(|this, _, window, cx| {
-                                                                this.save_vault_member(window, cx);
-                                                            })),
+                                                            .label(library_copy(
+                                                                MessageId::VaultMemberSaveAction,
+                                                            ))
+                                                            .on_click(cx.listener(
+                                                                |this, _, window, cx| {
+                                                                    this.save_vault_member(
+                                                                        window, cx,
+                                                                    );
+                                                                },
+                                                            )),
                                                     ),
                                             ),
                                     )
                                 })
-                                .child(
-                                    v_flex()
-                                        .gap_2()
-                                        .children(vault.members.iter().enumerate().map(|(index, member)| {
-                                            let member_id = member.id.clone();
-                                            let remove_id = member.id.clone();
-                                            let selected = self.selected_vault_member_id.as_deref()
-                                                == Some(member.id.as_str());
+                                .child(v_flex().gap_2().children(
+                                    vault.members.iter().enumerate().map(|(index, member)| {
+                                        let member_id = member.id.clone();
+                                        let remove_id = member.id.clone();
+                                        let selected = self.selected_vault_member_id.as_deref()
+                                            == Some(member.id.as_str());
 
-                                            h_flex()
-                                                .id(("vault-member-card", index))
-                                                .debug_selector(move || {
-                                                    format!("vault-member-card-{index}")
-                                                })
-                                                .justify_between()
-                                                .items_center()
-                                                .gap_3()
-                                                .p_3()
-                                                .rounded(px(12.))
-                                                .bg(if selected {
-                                                    theme::with_alpha(theme::accent(), 0.1)
-                                                } else {
-                                                    theme::with_alpha(theme::hover(), 0.72)
-                                                })
-                                                .border_1()
-                                                .border_color(if selected {
-                                                    theme::with_alpha(theme::accent(), 0.42)
-                                                } else {
-                                                    theme::border()
-                                                })
-                                                .cursor_pointer()
-                                                .hover(|style| style.bg(theme::hover()))
-                                                .on_click(cx.listener(move |this, _, window, cx| {
-                                                    this.load_vault_member_into_inputs(&member_id, window, cx);
-                                                }))
-                                                .child(
-                                                    v_flex()
-                                                        .flex_1()
-                                                        .gap(px(1.))
-                                                        .child(
-                                                            h_flex()
-                                                                .gap_2()
-                                                                .items_center()
-                                                                .child(
-                                                                    div()
-                                                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                                                        .font_semibold()
-                                                                        .text_color(theme::text_main())
-                                                                        .child(member.display_name()),
-                                                                )
-                                                                .child(self.status_badge(
-                                                                    member.role.label(),
-                                                                    theme::library_bg(),
-                                                                    if member.role == VaultMemberRole::Owner {
-                                                                        theme::accent()
-                                                                    } else if member.role == VaultMemberRole::Editor {
-                                                                        theme::success()
-                                                                    } else {
-                                                                        theme::slate()
-                                                                    },
-                                                                )),
-                                                        )
-                                                        .child(
-                                                            div()
-                                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                                                .text_color(theme::text_muted())
-                                                                .child(member.email.clone()),
-                                                        ),
-                                                )
-                                                .when(!vault.is_personal(), |this| {
-                                                    this.child(
-                                                        Button::new(("vault-member-remove", index))
-                                                            .debug_selector(move || {
-                                                                format!("vault-member-remove-{index}")
-                                                            })
-                                                            .small()
-                                                            .ghost()
-                                                            .icon(IconName::Delete)
-                                                            .label("Remove")
-                                                            .on_click(cx.listener(move |this, _, window, cx| {
-                                                                this.remove_vault_member(&remove_id, window, cx);
-                                                            })),
+                                        h_flex()
+                                            .id(("vault-member-card", index))
+                                            .debug_selector(move || {
+                                                format!("vault-member-card-{index}")
+                                            })
+                                            .justify_between()
+                                            .items_center()
+                                            .gap_3()
+                                            .p_3()
+                                            .rounded(px(theme::CARD_RADIUS))
+                                            .bg(if selected {
+                                                theme::with_alpha(theme::accent(), 0.1)
+                                            } else {
+                                                theme::with_alpha(theme::hover(), 0.72)
+                                            })
+                                            .border_1()
+                                            .border_color(if selected {
+                                                theme::with_alpha(theme::accent(), 0.42)
+                                            } else {
+                                                theme::border()
+                                            })
+                                            .cursor_pointer()
+                                            .hover(|style| style.bg(theme::hover()))
+                                            .on_click(cx.listener(move |this, _, window, cx| {
+                                                this.load_vault_member_into_inputs(
+                                                    &member_id, window, cx,
+                                                );
+                                            }))
+                                            .child(
+                                                v_flex()
+                                                    .flex_1()
+                                                    .gap(px(theme::SPACE_MICRO))
+                                                    .child(
+                                                        h_flex()
+                                                            .gap_2()
+                                                            .items_center()
+                                                            .child(
+                                                                div()
+                                                                    .text_size(px(
+                                                                        theme::TYPE_BODY_SMALL_SIZE,
+                                                                    ))
+                                                                    .font_semibold()
+                                                                    .text_color(theme::text_main())
+                                                                    .child(member.display_name()),
+                                                            )
+                                                            .child(self.status_badge(
+                                                                member.role.label(),
+                                                                theme::library_bg(),
+                                                                if member.role
+                                                                    == VaultMemberRole::Owner
+                                                                {
+                                                                    theme::accent()
+                                                                } else if member.role
+                                                                    == VaultMemberRole::Editor
+                                                                {
+                                                                    theme::success()
+                                                                } else {
+                                                                    theme::slate()
+                                                                },
+                                                            )),
                                                     )
-                                                })
-                                                .into_any_element()
-                                        })),
-                                ),
+                                                    .child(
+                                                        div()
+                                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                                            .text_color(theme::text_muted())
+                                                            .child(member.email.clone()),
+                                                    ),
+                                            )
+                                            .when(!vault.is_personal(), |this| {
+                                                this.child(
+                                                    Button::new(("vault-member-remove", index))
+                                                        .debug_selector(move || {
+                                                            format!("vault-member-remove-{index}")
+                                                        })
+                                                        .small()
+                                                        .ghost()
+                                                        .icon(IconName::Delete)
+                                                        .label(library_copy(
+                                                            MessageId::VaultMemberDeleteAction,
+                                                        ))
+                                                        .on_click(cx.listener(
+                                                            move |this, _, window, cx| {
+                                                                this.remove_vault_member(
+                                                                    &remove_id, window, cx,
+                                                                );
+                                                            },
+                                                        )),
+                                                )
+                                            })
+                                            .into_any_element()
+                                    }),
+                                )),
                         )
                     })
                     .child(
@@ -907,7 +957,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Neutral,
                                         cx,
                                     ))
-                                    .label("New")
+                                    .label(library_copy(MessageId::VaultNewAction))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.clear_vault_form(window, cx);
                                     })),
@@ -981,14 +1031,14 @@ impl TermiRustApp {
                             .child(
                                 v_flex()
                                     .flex_1()
-                                    .gap(px(2.))
+                                    .gap(px(theme::SPACE_FINE))
                                     .child(
                                         h_flex()
                                             .gap_2()
                                             .items_center()
                                             .child(
                                                 div()
-                                                    .text_size(px(14.))
+                                                    .text_size(px(theme::TYPE_BODY_SIZE))
                                                     .font_semibold()
                                                     .text_color(theme::text_main())
                                                     .child(vault.display_name()),
@@ -1008,7 +1058,7 @@ impl TermiRustApp {
                                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                                             .text_color(theme::text_muted())
                                             .child(if vault.description.trim().is_empty() {
-                                                "No description yet".to_string()
+                                                library_copy(MessageId::VaultNoDescription)
                                             } else {
                                                 vault.description.clone()
                                             }),
@@ -1018,22 +1068,22 @@ impl TermiRustApp {
                                             .gap_2()
                                             .items_center()
                                             .child(self.status_badge(
-                                                format!("{host_count} hosts"),
+                                                localization::vault_host_count(host_count),
                                                 theme::library_bg(),
                                                 theme::success(),
                                             ))
                                             .child(self.status_badge(
-                                                format!("{identity_count} keys"),
+                                                localization::vault_key_count(identity_count),
                                                 theme::library_bg(),
                                                 theme::accent(),
                                             ))
                                             .child(self.status_badge(
-                                                format!("{snippet_count} snippets"),
+                                                localization::vault_snippet_count(snippet_count),
                                                 theme::library_bg(),
                                                 theme::warning(),
                                             ))
                                             .child(self.status_badge(
-                                                format!("{member_count} members"),
+                                                localization::vault_member_count(member_count),
                                                 theme::library_bg(),
                                                 theme::slate(),
                                             )),
@@ -1044,6 +1094,7 @@ impl TermiRustApp {
             )
     }
 
+    // termirust-ui-surface:vault-keys-snippets:end
     pub(super) fn render_known_hosts_view(&self, cx: &Context<Self>) -> Div {
         let entries = self.known_hosts.entries().unwrap_or_default();
 
@@ -1396,6 +1447,7 @@ impl TermiRustApp {
             )
     }
 
+    // termirust-ui-surface:vault-keys-snippets:start
     pub(super) fn render_snippets_view(&self, _cx: &Context<Self>) -> Div {
         let snippets = self.saved.snippets.clone();
 
@@ -1412,35 +1464,27 @@ impl TermiRustApp {
                     .items_center()
                     .child(
                         div()
-                            .text_size(px(22.))
+                            .text_size(px(theme::TYPE_HEADING_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
-                            .child("Snippets"),
+                            .child(library_copy(MessageId::SnippetsTitle)),
                     )
                     .when(!snippets.is_empty(), |this| {
                         this.child(
                             div()
                                 .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                 .text_color(theme::text_muted())
-                                .child(format!(
-                                    "{} {}",
-                                    snippets.len(),
-                                    if snippets.len() == 1 {
-                                        "snippet"
-                                    } else {
-                                        "snippets"
-                                    }
-                                )),
+                                .child(localization::snippet_count(snippets.len())),
                         )
                     }),
             )
             .child(
                 div()
-                    .max_w(px(820.))
+                    .max_w(px(theme::SENSITIVE_FORM_MAX_WIDTH))
                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .line_height(relative(1.5))
                     .text_color(theme::text_muted())
-                    .child("Save repeatable commands, pin the important ones, and send them to the active terminal in one click. Use {{HOST}}, {{USER}}, {{PORT}}, {{TITLE}}, or {{ADDRESS}} for auto-substitution; use {{?Name}} to ask for a value at run time — a small prompt panel opens in the workspace before the command is sent."),
+                    .child(library_copy(MessageId::SnippetLibraryDescription)),
             )
             .child(
                 v_flex()
@@ -1450,27 +1494,35 @@ impl TermiRustApp {
                     .bg(theme::library_card())
                     .border_1()
                     .border_color(theme::border())
-                    .child(self.form_field("Label", Input::new(&self.snippet_inputs.label)))
+                    .child(self.form_field(
+                        library_copy(MessageId::SnippetLabelField),
+                        Input::new(&self.snippet_inputs.label),
+                    ))
                     .child(self.render_vault_picker(
                         self.snippet_vault_id.as_deref(),
                         |vault_id, this, _, cx| {
                             this.snippet_vault_id = Some(vault_id.clone());
                             this.selected_vault_id = Some(vault_id.clone());
-                            this.status_message = format!(
-                                "Assigning this snippet to {}.",
-                                this.effective_vault_name(Some(&vault_id))
+                            this.status_message = localization::snippet_assigned_vault(
+                                this.effective_vault_name(Some(&vault_id)),
                             );
                             this.error_message.clear();
                             cx.notify();
                         },
                         _cx,
                     ))
-                    .child(self.form_field("Group", Input::new(&self.snippet_inputs.group)))
-                    .child(self.form_field("Command", Input::new(&self.snippet_inputs.command)))
+                    .child(self.form_field(
+                        library_copy(MessageId::SnippetGroupField),
+                        Input::new(&self.snippet_inputs.group),
+                    ))
+                    .child(self.form_field(
+                        library_copy(MessageId::SnippetCommandField),
+                        Input::new(&self.snippet_inputs.command),
+                    ))
                     .child(
                         h_flex()
-                            .p(px(3.))
-                            .rounded(px(8.))
+                            .p(px(theme::SPACE_MICRO))
+                            .rounded(px(theme::CONTROL_RADIUS))
                             .bg(theme::hover())
                             .children([true, false].into_iter().enumerate().map(
                                 |(index, pinned)| {
@@ -1481,7 +1533,11 @@ impl TermiRustApp {
                                         })
                                         .small()
                                         .custom(Self::segmented_button_style(active, _cx))
-                                        .label(if pinned { "Pinned" } else { "Library" })
+                                        .label(if pinned {
+                                            library_copy(MessageId::SnippetPinnedLabel)
+                                        } else {
+                                            library_copy(MessageId::SnippetLibraryLabel)
+                                        })
                                         .on_click(_cx.listener(move |this, _, _, cx| {
                                             this.toggle_snippet_pinned(pinned, cx);
                                         }))
@@ -1500,7 +1556,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Neutral,
                                         _cx,
                                     ))
-                                    .label("New")
+                                    .label(library_copy(MessageId::SnippetNewAction))
                                     .on_click(_cx.listener(|this, _, window, cx| {
                                         this.clear_snippet_form(window, cx);
                                     })),
@@ -1541,7 +1597,7 @@ impl TermiRustApp {
                     .overflow_y_scrollbar()
                     .children(snippets.iter().enumerate().map(|(index, snippet)| {
                         let snippet_id = snippet.id.clone();
-                        let run_command = snippet.command.clone();
+                        let insert_snippet_id = snippet.id.clone();
                         let group_label = snippet.group.trim().to_string();
                         let vault_label = self.effective_vault_name(snippet.vault_id.as_deref());
                         let toggle_snippet_id = snippet.id.clone();
@@ -1557,13 +1613,14 @@ impl TermiRustApp {
                             .rounded(px(theme::CARD_RADIUS))
                             .bg(theme::library_card())
                             .border_1()
-                            .border_color(if self.selected_snippet_id.as_deref()
-                                == Some(snippet.id.as_str())
-                            {
-                                theme::accent()
-                            } else {
-                                theme::border()
-                            })
+                            .border_color(
+                                if self.selected_snippet_id.as_deref() == Some(snippet.id.as_str())
+                                {
+                                    theme::accent()
+                                } else {
+                                    theme::border()
+                                },
+                            )
                             .cursor_pointer()
                             .hover(|style| style.bg(theme::card_hover_subtle()))
                             .on_click(_cx.listener(move |this, _, window, cx| {
@@ -1572,14 +1629,14 @@ impl TermiRustApp {
                             .child(
                                 v_flex()
                                     .flex_1()
-                                    .gap(px(2.))
+                                    .gap(px(theme::SPACE_FINE))
                                     .child(
                                         h_flex()
                                             .gap_2()
                                             .items_center()
                                             .child(
                                                 div()
-                                                    .text_size(px(14.))
+                                                    .text_size(px(theme::TYPE_BODY_SIZE))
                                                     .font_semibold()
                                                     .text_color(theme::text_main())
                                                     .child(snippet.display_name()),
@@ -1593,7 +1650,7 @@ impl TermiRustApp {
                                             })
                                             .when(snippet.pinned, |this| {
                                                 this.child(self.status_badge(
-                                                    "Pinned",
+                                                    library_copy(MessageId::SnippetPinnedLabel),
                                                     theme::library_bg(),
                                                     theme::warning(),
                                                 ))
@@ -1626,7 +1683,11 @@ impl TermiRustApp {
                                                 },
                                                 _cx,
                                             ))
-                                            .label(if snippet.pinned { "Unpin" } else { "Pin" })
+                                            .label(if snippet.pinned {
+                                                library_copy(MessageId::SnippetUnpinActionLabel)
+                                            } else {
+                                                library_copy(MessageId::SnippetPinActionLabel)
+                                            })
                                             .on_click(_cx.listener(move |this, _, window, cx| {
                                                 this.set_saved_snippet_pinned(
                                                     &toggle_snippet_id,
@@ -1637,16 +1698,22 @@ impl TermiRustApp {
                                             })),
                                     )
                                     .child(
-                                        Button::new(("snippet-run", index))
-                                            .debug_selector(move || format!("snippet-run-{index}"))
+                                        Button::new(("snippet-insert", index))
+                                            .debug_selector(move || {
+                                                format!("snippet-insert-{index}")
+                                            })
                                             .small()
                                             .custom(Self::action_button_style(
                                                 theme::ActionTone::Success,
                                                 _cx,
                                             ))
-                                            .label(localization::common_run())
+                                            .label(localization::snippet_insert_action())
                                             .on_click(_cx.listener(move |this, _, window, cx| {
-                                                this.run_snippet_command(&run_command, window, cx);
+                                                this.insert_saved_snippet(
+                                                    &insert_snippet_id,
+                                                    window,
+                                                    cx,
+                                                );
                                             })),
                                     ),
                             )
@@ -1656,34 +1723,32 @@ impl TermiRustApp {
                         this.child(
                             self.render_library_empty_state(
                                 Icon::new(IconName::BookOpen)
-                                    .size(px(24.))
+                                    .size(px(theme::ICON_SIZE_LARGE))
                                     .text_color(theme::accent()),
-                                "No snippets yet",
-                                "Save repeatable commands here so they can be searched, pinned, and sent into active terminals.",
+                                library_copy(MessageId::SnippetEmptyTitle),
+                                library_copy(MessageId::SnippetEmptyDescription),
                             )
                             .child(
-                                h_flex()
-                                    .gap_2()
-                                    .justify_center()
-                                    .child(
-                                        Button::new("snippets-empty-new")
-                                            .debug_selector(|| "snippets-empty-new".to_string())
-                                            .small()
-                                            .custom(Self::action_button_style(
-                                                theme::ActionTone::Accent,
-                                                _cx,
-                                            ))
-                                            .label("New Snippet")
-                                            .on_click(_cx.listener(|this, _, window, cx| {
-                                                this.clear_snippet_form(window, cx);
-                                            })),
-                                    ),
+                                h_flex().gap_2().justify_center().child(
+                                    Button::new("snippets-empty-new")
+                                        .debug_selector(|| "snippets-empty-new".to_string())
+                                        .small()
+                                        .custom(Self::action_button_style(
+                                            theme::ActionTone::Accent,
+                                            _cx,
+                                        ))
+                                        .label(library_copy(MessageId::SnippetNewAction))
+                                        .on_click(_cx.listener(|this, _, window, cx| {
+                                            this.clear_snippet_form(window, cx);
+                                        })),
+                                ),
                             ),
                         )
                     }),
             )
     }
 
+    // termirust-ui-surface:vault-keys-snippets:end
     pub(super) fn settings_section_card<E: IntoElement>(
         &self,
         title: impl Into<SharedString>,

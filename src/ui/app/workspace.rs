@@ -1187,6 +1187,9 @@ impl TermiRustApp {
             .when_some(self.render_snippet_prompts_panel(cx), |this, panel| {
                 this.child(panel)
             })
+            .when_some(self.render_snippet_insert_review(cx), |this, panel| {
+                this.child(panel)
+            })
             .when_some(self.render_paste_confirmation(cx), |this, banner| {
                 this.child(banner)
             })

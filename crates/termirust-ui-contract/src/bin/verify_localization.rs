@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use termirust_ui_contract::localization_lint::{
-    verify_copy_baseline, verify_zero_copy_paths, write_copy_baseline,
+    verify_copy_baseline, verify_zero_copy_paths, verify_zero_copy_surface, write_copy_baseline,
 };
 use termirust_ui_contract::{load_catalog, load_message_schema, validate_catalog_set};
 
@@ -21,6 +21,7 @@ fn run() -> Result<(), String> {
     let mut write = false;
     let mut locales = None;
     let mut paths = None;
+    let mut surface = None;
     let mut zero_legacy = false;
     let mut arguments = env::args().skip(1);
     while let Some(argument) = arguments.next() {
@@ -38,6 +39,13 @@ fn run() -> Result<(), String> {
                     arguments
                         .next()
                         .ok_or_else(|| "--paths requires a comma-separated value".to_string())?,
+                );
+            }
+            "--surface" => {
+                surface = Some(
+                    arguments
+                        .next()
+                        .ok_or_else(|| "--surface requires a value".to_string())?,
                 );
             }
             "--zero-legacy" => zero_legacy = true,
@@ -66,7 +74,15 @@ fn run() -> Result<(), String> {
     validate_catalog_set(&schema, &english, &en_xa, &ar_xb).map_err(|error| error.to_string())?;
 
     let baseline = root.join("design/legacy-user-copy.toml");
-    let count = if let Some(paths) = paths {
+    if paths.is_some() && surface.is_some() {
+        return Err("--paths and --surface are mutually exclusive".to_string());
+    }
+    let count = if let Some(surface) = surface {
+        if write || !zero_legacy {
+            return Err("--surface requires --zero-legacy and cannot write a baseline".to_string());
+        }
+        verify_zero_copy_surface(&root, &surface).map_err(|error| error.to_string())?
+    } else if let Some(paths) = paths {
         if write || !zero_legacy {
             return Err("--paths requires --zero-legacy and cannot write a baseline".to_string());
         }

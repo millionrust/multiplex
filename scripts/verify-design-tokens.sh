@@ -8,9 +8,12 @@ if [[ $# -eq 2 && "${1:-}" == "--all-ui" && "${2:-}" == "--no-new-baseline" ]]; 
   :
 elif [[ $# -eq 3 && "${1:-}" == "--paths" && -n "${2:-}" && "${3:-}" == "--zero-legacy" ]]; then
   :
+elif [[ $# -eq 3 && "${1:-}" == "--surface" && -n "${2:-}" && "${3:-}" == "--zero-legacy" ]]; then
+  :
 else
   echo "Usage: $0 --all-ui --no-new-baseline" >&2
   echo "   or: $0 --paths src/ui/a.rs,src/ui/b.rs --zero-legacy" >&2
+  echo "   or: $0 --surface vault-keys-snippets --zero-legacy" >&2
   exit 2
 fi
 

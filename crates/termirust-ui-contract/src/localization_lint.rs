@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
+use crate::surface_scope::read_surface_sources;
+
 const MAX_BASELINE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_UI_FILE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_BASELINE_ENTRIES: usize = 20_000;
@@ -165,6 +167,32 @@ pub fn verify_zero_copy_paths(root: &Path, paths: &[PathBuf]) -> Result<usize, C
         .join("\n");
     Err(CopyLintError::new(format!(
         "scoped user-copy policy found {} exception(s):\n{summary}",
+        findings.len()
+    )))
+}
+
+pub fn verify_zero_copy_surface(root: &Path, surface: &str) -> Result<usize, CopyLintError> {
+    let sources = read_surface_sources(root, surface).map_err(CopyLintError::new)?;
+    let findings = sources
+        .iter()
+        .flat_map(|(file, source)| scan_copy_source(file, source))
+        .collect::<Vec<_>>();
+    if findings.is_empty() {
+        return Ok(0);
+    }
+    let summary = findings
+        .iter()
+        .take(25)
+        .map(|finding| {
+            format!(
+                "{}:{} {}: {}",
+                finding.file, finding.line, finding.category, finding.excerpt
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    Err(CopyLintError::new(format!(
+        "{surface} user-copy policy found {} exception(s):\n{summary}",
         findings.len()
     )))
 }

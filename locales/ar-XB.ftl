@@ -165,10 +165,13 @@ common-cancel = ⁧lecnaC⁩
 common-close = ⁧esolC⁩
 common-connect = ⁧tcennoC⁩
 common-delete = ⁧eteleD⁩
+common-done = ⁧enoD⁩
 common-open = ⁧nepO⁩
 common-retry = ⁧yrteR⁩
+common-review = ⁧weiveR⁩
 common-run = ⁧nuR⁩
 common-save = ⁧evaS⁩
+common-unavailable = ⁧elbaliavanU⁩
 connect-continue-action = ⁧eunitnoC⁩
 connect-continue-save = ⁧evaS & eunitnoC⁩
 connect-copy-log-action = ⁧gol ypoC⁩
@@ -510,6 +513,89 @@ hosts-tags-help = ⁧.rotide tsoH eht ni degnahc eb nac dna stsoH retlif pleh sg
 hosts-terminal-action = ⁧lanimreT⁩
 hosts-title = ⁧snoitcennoC & stsoH⁩
 hosts-unstar-selected = ⁧detceles ratsnU⁩
+key-add-file-action = ⁧elif yek ddA⁩
+key-audit-unsaved-warning = ⁧.devas eb ton dluoc drocer tidua lacol ehT⁩
+key-blank-passphrase-warning = ⁧.nelots ro deipoc si elif eht fi refas si yek etavirp detpyrcne na tub ,dewolla si esarhpssap knalb A⁩
+key-cancelling-status = ⁧...noitarepo yek HSS eht gnillecnaC⁩
+key-choose-destination-action = ⁧noitanitsed esoohC⁩
+key-comment-placeholder = ⁧tnemmoc yek cilbup lanoitpO⁩
+key-confirm-operation-action = ⁧noitarepo yek mrifnoC⁩
+key-confirm-passphrase-label = ⁧esarhpssap mrifnoC⁩
+key-connection-field = ⁧noitcennoC⁩
+key-default-badge = ⁧tluafeD⁩
+key-deploy-action = ⁧yek cilbup yolpeD⁩
+key-deployment-passphrase-placeholder = ⁧tes fi ,esarhpssap yek etavirP⁩
+key-destination-field = ⁧noitanitseD⁩
+key-destination-value = ⁧syek_dezirohtua/hss./~ s'resu detacitnehtuA⁩
+key-fingerprint-field = ⁧tnirpregniF⁩
+key-generate-action = ⁧yek etareneG⁩
+key-generate-notice = ⁧.nettirwrevo reven era selif gnitsixE .esoohc uoy noitanitsed eht ta elif bup. gnihctam dna yek etavirp 91552dE na setaerc tsuRimreT⁩
+key-generate-title = ⁧yek HSS etareneG⁩
+key-generated-added-status = ⁧.niahcyeK eht ot dedda yek detareneG⁩
+key-generated-title = ⁧detareneg yeK⁩
+key-generating-detail = ⁧.snoissimrep tcirts htiw yllacimota selif cilbup dna etavirp eht gnitirW⁩
+key-generating-status = ⁧...yportne metsys-gnitarepo htiw yek 91552dE na gnitareneG⁩
+key-generating-title = ⁧riap yek gnitareneG⁩
+key-host-picker-notice = ⁧.noitarepo siht rof noitacifirev yek-tsoh lamron dna noitacitnehtua derugifnoc s'noitcennoC taht sesu tsuRimreT .noitcennoC HSS devas a esoohC⁩
+key-host-summary = { $username }⁧ ta ⁩{ $endpoint }⁧ gnisu ,⁩{ $auth }
+key-identity-field = ⁧ytitnedI⁩
+key-install-review-warning = ⁧.yek etavirp siht gnisu nigol hserf etarapes a retfa ylno deifirev sa detroper si sseccuS .gnillatsni erofeb tegrat tcaxe eht weiveR⁩
+key-install-verify-action = ⁧yfirev dna llatsnI⁩
+key-installing-status = ⁧...yek cilbup eht gniyfirev dna gnillatsnI⁩
+key-installing-title = ⁧yek gniyfirev dna gnillatsnI⁩
+key-label-field = ⁧lebaL⁩
+key-label-placeholder = ⁧lebal yeK⁩
+key-label-required = ⁧.yek detareneg eht rof lebal a retnE⁩
+key-lifecycle-title = ⁧tnemeganam yek HSS⁩
+key-metadata-unsaved-recovery = ⁧.tsuRimreT gnitratser erofeb niahcyeK ot elif yek etavirp eht ddA .noitanitsed detceles eht ta tcatni era selif yek ehT⁩
+key-metadata-unsaved-status = ⁧.devas ton saw atadatem niahcyeK tub ,detareneg erew selif yek ehT⁩
+key-no-hosts = ⁧.tsrif noitcennoC a erugifnoc dna ddA .elbaliava era snoitcennoC HSS devas oN⁩
+key-operation-auth-field = ⁧htua noitarepO⁩
+key-operation-no-result = ⁧.tluser a tuohtiw dedne noitarepo yek HSS ehT⁩
+key-operation-safe-error = ⁧.niaga yrt neht ,noitcennoC dna ytitnedi detceles eht weiveR .detelpmoc eb ton dluoc noitarepo yek HSS ehT⁩
+key-outcome-cancelled = ⁧.dellecnac saw noitarepo yek HSS ehT⁩
+key-outcome-installed-verification-failed = ⁧.deliaf nigol ylno-yek hserf eht tub ,dellatsni saw yek cilbuP⁩
+key-outcome-installed-verified = ⁧.nigol ylno-yek hserf a htiw deifirev dna dellatsni yek cilbuP⁩
+key-outcome-not-present = ⁧.degnahc tnetnoc etomer on ;tneserp ton saw yek cilbup tcaxe ehT⁩
+key-outcome-present-verification-failed = ⁧.deliaf nigol ylno-yek hserf eht tub ,tneserp ydaerla saw yek cilbuP⁩
+key-outcome-present-verified = ⁧.dedeeccus nigol ylno-yek hserf a dna tneserp ydaerla saw yek cilbuP⁩
+key-outcome-removed = ⁧.devreserp erew seirtne detalernu ;devomer saw yek cilbup tcaxe ehT⁩
+key-passphrase-confirm-placeholder = ⁧esarhpssap mrifnoC⁩
+key-passphrase-field = ⁧esarhpssap yek etavirP⁩
+key-passphrase-label = ⁧esarhpssaP⁩
+key-passphrase-recommended-placeholder = ⁧(dednemmocer) esarhpssaP⁩
+key-passphrases-mismatch = ⁧.hctam ton od sesarhpssap yek ehT⁩
+key-private-field = ⁧yek etavirP⁩
+key-private-local-notice = ⁧.ylno yek cilbup eht sdnes yolpeD .detceles uoy noitanitsed lacol eht ta ylno sniamer yek etavirp ehT⁩
+key-private-passphrase-field = ⁧esarhpssap yek etavirP⁩
+key-private-row = ⁧yek etavirP⁩
+key-public-comment-field = ⁧tnemmoc cilbuP⁩
+key-public-field = ⁧yek cilbuP⁩
+key-remove-exact-action = ⁧yek tcaxe evomeR⁩
+key-remove-remote-action = ⁧yek cilbup evomeR⁩
+key-remove-review-warning = ⁧.elbaliava niamer lliw dohtem nigol rehtona taht yfirev ton seod tI .yek dedoced gnihctam eht ylno seteled lavomeR⁩
+key-removing-status = ⁧...yek cilbup tcaxe eht gnivomeR⁩
+key-removing-title = ⁧yek tcaxe gnivomeR⁩
+key-running-cancel-notice = ⁧.ssergorp ni ydaerla noitatum etomer yna pu naelc ro hsinif lliw tsuRimreT .lecnac nac uoY⁩
+key-save-dialog-title = ⁧yek etavirp 91552dE detareneg evaS⁩
+key-select-host-action = ⁧tsoH weiveR⁩
+key-source-generated = ⁧detareneG⁩
+key-source-imported = ⁧detropmI⁩
+key-stale-host-error = ⁧.elbaliava regnol on si tsoH detceles ehT⁩
+key-stale-identity-error = ⁧.elbaliava regnol on si ytitnedi detceles ehT⁩
+key-target-field = ⁧tegraT⁩
+key-use-action = ⁧ytitnedi esU⁩
+keychain-empty-description = ⁧.stsoH ruoy rof yrarbil ytitnedi elbasuer a dliub ot elif yek a ddA⁩
+keychain-empty-title = ⁧elbaliava seititnedi oN⁩
+keychain-identities-description = ⁧.noitacitnehtua drowssap htiw seititnedi tsoH devaS⁩
+keychain-identities-title = ⁧seititnedi niahcyeK⁩
+keychain-keys-description = ⁧.noitacitnehtua tsoH rof seititnedi elbasueR⁩
+keychain-keys-title = ⁧syek niahcyeK⁩
+keychain-new-host-action = ⁧tsoH weN⁩
+keychain-password-empty-description = ⁧.ereh ecnerefer laitnederc eruces sti peek ot noitacitnehtua drowssap htiw tsoH a evaS⁩
+keychain-password-empty-title = ⁧devas seititnedi drowssap oN⁩
+keychain-show-identities-action = ⁧seititnedi wohS⁩
+keychain-show-keys-action = ⁧syek wohS⁩
 last-updated = ⁧ detadpu tsaL⁩{ $when }
 new-session-action = ⁧noisses weN⁩
 new-session-cancel-start = ⁧trats lecnaC⁩
@@ -851,6 +937,9 @@ runtime-stale-label = ⁧elatS⁩
 runtime-status-not-checked = ⁧dekcehc toN⁩
 runtime-unverified-explanation = ⁧.elbaliavanu niamer snoitca lortnoc citnameS .foorp emitnur deussi-tsoH tnerruc oN⁩
 runtime-version-unverified = ⁧deifirevnU⁩
+secret-field-masked = ⁧deretne terceS⁩
+secret-field-unavailable = ⁧elbaliavanu terceS⁩
+sensitive-destructive-action-warning = ⁧.gniunitnoc erofeb meti tcaxe eht weiveR .noitca evitcurtseD⁩
 session-count = { $count ->
     [many] { $count }⁧snoisses evitca ⁩
     [one] ⁧noisses evitca enO⁩
@@ -1042,6 +1131,66 @@ shell-tmux-install-generic = ⁧.reganam egakcap metsys siht htiw xumt llatsnI�
 shell-tmux-install-guidance = ⁧:tcennocer neht ,enihcam etomer eht no xumt llatsnI⁩
 shell-tmux-missing = ⁧.tsoh siht no dellatsni ton si xumt esuaceb trats ton dluoc noisseS tnetsisreP tsuRimreT⁩
 shortcut-hint = ⁧ :tuctrohS⁩{ $key }
+snippet-assigned-vault = ⁧ ot teppinS siht gningissA⁩{ $vault }⁧.⁩
+snippet-cancel-insert-action = ⁧noitresni lecnaC⁩
+snippet-command-field = ⁧txeT⁩
+snippet-command-required = ⁧.deriuqer si txet teppinS⁩
+snippet-confirm-insert-action = ⁧txet deweiver tresnI⁩
+snippet-count = { $count ->
+    [many] { $count }⁧steppinS ⁩
+    [one] ⁧teppinS 1⁩
+   *[other] { $count }⁧steppinS ⁩
+    [zero] ⁧steppinS oN⁩
+    }
+snippet-delete-action = ⁧teppinS eteleD⁩
+snippet-draft-cleared = ⁧.deraelc tfard teppinS⁩
+snippet-empty-description = ⁧.ylefas detresni dna ,deweiver ,dennip ,dehcraes eb nac ti os ereh txet lanimret elbasuer evaS⁩
+snippet-empty-title = ⁧tey steppinS oN⁩
+snippet-error-multiline-unsupported = ⁧.ti gnitucexe tuohtiw txet enilitlum tpecca ylefas tonnac lanimret sihT⁩
+snippet-error-oversize = ⁧.timil noitresni efas eht sdeecxe teppinS devloser ehT⁩
+snippet-error-stale = ⁧.elbaliava regnol on si ro degnahc teppinS detceles ehT⁩
+snippet-error-stale-terminal = ⁧.niaga noitresni eht weiveR .degnahc lanimret ro teppinS detceles ehT⁩
+snippet-error-terminal-required = ⁧.teppinS a gnitresni erofeb lanimret a sucof dna nepO⁩
+snippet-group-field = ⁧puorG⁩
+snippet-insert-action = ⁧txet sa tresnI⁩
+snippet-insert-cancelled = ⁧.tnes saw txet lanimret oN .dellecnac noitresni teppinS⁩
+snippet-insert-review-summary = { $count ->
+    [many] ⁧ weiveR⁩{ $count }⁧ rof senil ⁩{ $target }⁧.⁩
+    [one] ⁧ weiveR⁩{ $count }⁧ rof enil ⁩{ $target }⁧.⁩
+   *[other] ⁧ weiveR⁩{ $count }⁧ rof senil ⁩{ $target }⁧.⁩
+    [zero] ⁧ rof txet weiveR⁩{ $target }⁧.⁩
+    }
+snippet-insert-review-title = ⁧noitresni teppinS weiveR⁩
+snippet-inserted-as-text = ⁧.desserp ton saw retnE .txet sa detresni teppinS⁩
+snippet-label-field = ⁧lebaL⁩
+snippet-library-description = ⁧.noitamrifnoc seriuqer syawla txet enilitlum dna ,noitresni erofeb deweiver era sredlohecalP .retnE gnisserp tuohtiw lanimret desucof eht otni meht tresni dna ,steppinS tnatropmi nip ,txet elbasuer evaS⁩
+snippet-library-label = ⁧yrarbiL⁩
+snippet-loaded-status = ⁧ teppinS dedaoL⁩{ $name }⁧.⁩
+snippet-multiline-review-required = ⁧.noitresni erofeb lanimret tcaxe dna txet enilitlum eht weiveR⁩
+snippet-new-action = ⁧teppinS weN⁩
+snippet-pin-action = ⁧dennip elggoT⁩
+snippet-pin-action-label = ⁧niP⁩
+snippet-pin-draft-off = ⁧.snoitca kciuq dnammoc dennip morf devomer teppinS⁩
+snippet-pin-draft-on = ⁧.snoitca kciuq dnammoc dennip ni raeppa lliw teppinS⁩
+snippet-pinned-label = ⁧denniP⁩
+snippet-pinned-status = ⁧.snoitca kciuq ecapskrow ot dennip teppinS⁩
+snippet-private-row = ⁧teppinS etavirP⁩
+snippet-prompt-placeholder = ⁧ rof eulaV⁩{ $name }
+snippet-prompts-cancelled = ⁧.tnes saw txet lanimret oN .dellecnac stupni teppinS⁩
+snippet-prompts-required = { $count ->
+    [many] ⁧ weiveR⁩{ $count }⁧.noitresni erofeb stupni teppinS ⁩
+    [one] ⁧ weiveR⁩{ $count }⁧.noitresni erofeb tupni teppinS ⁩
+   *[other] ⁧ weiveR⁩{ $count }⁧.noitresni erofeb stupni teppinS ⁩
+    [zero] ⁧.noitresni erofeb teppinS eht weiveR⁩
+    }
+snippet-prompts-title = ⁧stupni teppinS⁩
+snippet-removed-status = ⁧.devomer teppinS⁩
+snippet-row-saved = ⁧teppinS devaS⁩
+snippet-saved-status = ⁧ teppinS devaS⁩{ $name }⁧.⁩
+snippet-select-action = ⁧teppinS tceleS⁩
+snippet-unpin-action-label = ⁧nipnU⁩
+snippet-unpinned-status = ⁧.snoitca kciuq ecapskrow morf devomer teppinS⁩
+snippets-title = ⁧steppinS⁩
 status-connecting = ⁧ ot gnitcennoC⁩{ $host }⁧…⁩
 status-ready = ⁧ydaeR⁩
 transcript-export-action = ⁧tpircsnart tropxE⁩
@@ -1054,6 +1203,88 @@ transfer-summary = { $count ->
    *[other] { $count }⁧) derrefsnart selif ⁩{ $bytes }⁧(⁩
     [zero] ⁧derrefsnart selif oN⁩
     }
+vault-delete-action = ⁧tluaV eteleD⁩
+vault-description-field = ⁧noitpircseD⁩
+vault-draft-cleared = ⁧.deraelc tfard tluaV⁩
+vault-exists-error = ⁧ deman tluaV A⁩{ $name }⁧.stsixe ydaerla ⁩
+vault-host-count = { $count ->
+    [many] { $count }⁧stsoH ⁩
+    [one] ⁧tsoH 1⁩
+   *[other] { $count }⁧stsoH ⁩
+    [zero] ⁧stsoH oN⁩
+    }
+vault-key-count = { $count ->
+    [many] { $count }⁧syek ⁩
+    [one] ⁧yek 1⁩
+   *[other] { $count }⁧syek ⁩
+    [zero] ⁧syek oN⁩
+    }
+vault-key-snippet-private-host = ⁧tsoH etavirP⁩
+vault-key-snippet-private-value = ⁧eulav etavirP⁩
+vault-key-snippet-state-cancel-requested = ⁧detseuqer noitallecnaC⁩
+vault-key-snippet-state-cancelled = ⁧dellecnaC⁩
+vault-key-snippet-state-completed = ⁧detelpmoC⁩
+vault-key-snippet-state-corrupt = ⁧.tpurroc si atad detpyrcne ehT⁩
+vault-key-snippet-state-editing = ⁧gnitidE⁩
+vault-key-snippet-state-empty = ⁧smeti oN⁩
+vault-key-snippet-state-error = ⁧.detelpmoc eb ton dluoc noitca ehT⁩
+vault-key-snippet-state-filter-empty = ⁧smeti gnihctam oN⁩
+vault-key-snippet-state-generating = ⁧yek gnitareneG⁩
+vault-key-snippet-state-import-malformed = ⁧.dilav ton si atad detropmi ehT⁩
+vault-key-snippet-state-keyring-denied = ⁧.deined saw ssecca erots laitnederC⁩
+vault-key-snippet-state-locked = ⁧dekcoL⁩
+vault-key-snippet-state-newer-format = ⁧.noisrev tsuRimreT rewen a seriuqer atad sihT⁩
+vault-key-snippet-state-oversize = ⁧.timil ezis efas eht sdeecxe meti sihT⁩
+vault-key-snippet-state-ready = ⁧ydaeR⁩
+vault-key-snippet-state-reviewing = ⁧deriuqer weiveR⁩
+vault-key-snippet-state-running = ⁧ssergorp ni noitarepo yeK⁩
+vault-key-snippet-state-stale = ⁧.elbaliava regnol on si meti detceles ehT⁩
+vault-key-snippet-state-storage-failure = ⁧.devas eb ton dluoc meti ehT⁩
+vault-key-snippet-state-terminal-required = ⁧.teppinS a gnitresni erofeb lanimret a sucof dna nepO⁩
+vault-key-snippet-state-unavailable = ⁧.elbaliavanu si noitca sihT⁩
+vault-key-snippet-state-unlocking = ⁧gnikcolnU⁩
+vault-key-snippet-state-validating = ⁧gnitadilaV⁩
+vault-key-snippet-state-wrong-secret = ⁧.detpecca ton saw esarhpssap ehT⁩
+vault-loaded-status = ⁧ tluaV dedaoL⁩{ $name }⁧.⁩
+vault-member-clear-action = ⁧rebmem raelC⁩
+vault-member-count = { $count ->
+    [many] { $count }⁧srebmem ⁩
+    [one] ⁧rebmem 1⁩
+   *[other] { $count }⁧srebmem ⁩
+    [zero] ⁧srebmem oN⁩
+    }
+vault-member-delete-action = ⁧rebmem evomeR⁩
+vault-member-email-field = ⁧liame rebmeM⁩
+vault-member-email-required = ⁧.deriuqer si liame rebmeM⁩
+vault-member-loaded = ⁧.rebmem tluaV dedaoL⁩
+vault-member-name-field = ⁧eman rebmeM⁩
+vault-member-name-required = ⁧.deriuqer si liame ro eman rebmeM⁩
+vault-member-private-row = ⁧rebmem etavirP⁩
+vault-member-removed = ⁧.devomer rebmem tluaV⁩
+vault-member-role-field = ⁧eloR⁩
+vault-member-save-action = ⁧rebmem evaS⁩
+vault-member-saved-status = ⁧ rebmem tluaV devaS⁩{ $name }⁧.⁩
+vault-members-title = ⁧srebmeM⁩
+vault-name-field = ⁧emaN⁩
+vault-name-required = ⁧.deriuqer si eman tluaV⁩
+vault-new-action = ⁧tluaV weN⁩
+vault-no-description = ⁧tey noitpircsed oN⁩
+vault-personal-delete-error = ⁧.deteled eb tonnac tluaV lanosreP ehT⁩
+vault-personal-member-error = ⁧.srebmem derahs troppus ton seod tluaV lanosreP ehT⁩
+vault-personal-member-remove-error = ⁧.devomer eb tonnac rebmem tluaV lanosreP ehT⁩
+vault-personal-notice = ⁧.eliforp renwo elgnis a speek dna lacol-ecived si tluaV lanosreP ehT⁩
+vault-private-row = ⁧tluaV etavirP⁩
+vault-removed-status = ⁧.lanosreP ot devom erew smeti stI .devomer tluaV⁩
+vault-saved-status = ⁧ tluaV devaS⁩{ $name }⁧.⁩
+vault-select-action = ⁧tluaV tceleS⁩
+vault-snippet-count = { $count ->
+    [many] { $count }⁧steppinS ⁩
+    [one] ⁧teppinS 1⁩
+   *[other] { $count }⁧steppinS ⁩
+    [zero] ⁧steppinS oN⁩
+    }
+vaults-description = ⁧.retal semoc cnys ;won rof atadatem ylno-lacol era stluaV derahS .steppinS dna ,seititnedi ,stsoH rof sreniatnoc level-pot eht era stluaV⁩
+vaults-title = ⁧stluaV⁩
 worktree-base-field = ⁧fer ro hcnarb esaB⁩
 worktree-base-placeholder = ⁧enilniam derugifnoc eht esu ot ytpme evaeL⁩
 worktree-branch-field = ⁧hcnarb weN⁩

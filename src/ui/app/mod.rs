@@ -31,6 +31,7 @@ mod session_sidebar;
 mod sftp;
 mod transcript_export;
 mod types;
+mod vault_key_snippet;
 mod workspace;
 mod worktree_launch;
 
@@ -99,7 +100,7 @@ use termirust_store::{
 };
 use termirust_ui_contract::PalettePresentationState;
 use termirust_ui_contract::{
-    AnnouncementPolicy, FocusReturn, OverlayFrame, OverlayId, OverlayKind, OverlayOwner,
+    AnnouncementPolicy, FocusReturn, MessageId, OverlayFrame, OverlayId, OverlayKind, OverlayOwner,
     OverlayPhase, OverlayStack, SemanticActionValue, ShellAccessibilityCommand, ShellRegionId,
     ShellSemanticSnapshot,
 };
@@ -618,8 +619,17 @@ struct SnippetPromptField {
 }
 
 struct PendingSnippetPrompts {
-    command: String,
+    snippet_id: String,
+    pane_id: u64,
+    source_command: String,
     fields: Vec<SnippetPromptField>,
+}
+
+struct PendingSnippetInsert {
+    snippet_id: String,
+    pane_id: u64,
+    source_command: String,
+    text: String,
 }
 
 struct WorkspaceTab {
@@ -1223,6 +1233,7 @@ pub struct TermiRustApp {
     canvas_project_editor_input: Entity<InputState>,
     pending_paste: Option<PendingPaste>,
     pending_snippet_prompts: Option<PendingSnippetPrompts>,
+    pending_snippet_insert: Option<PendingSnippetInsert>,
     sync_pull_force: bool,
     sync_pull_pending_warning: bool,
     settings_scroll: ScrollHandle,
@@ -1537,6 +1548,7 @@ impl TermiRustApp {
             canvas_project_editor_input,
             pending_paste: None,
             pending_snippet_prompts: None,
+            pending_snippet_insert: None,
             sync_pull_force: false,
             sync_pull_pending_warning: false,
             settings_scroll: ScrollHandle::new(),
@@ -1716,6 +1728,14 @@ impl TermiRustApp {
                 }
                 ShellAccessibilityCommand::Sftp(command) => {
                     self.handle_sftp_accessibility_command(command, event.value, window, cx);
+                }
+                ShellAccessibilityCommand::VaultKeySnippet(command) => {
+                    self.handle_vault_key_snippet_accessibility_command(
+                        command,
+                        event.value,
+                        window,
+                        cx,
+                    );
                 }
             }
         }
@@ -2659,6 +2679,7 @@ impl TermiRustApp {
         cx.notify();
     }
 
+    // termirust-ui-surface:vault-keys-snippets:start
     fn current_snippet_draft(&self, cx: &App) -> SavedSnippet {
         SavedSnippet {
             id: self
@@ -2710,7 +2731,7 @@ impl TermiRustApp {
         self.snippet_pinned = snippet.pinned;
         self.selected_snippet_id = Some(snippet.id.clone());
         self.nav_section = NavSection::Snippets;
-        self.status_message = format!("Loaded snippet '{}'.", snippet.display_name());
+        self.status_message = localization::snippet_loaded_status(snippet.display_name());
         self.error_message.clear();
         cx.notify();
     }
@@ -2723,7 +2744,7 @@ impl TermiRustApp {
         self.snippet_pinned = false;
         self.selected_snippet_id = None;
         self.nav_section = NavSection::Snippets;
-        self.status_message = "Snippet draft cleared.".to_string();
+        self.status_message = localization::static_message(MessageId::SnippetDraftCleared);
         self.error_message.clear();
         cx.notify();
     }
@@ -2731,9 +2752,9 @@ impl TermiRustApp {
     fn toggle_snippet_pinned(&mut self, pinned: bool, cx: &mut Context<Self>) {
         self.snippet_pinned = pinned;
         self.status_message = if pinned {
-            "Snippet will appear in pinned command quick actions.".to_string()
+            localization::static_message(MessageId::SnippetPinDraftOn)
         } else {
-            "Snippet removed from pinned command quick actions.".to_string()
+            localization::static_message(MessageId::SnippetPinDraftOff)
         };
         self.error_message.clear();
         cx.notify();
@@ -2763,8 +2784,9 @@ impl TermiRustApp {
                     .cmp(&right.display_name().to_ascii_lowercase())
             })
         });
-        if let Err(error) = save_saved_state(&self.saved) {
-            self.error_message = error.to_string();
+        if save_saved_state(&self.saved).is_err() {
+            self.error_message =
+                localization::static_message(MessageId::VaultKeySnippetStateStorageFailure);
             cx.notify();
             return;
         }
@@ -2774,9 +2796,9 @@ impl TermiRustApp {
             return;
         }
         self.status_message = if pinned {
-            "Snippet pinned to workspace quick actions.".to_string()
+            localization::static_message(MessageId::SnippetPinnedStatus)
         } else {
-            "Snippet removed from workspace quick actions.".to_string()
+            localization::static_message(MessageId::SnippetUnpinnedStatus)
         };
         self.error_message.clear();
         cx.notify();
@@ -2785,14 +2807,15 @@ impl TermiRustApp {
     fn save_snippet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let snippet = self.current_snippet_draft(cx);
         if snippet.command.trim().is_empty() {
-            self.error_message = "Snippet command is required.".to_string();
+            self.error_message = localization::static_message(MessageId::SnippetCommandRequired);
             cx.notify();
             return;
         }
 
         self.saved.upsert_snippet(snippet.clone());
-        if let Err(error) = save_saved_state(&self.saved) {
-            self.error_message = error.to_string();
+        if save_saved_state(&self.saved).is_err() {
+            self.error_message =
+                localization::static_message(MessageId::VaultKeySnippetStateStorageFailure);
             cx.notify();
             return;
         }
@@ -2806,7 +2829,7 @@ impl TermiRustApp {
                 cx,
             );
         }
-        self.status_message = format!("Saved snippet '{}'.", snippet.display_name());
+        self.status_message = localization::snippet_saved_status(snippet.display_name());
         self.error_message.clear();
         cx.notify();
     }
@@ -2817,14 +2840,15 @@ impl TermiRustApp {
         };
 
         self.saved.remove_snippet(&snippet_id);
-        if let Err(error) = save_saved_state(&self.saved) {
-            self.error_message = error.to_string();
+        if save_saved_state(&self.saved).is_err() {
+            self.error_message =
+                localization::static_message(MessageId::VaultKeySnippetStateStorageFailure);
             cx.notify();
             return;
         }
 
         self.clear_snippet_form(window, cx);
-        self.status_message = "Snippet removed.".to_string();
+        self.status_message = localization::static_message(MessageId::SnippetRemovedStatus);
         self.error_message.clear();
         cx.notify();
     }
@@ -2909,7 +2933,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.vault_member_inputs.email, "", window, cx);
         self.draft_vault_member_role = VaultMemberRole::Editor;
         self.nav_section = NavSection::Vaults;
-        self.status_message = format!("Loaded vault '{}'.", vault.display_name());
+        self.status_message = localization::vault_loaded_status(vault.display_name());
         self.error_message.clear();
         cx.notify();
     }
@@ -2925,7 +2949,7 @@ impl TermiRustApp {
         self.snippet_vault_id = Some(DEFAULT_VAULT_ID.to_string());
         self.draft_vault_member_role = VaultMemberRole::Editor;
         self.nav_section = NavSection::Vaults;
-        self.status_message = "Vault draft cleared.".to_string();
+        self.status_message = localization::static_message(MessageId::VaultDraftCleared);
         self.error_message.clear();
         cx.notify();
     }
@@ -2933,22 +2957,23 @@ impl TermiRustApp {
     fn save_vault(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let mut vault = self.current_vault_draft(cx);
         if vault.label.trim().is_empty() {
-            self.error_message = "Vault name is required.".to_string();
+            self.error_message = localization::static_message(MessageId::VaultNameRequired);
             cx.notify();
             return;
         }
         if self.saved.vaults.iter().any(|existing| {
             existing.id != vault.id && existing.label.eq_ignore_ascii_case(&vault.label)
         }) {
-            self.error_message = format!("Vault '{}' already exists.", vault.label.trim());
+            self.error_message = localization::vault_exists_error(vault.label.trim());
             cx.notify();
             return;
         }
         vault.label = vault.label.trim().to_string();
         vault.description = vault.description.trim().to_string();
         self.saved.upsert_vault(vault.clone());
-        if let Err(error) = save_saved_state(&self.saved) {
-            self.error_message = error.to_string();
+        if save_saved_state(&self.saved).is_err() {
+            self.error_message =
+                localization::static_message(MessageId::VaultKeySnippetStateStorageFailure);
             cx.notify();
             return;
         }
@@ -2956,7 +2981,7 @@ impl TermiRustApp {
         self.selected_vault_id = Some(vault.id.clone());
         self.draft_vault_id = Some(vault.id.clone());
         self.snippet_vault_id = Some(vault.id.clone());
-        self.status_message = format!("Saved vault '{}'.", vault.display_name());
+        self.status_message = localization::vault_saved_status(vault.display_name());
         self.error_message.clear();
         self.nav_section = NavSection::Vaults;
         if vault.kind == VaultKind::Personal {
@@ -2970,21 +2995,22 @@ impl TermiRustApp {
             return;
         };
         if vault_id == DEFAULT_VAULT_ID {
-            self.error_message = "The personal vault cannot be deleted.".to_string();
+            self.error_message = localization::static_message(MessageId::VaultPersonalDeleteError);
             cx.notify();
             return;
         }
         if !self.saved.remove_vault(&vault_id) {
             return;
         }
-        if let Err(error) = save_saved_state(&self.saved) {
-            self.error_message = error.to_string();
+        if save_saved_state(&self.saved).is_err() {
+            self.error_message =
+                localization::static_message(MessageId::VaultKeySnippetStateStorageFailure);
             cx.notify();
             return;
         }
 
         self.clear_vault_form(window, cx);
-        self.status_message = "Vault removed. Its items were moved to Personal.".to_string();
+        self.status_message = localization::static_message(MessageId::VaultRemovedStatus);
         self.error_message.clear();
         cx.notify();
     }
@@ -3013,7 +3039,7 @@ impl TermiRustApp {
         Self::set_input_value(&self.vault_member_inputs.email, member.email, window, cx);
         self.selected_vault_member_id = Some(member.id);
         self.draft_vault_member_role = member.role;
-        self.status_message = "Loaded vault member.".to_string();
+        self.status_message = localization::static_message(MessageId::VaultMemberLoaded);
         self.error_message.clear();
         cx.notify();
     }
@@ -3032,12 +3058,12 @@ impl TermiRustApp {
             return;
         };
         let Some(member) = self.current_vault_member_draft(cx) else {
-            self.error_message = "Member name or email is required.".to_string();
+            self.error_message = localization::static_message(MessageId::VaultMemberNameRequired);
             cx.notify();
             return;
         };
         if member.email.trim().is_empty() {
-            self.error_message = "Member email is required.".to_string();
+            self.error_message = localization::static_message(MessageId::VaultMemberEmailRequired);
             cx.notify();
             return;
         }
@@ -3051,21 +3077,22 @@ impl TermiRustApp {
             return;
         };
         if vault.is_personal() {
-            self.error_message = "The personal vault does not support shared members.".to_string();
+            self.error_message = localization::static_message(MessageId::VaultPersonalMemberError);
             cx.notify();
             return;
         }
 
         let member_name = member.display_name();
         vault.upsert_member(member);
-        if let Err(error) = save_saved_state(&self.saved) {
-            self.error_message = error.to_string();
+        if save_saved_state(&self.saved).is_err() {
+            self.error_message =
+                localization::static_message(MessageId::VaultKeySnippetStateStorageFailure);
             cx.notify();
             return;
         }
 
         self.clear_vault_member_form(window, cx);
-        self.status_message = format!("Saved vault member '{}'.", member_name);
+        self.status_message = localization::vault_member_saved_status(member_name);
         self.error_message.clear();
         cx.notify();
     }
@@ -3088,25 +3115,28 @@ impl TermiRustApp {
             return;
         };
         if vault.is_personal() {
-            self.error_message = "The personal vault member cannot be removed.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::VaultPersonalMemberRemoveError);
             cx.notify();
             return;
         }
         if !vault.remove_member(member_id) {
             return;
         }
-        if let Err(error) = save_saved_state(&self.saved) {
-            self.error_message = error.to_string();
+        if save_saved_state(&self.saved).is_err() {
+            self.error_message =
+                localization::static_message(MessageId::VaultKeySnippetStateStorageFailure);
             cx.notify();
             return;
         }
 
         self.clear_vault_member_form(window, cx);
-        self.status_message = "Vault member removed.".to_string();
+        self.status_message = localization::static_message(MessageId::VaultMemberRemoved);
         self.error_message.clear();
         cx.notify();
     }
 
+    // termirust-ui-surface:vault-keys-snippets:end
     fn run_command_in_active_pane(
         &mut self,
         command: &str,
@@ -3145,19 +3175,70 @@ impl TermiRustApp {
         false
     }
 
+    // termirust-ui-surface:vault-keys-snippets:start
     fn run_snippet_command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let prompts = extract_snippet_prompt_names(command);
+        let Some(snippet_id) = self
+            .saved
+            .snippets
+            .iter()
+            .find(|snippet| snippet.command == command)
+            .map(|snippet| snippet.id.clone())
+        else {
+            self.error_message = localization::snippet_error_stale();
+            cx.notify();
+            return;
+        };
+        self.insert_saved_snippet(&snippet_id, window, cx);
+    }
+
+    fn insert_saved_snippet(
+        &mut self,
+        snippet_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(pane_id) = self.active_pane().map(|pane| pane.id) else {
+            self.error_message = localization::snippet_error_terminal_required();
+            cx.notify();
+            return;
+        };
+        self.prepare_snippet_insert(snippet_id, pane_id, window, cx);
+    }
+
+    fn prepare_snippet_insert(
+        &mut self,
+        snippet_id: &str,
+        pane_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.active_pane().map(|pane| pane.id) != Some(pane_id) {
+            self.error_message = localization::snippet_error_stale_terminal();
+            cx.notify();
+            return;
+        }
+        let Some(snippet) = self
+            .saved
+            .snippets
+            .iter()
+            .find(|snippet| snippet.id == snippet_id)
+            .cloned()
+        else {
+            self.error_message = localization::snippet_error_stale();
+            cx.notify();
+            return;
+        };
+        if snippet.command.len() > termirust_ui_contract::MAX_SNIPPET_INSERT_BYTES {
+            self.error_message = localization::snippet_error_oversize();
+            cx.notify();
+            return;
+        }
+        let prompts = extract_snippet_prompt_names(&snippet.command);
         if !prompts.is_empty() {
-            if self.active_pane().is_none() {
-                self.error_message =
-                    "Open a terminal session before running a snippet with prompts.".to_string();
-                cx.notify();
-                return;
-            }
             let fields: Vec<SnippetPromptField> = prompts
                 .iter()
                 .map(|name| {
-                    let placeholder = format!("Value for {name}");
+                    let placeholder = localization::snippet_prompt_placeholder(name.clone());
                     SnippetPromptField {
                         name: name.clone(),
                         input: cx
@@ -3166,13 +3247,12 @@ impl TermiRustApp {
                 })
                 .collect();
             self.pending_snippet_prompts = Some(PendingSnippetPrompts {
-                command: command.to_string(),
+                snippet_id: snippet.id,
+                pane_id,
+                source_command: snippet.command,
                 fields,
             });
-            self.status_message = format!(
-                "Snippet needs {} input(s). Fill the panel and Run.",
-                prompts.len()
-            );
+            self.status_message = localization::snippet_prompts_required(prompts.len());
             self.error_message.clear();
             if let Some(prompts) = self.pending_snippet_prompts.as_ref() {
                 if let Some(first) = prompts.fields.first() {
@@ -3182,16 +3262,44 @@ impl TermiRustApp {
             cx.notify();
             return;
         }
-        self.run_resolved_snippet(command.to_string(), cx);
+        let resolved = self
+            .pane(pane_id)
+            .map(|pane| substitute_snippet_placeholders(&snippet.command, &pane.request));
+        if let Some(resolved) = resolved {
+            self.stage_snippet_insert(snippet.id, pane_id, snippet.command, resolved, cx);
+        }
     }
 
-    fn run_resolved_snippet(&mut self, command: String, cx: &mut Context<Self>) {
-        let resolved = self
-            .active_pane()
-            .map(|pane| substitute_snippet_placeholders(&command, &pane.request))
-            .unwrap_or_else(|| command.clone());
-        let _ =
-            self.run_command_in_active_pane(&resolved, "Snippet sent to the active session.", cx);
+    fn stage_snippet_insert(
+        &mut self,
+        snippet_id: String,
+        pane_id: u64,
+        source_command: String,
+        text: String,
+        cx: &mut Context<Self>,
+    ) {
+        if text.len() > termirust_ui_contract::MAX_SNIPPET_INSERT_BYTES {
+            self.error_message = localization::snippet_error_oversize();
+            cx.notify();
+            return;
+        }
+        if text.contains(['\n', '\r']) {
+            self.pending_snippet_insert = Some(PendingSnippetInsert {
+                snippet_id,
+                pane_id,
+                source_command,
+                text,
+            });
+            self.status_message = localization::snippet_multiline_review_required();
+            self.error_message.clear();
+            cx.notify();
+            return;
+        }
+        if self.send_snippet_text(pane_id, &text, cx) {
+            self.status_message = localization::snippet_inserted_as_text();
+            self.error_message.clear();
+            cx.notify();
+        }
     }
 
     fn confirm_snippet_prompts(&mut self, cx: &mut Context<Self>) {
@@ -3203,18 +3311,94 @@ impl TermiRustApp {
             .iter()
             .map(|field| (field.name.clone(), field.input.read(cx).value().to_string()))
             .collect();
-        let resolved_prompts = substitute_snippet_prompts(&pending.command, &values);
-        self.run_resolved_snippet(resolved_prompts, cx);
+        let Some(snippet) = self
+            .saved
+            .snippets
+            .iter()
+            .find(|snippet| {
+                snippet.id == pending.snippet_id && snippet.command == pending.source_command
+            })
+            .cloned()
+        else {
+            self.error_message = localization::snippet_error_stale();
+            cx.notify();
+            return;
+        };
+        if self.active_pane().map(|pane| pane.id) != Some(pending.pane_id) {
+            self.error_message = localization::snippet_error_stale_terminal();
+            cx.notify();
+            return;
+        }
+        let resolved_prompts = substitute_snippet_prompts(&snippet.command, &values);
+        let resolved = self
+            .pane(pending.pane_id)
+            .map(|pane| substitute_snippet_placeholders(&resolved_prompts, &pane.request));
+        if let Some(resolved) = resolved {
+            self.stage_snippet_insert(snippet.id, pending.pane_id, snippet.command, resolved, cx);
+        }
     }
 
     fn cancel_snippet_prompts(&mut self, cx: &mut Context<Self>) {
         if self.pending_snippet_prompts.take().is_some() {
-            self.status_message = "Snippet prompts cancelled.".to_string();
+            self.status_message = localization::snippet_prompts_cancelled();
             self.error_message.clear();
             cx.notify();
         }
     }
 
+    fn confirm_pending_snippet_insert(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(pending) = self.pending_snippet_insert.take() else {
+            return false;
+        };
+        let current = self.saved.snippets.iter().any(|snippet| {
+            snippet.id == pending.snippet_id && snippet.command == pending.source_command
+        });
+        if !current || self.active_pane().map(|pane| pane.id) != Some(pending.pane_id) {
+            self.error_message = localization::snippet_error_stale_terminal();
+            cx.notify();
+            return false;
+        }
+        if !self
+            .pane(pending.pane_id)
+            .is_some_and(|pane| pane.terminal.bracketed_paste())
+        {
+            self.error_message = localization::snippet_error_multiline_unsupported();
+            cx.notify();
+            return false;
+        }
+        let result = self.send_snippet_text(pending.pane_id, &pending.text, cx);
+        if result {
+            self.status_message = localization::snippet_inserted_as_text();
+            self.error_message.clear();
+        }
+        cx.notify();
+        result
+    }
+
+    fn cancel_pending_snippet_insert(&mut self, cx: &mut Context<Self>) {
+        if self.pending_snippet_insert.take().is_some() {
+            self.status_message = localization::snippet_insert_cancelled();
+            self.error_message.clear();
+            cx.notify();
+        }
+    }
+
+    fn send_snippet_text(&mut self, pane_id: u64, text: &str, cx: &mut Context<Self>) -> bool {
+        let bracketed = self
+            .pane(pane_id)
+            .is_some_and(|pane| pane.terminal.bracketed_paste());
+        let mut bytes = Vec::with_capacity(text.len() + if bracketed { 12 } else { 0 });
+        if bracketed {
+            bytes.extend_from_slice(b"\x1b[200~");
+        }
+        bytes.extend_from_slice(text.as_bytes());
+        if bracketed {
+            bytes.extend_from_slice(b"\x1b[201~");
+        }
+        self.send_input_bytes(pane_id, bytes, cx)
+    }
+
+    // termirust-ui-surface:vault-keys-snippets:end
     fn send_startup_actions(&mut self, session_id: u64) -> bool {
         let Some((command_tx, startup_bytes)) = self.pane(session_id).and_then(|pane| {
             startup_bytes_for_request(
@@ -11370,13 +11554,13 @@ impl TermiRustApp {
             })
     }
 
-    fn form_field(&self, label: &str, input: Input) -> Div {
-        let label = label.to_string();
+    fn form_field(&self, label: impl Into<SharedString>, input: Input) -> Div {
+        let label = label.into();
         v_flex()
             .gap_2()
             .child(
                 div()
-                    .text_size(px(14.))
+                    .text_size(px(theme::TYPE_BODY_SIZE))
                     .font_medium()
                     .text_color(theme::text_main())
                     .child(label),
@@ -11384,7 +11568,12 @@ impl TermiRustApp {
             .child(input)
     }
 
-    fn form_field_with_id(&self, id: impl Into<gpui::ElementId>, label: &str, input: Input) -> Div {
+    fn form_field_with_id(
+        &self,
+        id: impl Into<gpui::ElementId>,
+        label: impl Into<SharedString>,
+        input: Input,
+    ) -> Div {
         div().child(self.form_field(label, input).id(id))
     }
 
@@ -11862,7 +12051,11 @@ impl Render for TermiRustApp {
         let host_modal_open = self.active_workspace().is_some_and(|workspace| {
             workspace.pending_connect.is_some() || workspace.connect_failure.is_some()
         });
-        let background_surface_available = !worktree_modal_open && !host_modal_open;
+        let sensitive_modal_open = self.key_lifecycle_dialog.is_some()
+            || self.pending_snippet_prompts.is_some()
+            || self.pending_snippet_insert.is_some();
+        let background_surface_available =
+            !worktree_modal_open && !host_modal_open && !sensitive_modal_open;
         let product_session = background_surface_available
             .then(|| self.product_session_semantic_snapshot(cx))
             .flatten();
@@ -11886,6 +12079,7 @@ impl Render for TermiRustApp {
         let sftp = background_surface_available
             .then(|| self.sftp_semantic_snapshot(cx))
             .flatten();
+        let vault_key_snippet = self.vault_key_snippet_semantic_snapshot(cx);
         self.shell_accessibility.sync(ShellSemanticSnapshot {
             generation: 1,
             inspector_visible: self.show_editor_panel || worktree_modal_open || host_modal_open,
@@ -11902,6 +12096,7 @@ impl Render for TermiRustApp {
             worktree_artifact,
             host_connection,
             sftp,
+            vault_key_snippet,
         });
 
         // When the active workspace changes, scroll the tab strip so the
@@ -12116,6 +12311,10 @@ impl TermiRustApp {
             }
             if self.pending_snippet_prompts.is_some() {
                 self.cancel_snippet_prompts(cx);
+                return true;
+            }
+            if self.pending_snippet_insert.is_some() {
+                self.cancel_pending_snippet_insert(cx);
                 return true;
             }
             if self.pending_paste.is_some() {
@@ -18393,6 +18592,11 @@ sleep 1
                 .then_some(())
         });
 
+        let output_path =
+            std::env::temp_dir().join(format!("termirust-snippet-inert-{}", std::process::id()));
+        let _ = std::fs::remove_file(&output_path);
+        let snippet_command = format!("printf 'snippet-e2e\\n' > '{}'", output_path.display());
+
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
@@ -18405,7 +18609,7 @@ sleep 1
                     TermiRustApp::set_input_value(&app.snippet_inputs.group, "Ops", window, cx);
                     TermiRustApp::set_input_value(
                         &app.snippet_inputs.command,
-                        "printf 'snippet-e2e\\n'",
+                        snippet_command,
                         window,
                         cx,
                     );
@@ -18448,14 +18652,21 @@ sleep 1
             })
             .expect("window update should succeed");
 
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
-            let pane = app.pane(pane_id)?;
-            pane.terminal
-                .all_rows_text()
-                .iter()
-                .any(|row| row.contains("snippet-e2e"))
-                .then_some(())
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(!output_path.exists(), "Snippet insertion must not execute");
+        app.update(cx, |app, cx| {
+            assert!(app.send_input_bytes(pane_id, vec![b'\n'], cx));
         });
+        wait_for_poll_result(
+            Duration::from_secs(10),
+            || output_path.exists().then_some(()),
+            "explicit Enter did not execute the inserted Snippet",
+        );
+        assert_eq!(
+            std::fs::read_to_string(&output_path).expect("Snippet output should be readable"),
+            "snippet-e2e\n"
+        );
+        let _ = std::fs::remove_file(&output_path);
 
         window
             .update(cx, |_, window, cx| {
@@ -18505,10 +18716,36 @@ sleep 1
                 .then_some(())
         });
 
+        let output_path = std::env::temp_dir().join(format!(
+            "termirust-snippet-prompt-inert-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&output_path);
+        let prompt_snippet = SavedSnippet {
+            id: SavedSnippet::snippet_id(),
+            label: "Prompt insertion".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            group: String::new(),
+            pinned: false,
+            command: format!("printf '{{{{?Word}}}}' > '{}'", output_path.display()),
+        };
+        let cancel_snippet = SavedSnippet {
+            id: SavedSnippet::snippet_id(),
+            label: "Cancelled insertion".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            group: String::new(),
+            pinned: false,
+            command: "printf '{{?CancelMe}}'".to_string(),
+        };
+        let prompt_id = prompt_snippet.id.clone();
+        let cancel_id = cancel_snippet.id.clone();
+
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    app.run_snippet_command("printf '{{?Word}}\\n'", window, cx);
+                    app.saved.upsert_snippet(prompt_snippet);
+                    app.saved.upsert_snippet(cancel_snippet);
+                    app.insert_saved_snippet(&prompt_id, window, cx);
                 })
             })
             .expect("window update should succeed");
@@ -18527,19 +18764,13 @@ sleep 1
             })
             .expect("window update should succeed");
 
-        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
-            let pane = app.pane(pane_id)?;
-            pane.terminal
-                .all_rows_text()
-                .iter()
-                .any(|row| row.contains("hello-from-prompt"))
-                .then_some(())
-        });
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(!output_path.exists(), "prompt review must not execute text");
 
         window
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
-                    app.run_snippet_command("printf '{{?CancelMe}}\\n'", window, cx);
+                    app.insert_saved_snippet(&cancel_id, window, cx);
                     assert!(app.pending_snippet_prompts.is_some());
                     app.cancel_snippet_prompts(cx);
                 })
@@ -18548,7 +18779,94 @@ sleep 1
 
         app.read_with(cx, |app, _| {
             assert!(app.pending_snippet_prompts.is_none());
-            assert_eq!(app.status_message, "Snippet prompts cancelled.");
+            assert_eq!(
+                app.status_message,
+                localization::snippet_prompts_cancelled()
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_snippet_stale_and_oversize_insertions_fail_closed(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (_, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            app.pane(pane_id)
+                .is_some_and(|pane| pane.connected)
+                .then_some(())
+        });
+
+        let snippet = SavedSnippet {
+            id: SavedSnippet::snippet_id(),
+            label: "Reviewed multiline".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            group: String::new(),
+            pinned: false,
+            command: "printf first\nprintf second".to_string(),
+        };
+        let snippet_id = snippet.id.clone();
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.saved.upsert_snippet(snippet);
+                    app.insert_saved_snippet(&snippet_id, window, cx);
+                    assert!(app.pending_snippet_insert.is_some());
+                    app.saved
+                        .snippets
+                        .iter_mut()
+                        .find(|snippet| snippet.id == snippet_id)
+                        .expect("reviewed Snippet should exist")
+                        .command
+                        .push_str(" changed");
+                    assert!(!app.confirm_pending_snippet_insert(cx));
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert!(app.pending_snippet_insert.is_none());
+            assert_eq!(
+                app.error_message,
+                localization::snippet_error_stale_terminal()
+            );
+        });
+
+        let oversized = SavedSnippet {
+            id: SavedSnippet::snippet_id(),
+            label: "Oversized".to_string(),
+            vault_id: Some(DEFAULT_VAULT_ID.to_string()),
+            group: String::new(),
+            pinned: false,
+            command: "x".repeat(termirust_ui_contract::MAX_SNIPPET_INSERT_BYTES + 1),
+        };
+        let oversized_id = oversized.id.clone();
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.saved.upsert_snippet(oversized);
+                    app.insert_saved_snippet(&oversized_id, window, cx);
+                })
+            })
+            .expect("window update should succeed");
+        app.read_with(cx, |app, _| {
+            assert!(app.pending_snippet_insert.is_none());
+            assert!(app.pending_snippet_prompts.is_none());
+            assert_eq!(app.error_message, localization::snippet_error_oversize());
         });
     }
 
@@ -18798,7 +19116,10 @@ sleep 1
                 app.vault_inputs.description.read(cx).value(),
                 "Shared ops access"
             );
-            assert_eq!(app.status_message, "Loaded vault 'Ops Vault'.");
+            assert_eq!(
+                app.status_message,
+                localization::vault_loaded_status("Ops Vault")
+            );
             assert!(app.error_message.is_empty());
         });
 
@@ -18886,7 +19207,10 @@ sleep 1
             assert_eq!(member.email, "alex@example.com");
             assert_eq!(member.role, VaultMemberRole::Viewer);
             assert!(app.selected_vault_member_id.is_none());
-            assert_eq!(app.status_message, "Saved vault member 'Alex Rivera'.");
+            assert_eq!(
+                app.status_message,
+                localization::vault_member_saved_status("Alex Rivera")
+            );
             assert!(app.error_message.is_empty());
             member_index
         });
@@ -18904,7 +19228,10 @@ sleep 1
                 "alex@example.com"
             );
             assert_eq!(app.draft_vault_member_role, VaultMemberRole::Viewer);
-            assert_eq!(app.status_message, "Loaded vault member.");
+            assert_eq!(
+                app.status_message,
+                localization::static_message(termirust_ui_contract::MessageId::VaultMemberLoaded)
+            );
             assert!(app.error_message.is_empty());
         });
 

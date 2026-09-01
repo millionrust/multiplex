@@ -19,7 +19,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$states" != "all" || "$locales" != "en-US,en-XA,ar-XB" || "$themes" != "all" ]]; then
-  echo "Usage: $0 --surface shell-overlays-palette|projects-groups-sessions|presets-runtimes|worktrees-artifacts|hosts-connections|sftp [--states all] --locales en-US,en-XA,ar-XB --themes all" >&2
+  echo "Usage: $0 --surface shell-overlays-palette|projects-groups-sessions|presets-runtimes|worktrees-artifacts|hosts-connections|sftp|vault-keys-snippets [--states all] --locales en-US,en-XA,ar-XB --themes all" >&2
   exit 2
 fi
 
@@ -54,6 +54,11 @@ case "$surface" in
     test_filter="sftp_surface"
     description="local and remote SFTP"
     ;;
+  vault-keys-snippets)
+    paths=""
+    test_filter="vault_key_snippet_surface"
+    description="Vault, key, and Snippet"
+    ;;
   *)
     echo "unknown UI surface: $surface" >&2
     exit 2
@@ -62,8 +67,13 @@ esac
 
 cargo run -q -p termirust-ui-contract --bin generate-tokens -- --check
 cargo run -q -p termirust-ui-contract --bin generate-messages -- --check
-cargo run -q -p termirust-ui-contract --bin verify-design-tokens -- --paths "$paths" --zero-legacy
-cargo run -q -p termirust-ui-contract --bin verify-localization -- --locales en-US,en-XA,ar-XB --paths "$paths" --zero-legacy
+if [[ -n "$paths" ]]; then
+  cargo run -q -p termirust-ui-contract --bin verify-design-tokens -- --paths "$paths" --zero-legacy
+  cargo run -q -p termirust-ui-contract --bin verify-localization -- --locales en-US,en-XA,ar-XB --paths "$paths" --zero-legacy
+else
+  cargo run -q -p termirust-ui-contract --bin verify-design-tokens -- --surface "$surface" --zero-legacy
+  cargo run -q -p termirust-ui-contract --bin verify-localization -- --locales en-US,en-XA,ar-XB --surface "$surface" --zero-legacy
+fi
 cargo test -q -p termirust-ui-contract "$test_filter"
 
 echo "verified $description tokens, copy, semantics, states, scale, locale, and theme contracts"

@@ -25,7 +25,7 @@ impl TermiRustApp {
     pub(super) fn render_snippet_prompts_panel(&self, cx: &Context<Self>) -> Option<Div> {
         let prompts = self.pending_snippet_prompts.as_ref()?;
         let preview: SharedString = prompts
-            .command
+            .source_command
             .lines()
             .next()
             .unwrap_or("")
@@ -181,6 +181,83 @@ impl TermiRustApp {
                                 })
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.cancel_pending_paste(cx);
+                                })),
+                        ),
+                ),
+        )
+    }
+
+    pub(super) fn render_snippet_insert_review(&self, cx: &Context<Self>) -> Option<Div> {
+        let pending = self.pending_snippet_insert.as_ref()?;
+        let target = self
+            .pane(pending.pane_id)
+            .map(|pane| pane.title.clone())
+            .unwrap_or_else(localization::snippet_error_stale_terminal);
+        let line_count = pending.text.lines().count().max(1);
+        let preview = pending
+            .text
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .chars()
+            .take(120)
+            .collect::<String>();
+        Some(
+            h_flex()
+                .w_full()
+                .px(px(theme::SHELL_BANNER_HORIZONTAL))
+                .py(px(theme::SPACE_3))
+                .gap_2()
+                .items_center()
+                .justify_between()
+                .bg(theme::with_alpha(theme::warning(), 0.16))
+                .border_b_1()
+                .border_color(theme::with_alpha(theme::warning(), 0.45))
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .gap_0p5()
+                        .child(
+                            div()
+                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                .font_medium()
+                                .text_color(theme::text_on_dark())
+                                .child(localization::snippet_insert_review_title()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                .text_color(theme::text_muted_dark())
+                                .child(localization::snippet_insert_review_summary(
+                                    line_count, target,
+                                )),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                .text_color(theme::text_muted_dark())
+                                .child(localization::overlay_command_preview(preview)),
+                        ),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .child(
+                            Button::new("snippet-insert-confirm")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                                .label(localization::snippet_confirm_insert_action())
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.confirm_pending_snippet_insert(cx);
+                                })),
+                        )
+                        .child(
+                            Button::new("snippet-insert-cancel")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label(localization::snippet_cancel_insert_action())
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.cancel_pending_snippet_insert(cx);
                                 })),
                         ),
                 ),

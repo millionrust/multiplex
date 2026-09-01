@@ -5226,3 +5226,906 @@ name = "endpoint"
 type = "UserData"
 sensitivity = "sensitive"
 bidi = "isolate"
+
+[[messages]]
+id = "vaults-title"
+context = "Accessible title for the Vault library."
+description = "Vaults title"
+[[messages]]
+id = "keychain-keys-title"
+context = "Accessible title for the Keychain keys tab."
+description = "Keychain keys title"
+[[messages]]
+id = "keychain-identities-title"
+context = "Accessible title for the Keychain identities tab."
+description = "Keychain identities title"
+[[messages]]
+id = "snippets-title"
+context = "Accessible title for the saved Snippets library."
+description = "Snippets title"
+[[messages]]
+id = "key-lifecycle-title"
+context = "Accessible title for key generation and deployment dialogs."
+description = "Key lifecycle title"
+[[messages]]
+id = "snippet-prompts-title"
+context = "Accessible title for the Snippet placeholder form."
+description = "Snippet prompts title"
+[[messages]]
+id = "snippet-insert-review-title"
+context = "Accessible title for reviewing a Snippet before inserting it as terminal text."
+description = "Snippet insert review title"
+[[messages]]
+id = "vault-key-snippet-state-ready"
+context = "Status when a Vault, Keychain, or Snippet surface is ready."
+description = "Sensitive library ready status"
+[[messages]]
+id = "vault-key-snippet-state-empty"
+context = "Status when the current sensitive library has no rows."
+description = "Sensitive library empty status"
+[[messages]]
+id = "vault-key-snippet-state-filter-empty"
+context = "Status when no row matches the current filter."
+description = "Sensitive library filter empty status"
+[[messages]]
+id = "vault-key-snippet-state-editing"
+context = "Status while a Vault, member, key, or Snippet form is being edited."
+description = "Sensitive library editing status"
+[[messages]]
+id = "vault-key-snippet-state-validating"
+context = "Status while sensitive input is being validated."
+description = "Sensitive input validating status"
+[[messages]]
+id = "vault-key-snippet-state-locked"
+context = "Status when encrypted material or its credential store is locked."
+description = "Sensitive material locked status"
+[[messages]]
+id = "vault-key-snippet-state-unlocking"
+context = "Status while encrypted material is being unlocked."
+description = "Sensitive material unlocking status"
+[[messages]]
+id = "vault-key-snippet-state-wrong-secret"
+context = "Safe status after an incorrect passphrase without exposing its value."
+description = "Wrong secret status"
+[[messages]]
+id = "vault-key-snippet-state-keyring-denied"
+context = "Status when the operating-system credential store denied access."
+description = "Credential store denied status"
+[[messages]]
+id = "vault-key-snippet-state-corrupt"
+context = "Status when imported encrypted data is corrupt."
+description = "Corrupt sensitive data status"
+[[messages]]
+id = "vault-key-snippet-state-newer-format"
+context = "Status when imported encrypted data requires a newer application version."
+description = "Newer sensitive format status"
+[[messages]]
+id = "vault-key-snippet-state-import-malformed"
+context = "Status when imported Vault or key data is malformed."
+description = "Malformed sensitive import status"
+[[messages]]
+id = "vault-key-snippet-state-oversize"
+context = "Status when an imported item or Snippet exceeds the safe size limit."
+description = "Sensitive item oversize status"
+[[messages]]
+id = "vault-key-snippet-state-generating"
+context = "Status while a new SSH key is being generated."
+description = "Key generation status"
+[[messages]]
+id = "vault-key-snippet-state-reviewing"
+context = "Status while an exact key or Snippet action awaits review."
+description = "Sensitive action review status"
+[[messages]]
+id = "vault-key-snippet-state-running"
+context = "Status while an exact key operation is active."
+description = "Key operation running status"
+[[messages]]
+id = "vault-key-snippet-state-cancel-requested"
+context = "Status after key-operation cancellation is requested."
+description = "Key cancellation requested status"
+[[messages]]
+id = "vault-key-snippet-state-cancelled"
+context = "Status after a key or Snippet action is cancelled."
+description = "Sensitive action cancelled status"
+[[messages]]
+id = "vault-key-snippet-state-completed"
+context = "Status after an exact key or Snippet action completes."
+description = "Sensitive action completed status"
+[[messages]]
+id = "vault-key-snippet-state-terminal-required"
+context = "Status when Snippet insertion has no current authorized terminal target."
+description = "Terminal required status"
+[[messages]]
+id = "vault-key-snippet-state-stale"
+context = "Status when a selected Vault, key, Snippet, Host, or terminal target is stale."
+description = "Sensitive action stale status"
+[[messages]]
+id = "vault-key-snippet-state-storage-failure"
+context = "Safe status when sensitive metadata could not be saved."
+description = "Sensitive storage failure status"
+[[messages]]
+id = "vault-key-snippet-state-unavailable"
+context = "Safe status when a Vault, key, or Snippet action is unavailable."
+description = "Sensitive action unavailable status"
+[[messages]]
+id = "vault-key-snippet-state-error"
+context = "Safe generic Vault, key, or Snippet failure status."
+description = "Sensitive action generic error"
+[[messages]]
+id = "secret-field-masked"
+context = "Accessible replacement value for a populated secret field."
+description = "Masked secret field value"
+[[messages]]
+id = "secret-field-unavailable"
+context = "Accessible replacement value when a secret is not available."
+description = "Unavailable secret field value"
+[[messages]]
+id = "vault-key-snippet-private-value"
+context = "Recording-friendly replacement for user-defined sensitive metadata."
+description = "Private sensitive value"
+[[messages]]
+id = "vault-private-row"
+context = "Recording-friendly replacement for a Vault name."
+description = "Private Vault row"
+[[messages]]
+id = "vault-member-private-row"
+context = "Recording-friendly replacement for a Vault member identity."
+description = "Private Vault member row"
+[[messages]]
+id = "key-private-row"
+context = "Recording-friendly replacement for an SSH key or identity."
+description = "Private key row"
+[[messages]]
+id = "snippet-private-row"
+context = "Recording-friendly replacement for a saved Snippet."
+description = "Private Snippet row"
+[[messages]]
+id = "vault-key-snippet-private-host"
+context = "Recording-friendly replacement for a Host in a key deployment dialog."
+description = "Private key Host row"
+[[messages]]
+id = "snippet-row-saved"
+context = "Accessible status for a saved Snippet row."
+description = "Saved Snippet row status"
+[[messages]]
+id = "snippet-insert-action"
+context = "Action that inserts a reviewed Snippet as terminal text without pressing Enter."
+description = "Insert Snippet as text action"
+[[messages]]
+id = "key-passphrase-field"
+context = "Accessible label for a masked SSH private-key passphrase field."
+description = "Key passphrase field"
+[[messages]]
+id = "vault-new-action"
+context = "Action starting a new shared Vault draft."
+description = "New Vault action"
+[[messages]]
+id = "vault-select-action"
+context = "Action selecting an exact Vault."
+description = "Select Vault action"
+[[messages]]
+id = "key-select-host-action"
+context = "Action selecting an exact Host for SSH key review."
+description = "Review key Host action"
+[[messages]]
+id = "vault-delete-action"
+context = "Action deleting an exact non-personal Vault after current-state validation."
+description = "Delete Vault action"
+[[messages]]
+id = "vault-member-save-action"
+context = "Action saving a member in the exact selected Vault."
+description = "Save Vault member action"
+[[messages]]
+id = "vault-member-delete-action"
+context = "Action removing an exact member from the exact selected shared Vault."
+description = "Delete Vault member action"
+[[messages]]
+id = "keychain-show-keys-action"
+context = "Action selecting the Keychain keys tab."
+description = "Show keys action"
+[[messages]]
+id = "keychain-show-identities-action"
+context = "Action selecting the Keychain identities tab."
+description = "Show identities action"
+[[messages]]
+id = "key-generate-action"
+context = "Action opening the SSH key generation form."
+description = "Generate key action"
+[[messages]]
+id = "key-add-file-action"
+context = "Action importing a bounded private-key file reference."
+description = "Add key file action"
+[[messages]]
+id = "key-use-action"
+context = "Action using an exact saved identity in the existing Host editor."
+description = "Use identity action"
+[[messages]]
+id = "key-deploy-action"
+context = "Action starting reviewed deployment of an exact public key."
+description = "Deploy public key action"
+[[messages]]
+id = "key-remove-remote-action"
+context = "Action starting reviewed removal of an exact public key."
+description = "Remove remote key action"
+[[messages]]
+id = "key-confirm-operation-action"
+context = "Action confirming the exact reviewed key operation."
+description = "Confirm key operation action"
+[[messages]]
+id = "snippet-new-action"
+context = "Action clearing the editor for a new Snippet."
+description = "New Snippet action"
+[[messages]]
+id = "snippet-select-action"
+context = "Action selecting an exact saved Snippet."
+description = "Select Snippet action"
+[[messages]]
+id = "snippet-delete-action"
+context = "Action deleting an exact saved Snippet after current-state validation."
+description = "Delete Snippet action"
+[[messages]]
+id = "snippet-pin-action"
+context = "Action pinning or unpinning an exact saved Snippet."
+description = "Toggle Snippet pin action"
+[[messages]]
+id = "snippet-confirm-insert-action"
+context = "Action confirming bounded multiline Snippet text insertion into the exact terminal."
+description = "Confirm Snippet insert action"
+[[messages]]
+id = "snippet-cancel-insert-action"
+context = "Action cancelling Snippet text insertion without terminal input."
+description = "Cancel Snippet insert action"
+[[messages]]
+id = "snippet-error-stale"
+context = "Error when an exact saved Snippet no longer exists or changed during review."
+description = "Stale Snippet error"
+[[messages]]
+id = "snippet-error-terminal-required"
+context = "Error when there is no focused terminal for Snippet text insertion."
+description = "Snippet terminal required error"
+[[messages]]
+id = "snippet-error-stale-terminal"
+context = "Error when the exact terminal target changed during Snippet review."
+description = "Stale Snippet terminal error"
+[[messages]]
+id = "snippet-error-oversize"
+context = "Error when resolved Snippet text exceeds the bounded insertion limit."
+description = "Oversize Snippet error"
+[[messages]]
+id = "snippet-prompt-placeholder"
+context = "Placeholder for a user-defined Snippet prompt name."
+description = "Snippet prompt placeholder"
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "snippet-prompts-required"
+context = "Status explaining how many Snippet prompt values require review."
+description = "Snippet prompts required status"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "snippet-multiline-review-required"
+context = "Status before explicit review of multiline Snippet insertion."
+description = "Multiline Snippet review status"
+[[messages]]
+id = "snippet-inserted-as-text"
+context = "Status confirming Snippet text insertion without pressing Enter."
+description = "Snippet inserted status"
+[[messages]]
+id = "snippet-prompts-cancelled"
+context = "Status after cancelling Snippet prompt input without terminal mutation."
+description = "Snippet prompts cancelled status"
+[[messages]]
+id = "snippet-error-multiline-unsupported"
+context = "Error when the exact terminal cannot safely accept bracketed multiline text."
+description = "Unsupported multiline Snippet error"
+[[messages]]
+id = "snippet-insert-cancelled"
+context = "Status after cancelling reviewed Snippet insertion without terminal mutation."
+description = "Snippet insertion cancelled status"
+[[messages]]
+id = "snippet-insert-review-summary"
+context = "Review summary for bounded multiline Snippet insertion into an isolated terminal title."
+description = "Snippet insert review summary"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "target"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "key-label-placeholder"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key label placeholder"
+[[messages]]
+id = "key-comment-placeholder"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key comment placeholder"
+[[messages]]
+id = "key-passphrase-recommended-placeholder"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key passphrase recommended placeholder"
+[[messages]]
+id = "key-passphrase-confirm-placeholder"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key passphrase confirm placeholder"
+[[messages]]
+id = "key-deployment-passphrase-placeholder"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key deployment passphrase placeholder"
+[[messages]]
+id = "key-label-required"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key label required"
+[[messages]]
+id = "key-passphrases-mismatch"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key passphrases mismatch"
+[[messages]]
+id = "key-save-dialog-title"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key save dialog title"
+[[messages]]
+id = "key-generating-status"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key generating status"
+[[messages]]
+id = "key-metadata-unsaved-status"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key metadata unsaved status"
+[[messages]]
+id = "key-metadata-unsaved-recovery"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key metadata unsaved recovery"
+[[messages]]
+id = "key-generated-added-status"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key generated added status"
+[[messages]]
+id = "key-operation-safe-error"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key operation safe error"
+[[messages]]
+id = "key-stale-identity-error"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key stale identity error"
+[[messages]]
+id = "key-stale-host-error"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key stale host error"
+[[messages]]
+id = "key-installing-status"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key installing status"
+[[messages]]
+id = "key-removing-status"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key removing status"
+[[messages]]
+id = "key-operation-no-result"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key operation no result"
+[[messages]]
+id = "key-audit-unsaved-warning"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key audit unsaved warning"
+[[messages]]
+id = "key-cancelling-status"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key cancelling status"
+[[messages]]
+id = "key-generate-title"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key generate title"
+[[messages]]
+id = "key-generated-title"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key generated title"
+[[messages]]
+id = "key-generate-notice"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key generate notice"
+[[messages]]
+id = "key-label-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key label field"
+[[messages]]
+id = "key-public-comment-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key public comment field"
+[[messages]]
+id = "key-passphrase-label"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key passphrase label"
+[[messages]]
+id = "key-confirm-passphrase-label"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key confirm passphrase label"
+[[messages]]
+id = "key-blank-passphrase-warning"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key blank passphrase warning"
+[[messages]]
+id = "key-generating-title"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key generating title"
+[[messages]]
+id = "key-generating-detail"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key generating detail"
+[[messages]]
+id = "common-unavailable"
+context = "Vault, key, and Snippet surface localized copy."
+description = "common unavailable"
+[[messages]]
+id = "key-private-local-notice"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key private local notice"
+[[messages]]
+id = "key-identity-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key identity field"
+[[messages]]
+id = "key-fingerprint-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key fingerprint field"
+[[messages]]
+id = "key-private-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key private field"
+[[messages]]
+id = "key-host-picker-notice"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key host picker notice"
+[[messages]]
+id = "common-review"
+context = "Vault, key, and Snippet surface localized copy."
+description = "common review"
+[[messages]]
+id = "key-no-hosts"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key no hosts"
+[[messages]]
+id = "key-installing-title"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key installing title"
+[[messages]]
+id = "key-removing-title"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key removing title"
+[[messages]]
+id = "key-running-cancel-notice"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key running cancel notice"
+[[messages]]
+id = "key-connection-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key connection field"
+[[messages]]
+id = "key-destination-value"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key destination value"
+[[messages]]
+id = "key-install-review-warning"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key install review warning"
+[[messages]]
+id = "key-remove-review-warning"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key remove review warning"
+[[messages]]
+id = "key-target-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key target field"
+[[messages]]
+id = "key-operation-auth-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key operation auth field"
+[[messages]]
+id = "key-destination-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key destination field"
+[[messages]]
+id = "key-private-passphrase-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key private passphrase field"
+[[messages]]
+id = "key-choose-destination-action"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key choose destination action"
+[[messages]]
+id = "key-install-verify-action"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key install verify action"
+[[messages]]
+id = "key-remove-exact-action"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key remove exact action"
+[[messages]]
+id = "common-done"
+context = "Vault, key, and Snippet surface localized copy."
+description = "common done"
+[[messages]]
+id = "key-outcome-installed-verified"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key outcome installed verified"
+[[messages]]
+id = "key-outcome-present-verified"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key outcome present verified"
+[[messages]]
+id = "key-outcome-installed-verification-failed"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key outcome installed verification failed"
+[[messages]]
+id = "key-outcome-present-verification-failed"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key outcome present verification failed"
+[[messages]]
+id = "key-outcome-removed"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key outcome removed"
+[[messages]]
+id = "key-outcome-not-present"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key outcome not present"
+[[messages]]
+id = "key-outcome-cancelled"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key outcome cancelled"
+[[messages]]
+id = "key-public-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key public field"
+[[messages]]
+id = "keychain-keys-description"
+context = "Vault, key, and Snippet surface localized copy."
+description = "keychain keys description"
+[[messages]]
+id = "key-source-imported"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key source imported"
+[[messages]]
+id = "key-source-generated"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key source generated"
+[[messages]]
+id = "key-default-badge"
+context = "Vault, key, and Snippet surface localized copy."
+description = "key default badge"
+[[messages]]
+id = "keychain-empty-title"
+context = "Vault, key, and Snippet surface localized copy."
+description = "keychain empty title"
+[[messages]]
+id = "keychain-empty-description"
+context = "Vault, key, and Snippet surface localized copy."
+description = "keychain empty description"
+[[messages]]
+id = "keychain-identities-description"
+context = "Vault, key, and Snippet surface localized copy."
+description = "keychain identities description"
+[[messages]]
+id = "keychain-password-empty-title"
+context = "Vault, key, and Snippet surface localized copy."
+description = "keychain password empty title"
+[[messages]]
+id = "keychain-password-empty-description"
+context = "Vault, key, and Snippet surface localized copy."
+description = "keychain password empty description"
+[[messages]]
+id = "keychain-new-host-action"
+context = "Vault, key, and Snippet surface localized copy."
+description = "keychain new host action"
+[[messages]]
+id = "vaults-description"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vaults description"
+[[messages]]
+id = "vault-name-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault name field"
+[[messages]]
+id = "vault-description-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault description field"
+[[messages]]
+id = "vault-members-title"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault members title"
+[[messages]]
+id = "vault-personal-notice"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault personal notice"
+[[messages]]
+id = "vault-member-name-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault member name field"
+[[messages]]
+id = "vault-member-email-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault member email field"
+[[messages]]
+id = "vault-member-role-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault member role field"
+[[messages]]
+id = "vault-member-clear-action"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault member clear action"
+[[messages]]
+id = "vault-no-description"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault no description"
+[[messages]]
+id = "snippet-library-description"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet library description"
+[[messages]]
+id = "snippet-label-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet label field"
+[[messages]]
+id = "snippet-group-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet group field"
+[[messages]]
+id = "snippet-command-field"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet command field"
+[[messages]]
+id = "snippet-pinned-label"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet pinned label"
+[[messages]]
+id = "snippet-library-label"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet library label"
+[[messages]]
+id = "snippet-pin-action-label"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet pin action label"
+[[messages]]
+id = "snippet-unpin-action-label"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet unpin action label"
+[[messages]]
+id = "snippet-empty-title"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet empty title"
+[[messages]]
+id = "snippet-empty-description"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet empty description"
+[[messages]]
+id = "snippet-draft-cleared"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet draft cleared"
+[[messages]]
+id = "snippet-pin-draft-on"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet pin draft on"
+[[messages]]
+id = "snippet-pin-draft-off"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet pin draft off"
+[[messages]]
+id = "snippet-pinned-status"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet pinned status"
+[[messages]]
+id = "snippet-unpinned-status"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet unpinned status"
+[[messages]]
+id = "snippet-command-required"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet command required"
+[[messages]]
+id = "snippet-removed-status"
+context = "Vault, key, and Snippet surface localized copy."
+description = "snippet removed status"
+[[messages]]
+id = "vault-draft-cleared"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault draft cleared"
+[[messages]]
+id = "vault-name-required"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault name required"
+[[messages]]
+id = "vault-personal-delete-error"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault personal delete error"
+[[messages]]
+id = "vault-removed-status"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault removed status"
+[[messages]]
+id = "vault-member-loaded"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault member loaded"
+[[messages]]
+id = "vault-member-name-required"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault member name required"
+[[messages]]
+id = "vault-member-email-required"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault member email required"
+[[messages]]
+id = "vault-personal-member-error"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault personal member error"
+[[messages]]
+id = "vault-personal-member-remove-error"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault personal member remove error"
+[[messages]]
+id = "vault-member-removed"
+context = "Vault, key, and Snippet surface localized copy."
+description = "vault member removed"
+[[messages]]
+id = "snippet-count"
+context = "Number of saved Snippets in the Snippet library."
+description = "Snippet count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "snippet-assigned-vault"
+context = "Status after choosing the Vault for a Snippet draft."
+description = "Snippet Vault assignment"
+[[messages.args]]
+name = "vault"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "snippet-loaded-status"
+context = "Status after loading an exact saved Snippet."
+description = "Loaded Snippet status"
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "snippet-saved-status"
+context = "Status after saving a Snippet."
+description = "Saved Snippet status"
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "vault-host-count"
+context = "Number of Hosts assigned to a Vault."
+description = "Vault Host count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "vault-key-count"
+context = "Number of keys assigned to a Vault."
+description = "Vault key count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "vault-snippet-count"
+context = "Number of Snippets assigned to a Vault."
+description = "Vault Snippet count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "vault-member-count"
+context = "Number of members assigned to a Vault."
+description = "Vault member count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+
+[[messages]]
+id = "vault-loaded-status"
+context = "Status after loading an exact Vault."
+description = "Loaded Vault status"
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "vault-exists-error"
+context = "Validation error when a Vault has a duplicate name."
+description = "Duplicate Vault error"
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "vault-saved-status"
+context = "Status after saving a Vault."
+description = "Saved Vault status"
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "vault-member-saved-status"
+context = "Status after saving a member in the selected Vault."
+description = "Saved Vault member status"
+[[messages.args]]
+name = "name"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "key-host-summary"
+context = "Host endpoint and authentication summary in the key deployment picker."
+description = "Key Host summary"
+[[messages.args]]
+name = "username"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "endpoint"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "auth"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "sensitive-destructive-action-warning"
+context = "Accessible non-color warning attached to destructive Vault and key controls."
+description = "Sensitive destructive action warning"

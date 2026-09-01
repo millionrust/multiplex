@@ -13,6 +13,9 @@ use crate::product_session_surface::{
     ProductSessionAccessibilityCommand, ProductSessionSemanticSnapshot,
 };
 use crate::sftp_surface::{SftpAccessibilityCommand, SftpSemanticSnapshot};
+use crate::vault_key_snippet_surface::{
+    VaultKeySnippetAccessibilityCommand, VaultKeySnippetSemanticSnapshot,
+};
 use crate::worktree_artifact_surface::{
     WorktreeArtifactAccessibilityCommand, WorktreeArtifactSemanticSnapshot,
 };
@@ -449,6 +452,7 @@ pub enum ShellAccessibilityCommand {
     WorktreeArtifact(WorktreeArtifactAccessibilityCommand),
     HostConnection(HostConnectionAccessibilityCommand),
     Sftp(SftpAccessibilityCommand),
+    VaultKeySnippet(VaultKeySnippetAccessibilityCommand),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -464,6 +468,7 @@ pub struct ShellSemanticSnapshot {
     pub worktree_artifact: Option<WorktreeArtifactSemanticSnapshot>,
     pub host_connection: Option<HostConnectionSemanticSnapshot>,
     pub sftp: Option<SftpSemanticSnapshot>,
+    pub vault_key_snippet: Option<VaultKeySnippetSemanticSnapshot>,
 }
 
 impl Default for ShellSemanticSnapshot {
@@ -480,6 +485,7 @@ impl Default for ShellSemanticSnapshot {
             worktree_artifact: None,
             host_connection: None,
             sftp: None,
+            vault_key_snippet: None,
         }
     }
 }
@@ -557,6 +563,11 @@ impl ShellSemanticSnapshot {
             && let Some(sftp) = self.sftp.as_ref()
         {
             nodes.extend(sftp.try_nodes(shell_region_node(ShellRegionId::Content))?);
+        }
+        if !self.palette_open
+            && let Some(vault_key_snippet) = self.vault_key_snippet.as_ref()
+        {
+            nodes.extend(vault_key_snippet.try_nodes(shell_region_node(ShellRegionId::Content))?);
         }
 
         if self.palette_open {
@@ -674,6 +685,18 @@ impl ShellSemanticSnapshot {
                 sftp.routes()
                     .into_iter()
                     .map(|(key, command)| (key, ShellAccessibilityCommand::Sftp(command))),
+            );
+        }
+        if !self.palette_open
+            && let Some(vault_key_snippet) = self.vault_key_snippet.as_ref()
+        {
+            routes.extend(
+                vault_key_snippet
+                    .routes()
+                    .into_iter()
+                    .map(|(key, command)| {
+                        (key, ShellAccessibilityCommand::VaultKeySnippet(command))
+                    }),
             );
         }
         if self.palette_open {

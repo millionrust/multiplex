@@ -165,10 +165,13 @@ common-cancel = ⟦Çåñçéļ~⟧
 common-close = ⟦Çļøšé⟧
 common-connect = ⟦Çøññéçţ~⟧
 common-delete = ⟦Ðéļéţé~⟧
+common-done = ⟦Ðøñé⟧
 common-open = ⟦Øþéñ⟧
 common-retry = ⟦Ŕéţŕý⟧
+common-review = ⟦Ŕéṽîéŵ~⟧
 common-run = ⟦Ŕûñ⟧
 common-save = ⟦Šåṽé⟧
+common-unavailable = ⟦Ûñåṽåîļåƀļé~~~⟧
 connect-continue-action = ⟦Çøñţîñûé~~⟧
 connect-continue-save = ⟦Çøñţîñûé & Šåṽé~~~~⟧
 connect-copy-log-action = ⟦Çøþý ļøĝ~~⟧
@@ -510,6 +513,89 @@ hosts-tags-help = ⟦Ţåĝš ĥéļþ ƒîļţéŕ Ĥøšţš åñð çåñ ƀ�
 hosts-terminal-action = ⟦Ţéŕɱîñåļ~~⟧
 hosts-title = ⟦Ĥøšţš & Çøññéçţîøñš~~~~~~⟧
 hosts-unstar-selected = ⟦Ûñšţåŕ šéļéçţéð~~~~⟧
+key-add-file-action = ⟦Åðð ķéý ƒîļé~~~⟧
+key-audit-unsaved-warning = ⟦Ţĥé ļøçåļ åûðîţ ŕéçøŕð çøûļð ñøţ ƀé šåṽéð.~~~~~~~~~~~~~~~⟧
+key-blank-passphrase-warning = ⟦Å ƀļåñķ þåššþĥŕåšé îš åļļøŵéð, ƀûţ åñ éñçŕýþţéð þŕîṽåţé ķéý îš šåƒéŕ îƒ ţĥé ƒîļé îš çøþîéð øŕ šţøļéñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-cancelling-status = ⟦Çåñçéļļîñĝ ţĥé ŠŠĤ ķéý øþéŕåţîøñ...~~~~~~~~~~~~⟧
+key-choose-destination-action = ⟦Çĥøøšé ðéšţîñåţîøñ~~~~~~⟧
+key-comment-placeholder = ⟦Øþţîøñåļ þûƀļîç ķéý çøɱɱéñţ~~~~~~~~~⟧
+key-confirm-operation-action = ⟦Çøñƒîŕɱ ķéý øþéŕåţîøñ~~~~~~~⟧
+key-confirm-passphrase-label = ⟦Çøñƒîŕɱ þåššþĥŕåšé~~~~~~⟧
+key-connection-field = ⟦Çøññéçţîøñ~~⟧
+key-default-badge = ⟦Ðéƒåûļţ~⟧
+key-deploy-action = ⟦Ðéþļøý þûƀļîç ķéý~~~~~⟧
+key-deployment-passphrase-placeholder = ⟦Þŕîṽåţé ķéý þåššþĥŕåšé, îƒ šéţ~~~~~~~~~~⟧
+key-destination-field = ⟦Ðéšţîñåţîøñ~~~⟧
+key-destination-value = ⟦Åûţĥéñţîçåţéð ûšéŕ'š ~/.ššĥ/åûţĥøŕîžéð_ķéýš~~~~~~~~~~~~~~~~⟧
+key-fingerprint-field = ⟦Ƒîñĝéŕþŕîñţ~~~⟧
+key-generate-action = ⟦Ĝéñéŕåţé ķéý~~~⟧
+key-generate-notice = ⟦ŢéŕɱîŔûšţ çŕéåţéš åñ Éð25519 þŕîṽåţé ķéý åñð ɱåţçĥîñĝ .þûƀ ƒîļé åţ ţĥé ðéšţîñåţîøñ ýøû çĥøøšé. Éẋîšţîñĝ ƒîļéš åŕé ñéṽéŕ øṽéŕŵŕîţţéñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-generate-title = ⟦Ĝéñéŕåţé ŠŠĤ ķéý~~~~~⟧
+key-generated-added-status = ⟦Ĝéñéŕåţéð ķéý åððéð ţø ţĥé Ķéýçĥåîñ.~~~~~~~~~~~~~⟧
+key-generated-title = ⟦Ķéý ĝéñéŕåţéð~~~~⟧
+key-generating-detail = ⟦Ŵŕîţîñĝ ţĥé þŕîṽåţé åñð þûƀļîç ƒîļéš åţøɱîçåļļý ŵîţĥ šţŕîçţ þéŕɱîššîøñš.~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-generating-status = ⟦Ĝéñéŕåţîñĝ åñ Éð25519 ķéý ŵîţĥ øþéŕåţîñĝ-šýšţéɱ éñţŕøþý...~~~~~~~~~~~~~~~~~~~~~~⟧
+key-generating-title = ⟦Ĝéñéŕåţîñĝ ķéý þåîŕ~~~~~~⟧
+key-host-picker-notice = ⟦Çĥøøšé å šåṽéð ŠŠĤ Çøññéçţîøñ. ŢéŕɱîŔûšţ ûšéš ţĥåţ Çøññéçţîøñ'š çøñƒîĝûŕéð åûţĥéñţîçåţîøñ åñð ñøŕɱåļ ĥøšţ-ķéý ṽéŕîƒîçåţîøñ ƒøŕ ţĥîš øþéŕåţîøñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-host-summary = { $username }⟦ åţ ⟧{ $endpoint }⟦, ûšîñĝ ~~⟧{ $auth }
+key-identity-field = ⟦Îðéñţîţý~~⟧
+key-install-review-warning = ⟦Ŕéṽîéŵ ţĥé éẋåçţ ţåŕĝéţ ƀéƒøŕé îñšţåļļîñĝ. Šûççéšš îš ŕéþøŕţéð åš ṽéŕîƒîéð øñļý åƒţéŕ å šéþåŕåţé ƒŕéšĥ ļøĝîñ ûšîñĝ ţĥîš þŕîṽåţé ķéý.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-install-verify-action = ⟦Îñšţåļļ åñð ṽéŕîƒý~~~~~~⟧
+key-installing-status = ⟦Îñšţåļļîñĝ åñð ṽéŕîƒýîñĝ ţĥé þûƀļîç ķéý...~~~~~~~~~~~~~~~⟧
+key-installing-title = ⟦Îñšţåļļîñĝ åñð ṽéŕîƒýîñĝ ķéý~~~~~~~~~~⟧
+key-label-field = ⟦Ļåƀéļ⟧
+key-label-placeholder = ⟦Ķéý ļåƀéļ~~⟧
+key-label-required = ⟦Éñţéŕ å ļåƀéļ ƒøŕ ţĥé ĝéñéŕåţéð ķéý.~~~~~~~~~~~~~⟧
+key-lifecycle-title = ⟦ŠŠĤ ķéý ɱåñåĝéɱéñţ~~~~~~⟧
+key-metadata-unsaved-recovery = ⟦Ţĥé ķéý ƒîļéš åŕé îñţåçţ åţ ţĥé šéļéçţéð ðéšţîñåţîøñ. Åðð ţĥé þŕîṽåţé ķéý ƒîļé ţø Ķéýçĥåîñ ƀéƒøŕé ŕéšţåŕţîñĝ ŢéŕɱîŔûšţ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-metadata-unsaved-status = ⟦Ţĥé ķéý ƒîļéš ŵéŕé ĝéñéŕåţéð, ƀûţ Ķéýçĥåîñ ɱéţåðåţå ŵåš ñøţ šåṽéð.~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-no-hosts = ⟦Ñø šåṽéð ŠŠĤ Çøññéçţîøñš åŕé åṽåîļåƀļé. Åðð åñð çøñƒîĝûŕé å Çøññéçţîøñ ƒîŕšţ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-operation-auth-field = ⟦Øþéŕåţîøñ åûţĥ~~~~⟧
+key-operation-no-result = ⟦Ţĥé ŠŠĤ ķéý øþéŕåţîøñ éñðéð ŵîţĥøûţ å ŕéšûļţ.~~~~~~~~~~~~~~~~⟧
+key-operation-safe-error = ⟦Ţĥé ŠŠĤ ķéý øþéŕåţîøñ çøûļð ñøţ ƀé çøɱþļéţéð. Ŕéṽîéŵ ţĥé šéļéçţéð îðéñţîţý åñð Çøññéçţîøñ, ţĥéñ ţŕý åĝåîñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-outcome-cancelled = ⟦Ţĥé ŠŠĤ ķéý øþéŕåţîøñ ŵåš çåñçéļļéð.~~~~~~~~~~~~~⟧
+key-outcome-installed-verification-failed = ⟦Þûƀļîç ķéý ŵåš îñšţåļļéð, ƀûţ ţĥé ƒŕéšĥ ķéý-øñļý ļøĝîñ ƒåîļéð.~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-outcome-installed-verified = ⟦Þûƀļîç ķéý îñšţåļļéð åñð ṽéŕîƒîéð ŵîţĥ å ƒŕéšĥ ķéý-øñļý ļøĝîñ.~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-outcome-not-present = ⟦Ţĥé éẋåçţ þûƀļîç ķéý ŵåš ñøţ þŕéšéñţ; ñø ŕéɱøţé çøñţéñţ çĥåñĝéð.~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-outcome-present-verification-failed = ⟦Þûƀļîç ķéý ŵåš åļŕéåðý þŕéšéñţ, ƀûţ ţĥé ƒŕéšĥ ķéý-øñļý ļøĝîñ ƒåîļéð.~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-outcome-present-verified = ⟦Þûƀļîç ķéý ŵåš åļŕéåðý þŕéšéñţ åñð å ƒŕéšĥ ķéý-øñļý ļøĝîñ šûççééðéð.~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-outcome-removed = ⟦Ţĥé éẋåçţ þûƀļîç ķéý ŵåš ŕéɱøṽéð; ûñŕéļåţéð éñţŕîéš ŵéŕé þŕéšéŕṽéð.~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-passphrase-confirm-placeholder = ⟦Çøñƒîŕɱ þåššþĥŕåšé~~~~~~⟧
+key-passphrase-field = ⟦Þŕîṽåţé ķéý þåššþĥŕåšé~~~~~~~⟧
+key-passphrase-label = ⟦Þåššþĥŕåšé~~⟧
+key-passphrase-recommended-placeholder = ⟦Þåššþĥŕåšé (ŕéçøɱɱéñðéð)~~~~~~~~⟧
+key-passphrases-mismatch = ⟦Ţĥé ķéý þåššþĥŕåšéš ðø ñøţ ɱåţçĥ.~~~~~~~~~~~~⟧
+key-private-field = ⟦Þŕîṽåţé ķéý~~~⟧
+key-private-local-notice = ⟦Ţĥé þŕîṽåţé ķéý ŕéɱåîñš øñļý åţ ţĥé ļøçåļ ðéšţîñåţîøñ ýøû šéļéçţéð. Ðéþļøý šéñðš ţĥé þûƀļîç ķéý øñļý.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-private-passphrase-field = ⟦Þŕîṽåţé ķéý þåššþĥŕåšé~~~~~~~⟧
+key-private-row = ⟦Þŕîṽåţé ķéý~~~⟧
+key-public-comment-field = ⟦Þûƀļîç çøɱɱéñţ~~~~⟧
+key-public-field = ⟦Þûƀļîç ķéý~~⟧
+key-remove-exact-action = ⟦Ŕéɱøṽé éẋåçţ ķéý~~~~~⟧
+key-remove-remote-action = ⟦Ŕéɱøṽé þûƀļîç ķéý~~~~~⟧
+key-remove-review-warning = ⟦Ŕéɱøṽåļ ðéļéţéš øñļý ţĥé ɱåţçĥîñĝ ðéçøðéð ķéý. Îţ ðøéš ñøţ ṽéŕîƒý ţĥåţ åñøţĥéŕ ļøĝîñ ɱéţĥøð ŵîļļ ŕéɱåîñ åṽåîļåƀļé.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-removing-status = ⟦Ŕéɱøṽîñĝ ţĥé éẋåçţ þûƀļîç ķéý...~~~~~~~~~~~⟧
+key-removing-title = ⟦Ŕéɱøṽîñĝ éẋåçţ ķéý~~~~~~⟧
+key-running-cancel-notice = ⟦Ýøû çåñ çåñçéļ. ŢéŕɱîŔûšţ ŵîļļ ƒîñîšĥ øŕ çļéåñ ûþ åñý ŕéɱøţé ɱûţåţîøñ åļŕéåðý îñ þŕøĝŕéšš.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+key-save-dialog-title = ⟦Šåṽé ĝéñéŕåţéð Éð25519 þŕîṽåţé ķéý~~~~~~~~~~~~⟧
+key-select-host-action = ⟦Ŕéṽîéŵ Ĥøšţ~~~⟧
+key-source-generated = ⟦Ĝéñéŕåţéð~~⟧
+key-source-imported = ⟦Îɱþøŕţéð~~⟧
+key-stale-host-error = ⟦Ţĥé šéļéçţéð Ĥøšţ îš ñø ļøñĝéŕ åṽåîļåƀļé.~~~~~~~~~~~~~~~⟧
+key-stale-identity-error = ⟦Ţĥé šéļéçţéð îðéñţîţý îš ñø ļøñĝéŕ åṽåîļåƀļé.~~~~~~~~~~~~~~~~⟧
+key-target-field = ⟦Ţåŕĝéţ~⟧
+key-use-action = ⟦Ûšé îðéñţîţý~~~⟧
+keychain-empty-description = ⟦Åðð å ķéý ƒîļé ţø ƀûîļð å ŕéûšåƀļé îðéñţîţý ļîƀŕåŕý ƒøŕ ýøûŕ Ĥøšţš.~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+keychain-empty-title = ⟦Ñø îðéñţîţîéš åṽåîļåƀļé~~~~~~~~⟧
+keychain-identities-description = ⟦Šåṽéð Ĥøšţ îðéñţîţîéš ŵîţĥ þåššŵøŕð åûţĥéñţîçåţîøñ.~~~~~~~~~~~~~~~~~~~⟧
+keychain-identities-title = ⟦Ķéýçĥåîñ îðéñţîţîéš~~~~~~⟧
+keychain-keys-description = ⟦Ŕéûšåƀļé îðéñţîţîéš ƒøŕ Ĥøšţ åûţĥéñţîçåţîøñ.~~~~~~~~~~~~~~~~⟧
+keychain-keys-title = ⟦Ķéýçĥåîñ ķéýš~~~~⟧
+keychain-new-host-action = ⟦Ñéŵ Ĥøšţ~~⟧
+keychain-password-empty-description = ⟦Šåṽé å Ĥøšţ ŵîţĥ þåššŵøŕð åûţĥéñţîçåţîøñ ţø ķééþ îţš šéçûŕé çŕéðéñţîåļ ŕéƒéŕéñçé ĥéŕé.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+keychain-password-empty-title = ⟦Ñø þåššŵøŕð îðéñţîţîéš šåṽéð~~~~~~~~~~⟧
+keychain-show-identities-action = ⟦Šĥøŵ îðéñţîţîéš~~~~⟧
+keychain-show-keys-action = ⟦Šĥøŵ ķéýš~~⟧
 last-updated = ⟦Ļåšţ ûþðåţéð ~~~~⟧{ $when }
 new-session-action = ⟦Ñéŵ šéššîøñ~~~⟧
 new-session-cancel-start = ⟦Çåñçéļ šţåŕţ~~~⟧
@@ -851,6 +937,9 @@ runtime-stale-label = ⟦Šţåļé⟧
 runtime-status-not-checked = ⟦Ñøţ çĥéçķéð~~~⟧
 runtime-unverified-explanation = ⟦Ñø çûŕŕéñţ Ĥøšţ-îššûéð ŕûñţîɱé þŕøøƒ. Šéɱåñţîç çøñţŕøļ åçţîøñš ŕéɱåîñ ûñåṽåîļåƀļé.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 runtime-version-unverified = ⟦Ûñṽéŕîƒîéð~~⟧
+secret-field-masked = ⟦Šéçŕéţ éñţéŕéð~~~~⟧
+secret-field-unavailable = ⟦Šéçŕéţ ûñåṽåîļåƀļé~~~~~~⟧
+sensitive-destructive-action-warning = ⟦Ðéšţŕûçţîṽé åçţîøñ. Ŕéṽîéŵ ţĥé éẋåçţ îţéɱ ƀéƒøŕé çøñţîñûîñĝ.~~~~~~~~~~~~~~~~~~~~~~⟧
 session-count = { $count ->
     [many] { $count }⟦ åçţîṽé šéššîøñš~~~~~⟧
     [one] ⟦Øñé åçţîṽé šéššîøñ~~~~~~⟧
@@ -1042,6 +1131,66 @@ shell-tmux-install-generic = ⟦Îñšţåļļ ţɱûẋ ŵîţĥ ţĥîš šý�
 shell-tmux-install-guidance = ⟦Îñšţåļļ ţɱûẋ øñ ţĥé ŕéɱøţé ɱåçĥîñé, ţĥéñ ŕéçøññéçţ:~~~~~~~~~~~~~~~~~~~⟧
 shell-tmux-missing = ⟦ŢéŕɱîŔûšţ Þéŕšîšţéñţ Šéššîøñ çøûļð ñøţ šţåŕţ ƀéçåûšé ţɱûẋ îš ñøţ îñšţåļļéð øñ ţĥîš ĥøšţ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
 shortcut-hint = ⟦Šĥøŕţçûţ: ~~⟧{ $key }
+snippet-assigned-vault = ⟦Åššîĝñîñĝ ţĥîš Šñîþþéţ ţø ~~~~~~~~~⟧{ $vault }⟦.⟧
+snippet-cancel-insert-action = ⟦Çåñçéļ îñšéŕţîøñ~~~~~⟧
+snippet-command-field = ⟦Ţéẋţ⟧
+snippet-command-required = ⟦Šñîþþéţ ţéẋţ îš ŕéʠûîŕéð.~~~~~~~~⟧
+snippet-confirm-insert-action = ⟦Îñšéŕţ ŕéṽîéŵéð ţéẋţ~~~~~~⟧
+snippet-count = { $count ->
+    [many] { $count }⟦ Šñîþþéţš~~⟧
+    [one] ⟦1 Šñîþþéţ~~⟧
+   *[other] { $count }⟦ Šñîþþéţš~~⟧
+    [zero] ⟦Ñø Šñîþþéţš~~~⟧
+    }
+snippet-delete-action = ⟦Ðéļéţé Šñîþþéţ~~~~⟧
+snippet-draft-cleared = ⟦Šñîþþéţ ðŕåƒţ çļéåŕéð.~~~~~~~⟧
+snippet-empty-description = ⟦Šåṽé ŕéûšåƀļé ţéŕɱîñåļ ţéẋţ ĥéŕé šø îţ çåñ ƀé šéåŕçĥéð, þîññéð, ŕéṽîéŵéð, åñð îñšéŕţéð šåƒéļý.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+snippet-empty-title = ⟦Ñø Šñîþþéţš ýéţ~~~~⟧
+snippet-error-multiline-unsupported = ⟦Ţĥîš ţéŕɱîñåļ çåññøţ šåƒéļý åççéþţ ɱûļţîļîñé ţéẋţ ŵîţĥøûţ éẋéçûţîñĝ îţ.~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+snippet-error-oversize = ⟦Ţĥé ŕéšøļṽéð Šñîþþéţ éẋçééðš ţĥé šåƒé îñšéŕţîøñ ļîɱîţ.~~~~~~~~~~~~~~~~~~~~⟧
+snippet-error-stale = ⟦Ţĥé šéļéçţéð Šñîþþéţ çĥåñĝéð øŕ îš ñø ļøñĝéŕ åṽåîļåƀļé.~~~~~~~~~~~~~~~~~~~~⟧
+snippet-error-stale-terminal = ⟦Ţĥé šéļéçţéð Šñîþþéţ øŕ ţéŕɱîñåļ çĥåñĝéð. Ŕéṽîéŵ ţĥé îñšéŕţîøñ åĝåîñ.~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+snippet-error-terminal-required = ⟦Øþéñ åñð ƒøçûš å ţéŕɱîñåļ ƀéƒøŕé îñšéŕţîñĝ å Šñîþþéţ.~~~~~~~~~~~~~~~~~~~~⟧
+snippet-group-field = ⟦Ĝŕøûþ⟧
+snippet-insert-action = ⟦Îñšéŕţ åš ţéẋţ~~~~⟧
+snippet-insert-cancelled = ⟦Šñîþþéţ îñšéŕţîøñ çåñçéļļéð. Ñø ţéŕɱîñåļ ţéẋţ ŵåš šéñţ.~~~~~~~~~~~~~~~~~~~~⟧
+snippet-insert-review-summary = { $count ->
+    [many] ⟦Ŕéṽîéŵ ~⟧{ $count }⟦ ļîñéš ƒøŕ ~~~⟧{ $target }⟦.⟧
+    [one] ⟦Ŕéṽîéŵ ~⟧{ $count }⟦ ļîñé ƒøŕ ~~⟧{ $target }⟦.⟧
+   *[other] ⟦Ŕéṽîéŵ ~⟧{ $count }⟦ ļîñéš ƒøŕ ~~~⟧{ $target }⟦.⟧
+    [zero] ⟦Ŕéṽîéŵ ţéẋţ ƒøŕ ~~~~~⟧{ $target }⟦.⟧
+    }
+snippet-insert-review-title = ⟦Ŕéṽîéŵ Šñîþþéţ îñšéŕţîøñ~~~~~~~~⟧
+snippet-inserted-as-text = ⟦Šñîþþéţ îñšéŕţéð åš ţéẋţ. Éñţéŕ ŵåš ñøţ þŕéššéð.~~~~~~~~~~~~~~~~~~⟧
+snippet-label-field = ⟦Ļåƀéļ⟧
+snippet-library-description = ⟦Šåṽé ŕéûšåƀļé ţéẋţ, þîñ îɱþøŕţåñţ Šñîþþéţš, åñð îñšéŕţ ţĥéɱ îñţø ţĥé ƒøçûšéð ţéŕɱîñåļ ŵîţĥøûţ þŕéššîñĝ Éñţéŕ. Þļåçéĥøļðéŕš åŕé ŕéṽîéŵéð ƀéƒøŕé îñšéŕţîøñ, åñð ɱûļţîļîñé ţéẋţ åļŵåýš ŕéʠûîŕéš çøñƒîŕɱåţîøñ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+snippet-library-label = ⟦Ļîƀŕåŕý~⟧
+snippet-loaded-status = ⟦Ļøåðéð Šñîþþéţ ~~~~⟧{ $name }⟦.⟧
+snippet-multiline-review-required = ⟦Ŕéṽîéŵ ţĥé ɱûļţîļîñé ţéẋţ åñð éẋåçţ ţéŕɱîñåļ ƀéƒøŕé îñšéŕţîøñ.~~~~~~~~~~~~~~~~~~~~~~~⟧
+snippet-new-action = ⟦Ñéŵ Šñîþþéţ~~~⟧
+snippet-pin-action = ⟦Ţøĝĝļé þîññéð~~~~⟧
+snippet-pin-action-label = ⟦Þîñ⟧
+snippet-pin-draft-off = ⟦Šñîþþéţ ŕéɱøṽéð ƒŕøɱ þîññéð çøɱɱåñð ʠûîçķ åçţîøñš.~~~~~~~~~~~~~~~~~~⟧
+snippet-pin-draft-on = ⟦Šñîþþéţ ŵîļļ åþþéåŕ îñ þîññéð çøɱɱåñð ʠûîçķ åçţîøñš.~~~~~~~~~~~~~~~~~~~⟧
+snippet-pinned-label = ⟦Þîññéð~⟧
+snippet-pinned-status = ⟦Šñîþþéţ þîññéð ţø ŵøŕķšþåçé ʠûîçķ åçţîøñš.~~~~~~~~~~~~~~~⟧
+snippet-private-row = ⟦Þŕîṽåţé Šñîþþéţ~~~~⟧
+snippet-prompt-placeholder = ⟦Ṽåļûé ƒøŕ ~~⟧{ $name }
+snippet-prompts-cancelled = ⟦Šñîþþéţ îñþûţš çåñçéļļéð. Ñø ţéŕɱîñåļ ţéẋţ ŵåš šéñţ.~~~~~~~~~~~~~~~~~~~⟧
+snippet-prompts-required = { $count ->
+    [many] ⟦Ŕéṽîéŵ ~⟧{ $count }⟦ Šñîþþéţ îñþûţš ƀéƒøŕé îñšéŕţîøñ.~~~~~~~~~~~~⟧
+    [one] ⟦Ŕéṽîéŵ ~⟧{ $count }⟦ Šñîþþéţ îñþûţ ƀéƒøŕé îñšéŕţîøñ.~~~~~~~~~~~⟧
+   *[other] ⟦Ŕéṽîéŵ ~⟧{ $count }⟦ Šñîþþéţ îñþûţš ƀéƒøŕé îñšéŕţîøñ.~~~~~~~~~~~~⟧
+    [zero] ⟦Ŕéṽîéŵ ţĥé Šñîþþéţ ƀéƒøŕé îñšéŕţîøñ.~~~~~~~~~~~~~⟧
+    }
+snippet-prompts-title = ⟦Šñîþþéţ îñþûţš~~~~⟧
+snippet-removed-status = ⟦Šñîþþéţ ŕéɱøṽéð.~~~~~⟧
+snippet-row-saved = ⟦Šåṽéð Šñîþþéţ~~~~⟧
+snippet-saved-status = ⟦Šåṽéð Šñîþþéţ ~~~~⟧{ $name }⟦.⟧
+snippet-select-action = ⟦Šéļéçţ Šñîþþéţ~~~~⟧
+snippet-unpin-action-label = ⟦Ûñþîñ⟧
+snippet-unpinned-status = ⟦Šñîþþéţ ŕéɱøṽéð ƒŕøɱ ŵøŕķšþåçé ʠûîçķ åçţîøñš.~~~~~~~~~~~~~~~~⟧
+snippets-title = ⟦Šñîþþéţš~~⟧
 status-connecting = ⟦Çøññéçţîñĝ ţø ~~~~⟧{ $host }⟦…⟧
 status-ready = ⟦Ŕéåðý⟧
 transcript-export-action = ⟦Éẋþøŕţ ţŕåñšçŕîþţ~~~~~⟧
@@ -1054,6 +1203,88 @@ transfer-summary = { $count ->
    *[other] { $count }⟦ ƒîļéš ţŕåñšƒéŕŕéð (~~~~~~⟧{ $bytes }⟦)⟧
     [zero] ⟦Ñø ƒîļéš ţŕåñšƒéŕŕéð~~~~~~⟧
     }
+vault-delete-action = ⟦Ðéļéţé Ṽåûļţ~~~⟧
+vault-description-field = ⟦Ðéšçŕîþţîøñ~~~⟧
+vault-draft-cleared = ⟦Ṽåûļţ ðŕåƒţ çļéåŕéð.~~~~~~⟧
+vault-exists-error = ⟦Å Ṽåûļţ ñåɱéð ~~~~⟧{ $name }⟦ åļŕéåðý éẋîšţš.~~~~~⟧
+vault-host-count = { $count ->
+    [many] { $count }⟦ Ĥøšţš~⟧
+    [one] ⟦1 Ĥøšţ~⟧
+   *[other] { $count }⟦ Ĥøšţš~⟧
+    [zero] ⟦Ñø Ĥøšţš~~⟧
+    }
+vault-key-count = { $count ->
+    [many] { $count }⟦ ķéýš⟧
+    [one] ⟦1 ķéý⟧
+   *[other] { $count }⟦ ķéýš⟧
+    [zero] ⟦Ñø ķéýš~⟧
+    }
+vault-key-snippet-private-host = ⟦Þŕîṽåţé Ĥøšţ~~~⟧
+vault-key-snippet-private-value = ⟦Þŕîṽåţé ṽåļûé~~~~⟧
+vault-key-snippet-state-cancel-requested = ⟦Çåñçéļļåţîøñ ŕéʠûéšţéð~~~~~~~⟧
+vault-key-snippet-state-cancelled = ⟦Çåñçéļļéð~~⟧
+vault-key-snippet-state-completed = ⟦Çøɱþļéţéð~~⟧
+vault-key-snippet-state-corrupt = ⟦Ţĥé éñçŕýþţéð ðåţå îš çøŕŕûþţ.~~~~~~~~~~⟧
+vault-key-snippet-state-editing = ⟦Éðîţîñĝ~⟧
+vault-key-snippet-state-empty = ⟦Ñø îţéɱš~~⟧
+vault-key-snippet-state-error = ⟦Ţĥé åçţîøñ çøûļð ñøţ ƀé çøɱþļéţéð.~~~~~~~~~~~~⟧
+vault-key-snippet-state-filter-empty = ⟦Ñø ɱåţçĥîñĝ îţéɱš~~~~~⟧
+vault-key-snippet-state-generating = ⟦Ĝéñéŕåţîñĝ ķéý~~~~⟧
+vault-key-snippet-state-import-malformed = ⟦Ţĥé îɱþøŕţéð ðåţå îš ñøţ ṽåļîð.~~~~~~~~~~~⟧
+vault-key-snippet-state-keyring-denied = ⟦Çŕéðéñţîåļ šţøŕé åççéšš ŵåš ðéñîéð.~~~~~~~~~~~~⟧
+vault-key-snippet-state-locked = ⟦Ļøçķéð~⟧
+vault-key-snippet-state-newer-format = ⟦Ţĥîš ðåţå ŕéʠûîŕéš å ñéŵéŕ ŢéŕɱîŔûšţ ṽéŕšîøñ.~~~~~~~~~~~~~~~~⟧
+vault-key-snippet-state-oversize = ⟦Ţĥîš îţéɱ éẋçééðš ţĥé šåƒé šîžé ļîɱîţ.~~~~~~~~~~~~~~⟧
+vault-key-snippet-state-ready = ⟦Ŕéåðý⟧
+vault-key-snippet-state-reviewing = ⟦Ŕéṽîéŵ ŕéʠûîŕéð~~~~⟧
+vault-key-snippet-state-running = ⟦Ķéý øþéŕåţîøñ îñ þŕøĝŕéšš~~~~~~~~⟧
+vault-key-snippet-state-stale = ⟦Ţĥé šéļéçţéð îţéɱ îš ñø ļøñĝéŕ åṽåîļåƀļé.~~~~~~~~~~~~~~~⟧
+vault-key-snippet-state-storage-failure = ⟦Ţĥé îţéɱ çøûļð ñøţ ƀé šåṽéð.~~~~~~~~~~⟧
+vault-key-snippet-state-terminal-required = ⟦Øþéñ åñð ƒøçûš å ţéŕɱîñåļ ƀéƒøŕé îñšéŕţîñĝ å Šñîþþéţ.~~~~~~~~~~~~~~~~~~~~⟧
+vault-key-snippet-state-unavailable = ⟦Ţĥîš åçţîøñ îš ûñåṽåîļåƀļé.~~~~~~~~~⟧
+vault-key-snippet-state-unlocking = ⟦Ûñļøçķîñĝ~~⟧
+vault-key-snippet-state-validating = ⟦Ṽåļîðåţîñĝ~~⟧
+vault-key-snippet-state-wrong-secret = ⟦Ţĥé þåššþĥŕåšé ŵåš ñøţ åççéþţéð.~~~~~~~~~~~⟧
+vault-loaded-status = ⟦Ļøåðéð Ṽåûļţ ~~~~⟧{ $name }⟦.⟧
+vault-member-clear-action = ⟦Çļéåŕ ɱéɱƀéŕ~~~⟧
+vault-member-count = { $count ->
+    [many] { $count }⟦ ɱéɱƀéŕš~~⟧
+    [one] ⟦1 ɱéɱƀéŕ~~⟧
+   *[other] { $count }⟦ ɱéɱƀéŕš~~⟧
+    [zero] ⟦Ñø ɱéɱƀéŕš~~⟧
+    }
+vault-member-delete-action = ⟦Ŕéɱøṽé ɱéɱƀéŕ~~~~⟧
+vault-member-email-field = ⟦Ṁéɱƀéŕ éɱåîļ~~~⟧
+vault-member-email-required = ⟦Ṁéɱƀéŕ éɱåîļ îš ŕéʠûîŕéð.~~~~~~~~⟧
+vault-member-loaded = ⟦Ļøåðéð Ṽåûļţ ɱéɱƀéŕ.~~~~~~⟧
+vault-member-name-field = ⟦Ṁéɱƀéŕ ñåɱé~~~⟧
+vault-member-name-required = ⟦Ṁéɱƀéŕ ñåɱé øŕ éɱåîļ îš ŕéʠûîŕéð.~~~~~~~~~~~~⟧
+vault-member-private-row = ⟦Þŕîṽåţé ɱéɱƀéŕ~~~~⟧
+vault-member-removed = ⟦Ṽåûļţ ɱéɱƀéŕ ŕéɱøṽéð.~~~~~~~⟧
+vault-member-role-field = ⟦Ŕøļé⟧
+vault-member-save-action = ⟦Šåṽé ɱéɱƀéŕ~~~⟧
+vault-member-saved-status = ⟦Šåṽéð Ṽåûļţ ɱéɱƀéŕ ~~~~~~⟧{ $name }⟦.⟧
+vault-members-title = ⟦Ṁéɱƀéŕš~⟧
+vault-name-field = ⟦Ñåɱé⟧
+vault-name-required = ⟦Ṽåûļţ ñåɱé îš ŕéʠûîŕéð.~~~~~~~~⟧
+vault-new-action = ⟦Ñéŵ Ṽåûļţ~~⟧
+vault-no-description = ⟦Ñø ðéšçŕîþţîøñ ýéţ~~~~~~⟧
+vault-personal-delete-error = ⟦Ţĥé Þéŕšøñåļ Ṽåûļţ çåññøţ ƀé ðéļéţéð.~~~~~~~~~~~~~⟧
+vault-personal-member-error = ⟦Ţĥé Þéŕšøñåļ Ṽåûļţ ðøéš ñøţ šûþþøŕţ šĥåŕéð ɱéɱƀéŕš.~~~~~~~~~~~~~~~~~~~⟧
+vault-personal-member-remove-error = ⟦Ţĥé Þéŕšøñåļ Ṽåûļţ ɱéɱƀéŕ çåññøţ ƀé ŕéɱøṽéð.~~~~~~~~~~~~~~~~⟧
+vault-personal-notice = ⟦Ţĥé Þéŕšøñåļ Ṽåûļţ îš ðéṽîçé-ļøçåļ åñð ķééþš å šîñĝļé øŵñéŕ þŕøƒîļé.~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+vault-private-row = ⟦Þŕîṽåţé Ṽåûļţ~~~~⟧
+vault-removed-status = ⟦Ṽåûļţ ŕéɱøṽéð. Îţš îţéɱš ŵéŕé ɱøṽéð ţø Þéŕšøñåļ.~~~~~~~~~~~~~~~~~~⟧
+vault-saved-status = ⟦Šåṽéð Ṽåûļţ ~~~⟧{ $name }⟦.⟧
+vault-select-action = ⟦Šéļéçţ Ṽåûļţ~~~⟧
+vault-snippet-count = { $count ->
+    [many] { $count }⟦ Šñîþþéţš~~⟧
+    [one] ⟦1 Šñîþþéţ~~⟧
+   *[other] { $count }⟦ Šñîþþéţš~~⟧
+    [zero] ⟦Ñø Šñîþþéţš~~~⟧
+    }
+vaults-description = ⟦Ṽåûļţš åŕé ţĥé ţøþ-ļéṽéļ çøñţåîñéŕš ƒøŕ Ĥøšţš, îðéñţîţîéš, åñð Šñîþþéţš. Šĥåŕéð Ṽåûļţš åŕé ļøçåļ-øñļý ɱéţåðåţå ƒøŕ ñøŵ; šýñç çøɱéš ļåţéŕ.~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~⟧
+vaults-title = ⟦Ṽåûļţš~⟧
 worktree-base-field = ⟦Ɓåšé ƀŕåñçĥ øŕ ŕéƒ~~~~~~⟧
 worktree-base-placeholder = ⟦Ļéåṽé éɱþţý ţø ûšé ţĥé çøñƒîĝûŕéð ɱåîñļîñé~~~~~~~~~~~~~~~⟧
 worktree-branch-field = ⟦Ñéŵ ƀŕåñçĥ~~⟧

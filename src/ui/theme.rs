@@ -488,6 +488,13 @@ pub const SFTP_EMPTY_COPY_WIDTH: f32 =
 pub const SFTP_EMPTY_ICON_SIZE: f32 = SPACE_6 + SPACE_2;
 pub const SFTP_REMOTE_ROW_RADIUS: f32 = CARD_RADIUS + SPACE_1;
 pub const SFTP_ROW_LABEL_GAP: f32 = BORDER_HAIRLINE;
+
+// Vault, key, and Snippet surfaces use named geometry so their compact controls
+// remain stable across desktop scale factors without reintroducing raw literals.
+pub const SENSITIVE_TAB_HEIGHT: f32 = SPACE_6 + SPACE_1;
+pub const SENSITIVE_ICON_TILE_SIZE: f32 = SPACE_8 - SPACE_1;
+pub const SENSITIVE_MEMBER_PADDING_Y: f32 = SPACE_DENSE + SPACE_FINE;
+pub const SENSITIVE_FORM_MAX_WIDTH: f32 = DIALOG_MAX_WIDTH + HOST_SIDEBAR_WIDTH + SPACE_6;
 pub const SHELL_COMPACT_CONTROL_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
     .layout_shell_compact_control_height()
     .0;

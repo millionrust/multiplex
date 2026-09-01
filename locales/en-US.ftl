@@ -1103,3 +1103,235 @@ sftp-conflict-description = The destination contains { $size }. Nothing has been
 sftp-checksum = SHA-256 { $checksum }
 sftp-opened-local-folder = Opened { $path } in the system file manager.
 sftp-host-summary = SSH · { $username }@{ $endpoint }
+vaults-title = Vaults
+keychain-keys-title = Keychain keys
+keychain-identities-title = Keychain identities
+snippets-title = Snippets
+key-lifecycle-title = SSH key management
+snippet-prompts-title = Snippet inputs
+snippet-insert-review-title = Review Snippet insertion
+vault-key-snippet-state-ready = Ready
+vault-key-snippet-state-empty = No items
+vault-key-snippet-state-filter-empty = No matching items
+vault-key-snippet-state-editing = Editing
+vault-key-snippet-state-validating = Validating
+vault-key-snippet-state-locked = Locked
+vault-key-snippet-state-unlocking = Unlocking
+vault-key-snippet-state-wrong-secret = The passphrase was not accepted.
+vault-key-snippet-state-keyring-denied = Credential store access was denied.
+vault-key-snippet-state-corrupt = The encrypted data is corrupt.
+vault-key-snippet-state-newer-format = This data requires a newer TermiRust version.
+vault-key-snippet-state-import-malformed = The imported data is not valid.
+vault-key-snippet-state-oversize = This item exceeds the safe size limit.
+vault-key-snippet-state-generating = Generating key
+vault-key-snippet-state-reviewing = Review required
+vault-key-snippet-state-running = Key operation in progress
+vault-key-snippet-state-cancel-requested = Cancellation requested
+vault-key-snippet-state-cancelled = Cancelled
+vault-key-snippet-state-completed = Completed
+vault-key-snippet-state-terminal-required = Open and focus a terminal before inserting a Snippet.
+vault-key-snippet-state-stale = The selected item is no longer available.
+vault-key-snippet-state-storage-failure = The item could not be saved.
+vault-key-snippet-state-unavailable = This action is unavailable.
+vault-key-snippet-state-error = The action could not be completed.
+secret-field-masked = Secret entered
+secret-field-unavailable = Secret unavailable
+vault-key-snippet-private-value = Private value
+vault-private-row = Private Vault
+vault-member-private-row = Private member
+key-private-row = Private key
+snippet-private-row = Private Snippet
+vault-key-snippet-private-host = Private Host
+snippet-row-saved = Saved Snippet
+snippet-insert-action = Insert as text
+key-passphrase-field = Private key passphrase
+vault-new-action = New Vault
+vault-select-action = Select Vault
+key-select-host-action = Review Host
+vault-delete-action = Delete Vault
+vault-member-save-action = Save member
+vault-member-delete-action = Remove member
+keychain-show-keys-action = Show keys
+keychain-show-identities-action = Show identities
+key-generate-action = Generate key
+key-add-file-action = Add key file
+key-use-action = Use identity
+key-deploy-action = Deploy public key
+key-remove-remote-action = Remove public key
+key-confirm-operation-action = Confirm key operation
+snippet-new-action = New Snippet
+snippet-select-action = Select Snippet
+snippet-delete-action = Delete Snippet
+snippet-pin-action = Toggle pinned
+snippet-confirm-insert-action = Insert reviewed text
+snippet-cancel-insert-action = Cancel insertion
+snippet-error-stale = The selected Snippet changed or is no longer available.
+snippet-error-terminal-required = Open and focus a terminal before inserting a Snippet.
+snippet-error-stale-terminal = The selected Snippet or terminal changed. Review the insertion again.
+snippet-error-oversize = The resolved Snippet exceeds the safe insertion limit.
+snippet-prompt-placeholder = Value for { $name }
+snippet-prompts-required = { $count ->
+    [zero] Review the Snippet before insertion.
+    [one] Review { $count } Snippet input before insertion.
+    [many] Review { $count } Snippet inputs before insertion.
+   *[other] Review { $count } Snippet inputs before insertion.
+    }
+snippet-multiline-review-required = Review the multiline text and exact terminal before insertion.
+snippet-inserted-as-text = Snippet inserted as text. Enter was not pressed.
+snippet-prompts-cancelled = Snippet inputs cancelled. No terminal text was sent.
+snippet-error-multiline-unsupported = This terminal cannot safely accept multiline text without executing it.
+snippet-insert-cancelled = Snippet insertion cancelled. No terminal text was sent.
+snippet-insert-review-summary = { $count ->
+    [zero] Review text for { $target }.
+    [one] Review { $count } line for { $target }.
+    [many] Review { $count } lines for { $target }.
+   *[other] Review { $count } lines for { $target }.
+    }
+
+key-label-placeholder = Key label
+key-comment-placeholder = Optional public key comment
+key-passphrase-recommended-placeholder = Passphrase (recommended)
+key-passphrase-confirm-placeholder = Confirm passphrase
+key-deployment-passphrase-placeholder = Private key passphrase, if set
+key-label-required = Enter a label for the generated key.
+key-passphrases-mismatch = The key passphrases do not match.
+key-save-dialog-title = Save generated Ed25519 private key
+key-generating-status = Generating an Ed25519 key with operating-system entropy...
+key-metadata-unsaved-status = The key files were generated, but Keychain metadata was not saved.
+key-metadata-unsaved-recovery = The key files are intact at the selected destination. Add the private key file to Keychain before restarting TermiRust.
+key-generated-added-status = Generated key added to the Keychain.
+key-operation-safe-error = The SSH key operation could not be completed. Review the selected identity and Connection, then try again.
+key-stale-identity-error = The selected identity is no longer available.
+key-stale-host-error = The selected Host is no longer available.
+key-installing-status = Installing and verifying the public key...
+key-removing-status = Removing the exact public key...
+key-operation-no-result = The SSH key operation ended without a result.
+key-audit-unsaved-warning = The local audit record could not be saved.
+key-cancelling-status = Cancelling the SSH key operation...
+key-generate-title = Generate SSH key
+key-generated-title = Key generated
+key-generate-notice = TermiRust creates an Ed25519 private key and matching .pub file at the destination you choose. Existing files are never overwritten.
+key-label-field = Label
+key-public-comment-field = Public comment
+key-passphrase-label = Passphrase
+key-confirm-passphrase-label = Confirm passphrase
+key-blank-passphrase-warning = A blank passphrase is allowed, but an encrypted private key is safer if the file is copied or stolen.
+key-generating-title = Generating key pair
+key-generating-detail = Writing the private and public files atomically with strict permissions.
+common-unavailable = Unavailable
+key-private-local-notice = The private key remains only at the local destination you selected. Deploy sends the public key only.
+key-identity-field = Identity
+key-fingerprint-field = Fingerprint
+key-private-field = Private key
+key-host-picker-notice = Choose a saved SSH Connection. TermiRust uses that Connection's configured authentication and normal host-key verification for this operation.
+common-review = Review
+key-no-hosts = No saved SSH Connections are available. Add and configure a Connection first.
+key-installing-title = Installing and verifying key
+key-removing-title = Removing exact key
+key-running-cancel-notice = You can cancel. TermiRust will finish or clean up any remote mutation already in progress.
+key-connection-field = Connection
+key-destination-value = Authenticated user's ~/.ssh/authorized_keys
+key-install-review-warning = Review the exact target before installing. Success is reported as verified only after a separate fresh login using this private key.
+key-remove-review-warning = Removal deletes only the matching decoded key. It does not verify that another login method will remain available.
+key-target-field = Target
+key-operation-auth-field = Operation auth
+key-destination-field = Destination
+key-private-passphrase-field = Private key passphrase
+key-choose-destination-action = Choose destination
+key-install-verify-action = Install and verify
+key-remove-exact-action = Remove exact key
+common-done = Done
+key-outcome-installed-verified = Public key installed and verified with a fresh key-only login.
+key-outcome-present-verified = Public key was already present and a fresh key-only login succeeded.
+key-outcome-installed-verification-failed = Public key was installed, but the fresh key-only login failed.
+key-outcome-present-verification-failed = Public key was already present, but the fresh key-only login failed.
+key-outcome-removed = The exact public key was removed; unrelated entries were preserved.
+key-outcome-not-present = The exact public key was not present; no remote content changed.
+key-outcome-cancelled = The SSH key operation was cancelled.
+key-public-field = Public key
+keychain-keys-description = Reusable identities for Host authentication.
+key-source-imported = Imported
+key-source-generated = Generated
+key-default-badge = Default
+keychain-empty-title = No identities available
+keychain-empty-description = Add a key file to build a reusable identity library for your Hosts.
+keychain-identities-description = Saved Host identities with password authentication.
+keychain-password-empty-title = No password identities saved
+keychain-password-empty-description = Save a Host with password authentication to keep its secure credential reference here.
+keychain-new-host-action = New Host
+vaults-description = Vaults are the top-level containers for Hosts, identities, and Snippets. Shared Vaults are local-only metadata for now; sync comes later.
+vault-name-field = Name
+vault-description-field = Description
+vault-members-title = Members
+vault-personal-notice = The Personal Vault is device-local and keeps a single owner profile.
+vault-member-name-field = Member name
+vault-member-email-field = Member email
+vault-member-role-field = Role
+vault-member-clear-action = Clear member
+vault-no-description = No description yet
+snippet-library-description = Save reusable text, pin important Snippets, and insert them into the focused terminal without pressing Enter. Placeholders are reviewed before insertion, and multiline text always requires confirmation.
+snippet-label-field = Label
+snippet-group-field = Group
+snippet-command-field = Text
+snippet-pinned-label = Pinned
+snippet-library-label = Library
+snippet-pin-action-label = Pin
+snippet-unpin-action-label = Unpin
+snippet-empty-title = No Snippets yet
+snippet-empty-description = Save reusable terminal text here so it can be searched, pinned, reviewed, and inserted safely.
+snippet-draft-cleared = Snippet draft cleared.
+snippet-pin-draft-on = Snippet will appear in pinned command quick actions.
+snippet-pin-draft-off = Snippet removed from pinned command quick actions.
+snippet-pinned-status = Snippet pinned to workspace quick actions.
+snippet-unpinned-status = Snippet removed from workspace quick actions.
+snippet-command-required = Snippet text is required.
+snippet-removed-status = Snippet removed.
+vault-draft-cleared = Vault draft cleared.
+vault-name-required = Vault name is required.
+vault-personal-delete-error = The Personal Vault cannot be deleted.
+vault-removed-status = Vault removed. Its items were moved to Personal.
+vault-member-loaded = Loaded Vault member.
+vault-member-name-required = Member name or email is required.
+vault-member-email-required = Member email is required.
+vault-personal-member-error = The Personal Vault does not support shared members.
+vault-personal-member-remove-error = The Personal Vault member cannot be removed.
+vault-member-removed = Vault member removed.
+snippet-count = { $count ->
+    [zero] No Snippets
+    [one] 1 Snippet
+    [many] { $count } Snippets
+   *[other] { $count } Snippets
+    }
+snippet-assigned-vault = Assigning this Snippet to { $vault }.
+snippet-loaded-status = Loaded Snippet { $name }.
+snippet-saved-status = Saved Snippet { $name }.
+vault-host-count = { $count ->
+    [zero] No Hosts
+    [one] 1 Host
+    [many] { $count } Hosts
+   *[other] { $count } Hosts
+    }
+vault-key-count = { $count ->
+    [zero] No keys
+    [one] 1 key
+    [many] { $count } keys
+   *[other] { $count } keys
+    }
+vault-snippet-count = { $count ->
+    [zero] No Snippets
+    [one] 1 Snippet
+    [many] { $count } Snippets
+   *[other] { $count } Snippets
+    }
+vault-member-count = { $count ->
+    [zero] No members
+    [one] 1 member
+    [many] { $count } members
+   *[other] { $count } members
+    }
+vault-loaded-status = Loaded Vault { $name }.
+vault-exists-error = A Vault named { $name } already exists.
+vault-saved-status = Saved Vault { $name }.
+vault-member-saved-status = Saved Vault member { $name }.
+key-host-summary = { $username } at { $endpoint }, using { $auth }
+sensitive-destructive-action-warning = Destructive action. Review the exact item before continuing.
