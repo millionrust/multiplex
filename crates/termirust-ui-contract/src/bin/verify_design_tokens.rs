@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use termirust_ui_contract::lint::{
-    verify_baseline, verify_zero_paths, verify_zero_surface, write_baseline,
+    verify_baseline, verify_zero_paths, verify_zero_surface, verify_zero_surface_except,
+    write_baseline,
 };
 
 fn main() -> ExitCode {
@@ -21,6 +22,7 @@ fn run() -> Result<(), String> {
     let mut paths = None;
     let mut surface = None;
     let mut zero_legacy = false;
+    let mut zero_legacy_exception = None;
     let mut arguments = env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -40,12 +42,20 @@ fn run() -> Result<(), String> {
                 );
             }
             "--zero-legacy" => zero_legacy = true,
+            "--zero-legacy-except" => {
+                zero_legacy_exception = Some(
+                    arguments
+                        .next()
+                        .ok_or_else(|| "--zero-legacy-except requires a value".to_string())?,
+                );
+            }
             "--write-baseline" => write = true,
             "--help" | "-h" => {
                 println!(
                     "Usage: verify-design-tokens --all-ui --no-new-baseline\n\
                      Or: verify-design-tokens --paths src/ui/a.rs,src/ui/b.rs --zero-legacy\n\
                      Or: verify-design-tokens --surface vault-keys-snippets --zero-legacy\n\
+                     Or: verify-design-tokens --surface terminal-chrome --zero-legacy-except terminal-grid-metrics\n\
                      Baseline maintenance requires TERMIRUST_MAINTENANCE_ALLOW_BASELINE_WRITE=1."
                 );
                 return Ok(());
@@ -58,12 +68,26 @@ fn run() -> Result<(), String> {
     if paths.is_some() && surface.is_some() {
         return Err("--paths and --surface are mutually exclusive".to_string());
     }
+    if let Some(exception) = zero_legacy_exception.as_deref() {
+        if surface.as_deref() != Some("terminal-chrome") || exception != "terminal-grid-metrics" {
+            return Err(
+                "only terminal-chrome may name the terminal-grid-metrics exception".to_string(),
+            );
+        }
+        zero_legacy = true;
+    }
     if let Some(surface) = surface {
         if write || !zero_legacy {
             return Err("--surface requires --zero-legacy and cannot write a baseline".to_string());
         }
-        verify_zero_surface(&root, &surface).map_err(|error| error.to_string())?;
-        println!("verified zero legacy visual literals for {surface}");
+        if let Some(exception) = zero_legacy_exception.as_deref() {
+            verify_zero_surface_except(&root, &surface, exception)
+                .map_err(|error| error.to_string())?;
+            println!("verified zero legacy visual literals for {surface} except {exception}");
+        } else {
+            verify_zero_surface(&root, &surface).map_err(|error| error.to_string())?;
+            println!("verified zero legacy visual literals for {surface}");
+        }
     } else if let Some(paths) = paths {
         if write || !zero_legacy {
             return Err("--paths requires --zero-legacy and cannot write a baseline".to_string());

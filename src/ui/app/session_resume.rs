@@ -425,8 +425,14 @@ impl TermiRustApp {
                 link,
             }),
         ));
+        let terminal_chrome_focus = cx.focus_handle().tab_stop(true);
         let terminal_focus = cx.focus_handle().tab_stop(true);
-        self.register_pane(request.clone(), runtime, terminal_focus);
+        self.register_pane(
+            request.clone(),
+            runtime,
+            terminal_chrome_focus,
+            terminal_focus,
+        );
         self.open_spawned_pane_workspace(&request, pane_id);
         if let Some(pane) = self.pane_mut(pane_id) {
             pane.app_attached = Some(AppAttachedPaneState {
@@ -439,8 +445,9 @@ impl TermiRustApp {
                 has_writer_lease: false,
                 dev_urls: termirust_client::DevUrlProjection::new(plan.replacement_session_id),
             });
+            pane.terminal_focus_mode = termirust_ui_contract::TerminalFocusMode::Chrome;
             pane.status = localization::session_resume_phase_starting();
-            pane.terminal_focus.focus(window);
+            pane.terminal_chrome_focus.focus(window);
         }
         if let Some(state) = self.session_resume.as_mut() {
             state.phase = SessionResumePhase::Starting;

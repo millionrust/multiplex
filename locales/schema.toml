@@ -8604,6 +8604,7 @@ name = "value1"
 type = "UserData"
 sensitivity = "sensitive"
 bidi = "isolate"
+
 [[messages.args]]
 name = "value2"
 type = "UserData"
@@ -8619,3 +8620,123 @@ name = "value4"
 type = "UserData"
 sensitivity = "sensitive"
 bidi = "isolate"
+
+[[messages]]
+id = "terminal-pane"
+context = "Accessible name for the active terminal pane."
+description = "Terminal pane"
+
+[[messages]]
+id = "terminal-state-connecting"
+context = "Terminal lifecycle status while a connection is opening."
+description = "Terminal connecting state"
+
+[[messages]]
+id = "terminal-state-live"
+context = "Terminal lifecycle status while output and input are live."
+description = "Terminal live state"
+
+[[messages]]
+id = "terminal-state-replaying"
+context = "Terminal lifecycle status while retained output is replaying."
+description = "Terminal replaying state"
+
+[[messages]]
+id = "terminal-state-gap"
+context = "Terminal lifecycle status when retained output contains a gap."
+description = "Terminal gap state"
+
+[[messages]]
+id = "terminal-state-offline"
+context = "Terminal lifecycle status when its Host is offline."
+description = "Terminal offline state"
+
+[[messages]]
+id = "terminal-state-backpressured"
+context = "Terminal lifecycle status when input is temporarily backpressured."
+description = "Terminal backpressure state"
+
+[[messages]]
+id = "terminal-state-error"
+context = "Terminal lifecycle status after an error."
+description = "Terminal error state"
+
+[[messages]]
+id = "terminal-state-detached"
+context = "Terminal lifecycle status after this client detaches."
+description = "Terminal detached state"
+
+[[messages]]
+id = "terminal-state-permission-denied"
+context = "Terminal lifecycle status when current authorization was denied or revoked."
+description = "Terminal permission denied state"
+
+[[messages]]
+id = "terminal-state-recovery"
+context = "Terminal lifecycle status while recovery is running."
+description = "Terminal recovery state"
+
+[[messages]]
+id = "terminal-state-exited"
+context = "Terminal lifecycle status after its process exits."
+description = "Terminal exited state"
+
+[[messages]]
+id = "terminal-input-action"
+context = "Action that explicitly returns focus to authorized terminal input."
+description = "Use terminal input"
+
+[[messages]]
+id = "terminal-review-action"
+context = "Action that enters the bounded screen-reader terminal output review."
+description = "Review terminal output"
+
+[[messages]]
+id = "terminal-exit-action"
+context = "Action that leaves terminal input or review and returns to pane chrome."
+description = "Leave terminal focus"
+
+[[messages]]
+id = "terminal-review-previous"
+context = "Action that moves the terminal accessibility read cursor to the previous logical line."
+description = "Previous terminal review line"
+
+[[messages]]
+id = "terminal-review-next"
+context = "Action that moves the terminal accessibility read cursor to the next logical line."
+description = "Next terminal review line"
+
+[[messages]]
+id = "terminal-review-cursor"
+context = "Accessible value describing the current logical line in terminal review."
+description = "Terminal review position"
+
+[[messages]]
+id = "terminal-writer-held"
+context = "Terminal chrome status when this client holds the writer lease."
+description = "Writer lease held"
+
+[[messages]]
+id = "terminal-read-only"
+context = "Terminal chrome status when this client cannot send input."
+description = "Read-only terminal"
+
+[[messages]]
+id = "terminal-announcement-output"
+context = "Content-free screen-reader announcement that bounded terminal output changed."
+description = "Terminal output available"
+
+[[messages]]
+id = "terminal-announcement-attention"
+context = "Screen-reader announcement that the terminal needs attention."
+description = "Terminal needs attention"
+
+[[messages]]
+id = "terminal-announcement-gap"
+context = "Screen-reader announcement that retained terminal output has a gap."
+description = "Terminal output gap"
+
+[[messages]]
+id = "terminal-announcement-truncated"
+context = "Screen-reader announcement that the bounded terminal review dropped old output."
+description = "Terminal review truncated"

@@ -16,7 +16,7 @@ use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Disableable as _, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
-use crate::models::ConnectionKind;
+use crate::models::{ConnectionKind, WorkspaceLayoutMode};
 use crate::terminal::{TerminalRow, TerminalStyle};
 use crate::ui::app::{
     ConnectDialogMode, DividerRect, DropZone, SearchMatch, SessionPane, SplitAxis,
@@ -32,9 +32,26 @@ use crate::ui::render_terminal::{
 use crate::ui::theme;
 use gpui_component::ActiveTheme as _;
 use termirust_domain::{HostedSessionState, SessionLaunchRoute};
-use termirust_ui_contract::MessageId;
+use termirust_ui_contract::{MessageId, TerminalSemanticSnapshot};
 
 impl TermiRustApp {
+    pub(super) fn terminal_semantic_snapshot(&self) -> Option<TerminalSemanticSnapshot> {
+        let workspace = self.active_workspace()?;
+        if workspace.layout_mode != WorkspaceLayoutMode::Split
+            || workspace.view_mode != WorkspaceViewMode::Terminal
+        {
+            return None;
+        }
+        let pane = self.pane(workspace.active_pane_id)?;
+        Some(TerminalSemanticSnapshot {
+            terminal: pane.terminal_accessibility.snapshot(),
+            focus_mode: pane.terminal_focus_mode,
+            input_authorized: pane.input_authorized(),
+            recording_friendly: self.activity_center.policy().recording_friendly,
+            announcement: pane.terminal_announcement,
+        })
+    }
+
     fn render_workspace_search(&self, _window: &mut Window, cx: &mut Context<Self>) -> Option<Div> {
         let workspace = self.active_workspace()?;
         if workspace.view_mode != WorkspaceViewMode::Terminal {
@@ -878,10 +895,17 @@ impl TermiRustApp {
                             | HostedSessionState::Offline
                     )
                 }));
-        let app_attached_title: SharedString = if durable {
-            localization::new_session_warning().into()
-        } else {
-            localization::new_session_legacy_warning().into()
+        let input_authorized = pane.input_authorized();
+        let show_terminal_chrome = self
+            .active_workspace()
+            .is_none_or(|workspace| workspace.layout_mode != WorkspaceLayoutMode::Canvas)
+            || is_app_attached;
+        let focus_mode_message = match pane.terminal_focus_mode {
+            termirust_ui_contract::TerminalFocusMode::Chrome => MessageId::TerminalExitAction,
+            termirust_ui_contract::TerminalFocusMode::Input => MessageId::TerminalInputAction,
+            termirust_ui_contract::TerminalFocusMode::AccessibleReview => {
+                MessageId::TerminalReviewAction
+            }
         };
 
         v_flex()
@@ -907,12 +931,16 @@ impl TermiRustApp {
                     this.drop_tab_on_pane(drag.workspace_id, pane_id, window, cx);
                 }),
             )
-            .when(is_app_attached, |this| {
+            .when(show_terminal_chrome, |this| {
                 this.child(
                     h_flex()
+                        .id(("terminal-chrome", pane.id))
                         .w_full()
                         .min_h(px(theme::WORKSPACE_HEADER_HEIGHT))
+                        .track_focus(&pane.terminal_chrome_focus)
+                        .focusable()
                         .items_center()
+                        .flex_wrap()
                         .justify_between()
                         .gap(px(theme::SPACE_3))
                         .px(px(theme::SPACE_4))
@@ -922,13 +950,14 @@ impl TermiRustApp {
                         .child(
                             v_flex()
                                 .min_w_0()
+                                .flex_1()
                                 .gap_1()
                                 .child(
                                     div()
                                         .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                         .font_semibold()
                                         .text_color(theme::text_on_dark())
-                                        .child(app_attached_title.clone()),
+                                        .child(pane.title.clone()),
                                 )
                                 .child(
                                     div()
@@ -940,6 +969,53 @@ impl TermiRustApp {
                         .child(
                             h_flex()
                                 .gap(px(theme::SPACE_2))
+                                .flex_wrap()
+                                .justify_end()
+                                .child(self.status_badge(
+                                    localization::static_message(focus_mode_message),
+                                    theme::terminal_bg(),
+                                    theme::text_on_dark(),
+                                ))
+                                .when(is_app_attached, |this| {
+                                    this.child(self.status_badge(
+                                        localization::static_message(if input_authorized {
+                                            MessageId::TerminalWriterHeld
+                                        } else {
+                                            MessageId::TerminalReadOnly
+                                        }),
+                                        theme::terminal_bg(),
+                                        if input_authorized {
+                                            theme::success()
+                                        } else {
+                                            theme::warning()
+                                        },
+                                    ))
+                                })
+                                .child(
+                                    Button::new(("terminal-input-mode", pane_id))
+                                        .small()
+                                        .ghost()
+                                        .icon(IconName::SquareTerminal)
+                                        .label(localization::static_message(
+                                            MessageId::TerminalInputAction,
+                                        ))
+                                        .disabled(!input_authorized)
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            this.enter_terminal_input(pane_id, window, cx);
+                                        })),
+                                )
+                                .child(
+                                    Button::new(("terminal-review-mode", pane_id))
+                                        .small()
+                                        .ghost()
+                                        .icon(IconName::Eye)
+                                        .label(localization::static_message(
+                                            MessageId::TerminalReviewAction,
+                                        ))
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            this.enter_terminal_review(pane_id, window, cx);
+                                        })),
+                                )
                                 .when_some(self.render_dev_url_header(pane, cx), |this, chip| {
                                     this.child(chip)
                                 })
@@ -954,17 +1030,19 @@ impl TermiRustApp {
                                             })),
                                     )
                                 })
-                                .child(
-                                    Button::new(("app-attached-stop", pane_id))
-                                        .small()
-                                        .danger()
-                                        .icon(IconName::Close)
-                                        .label(localization::new_session_stop_action())
-                                        .disabled(!can_stop)
-                                        .on_click(cx.listener(move |this, _, _, cx| {
-                                            this.stop_app_attached_session(pane_id, cx);
-                                        })),
-                                ),
+                                .when(is_app_attached, |this| {
+                                    this.child(
+                                        Button::new(("app-attached-stop", pane_id))
+                                            .small()
+                                            .danger()
+                                            .icon(IconName::Close)
+                                            .label(localization::new_session_stop_action())
+                                            .disabled(!can_stop)
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.stop_app_attached_session(pane_id, cx);
+                                            })),
+                                    )
+                                }),
                         ),
                 )
             })

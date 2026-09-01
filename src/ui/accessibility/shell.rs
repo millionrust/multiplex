@@ -186,6 +186,43 @@ fn semantic_shape(snapshot: &ShellSemanticSnapshot) -> u64 {
             control.invalid.hash(&mut hasher);
         }
     }
+    if let Some(terminal) = snapshot.terminal.as_ref() {
+        terminal.terminal.session_id.hash(&mut hasher);
+        terminal.input_authorized.hash(&mut hasher);
+        terminal.recording_friendly.hash(&mut hasher);
+        matches!(
+            terminal.terminal.lifecycle,
+            termirust_ui_contract::TerminalLifecycle::Gap
+                | termirust_ui_contract::TerminalLifecycle::Offline
+                | termirust_ui_contract::TerminalLifecycle::Backpressured
+                | termirust_ui_contract::TerminalLifecycle::Error
+                | termirust_ui_contract::TerminalLifecycle::PermissionDenied
+        )
+        .hash(&mut hasher);
+        match terminal.focus_mode {
+            termirust_ui_contract::TerminalFocusMode::Chrome => 0_u8,
+            termirust_ui_contract::TerminalFocusMode::Input => 1,
+            termirust_ui_contract::TerminalFocusMode::AccessibleReview => 2,
+        }
+        .hash(&mut hasher);
+        terminal.announcement.is_some().hash(&mut hasher);
+        terminal
+            .announcement
+            .is_some_and(|announcement| {
+                matches!(
+                    announcement,
+                    termirust_ui_contract::TerminalAnnouncement::Attention
+                        | termirust_ui_contract::TerminalAnnouncement::Gap
+                )
+            })
+            .hash(&mut hasher);
+        if terminal.focus_mode == termirust_ui_contract::TerminalFocusMode::AccessibleReview
+            && !terminal.recording_friendly
+        {
+            termirust_ui_contract::terminal_semantic_chunk_count(&terminal.terminal.text)
+                .hash(&mut hasher);
+        }
+    }
     hasher.finish()
 }
 
@@ -203,7 +240,8 @@ mod tests {
         PresetRuntimeAction, PresetRuntimeControl, PresetRuntimeControlRole, PresetRuntimeScreen,
         PresetRuntimeSemanticSnapshot, PresetRuntimeSurfaceState, ProductControlRole,
         ProductSessionAction, ProductSessionControl, ProductSessionScreen,
-        ProductSessionSemanticSnapshot, ProductSessionSurfaceState,
+        ProductSessionSemanticSnapshot, ProductSessionSurfaceState, TerminalAccessibilityBuffer,
+        TerminalAnnouncement, TerminalFocusMode, TerminalLifecycle, TerminalSemanticSnapshot,
     };
 
     fn product_snapshot(control_disabled: bool, confirm_enabled: bool) -> ShellSemanticSnapshot {
@@ -265,6 +303,46 @@ mod tests {
         assert_ne!(
             semantic_shape(&snapshot(false)),
             semantic_shape(&snapshot(true))
+        );
+    }
+
+    #[test]
+    fn semantic_generation_shape_tracks_terminal_role_and_chunk_structure() {
+        let snapshot = |text: &[u8], lifecycle, announcement| {
+            let mut buffer = TerminalAccessibilityBuffer::new(7, "Terminal");
+            buffer.append(text, Some(1));
+            buffer.set_lifecycle(lifecycle);
+            ShellSemanticSnapshot {
+                terminal: Some(TerminalSemanticSnapshot {
+                    terminal: buffer.snapshot(),
+                    focus_mode: TerminalFocusMode::AccessibleReview,
+                    input_authorized: true,
+                    recording_friendly: false,
+                    announcement,
+                }),
+                ..ShellSemanticSnapshot::default()
+            }
+        };
+        let baseline = semantic_shape(&snapshot(b"short", TerminalLifecycle::Live, None));
+        assert_ne!(
+            baseline,
+            semantic_shape(&snapshot(&vec![b'x'; 1_025], TerminalLifecycle::Live, None))
+        );
+        assert_ne!(
+            baseline,
+            semantic_shape(&snapshot(b"short", TerminalLifecycle::Error, None))
+        );
+        assert_ne!(
+            semantic_shape(&snapshot(
+                b"short",
+                TerminalLifecycle::Live,
+                Some(TerminalAnnouncement::OutputAvailable { bytes: 1 })
+            )),
+            semantic_shape(&snapshot(
+                b"short",
+                TerminalLifecycle::Live,
+                Some(TerminalAnnouncement::Attention)
+            ))
         );
     }
 }

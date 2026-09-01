@@ -7,6 +7,8 @@ use gpui::SharedString;
 use crate::terminal::{TerminalCell, TerminalStyle};
 use crate::ui::keys::TerminalCellPos;
 use crate::ui::theme;
+use termirust_domain::HostedSessionState;
+use termirust_ui_contract::TerminalLifecycle;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SelectionRange {
@@ -97,4 +99,50 @@ pub fn display_terminal_text(text: &str) -> SharedString {
     }
 
     text.replace(' ', "\u{00a0}").into()
+}
+
+pub fn terminal_lifecycle_for_hosted_state(state: HostedSessionState) -> TerminalLifecycle {
+    match state {
+        HostedSessionState::Replaying => TerminalLifecycle::Replaying,
+        HostedSessionState::Live | HostedSessionState::RunningAppAttached => {
+            TerminalLifecycle::Live
+        }
+        HostedSessionState::RecordingPaused => TerminalLifecycle::Backpressured,
+        HostedSessionState::Offline | HostedSessionState::Orphaned => TerminalLifecycle::Offline,
+        HostedSessionState::Gap => TerminalLifecycle::Gap,
+        HostedSessionState::PermissionDenied => TerminalLifecycle::PermissionDenied,
+        HostedSessionState::Failed | HostedSessionState::Incompatible => TerminalLifecycle::Error,
+        HostedSessionState::Cancelled | HostedSessionState::Exited => TerminalLifecycle::Exited,
+        HostedSessionState::Draft
+        | HostedSessionState::Validating
+        | HostedSessionState::Starting
+        | HostedSessionState::Provisioning
+        | HostedSessionState::Attaching
+        | HostedSessionState::Stopping => TerminalLifecycle::Connecting,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hosted_terminal_lifecycle_mapping_covers_replay_recovery_and_authorization_states() {
+        assert_eq!(
+            terminal_lifecycle_for_hosted_state(HostedSessionState::Replaying),
+            TerminalLifecycle::Replaying
+        );
+        assert_eq!(
+            terminal_lifecycle_for_hosted_state(HostedSessionState::Gap),
+            TerminalLifecycle::Gap
+        );
+        assert_eq!(
+            terminal_lifecycle_for_hosted_state(HostedSessionState::PermissionDenied),
+            TerminalLifecycle::PermissionDenied
+        );
+        assert_eq!(
+            terminal_lifecycle_for_hosted_state(HostedSessionState::Live),
+            TerminalLifecycle::Live
+        );
+    }
 }

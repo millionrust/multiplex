@@ -27,3 +27,7 @@ path = "src/bin/generate_messages.rs"
 [[bin]]
 name = "verify-localization"
 path = "src/bin/verify_localization.rs"
+
+[[bin]]
+name = "bench-terminal-accessibility"
+path = "src/bin/bench_terminal_accessibility.rs"

@@ -13,6 +13,7 @@ pub mod settings_surface;
 pub mod sftp_surface;
 pub mod shell_surface;
 pub mod surface_scope;
+pub mod terminal_surface;
 pub mod vault_key_snippet_surface;
 pub mod worktree_artifact_surface;
 
@@ -31,6 +32,7 @@ pub use semantics::*;
 pub use settings_surface::*;
 pub use sftp_surface::*;
 pub use shell_surface::*;
+pub use terminal_surface::*;
 pub use vault_key_snippet_surface::*;
 pub use worktree_artifact_surface::*;
 

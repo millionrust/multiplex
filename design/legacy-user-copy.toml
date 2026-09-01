@@ -1835,14 +1835,6 @@ owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/mod.rs"
-line = 8902
-category = "user_copy"
-fingerprint = "sha256:8f3706820f2d36e7348c20ceac0b52e7eef86b790751e56bb12d98b4ed464e0a"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/mod.rs"
 line = 8919
 category = "user_copy"
 fingerprint = "sha256:ba756147d18fc951fdededb272b2ebd69b51a20862ee420536e8a2b6a3d26fcf"

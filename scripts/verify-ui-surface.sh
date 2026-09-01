@@ -19,7 +19,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$states" != "all" || "$locales" != "en-US,en-XA,ar-XB" || "$themes" != "all" ]]; then
-  echo "Usage: $0 --surface shell-overlays-palette|projects-groups-sessions|presets-runtimes|worktrees-artifacts|hosts-connections|sftp|vault-keys-snippets|settings|agent-canvas [--states all] --locales en-US,en-XA,ar-XB --themes all" >&2
+  echo "Usage: $0 --surface shell-overlays-palette|projects-groups-sessions|presets-runtimes|worktrees-artifacts|hosts-connections|sftp|vault-keys-snippets|settings|agent-canvas|terminal-chrome [--states all] --locales en-US,en-XA,ar-XB --themes all" >&2
   exit 2
 fi
 
@@ -69,6 +69,11 @@ case "$surface" in
     test_filter="agent_canvas_surface"
     description="Agent Canvas"
     ;;
+  terminal-chrome)
+    paths=""
+    test_filter="terminal_surface"
+    description="terminal chrome and bounded accessibility"
+    ;;
   *)
     echo "unknown UI surface: $surface" >&2
     exit 2
@@ -81,7 +86,11 @@ if [[ -n "$paths" ]]; then
   cargo run -q -p termirust-ui-contract --bin verify-design-tokens -- --paths "$paths" --zero-legacy
   cargo run -q -p termirust-ui-contract --bin verify-localization -- --locales en-US,en-XA,ar-XB --paths "$paths" --zero-legacy
 else
-  cargo run -q -p termirust-ui-contract --bin verify-design-tokens -- --surface "$surface" --zero-legacy
+  if [[ "$surface" == "terminal-chrome" ]]; then
+    cargo run -q -p termirust-ui-contract --bin verify-design-tokens -- --surface "$surface" --zero-legacy-except terminal-grid-metrics
+  else
+    cargo run -q -p termirust-ui-contract --bin verify-design-tokens -- --surface "$surface" --zero-legacy
+  fi
   cargo run -q -p termirust-ui-contract --bin verify-localization -- --locales en-US,en-XA,ar-XB --surface "$surface" --zero-legacy
 fi
 cargo test -q -p termirust-ui-contract "$test_filter"

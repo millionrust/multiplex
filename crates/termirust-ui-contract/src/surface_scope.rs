@@ -73,6 +73,20 @@ pub fn files_for_surface(surface: &str) -> Option<&'static [SurfaceFile]> {
                 marked: false,
             },
         ]),
+        "terminal-chrome" => Some(&[
+            SurfaceFile {
+                path: "src/ui/render_terminal.rs",
+                marked: false,
+            },
+            SurfaceFile {
+                path: "src/ui/app/workspace.rs",
+                marked: false,
+            },
+            SurfaceFile {
+                path: "src/ui/app/mod.rs",
+                marked: true,
+            },
+        ]),
         _ => None,
     }
 }

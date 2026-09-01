@@ -103,7 +103,8 @@ use termirust_ui_contract::PalettePresentationState;
 use termirust_ui_contract::{
     AnnouncementPolicy, FocusReturn, MessageId, OverlayFrame, OverlayId, OverlayKind, OverlayOwner,
     OverlayPhase, OverlayStack, SemanticActionValue, ShellAccessibilityCommand, ShellRegionId,
-    ShellSemanticSnapshot,
+    ShellSemanticSnapshot, TerminalAccessibilityBuffer, TerminalAccessibilityCommand,
+    TerminalAnnouncement, TerminalAnnouncementCoalescer, TerminalFocusMode, TerminalLifecycle,
 };
 use tokio_util::sync::CancellationToken;
 use vt100::MouseProtocolMode;
@@ -137,7 +138,9 @@ use crate::ui::autocomplete::{AutocompleteCandidate, AutocompleteSource};
 use crate::ui::keys::{MouseEventKind, encode_mouse_report, encode_terminal_input};
 use crate::ui::localization;
 use crate::ui::path::remote_parent_path;
-use crate::ui::render_terminal::{SelectionRange, normalized_selection};
+use crate::ui::render_terminal::{
+    SelectionRange, normalized_selection, terminal_lifecycle_for_hosted_state,
+};
 use crate::ui::shell::{shell_command_requires_continuation, startup_bytes_for_request};
 use crate::ui::snippet::{
     extract_snippet_prompt_names, substitute_snippet_placeholders, substitute_snippet_prompts,
@@ -148,7 +151,11 @@ use crate::ui::util::{
     merge_tag_values, non_empty_string, parse_tag_values,
 };
 
-const TERMINAL_LINE_HEIGHT: f32 = 1.3;
+// The terminal grid derives line height from user font metrics; this is the named
+// terminal-grid-metrics exception accepted by the terminal chrome token gate.
+// termirust-ui-surface:terminal-chrome:start
+const TERMINAL_LINE_HEIGHT: f32 = 1.3; // termirust-ui-exception:terminal-grid-metrics
+// termirust-ui-surface:terminal-chrome:end
 const WORKSPACE_SEARCH_ROW_HEIGHT: f32 = 52.0;
 const WORKSPACE_PADDING: f32 = 18.0;
 const PANE_GAP: f32 = 12.0;
@@ -611,6 +618,11 @@ struct SessionPane {
     title: String,
     endpoint: String,
     terminal: TerminalState,
+    terminal_accessibility: TerminalAccessibilityBuffer,
+    terminal_announcements: TerminalAnnouncementCoalescer,
+    terminal_announcement: Option<TerminalAnnouncement>,
+    terminal_focus_mode: TerminalFocusMode,
+    terminal_chrome_focus: FocusHandle,
     terminal_focus: FocusHandle,
     last_size: Option<TerminalSize>,
     runtime: SessionRuntimeHandle,
@@ -638,6 +650,45 @@ struct AppAttachedPaneState {
     last_sequence: u64,
     has_writer_lease: bool,
     dev_urls: DevUrlProjection,
+}
+
+impl SessionPane {
+    fn append_accessible_output(&mut self, data: &[u8], sequence: Option<u64>) {
+        self.terminal_accessibility.append(data, sequence);
+        self.terminal_announcements.observe_output(data.len());
+        if let Some(announcement) = self
+            .terminal_announcements
+            .observe_truncation(self.terminal_accessibility.is_truncated())
+        {
+            self.terminal_announcement = Some(announcement);
+        }
+    }
+
+    fn set_accessible_lifecycle(&mut self, lifecycle: TerminalLifecycle) {
+        if let Some(announcement) = self.terminal_accessibility.set_lifecycle(lifecycle) {
+            self.terminal_announcement = Some(announcement);
+        }
+    }
+
+    fn clear_accessible_content(&mut self, lifecycle: TerminalLifecycle) {
+        self.terminal_accessibility.clear_sensitive_content();
+        self.terminal_announcements.clear();
+        self.set_accessible_lifecycle(lifecycle);
+        self.terminal_focus_mode = TerminalFocusMode::Chrome;
+    }
+
+    fn input_authorized(&self) -> bool {
+        self.connected
+            && self
+                .app_attached
+                .as_ref()
+                .is_none_or(|attached| attached.has_writer_lease)
+    }
+
+    fn accepts_terminal_input(&self) -> bool {
+        self.terminal_focus_mode
+            .accepts_input(self.input_authorized())
+    }
 }
 
 #[derive(Clone)]
@@ -1785,6 +1836,29 @@ impl TermiRustApp {
                 }
                 ShellAccessibilityCommand::AgentCanvas(command) => {
                     self.handle_agent_canvas_accessibility_command(command, window, cx);
+                }
+                ShellAccessibilityCommand::Terminal(command) => {
+                    let Some(pane_id) = self.active_pane().map(|pane| pane.id) else {
+                        continue;
+                    };
+                    match command {
+                        TerminalAccessibilityCommand::FocusChrome
+                        | TerminalAccessibilityCommand::ExitToChrome => {
+                            self.focus_terminal_chrome(pane_id, window, cx);
+                        }
+                        TerminalAccessibilityCommand::EnterInput => {
+                            self.enter_terminal_input(pane_id, window, cx);
+                        }
+                        TerminalAccessibilityCommand::EnterReview => {
+                            self.enter_terminal_review(pane_id, window, cx);
+                        }
+                        TerminalAccessibilityCommand::PreviousReviewLine => {
+                            self.move_terminal_review_cursor(pane_id, -1, cx);
+                        }
+                        TerminalAccessibilityCommand::NextReviewLine => {
+                            self.move_terminal_review_cursor(pane_id, 1, cx);
+                        }
+                    }
                 }
             }
         }
@@ -6216,6 +6290,7 @@ impl TermiRustApp {
         if let Some(pane) = self.pane_mut(pane_id) {
             pane.title = new_title.clone();
             pane.request.title = new_title.clone();
+            pane.terminal_accessibility.set_title(new_title.clone());
         }
         self.pane_rename_id = None;
         self.persist_runtime_state();
@@ -6755,10 +6830,16 @@ impl TermiRustApp {
         let endpoint = request.endpoint_label();
         let title = request.title.clone();
         eprintln!("[app] spawn_pane: pane_id={pane_id} title='{title}' endpoint={endpoint}");
+        let terminal_chrome_focus = cx.focus_handle().tab_stop(true);
         let terminal_focus = cx.focus_handle().tab_stop(true);
         let (runtime_request, stored_request) = Self::consume_agent_forwarding_approval(request);
         let runtime = self.connection_coordinator.start(runtime_request);
-        self.register_pane(stored_request, runtime, terminal_focus)
+        self.register_pane(
+            stored_request,
+            runtime,
+            terminal_chrome_focus,
+            terminal_focus,
+        )
     }
 
     fn consume_agent_forwarding_approval(
@@ -6793,8 +6874,9 @@ impl TermiRustApp {
             },
             termirust_domain::OutputSequence::ZERO,
         ));
+        let terminal_chrome_focus = cx.focus_handle().tab_stop(true);
         let terminal_focus = cx.focus_handle().tab_stop(true);
-        self.register_pane(request, runtime, terminal_focus);
+        self.register_pane(request, runtime, terminal_chrome_focus, terminal_focus);
         if let Some(pane) = self.pane_mut(pane_id) {
             pane.app_attached = Some(AppAttachedPaneState {
                 hosted_session_id: saved_session.id,
@@ -6806,8 +6888,9 @@ impl TermiRustApp {
                 has_writer_lease: false,
                 dev_urls: DevUrlProjection::new(saved_session.id),
             });
+            pane.terminal_focus_mode = TerminalFocusMode::Chrome;
             pane.status = "Attaching".to_string();
-            pane.terminal_focus.focus(window);
+            pane.terminal_chrome_focus.focus(window);
         }
         Some(pane_id)
     }
@@ -6950,12 +7033,14 @@ impl TermiRustApp {
             pane.user_closed = false;
             pane.status = "Attaching to durable Host".to_string();
             pane.selection = None;
+            pane.terminal_focus_mode = TerminalFocusMode::Chrome;
+            pane.set_accessible_lifecycle(TerminalLifecycle::Connecting);
             if let Some(attached) = pane.app_attached.as_mut() {
                 attached.last_sequence = 0;
                 attached.has_writer_lease = false;
                 attached.cancel_requested = false;
             }
-            pane.terminal_focus.focus(window);
+            pane.terminal_chrome_focus.focus(window);
         }
         self.mutate_session(
             session_id,
@@ -6972,6 +7057,7 @@ impl TermiRustApp {
         &mut self,
         request: ConnectRequest,
         runtime: SessionRuntimeHandle,
+        terminal_chrome_focus: FocusHandle,
         terminal_focus: FocusHandle,
     ) -> u64 {
         let pane_id = request.session_id;
@@ -6988,9 +7074,14 @@ impl TermiRustApp {
         self.panes.push(SessionPane {
             id: pane_id,
             request,
-            title,
+            title: title.clone(),
             endpoint,
             terminal: TerminalState::new(TerminalSize::default(), terminal_scrollback_rows),
+            terminal_accessibility: TerminalAccessibilityBuffer::new(pane_id, title.clone()),
+            terminal_announcements: TerminalAnnouncementCoalescer::new(),
+            terminal_announcement: None,
+            terminal_focus_mode: TerminalFocusMode::Input,
+            terminal_chrome_focus,
             terminal_focus,
             last_size: None,
             runtime,
@@ -7678,11 +7769,22 @@ impl TermiRustApp {
 
         match &projection.terminal {
             HostedTerminalAction::Preserve => {}
-            HostedTerminalAction::Append(data) => pane.terminal.process_bytes(data),
+            HostedTerminalAction::Append(data) => {
+                pane.terminal.process_bytes(data);
+                pane.append_accessible_output(
+                    data,
+                    projection.last_sequence.map(|sequence| sequence.get()),
+                );
+            }
             HostedTerminalAction::ReplaceWithSnapshot(data) => {
                 let size = pane.terminal.size();
                 pane.terminal = TerminalState::new(size, pane.request.terminal_scrollback_rows);
                 pane.terminal.process_bytes(data);
+                pane.terminal_accessibility.clear_sensitive_content();
+                pane.append_accessible_output(
+                    data,
+                    projection.last_sequence.map(|sequence| sequence.get()),
+                );
             }
         }
         if let Some(hosted) = pane.app_attached.as_mut() {
@@ -7755,6 +7857,7 @@ impl TermiRustApp {
                         pane.connected = true;
                         pane.closed = false;
                         pane.status = "Live".to_string();
+                        pane.set_accessible_lifecycle(TerminalLifecycle::Live);
                         let log_id = pane.log_id.clone();
                         self.saved
                             .update_session_log(&log_id, |e| e.mark_connected());
@@ -7821,6 +7924,7 @@ impl TermiRustApp {
                     }
                     if let Some(pane) = self.pane_mut(session_id) {
                         pane.terminal.process_bytes(&data);
+                        pane.append_accessible_output(&data, None);
                         if pane.selection.is_some() {
                             pane.selection = None;
                             pane.dragging_selection = false;
@@ -7882,6 +7986,12 @@ impl TermiRustApp {
                 } => {
                     let hosted_session_id = self.pane_mut(session_id).and_then(|pane| {
                         pane.status = detail;
+                        let lifecycle = terminal_lifecycle_for_hosted_state(state);
+                        if lifecycle == TerminalLifecycle::PermissionDenied {
+                            pane.clear_accessible_content(lifecycle);
+                        } else {
+                            pane.set_accessible_lifecycle(lifecycle);
+                        }
                         pane.app_attached
                             .as_ref()
                             .map(|hosted| hosted.hosted_session_id)
@@ -7908,6 +8018,9 @@ impl TermiRustApp {
                         {
                             hosted.last_sequence = pane_projection.last_sequence;
                             hosted.has_writer_lease = pane_projection.has_writer_lease;
+                            if !hosted.has_writer_lease {
+                                pane.terminal_focus_mode = TerminalFocusMode::Chrome;
+                            }
                             match pane_projection.dev_url_action {
                                 HostedDevUrlAction::Preserve => {}
                                 HostedDevUrlAction::MarkGap => hosted.dev_urls.mark_gap(),
@@ -7980,6 +8093,7 @@ impl TermiRustApp {
                         pane.connected = false;
                         pane.closed = true;
                         pane.status = "Error".to_string();
+                        pane.set_accessible_lifecycle(TerminalLifecycle::Error);
                         if let Some(attached) = pane.app_attached.as_mut() {
                             attached.dev_urls.mark_host_unavailable();
                         }
@@ -8047,6 +8161,7 @@ impl TermiRustApp {
                     if let Some(pane) = self.pane_mut(session_id) {
                         pane.connected = false;
                         pane.closed = true;
+                        pane.clear_accessible_content(TerminalLifecycle::Detached);
                         if let Some(hosted) = pane.app_attached.as_mut() {
                             hosted.dev_urls.mark_host_unavailable();
                         }
@@ -8348,6 +8463,16 @@ impl TermiRustApp {
 
         for workspace_id in sftp_directories_to_refresh {
             self.refresh_workspace_files(workspace_id);
+        }
+
+        let now = Instant::now();
+        for pane in &mut self.panes {
+            if pane.terminal_announcement.is_none()
+                && let Some(announcement) = pane.terminal_announcements.flush(now)
+            {
+                pane.terminal_announcement = Some(announcement);
+                changed = true;
+            }
         }
 
         if let Some(active_workspace_id) = self.active_workspace_id {
@@ -8894,12 +9019,9 @@ impl TermiRustApp {
         if !pane.connected {
             return false;
         }
-        if pane.app_attached.as_ref().is_some_and(|session| {
-            session.route == termirust_domain::SessionLaunchRoute::DurableHost
-                && !session.has_writer_lease
-        }) {
+        if !pane.input_authorized() {
             self.error_message =
-                "This durable session is read-only because another client owns input.".to_string();
+                localization::static_message(MessageId::TerminalStatePermissionDenied);
             cx.notify();
             return false;
         }
@@ -9546,6 +9668,15 @@ impl TermiRustApp {
         let Some(pane_id) = self.active_pane().map(|pane| pane.id) else {
             return false;
         };
+        if !self
+            .pane(pane_id)
+            .is_some_and(SessionPane::accepts_terminal_input)
+        {
+            self.error_message =
+                localization::static_message(MessageId::TerminalStatePermissionDenied);
+            cx.notify();
+            return true;
+        }
         let Some(clipboard) = cx.read_from_clipboard() else {
             return false;
         };
@@ -9572,6 +9703,15 @@ impl TermiRustApp {
     }
 
     fn send_paste_bytes(&mut self, pane_id: u64, text: String, cx: &mut Context<Self>) -> bool {
+        if !self
+            .pane(pane_id)
+            .is_some_and(SessionPane::accepts_terminal_input)
+        {
+            self.error_message =
+                localization::static_message(MessageId::TerminalStatePermissionDenied);
+            cx.notify();
+            return false;
+        }
         let mut bytes = Vec::new();
         if self
             .pane(pane_id)
@@ -9615,6 +9755,14 @@ impl TermiRustApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if event.keystroke.modifiers.secondary()
+            && event.keystroke.modifiers.shift
+            && event.keystroke.key == "escape"
+        {
+            self.focus_terminal_chrome(pane_id, window, cx);
+            return true;
+        }
+
         if event.keystroke.modifiers.secondary() {
             match event.keystroke.key.as_str() {
                 "c" => {
@@ -9648,6 +9796,31 @@ impl TermiRustApp {
         let Some(pane) = self.pane(pane_id) else {
             return false;
         };
+        if pane.terminal_focus_mode == TerminalFocusMode::AccessibleReview {
+            let delta = match event.keystroke.key.as_str() {
+                "up" | "pageup" => Some(-1),
+                "down" | "pagedown" => Some(1),
+                "home" => Some(isize::MIN),
+                "end" => Some(isize::MAX),
+                _ => None,
+            };
+            if let Some(delta) = delta {
+                if let Some(pane) = self.pane_mut(pane_id) {
+                    if delta == isize::MIN {
+                        pane.terminal_accessibility.move_read_cursor(isize::MIN);
+                    } else if delta == isize::MAX {
+                        pane.terminal_accessibility.move_read_cursor_to_end();
+                    } else {
+                        pane.terminal_accessibility.move_read_cursor(delta);
+                    }
+                }
+                cx.notify();
+            }
+            return true;
+        }
+        if !pane.accepts_terminal_input() {
+            return true;
+        }
         if !pane.connected {
             return false;
         }
@@ -9695,11 +9868,66 @@ impl TermiRustApp {
             }
             self.active_workspace_id = Some(workspace_id);
         }
-        if let Some(pane) = self.pane(pane_id) {
-            pane.terminal_focus.focus(window);
+        if let Some(pane) = self.pane_mut(pane_id) {
+            if pane.input_authorized() {
+                pane.terminal_focus_mode = TerminalFocusMode::Input;
+                pane.terminal_focus.focus(window);
+            } else {
+                pane.terminal_focus_mode = TerminalFocusMode::Chrome;
+                pane.terminal_chrome_focus.focus(window);
+            }
         }
         self.persist_runtime_state();
         cx.notify();
+    }
+
+    fn focus_terminal_chrome(&mut self, pane_id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(pane) = self.pane_mut(pane_id) {
+            pane.terminal_focus_mode = TerminalFocusMode::Chrome;
+            pane.terminal_chrome_focus.focus(window);
+            self.status_message = localization::static_message(MessageId::TerminalExitAction);
+            self.error_message.clear();
+            cx.notify();
+        }
+    }
+
+    fn enter_terminal_input(
+        &mut self,
+        pane_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let authorized = self
+            .pane(pane_id)
+            .is_some_and(SessionPane::input_authorized);
+        if !authorized {
+            self.error_message =
+                localization::static_message(MessageId::TerminalStatePermissionDenied);
+            cx.notify();
+            return false;
+        }
+        self.activate_pane(pane_id, window, cx);
+        true
+    }
+
+    fn enter_terminal_review(&mut self, pane_id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(pane) = self.pane_mut(pane_id) {
+            pane.terminal_focus_mode = TerminalFocusMode::AccessibleReview;
+            pane.terminal_accessibility.move_read_cursor_to_end();
+            pane.terminal_focus.focus(window);
+            self.status_message = localization::static_message(MessageId::TerminalReviewAction);
+            self.error_message.clear();
+            cx.notify();
+        }
+    }
+
+    fn move_terminal_review_cursor(&mut self, pane_id: u64, delta: isize, cx: &mut Context<Self>) {
+        if let Some(pane) = self.pane_mut(pane_id)
+            && pane.terminal_focus_mode == TerminalFocusMode::AccessibleReview
+        {
+            pane.terminal_accessibility.move_read_cursor(delta);
+            cx.notify();
+        }
     }
 
     fn mouse_cell_position(
@@ -9729,7 +9957,10 @@ impl TermiRustApp {
 
     fn pane_uses_mouse_reporting(&self, pane_id: u64) -> bool {
         self.pane(pane_id)
-            .map(|pane| pane.terminal.mouse_protocol_mode() != MouseProtocolMode::None)
+            .map(|pane| {
+                pane.accepts_terminal_input()
+                    && pane.terminal.mouse_protocol_mode() != MouseProtocolMode::None
+            })
             .unwrap_or(false)
     }
 
@@ -9742,7 +9973,10 @@ impl TermiRustApp {
     ) {
         self.activate_pane(pane_id, window, cx);
 
-        if self.pane_uses_mouse_reporting(pane_id) {
+        let input_authorized = self
+            .pane(pane_id)
+            .is_some_and(SessionPane::input_authorized);
+        if input_authorized && self.pane_uses_mouse_reporting(pane_id) {
             if let Some(data) = self.mouse_report_bytes(
                 pane_id,
                 event.position,
@@ -12100,6 +12334,9 @@ impl Render for TermiRustApp {
         let agent_canvas = background_surface_available
             .then(|| self.agent_canvas_semantic_snapshot())
             .flatten();
+        let terminal = background_surface_available
+            .then(|| self.terminal_semantic_snapshot())
+            .flatten();
         self.shell_accessibility.sync(ShellSemanticSnapshot {
             generation: 1,
             inspector_visible: self.show_editor_panel || worktree_modal_open || host_modal_open,
@@ -12119,7 +12356,11 @@ impl Render for TermiRustApp {
             vault_key_snippet,
             settings,
             agent_canvas,
+            terminal,
         });
+        for pane in &mut self.panes {
+            pane.terminal_announcement = None;
+        }
 
         // When the active workspace changes, scroll the tab strip so the
         // active tab is visible. scroll_to_item keeps the request pending

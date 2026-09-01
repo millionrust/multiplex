@@ -186,6 +186,54 @@ pub fn verify_zero_surface(root: &Path, surface: &str) -> Result<usize, LiteralL
     )))
 }
 
+pub fn verify_zero_surface_except(
+    root: &Path,
+    surface: &str,
+    exception: &str,
+) -> Result<usize, LiteralLintError> {
+    let marker = format!("termirust-ui-exception:{exception}");
+    let sources = read_surface_sources(root, surface).map_err(LiteralLintError::new)?;
+    let mut findings = Vec::new();
+    let mut excepted = 0_usize;
+    for (file, source) in &sources {
+        let marked_lines = source
+            .lines()
+            .enumerate()
+            .filter_map(|(index, line)| line.contains(&marker).then_some(index + 1))
+            .collect::<Vec<_>>();
+        for finding in scan_source(file, source) {
+            if marked_lines.contains(&finding.line) {
+                excepted = excepted.saturating_add(1);
+            } else {
+                findings.push(finding);
+            }
+        }
+    }
+    if excepted == 0 {
+        return Err(LiteralLintError::new(format!(
+            "{surface} did not contain the named {exception} visual literal exception"
+        )));
+    }
+    if findings.is_empty() {
+        return Ok(excepted);
+    }
+    let summary = findings
+        .iter()
+        .take(25)
+        .map(|finding| {
+            format!(
+                "{}:{} {}: {}",
+                finding.file, finding.line, finding.category, finding.excerpt
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    Err(LiteralLintError::new(format!(
+        "{surface} visual literal policy found {} non-{exception} exception(s):\n{summary}",
+        findings.len()
+    )))
+}
+
 pub fn verify_baseline(root: &Path, baseline_path: &Path) -> Result<usize, LiteralLintError> {
     let findings = scan_ui_tree(root)?;
     let baseline = load_baseline(baseline_path)?;

@@ -15,6 +15,7 @@ use crate::product_session_surface::{
 };
 use crate::settings_surface::{SettingsAccessibilityCommand, SettingsSemanticSnapshot};
 use crate::sftp_surface::{SftpAccessibilityCommand, SftpSemanticSnapshot};
+use crate::terminal_surface::{TerminalAccessibilityCommand, TerminalSemanticSnapshot};
 use crate::vault_key_snippet_surface::{
     VaultKeySnippetAccessibilityCommand, VaultKeySnippetSemanticSnapshot,
 };
@@ -457,6 +458,7 @@ pub enum ShellAccessibilityCommand {
     VaultKeySnippet(VaultKeySnippetAccessibilityCommand),
     Settings(SettingsAccessibilityCommand),
     AgentCanvas(AgentCanvasAccessibilityCommand),
+    Terminal(TerminalAccessibilityCommand),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -475,6 +477,7 @@ pub struct ShellSemanticSnapshot {
     pub vault_key_snippet: Option<VaultKeySnippetSemanticSnapshot>,
     pub settings: Option<SettingsSemanticSnapshot>,
     pub agent_canvas: Option<AgentCanvasSemanticSnapshot>,
+    pub terminal: Option<TerminalSemanticSnapshot>,
 }
 
 impl Default for ShellSemanticSnapshot {
@@ -494,6 +497,7 @@ impl Default for ShellSemanticSnapshot {
             vault_key_snippet: None,
             settings: None,
             agent_canvas: None,
+            terminal: None,
         }
     }
 }
@@ -586,6 +590,11 @@ impl ShellSemanticSnapshot {
             && let Some(agent_canvas) = self.agent_canvas.as_ref()
         {
             nodes.extend(agent_canvas.try_nodes(shell_region_node(ShellRegionId::Content))?);
+        }
+        if !self.palette_open
+            && let Some(terminal) = self.terminal.as_ref()
+        {
+            nodes.extend(terminal.try_nodes(shell_region_node(ShellRegionId::Content))?);
         }
 
         if self.palette_open {
@@ -735,6 +744,16 @@ impl ShellSemanticSnapshot {
                     .routes()?
                     .into_iter()
                     .map(|(key, command)| (key, ShellAccessibilityCommand::AgentCanvas(command))),
+            );
+        }
+        if !self.palette_open
+            && let Some(terminal) = self.terminal.as_ref()
+        {
+            routes.extend(
+                terminal
+                    .routes()
+                    .into_iter()
+                    .map(|(key, command)| (key, ShellAccessibilityCommand::Terminal(command))),
             );
         }
         if self.palette_open {
