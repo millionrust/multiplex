@@ -144,6 +144,27 @@ allowed_use = "Modal separation only."
 values = { system = "#000000B3", light = "#11131899", dark = "#000000B3", high_contrast = "#000000E6", recording_friendly = "#000000D9" }
 
 [[tokens]]
+key = "color.window.close"
+category = "color"
+description = "macOS-compatible close control indicator."
+allowed_use = "Custom desktop window close control only."
+values = { system = "#FF5F57", light = "#FF5F57", dark = "#FF5F57", high_contrast = "#FF66FF", recording_friendly = "#D99599" }
+
+[[tokens]]
+key = "color.window.minimize"
+category = "color"
+description = "macOS-compatible minimize control indicator."
+allowed_use = "Custom desktop window minimize control only."
+values = { system = "#FEBC2E", light = "#FEBC2E", dark = "#FEBC2E", high_contrast = "#FFFF00", recording_friendly = "#D6B47A" }
+
+[[tokens]]
+key = "color.window.zoom"
+category = "color"
+description = "macOS-compatible zoom control indicator."
+allowed_use = "Custom desktop window zoom control only."
+values = { system = "#28C840", light = "#28C840", dark = "#28C840", high_contrast = "#00FF66", recording_friendly = "#8BC3A4" }
+
+[[tokens]]
 key = "color.focus.separation"
 category = "color"
 description = "Surface-colored separation inside the focus ring."
@@ -221,6 +242,34 @@ allowed_use = "Terminal viewport only; font size remains user-configurable."
 values = { system = "14/18.9/400", light = "14/18.9/400", dark = "14/18.9/400", high_contrast = "14/18.9/400", recording_friendly = "14/18.9/400" }
 
 [[tokens]]
+key = "type.activity.title"
+category = "typography"
+description = "Compact Activity Center page title typography."
+allowed_use = "Activity Center title only."
+values = { system = "22/30/650", light = "22/30/650", dark = "22/30/650", high_contrast = "22/30/650", recording_friendly = "22/30/650" }
+
+[[tokens]]
+key = "type.micro"
+category = "typography"
+description = "Micro metadata typography."
+allowed_use = "Space-constrained secondary metadata only."
+values = { system = "11/15/400", light = "11/15/400", dark = "11/15/400", high_contrast = "11/15/400", recording_friendly = "11/15/400" }
+
+[[tokens]]
+key = "type.nano"
+category = "typography"
+description = "Smallest supported metadata typography."
+allowed_use = "Exceptional space-constrained metadata only."
+values = { system = "10/14/400", light = "10/14/400", dark = "10/14/400", high_contrast = "10/14/400", recording_friendly = "10/14/400" }
+
+[[tokens]]
+key = "type.metric"
+category = "typography"
+description = "Compact numeric metric typography."
+allowed_use = "Prominent compact metrics and pairing codes."
+values = { system = "24/32/600", light = "24/32/600", dark = "24/32/600", high_contrast = "24/32/600", recording_friendly = "24/32/600" }
+
+[[tokens]]
 key = "space.0"
 category = "spacing"
 description = "Zero spacing."
@@ -291,6 +340,34 @@ allowed_use = "Global spacing scale."
 values = { system = "64", light = "64", dark = "64", high_contrast = "64", recording_friendly = "64" }
 
 [[tokens]]
+key = "space.compact"
+category = "spacing"
+description = "Compact ten-pixel layout spacing."
+allowed_use = "Dense application controls and panels."
+values = { system = "10", light = "10", dark = "10", high_contrast = "10", recording_friendly = "10" }
+
+[[tokens]]
+key = "space.micro"
+category = "spacing"
+description = "Micro three-pixel layout spacing."
+allowed_use = "Tightly coupled status marks and labels only."
+values = { system = "3", light = "3", dark = "3", high_contrast = "3", recording_friendly = "3" }
+
+[[tokens]]
+key = "space.fine"
+category = "spacing"
+description = "Fine five-pixel layout spacing."
+allowed_use = "Tightly coupled editor labels and controls."
+values = { system = "5", light = "5", dark = "5", high_contrast = "5", recording_friendly = "5" }
+
+[[tokens]]
+key = "space.dense"
+category = "spacing"
+description = "Dense six-pixel layout spacing."
+allowed_use = "Dense application controls and form rows."
+values = { system = "6", light = "6", dark = "6", high_contrast = "6", recording_friendly = "6" }
+
+[[tokens]]
 key = "space.terminal.padding"
 category = "spacing"
 description = "Terminal viewport padding."
@@ -359,6 +436,27 @@ category = "dimension"
 description = "Large icon size."
 allowed_use = "Large state illustrations without provider branding."
 values = { system = "24", light = "24", dark = "24", high_contrast = "24", recording_friendly = "24" }
+
+[[tokens]]
+key = "icon.size.compact"
+category = "dimension"
+description = "Compact icon size between small and default."
+allowed_use = "Dense toolbar and list-row icons."
+values = { system = "15", light = "15", dark = "15", high_contrast = "15", recording_friendly = "15" }
+
+[[tokens]]
+key = "icon.size.status"
+category = "dimension"
+description = "Status icon size adjacent to body labels."
+allowed_use = "Status and activity indicators."
+values = { system = "17", light = "17", dark = "17", high_contrast = "17", recording_friendly = "17" }
+
+[[tokens]]
+key = "icon.size.indicator"
+category = "dimension"
+description = "Small status-dot indicator size."
+allowed_use = "Status dots only."
+values = { system = "8", light = "8", dark = "8", high_contrast = "8", recording_friendly = "8" }
 
 [[tokens]]
 key = "icon.stroke.default"
@@ -459,6 +557,307 @@ allowed_use = "Window constraints after responsive migration."
 values = { system = "640", light = "640", dark = "640", high_contrast = "640", recording_friendly = "640" }
 
 [[tokens]]
+key = "layout.window.default_width"
+category = "dimension"
+description = "Default width for a newly duplicated desktop window."
+allowed_use = "Initial desktop window geometry only."
+values = { system = "1280", light = "1280", dark = "1280", high_contrast = "1280", recording_friendly = "1280" }
+
+[[tokens]]
+key = "layout.window.default_height"
+category = "dimension"
+description = "Default height for a newly duplicated desktop window."
+allowed_use = "Initial desktop window geometry only."
+values = { system = "840", light = "840", dark = "840", high_contrast = "840", recording_friendly = "840" }
+
+[[tokens]]
+key = "layout.window.native_control_offset"
+category = "dimension"
+description = "Horizontal offset hiding native controls behind custom window chrome."
+allowed_use = "macOS desktop window options only."
+values = { system = "200", light = "200", dark = "200", high_contrast = "200", recording_friendly = "200" }
+
+[[tokens]]
+key = "layout.shell.compact_control_height"
+category = "dimension"
+description = "Compact shell toolbar and menu-row control height."
+allowed_use = "Desktop shell chrome and shared menu rows."
+values = { system = "32", light = "32", dark = "32", high_contrast = "32", recording_friendly = "32" }
+
+[[tokens]]
+key = "layout.shell.icon_button_size"
+category = "dimension"
+description = "Square shell icon-button target size."
+allowed_use = "Desktop shell toolbar icon buttons."
+values = { system = "32", light = "32", dark = "32", high_contrast = "32", recording_friendly = "32" }
+
+[[tokens]]
+key = "layout.shell.toolbar_button_size"
+category = "dimension"
+description = "Compact square toolbar action size."
+allowed_use = "Desktop shell toolbar actions only."
+values = { system = "30", light = "30", dark = "30", high_contrast = "30", recording_friendly = "30" }
+
+[[tokens]]
+key = "layout.shell.navigation_row_height"
+category = "dimension"
+description = "Primary navigation row height."
+allowed_use = "Desktop primary navigation rows only."
+values = { system = "36", light = "36", dark = "36", high_contrast = "36", recording_friendly = "36" }
+
+[[tokens]]
+key = "layout.shell.tab_drop_minimum"
+category = "dimension"
+description = "Minimum trailing workspace-tab drop target width."
+allowed_use = "Desktop workspace tab strip only."
+values = { system = "80", light = "80", dark = "80", high_contrast = "80", recording_friendly = "80" }
+
+[[tokens]]
+key = "layout.shell.traffic_light_size"
+category = "dimension"
+description = "Visible macOS traffic-light indicator diameter."
+allowed_use = "Custom desktop window controls only."
+values = { system = "9", light = "9", dark = "9", high_contrast = "9", recording_friendly = "9" }
+
+[[tokens]]
+key = "layout.shell.tab_label_maximum"
+category = "dimension"
+description = "Maximum workspace-tab label width before truncation."
+allowed_use = "Desktop workspace tabs only."
+values = { system = "160", light = "160", dark = "160", high_contrast = "160", recording_friendly = "160" }
+
+[[tokens]]
+key = "layout.shell.rename_field_width"
+category = "dimension"
+description = "Inline workspace rename field width."
+allowed_use = "Desktop workspace tab rename field only."
+values = { system = "150", light = "150", dark = "150", high_contrast = "150", recording_friendly = "150" }
+
+[[tokens]]
+key = "layout.shell.workspace_menu_width"
+category = "dimension"
+description = "Workspace context-menu width."
+allowed_use = "Desktop workspace context menu only."
+values = { system = "238", light = "238", dark = "238", high_contrast = "238", recording_friendly = "238" }
+
+[[tokens]]
+key = "layout.shell.pane_menu_width"
+category = "dimension"
+description = "Terminal-pane context-menu width."
+allowed_use = "Desktop pane context menu only."
+values = { system = "212", light = "212", dark = "212", high_contrast = "212", recording_friendly = "212" }
+
+[[tokens]]
+key = "layout.shell.nav_badge_width"
+category = "dimension"
+description = "Minimum width for navigation count badges."
+allowed_use = "Desktop navigation count badges only."
+values = { system = "22", light = "22", dark = "22", high_contrast = "22", recording_friendly = "22" }
+
+[[tokens]]
+key = "layout.shell.nav_badge_height"
+category = "dimension"
+description = "Height for navigation count badges."
+allowed_use = "Desktop navigation count badges only."
+values = { system = "20", light = "20", dark = "20", high_contrast = "20", recording_friendly = "20" }
+
+[[tokens]]
+key = "layout.palette.width"
+category = "dimension"
+description = "Maximum global palette surface width."
+allowed_use = "Desktop global palette only."
+values = { system = "760", light = "760", dark = "760", high_contrast = "760", recording_friendly = "760" }
+
+[[tokens]]
+key = "layout.palette.offset_top"
+category = "dimension"
+description = "Global palette offset below the window chrome."
+allowed_use = "Desktop global palette positioning only."
+values = { system = "88", light = "88", dark = "88", high_contrast = "88", recording_friendly = "88" }
+
+[[tokens]]
+key = "layout.accessibility_lab.window_width"
+category = "dimension"
+description = "Default accessibility laboratory window width."
+allowed_use = "Accessibility laboratory window geometry only."
+values = { system = "920", light = "920", dark = "920", high_contrast = "920", recording_friendly = "920" }
+
+[[tokens]]
+key = "layout.accessibility_lab.window_height"
+category = "dimension"
+description = "Default accessibility laboratory window height."
+allowed_use = "Accessibility laboratory window geometry only."
+values = { system = "780", light = "780", dark = "780", high_contrast = "780", recording_friendly = "780" }
+
+[[tokens]]
+key = "layout.accessibility_lab.minimum_width"
+category = "dimension"
+description = "Minimum accessibility laboratory window width."
+allowed_use = "Accessibility laboratory window constraints only."
+values = { system = "680", light = "680", dark = "680", high_contrast = "680", recording_friendly = "680" }
+
+[[tokens]]
+key = "layout.accessibility_lab.minimum_height"
+category = "dimension"
+description = "Minimum accessibility laboratory window height."
+allowed_use = "Accessibility laboratory window constraints only."
+values = { system = "560", light = "560", dark = "560", high_contrast = "560", recording_friendly = "560" }
+
+[[tokens]]
+key = "layout.accessibility_lab.content_maximum"
+category = "dimension"
+description = "Maximum accessibility laboratory content width."
+allowed_use = "Accessibility laboratory content only."
+values = { system = "960", light = "960", dark = "960", high_contrast = "960", recording_friendly = "960" }
+
+[[tokens]]
+key = "layout.accessibility_lab.dialog_maximum"
+category = "dimension"
+description = "Maximum accessibility laboratory dialog width."
+allowed_use = "Accessibility laboratory destructive dialog only."
+values = { system = "560", light = "560", dark = "560", high_contrast = "560", recording_friendly = "560" }
+
+[[tokens]]
+key = "layout.accessibility_lab.progress_control_height"
+category = "dimension"
+description = "Accessibility laboratory progress control height."
+allowed_use = "Accessibility laboratory progress controls only."
+values = { system = "38", light = "38", dark = "38", high_contrast = "38", recording_friendly = "38" }
+
+[[tokens]]
+key = "layout.accessibility_lab.progress_track_height"
+category = "dimension"
+description = "Accessibility laboratory progress track height."
+allowed_use = "Accessibility laboratory progress indicator only."
+values = { system = "10", light = "10", dark = "10", high_contrast = "10", recording_friendly = "10" }
+
+[[tokens]]
+key = "layout.activity.icon_container"
+category = "dimension"
+description = "Activity Center event icon container size."
+allowed_use = "Activity Center event rows only."
+values = { system = "34", light = "34", dark = "34", high_contrast = "34", recording_friendly = "34" }
+
+[[tokens]]
+key = "layout.artifact.index_width"
+category = "dimension"
+description = "Preferred artifact index column width."
+allowed_use = "Files and artifacts index only."
+values = { system = "360", light = "360", dark = "360", high_contrast = "360", recording_friendly = "360" }
+
+[[tokens]]
+key = "layout.artifact.index_maximum"
+category = "dimension"
+description = "Maximum artifact index column width."
+allowed_use = "Files and artifacts index only."
+values = { system = "420", light = "420", dark = "420", high_contrast = "420", recording_friendly = "420" }
+
+[[tokens]]
+key = "layout.artifact.index_minimum"
+category = "dimension"
+description = "Minimum artifact index column width."
+allowed_use = "Files and artifacts index only."
+values = { system = "280", light = "280", dark = "280", high_contrast = "280", recording_friendly = "280" }
+
+[[tokens]]
+key = "layout.artifact.primary_column_width"
+category = "dimension"
+description = "Artifact table primary column width."
+allowed_use = "Files and artifacts table only."
+values = { system = "260", light = "260", dark = "260", high_contrast = "260", recording_friendly = "260" }
+
+[[tokens]]
+key = "layout.artifact.preview_maximum_height"
+category = "dimension"
+description = "Maximum textual artifact preview height."
+allowed_use = "Artifact preview only."
+values = { system = "240", light = "240", dark = "240", high_contrast = "240", recording_friendly = "240" }
+
+[[tokens]]
+key = "layout.artifact.empty_preview_height"
+category = "dimension"
+description = "Empty artifact preview placeholder height."
+allowed_use = "Artifact preview only."
+values = { system = "180", light = "180", dark = "180", high_contrast = "180", recording_friendly = "180" }
+
+[[tokens]]
+key = "layout.host.compact_row_height"
+category = "dimension"
+description = "Minimum compact host result row height."
+allowed_use = "Compact host search and selection rows."
+values = { system = "56", light = "56", dark = "56", high_contrast = "56", recording_friendly = "56" }
+
+[[tokens]]
+key = "layout.security.dialog_maximum"
+category = "dimension"
+description = "Maximum security workflow dialog width."
+allowed_use = "Key lifecycle and security dialogs only."
+values = { system = "620", light = "620", dark = "620", high_contrast = "620", recording_friendly = "620" }
+
+[[tokens]]
+key = "layout.security.info_maximum"
+category = "dimension"
+description = "Maximum security information panel width."
+allowed_use = "Key lifecycle and security information panels only."
+values = { system = "440", light = "440", dark = "440", high_contrast = "440", recording_friendly = "440" }
+
+[[tokens]]
+key = "layout.form.port_width"
+category = "dimension"
+description = "Compact form width for network port fields."
+allowed_use = "Network port form fields only."
+values = { system = "150", light = "150", dark = "150", high_contrast = "150", recording_friendly = "150" }
+
+[[tokens]]
+key = "layout.connect.panel_width"
+category = "dimension"
+description = "Connection setup panel width."
+allowed_use = "Connection setup overlays only."
+values = { system = "420", light = "420", dark = "420", high_contrast = "420", recording_friendly = "420" }
+
+[[tokens]]
+key = "layout.progress.compact_height"
+category = "dimension"
+description = "Compact progress track height."
+allowed_use = "Inline progress indicators only."
+values = { system = "6", light = "6", dark = "6", high_contrast = "6", recording_friendly = "6" }
+
+[[tokens]]
+key = "space.accessibility_lab.section_vertical"
+category = "spacing"
+description = "Accessibility laboratory section vertical padding."
+allowed_use = "Accessibility laboratory sections only."
+values = { system = "18", light = "18", dark = "18", high_contrast = "18", recording_friendly = "18" }
+
+[[tokens]]
+key = "space.accessibility_lab.section_gap"
+category = "spacing"
+description = "Accessibility laboratory section content gap."
+allowed_use = "Accessibility laboratory sections only."
+values = { system = "10", light = "10", dark = "10", high_contrast = "10", recording_friendly = "10" }
+
+[[tokens]]
+key = "space.accessibility_lab.status_vertical"
+category = "spacing"
+description = "Accessibility laboratory status vertical padding."
+allowed_use = "Accessibility laboratory status region only."
+values = { system = "14", light = "14", dark = "14", high_contrast = "14", recording_friendly = "14" }
+
+[[tokens]]
+key = "space.accessibility_lab.dialog_padding"
+category = "spacing"
+description = "Accessibility laboratory dialog padding."
+allowed_use = "Accessibility laboratory destructive dialog only."
+values = { system = "22", light = "22", dark = "22", high_contrast = "22", recording_friendly = "22" }
+
+[[tokens]]
+key = "space.accessibility_lab.dialog_gap"
+category = "spacing"
+description = "Accessibility laboratory dialog content gap."
+allowed_use = "Accessibility laboratory destructive dialog only."
+values = { system = "14", light = "14", dark = "14", high_contrast = "14", recording_friendly = "14" }
+
+[[tokens]]
 key = "border.hairline"
 category = "border"
 description = "Default one-pixel border."
@@ -501,6 +900,34 @@ allowed_use = "Individual repeated panels and cards."
 values = { system = "8", light = "8", dark = "8", high_contrast = "8", recording_friendly = "8" }
 
 [[tokens]]
+key = "space.shell.dense"
+category = "spacing"
+description = "Dense spacing inside desktop shell controls."
+allowed_use = "Desktop shell controls and menus."
+values = { system = "6", light = "6", dark = "6", high_contrast = "6", recording_friendly = "6" }
+
+[[tokens]]
+key = "space.shell.tight"
+category = "spacing"
+description = "Tight horizontal spacing for compact shell rows."
+allowed_use = "Desktop shell rows only."
+values = { system = "9", light = "9", dark = "9", high_contrast = "9", recording_friendly = "9" }
+
+[[tokens]]
+key = "space.shell.compact"
+category = "spacing"
+description = "Compact shell control padding."
+allowed_use = "Desktop shell controls and banners."
+values = { system = "10", light = "10", dark = "10", high_contrast = "10", recording_friendly = "10" }
+
+[[tokens]]
+key = "space.shell.banner_horizontal"
+category = "spacing"
+description = "Horizontal padding for full-width shell banners."
+allowed_use = "Desktop shell overlay banners only."
+values = { system = "18", light = "18", dark = "18", high_contrast = "18", recording_friendly = "18" }
+
+[[tokens]]
 key = "radius.dialog"
 category = "radius"
 description = "Dialog corner radius."
@@ -513,6 +940,13 @@ category = "radius"
 description = "Pill radius reserved for tags and status chips."
 allowed_use = "Tags and status chips only."
 values = { system = "999", light = "999", dark = "999", high_contrast = "999", recording_friendly = "999" }
+
+[[tokens]]
+key = "radius.progress"
+category = "radius"
+description = "Compact progress-track corner radius."
+allowed_use = "Inline progress indicators only."
+values = { system = "3", light = "3", dark = "3", high_contrast = "3", recording_friendly = "3" }
 
 [[tokens]]
 key = "elevation.none"
@@ -720,6 +1154,54 @@ description = "Unknown-duration progress cycle."
 allowed_use = "Spinner cycle with a discrete reduced-motion replacement."
 reduced_motion = "motion.instant"
 values = { system = "900ms", light = "900ms", dark = "900ms", high_contrast = "900ms", recording_friendly = "900ms" }
+
+[[tokens]]
+key = "motion.accessibility_poll"
+category = "duration"
+description = "Accessibility bridge action polling interval."
+allowed_use = "Accessibility bridge polling loops only."
+reduced_motion = "motion.instant"
+values = { system = "16ms", light = "16ms", dark = "16ms", high_contrast = "16ms", recording_friendly = "16ms" }
+
+[[tokens]]
+key = "motion.controller_retry_poll"
+category = "duration"
+description = "Controller coordination retry polling interval."
+allowed_use = "Controller coordination worker only."
+reduced_motion = "motion.instant"
+values = { system = "10ms", light = "10ms", dark = "10ms", high_contrast = "10ms", recording_friendly = "10ms" }
+
+[[tokens]]
+key = "motion.hosted_connect_poll"
+category = "duration"
+description = "Durable hosted-session connection polling interval."
+allowed_use = "Hosted-session connection worker only."
+reduced_motion = "motion.instant"
+values = { system = "40ms", light = "40ms", dark = "40ms", high_contrast = "40ms", recording_friendly = "40ms" }
+
+[[tokens]]
+key = "motion.hosted_live_poll"
+category = "duration"
+description = "Durable hosted-session live polling interval."
+allowed_use = "Hosted-session live worker only."
+reduced_motion = "motion.instant"
+values = { system = "40ms", light = "40ms", dark = "40ms", high_contrast = "40ms", recording_friendly = "40ms" }
+
+[[tokens]]
+key = "motion.hosted_settle_poll"
+category = "duration"
+description = "Durable hosted-session settling poll interval."
+allowed_use = "Hosted-session worker only."
+reduced_motion = "motion.instant"
+values = { system = "20ms", light = "20ms", dark = "20ms", high_contrast = "20ms", recording_friendly = "20ms" }
+
+[[tokens]]
+key = "motion.remote_device_poll"
+category = "duration"
+description = "Remote-device listener event polling interval."
+allowed_use = "Remote Devices listener only."
+reduced_motion = "motion.instant"
+values = { system = "100ms", light = "100ms", dark = "100ms", high_contrast = "100ms", recording_friendly = "100ms" }
 
 [[tokens]]
 key = "easing.standard"

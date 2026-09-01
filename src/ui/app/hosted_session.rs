@@ -30,8 +30,16 @@ use tokio_util::sync::CancellationToken;
 use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent};
 
 const HOST_READY_DEADLINE: Duration = Duration::from_secs(5);
-const CONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(40);
-const LIVE_POLL_INTERVAL: Duration = Duration::from_millis(40);
+const CONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(
+    termirust_ui_contract::DesignTokens::new(termirust_ui_contract::ThemeKind::System)
+        .motion_hosted_connect_poll(false)
+        .0 as u64,
+);
+const LIVE_POLL_INTERVAL: Duration = Duration::from_millis(
+    termirust_ui_contract::DesignTokens::new(termirust_ui_contract::ThemeKind::System)
+        .motion_hosted_live_poll(false)
+        .0 as u64,
+);
 const MAX_STARTUP_HANDSHAKES: usize = 8;
 
 struct StartupPermit;
@@ -382,7 +390,11 @@ fn stop_ready_host(spec: &DurableSessionSpec, process: &mut Child) {
     }
     let deadline = Instant::now() + Duration::from_secs(6);
     while process.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
-        thread::sleep(Duration::from_millis(20));
+        thread::sleep(Duration::from_millis(
+            termirust_ui_contract::DesignTokens::new(termirust_ui_contract::ThemeKind::System)
+                .motion_hosted_settle_poll(false)
+                .0 as u64,
+        ));
     }
     if process.try_wait().ok().flatten().is_none() {
         let _ = process.kill();

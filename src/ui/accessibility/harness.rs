@@ -16,7 +16,10 @@ use termirust_ui_contract::{
 
 use super::bridge::MacAccessibilityBridge;
 
-const POLL_INTERVAL: Duration = Duration::from_millis(16);
+const SYSTEM_TOKENS: termirust_ui_contract::DesignTokens =
+    termirust_ui_contract::DesignTokens::new(ThemeKind::System);
+const POLL_INTERVAL: Duration =
+    Duration::from_millis(SYSTEM_TOKENS.motion_accessibility_poll(false).0 as u64);
 
 pub fn run() {
     let configuration = configuration_from_environment();
@@ -27,7 +30,14 @@ pub fn run() {
     let application = Application::new().with_assets(crate::assets::Assets);
     application.run(move |cx| {
         gpui_component::init(cx);
-        let bounds = Bounds::centered(None, size(px(920.), px(780.)), cx);
+        let bounds = Bounds::centered(
+            None,
+            size(
+                px(SYSTEM_TOKENS.layout_accessibility_lab_window_width().0),
+                px(SYSTEM_TOKENS.layout_accessibility_lab_window_height().0),
+            ),
+            cx,
+        );
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -36,7 +46,10 @@ pub fn run() {
                     appears_transparent: true,
                     ..Default::default()
                 }),
-                window_min_size: Some(size(px(680.), px(560.))),
+                window_min_size: Some(size(
+                    px(SYSTEM_TOKENS.layout_accessibility_lab_minimum_width().0),
+                    px(SYSTEM_TOKENS.layout_accessibility_lab_minimum_height().0),
+                )),
                 ..Default::default()
             },
             |window, cx| cx.new(|cx| AccessibilityHarness::new(window, cx)),
@@ -339,16 +352,16 @@ impl Render for AccessibilityHarness {
             .overflow_y_scrollbar()
             .bg(color(tokens.color_bg_canvas()))
             .text_color(color(tokens.color_text_primary()))
-            .font_family("system-ui")
+            .font_family(tokens.font_ui_family().0)
             .child(
                 div()
                     .w_full()
-                    .max_w(px(960.))
+                    .max_w(px(tokens.layout_accessibility_lab_content_maximum().0))
                     .mx_auto()
-                    .p(px(24. * scale))
+                    .p(px(tokens.space_6().0 * scale))
                     .flex()
                     .flex_col()
-                    .gap(px(20. * scale))
+                    .gap(px(tokens.type_heading().size * scale))
                     .child(
                         self.control(
                             "ax-skip",
@@ -361,25 +374,27 @@ impl Render for AccessibilityHarness {
                     )
                     .child(
                         div()
-                            .text_size(px(28. * scale))
+                            .text_size(px(tokens.type_title().size * scale))
                             .font_semibold()
                             .child(self.text(MessageId::AccessibilityLabTitle)),
                     )
                     .child(
                         div()
-                            .text_size(px(16. * scale))
+                            .text_size(px(tokens.type_heading_small().size * scale))
                             .text_color(color(tokens.color_text_muted()))
                             .child(self.text(MessageId::AccessibilityLabDescription)),
                     )
                     .child(
                         div()
                             .w_full()
-                            .py(px(18. * scale))
+                            .py(px(
+                                tokens.space_accessibility_lab_section_vertical().0 * scale
+                            ))
                             .border_t_1()
                             .border_color(color(tokens.color_border_default()))
                             .flex()
                             .flex_col()
-                            .gap(px(10. * scale))
+                            .gap(px(tokens.space_accessibility_lab_section_gap().0 * scale))
                             .child(self.text(MessageId::AccessibilityLabList))
                             .child(self.control(
                                 "ax-list-first",
@@ -407,18 +422,20 @@ impl Render for AccessibilityHarness {
                     .child(
                         div()
                             .w_full()
-                            .py(px(18. * scale))
+                            .py(px(
+                                tokens.space_accessibility_lab_section_vertical().0 * scale
+                            ))
                             .border_t_1()
                             .border_color(color(tokens.color_border_default()))
                             .flex()
                             .flex_col()
-                            .gap(px(8. * scale))
+                            .gap(px(tokens.space_3().0 * scale))
                             .child(self.text(MessageId::AccessibilityLabField))
                             .child(
                                 div()
                                     .id("ax-field")
-                                    .h(px(44. * scale))
-                                    .px(px(12. * scale))
+                                    .h(px(tokens.control_height_large().0 * scale))
+                                    .px(px(tokens.space_4().0 * scale))
                                     .flex()
                                     .items_center()
                                     .border_1()
@@ -442,14 +459,14 @@ impl Render for AccessibilityHarness {
                             )
                             .child(
                                 div()
-                                    .text_size(px(13. * scale))
+                                    .text_size(px(tokens.type_body_small().size * scale))
                                     .text_color(color(tokens.color_text_muted()))
                                     .child(self.text(MessageId::AccessibilityLabFieldHelp)),
                             )
                             .when(field_error, |this| {
                                 this.child(
                                     div()
-                                        .text_size(px(14. * scale))
+                                        .text_size(px(tokens.type_body().size * scale))
                                         .text_color(color(tokens.color_status_error()))
                                         .child(self.text(MessageId::AccessibilityLabFieldError)),
                                 )
@@ -458,12 +475,14 @@ impl Render for AccessibilityHarness {
                     .child(
                         div()
                             .w_full()
-                            .py(px(18. * scale))
+                            .py(px(
+                                tokens.space_accessibility_lab_section_vertical().0 * scale
+                            ))
                             .border_t_1()
                             .border_color(color(tokens.color_border_default()))
                             .flex()
                             .flex_wrap()
-                            .gap(px(10. * scale))
+                            .gap(px(tokens.space_accessibility_lab_section_gap().0 * scale))
                             .child(self.control(
                                 "ax-menu-item",
                                 AccessibilityLabNode::MenuItem,
@@ -482,12 +501,14 @@ impl Render for AccessibilityHarness {
                     .child(
                         div()
                             .w_full()
-                            .py(px(18. * scale))
+                            .py(px(
+                                tokens.space_accessibility_lab_section_vertical().0 * scale
+                            ))
                             .border_t_1()
                             .border_color(color(tokens.color_border_default()))
                             .flex()
                             .flex_col()
-                            .gap(px(10. * scale))
+                            .gap(px(tokens.space_accessibility_lab_section_gap().0 * scale))
                             .child(
                                 self.localizer
                                     .format(&AccessibilityLabProgressValueArgs::new(
@@ -497,7 +518,10 @@ impl Render for AccessibilityHarness {
                             )
                             .child(
                                 div()
-                                    .h(px(10. * scale))
+                                    .h(px(tokens
+                                        .layout_accessibility_lab_progress_track_height()
+                                        .0
+                                        * scale))
                                     .w_full()
                                     .bg(color(tokens.color_bg_elevated()))
                                     .child(
@@ -511,7 +535,7 @@ impl Render for AccessibilityHarness {
                                 div()
                                     .flex()
                                     .flex_wrap()
-                                    .gap(px(8. * scale))
+                                    .gap(px(tokens.space_3().0 * scale))
                                     .child(progress_control(
                                         "ax-progress-down",
                                         "-",
@@ -559,7 +583,9 @@ impl Render for AccessibilityHarness {
                     .child(
                         div()
                             .w_full()
-                            .py(px(14. * scale))
+                            .py(px(
+                                tokens.space_accessibility_lab_status_vertical().0 * scale
+                            ))
                             .border_t_1()
                             .border_color(color(tokens.color_border_default()))
                             .child(self.text(MessageId::AccessibilityLabStatusReady)),
@@ -587,29 +613,40 @@ impl Render for AccessibilityHarness {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .p(px(20. * scale))
+                        .p(px(tokens.type_heading().size * scale))
                         .bg(color(tokens.color_overlay_scrim()))
                         .child(
                             div()
                                 .w_full()
-                                .max_w(px(560. * scale))
-                                .p(px(22. * scale))
+                                .max_w(px(
+                                    tokens.layout_accessibility_lab_dialog_maximum().0 * scale
+                                ))
+                                .p(px(tokens.space_accessibility_lab_dialog_padding().0 * scale))
                                 .bg(color(tokens.color_bg_elevated()))
                                 .border_1()
                                 .border_color(color(tokens.color_focus()))
                                 .flex()
                                 .flex_col()
-                                .gap(px(14. * scale))
-                                .child(div().text_size(px(22. * scale)).font_semibold().child(
-                                    self.text(MessageId::AccessibilityLabDestructiveConfirm),
-                                ))
+                                .gap(px(tokens.space_accessibility_lab_dialog_gap().0 * scale))
+                                .child(
+                                    div()
+                                        .text_size(px(tokens.type_activity_title().size * scale))
+                                        .font_semibold()
+                                        .child(
+                                            self.text(
+                                                MessageId::AccessibilityLabDestructiveConfirm,
+                                            ),
+                                        ),
+                                )
                                 .child(self.text(MessageId::AccessibilityLabDialogDescription))
                                 .child(
                                     div()
                                         .flex()
                                         .flex_wrap()
                                         .justify_end()
-                                        .gap(px(10. * scale))
+                                        .gap(px(
+                                            tokens.space_accessibility_lab_section_gap().0 * scale
+                                        ))
                                         .child(self.control(
                                             "ax-safe-default",
                                             AccessibilityLabNode::SafeDefault,
@@ -645,11 +682,15 @@ fn progress_control(
     cx: &Context<AccessibilityHarness>,
     callback: impl Fn(&mut AccessibilityHarness, &mut Context<AccessibilityHarness>) + 'static,
 ) -> Stateful<Div> {
+    let tokens = termirust_ui_contract::DesignTokens::new(ThemeKind::System);
     div()
         .id(id)
-        .h(px(38. * scale))
-        .min_w(px(44. * scale))
-        .px(px(12. * scale))
+        .h(px(tokens
+            .layout_accessibility_lab_progress_control_height()
+            .0
+            * scale))
+        .min_w(px(tokens.target_touch_minimum().0 * scale))
+        .px(px(tokens.space_4().0 * scale))
         .flex()
         .items_center()
         .justify_center()

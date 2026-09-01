@@ -117,10 +117,10 @@ impl TermiRustApp {
     ) -> Div {
         v_flex()
             .w_full()
-            .gap(px(5.))
+            .gap(px(theme::SPACE_FINE))
             .child(
                 div()
-                    .text_size(px(11.))
+                    .text_size(px(theme::TYPE_MICRO_SIZE))
                     .font_medium()
                     .text_color(theme::text_muted())
                     .child(label.to_string()),
@@ -129,7 +129,7 @@ impl TermiRustApp {
             .when_some(help, |this, help| {
                 this.child(
                     div()
-                        .text_size(px(10.))
+                        .text_size(px(theme::TYPE_NANO_SIZE))
                         .text_color(theme::text_muted())
                         .child(help.to_string()),
                 )
@@ -388,7 +388,7 @@ impl TermiRustApp {
                         )
                         .child(
                             h_flex()
-                                .gap(px(6.))
+                            .gap(px(theme::SPACE_DENSE))
                                 .child(Input::new(&self.inputs.key_path).flex_1())
                                 .child(
                                     Button::new("editor-pick-key-file")
@@ -404,7 +404,7 @@ impl TermiRustApp {
                         )
                         .child(
                             div()
-                                .text_size(px(10.))
+                                .text_size(px(theme::TYPE_NANO_SIZE))
                                 .text_color(theme::text_muted())
                                 .child("Click Browse and select your private key file."),
                         )
@@ -427,7 +427,7 @@ impl TermiRustApp {
                                 )
                                 .child(
                                     h_flex()
-                                        .gap(px(6.))
+                            .gap(px(theme::SPACE_DENSE))
                                         .child(Input::new(&self.inputs.certificate_path).flex_1())
                                         .child(
                                             Button::new("editor-pick-certificate-file")
@@ -444,7 +444,7 @@ impl TermiRustApp {
                                 )
                                 .child(
                                     div()
-                                        .text_size(px(10.))
+                                        .text_size(px(theme::TYPE_NANO_SIZE))
                                         .text_color(theme::text_muted())
                                         .child("Paired with the private key above; no plain-key fallback."),
                                 ),
@@ -464,7 +464,7 @@ impl TermiRustApp {
                         ))
                         .child(
                             div()
-                                .text_size(px(10.))
+                                .text_size(px(theme::TYPE_NANO_SIZE))
                                 .text_color(if agent_available {
                                     theme::success()
                                 } else {
@@ -478,7 +478,7 @@ impl TermiRustApp {
                         )
                         .child(
                             div()
-                                .text_size(px(10.))
+                                .text_size(px(theme::TYPE_NANO_SIZE))
                                 .text_color(theme::text_muted())
                                 .child("Forwarding is a separate one-connection action on the SSH protocol screen."),
                         ),

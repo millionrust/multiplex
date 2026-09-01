@@ -4,6 +4,7 @@
 //! output, etc.
 
 use std::collections::HashSet;
+use termirust_ui_contract::PaletteResultId;
 
 use crate::models::{SavedCommandHistoryEntry, SavedSnippet};
 use crate::sftp::RemoteFileEntry;
@@ -15,6 +16,7 @@ use crate::ui::autocomplete::{
     extract_path_tokens, extract_systemd_unit_targets, matches_command_prefix, palette_match_kind,
     path_match_kind, path_query_context,
 };
+use crate::ui::localization;
 use crate::ui::path::remote_parent_path;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -52,6 +54,7 @@ pub(super) enum PaletteAction {
 
 #[derive(Clone)]
 pub(super) struct CommandPaletteCandidate {
+    pub(super) id: PaletteResultId,
     pub(super) command: String,
     pub(super) title: String,
     pub(super) detail: String,
@@ -61,6 +64,15 @@ pub(super) struct CommandPaletteCandidate {
     pub(super) action: PaletteAction,
     pub(super) status: Option<termirust_domain::SearchStatus>,
     pub(super) highlights: Vec<termirust_domain::TextHighlight>,
+}
+
+pub(super) fn command_palette_result_id(namespace: u8, value: &str) -> PaletteResultId {
+    let mut hash = 0xcbf29ce484222325u64 ^ u64::from(namespace);
+    for byte in value.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    PaletteResultId::new(hash.max(1)).expect("non-zero palette result hash")
 }
 
 #[derive(Clone, Default)]
@@ -169,7 +181,7 @@ pub(super) fn collect_autocomplete_candidates(
                     command: command.to_string(),
                     source: AutocompleteSource::History,
                     scope_label: Some(if entry.scope_label.trim().is_empty() {
-                        "This target".to_string()
+                        localization::palette_this_target()
                     } else {
                         entry.scope_label.clone()
                     }),
@@ -303,15 +315,16 @@ pub(super) fn collect_command_palette_candidates(
         let key = command.to_ascii_lowercase();
         if seen.insert(key) {
             let scope = if entry.scope_label.trim().is_empty() {
-                "This target".to_string()
+                localization::palette_this_target()
             } else {
                 entry.scope_label.clone()
             };
             suggestions.push(ScoredPaletteCandidate {
                 candidate: CommandPaletteCandidate {
+                    id: command_palette_result_id(1, command),
                     command: command.to_string(),
                     title: command.to_string(),
-                    detail: format!("History • {scope}"),
+                    detail: localization::palette_history_detail(scope),
                     source: AutocompleteSource::History,
                     pinned: false,
                     category: PaletteCategory::Commands,
@@ -335,9 +348,10 @@ pub(super) fn collect_command_palette_candidates(
         if seen.insert(key) {
             suggestions.push(ScoredPaletteCandidate {
                 candidate: CommandPaletteCandidate {
+                    id: command_palette_result_id(1, command),
                     command: command.to_string(),
                     title: command.to_string(),
-                    detail: "Recent command".to_string(),
+                    detail: localization::palette_recent_command(),
                     source: AutocompleteSource::History,
                     pinned: false,
                     category: PaletteCategory::Commands,
@@ -362,19 +376,20 @@ pub(super) fn collect_command_palette_candidates(
         let key = command.to_ascii_lowercase();
         if seen.insert(key) {
             let mut detail = if snippet.pinned {
-                format!("Pinned snippet • {}", command)
+                localization::palette_pinned_snippet_detail(command)
             } else {
-                format!("Snippet • {}", command)
+                localization::palette_snippet_detail(command)
             };
             if !snippet.group.trim().is_empty() {
                 detail = if snippet.pinned {
-                    format!("Pinned snippet • {} • {}", snippet.group.trim(), command)
+                    localization::palette_pinned_group_snippet_detail(snippet.group.trim(), command)
                 } else {
-                    format!("Snippet • {} • {}", snippet.group.trim(), command)
+                    localization::palette_group_snippet_detail(snippet.group.trim(), command)
                 };
             }
             suggestions.push(ScoredPaletteCandidate {
                 candidate: CommandPaletteCandidate {
+                    id: command_palette_result_id(1, command),
                     command: command.to_string(),
                     title,
                     detail,
@@ -405,6 +420,7 @@ pub(super) fn collect_command_palette_candidates(
             if seen.insert(key) {
                 suggestions.push(ScoredPaletteCandidate {
                     candidate: CommandPaletteCandidate {
+                        id: command_palette_result_id(1, &template.command),
                         command: template.command.clone(),
                         title: template.command,
                         detail: template.detail,
@@ -432,6 +448,7 @@ pub(super) fn collect_command_palette_candidates(
         if seen.insert(key) {
             suggestions.push(ScoredPaletteCandidate {
                 candidate: CommandPaletteCandidate {
+                    id: command_palette_result_id(1, template.command),
                     command: template.command.to_string(),
                     title: template.command.to_string(),
                     detail: template.detail.to_string(),
@@ -512,7 +529,7 @@ pub(super) fn collect_path_autocomplete_candidates(
             .current_path
             .clone()
             .unwrap_or_else(|| ".".to_string());
-        let scope = Some(format!("Files • {}", current_path));
+        let scope = Some(localization::palette_files_scope(current_path));
 
         for entry in &context.entries {
             let candidate_path = if query.fragment.starts_with('/') {
@@ -529,7 +546,7 @@ pub(super) fn collect_path_autocomplete_candidates(
         if let Some(startup_directory) = context.startup_directory.clone() {
             let _ = push_candidate(
                 startup_directory,
-                Some("Startup path".to_string()),
+                Some(localization::palette_startup_path()),
                 true,
                 ordinal,
             );
@@ -538,13 +555,18 @@ pub(super) fn collect_path_autocomplete_candidates(
         if let Some(current_path) = context.current_path.clone() {
             let _ = push_candidate(
                 current_path.clone(),
-                Some("Current directory".to_string()),
+                Some(localization::palette_current_directory()),
                 true,
                 ordinal,
             );
             ordinal += 1;
             if let Some(parent) = remote_parent_path(&current_path) {
-                let _ = push_candidate(parent, Some("Parent directory".to_string()), true, ordinal);
+                let _ = push_candidate(
+                    parent,
+                    Some(localization::palette_parent_directory()),
+                    true,
+                    ordinal,
+                );
                 ordinal += 1;
             }
         }
@@ -560,7 +582,12 @@ pub(super) fn collect_path_autocomplete_candidates(
         )
     {
         let is_dir = path.ends_with('/');
-        let _ = push_candidate(path, Some("Recent path".to_string()), is_dir, ordinal);
+        let _ = push_candidate(
+            path,
+            Some(localization::palette_recent_path()),
+            is_dir,
+            ordinal,
+        );
         ordinal += 1;
     }
 
@@ -744,7 +771,7 @@ pub(super) fn collect_context_command_templates(
         push_templates(
             prefix,
             extract_git_branch_targets(&output_context.recent_lines),
-            "Git branch",
+            &localization::palette_git_branch(),
         );
     } else if matches_command_prefix(&query_lower, "git diff")
         || matches_command_prefix(&query_lower, "git log")
@@ -757,7 +784,7 @@ pub(super) fn collect_context_command_templates(
         push_templates(
             prefix,
             extract_git_branch_targets(&output_context.recent_lines),
-            "Git branch",
+            &localization::palette_git_branch(),
         );
     } else if matches_command_prefix(&query_lower, "docker logs")
         || matches_command_prefix(&query_lower, "docker inspect")
@@ -782,7 +809,7 @@ pub(super) fn collect_context_command_templates(
         push_templates(
             prefix,
             extract_docker_targets(&output_context.recent_lines),
-            "Docker target",
+            &localization::palette_docker_target(),
         );
     } else if matches_command_prefix(&query_lower, "kubectl logs")
         || matches_command_prefix(&query_lower, "kubectl describe pod")
@@ -798,7 +825,7 @@ pub(super) fn collect_context_command_templates(
         push_templates(
             prefix,
             extract_kubernetes_pod_targets(&output_context.recent_lines),
-            "Kubernetes pod",
+            &localization::palette_kubernetes_pod(),
         );
     } else if matches_command_prefix(&query_lower, "systemctl status")
         || matches_command_prefix(&query_lower, "systemctl restart")
@@ -820,7 +847,7 @@ pub(super) fn collect_context_command_templates(
         push_templates(
             prefix,
             extract_systemd_unit_targets(&output_context.recent_lines),
-            "Systemd unit",
+            &localization::palette_systemd_unit(),
         );
     }
 

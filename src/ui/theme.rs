@@ -1,6 +1,6 @@
 use std::sync::{OnceLock, RwLock};
 
-use gpui::Hsla;
+use gpui::{BoxShadow, Hsla, point, px};
 use termirust_ui_contract::{ColorValue, DesignTokens, StatusKind, StatusVisual, ThemeKind};
 
 use crate::models::ThemePreset;
@@ -245,6 +245,37 @@ pub fn modal_scrim() -> Hsla {
     token_color(current_design_tokens().color_overlay_scrim())
 }
 
+pub fn window_close() -> Hsla {
+    token_color(current_design_tokens().color_window_close())
+}
+
+pub fn window_minimize() -> Hsla {
+    token_color(current_design_tokens().color_window_minimize())
+}
+
+pub fn window_zoom() -> Hsla {
+    token_color(current_design_tokens().color_window_zoom())
+}
+
+pub fn native_control_offset_x() -> f32 {
+    -current_design_tokens()
+        .layout_window_native_control_offset()
+        .0
+}
+
+pub fn popover_shadow() -> Vec<BoxShadow> {
+    let shadow = current_design_tokens().shadow_popover();
+    if !shadow.visible {
+        return Vec::new();
+    }
+    vec![BoxShadow {
+        color: token_color(shadow.color),
+        offset: point(px(shadow.x), px(shadow.y)),
+        blur_radius: px(shadow.blur),
+        spread_radius: px(shadow.spread),
+    }]
+}
+
 pub fn card_hover() -> Hsla {
     with_alpha(hover(), 0.82)
 }
@@ -355,21 +386,42 @@ pub fn host_chip_color(label: &str) -> Hsla {
 pub const HOST_SIDEBAR_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
     .layout_host_sidebar_width()
     .0;
+pub const BORDER_HAIRLINE: f32 = DesignTokens::new(ThemeKind::System).border_hairline().0;
 pub const CHROME_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
     .layout_chrome_height()
     .0;
 pub const DIALOG_MAX_WIDTH: f32 = HOST_SIDEBAR_WIDTH + HOST_SIDEBAR_WIDTH;
 pub const ICON_SIZE_DEFAULT: f32 = DesignTokens::new(ThemeKind::System).icon_size_default().0;
+pub const ICON_SIZE_SMALL: f32 = DesignTokens::new(ThemeKind::System).icon_size_small().0;
+pub const ICON_SIZE_MEDIUM: f32 = DesignTokens::new(ThemeKind::System).icon_size_medium().0;
+pub const ICON_SIZE_LARGE: f32 = DesignTokens::new(ThemeKind::System).icon_size_large().0;
+pub const ICON_SIZE_COMPACT: f32 = DesignTokens::new(ThemeKind::System).icon_size_compact().0;
+pub const ICON_SIZE_STATUS: f32 = DesignTokens::new(ThemeKind::System).icon_size_status().0;
+pub const ICON_SIZE_INDICATOR: f32 = DesignTokens::new(ThemeKind::System).icon_size_indicator().0;
 pub const WORKSPACE_HEADER_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
     .layout_workspace_header_height()
     .0;
 pub const CARD_RADIUS: f32 = DesignTokens::new(ThemeKind::System).radius_panel().0;
+pub const CONTROL_RADIUS: f32 = DesignTokens::new(ThemeKind::System).radius_control().0;
+pub const PILL_RADIUS: f32 = DesignTokens::new(ThemeKind::System).radius_pill().0;
 pub const SPACE_2: f32 = DesignTokens::new(ThemeKind::System).space_2().0;
 pub const SPACE_3: f32 = DesignTokens::new(ThemeKind::System).space_3().0;
 pub const SPACE_4: f32 = DesignTokens::new(ThemeKind::System).space_4().0;
 pub const SPACE_5: f32 = DesignTokens::new(ThemeKind::System).space_5().0;
 pub const SPACE_6: f32 = DesignTokens::new(ThemeKind::System).space_6().0;
 pub const SPACE_7: f32 = DesignTokens::new(ThemeKind::System).space_7().0;
+pub const SPACE_0: f32 = DesignTokens::new(ThemeKind::System).space_0().0;
+pub const SPACE_1: f32 = DesignTokens::new(ThemeKind::System).space_1().0;
+pub const SPACE_COMPACT: f32 = DesignTokens::new(ThemeKind::System).space_compact().0;
+pub const SPACE_MICRO: f32 = DesignTokens::new(ThemeKind::System).space_micro().0;
+pub const SPACE_FINE: f32 = DesignTokens::new(ThemeKind::System).space_fine().0;
+pub const SPACE_DENSE: f32 = DesignTokens::new(ThemeKind::System).space_dense().0;
+pub const SHELL_SPACE_DENSE: f32 = DesignTokens::new(ThemeKind::System).space_shell_dense().0;
+pub const SHELL_SPACE_TIGHT: f32 = DesignTokens::new(ThemeKind::System).space_shell_tight().0;
+pub const SHELL_SPACE_COMPACT: f32 = DesignTokens::new(ThemeKind::System).space_shell_compact().0;
+pub const SHELL_BANNER_HORIZONTAL: f32 = DesignTokens::new(ThemeKind::System)
+    .space_shell_banner_horizontal()
+    .0;
 pub const TYPE_CAPTION_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_caption().size;
 pub const TYPE_BODY_SMALL_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_body_small().size;
 pub const TYPE_BODY_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_body().size;
@@ -377,3 +429,51 @@ pub const TYPE_HEADING_SMALL_SIZE: f32 = DesignTokens::new(ThemeKind::System)
     .type_heading_small()
     .size;
 pub const TYPE_HEADING_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_heading().size;
+pub const TYPE_MICRO_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_micro().size;
+pub const TYPE_NANO_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_nano().size;
+pub const TYPE_METRIC_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_metric().size;
+pub const SHELL_COMPACT_CONTROL_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_shell_compact_control_height()
+    .0;
+pub const SHELL_TOOLBAR_BUTTON_SIZE: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_shell_toolbar_button_size()
+    .0;
+pub const SHELL_NAVIGATION_ROW_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_shell_navigation_row_height()
+    .0;
+pub const SHELL_TAB_DROP_MINIMUM: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_shell_tab_drop_minimum()
+    .0;
+pub const SHELL_TRAFFIC_LIGHT_SIZE: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_shell_traffic_light_size()
+    .0;
+pub const SHELL_TAB_LABEL_MAXIMUM: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_shell_tab_label_maximum()
+    .0;
+pub const SHELL_RENAME_FIELD_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_shell_rename_field_width()
+    .0;
+pub const SHELL_WORKSPACE_MENU_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_shell_workspace_menu_width()
+    .0;
+pub const SHELL_PANE_MENU_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_shell_pane_menu_width()
+    .0;
+pub const SHELL_NAV_BADGE_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_shell_nav_badge_width()
+    .0;
+pub const SHELL_NAV_BADGE_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_shell_nav_badge_height()
+    .0;
+pub const PALETTE_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_palette_width()
+    .0;
+pub const PALETTE_OFFSET_TOP: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_palette_offset_top()
+    .0;
+pub const WINDOW_DEFAULT_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_window_default_width()
+    .0;
+pub const WINDOW_DEFAULT_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_window_default_height()
+    .0;

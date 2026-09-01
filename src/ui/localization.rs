@@ -32,6 +32,14 @@ pub fn current_locale() -> Locale {
         .locale()
 }
 
+pub fn message_id(id: MessageId) -> Option<String> {
+    active_localizer()
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .format_static(id)
+        .ok()
+}
+
 pub fn set_development_locale(locale: &str) -> Result<Locale, String> {
     let locale = match locale
         .trim()
@@ -102,7 +110,8 @@ pub fn common_run() -> String {
 }
 
 macro_rules! static_message {
-    ($function:ident, $arguments:ty) => {
+    ($(#[$attribute:meta])* $function:ident, $arguments:ty) => {
+        $(#[$attribute])*
         pub fn $function() -> String {
             text(&<$arguments>::new())
         }
@@ -110,6 +119,105 @@ macro_rules! static_message {
 }
 
 static_message!(cli_settings_title, CliSettingsTitleArgs);
+static_message!(shell_app_title, ShellAppTitleArgs);
+static_message!(shell_layout_split_label, ShellLayoutSplitLabelArgs);
+static_message!(shell_layout_split_tooltip, ShellLayoutSplitTooltipArgs);
+static_message!(shell_layout_canvas_label, ShellLayoutCanvasLabelArgs);
+static_message!(shell_layout_canvas_tooltip, ShellLayoutCanvasTooltipArgs);
+static_message!(shell_tmux_missing, ShellTmuxMissingArgs);
+static_message!(shell_tmux_install_guidance, ShellTmuxInstallGuidanceArgs);
+static_message!(shell_tmux_install_generic, ShellTmuxInstallGenericArgs);
+static_message!(shell_tmux_fallback, ShellTmuxFallbackArgs);
+static_message!(
+    overlay_snippet_prompts_title,
+    OverlaySnippetPromptsTitleArgs
+);
+static_message!(overlay_paste_action, OverlayPasteActionArgs);
+static_message!(palette_this_target, PaletteThisTargetArgs);
+static_message!(palette_recent_command, PaletteRecentCommandArgs);
+static_message!(
+    #[cfg_attr(not(test), allow(dead_code))]
+    palette_startup_path,
+    PaletteStartupPathArgs
+);
+static_message!(
+    #[cfg_attr(not(test), allow(dead_code))]
+    palette_current_directory,
+    PaletteCurrentDirectoryArgs
+);
+static_message!(
+    #[cfg_attr(not(test), allow(dead_code))]
+    palette_parent_directory,
+    PaletteParentDirectoryArgs
+);
+static_message!(
+    #[cfg_attr(not(test), allow(dead_code))]
+    palette_recent_path,
+    PaletteRecentPathArgs
+);
+static_message!(palette_git_branch, PaletteGitBranchArgs);
+static_message!(palette_docker_target, PaletteDockerTargetArgs);
+static_message!(palette_kubernetes_pod, PaletteKubernetesPodArgs);
+static_message!(palette_systemd_unit, PaletteSystemdUnitArgs);
+
+pub fn shell_duplicate_window_progress(target: impl Into<String>) -> String {
+    text(&ShellDuplicateWindowProgressArgs::new(UserData::new(
+        target,
+    )))
+}
+
+pub fn shell_duplicate_window_error(reason: impl Into<String>) -> String {
+    text(&ShellDuplicateWindowErrorArgs::new(UserData::new(reason)))
+}
+
+pub fn overlay_command_preview(command: impl Into<String>) -> String {
+    text(&OverlayCommandPreviewArgs::new(UserData::new(command)))
+}
+
+pub fn overlay_paste_confirmation(count: usize) -> String {
+    text(&OverlayPasteConfirmationArgs::new(Count(count as u64)))
+}
+
+pub fn overlay_paste_preview(preview: impl Into<String>) -> String {
+    text(&OverlayPastePreviewArgs::new(UserData::new(preview)))
+}
+
+pub fn palette_history_detail(scope: impl Into<String>) -> String {
+    text(&PaletteHistoryDetailArgs::new(UserData::new(scope)))
+}
+
+pub fn palette_pinned_snippet_detail(command: impl Into<String>) -> String {
+    text(&PalettePinnedSnippetDetailArgs::new(UserData::new(command)))
+}
+
+pub fn palette_snippet_detail(command: impl Into<String>) -> String {
+    text(&PaletteSnippetDetailArgs::new(UserData::new(command)))
+}
+
+pub fn palette_pinned_group_snippet_detail(
+    group: impl Into<String>,
+    command: impl Into<String>,
+) -> String {
+    text(&PalettePinnedGroupSnippetDetailArgs::new(
+        UserData::new(group),
+        UserData::new(command),
+    ))
+}
+
+pub fn palette_group_snippet_detail(
+    group: impl Into<String>,
+    command: impl Into<String>,
+) -> String {
+    text(&PaletteGroupSnippetDetailArgs::new(
+        UserData::new(group),
+        UserData::new(command),
+    ))
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn palette_files_scope(path: impl Into<String>) -> String {
+    text(&PaletteFilesScopeArgs::new(UserData::new(path)))
+}
 static_message!(cli_settings_description, CliSettingsDescriptionArgs);
 static_message!(cli_settings_state_available, CliSettingsStateAvailableArgs);
 static_message!(

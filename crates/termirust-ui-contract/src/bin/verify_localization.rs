@@ -2,7 +2,9 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use termirust_ui_contract::localization_lint::{verify_copy_baseline, write_copy_baseline};
+use termirust_ui_contract::localization_lint::{
+    verify_copy_baseline, verify_zero_copy_paths, write_copy_baseline,
+};
 use termirust_ui_contract::{load_catalog, load_message_schema, validate_catalog_set};
 
 fn main() -> ExitCode {
@@ -18,6 +20,8 @@ fn main() -> ExitCode {
 fn run() -> Result<(), String> {
     let mut write = false;
     let mut locales = None;
+    let mut paths = None;
+    let mut zero_legacy = false;
     let mut arguments = env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -29,6 +33,14 @@ fn run() -> Result<(), String> {
                 );
             }
             "--no-new-baseline" => {}
+            "--paths" => {
+                paths = Some(
+                    arguments
+                        .next()
+                        .ok_or_else(|| "--paths requires a comma-separated value".to_string())?,
+                );
+            }
+            "--zero-legacy" => zero_legacy = true,
             "--write-baseline" => write = true,
             "--help" | "-h" => {
                 println!(
@@ -54,7 +66,13 @@ fn run() -> Result<(), String> {
     validate_catalog_set(&schema, &english, &en_xa, &ar_xb).map_err(|error| error.to_string())?;
 
     let baseline = root.join("design/legacy-user-copy.toml");
-    let count = if write {
+    let count = if let Some(paths) = paths {
+        if write || !zero_legacy {
+            return Err("--paths requires --zero-legacy and cannot write a baseline".to_string());
+        }
+        let paths = paths.split(',').map(PathBuf::from).collect::<Vec<_>>();
+        verify_zero_copy_paths(&root, &paths).map_err(|error| error.to_string())?
+    } else if write {
         if env::var("TERMIRUST_MAINTENANCE_ALLOW_COPY_BASELINE_WRITE").as_deref() != Ok("1") {
             return Err(
                 "copy baseline writes are maintenance-only; normal checks may not add exceptions"

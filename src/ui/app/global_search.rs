@@ -10,7 +10,9 @@ use termirust_domain::{
 };
 
 use super::TermiRustApp;
-use super::palette::{CommandPaletteCandidate, PaletteAction, PaletteCategory};
+use super::palette::{
+    CommandPaletteCandidate, PaletteAction, PaletteCategory, command_palette_result_id,
+};
 use crate::ui::autocomplete::AutocompleteSource;
 use crate::ui::localization;
 
@@ -395,6 +397,8 @@ impl TermiRustApp {
             return;
         }
         self.refresh_global_search_index();
+        let current_candidates = self.command_palette_candidates(cx);
+        self.reconcile_command_palette_selection(&current_candidates);
         let query = match SearchQuery::parse(&self.command_palette_query(cx)) {
             Ok(query) => query,
             Err(SearchError::QueryTooLong) => {
@@ -446,10 +450,8 @@ impl TermiRustApp {
                     Err(SearchError::Cancelled) => return,
                     Err(_) => app.global_search.failure = Some(GlobalSearchFailure::Partial),
                 }
-                let candidate_count = app.command_palette_candidates(cx).len();
-                app.selected_command_palette_index = app
-                    .selected_command_palette_index
-                    .min(candidate_count.saturating_sub(1));
+                let candidates = app.command_palette_candidates(cx);
+                app.reconcile_command_palette_selection(&candidates);
                 cx.notify();
             });
         })
@@ -493,6 +495,7 @@ pub(super) fn search_result_candidate(result: &SearchResult) -> CommandPaletteCa
     .collect::<Vec<_>>()
     .join(" / ");
     CommandPaletteCandidate {
+        id: command_palette_result_id(2, &format!("{:?}", result.id)),
         command: String::new(),
         title: result.title.clone(),
         detail: location,

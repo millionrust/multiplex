@@ -252,7 +252,7 @@ impl TermiRustApp {
                     .child(
                         div()
                             .size(px(44.))
-                            .rounded(px(8.))
+                            .rounded(px(theme::CARD_RADIUS))
                             .flex()
                             .items_center()
                             .justify_center()
@@ -307,7 +307,7 @@ impl TermiRustApp {
                 h_flex()
                     .w(px(520.))
                     .items_center()
-                    .gap(px(8.))
+                    .gap(px(theme::SPACE_3))
                     .child(
                         div()
                             .size(px(28.))
@@ -555,7 +555,7 @@ impl TermiRustApp {
                             .bg(theme::with_alpha(theme::warning(), 0.08))
                             .child(
                                 div()
-                                    .text_size(px(12.))
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .text_color(theme::text_main())
                                     .child(
                                         "Agent forwarding lets this server request signatures from your local SSH agent for this connection only.",
@@ -642,9 +642,11 @@ impl TermiRustApp {
         let subtitle = subtitle.to_string();
         h_flex()
             .id(id)
-            .w(px(420.))
+            .w(px(theme::current_design_tokens()
+                .layout_connect_panel_width()
+                .0))
             .min_h(px(64.))
-            .py(px(10.))
+            .py(px(theme::SPACE_COMPACT))
             .px(px(14.))
             .gap(px(12.))
             .items_center()

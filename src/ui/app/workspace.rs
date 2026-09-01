@@ -66,7 +66,7 @@ impl TermiRustApp {
                 )
                 .child(
                     div()
-                        .text_size(px(13.))
+                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                         .text_color(theme::text_muted_dark())
                         .child(format!("{current_match}/{matches}")),
                 )
@@ -208,10 +208,10 @@ impl TermiRustApp {
                             .gap_3()
                             .child(
                                 v_flex()
-                                    .gap(px(2.))
+                    .gap(px(theme::SPACE_1))
                                     .child(
                                         div()
-                                            .text_size(px(13.))
+                                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                             .font_medium()
                                             .text_color(theme::text_muted_dark())
                                             .child("Remote Path"),
@@ -252,7 +252,7 @@ impl TermiRustApp {
                     .when_some(selected_entry.as_ref(), |this, entry| {
                         this.child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted_dark())
                                 .child(if entry.is_dir {
                                     format!("Selected folder: {}", entry.path)
@@ -377,14 +377,14 @@ impl TermiRustApp {
                                         .gap(px(2.))
                                         .child(
                                             div()
-                                                .text_size(px(13.))
+                                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                                 .font_semibold()
                                                 .text_color(theme::text_on_dark())
                                                 .child(transfer.status.clone()),
                                         )
                                         .child(
                                             div()
-                                                .text_size(px(12.))
+                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                                 .text_color(theme::text_muted_dark())
                                                 .child(format!(
                                                     "{} of {}  ·  {progress_percent}%{}",
@@ -441,14 +441,24 @@ impl TermiRustApp {
                             this.child(
                                 div()
                                     .w_full()
-                                    .h(px(6.))
-                                    .rounded(px(3.))
+                                    .h(px(
+                                        theme::current_design_tokens()
+                                            .layout_progress_compact_height()
+                                            .0,
+                                    ))
+                                    .rounded(px(
+                                        theme::current_design_tokens().radius_progress().0,
+                                    ))
                                     .bg(theme::with_alpha(theme::border_dark(), 0.7))
                                     .child(
                                         div()
                                             .h_full()
                                             .w(relative(progress))
-                                            .rounded(px(3.))
+                                            .rounded(px(
+                                                theme::current_design_tokens()
+                                                    .radius_progress()
+                                                    .0,
+                                            ))
                                             .bg(theme::accent()),
                                     ),
                             )
@@ -462,7 +472,7 @@ impl TermiRustApp {
                                     .items_center()
                                     .child(
                                         div()
-                                            .text_size(px(12.))
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                                             .text_color(theme::warning())
                                             .child(format!(
                                                 "Destination contains {}. Nothing has been changed.",
@@ -523,7 +533,7 @@ impl TermiRustApp {
                         .when_some(transfer.sha256.as_ref(), |this, checksum| {
                             this.child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .text_color(theme::text_muted_dark())
                                     .child(format!("SHA-256 {checksum}")),
                             )
@@ -645,7 +655,7 @@ impl TermiRustApp {
                                             )
                                             .child(
                                                 div()
-                                                    .text_size(px(12.))
+                                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                                     .text_color(theme::text_muted_dark())
                                                     .child(entry.path.clone()),
                                             ),
@@ -657,7 +667,7 @@ impl TermiRustApp {
                                     .items_center()
                                     .child(
                                         div()
-                                            .text_size(px(12.))
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                                             .text_color(theme::text_muted_dark())
                                             .child(kind),
                                     )

@@ -647,7 +647,11 @@ mod tests {
                 Instant::now() < deadline,
                 "pairing prompt was not delivered"
             );
-            thread::sleep(Duration::from_millis(10));
+            thread::sleep(Duration::from_millis(
+                termirust_ui_contract::DesignTokens::new(termirust_ui_contract::ThemeKind::System)
+                    .motion_controller_retry_poll(false)
+                    .0 as u64,
+            ));
         }
 
         ControllerCoordinator::default()

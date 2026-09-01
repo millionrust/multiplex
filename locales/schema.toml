@@ -3704,3 +3704,225 @@ name = "bytes"
 type = "ByteSize"
 sensitivity = "public"
 bidi = "none"
+
+[[messages]]
+id = "shell-app-title"
+context = "Public desktop application title."
+description = "Application title"
+[[messages]]
+id = "shell-duplicate-window-progress"
+context = "Status while duplicating a workspace into a new desktop window."
+description = "Duplicate window progress"
+[[messages.args]]
+name = "target"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "shell-duplicate-window-error"
+context = "Safe visible error when a duplicate desktop window cannot open."
+description = "Duplicate window error"
+[[messages.args]]
+name = "reason"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "shell-layout-split-label"
+context = "Segmented control label for split-pane workspace layout."
+description = "Split layout label"
+[[messages]]
+id = "shell-layout-split-tooltip"
+context = "Tooltip for split-pane workspace layout."
+description = "Split layout tooltip"
+[[messages]]
+id = "shell-layout-canvas-label"
+context = "Segmented control label for agent canvas workspace layout."
+description = "Canvas layout label"
+[[messages]]
+id = "shell-layout-canvas-tooltip"
+context = "Tooltip for agent canvas workspace layout."
+description = "Canvas layout tooltip"
+[[messages]]
+id = "overlay-snippet-prompts-title"
+context = "Heading above fields required by a saved snippet."
+description = "Snippet prompts heading"
+[[messages]]
+id = "overlay-command-preview"
+context = "Private command preview beneath the snippet prompts heading."
+description = "Command preview"
+[[messages.args]]
+name = "command"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "overlay-paste-confirmation"
+context = "Confirmation question before a multi-line terminal paste."
+description = "Multi-line paste confirmation"
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "overlay-paste-preview"
+context = "Private first-line preview in a multi-line terminal paste confirmation."
+description = "Paste first-line preview"
+[[messages.args]]
+name = "preview"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "overlay-paste-action"
+context = "Action confirming a guarded terminal paste."
+description = "Paste action"
+[[messages]]
+id = "palette-this-target"
+context = "Fallback scope label for command history from the active target."
+description = "Current target scope"
+[[messages]]
+id = "palette-history-detail"
+context = "Global palette detail for a command from scoped history."
+description = "History detail"
+[[messages.args]]
+name = "scope"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "palette-recent-command"
+context = "Global palette detail for a recent command."
+description = "Recent command detail"
+[[messages]]
+id = "palette-pinned-snippet-detail"
+context = "Global palette detail for a pinned snippet without a group."
+description = "Pinned snippet detail"
+[[messages.args]]
+name = "command"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "palette-snippet-detail"
+context = "Global palette detail for a snippet without a group."
+description = "Snippet detail"
+[[messages.args]]
+name = "command"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "palette-pinned-group-snippet-detail"
+context = "Global palette detail for a pinned grouped snippet."
+description = "Pinned grouped snippet detail"
+[[messages.args]]
+name = "group"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "command"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "palette-group-snippet-detail"
+context = "Global palette detail for a grouped snippet."
+description = "Grouped snippet detail"
+[[messages.args]]
+name = "group"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "command"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "palette-files-scope"
+context = "Autocomplete scope for entries from the current file browser path."
+description = "Files scope"
+[[messages.args]]
+name = "path"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "palette-startup-path"
+context = "Autocomplete detail for the configured startup path."
+description = "Startup path detail"
+[[messages]]
+id = "palette-current-directory"
+context = "Autocomplete detail for the current terminal directory."
+description = "Current directory detail"
+[[messages]]
+id = "palette-parent-directory"
+context = "Autocomplete detail for the parent directory."
+description = "Parent directory detail"
+[[messages]]
+id = "palette-recent-path"
+context = "Autocomplete detail for a path extracted from recent commands."
+description = "Recent path detail"
+[[messages]]
+id = "palette-git-branch"
+context = "Autocomplete detail for a Git branch target."
+description = "Git branch detail"
+[[messages]]
+id = "palette-docker-target"
+context = "Autocomplete detail for a Docker resource target."
+description = "Docker target detail"
+[[messages]]
+id = "palette-kubernetes-pod"
+context = "Autocomplete detail for a Kubernetes pod target."
+description = "Kubernetes pod detail"
+[[messages]]
+id = "palette-systemd-unit"
+context = "Autocomplete detail for a systemd unit target."
+description = "Systemd unit detail"
+[[messages]]
+id = "shell-tmux-missing"
+context = "Terminal guidance when persistent sessions cannot start because tmux is absent."
+description = "Tmux missing guidance"
+[[messages]]
+id = "shell-tmux-install-guidance"
+context = "Instruction before the detected package-manager command for installing tmux."
+description = "Tmux install guidance"
+[[messages]]
+id = "shell-tmux-install-generic"
+context = "Fallback tmux installation instruction when no known package manager is detected."
+description = "Generic tmux install guidance"
+[[messages]]
+id = "shell-tmux-fallback"
+context = "Notice that TermiRust opened a normal shell after tmux was unavailable."
+description = "Normal shell fallback notice"
+[[messages]]
+id = "shell-region-window-chrome"
+context = "Accessible landmark name for desktop window chrome."
+description = "Window chrome landmark"
+[[messages]]
+id = "shell-region-primary-navigation"
+context = "Accessible landmark name for desktop primary navigation."
+description = "Primary navigation landmark"
+[[messages]]
+id = "shell-region-content"
+context = "Accessible landmark name for the current application content."
+description = "Content landmark"
+[[messages]]
+id = "shell-region-inspector"
+context = "Accessible landmark name for an open inspector or editor panel."
+description = "Inspector landmark"
+[[messages]]
+id = "shell-region-status"
+context = "Accessible name for the shell status live region."
+description = "Status landmark"
+[[messages]]
+id = "shell-skip-content"
+context = "Accessible skip-navigation action moving focus to current content."
+description = "Skip to content action"
+[[messages]]
+id = "shell-palette-result"
+context = "Privacy-safe accessible name for one global palette result."
+description = "Palette result name"

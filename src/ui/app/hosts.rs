@@ -156,14 +156,14 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .flex_1()
-                    .gap(px(2.))
+                    .gap(px(theme::SPACE_1))
                     .child(
                         h_flex()
                             .gap(px(6.))
                             .items_center()
                             .child(
                                 div()
-                                    .text_size(px(13.))
+                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_main())
                                     .child(profile.display_name()),
@@ -178,7 +178,7 @@ impl TermiRustApp {
                     )
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
                             .child(sublabel),
                     ),
@@ -239,7 +239,7 @@ impl TermiRustApp {
                             .id(("host-row-edit", card_ix))
                             .debug_selector(move || format!("host-row-edit-{card_ix}"))
                             .size(px(28.))
-                            .rounded(px(6.))
+                            .rounded(px(theme::CONTROL_RADIUS))
                             .flex()
                             .items_center()
                             .justify_center()
@@ -287,7 +287,7 @@ impl TermiRustApp {
             .debug_selector(move || format!("host-row-list-{card_ix}"))
             .w_full()
             .h(px(40.))
-            .gap(px(10.))
+            .gap(px(theme::SPACE_COMPACT))
             .px(px(10.))
             .items_center()
             .rounded(px(6.))
@@ -466,7 +466,7 @@ impl TermiRustApp {
                         .child(
                             h_flex()
                                 .items_end()
-                                .gap(px(8.))
+                                .gap(px(theme::SPACE_3))
                                 .child(
                                     div()
                                         .text_size(px(12.))
@@ -476,7 +476,7 @@ impl TermiRustApp {
                                 )
                                 .child(
                                     div()
-                                        .text_size(px(11.))
+                                        .text_size(px(theme::TYPE_MICRO_SIZE))
                                         .text_color(theme::text_muted())
                                         .pb(px(1.))
                                         .child(format!(
@@ -864,7 +864,7 @@ impl TermiRustApp {
             .child(
                 div()
                     .flex_1()
-                    .text_size(px(12.))
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                     .text_color(theme::text_main())
                     .child(label),
             )
@@ -1189,7 +1189,7 @@ impl TermiRustApp {
                         )
                         .child(
                             div()
-                                .text_size(px(11.))
+                                .text_size(px(theme::TYPE_MICRO_SIZE))
                                 .text_color(theme::text_muted())
                                 .child(
                                     "Tags help you filter your hosts. You can add a tag when editing a host.",
@@ -1378,7 +1378,7 @@ impl TermiRustApp {
             .pr(px(6.))
             .gap(px(4.))
             .items_center()
-            .rounded(px(999.))
+            .rounded(px(theme::PILL_RADIUS))
             .border_2()
             .border_color(theme::accent())
             .bg(theme::library_card())
@@ -1423,7 +1423,7 @@ impl TermiRustApp {
             .items_center()
             .justify_center()
             .bg(theme::warning())
-            .text_size(px(10.))
+            .text_size(px(theme::TYPE_NANO_SIZE))
             .font_semibold()
             .text_color(gpui::white())
             .cursor_pointer()
@@ -1456,7 +1456,7 @@ impl TermiRustApp {
                             .w_full()
                             .h(px(36.))
                             .px(px(12.))
-                            .gap(px(8.))
+                            .gap(px(theme::SPACE_3))
                             .items_center()
                             .rounded(px(8.))
                             .bg(theme::with_alpha(theme::hover(), 0.6))
@@ -1719,8 +1719,8 @@ impl TermiRustApp {
         let mut panel = v_flex()
             .id("connection-diagnostics-panel")
             .w_full()
-            .gap(px(8.))
-            .py(px(10.))
+            .gap(px(theme::SPACE_3))
+            .py(px(theme::SPACE_COMPACT))
             .border_b_1()
             .border_color(theme::soft_border())
             .child(
@@ -1740,7 +1740,7 @@ impl TermiRustApp {
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .text_color(theme::text_muted())
                                     .child(format!(
                                         "{active} active  |  {passed} healthy  |  {attention} need attention"
@@ -1788,17 +1788,19 @@ impl TermiRustApp {
                 h_flex()
                     .id(("connection-diagnostic-row", operation_id))
                     .w_full()
-                    .min_h(px(56.))
+                    .min_h(px(theme::current_design_tokens()
+                        .layout_host_compact_row_height()
+                        .0))
                     .gap(px(10.))
                     .px(px(10.))
-                    .py(px(8.))
+                    .py(px(theme::SPACE_3))
                     .rounded(px(6.))
                     .bg(theme::with_alpha(theme::hover(), 0.45))
                     .border_1()
                     .border_color(theme::soft_border())
                     .child(
                         div()
-                            .size(px(8.))
+                            .size(px(theme::ICON_SIZE_INDICATOR))
                             .rounded(px(999.))
                             .bg(status_color)
                             .flex_none(),
@@ -1807,10 +1809,10 @@ impl TermiRustApp {
                         v_flex()
                             .min_w_0()
                             .flex_1()
-                            .gap(px(3.))
+                            .gap(px(theme::SPACE_MICRO))
                             .child(
                                 h_flex()
-                                    .gap(px(8.))
+                                    .gap(px(theme::SPACE_3))
                                     .child(
                                         div()
                                             .min_w_0()
@@ -1822,7 +1824,7 @@ impl TermiRustApp {
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(10.))
+                                            .text_size(px(theme::TYPE_NANO_SIZE))
                                             .font_semibold()
                                             .text_color(status_color)
                                             .child(row.status.label()),
@@ -1830,7 +1832,7 @@ impl TermiRustApp {
                                     .when(!elapsed.is_empty(), |this| {
                                         this.child(
                                             div()
-                                                .text_size(px(10.))
+                                                .text_size(px(theme::TYPE_NANO_SIZE))
                                                 .text_color(theme::text_muted())
                                                 .child(elapsed),
                                         )
@@ -1838,7 +1840,7 @@ impl TermiRustApp {
                             )
                             .child(
                                 div()
-                                    .text_size(px(10.))
+                                    .text_size(px(theme::TYPE_NANO_SIZE))
                                     .text_color(theme::text_muted())
                                     .child(format!(
                                         "{}  |  {}  |  {}",
@@ -1849,7 +1851,7 @@ impl TermiRustApp {
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .text_color(
                                         if row.status == ConnectionDiagnosticStatus::Failed {
                                             theme::danger()

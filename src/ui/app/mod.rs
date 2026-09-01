@@ -97,6 +97,12 @@ use termirust_store::{
     HealthReport, HealthRepository, IndexRepairKind, MetadataRecoveryService, RecoveryCancellation,
     RecoveryPlan, RepairCancellation,
 };
+use termirust_ui_contract::PalettePresentationState;
+use termirust_ui_contract::{
+    AnnouncementPolicy, FocusReturn, OverlayFrame, OverlayId, OverlayKind, OverlayOwner,
+    OverlayPhase, OverlayStack, SemanticActionValue, ShellAccessibilityCommand, ShellRegionId,
+    ShellSemanticSnapshot,
+};
 use tokio_util::sync::CancellationToken;
 use vt100::MouseProtocolMode;
 
@@ -124,6 +130,7 @@ use crate::storage::{
     project_store_dir, save_saved_state,
 };
 use crate::terminal::{TerminalSize, TerminalState};
+use crate::ui::accessibility::shell::ShellAccessibilityAdapter;
 use crate::ui::autocomplete::{AutocompleteCandidate, AutocompleteSource};
 use crate::ui::keys::{MouseEventKind, encode_mouse_report, encode_terminal_input};
 use crate::ui::localization;
@@ -1022,7 +1029,7 @@ impl Render for WorkspaceTabDragPreview {
             )
             .child(
                 div()
-                    .text_size(px(14.))
+                    .text_size(px(theme::TYPE_BODY_SIZE))
                     .font_semibold()
                     .text_color(theme::text_on_dark())
                     .child(self.title.clone()),
@@ -1101,6 +1108,7 @@ pub struct TermiRustApp {
     dev_url_ui: DevUrlUiState,
     window_active: bool,
     global_search: GlobalSearchState,
+    shell_accessibility: ShellAccessibilityAdapter,
     project_list_focus: FocusHandle,
     preset_library: PresetLibraryState,
     preset_label_input: Entity<InputState>,
@@ -1199,6 +1207,9 @@ pub struct TermiRustApp {
     canvas_node_rename_id: Option<crate::models::CanvasNodeId>,
     canvas_note_edit_id: Option<crate::models::CanvasNodeId>,
     selected_command_palette_index: usize,
+    palette_presentation: PalettePresentationState,
+    overlay_stack: OverlayStack,
+    palette_overlay_id: OverlayId,
     command_palette_origin_focus: Option<FocusHandle>,
     tab_rename_workspace_id: Option<u64>,
     open_workspace_tab_menu: Option<u64>,
@@ -1282,6 +1293,7 @@ impl TermiRustApp {
             |this, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) && this.show_command_palette {
                     this.selected_command_palette_index = 0;
+                    this.palette_presentation.reset();
                     this.queue_global_palette_search(cx);
                 }
             },
@@ -1408,6 +1420,7 @@ impl TermiRustApp {
             dev_url_ui: DevUrlUiState::open_default(cx),
             window_active: window.is_window_active(),
             global_search: GlobalSearchState::new(),
+            shell_accessibility: ShellAccessibilityAdapter::new(),
             project_list_focus,
             preset_library,
             preset_label_input,
@@ -1507,6 +1520,9 @@ impl TermiRustApp {
             canvas_node_rename_id: None,
             canvas_note_edit_id: None,
             selected_command_palette_index: 0,
+            palette_presentation: PalettePresentationState::default(),
+            overlay_stack: OverlayStack::default(),
+            palette_overlay_id: OverlayId::new(1).expect("palette overlay ID is non-zero"),
             command_palette_origin_focus: None,
             tab_rename_workspace_id: None,
             open_workspace_tab_menu: None,
@@ -1571,6 +1587,7 @@ impl TermiRustApp {
                     .update(|window, cx| {
                         let _ = this.update(cx, |app, cx| {
                             app.process_events(cx);
+                            app.process_shell_accessibility_actions(window, cx);
                             app.refresh_remote_listener_process(cx);
                             app.process_artifact_progress(cx);
                             app.process_activity_activation(window, cx);
@@ -1604,6 +1621,51 @@ impl TermiRustApp {
 
     fn terminal_font_size(&self) -> f32 {
         self.saved.settings.terminal_font_size as f32
+    }
+
+    fn process_shell_accessibility_actions(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        for event in self.shell_accessibility.drain() {
+            match event.command {
+                ShellAccessibilityCommand::SkipToContent
+                | ShellAccessibilityCommand::FocusRegion(ShellRegionId::Content) => {
+                    if let Some(pane) = self.active_pane() {
+                        pane.terminal_focus.focus(window);
+                    } else {
+                        self.project_list_focus.focus(window);
+                    }
+                }
+                ShellAccessibilityCommand::FocusRegion(_) => {
+                    self.project_list_focus.focus(window);
+                }
+                ShellAccessibilityCommand::DismissPalette => {
+                    if self.show_command_palette {
+                        self.close_command_palette(window, cx);
+                    }
+                }
+                ShellAccessibilityCommand::FocusPaletteInput => {
+                    if self.show_command_palette {
+                        self.focus_command_palette(window, cx);
+                    }
+                }
+                ShellAccessibilityCommand::SetPaletteQuery => {
+                    if self.show_command_palette
+                        && let Some(SemanticActionValue::Text(value)) = event.value
+                    {
+                        self.set_command_palette_input(&value, window, cx);
+                    }
+                }
+                ShellAccessibilityCommand::FocusPaletteResult(index) => {
+                    if self.show_command_palette {
+                        self.set_command_palette_selection(index, cx);
+                    }
+                }
+                ShellAccessibilityCommand::ActivatePaletteResult(index) => {
+                    if self.show_command_palette {
+                        self.activate_command_palette_candidate(index, window, cx);
+                    }
+                }
+            }
+        }
     }
 
     fn load_settings_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -4094,9 +4156,23 @@ impl TermiRustApp {
         Self::set_input_value(&self.shell_inputs.command_palette, value, window, cx);
     }
 
+    fn close_palette_overlay_contract(&mut self) {
+        if self
+            .overlay_stack
+            .begin_close(self.palette_overlay_id, 1)
+            .is_ok()
+        {
+            let _ = self
+                .overlay_stack
+                .finish_close(self.palette_overlay_id, 1, |_| true);
+        }
+    }
+
     fn close_command_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.close_palette_overlay_contract();
         self.show_command_palette = false;
         self.selected_command_palette_index = 0;
+        self.palette_presentation.reset();
         self.global_search.cancel();
         self.set_command_palette_input("", window, cx);
         if let Some(origin) = self.command_palette_origin_focus.take() {
@@ -4115,6 +4191,22 @@ impl TermiRustApp {
 
         self.command_palette_origin_focus = window.focused(cx);
         self.selected_command_palette_index = 0;
+        self.palette_presentation.reset();
+        let frame = OverlayFrame {
+            id: self.palette_overlay_id,
+            kind: OverlayKind::GlobalPalette,
+            owner: OverlayOwner {
+                window_generation: 1,
+                owner: FocusReturn::Region(ShellRegionId::Content),
+            },
+            focus_scope: self.palette_overlay_id.get(),
+            safe_action: FocusReturn::Region(ShellRegionId::Content),
+            announcements: AnnouncementPolicy::Coalesced,
+            phase: OverlayPhase::Opening,
+        };
+        if self.overlay_stack.open(frame).is_ok() {
+            let _ = self.overlay_stack.mark_open(self.palette_overlay_id, 1);
+        }
         self.set_command_palette_input("", window, cx);
         self.show_command_palette = true;
         self.queue_global_palette_search(cx);
@@ -4129,8 +4221,10 @@ impl TermiRustApp {
         self.nav_section = NavSection::Hosts;
         self.set_terminal_search_input("", window, cx);
         self.set_command_palette_input("", window, cx);
+        self.close_palette_overlay_contract();
         self.show_command_palette = false;
         self.selected_command_palette_index = 0;
+        self.palette_presentation.reset();
         self.command_palette_origin_focus = None;
         self.global_search.cancel();
         self.status_message = "Host library ready.".to_string();
@@ -4151,8 +4245,10 @@ impl TermiRustApp {
         }
         self.nav_section = section;
         self.set_command_palette_input("", window, cx);
+        self.close_palette_overlay_contract();
         self.show_command_palette = false;
         self.selected_command_palette_index = 0;
+        self.palette_presentation.reset();
         self.command_palette_origin_focus = None;
         self.global_search.cancel();
         self.error_message.clear();
@@ -8742,6 +8838,19 @@ impl TermiRustApp {
             .min(candidate_count.saturating_sub(1))
     }
 
+    fn reconcile_command_palette_selection(&mut self, candidates: &[CommandPaletteCandidate]) {
+        let ids = candidates
+            .iter()
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>();
+        if let Ok(index) = self.palette_presentation.reconcile(&ids) {
+            self.selected_command_palette_index = index;
+        } else {
+            self.palette_presentation.reset();
+            self.selected_command_palette_index = 0;
+        }
+    }
+
     fn move_command_palette_selection(&mut self, delta: isize, cx: &mut Context<Self>) -> bool {
         let candidates = self.command_palette_candidates(cx);
         if candidates.is_empty() {
@@ -8751,6 +8860,12 @@ impl TermiRustApp {
         self.selected_command_palette_index =
             (self.selected_command_palette_index(candidates.len()) as isize + delta)
                 .rem_euclid(candidates.len() as isize) as usize;
+        let ids = candidates
+            .iter()
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>();
+        self.palette_presentation
+            .select(&ids, self.selected_command_palette_index);
         cx.notify();
         true
     }
@@ -8761,6 +8876,13 @@ impl TermiRustApp {
             return false;
         }
         self.selected_command_palette_index = index.min(candidate_count - 1);
+        let candidates = self.command_palette_candidates(cx);
+        let ids = candidates
+            .iter()
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>();
+        self.palette_presentation
+            .select(&ids, self.selected_command_palette_index);
         cx.notify();
         true
     }
@@ -9036,8 +9158,10 @@ impl TermiRustApp {
         }
 
         if search_visible {
+            self.close_palette_overlay_contract();
             self.show_command_palette = false;
             self.selected_command_palette_index = 0;
+            self.palette_presentation.reset();
             self.set_command_palette_input("", window, cx);
             self.focus_terminal_search(window, cx);
         } else {
@@ -9634,7 +9758,7 @@ impl TermiRustApp {
                         )
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
                                 .child(
                                     "Select a group, target it for bulk assignment, or load its defaults into the editor.",
@@ -9839,7 +9963,7 @@ impl TermiRustApp {
             .gap_2()
             .child(
                 div()
-                    .text_size(px(13.))
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .font_medium()
                     .text_color(theme::text_main())
                     .child("Saved identities"),
@@ -9852,7 +9976,7 @@ impl TermiRustApp {
                         .bg(theme::with_alpha(theme::hover(), 0.72))
                         .border_1()
                         .border_color(theme::border())
-                        .text_size(px(12.))
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
                         .text_color(theme::text_muted())
                         .child("No saved identities yet. Add a key file or use one imported at launch."),
                 )
@@ -9902,7 +10026,7 @@ impl TermiRustApp {
                                                     .items_center()
                                                     .child(
                                                         div()
-                                                            .text_size(px(13.))
+                                                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                                             .font_semibold()
                                                             .text_color(theme::text_main())
                                                             .child(display_identity.label.clone()),
@@ -9935,7 +10059,7 @@ impl TermiRustApp {
                                             )
                                             .child(
                                                 div()
-                                                    .text_size(px(12.))
+                                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                                     .text_color(theme::text_muted())
                                                     .child(display_identity.kind.clone()),
                                             )
@@ -9966,7 +10090,7 @@ impl TermiRustApp {
             .gap_2()
             .child(
                 div()
-                    .text_size(px(13.))
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .font_medium()
                     .text_color(theme::text_main())
                     .child("Vault"),
@@ -10007,7 +10131,7 @@ impl TermiRustApp {
                                     .items_center()
                                     .child(
                                         div()
-                                            .text_size(px(13.))
+                                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                             .font_medium()
                                             .text_color(if is_selected {
                                                 theme::text_main()
@@ -10035,7 +10159,7 @@ impl TermiRustApp {
             .debug_selector(|| "persistent-session-settings".to_string())
             .gap_3()
             .p_3()
-            .rounded(px(8.))
+            .rounded(px(theme::CARD_RADIUS))
             .bg(if self.draft_persistent_session {
                 theme::with_alpha(theme::accent(), 0.08)
             } else {
@@ -10071,7 +10195,7 @@ impl TermiRustApp {
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .line_height(relative(1.45))
                             .text_color(theme::text_muted())
                             .child(
@@ -10083,9 +10207,11 @@ impl TermiRustApp {
                             .id("persistent-session-toggle")
                             .debug_selector(|| "persistent-session-toggle".to_string())
                             .w_full()
-                            .h(px(28.))
+                            .h(px(
+                                theme::current_design_tokens().control_height_compact().0,
+                            ))
                             .px_3()
-                            .rounded(px(6.))
+                            .rounded(px(theme::CONTROL_RADIUS))
                             .border_1()
                             .border_color(if self.draft_persistent_session {
                                 theme::border()
@@ -10108,7 +10234,7 @@ impl TermiRustApp {
                             }))
                             .child(
                                 div()
-                                    .text_size(px(12.))
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .font_medium()
                                     .text_color(if self.draft_persistent_session {
                                         theme::text_main()
@@ -10141,7 +10267,7 @@ impl TermiRustApp {
                                         .gap_2()
                                         .child(
                                             div()
-                                                .text_size(px(12.))
+                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                                 .text_color(theme::text_muted())
                                                 .child("Attach behavior"),
                                         )
@@ -10176,7 +10302,7 @@ impl TermiRustApp {
                         )
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .line_height(relative(1.45))
                                 .text_color(theme::text_muted())
                                 .child(
@@ -10190,7 +10316,7 @@ impl TermiRustApp {
                 |this| {
                     this.child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::warning())
                             .child(
                                 "Detach others can disconnect another TermiRust window or terminal from this tmux session.",
@@ -10244,7 +10370,7 @@ impl TermiRustApp {
                     .gap_2()
                     .child(
                         div()
-                            .text_size(px(14.))
+                            .text_size(px(theme::TYPE_BODY_SIZE))
                             .font_medium()
                             .text_color(theme::text_main())
                             .child("Color tag"),
@@ -10272,7 +10398,7 @@ impl TermiRustApp {
                                     })
                                     .cursor_pointer()
                                     .hover(|style| style.bg(theme::hover()))
-                                    .text_size(px(13.))
+                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .text_color(theme::text_main())
                                     .child("Auto")
                                     .on_click(cx.listener(|this, _, _, cx| {
@@ -10306,7 +10432,7 @@ impl TermiRustApp {
                                         )
                                         .child(
                                             div()
-                                                .text_size(px(13.))
+                                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                                 .text_color(theme::text_main())
                                                 .child(tag.label()),
                                         )
@@ -10320,7 +10446,7 @@ impl TermiRustApp {
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
                             .child(
                                 "Tags drive the avatar tint on host cards and the status dot on connected panes — handy for prod / staging / dev color-coding.",
@@ -10354,7 +10480,7 @@ impl TermiRustApp {
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
                             .child(
                                 "Starred hosts stay pinned to the top of the library for your most-used machines.",
@@ -10388,7 +10514,7 @@ impl TermiRustApp {
                                 .items_center()
                                 .child(
                                     div()
-                                        .text_size(px(12.))
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
                                         .text_color(theme::text_muted())
                                         .child(format!("Group defaults for '{}'", group_name)),
                                 )
@@ -10537,7 +10663,7 @@ impl TermiRustApp {
                         )
                         .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
                             .child(
                                     "Blank host fields can inherit username, tags, identity, jump host, startup settings, and saved forwarding rules from the group defaults.",
@@ -10585,7 +10711,7 @@ impl TermiRustApp {
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
                             .child(
                                 "When the SSH shell opens, the app can change into a saved directory and optionally run one startup command.",
@@ -10601,7 +10727,7 @@ impl TermiRustApp {
                     ))
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
                             .child(
                                 "One KEY=value per line. Variables are exported into the remote shell before the startup directory and command run, with proper single-quote escaping.",
@@ -10620,8 +10746,8 @@ impl TermiRustApp {
                     )
                     .child(
                         h_flex()
-                            .p(px(3.))
-                            .rounded(px(8.))
+                    .p(px(theme::SPACE_MICRO))
+                            .rounded(px(theme::CARD_RADIUS))
                             .bg(theme::hover())
                             .child(
                                 div()
@@ -10631,7 +10757,7 @@ impl TermiRustApp {
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .rounded(px(6.))
+                                    .rounded(px(theme::CONTROL_RADIUS))
                                     .text_size(px(14.))
                                     .font_medium()
                                     .cursor_pointer()
@@ -10656,7 +10782,7 @@ impl TermiRustApp {
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .rounded(px(6.))
+                                    .rounded(px(theme::CONTROL_RADIUS))
                                     .text_size(px(14.))
                                     .font_medium()
                                     .cursor_pointer()
@@ -10682,7 +10808,7 @@ impl TermiRustApp {
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
                             .child(
                                 "Choose whether this host lands in Terminal or Files after connect, and set how many terminal rows to keep in local scrollback.",
@@ -10729,7 +10855,7 @@ impl TermiRustApp {
                     .child(
                         h_flex()
                             .p(px(3.))
-                            .rounded(px(8.))
+                            .rounded(px(theme::CARD_RADIUS))
                             .bg(theme::hover())
                             .children(
                                 [
@@ -10770,14 +10896,18 @@ impl TermiRustApp {
                                             "Proxy Port",
                                             Input::new(&self.inputs.outbound_proxy_port),
                                         )
-                                        .w(px(150.)),
+                                        .w(px(
+                                            theme::current_design_tokens()
+                                                .layout_form_port_width()
+                                                .0,
+                                        )),
                                     ),
                             )
                         },
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .line_height(relative(1.4))
                             .text_color(theme::text_muted())
                             .child(if self.draft_outbound_proxy_kind == OutboundProxyKind::Direct {
@@ -10799,14 +10929,14 @@ impl TermiRustApp {
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
                             .child("Save local tunnels, remote reverse tunnels, or a dynamic SOCKS5 proxy and launch them automatically with the host."),
                     )
                     .child(
                         h_flex()
                             .p(px(3.))
-                            .rounded(px(8.))
+                            .rounded(px(theme::CARD_RADIUS))
                             .bg(theme::hover())
                             .children(
                                 [
@@ -10862,7 +10992,7 @@ impl TermiRustApp {
                                                         ))
                                                         .child(
                                                             div()
-                                                                .text_size(px(12.))
+                                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                                                 .font_medium()
                                                                 .text_color(theme::text_main())
                                                                 .child(rule.display_name()),
@@ -10951,7 +11081,7 @@ impl TermiRustApp {
                             )
                             .child(
                                 div()
-                                    .text_size(px(12.))
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .text_color(theme::text_muted())
                                     .child(match self.draft_port_forward_kind {
                                         PortForwardKind::Local => {
@@ -10980,7 +11110,7 @@ impl TermiRustApp {
                     .child(
                         h_flex()
                             .p(px(3.))
-                            .rounded(px(8.))
+                            .rounded(px(theme::CARD_RADIUS))
                             .bg(theme::hover())
                             .child(
                                 div()
@@ -10990,7 +11120,7 @@ impl TermiRustApp {
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .rounded(px(6.))
+                                    .rounded(px(theme::CONTROL_RADIUS))
                                     .text_size(px(14.))
                                     .font_medium()
                                     .cursor_pointer()
@@ -11015,7 +11145,7 @@ impl TermiRustApp {
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .rounded(px(6.))
+                                    .rounded(px(theme::CONTROL_RADIUS))
                                     .text_size(px(14.))
                                     .font_medium()
                                     .cursor_pointer()
@@ -11041,7 +11171,7 @@ impl TermiRustApp {
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .rounded(px(6.))
+                                    .rounded(px(theme::CONTROL_RADIUS))
                                     .text_size(px(14.))
                                     .font_medium()
                                     .cursor_pointer()
@@ -11073,7 +11203,7 @@ impl TermiRustApp {
                         .when(has_stored_password, |this| {
                             this.child(
                                 div()
-                                    .text_size(px(12.))
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .text_color(theme::success())
                                     .child("A saved password is already available from the system credential store."),
                             )
@@ -11087,7 +11217,7 @@ impl TermiRustApp {
                         .gap_3()
                         .child(
                             div()
-                                .text_size(px(13.))
+                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                 .font_medium()
                                 .text_color(theme::text_main())
                                 .child("Private key"),
@@ -11116,7 +11246,7 @@ impl TermiRustApp {
                         .when_some(selected_identity, |this, identity| {
                             this.child(
                                 div()
-                                    .text_size(px(12.))
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .text_color(theme::success())
                                     .child(format!(
                                         "Selected identity: {} ({})",
@@ -11134,7 +11264,7 @@ impl TermiRustApp {
                                 .gap_1()
                                 .child(
                                     div()
-                                        .text_size(px(13.))
+                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                         .font_medium()
                                         .text_color(theme::text_main())
                                         .child("OpenSSH user certificate (optional)"),
@@ -11177,7 +11307,7 @@ impl TermiRustApp {
                         ))
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
                                 .child(
                                     "Empty uses SSH_AUTH_SOCK. Private keys remain in your local agent. Forwarding requires a separate one-connection approval.",
@@ -11246,7 +11376,7 @@ impl TermiRustApp {
             .child(
                 div()
                     .max_w(px(420.))
-                    .text_size(px(13.))
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .line_height(relative(1.5))
                     .text_color(theme::text_muted())
                     .text_center()
@@ -11295,7 +11425,7 @@ impl TermiRustApp {
             .child(
                 div()
                     .max_w(px(420.))
-                    .text_size(px(13.))
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .line_height(relative(1.5))
                     .text_color(theme::text_muted_dark())
                     .text_center()
@@ -11368,7 +11498,7 @@ impl TermiRustApp {
                                 .child(
                                     div()
                                         .max_w(px(760.))
-                                        .text_size(px(13.))
+                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                         .line_height(relative(1.55))
                                         .text_color(theme::text_muted())
                                         .child(description),
@@ -11501,13 +11631,13 @@ impl TermiRustApp {
                         .flex_wrap()
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
                                 .child("Quick connect from search: `user@host` or `ssh user@host:port`"),
                         )
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
                                 .child(format!(
                                     "Shortcuts: {}+1..7 for sections, {}+L for host search, {}+K for command palette",
@@ -11548,7 +11678,7 @@ impl TermiRustApp {
                 .gap_2()
                 .child(
                     div()
-                        .text_size(px(13.))
+                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                         .font_medium()
                         .text_color(theme::text_muted())
                         .child("RECENT"),
@@ -11571,7 +11701,7 @@ impl TermiRustApp {
                                 .items_center()
                                 .px(px(10.))
                                 .py(px(5.))
-                                .rounded(px(8.))
+                                .rounded(px(theme::CARD_RADIUS))
                                 .bg(theme::library_card())
                                 .border_1()
                                 .border_color(theme::border())
@@ -11583,7 +11713,7 @@ impl TermiRustApp {
                                 .child(div().size(px(7.)).rounded(px(999.)).bg(chip_color))
                                 .child(
                                     div()
-                                        .text_size(px(13.))
+                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                         .font_medium()
                                         .text_color(theme::text_main())
                                         .child(display),
@@ -11641,7 +11771,7 @@ impl TermiRustApp {
             .bg(background)
             .border_1()
             .border_color(theme::with_alpha(foreground, 0.24))
-            .text_size(px(12.))
+            .text_size(px(theme::TYPE_CAPTION_SIZE))
             .font_medium()
             .text_color(foreground)
             .child(label)
@@ -11670,6 +11800,24 @@ impl TermiRustApp {
 
 impl Render for TermiRustApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let palette_result_count = if self.show_command_palette {
+            self.command_palette_candidates(cx).len()
+        } else {
+            0
+        };
+        self.shell_accessibility.sync(ShellSemanticSnapshot {
+            generation: 1,
+            inspector_visible: self.show_editor_panel,
+            palette_open: self.show_command_palette,
+            palette_result_count,
+            selected_palette_result: self.selected_command_palette_index(palette_result_count),
+            status_urgency: if self.error_message.is_empty() {
+                AnnouncementPolicy::Coalesced
+            } else {
+                AnnouncementPolicy::Immediate
+            },
+        });
+
         // When the active workspace changes, scroll the tab strip so the
         // active tab is visible. scroll_to_item keeps the request pending
         // until the tab has layout bounds, so this also works for a tab
@@ -12090,7 +12238,7 @@ impl TermiRustApp {
                             .right(px(12.))
                             .id("editor-dialog-close")
                             .size(px(28.))
-                            .rounded(px(8.))
+                            .rounded(px(theme::CARD_RADIUS))
                             .flex()
                             .items_center()
                             .justify_center()

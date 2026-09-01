@@ -5,6 +5,7 @@ pub mod lint;
 pub mod localization_lint;
 pub mod messages;
 pub mod semantics;
+pub mod shell_surface;
 
 pub use accessibility_lab::*;
 pub use contract::{
@@ -14,6 +15,7 @@ pub use contract::{
 pub use generated::*;
 pub use messages::*;
 pub use semantics::*;
+pub use shell_surface::*;
 
 #[cfg(test)]
 mod tokens_tests {

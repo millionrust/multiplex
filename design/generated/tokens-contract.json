@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "83d8003bd4b971e198cb9237643f9f86b75e95d04cf53a6fabdf2896734eff90",
+  "sourceSha256": "685f72311a08494cf303f401172f95f2def77b4006cadd8d1e0d21bfa4d41073",
   "statuses": [
     {
       "color": "color.status.attention",
@@ -390,6 +390,48 @@
       }
     },
     {
+      "allowedUse": "Custom desktop window close control only.",
+      "category": "color",
+      "description": "macOS-compatible close control indicator.",
+      "key": "color.window.close",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#FF5F57",
+        "high_contrast": "#FF66FF",
+        "light": "#FF5F57",
+        "recording_friendly": "#D99599",
+        "system": "#FF5F57"
+      }
+    },
+    {
+      "allowedUse": "Custom desktop window minimize control only.",
+      "category": "color",
+      "description": "macOS-compatible minimize control indicator.",
+      "key": "color.window.minimize",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#FEBC2E",
+        "high_contrast": "#FFFF00",
+        "light": "#FEBC2E",
+        "recording_friendly": "#D6B47A",
+        "system": "#FEBC2E"
+      }
+    },
+    {
+      "allowedUse": "Custom desktop window zoom control only.",
+      "category": "color",
+      "description": "macOS-compatible zoom control indicator.",
+      "key": "color.window.zoom",
+      "reducedMotion": null,
+      "values": {
+        "dark": "#28C840",
+        "high_contrast": "#00FF66",
+        "light": "#28C840",
+        "recording_friendly": "#8BC3A4",
+        "system": "#28C840"
+      }
+    },
+    {
       "allowedUse": "Compact controls that remain keyboard accessible.",
       "category": "dimension",
       "description": "Compact desktop control height.",
@@ -572,6 +614,20 @@
       }
     },
     {
+      "allowedUse": "Dense toolbar and list-row icons.",
+      "category": "dimension",
+      "description": "Compact icon size between small and default.",
+      "key": "icon.size.compact",
+      "reducedMotion": null,
+      "values": {
+        "dark": "15",
+        "high_contrast": "15",
+        "light": "15",
+        "recording_friendly": "15",
+        "system": "15"
+      }
+    },
+    {
       "allowedUse": "Controls and status icons.",
       "category": "dimension",
       "description": "Default icon size.",
@@ -583,6 +639,20 @@
         "light": "16",
         "recording_friendly": "16",
         "system": "16"
+      }
+    },
+    {
+      "allowedUse": "Status dots only.",
+      "category": "dimension",
+      "description": "Small status-dot indicator size.",
+      "key": "icon.size.indicator",
+      "reducedMotion": null,
+      "values": {
+        "dark": "8",
+        "high_contrast": "8",
+        "light": "8",
+        "recording_friendly": "8",
+        "system": "8"
       }
     },
     {
@@ -625,6 +695,20 @@
         "light": "12",
         "recording_friendly": "12",
         "system": "12"
+      }
+    },
+    {
+      "allowedUse": "Status and activity indicators.",
+      "category": "dimension",
+      "description": "Status icon size adjacent to body labels.",
+      "key": "icon.size.status",
+      "reducedMotion": null,
+      "values": {
+        "dark": "17",
+        "high_contrast": "17",
+        "light": "17",
+        "recording_friendly": "17",
+        "system": "17"
       }
     },
     {
@@ -754,6 +838,216 @@
       }
     },
     {
+      "allowedUse": "Accessibility laboratory content only.",
+      "category": "dimension",
+      "description": "Maximum accessibility laboratory content width.",
+      "key": "layout.accessibility_lab.content_maximum",
+      "reducedMotion": null,
+      "values": {
+        "dark": "960",
+        "high_contrast": "960",
+        "light": "960",
+        "recording_friendly": "960",
+        "system": "960"
+      }
+    },
+    {
+      "allowedUse": "Accessibility laboratory destructive dialog only.",
+      "category": "dimension",
+      "description": "Maximum accessibility laboratory dialog width.",
+      "key": "layout.accessibility_lab.dialog_maximum",
+      "reducedMotion": null,
+      "values": {
+        "dark": "560",
+        "high_contrast": "560",
+        "light": "560",
+        "recording_friendly": "560",
+        "system": "560"
+      }
+    },
+    {
+      "allowedUse": "Accessibility laboratory window constraints only.",
+      "category": "dimension",
+      "description": "Minimum accessibility laboratory window height.",
+      "key": "layout.accessibility_lab.minimum_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "560",
+        "high_contrast": "560",
+        "light": "560",
+        "recording_friendly": "560",
+        "system": "560"
+      }
+    },
+    {
+      "allowedUse": "Accessibility laboratory window constraints only.",
+      "category": "dimension",
+      "description": "Minimum accessibility laboratory window width.",
+      "key": "layout.accessibility_lab.minimum_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "680",
+        "high_contrast": "680",
+        "light": "680",
+        "recording_friendly": "680",
+        "system": "680"
+      }
+    },
+    {
+      "allowedUse": "Accessibility laboratory progress controls only.",
+      "category": "dimension",
+      "description": "Accessibility laboratory progress control height.",
+      "key": "layout.accessibility_lab.progress_control_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "38",
+        "high_contrast": "38",
+        "light": "38",
+        "recording_friendly": "38",
+        "system": "38"
+      }
+    },
+    {
+      "allowedUse": "Accessibility laboratory progress indicator only.",
+      "category": "dimension",
+      "description": "Accessibility laboratory progress track height.",
+      "key": "layout.accessibility_lab.progress_track_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "10",
+        "high_contrast": "10",
+        "light": "10",
+        "recording_friendly": "10",
+        "system": "10"
+      }
+    },
+    {
+      "allowedUse": "Accessibility laboratory window geometry only.",
+      "category": "dimension",
+      "description": "Default accessibility laboratory window height.",
+      "key": "layout.accessibility_lab.window_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "780",
+        "high_contrast": "780",
+        "light": "780",
+        "recording_friendly": "780",
+        "system": "780"
+      }
+    },
+    {
+      "allowedUse": "Accessibility laboratory window geometry only.",
+      "category": "dimension",
+      "description": "Default accessibility laboratory window width.",
+      "key": "layout.accessibility_lab.window_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "920",
+        "high_contrast": "920",
+        "light": "920",
+        "recording_friendly": "920",
+        "system": "920"
+      }
+    },
+    {
+      "allowedUse": "Activity Center event rows only.",
+      "category": "dimension",
+      "description": "Activity Center event icon container size.",
+      "key": "layout.activity.icon_container",
+      "reducedMotion": null,
+      "values": {
+        "dark": "34",
+        "high_contrast": "34",
+        "light": "34",
+        "recording_friendly": "34",
+        "system": "34"
+      }
+    },
+    {
+      "allowedUse": "Artifact preview only.",
+      "category": "dimension",
+      "description": "Empty artifact preview placeholder height.",
+      "key": "layout.artifact.empty_preview_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "180",
+        "high_contrast": "180",
+        "light": "180",
+        "recording_friendly": "180",
+        "system": "180"
+      }
+    },
+    {
+      "allowedUse": "Files and artifacts index only.",
+      "category": "dimension",
+      "description": "Maximum artifact index column width.",
+      "key": "layout.artifact.index_maximum",
+      "reducedMotion": null,
+      "values": {
+        "dark": "420",
+        "high_contrast": "420",
+        "light": "420",
+        "recording_friendly": "420",
+        "system": "420"
+      }
+    },
+    {
+      "allowedUse": "Files and artifacts index only.",
+      "category": "dimension",
+      "description": "Minimum artifact index column width.",
+      "key": "layout.artifact.index_minimum",
+      "reducedMotion": null,
+      "values": {
+        "dark": "280",
+        "high_contrast": "280",
+        "light": "280",
+        "recording_friendly": "280",
+        "system": "280"
+      }
+    },
+    {
+      "allowedUse": "Files and artifacts index only.",
+      "category": "dimension",
+      "description": "Preferred artifact index column width.",
+      "key": "layout.artifact.index_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "360",
+        "high_contrast": "360",
+        "light": "360",
+        "recording_friendly": "360",
+        "system": "360"
+      }
+    },
+    {
+      "allowedUse": "Artifact preview only.",
+      "category": "dimension",
+      "description": "Maximum textual artifact preview height.",
+      "key": "layout.artifact.preview_maximum_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "240",
+        "high_contrast": "240",
+        "light": "240",
+        "recording_friendly": "240",
+        "system": "240"
+      }
+    },
+    {
+      "allowedUse": "Files and artifacts table only.",
+      "category": "dimension",
+      "description": "Artifact table primary column width.",
+      "key": "layout.artifact.primary_column_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "260",
+        "high_contrast": "260",
+        "light": "260",
+        "recording_friendly": "260",
+        "system": "260"
+      }
+    },
+    {
       "allowedUse": "Desktop window chrome.",
       "category": "dimension",
       "description": "Desktop top chrome height.",
@@ -765,6 +1059,48 @@
         "light": "44",
         "recording_friendly": "44",
         "system": "44"
+      }
+    },
+    {
+      "allowedUse": "Connection setup overlays only.",
+      "category": "dimension",
+      "description": "Connection setup panel width.",
+      "key": "layout.connect.panel_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "420",
+        "high_contrast": "420",
+        "light": "420",
+        "recording_friendly": "420",
+        "system": "420"
+      }
+    },
+    {
+      "allowedUse": "Network port form fields only.",
+      "category": "dimension",
+      "description": "Compact form width for network port fields.",
+      "key": "layout.form.port_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "150",
+        "high_contrast": "150",
+        "light": "150",
+        "recording_friendly": "150",
+        "system": "150"
+      }
+    },
+    {
+      "allowedUse": "Compact host search and selection rows.",
+      "category": "dimension",
+      "description": "Minimum compact host result row height.",
+      "key": "layout.host.compact_row_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "56",
+        "high_contrast": "56",
+        "light": "56",
+        "recording_friendly": "56",
+        "system": "56"
       }
     },
     {
@@ -838,6 +1174,244 @@
       }
     },
     {
+      "allowedUse": "Desktop global palette positioning only.",
+      "category": "dimension",
+      "description": "Global palette offset below the window chrome.",
+      "key": "layout.palette.offset_top",
+      "reducedMotion": null,
+      "values": {
+        "dark": "88",
+        "high_contrast": "88",
+        "light": "88",
+        "recording_friendly": "88",
+        "system": "88"
+      }
+    },
+    {
+      "allowedUse": "Desktop global palette only.",
+      "category": "dimension",
+      "description": "Maximum global palette surface width.",
+      "key": "layout.palette.width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "760",
+        "high_contrast": "760",
+        "light": "760",
+        "recording_friendly": "760",
+        "system": "760"
+      }
+    },
+    {
+      "allowedUse": "Inline progress indicators only.",
+      "category": "dimension",
+      "description": "Compact progress track height.",
+      "key": "layout.progress.compact_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "6",
+        "high_contrast": "6",
+        "light": "6",
+        "recording_friendly": "6",
+        "system": "6"
+      }
+    },
+    {
+      "allowedUse": "Key lifecycle and security dialogs only.",
+      "category": "dimension",
+      "description": "Maximum security workflow dialog width.",
+      "key": "layout.security.dialog_maximum",
+      "reducedMotion": null,
+      "values": {
+        "dark": "620",
+        "high_contrast": "620",
+        "light": "620",
+        "recording_friendly": "620",
+        "system": "620"
+      }
+    },
+    {
+      "allowedUse": "Key lifecycle and security information panels only.",
+      "category": "dimension",
+      "description": "Maximum security information panel width.",
+      "key": "layout.security.info_maximum",
+      "reducedMotion": null,
+      "values": {
+        "dark": "440",
+        "high_contrast": "440",
+        "light": "440",
+        "recording_friendly": "440",
+        "system": "440"
+      }
+    },
+    {
+      "allowedUse": "Desktop shell chrome and shared menu rows.",
+      "category": "dimension",
+      "description": "Compact shell toolbar and menu-row control height.",
+      "key": "layout.shell.compact_control_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "32",
+        "high_contrast": "32",
+        "light": "32",
+        "recording_friendly": "32",
+        "system": "32"
+      }
+    },
+    {
+      "allowedUse": "Desktop shell toolbar icon buttons.",
+      "category": "dimension",
+      "description": "Square shell icon-button target size.",
+      "key": "layout.shell.icon_button_size",
+      "reducedMotion": null,
+      "values": {
+        "dark": "32",
+        "high_contrast": "32",
+        "light": "32",
+        "recording_friendly": "32",
+        "system": "32"
+      }
+    },
+    {
+      "allowedUse": "Desktop navigation count badges only.",
+      "category": "dimension",
+      "description": "Height for navigation count badges.",
+      "key": "layout.shell.nav_badge_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "20",
+        "high_contrast": "20",
+        "light": "20",
+        "recording_friendly": "20",
+        "system": "20"
+      }
+    },
+    {
+      "allowedUse": "Desktop navigation count badges only.",
+      "category": "dimension",
+      "description": "Minimum width for navigation count badges.",
+      "key": "layout.shell.nav_badge_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "22",
+        "high_contrast": "22",
+        "light": "22",
+        "recording_friendly": "22",
+        "system": "22"
+      }
+    },
+    {
+      "allowedUse": "Desktop primary navigation rows only.",
+      "category": "dimension",
+      "description": "Primary navigation row height.",
+      "key": "layout.shell.navigation_row_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "36",
+        "high_contrast": "36",
+        "light": "36",
+        "recording_friendly": "36",
+        "system": "36"
+      }
+    },
+    {
+      "allowedUse": "Desktop pane context menu only.",
+      "category": "dimension",
+      "description": "Terminal-pane context-menu width.",
+      "key": "layout.shell.pane_menu_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "212",
+        "high_contrast": "212",
+        "light": "212",
+        "recording_friendly": "212",
+        "system": "212"
+      }
+    },
+    {
+      "allowedUse": "Desktop workspace tab rename field only.",
+      "category": "dimension",
+      "description": "Inline workspace rename field width.",
+      "key": "layout.shell.rename_field_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "150",
+        "high_contrast": "150",
+        "light": "150",
+        "recording_friendly": "150",
+        "system": "150"
+      }
+    },
+    {
+      "allowedUse": "Desktop workspace tab strip only.",
+      "category": "dimension",
+      "description": "Minimum trailing workspace-tab drop target width.",
+      "key": "layout.shell.tab_drop_minimum",
+      "reducedMotion": null,
+      "values": {
+        "dark": "80",
+        "high_contrast": "80",
+        "light": "80",
+        "recording_friendly": "80",
+        "system": "80"
+      }
+    },
+    {
+      "allowedUse": "Desktop workspace tabs only.",
+      "category": "dimension",
+      "description": "Maximum workspace-tab label width before truncation.",
+      "key": "layout.shell.tab_label_maximum",
+      "reducedMotion": null,
+      "values": {
+        "dark": "160",
+        "high_contrast": "160",
+        "light": "160",
+        "recording_friendly": "160",
+        "system": "160"
+      }
+    },
+    {
+      "allowedUse": "Desktop shell toolbar actions only.",
+      "category": "dimension",
+      "description": "Compact square toolbar action size.",
+      "key": "layout.shell.toolbar_button_size",
+      "reducedMotion": null,
+      "values": {
+        "dark": "30",
+        "high_contrast": "30",
+        "light": "30",
+        "recording_friendly": "30",
+        "system": "30"
+      }
+    },
+    {
+      "allowedUse": "Custom desktop window controls only.",
+      "category": "dimension",
+      "description": "Visible macOS traffic-light indicator diameter.",
+      "key": "layout.shell.traffic_light_size",
+      "reducedMotion": null,
+      "values": {
+        "dark": "9",
+        "high_contrast": "9",
+        "light": "9",
+        "recording_friendly": "9",
+        "system": "9"
+      }
+    },
+    {
+      "allowedUse": "Desktop workspace context menu only.",
+      "category": "dimension",
+      "description": "Workspace context-menu width.",
+      "key": "layout.shell.workspace_menu_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "238",
+        "high_contrast": "238",
+        "light": "238",
+        "recording_friendly": "238",
+        "system": "238"
+      }
+    },
+    {
       "allowedUse": "Resizable desktop context sidebar.",
       "category": "dimension",
       "description": "Default context sidebar width.",
@@ -894,6 +1468,34 @@
       }
     },
     {
+      "allowedUse": "Initial desktop window geometry only.",
+      "category": "dimension",
+      "description": "Default height for a newly duplicated desktop window.",
+      "key": "layout.window.default_height",
+      "reducedMotion": null,
+      "values": {
+        "dark": "840",
+        "high_contrast": "840",
+        "light": "840",
+        "recording_friendly": "840",
+        "system": "840"
+      }
+    },
+    {
+      "allowedUse": "Initial desktop window geometry only.",
+      "category": "dimension",
+      "description": "Default width for a newly duplicated desktop window.",
+      "key": "layout.window.default_width",
+      "reducedMotion": null,
+      "values": {
+        "dark": "1280",
+        "high_contrast": "1280",
+        "light": "1280",
+        "recording_friendly": "1280",
+        "system": "1280"
+      }
+    },
+    {
       "allowedUse": "Window constraints after responsive migration.",
       "category": "dimension",
       "description": "Responsive desktop minimum window height target.",
@@ -922,6 +1524,20 @@
       }
     },
     {
+      "allowedUse": "macOS desktop window options only.",
+      "category": "dimension",
+      "description": "Horizontal offset hiding native controls behind custom window chrome.",
+      "key": "layout.window.native_control_offset",
+      "reducedMotion": null,
+      "values": {
+        "dark": "200",
+        "high_contrast": "200",
+        "light": "200",
+        "recording_friendly": "200",
+        "system": "200"
+      }
+    },
+    {
       "allowedUse": "Desktop workspace headers.",
       "category": "dimension",
       "description": "Workspace header height.",
@@ -936,6 +1552,34 @@
       }
     },
     {
+      "allowedUse": "Accessibility bridge polling loops only.",
+      "category": "duration",
+      "description": "Accessibility bridge action polling interval.",
+      "key": "motion.accessibility_poll",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "16ms",
+        "high_contrast": "16ms",
+        "light": "16ms",
+        "recording_friendly": "16ms",
+        "system": "16ms"
+      }
+    },
+    {
+      "allowedUse": "Controller coordination worker only.",
+      "category": "duration",
+      "description": "Controller coordination retry polling interval.",
+      "key": "motion.controller_retry_poll",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "10ms",
+        "high_contrast": "10ms",
+        "light": "10ms",
+        "recording_friendly": "10ms",
+        "system": "10ms"
+      }
+    },
+    {
       "allowedUse": "Non-spatial hover and focus feedback.",
       "category": "duration",
       "description": "Fast hover and focus transition.",
@@ -947,6 +1591,48 @@
         "light": "100ms",
         "recording_friendly": "100ms",
         "system": "100ms"
+      }
+    },
+    {
+      "allowedUse": "Hosted-session connection worker only.",
+      "category": "duration",
+      "description": "Durable hosted-session connection polling interval.",
+      "key": "motion.hosted_connect_poll",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "40ms",
+        "high_contrast": "40ms",
+        "light": "40ms",
+        "recording_friendly": "40ms",
+        "system": "40ms"
+      }
+    },
+    {
+      "allowedUse": "Hosted-session live worker only.",
+      "category": "duration",
+      "description": "Durable hosted-session live polling interval.",
+      "key": "motion.hosted_live_poll",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "40ms",
+        "high_contrast": "40ms",
+        "light": "40ms",
+        "recording_friendly": "40ms",
+        "system": "40ms"
+      }
+    },
+    {
+      "allowedUse": "Hosted-session worker only.",
+      "category": "duration",
+      "description": "Durable hosted-session settling poll interval.",
+      "key": "motion.hosted_settle_poll",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "20ms",
+        "high_contrast": "20ms",
+        "light": "20ms",
+        "recording_friendly": "20ms",
+        "system": "20ms"
       }
     },
     {
@@ -989,6 +1675,20 @@
         "light": "900ms",
         "recording_friendly": "900ms",
         "system": "900ms"
+      }
+    },
+    {
+      "allowedUse": "Remote Devices listener only.",
+      "category": "duration",
+      "description": "Remote-device listener event polling interval.",
+      "key": "motion.remote_device_poll",
+      "reducedMotion": "motion.instant",
+      "values": {
+        "dark": "100ms",
+        "high_contrast": "100ms",
+        "light": "100ms",
+        "recording_friendly": "100ms",
+        "system": "100ms"
       }
     },
     {
@@ -1059,6 +1759,20 @@
         "light": "999",
         "recording_friendly": "999",
         "system": "999"
+      }
+    },
+    {
+      "allowedUse": "Inline progress indicators only.",
+      "category": "radius",
+      "description": "Compact progress-track corner radius.",
+      "key": "radius.progress",
+      "reducedMotion": null,
+      "values": {
+        "dark": "3",
+        "high_contrast": "3",
+        "light": "3",
+        "recording_friendly": "3",
+        "system": "3"
       }
     },
     {
@@ -1258,6 +1972,188 @@
       }
     },
     {
+      "allowedUse": "Accessibility laboratory destructive dialog only.",
+      "category": "spacing",
+      "description": "Accessibility laboratory dialog content gap.",
+      "key": "space.accessibility_lab.dialog_gap",
+      "reducedMotion": null,
+      "values": {
+        "dark": "14",
+        "high_contrast": "14",
+        "light": "14",
+        "recording_friendly": "14",
+        "system": "14"
+      }
+    },
+    {
+      "allowedUse": "Accessibility laboratory destructive dialog only.",
+      "category": "spacing",
+      "description": "Accessibility laboratory dialog padding.",
+      "key": "space.accessibility_lab.dialog_padding",
+      "reducedMotion": null,
+      "values": {
+        "dark": "22",
+        "high_contrast": "22",
+        "light": "22",
+        "recording_friendly": "22",
+        "system": "22"
+      }
+    },
+    {
+      "allowedUse": "Accessibility laboratory sections only.",
+      "category": "spacing",
+      "description": "Accessibility laboratory section content gap.",
+      "key": "space.accessibility_lab.section_gap",
+      "reducedMotion": null,
+      "values": {
+        "dark": "10",
+        "high_contrast": "10",
+        "light": "10",
+        "recording_friendly": "10",
+        "system": "10"
+      }
+    },
+    {
+      "allowedUse": "Accessibility laboratory sections only.",
+      "category": "spacing",
+      "description": "Accessibility laboratory section vertical padding.",
+      "key": "space.accessibility_lab.section_vertical",
+      "reducedMotion": null,
+      "values": {
+        "dark": "18",
+        "high_contrast": "18",
+        "light": "18",
+        "recording_friendly": "18",
+        "system": "18"
+      }
+    },
+    {
+      "allowedUse": "Accessibility laboratory status region only.",
+      "category": "spacing",
+      "description": "Accessibility laboratory status vertical padding.",
+      "key": "space.accessibility_lab.status_vertical",
+      "reducedMotion": null,
+      "values": {
+        "dark": "14",
+        "high_contrast": "14",
+        "light": "14",
+        "recording_friendly": "14",
+        "system": "14"
+      }
+    },
+    {
+      "allowedUse": "Dense application controls and panels.",
+      "category": "spacing",
+      "description": "Compact ten-pixel layout spacing.",
+      "key": "space.compact",
+      "reducedMotion": null,
+      "values": {
+        "dark": "10",
+        "high_contrast": "10",
+        "light": "10",
+        "recording_friendly": "10",
+        "system": "10"
+      }
+    },
+    {
+      "allowedUse": "Dense application controls and form rows.",
+      "category": "spacing",
+      "description": "Dense six-pixel layout spacing.",
+      "key": "space.dense",
+      "reducedMotion": null,
+      "values": {
+        "dark": "6",
+        "high_contrast": "6",
+        "light": "6",
+        "recording_friendly": "6",
+        "system": "6"
+      }
+    },
+    {
+      "allowedUse": "Tightly coupled editor labels and controls.",
+      "category": "spacing",
+      "description": "Fine five-pixel layout spacing.",
+      "key": "space.fine",
+      "reducedMotion": null,
+      "values": {
+        "dark": "5",
+        "high_contrast": "5",
+        "light": "5",
+        "recording_friendly": "5",
+        "system": "5"
+      }
+    },
+    {
+      "allowedUse": "Tightly coupled status marks and labels only.",
+      "category": "spacing",
+      "description": "Micro three-pixel layout spacing.",
+      "key": "space.micro",
+      "reducedMotion": null,
+      "values": {
+        "dark": "3",
+        "high_contrast": "3",
+        "light": "3",
+        "recording_friendly": "3",
+        "system": "3"
+      }
+    },
+    {
+      "allowedUse": "Desktop shell overlay banners only.",
+      "category": "spacing",
+      "description": "Horizontal padding for full-width shell banners.",
+      "key": "space.shell.banner_horizontal",
+      "reducedMotion": null,
+      "values": {
+        "dark": "18",
+        "high_contrast": "18",
+        "light": "18",
+        "recording_friendly": "18",
+        "system": "18"
+      }
+    },
+    {
+      "allowedUse": "Desktop shell controls and banners.",
+      "category": "spacing",
+      "description": "Compact shell control padding.",
+      "key": "space.shell.compact",
+      "reducedMotion": null,
+      "values": {
+        "dark": "10",
+        "high_contrast": "10",
+        "light": "10",
+        "recording_friendly": "10",
+        "system": "10"
+      }
+    },
+    {
+      "allowedUse": "Desktop shell controls and menus.",
+      "category": "spacing",
+      "description": "Dense spacing inside desktop shell controls.",
+      "key": "space.shell.dense",
+      "reducedMotion": null,
+      "values": {
+        "dark": "6",
+        "high_contrast": "6",
+        "light": "6",
+        "recording_friendly": "6",
+        "system": "6"
+      }
+    },
+    {
+      "allowedUse": "Desktop shell rows only.",
+      "category": "spacing",
+      "description": "Tight horizontal spacing for compact shell rows.",
+      "key": "space.shell.tight",
+      "reducedMotion": null,
+      "values": {
+        "dark": "9",
+        "high_contrast": "9",
+        "light": "9",
+        "recording_friendly": "9",
+        "system": "9"
+      }
+    },
+    {
       "allowedUse": "Terminal viewport padding only.",
       "category": "spacing",
       "description": "Terminal viewport padding.",
@@ -1412,6 +2308,20 @@
       }
     },
     {
+      "allowedUse": "Activity Center title only.",
+      "category": "typography",
+      "description": "Compact Activity Center page title typography.",
+      "key": "type.activity.title",
+      "reducedMotion": null,
+      "values": {
+        "dark": "22/30/650",
+        "high_contrast": "22/30/650",
+        "light": "22/30/650",
+        "recording_friendly": "22/30/650",
+        "system": "22/30/650"
+      }
+    },
+    {
       "allowedUse": "Application body copy.",
       "category": "typography",
       "description": "Default body typography.",
@@ -1493,6 +2403,48 @@
         "light": "14/20/600",
         "recording_friendly": "14/20/600",
         "system": "14/20/600"
+      }
+    },
+    {
+      "allowedUse": "Prominent compact metrics and pairing codes.",
+      "category": "typography",
+      "description": "Compact numeric metric typography.",
+      "key": "type.metric",
+      "reducedMotion": null,
+      "values": {
+        "dark": "24/32/600",
+        "high_contrast": "24/32/600",
+        "light": "24/32/600",
+        "recording_friendly": "24/32/600",
+        "system": "24/32/600"
+      }
+    },
+    {
+      "allowedUse": "Space-constrained secondary metadata only.",
+      "category": "typography",
+      "description": "Micro metadata typography.",
+      "key": "type.micro",
+      "reducedMotion": null,
+      "values": {
+        "dark": "11/15/400",
+        "high_contrast": "11/15/400",
+        "light": "11/15/400",
+        "recording_friendly": "11/15/400",
+        "system": "11/15/400"
+      }
+    },
+    {
+      "allowedUse": "Exceptional space-constrained metadata only.",
+      "category": "typography",
+      "description": "Smallest supported metadata typography.",
+      "key": "type.nano",
+      "reducedMotion": null,
+      "values": {
+        "dark": "10/14/400",
+        "high_contrast": "10/14/400",
+        "light": "10/14/400",
+        "recording_friendly": "10/14/400",
+        "system": "10/14/400"
       }
     },
     {

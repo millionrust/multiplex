@@ -454,9 +454,19 @@ impl TermiRustApp {
             .items_start()
             .child(
                 v_flex()
-                    .w(px(360.))
-                    .max_w(px(420.))
-                    .min_w(px(280.))
+                    .w(px(
+                        theme::current_design_tokens().layout_artifact_index_width().0,
+                    ))
+                    .max_w(px(
+                        theme::current_design_tokens()
+                            .layout_artifact_index_maximum()
+                            .0,
+                    ))
+                    .min_w(px(
+                        theme::current_design_tokens()
+                            .layout_artifact_index_minimum()
+                            .0,
+                    ))
                     .h_full()
                     .min_h_0()
                     .border_r_1()
@@ -1420,7 +1430,12 @@ impl TermiRustApp {
             )
             .when(
                 self.artifact_gallery.layout == GalleryLayout::Grid,
-                |this| this.w(px(260.0)).flex_grow(),
+                |this| {
+                    this.w(px(theme::current_design_tokens()
+                        .layout_artifact_primary_column_width()
+                        .0))
+                        .flex_grow()
+                },
             )
             .gap(px(theme::SPACE_3))
             .p(px(theme::SPACE_3))
@@ -1645,7 +1660,9 @@ impl TermiRustApp {
             } => v_flex()
                 .id("artifact-text-preview")
                 .debug_selector(|| "artifact-text-preview".to_string())
-                .max_h(px(240.0))
+                .max_h(px(theme::current_design_tokens()
+                    .layout_artifact_preview_maximum_height()
+                    .0))
                 .overflow_y_scroll()
                 .gap(px(theme::SPACE_2))
                 .p(px(theme::SPACE_3))
@@ -1653,7 +1670,7 @@ impl TermiRustApp {
                 .border_color(theme::soft_border())
                 .rounded(px(theme::CARD_RADIUS))
                 .bg(theme::terminal_bg())
-                .font_family("monospace")
+                .font_family(theme::current_design_tokens().font_mono_family().0)
                 .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                 .text_color(theme::text_main())
                 .child(value.clone())
@@ -1677,7 +1694,9 @@ impl TermiRustApp {
                 .child(
                     img(image.clone())
                         .w_full()
-                        .h(px(180.0))
+                        .h(px(theme::current_design_tokens()
+                            .layout_artifact_empty_preview_height()
+                            .0))
                         .object_fit(ObjectFit::Contain),
                 )
                 .child(

@@ -58,14 +58,14 @@ impl TermiRustApp {
                                 .gap_1()
                                 .child(
                                     div()
-                                        .text_size(px(13.))
+                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                         .font_medium()
                                         .text_color(theme::text_main())
                                         .child(localization::notification_recording_title()),
                                 )
                                 .child(
                                     div()
-                                        .text_size(px(12.))
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
                                         .text_color(theme::text_muted())
                                         .child(localization::notification_recording_description()),
                                 ),
@@ -102,7 +102,7 @@ impl TermiRustApp {
                         .gap_3()
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
                                 .child(localization::notification_permission_status(permission)),
                         )
@@ -143,9 +143,9 @@ impl TermiRustApp {
                     div()
                         .px_3()
                         .py_2()
-                        .rounded(px(8.))
+                        .rounded(px(theme::CARD_RADIUS))
                         .bg(theme::with_alpha(theme::accent(), 0.08))
-                        .text_size(px(12.))
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
                         .text_color(theme::text_muted())
                         .child(localization::notification_preview()),
                 ),

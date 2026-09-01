@@ -386,7 +386,13 @@ impl RemoteDevicesState {
         &mut self,
         controller_coordinator: &ControllerCoordinator,
     ) -> Result<bool, ()> {
-        if self.listener_last_polled.elapsed() < Duration::from_millis(100) {
+        if self.listener_last_polled.elapsed()
+            < Duration::from_millis(
+                termirust_ui_contract::DesignTokens::new(termirust_ui_contract::ThemeKind::System)
+                    .motion_remote_device_poll(false)
+                    .0 as u64,
+            )
+        {
             return Ok(false);
         }
         self.listener_last_polled = Instant::now();
@@ -655,14 +661,14 @@ impl TermiRustApp {
                             .gap_1()
                             .child(
                                 div()
-                                    .text_size(px(13.))
+                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .font_medium()
                                     .text_color(theme::text_main())
                                     .child(localization::remote_devices_route_label()),
                             )
                             .child(
                                 div()
-                                    .text_size(px(12.))
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .text_color(theme::text_muted())
                                     .child(listener_state_label(
                                         self.remote_devices.listener_state,
@@ -711,9 +717,9 @@ impl TermiRustApp {
                     div()
                         .px_3()
                         .py_2()
-                        .rounded(px(6.))
+                        .rounded(px(theme::CONTROL_RADIUS))
                         .bg(theme::with_alpha(theme::success(), 0.08))
-                        .text_size(px(12.))
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
                         .text_color(theme::text_main())
                         .child(detail),
                 )
@@ -721,7 +727,7 @@ impl TermiRustApp {
             .when(ready, |this| {
                 this.child(
                     div()
-                        .text_size(px(11.))
+                        .text_size(px(theme::TYPE_MICRO_SIZE))
                         .text_color(theme::text_muted())
                         .child(localization::remote_devices_listener_guidance()),
                 )
@@ -734,13 +740,13 @@ impl TermiRustApp {
                         v_flex()
                             .gap_2()
                             .p_3()
-                            .rounded(px(6.))
+                            .rounded(px(theme::CONTROL_RADIUS))
                             .border_1()
                             .border_color(theme::soft_border())
                             .bg(theme::library_card())
                             .child(
                                 div()
-                                    .text_size(px(12.))
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .text_color(theme::text_muted())
                                     .child(localization::remote_devices_pairing_offer_help()),
                             )
@@ -766,20 +772,20 @@ impl TermiRustApp {
                     v_flex()
                         .gap_2()
                         .p_3()
-                        .rounded(px(6.))
+                        .rounded(px(theme::CONTROL_RADIUS))
                         .border_1()
                         .border_color(theme::with_alpha(theme::warning(), 0.55))
                         .bg(theme::with_alpha(theme::warning(), 0.08))
                         .child(
                             div()
-                                .text_size(px(11.))
+                                .text_size(px(theme::TYPE_MICRO_SIZE))
                                 .text_color(theme::text_muted())
                                 .child(localization::remote_devices_pairing_sas_ready()),
                         )
                         .child(
                             div()
-                                .text_size(px(24.))
-                                .font_family("monospace")
+                                .text_size(px(theme::TYPE_METRIC_SIZE))
+                                .font_family(theme::current_design_tokens().font_mono_family().0)
                                 .font_medium()
                                 .text_color(theme::text_main())
                                 .child(sas),
@@ -820,20 +826,20 @@ impl TermiRustApp {
                 v_flex()
                     .gap_2()
                     .p_3()
-                    .rounded(px(6.))
+                    .rounded(px(theme::CONTROL_RADIUS))
                     .border_1()
                     .border_color(theme::with_alpha(theme::warning(), 0.45))
                     .bg(theme::with_alpha(theme::warning(), 0.06))
                     .child(
                         div()
-                            .text_size(px(13.))
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .font_medium()
                             .text_color(theme::text_main())
                             .child(localization::remote_devices_listener_confirm_title()),
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
                             .child(format!(
                                 "{} | {} | {}",
@@ -844,7 +850,7 @@ impl TermiRustApp {
                     )
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
                             .child(localization::remote_devices_listener_port_help()),
                     )
@@ -879,9 +885,9 @@ impl TermiRustApp {
                         div()
                             .px_3()
                             .py_2()
-                            .rounded(px(6.))
+                            .rounded(px(theme::CONTROL_RADIUS))
                             .bg(theme::with_alpha(theme::warning(), 0.08))
-                            .text_size(px(12.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
                             .child(localization::remote_devices_listener_no_interface()),
                     )
@@ -907,14 +913,14 @@ impl TermiRustApp {
                                         .gap_1()
                                         .child(
                                             div()
-                                                .text_size(px(12.))
+                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                                 .font_medium()
                                                 .text_color(theme::text_main())
                                                 .child(candidate.label),
                                         )
                                         .child(
                                             div()
-                                                .text_size(px(11.))
+                                                .text_size(px(theme::TYPE_MICRO_SIZE))
                                                 .text_color(theme::text_muted())
                                                 .child(format!(
                                                     "{} | {}",
@@ -945,7 +951,7 @@ impl TermiRustApp {
         content
             .child(
                 div()
-                    .text_size(px(11.))
+                    .text_size(px(theme::TYPE_MICRO_SIZE))
                     .text_color(theme::text_muted())
                     .child(pairing_ui_status(self.remote_devices.pairing_state)),
             )
@@ -956,9 +962,9 @@ impl TermiRustApp {
                         div()
                             .px_3()
                             .py_2()
-                            .rounded(px(6.))
+                            .rounded(px(theme::CONTROL_RADIUS))
                             .bg(theme::with_alpha(theme::warning(), 0.08))
-                            .text_size(px(12.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
                             .child(localization::remote_devices_route_required()),
                     )
@@ -985,14 +991,14 @@ impl TermiRustApp {
                     .gap_2()
                     .child(
                         div()
-                            .text_size(px(13.))
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .font_medium()
                             .text_color(theme::text_main())
                             .child(localization::remote_devices_identity_label()),
                     )
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
                             .child(identity_status),
                     ),
@@ -1006,8 +1012,8 @@ impl TermiRustApp {
                         .flex_wrap()
                         .child(
                             div()
-                                .text_size(px(12.))
-                                .font_family("monospace")
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                .font_family(theme::current_design_tokens().font_mono_family().0)
                                 .text_color(theme::text_main())
                                 .child(fingerprint),
                         )
@@ -1029,7 +1035,7 @@ impl TermiRustApp {
             })
             .child(
                 div()
-                    .text_size(px(12.))
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                     .text_color(theme::text_muted())
                     .child(localization::remote_devices_fingerprint_explanation()),
             )
@@ -1041,7 +1047,7 @@ impl TermiRustApp {
             .gap_2()
             .child(
                 div()
-                    .text_size(px(13.))
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .font_medium()
                     .text_color(theme::text_main())
                     .child(localization::remote_devices_trusted_title()),
@@ -1049,7 +1055,7 @@ impl TermiRustApp {
             .when(self.remote_devices.devices.is_empty(), |this| {
                 this.child(
                     div()
-                        .text_size(px(12.))
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
                         .text_color(theme::text_muted())
                         .child(localization::remote_devices_empty()),
                 )
@@ -1077,14 +1083,14 @@ impl TermiRustApp {
             .gap_2()
             .child(
                 div()
-                    .text_size(px(13.))
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .font_medium()
                     .text_color(theme::danger())
                     .child(localization::remote_devices_reset_title()),
             )
             .child(
                 div()
-                    .text_size(px(12.))
+                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                     .text_color(theme::text_muted())
                     .child(localization::remote_devices_reset_description()),
             )
@@ -1140,14 +1146,14 @@ impl TermiRustApp {
                             .gap_1()
                             .child(
                                 div()
-                                    .text_size(px(13.))
+                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .font_medium()
                                     .text_color(theme::text_main())
                                     .child(device.display_name.clone()),
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .text_color(theme::text_muted())
                                     .child(localization::remote_devices_device_detail(
                                         device.fingerprint_suffix(),
@@ -1156,7 +1162,7 @@ impl TermiRustApp {
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .text_color(theme::text_muted())
                                     .child(last_seen),
                             ),
@@ -1198,7 +1204,7 @@ impl TermiRustApp {
                         .flex_wrap()
                         .child(
                             div()
-                                .min_w(px(220.))
+                                .min_w(px(theme::HOST_SIDEBAR_WIDTH))
                                 .flex_1()
                                 .child(Input::new(&self.settings_inputs.remote_device_name)),
                         )

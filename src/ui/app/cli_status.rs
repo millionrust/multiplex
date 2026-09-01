@@ -103,13 +103,13 @@ impl TermiRustApp {
                         ))
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
                                 .child(schema),
                         )
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
                                 .child(protocol),
                         ),
@@ -119,7 +119,7 @@ impl TermiRustApp {
                         .gap_2()
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .font_medium()
                                 .text_color(theme::text_main())
                                 .child(localization::cli_settings_installed_path()),
@@ -135,9 +135,9 @@ impl TermiRustApp {
                                         .flex_1()
                                         .px_3()
                                         .py_2()
-                                        .rounded(px(6.))
+                                        .rounded(px(theme::CONTROL_RADIUS))
                                         .bg(theme::hover())
-                                        .text_size(px(12.))
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
                                         .text_color(theme::text_main())
                                         .child(display_path),
                                 )
@@ -172,7 +172,7 @@ impl TermiRustApp {
                         .gap_2()
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .font_medium()
                                 .text_color(theme::text_main())
                                 .child(localization::cli_settings_examples()),
@@ -208,7 +208,7 @@ impl TermiRustApp {
                         )
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
                                 .child(localization::cli_settings_help_hint()),
                         ),

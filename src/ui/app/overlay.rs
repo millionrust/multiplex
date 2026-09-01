@@ -36,8 +36,8 @@ impl TermiRustApp {
         Some(
             v_flex()
                 .w_full()
-                .px(px(18.))
-                .py(px(10.))
+                .px(px(theme::SHELL_BANNER_HORIZONTAL))
+                .py(px(theme::SHELL_SPACE_COMPACT))
                 .gap_2()
                 .bg(theme::with_alpha(theme::accent(), 0.16))
                 .border_b_1()
@@ -51,16 +51,18 @@ impl TermiRustApp {
                                 .gap_0p5()
                                 .child(
                                     div()
-                                        .text_size(px(14.))
+                                        .text_size(px(theme::TYPE_BODY_SIZE))
                                         .font_semibold()
                                         .text_color(theme::text_on_dark())
-                                        .child("Snippet prompts"),
+                                        .child(localization::overlay_snippet_prompts_title()),
                                 )
                                 .child(
                                     div()
-                                        .text_size(px(12.))
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
                                         .text_color(theme::text_muted_dark())
-                                        .child(format!("Command: {preview}")),
+                                        .child(localization::overlay_command_preview(
+                                            preview.to_string(),
+                                        )),
                                 ),
                         )
                         .child(
@@ -100,7 +102,7 @@ impl TermiRustApp {
                                 .gap_1()
                                 .child(
                                     div()
-                                        .text_size(px(13.))
+                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                         .font_medium()
                                         .text_color(theme::text_on_dark())
                                         .child(field.name.clone()),
@@ -126,8 +128,8 @@ impl TermiRustApp {
         Some(
             h_flex()
                 .w_full()
-                .px(px(18.))
-                .py(px(8.))
+                .px(px(theme::SHELL_BANNER_HORIZONTAL))
+                .py(px(theme::SPACE_3))
                 .gap_2()
                 .items_center()
                 .justify_between()
@@ -140,16 +142,16 @@ impl TermiRustApp {
                         .gap_0p5()
                         .child(
                             div()
-                                .text_size(px(13.))
+                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                 .font_medium()
                                 .text_color(theme::text_on_dark())
-                                .child(format!("Paste {line_count} lines into the active pane?")),
+                                .child(localization::overlay_paste_confirmation(line_count)),
                         )
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted_dark())
-                                .child(format!("First line: {preview}…")),
+                                .child(localization::overlay_paste_preview(preview)),
                         ),
                 )
                 .child(
@@ -160,7 +162,7 @@ impl TermiRustApp {
                                 .debug_selector(|| "paste-confirm".to_string())
                                 .small()
                                 .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                                .label("Paste")
+                                .label(localization::overlay_paste_action())
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| {
                                     cx.stop_propagation();
                                 })
@@ -207,7 +209,7 @@ impl TermiRustApp {
             .flex()
             .items_start()
             .justify_center()
-            .pt(px(88.))
+            .pt(px(theme::PALETTE_OFFSET_TOP))
             .bg(theme::modal_scrim())
             .on_mouse_down(
                 MouseButton::Left,
@@ -223,7 +225,7 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .id("command-palette-card")
-                    .w(px(760.))
+                    .w(px(theme::PALETTE_WIDTH))
                     .max_w(relative(0.94))
                     .max_h(relative(0.84))
                     .rounded(px(theme::CARD_RADIUS))
@@ -248,14 +250,14 @@ impl TermiRustApp {
                                     .items_center()
                                     .child(
                                         div()
-                                            .text_size(px(16.))
+                                            .text_size(px(theme::TYPE_HEADING_SMALL_SIZE))
                                             .font_semibold()
                                             .text_color(theme::text_main())
                                             .child(localization::global_palette_title()),
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(12.))
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                                             .text_color(theme::text_muted())
                                             .child(localization::global_palette_shortcut_hint(
                                                 primary_shortcut_label(),
@@ -268,12 +270,12 @@ impl TermiRustApp {
                                     h_flex()
                                         .gap_2()
                                         .items_center()
-                                        .text_size(px(12.))
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
                                         .text_color(theme::text_muted())
                                         .when(searching, |this| {
                                             this.child(
                                                 Icon::new(IconName::LoaderCircle)
-                                                    .size(px(13.))
+                                                    .size(px(theme::ICON_SIZE_SMALL))
                                                     .text_color(theme::accent()),
                                             )
                                             .child(localization::global_palette_searching())
@@ -320,7 +322,7 @@ impl TermiRustApp {
                                                     .pt_2()
                                                     .px_2()
                                                     .pb_1()
-                                                    .text_size(px(11.))
+                                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                                     .font_semibold()
                                                     .text_color(theme::text_muted())
                                                     .child(category_label(category)),
@@ -333,7 +335,7 @@ impl TermiRustApp {
                                                 .items_start()
                                                 .gap_3()
                                                 .px_3()
-                                                .py(px(10.))
+                                                .py(px(theme::SHELL_SPACE_COMPACT))
                                                 .rounded(px(theme::CARD_RADIUS))
                                                 .bg(if selected {
                                                     theme::with_alpha(theme::accent(), 0.12)
@@ -355,7 +357,7 @@ impl TermiRustApp {
                                                 }))
                                                 .child(
                                                     Icon::new(category_icon(category))
-                                                        .size(px(16.))
+                                                        .size(px(theme::ICON_SIZE_DEFAULT))
                                                         .text_color(if selected {
                                                             theme::accent()
                                                         } else {
@@ -366,7 +368,7 @@ impl TermiRustApp {
                                                     v_flex()
                                                         .min_w_0()
                                                         .flex_1()
-                                                        .gap(px(4.))
+                                                        .gap(px(theme::SPACE_2))
                                                         .child(render_palette_title(
                                                             &candidate.title,
                                                             &candidate.highlights,
@@ -374,7 +376,7 @@ impl TermiRustApp {
                                                         .when(!candidate.detail.is_empty(), |this| {
                                                             this.child(
                                                                 div()
-                                                                    .text_size(px(12.))
+                                                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                                                     .text_color(theme::text_muted())
                                                                     .child(candidate.detail.clone()),
                                                             )
@@ -421,12 +423,12 @@ impl TermiRustApp {
                                         .gap_2()
                                         .child(
                                             Icon::new(IconName::Search)
-                                                .size(px(24.))
+                                                .size(px(theme::ICON_SIZE_LARGE))
                                                 .text_color(theme::with_alpha(theme::text_muted(), 0.45)),
                                         )
                                         .child(
                                             div()
-                                                .text_size(px(15.))
+                                                .text_size(px(theme::TYPE_HEADING_SMALL_SIZE))
                                                 .font_medium()
                                                 .text_color(theme::text_muted())
                                                 .child(if query.is_empty() {
@@ -437,7 +439,7 @@ impl TermiRustApp {
                                         )
                                         .child(
                                             div()
-                                                .text_size(px(13.))
+                                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                                 .text_color(theme::with_alpha(theme::text_muted(), 0.7))
                                                 .child(if query.is_empty() {
                                                     localization::global_palette_empty_detail()
@@ -456,7 +458,7 @@ impl TermiRustApp {
                             .py_2()
                             .border_t_1()
                             .border_color(theme::border())
-                            .text_size(px(11.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_muted())
                             .child(localization::global_palette_shortcut_hint(
                                 primary_shortcut_label(),
@@ -567,8 +569,67 @@ fn render_palette_title(title: &str, highlights: &[termirust_domain::TextHighlig
     h_flex()
         .min_w_0()
         .flex_wrap()
-        .text_size(px(14.))
+        .text_size(px(theme::TYPE_BODY_SIZE))
         .font_medium()
         .children(parts)
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use termirust_ui_contract::{
+        AnnouncementPolicy, FocusReturn, OverlayError, OverlayFrame, OverlayId, OverlayKind,
+        OverlayOwner, OverlayPhase, OverlayStack, ShellRegionId,
+    };
+
+    fn frame(id: u64, kind: OverlayKind, owner: FocusReturn) -> OverlayFrame {
+        OverlayFrame {
+            id: OverlayId::new(id).unwrap(),
+            kind,
+            owner: OverlayOwner {
+                window_generation: 7,
+                owner,
+            },
+            focus_scope: id,
+            safe_action: FocusReturn::Region(ShellRegionId::Content),
+            announcements: AnnouncementPolicy::Coalesced,
+            phase: OverlayPhase::Opening,
+        }
+    }
+
+    #[test]
+    fn nested_overlay_close_unwinds_children_and_uses_safe_focus_fallback() {
+        let mut stack = OverlayStack::default();
+        let parent = frame(1, OverlayKind::Dialog, FocusReturn::Exact(41));
+        let child = frame(2, OverlayKind::Popover, FocusReturn::Exact(42));
+        stack.open(parent).unwrap();
+        stack.mark_open(parent.id, 7).unwrap();
+        stack.open(child).unwrap();
+        stack.mark_open(child.id, 7).unwrap();
+
+        stack.begin_close(parent.id, 7).unwrap();
+        let closed = stack.finish_close(parent.id, 7, |target| {
+            target == FocusReturn::Region(ShellRegionId::Content)
+        });
+
+        assert_eq!(closed.unwrap().len(), 2);
+        assert!(stack.frames().is_empty());
+    }
+
+    #[test]
+    fn ordinary_overlay_cannot_cover_an_open_security_prompt() {
+        let mut stack = OverlayStack::default();
+        let security = frame(1, OverlayKind::SecurityPrompt, FocusReturn::FirstAvailable);
+        stack.open(security).unwrap();
+        stack.mark_open(security.id, 7).unwrap();
+
+        assert_eq!(
+            stack.open(frame(
+                2,
+                OverlayKind::GlobalPalette,
+                FocusReturn::FirstAvailable,
+            )),
+            Err(OverlayError::SecurityPromptObscured)
+        );
+    }
 }

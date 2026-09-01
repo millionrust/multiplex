@@ -495,14 +495,16 @@ impl TermiRustApp {
                             .gap_1()
                             .child(
                                 div()
-                                    .text_size(px(22.))
+                                    .text_size(px(theme::current_design_tokens()
+                                        .type_activity_title()
+                                        .size))
                                     .font_semibold()
                                     .text_color(theme::text_main())
                                     .child(localization::activity_center_title()),
                             )
                             .child(
                                 div()
-                                    .text_size(px(13.))
+                                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .text_color(theme::text_muted())
                                     .child(localization::activity_center_description()),
                             ),
@@ -560,7 +562,7 @@ impl TermiRustApp {
                         this.child(
                             self.render_library_empty_state(
                                 Icon::new(IconName::Inbox)
-                                    .size(px(24.))
+                                    .size(px(theme::ICON_SIZE_LARGE))
                                     .text_color(theme::accent()),
                                 localization::activity_center_empty_title(),
                                 localization::activity_center_empty_description(),
@@ -591,15 +593,17 @@ impl TermiRustApp {
                             .border_color(theme::soft_border())
                             .child(
                                 div()
-                                    .size(px(34.))
+                                    .size(px(theme::current_design_tokens()
+                                        .layout_activity_icon_container()
+                                        .0))
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .rounded(px(8.))
+                                    .rounded(px(theme::CARD_RADIUS))
                                     .bg(theme::with_alpha(tone, 0.12))
                                     .child(
                                         Icon::new(activity_icon(record.key.activity))
-                                            .size(px(17.))
+                                            .size(px(theme::ICON_SIZE_STATUS))
                                             .text_color(tone),
                                     ),
                             )
@@ -616,13 +620,13 @@ impl TermiRustApp {
                                             .child(
                                                 div()
                                                     .font_medium()
-                                                    .text_size(px(14.))
+                                                    .text_size(px(theme::TYPE_BODY_SIZE))
                                                     .text_color(theme::text_main())
                                                     .child(title),
                                             )
                                             .child(
                                                 div()
-                                                    .text_size(px(12.))
+                                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                                     .font_medium()
                                                     .text_color(tone)
                                                     .child(notification_activity_label(
@@ -633,7 +637,7 @@ impl TermiRustApp {
                                     .child(
                                         h_flex()
                                             .gap_2()
-                                            .text_size(px(12.))
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                                             .text_color(theme::text_muted())
                                             .child(age)
                                             .child(localization::activity_center_position(
@@ -734,9 +738,9 @@ fn activity_notice(message: String, color: Hsla, icon: IconName) -> Div {
         .bg(theme::with_alpha(color, 0.1))
         .border_1()
         .border_color(theme::with_alpha(color, 0.28))
-        .text_size(px(13.))
+        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
         .text_color(color)
-        .child(Icon::new(icon).size(px(17.)))
+        .child(Icon::new(icon).size(px(theme::ICON_SIZE_STATUS)))
         .child(message)
 }
 

@@ -514,7 +514,9 @@ impl TermiRustApp {
                 v_flex()
                     .id("key-lifecycle-dialog")
                     .w(relative(0.96))
-                    .max_w(px(620.))
+                    .max_w(px(theme::current_design_tokens()
+                        .layout_security_dialog_maximum()
+                        .0))
                     .max_h(relative(0.92))
                     .rounded(px(theme::CARD_RADIUS))
                     .bg(theme::library_card())
@@ -535,7 +537,7 @@ impl TermiRustApp {
                                     .items_center()
                                     .child(
                                         app_icon(ICON_KEY)
-                                            .size(px(16.))
+                                            .size(px(theme::ICON_SIZE_DEFAULT))
                                             .text_color(theme::accent()),
                                     )
                                     .child(
@@ -679,13 +681,13 @@ impl TermiRustApp {
                                     .gap_1()
                                     .child(
                                         div()
-                                            .text_size(px(14.))
+                                            .text_size(px(theme::TYPE_BODY_SIZE))
                                             .font_semibold()
                                             .child(profile.display_name()),
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(12.))
+                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                                             .text_color(theme::text_muted())
                                             .child(format!(
                                                 "{}@{}:{} · {}",
@@ -987,7 +989,7 @@ fn lifecycle_field(label: &'static str, input: Input) -> AnyElement {
         .gap_1()
         .child(
             div()
-                .text_size(px(12.))
+                .text_size(px(theme::TYPE_CAPTION_SIZE))
                 .font_medium()
                 .text_color(theme::text_muted())
                 .child(label),
@@ -1007,14 +1009,14 @@ fn lifecycle_review_row(label: &'static str, value: impl Into<gpui::SharedString
         .border_color(theme::border())
         .child(
             div()
-                .text_size(px(12.))
+                .text_size(px(theme::TYPE_CAPTION_SIZE))
                 .text_color(theme::text_muted())
                 .child(label),
         )
         .child(
             div()
                 .max_w(relative(0.68))
-                .text_size(px(12.))
+                .text_size(px(theme::TYPE_CAPTION_SIZE))
                 .text_color(theme::text_main())
                 .child(value),
         )
@@ -1028,7 +1030,7 @@ fn lifecycle_public_key_preview(value: impl Into<SharedString>) -> AnyElement {
         .py_2()
         .child(
             div()
-                .text_size(px(12.))
+                .text_size(px(theme::TYPE_CAPTION_SIZE))
                 .text_color(theme::text_muted())
                 .child("Public key"),
         )
@@ -1038,12 +1040,12 @@ fn lifecycle_public_key_preview(value: impl Into<SharedString>) -> AnyElement {
                 .overflow_x_scrollbar()
                 .px_3()
                 .py_2()
-                .rounded(px(6.))
+                .rounded(px(theme::CONTROL_RADIUS))
                 .bg(theme::with_alpha(theme::hover(), 0.72))
                 .border_1()
                 .border_color(theme::border())
-                .text_size(px(11.))
-                .font_family("monospace")
+                .text_size(px(theme::TYPE_MICRO_SIZE))
+                .font_family(theme::current_design_tokens().font_mono_family().0)
                 .child(value),
         )
         .into_any_element()
@@ -1054,7 +1056,7 @@ fn key_notice(message: impl Into<gpui::SharedString>, warning: bool) -> AnyEleme
     div()
         .px_3()
         .py_3()
-        .rounded(px(6.))
+        .rounded(px(theme::CONTROL_RADIUS))
         .bg(theme::with_alpha(
             if warning {
                 theme::warning()
@@ -1072,7 +1074,7 @@ fn key_notice(message: impl Into<gpui::SharedString>, warning: bool) -> AnyEleme
             },
             0.28,
         ))
-        .text_size(px(12.))
+        .text_size(px(theme::TYPE_CAPTION_SIZE))
         .text_color(theme::text_main())
         .child(message)
         .into_any_element()
@@ -1083,13 +1085,24 @@ fn key_progress(title: &'static str, detail: &'static str) -> AnyElement {
         .gap_2()
         .py_4()
         .items_center()
-        .child(app_icon(ICON_KEY).size(px(24.)).text_color(theme::accent()))
-        .child(div().text_size(px(14.)).font_semibold().child(title))
+        .child(
+            app_icon(ICON_KEY)
+                .size(px(theme::ICON_SIZE_LARGE))
+                .text_color(theme::accent()),
+        )
         .child(
             div()
-                .max_w(px(440.))
+                .text_size(px(theme::TYPE_BODY_SIZE))
+                .font_semibold()
+                .child(title),
+        )
+        .child(
+            div()
+                .max_w(px(theme::current_design_tokens()
+                    .layout_security_info_maximum()
+                    .0))
                 .text_center()
-                .text_size(px(12.))
+                .text_size(px(theme::TYPE_CAPTION_SIZE))
                 .text_color(theme::text_muted())
                 .child(detail),
         )

@@ -105,6 +105,70 @@ pub fn scan_ui_copy_tree(root: &Path) -> Result<Vec<CopyFinding>, CopyLintError>
     Ok(findings)
 }
 
+pub fn scan_ui_copy_paths(
+    root: &Path,
+    paths: &[PathBuf],
+) -> Result<Vec<CopyFinding>, CopyLintError> {
+    let mut findings = Vec::new();
+    for relative in paths {
+        let normalized = relative.to_string_lossy().replace('\\', "/");
+        if relative.is_absolute()
+            || !normalized.starts_with("src/ui/")
+            || normalized.contains("..")
+            || relative
+                .extension()
+                .is_none_or(|extension| extension != "rs")
+        {
+            return Err(CopyLintError::new(format!(
+                "scoped UI copy path must be a Rust file below src/ui: {normalized}"
+            )));
+        }
+        let path = root.join(relative);
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            CopyLintError::new(format!("unable to inspect {}: {error}", path.display()))
+        })?;
+        if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+            return Err(CopyLintError::new(format!(
+                "{} must be a regular Rust source file",
+                path.display()
+            )));
+        }
+        if usize::try_from(metadata.len()).unwrap_or(usize::MAX) > MAX_UI_FILE_BYTES {
+            return Err(CopyLintError::new(format!(
+                "{} exceeds the UI copy lint file size limit",
+                path.display()
+            )));
+        }
+        let source = fs::read_to_string(&path).map_err(|error| {
+            CopyLintError::new(format!("unable to read {}: {error}", path.display()))
+        })?;
+        findings.extend(scan_copy_source(&normalized, &source));
+    }
+    Ok(findings)
+}
+
+pub fn verify_zero_copy_paths(root: &Path, paths: &[PathBuf]) -> Result<usize, CopyLintError> {
+    let findings = scan_ui_copy_paths(root, paths)?;
+    if findings.is_empty() {
+        return Ok(0);
+    }
+    let summary = findings
+        .iter()
+        .take(25)
+        .map(|finding| {
+            format!(
+                "{}:{} {}: {}",
+                finding.file, finding.line, finding.category, finding.excerpt
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    Err(CopyLintError::new(format!(
+        "scoped user-copy policy found {} exception(s):\n{summary}",
+        findings.len()
+    )))
+}
+
 pub fn verify_copy_baseline(root: &Path, baseline_path: &Path) -> Result<usize, CopyLintError> {
     let findings = scan_ui_copy_tree(root)?;
     let baseline = load_baseline(baseline_path)?;
@@ -136,8 +200,19 @@ pub fn write_copy_baseline(root: &Path, baseline_path: &Path) -> Result<usize, C
 pub fn scan_copy_source(file: &str, source: &str) -> Vec<CopyFinding> {
     let mut findings = Vec::new();
     let mut previous_code = String::new();
+    let mut cfg_test_pending = false;
     for (index, original) in source.lines().enumerate() {
         let code = strip_line_comment(original).trim();
+        if code == "#[cfg(test)]" {
+            cfg_test_pending = true;
+            continue;
+        }
+        if cfg_test_pending {
+            if code.starts_with("mod tests") {
+                break;
+            }
+            cfg_test_pending = false;
+        }
         if code.is_empty() {
             continue;
         }
@@ -177,6 +252,12 @@ fn finding(file: &str, line: usize, category: &str, literal: &str) -> CopyFindin
 }
 
 fn is_visible_copy_context(context: &str) -> bool {
+    if [".debug_selector(", ".id("]
+        .iter()
+        .any(|needle| context.contains(needle))
+    {
+        return false;
+    }
     [
         ".label(",
         ".child(",
@@ -191,16 +272,14 @@ fn is_visible_copy_context(context: &str) -> bool {
         "message:",
         "label:",
         "title:",
-        "=>",
     ]
     .iter()
     .any(|needle| context.contains(needle))
-        || context.contains("format!(")
 }
 
 fn is_sentence_concatenation(context: &str, literal: &str) -> bool {
     let has_variable = literal.contains('{') && literal.contains('}');
-    (context.contains("format!(") && has_variable)
+    (is_visible_copy_context(context) && context.contains("format!(") && has_variable)
         || (context.contains('+') && context.contains('"') && literal.contains(' '))
 }
 

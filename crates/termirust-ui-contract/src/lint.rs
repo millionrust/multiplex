@@ -94,6 +94,70 @@ pub fn scan_ui_tree(root: &Path) -> Result<Vec<LiteralFinding>, LiteralLintError
     Ok(findings)
 }
 
+pub fn scan_ui_paths(
+    root: &Path,
+    paths: &[PathBuf],
+) -> Result<Vec<LiteralFinding>, LiteralLintError> {
+    let mut findings = Vec::new();
+    for relative in paths {
+        let normalized = relative.to_string_lossy().replace('\\', "/");
+        if relative.is_absolute()
+            || !normalized.starts_with("src/ui/")
+            || normalized.contains("..")
+            || relative
+                .extension()
+                .is_none_or(|extension| extension != "rs")
+        {
+            return Err(LiteralLintError::new(format!(
+                "scoped UI lint path must be a Rust file below src/ui: {normalized}"
+            )));
+        }
+        let path = root.join(relative);
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            LiteralLintError::new(format!("unable to inspect {}: {error}", path.display()))
+        })?;
+        if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+            return Err(LiteralLintError::new(format!(
+                "{} must be a regular Rust source file",
+                path.display()
+            )));
+        }
+        if usize::try_from(metadata.len()).unwrap_or(usize::MAX) > MAX_UI_FILE_BYTES {
+            return Err(LiteralLintError::new(format!(
+                "{} exceeds the UI lint file size limit",
+                path.display()
+            )));
+        }
+        let source = fs::read_to_string(&path).map_err(|error| {
+            LiteralLintError::new(format!("unable to read {}: {error}", path.display()))
+        })?;
+        findings.extend(scan_source(&normalized, &source));
+    }
+    Ok(findings)
+}
+
+pub fn verify_zero_paths(root: &Path, paths: &[PathBuf]) -> Result<usize, LiteralLintError> {
+    let findings = scan_ui_paths(root, paths)?;
+    if findings.is_empty() {
+        return Ok(0);
+    }
+    let summary = findings
+        .iter()
+        .take(25)
+        .map(|finding| {
+            format!(
+                "{}:{} {}: {}",
+                finding.file, finding.line, finding.category, finding.excerpt
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    Err(LiteralLintError::new(format!(
+        "scoped visual literal policy found {} exception(s):\n{summary}",
+        findings.len()
+    )))
+}
+
 pub fn verify_baseline(root: &Path, baseline_path: &Path) -> Result<usize, LiteralLintError> {
     let findings = scan_ui_tree(root)?;
     let baseline = load_baseline(baseline_path)?;
@@ -165,19 +229,21 @@ fn categories_for_line(code: &str) -> Vec<&'static str> {
         categories.push("color");
     }
 
-    if lower.contains("font_family(") || lower.contains("font_weight(") {
+    if contains_literal_call(&lower, "font_family(")
+        || contains_literal_call(&lower, "font_weight(")
+    {
         categories.push("font");
     }
-    if lower.contains("duration::from_millis(")
-        || lower.contains("duration::from_secs_f32(")
-        || lower.contains(".duration(")
+    if contains_numeric_call(&lower, "duration::from_millis(")
+        || contains_numeric_call(&lower, "duration::from_secs_f32(")
+        || contains_numeric_call(&lower, ".duration(")
     {
         categories.push("motion");
     }
     if lower.contains("z_index(") || visual_constant(&lower, &["z_index", "z_order", "layer"]) {
         categories.push("z_order");
     }
-    if lower.contains("box_shadow(") || lower.contains("shadow(") {
+    if (lower.contains("box_shadow(") || lower.contains("shadow(")) && !lower.contains("theme::") {
         categories.push("elevation");
     }
 
@@ -259,6 +325,23 @@ fn contains_numeric_call(code: &str, needle: &str) -> bool {
         .is_some_and(|character| character.is_ascii_digit() || character == '-' || character == '.')
 }
 
+fn contains_literal_call(code: &str, needle: &str) -> bool {
+    let Some(index) = code.find(needle) else {
+        return false;
+    };
+    code[index + needle.len()..]
+        .trim_start()
+        .chars()
+        .next()
+        .is_some_and(|character| {
+            character == '"'
+                || character == '\''
+                || character.is_ascii_digit()
+                || character == '-'
+                || character == '.'
+        })
+}
+
 fn spacing_context(code: &str) -> bool {
     [
         ".p(", ".pt(", ".pr(", ".pb(", ".pl(", ".px(", ".py(", ".m(", ".mt(", ".mr(", ".mb(",
@@ -272,7 +355,13 @@ fn visual_constant(code: &str, names: &[&str]) -> bool {
     if !(code.contains("const ") || code.contains("static ")) || !code.contains('=') {
         return false;
     }
-    names.iter().any(|name| code.contains(name))
+    let declaration = code.split_once('=').map_or(code, |(left, _)| left);
+    let identifier = declaration
+        .split_once("const ")
+        .or_else(|| declaration.split_once("static "))
+        .map(|(_, rest)| rest.split(':').next().unwrap_or(rest).trim())
+        .unwrap_or_default();
+    names.iter().any(|name| identifier.contains(name))
         && code
             .split_once('=')
             .is_some_and(|(_, value)| value.chars().any(|character| character.is_ascii_digit()))
@@ -493,6 +582,35 @@ mod tokens_tests {
     fn tokens_lint_ignores_comments_and_dynamic_colors() {
         let source = "// gpui::rgb(0xff00aa)\nlet color = gpui::rgb(tag.rgb_hex());";
         assert!(scan_source("src/ui/example.rs", source).is_empty());
+    }
+
+    #[test]
+    fn tokens_lint_accepts_generated_font_and_motion_values() {
+        let source = r#"
+            let family = element.font_family(tokens.font_ui_family().0);
+            let wait = Duration::from_millis(tokens.motion_poll(false).0 as u64);
+        "#;
+        assert!(scan_source("src/ui/example.rs", source).is_empty());
+
+        let literals = r#"
+            let family = element.font_family("monospace");
+            let wait = Duration::from_millis(16);
+        "#;
+        let findings = scan_source("src/ui/example.rs", literals);
+        assert!(findings.iter().any(|finding| finding.category == "font"));
+        assert!(findings.iter().any(|finding| finding.category == "motion"));
+    }
+
+    #[test]
+    fn tokens_lint_does_not_treat_usize_as_a_size_identifier() {
+        assert!(
+            scan_source(
+                "src/ui/example.rs",
+                "const MAX_STARTUP_HANDSHAKES: usize = 8;",
+            )
+            .is_empty()
+        );
+        assert!(!scan_source("src/ui/example.rs", "const PANEL_SIZE: usize = 8;").is_empty());
     }
 
     #[test]

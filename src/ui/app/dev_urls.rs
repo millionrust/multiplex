@@ -548,7 +548,7 @@ impl TermiRustApp {
                             .w_full()
                             .overflow_x_scrollbar()
                             .text_size(px(theme::TYPE_CAPTION_SIZE))
-                            .font_family("monospace")
+                            .font_family(theme::current_design_tokens().font_mono_family().0)
                             .text_color(theme::text_main())
                             .child(localization::dev_url_confirm_exact(
                                 pending.exact_url.as_str().to_string(),
