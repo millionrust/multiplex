@@ -19,7 +19,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$states" != "all" || "$locales" != "en-US,en-XA,ar-XB" || "$themes" != "all" ]]; then
-  echo "Usage: $0 --surface shell-overlays-palette|projects-groups-sessions|presets-runtimes|worktrees-artifacts|hosts-connections|sftp|vault-keys-snippets [--states all] --locales en-US,en-XA,ar-XB --themes all" >&2
+  echo "Usage: $0 --surface shell-overlays-palette|projects-groups-sessions|presets-runtimes|worktrees-artifacts|hosts-connections|sftp|vault-keys-snippets|settings [--states all] --locales en-US,en-XA,ar-XB --themes all" >&2
   exit 2
 fi
 
@@ -58,6 +58,11 @@ case "$surface" in
     paths=""
     test_filter="vault_key_snippet_surface"
     description="Vault, key, and Snippet"
+    ;;
+  settings)
+    paths=""
+    test_filter="settings_surface"
+    description="Settings"
     ;;
   *)
     echo "unknown UI surface: $surface" >&2

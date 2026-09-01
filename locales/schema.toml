@@ -496,6 +496,507 @@ type = "Count"
 sensitivity = "public"
 bidi = "none"
 
+# Settings built-surface controls, actions, values, and stable operation feedback.
+[[messages]]
+id = "settings-mobile-devices-title"
+context = "Approved mobile device list title."
+description = "Approved mobile devices title"
+[[messages]]
+id = "settings-mobile-devices-description"
+context = "Approved mobile device list help."
+description = "Approved mobile devices help"
+[[messages]]
+id = "settings-mobile-devices-empty"
+context = "Approved mobile device empty state."
+description = "No approved mobile devices"
+[[messages]]
+id = "settings-mobile-platform-fallback"
+context = "Fallback mobile platform label."
+description = "Generic mobile platform"
+[[messages]]
+id = "settings-mobile-status-approved"
+context = "Approved mobile device status."
+description = "Approved status"
+[[messages]]
+id = "settings-mobile-status-revoked"
+context = "Revoked mobile device status."
+description = "Revoked status"
+[[messages]]
+id = "settings-mobile-status-seen"
+context = "Seen mobile device status."
+description = "Last seen status"
+[[messages]]
+id = "settings-mobile-revoke-action"
+context = "Revoke an approved mobile device."
+description = "Revoke mobile device action"
+[[messages]]
+id = "settings-preview-library"
+context = "Theme preview surface label."
+description = "Library preview label"
+[[messages]]
+id = "settings-preview-library-description"
+context = "Theme preview surface description."
+description = "Library preview description"
+[[messages]]
+id = "settings-preview-chrome"
+context = "Theme preview surface label."
+description = "Chrome preview label"
+[[messages]]
+id = "settings-preview-chrome-description"
+context = "Theme preview surface description."
+description = "Chrome preview description"
+[[messages]]
+id = "settings-preview-terminal"
+context = "Theme preview surface label."
+description = "Terminal preview label"
+[[messages]]
+id = "settings-preview-terminal-description"
+context = "Theme preview surface description."
+description = "Terminal preview description"
+[[messages]]
+id = "settings-font-size-option"
+context = "Terminal font size option."
+description = "Font size in pixels"
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "settings-auto-copy-value"
+context = "Copy-on-select enabled value."
+description = "Automatic copy value"
+[[messages]]
+id = "settings-manual-copy-value"
+context = "Copy-on-select disabled value."
+description = "Manual copy value"
+[[messages]]
+id = "settings-confirm-paste-value"
+context = "Multiline paste confirmation enabled value."
+description = "Confirm paste value"
+[[messages]]
+id = "settings-direct-paste-value"
+context = "Multiline paste confirmation disabled value."
+description = "Direct paste value"
+[[messages]]
+id = "settings-save-font-family-action"
+context = "Save terminal font family."
+description = "Save font family action"
+[[messages]]
+id = "settings-reset-action"
+context = "Reset a setting to its default."
+description = "Reset action"
+[[messages]]
+id = "settings-font-family-install-hint"
+context = "Terminal font family availability help."
+description = "Font installation hint"
+[[messages]]
+id = "settings-startup-title"
+context = "Startup Settings card title."
+description = "Startup title"
+[[messages]]
+id = "settings-startup-description"
+context = "Startup Settings card description."
+description = "Startup description"
+[[messages]]
+id = "settings-restore-value"
+context = "Restore workspaces startup choice."
+description = "Restore workspaces value"
+[[messages]]
+id = "settings-library-value"
+context = "Open library startup choice."
+description = "Open library value"
+[[messages]]
+id = "settings-show-welcome-action"
+context = "Reset onboarding action."
+description = "Show welcome panel action"
+[[messages]]
+id = "settings-welcome-visible"
+context = "Onboarding already visible value."
+description = "Welcome panel visible"
+[[messages]]
+id = "settings-onboarding-dismissed-hint"
+context = "Dismissed onboarding help."
+description = "Dismissed onboarding help"
+[[messages]]
+id = "settings-onboarding-visible-hint"
+context = "Visible onboarding help."
+description = "Visible onboarding help"
+[[messages]]
+id = "settings-sessions-title"
+context = "Session preferences card title."
+description = "Sessions title"
+[[messages]]
+id = "settings-sessions-description"
+context = "Session preferences card description."
+description = "Sessions description"
+[[messages]]
+id = "settings-history-option"
+context = "Session history retention option."
+description = "History entries option"
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "settings-history-current"
+context = "Current session history count."
+description = "Current history count"
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "settings-save-default-directory-action"
+context = "Save default SSH directory."
+description = "Save default directory action"
+[[messages]]
+id = "settings-clear-action"
+context = "Clear a setting value."
+description = "Clear action"
+[[messages]]
+id = "settings-default-directory-priority-hint"
+context = "Per-Host SSH directory priority help."
+description = "Per-host directory priority"
+[[messages]]
+id = "settings-attempts-option"
+context = "Automatic reconnect attempts option."
+description = "Reconnect attempts option"
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "settings-seconds-option"
+context = "Duration option in seconds."
+description = "Seconds option"
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "settings-local-shell-title"
+context = "Local shell Settings card title."
+description = "Local shell title"
+[[messages]]
+id = "settings-save-shell-action"
+context = "Save local shell defaults."
+description = "Save shell action"
+[[messages]]
+id = "settings-local-shell-args-hint"
+context = "Local shell argument behavior help."
+description = "Local shell arguments hint"
+[[messages]]
+id = "settings-export-data-action"
+context = "Export portable data."
+description = "Export data action"
+[[messages]]
+id = "settings-import-data-action"
+context = "Import portable data."
+description = "Import data action"
+[[messages]]
+id = "settings-export-encrypted-action"
+context = "Export encrypted backup."
+description = "Export encrypted backup action"
+[[messages]]
+id = "settings-export-mobile-vault-action"
+context = "Export encrypted mobile vault."
+description = "Export mobile vault action"
+[[messages]]
+id = "settings-approve-mobile-action"
+context = "Approve mobile pairing request."
+description = "Approve mobile device action"
+[[messages]]
+id = "settings-import-encrypted-action"
+context = "Import encrypted backup."
+description = "Import encrypted backup action"
+[[messages]]
+id = "settings-choose-folder-action"
+context = "Choose shared sync folder."
+description = "Choose folder action"
+[[messages]]
+id = "settings-save-folder-action"
+context = "Save shared sync folder path."
+description = "Save folder action"
+[[messages]]
+id = "settings-push-folder-action"
+context = "Push encrypted bundle to sync folder."
+description = "Push folder action"
+[[messages]]
+id = "settings-pull-folder-action"
+context = "Pull encrypted bundle from sync folder."
+description = "Pull folder action"
+[[messages]]
+id = "settings-force-overwrite-action"
+context = "Confirm destructive sync pull."
+description = "Force overwrite action"
+[[messages]]
+id = "settings-sync-passphrase-hint"
+context = "Shared sync passphrase behavior help."
+description = "Sync passphrase hint"
+[[messages]]
+id = "settings-sync-last-pushed"
+context = "Shared sync has previously pushed."
+description = "Last pushed status"
+[[messages]]
+id = "settings-sync-never-pushed"
+context = "Shared sync has never pushed."
+description = "Never pushed status"
+[[messages]]
+id = "settings-sync-last-pulled"
+context = "Shared sync has previously pulled."
+description = "Last pulled status"
+[[messages]]
+id = "settings-sync-never-pulled"
+context = "Shared sync has never pulled."
+description = "Never pulled status"
+
+[[messages]]
+id = "settings-shortcut-navigation"
+context = "Keyboard shortcut group."
+description = "Navigation shortcuts"
+[[messages]]
+id = "settings-shortcut-workspace"
+context = "Keyboard shortcut group."
+description = "Workspace shortcuts"
+[[messages]]
+id = "settings-shortcut-terminal"
+context = "Keyboard shortcut group."
+description = "Terminal shortcuts"
+[[messages]]
+id = "settings-shortcut-open-activity"
+context = "Keyboard shortcut description."
+description = "Open Activity shortcut"
+[[messages]]
+id = "settings-shortcut-open-connections"
+context = "Keyboard shortcut description."
+description = "Open Connections shortcut"
+[[messages]]
+id = "settings-shortcut-open-sessions"
+context = "Keyboard shortcut description."
+description = "Open Sessions shortcut"
+[[messages]]
+id = "settings-shortcut-open-files"
+context = "Keyboard shortcut description."
+description = "Open Files shortcut"
+[[messages]]
+id = "settings-shortcut-open-devices"
+context = "Keyboard shortcut description."
+description = "Open Devices shortcut"
+[[messages]]
+id = "settings-shortcut-open-settings"
+context = "Keyboard shortcut description."
+description = "Open Settings shortcut"
+[[messages]]
+id = "settings-shortcut-jump-settings"
+context = "Keyboard shortcut description."
+description = "Jump Settings shortcut"
+[[messages]]
+id = "settings-shortcut-focus-hosts"
+context = "Keyboard shortcut description."
+description = "Focus Hosts shortcut"
+[[messages]]
+id = "settings-shortcut-new-host"
+context = "Keyboard shortcut description."
+description = "New Host shortcut"
+[[messages]]
+id = "settings-shortcut-command-palette"
+context = "Keyboard shortcut description."
+description = "Command palette shortcut"
+[[messages]]
+id = "settings-shortcut-terminal-search"
+context = "Keyboard shortcut description."
+description = "Terminal search shortcut"
+[[messages]]
+id = "settings-shortcut-new-terminal"
+context = "Keyboard shortcut description."
+description = "New terminal shortcut"
+[[messages]]
+id = "settings-shortcut-close-workspace"
+context = "Keyboard shortcut description."
+description = "Close workspace shortcut"
+[[messages]]
+id = "settings-shortcut-duplicate-pane"
+context = "Keyboard shortcut description."
+description = "Duplicate pane shortcut"
+[[messages]]
+id = "settings-shortcut-next-workspace"
+context = "Keyboard shortcut description."
+description = "Next workspace shortcut"
+[[messages]]
+id = "settings-shortcut-previous-workspace"
+context = "Keyboard shortcut description."
+description = "Previous workspace shortcut"
+[[messages]]
+id = "settings-shortcut-broadcast"
+context = "Keyboard shortcut description."
+description = "Broadcast shortcut"
+[[messages]]
+id = "settings-shortcut-clear-terminal"
+context = "Keyboard shortcut description."
+description = "Clear terminal shortcut"
+[[messages]]
+id = "settings-shortcut-files-browser"
+context = "Keyboard shortcut description."
+description = "Files browser shortcut"
+[[messages]]
+id = "settings-shortcut-toggle-files"
+context = "Keyboard shortcut description."
+description = "Toggle Files shortcut"
+[[messages]]
+id = "settings-shortcut-close-dialog"
+context = "Keyboard shortcut description."
+description = "Close dialog shortcut"
+[[messages]]
+id = "settings-shortcut-copy"
+context = "Keyboard shortcut description."
+description = "Copy shortcut"
+[[messages]]
+id = "settings-shortcut-paste"
+context = "Keyboard shortcut description."
+description = "Paste shortcut"
+[[messages]]
+id = "settings-shortcut-scroll-back"
+context = "Keyboard shortcut description."
+description = "Scroll back shortcut"
+[[messages]]
+id = "settings-shortcut-scroll-forward"
+context = "Keyboard shortcut description."
+description = "Scroll forward shortcut"
+[[messages]]
+id = "settings-shortcut-autocomplete-move"
+context = "Keyboard shortcut description."
+description = "Autocomplete movement shortcut"
+[[messages]]
+id = "settings-shortcut-autocomplete-accept"
+context = "Keyboard shortcut description."
+description = "Autocomplete accept shortcut"
+
+[[messages]]
+id = "settings-operation-updated"
+context = "Stable Settings save success."
+description = "Setting updated status"
+[[messages]]
+id = "settings-operation-failed"
+context = "Stable content-free Settings failure."
+description = "Setting operation failed"
+[[messages]]
+id = "settings-welcome-dismissed-status"
+context = "Onboarding dismissed status."
+description = "Welcome dismissed status"
+[[messages]]
+id = "settings-welcome-reset-status"
+context = "Onboarding reset status."
+description = "Welcome reset status"
+[[messages]]
+id = "settings-shell-program-required"
+context = "Local shell validation error."
+description = "Shell program required"
+[[messages]]
+id = "settings-sync-folder-required"
+context = "Shared sync missing-folder error."
+description = "Sync folder required"
+[[messages]]
+id = "settings-sync-bundle-missing"
+context = "Shared sync missing-bundle error."
+description = "Sync bundle missing"
+[[messages]]
+id = "settings-backup-passphrase-required"
+context = "Encrypted backup passphrase validation error."
+description = "Backup passphrase required"
+[[messages]]
+id = "settings-backup-passphrase-mismatch"
+context = "Encrypted backup passphrase confirmation error."
+description = "Backup passphrase mismatch"
+[[messages]]
+id = "settings-sync-conflict-warning"
+context = "Shared sync conflict warning."
+description = "Sync conflict warning"
+[[messages]]
+id = "settings-pairing-request-required"
+context = "Mobile pairing request validation error."
+description = "Pairing request required"
+[[messages]]
+id = "settings-pairing-request-invalid"
+context = "Mobile pairing request parse error."
+description = "Pairing request invalid"
+[[messages]]
+id = "settings-mobile-approved-status"
+context = "Mobile approval success."
+description = "Mobile approved status"
+[[messages]]
+id = "settings-mobile-revoked-status"
+context = "Mobile revoke success."
+description = "Mobile revoked status"
+[[messages]]
+id = "settings-data-exported-status"
+context = "Portable data export success."
+description = "Data exported status"
+[[messages]]
+id = "settings-data-imported-status"
+context = "Portable data import success."
+description = "Data imported status"
+[[messages]]
+id = "settings-backup-exported-status"
+context = "Encrypted backup export success."
+description = "Backup exported status"
+[[messages]]
+id = "settings-backup-imported-status"
+context = "Encrypted backup import success."
+description = "Backup imported status"
+[[messages]]
+id = "settings-mobile-exported-status"
+context = "Mobile vault export success."
+description = "Mobile vault exported status"
+[[messages]]
+id = "settings-sync-folder-saved-status"
+context = "Shared sync folder saved."
+description = "Sync folder saved status"
+[[messages]]
+id = "settings-sync-folder-cleared-status"
+context = "Shared sync folder cleared."
+description = "Sync folder cleared status"
+[[messages]]
+id = "settings-sync-pushed-status"
+context = "Shared sync push success."
+description = "Sync pushed status"
+[[messages]]
+id = "settings-sync-pulled-status"
+context = "Shared sync pull success."
+description = "Sync pulled status"
+[[messages]]
+id = "settings-json-file-type"
+context = "Native file dialog JSON type."
+description = "JSON file type"
+[[messages]]
+id = "settings-encrypted-backup-file-type"
+context = "Native file dialog encrypted backup type."
+description = "Encrypted backup file type"
+[[messages]]
+id = "settings-encrypted-mobile-file-type"
+context = "Native file dialog encrypted mobile vault type."
+description = "Encrypted mobile vault file type"
+[[messages]]
+id = "settings-diagnostics-filename"
+context = "Default diagnostics export filename."
+description = "Diagnostics filename"
+[[messages]]
+id = "settings-portable-filename"
+context = "Default portable export filename."
+description = "Portable filename"
+[[messages]]
+id = "settings-backup-filename"
+context = "Default encrypted backup filename."
+description = "Backup filename"
+[[messages]]
+id = "settings-mobile-filename"
+context = "Default encrypted mobile vault filename."
+description = "Mobile vault filename"
+
 [[messages]]
 id = "transfer-summary"
 context = "Summary shown after transferring one or more files."
@@ -6129,3 +6630,375 @@ bidi = "none"
 id = "sensitive-destructive-action-warning"
 context = "Accessible non-color warning attached to destructive Vault and key controls."
 description = "Sensitive destructive action warning"
+
+# Goal 21.1.4.4 Settings surface.
+[[messages]]
+id = "settings-title"
+context = "Settings page heading."
+description = "Settings title"
+[[messages]]
+id = "settings-subtitle"
+context = "Settings page supporting text."
+description = "Settings subtitle"
+[[messages]]
+id = "settings-search-label"
+context = "Accessible label for Settings search."
+description = "Settings search label"
+[[messages]]
+id = "settings-search-placeholder"
+context = "Placeholder for Settings search."
+description = "Settings search placeholder"
+[[messages]]
+id = "settings-search-clear"
+context = "Action clearing Settings search."
+description = "Clear Settings search"
+[[messages]]
+id = "settings-search-empty-title"
+context = "Heading when Settings search has no result."
+description = "Settings search empty title"
+[[messages]]
+id = "settings-search-empty-description"
+context = "Help when Settings search has no result."
+description = "Settings search empty description"
+[[messages]]
+id = "settings-state-ready"
+context = "Settings surface ready state."
+description = "Settings ready state"
+[[messages]]
+id = "settings-state-search-results"
+context = "Settings surface filtered results state."
+description = "Settings search results state"
+[[messages]]
+id = "settings-state-search-empty"
+context = "Settings surface empty search state."
+description = "Settings search empty state"
+[[messages]]
+id = "settings-state-validating"
+context = "Settings validation in progress."
+description = "Settings validating state"
+[[messages]]
+id = "settings-state-saving"
+context = "Settings persistence in progress."
+description = "Settings saving state"
+[[messages]]
+id = "settings-state-permission-denied"
+context = "Settings permission denied state."
+description = "Settings permission denied state"
+[[messages]]
+id = "settings-state-storage-failure"
+context = "Settings storage failure state."
+description = "Settings storage failure state"
+[[messages]]
+id = "settings-state-stale"
+context = "Settings concurrent revision state."
+description = "Settings stale state"
+[[messages]]
+id = "settings-state-recovery-required"
+context = "Settings recovery required state."
+description = "Settings recovery state"
+[[messages]]
+id = "settings-state-unavailable"
+context = "Settings dependency unavailable state."
+description = "Settings unavailable state"
+[[messages]]
+id = "settings-state-error"
+context = "Settings generic error state."
+description = "Settings error state"
+
+[[messages]]
+id = "settings-section-appearance"
+context = "Settings hierarchy section."
+description = "Appearance section"
+[[messages]]
+id = "settings-section-appearance-description"
+context = "Settings hierarchy section description."
+description = "Appearance section description"
+[[messages]]
+id = "settings-section-terminal"
+context = "Settings hierarchy section."
+description = "Terminal section"
+[[messages]]
+id = "settings-section-terminal-description"
+context = "Settings hierarchy section description."
+description = "Terminal section description"
+[[messages]]
+id = "settings-section-projects-sessions"
+context = "Settings hierarchy section."
+description = "Projects and Sessions section"
+[[messages]]
+id = "settings-section-projects-sessions-description"
+context = "Settings hierarchy section description."
+description = "Projects and Sessions section description"
+[[messages]]
+id = "settings-section-presets-runtimes"
+context = "Settings hierarchy section."
+description = "Presets and Runtimes section"
+[[messages]]
+id = "settings-section-presets-runtimes-description"
+context = "Settings hierarchy section description."
+description = "Presets and Runtimes section description"
+[[messages]]
+id = "settings-section-notifications"
+context = "Settings hierarchy section."
+description = "Notifications section"
+[[messages]]
+id = "settings-section-notifications-description"
+context = "Settings hierarchy section description."
+description = "Notifications section description"
+[[messages]]
+id = "settings-section-keyboard"
+context = "Settings hierarchy section."
+description = "Keyboard section"
+[[messages]]
+id = "settings-section-keyboard-description"
+context = "Settings hierarchy section description."
+description = "Keyboard section description"
+[[messages]]
+id = "settings-section-storage-privacy-diagnostics"
+context = "Settings hierarchy section."
+description = "Storage privacy and diagnostics section"
+[[messages]]
+id = "settings-section-storage-privacy-diagnostics-description"
+context = "Settings hierarchy section description."
+description = "Storage privacy and diagnostics section description"
+[[messages]]
+id = "settings-section-remote-devices"
+context = "Settings hierarchy section."
+description = "Remote devices section"
+[[messages]]
+id = "settings-section-remote-devices-description"
+context = "Settings hierarchy section description."
+description = "Remote devices section description"
+
+[[messages]]
+id = "settings-theme-label"
+context = "Settings control label."
+description = "Theme label"
+[[messages]]
+id = "settings-theme-description"
+context = "Settings control help."
+description = "Theme description"
+[[messages]]
+id = "settings-development-locale-label"
+context = "Settings control label."
+description = "Development locale label"
+[[messages]]
+id = "settings-development-locale-description"
+context = "Settings control help."
+description = "Development locale description"
+[[messages]]
+id = "settings-terminal-font-size-label"
+context = "Settings control label."
+description = "Terminal font size label"
+[[messages]]
+id = "settings-terminal-font-size-description"
+context = "Settings control help."
+description = "Terminal font size description"
+[[messages]]
+id = "settings-copy-on-select-label"
+context = "Settings control label."
+description = "Copy on select label"
+[[messages]]
+id = "settings-copy-on-select-description"
+context = "Settings control help."
+description = "Copy on select description"
+[[messages]]
+id = "settings-confirm-multiline-paste-label"
+context = "Settings control label."
+description = "Multiline paste confirmation label"
+[[messages]]
+id = "settings-confirm-multiline-paste-description"
+context = "Settings control help."
+description = "Multiline paste confirmation description"
+[[messages]]
+id = "settings-terminal-font-family-label"
+context = "Settings control label."
+description = "Terminal font family label"
+[[messages]]
+id = "settings-terminal-font-family-description"
+context = "Settings control help."
+description = "Terminal font family description"
+[[messages]]
+id = "settings-restore-workspaces-label"
+context = "Settings control label."
+description = "Restore workspaces label"
+[[messages]]
+id = "settings-restore-workspaces-description"
+context = "Settings control help."
+description = "Restore workspaces description"
+[[messages]]
+id = "settings-onboarding-label"
+context = "Settings control label."
+description = "Onboarding label"
+[[messages]]
+id = "settings-onboarding-description"
+context = "Settings control help."
+description = "Onboarding description"
+[[messages]]
+id = "settings-session-history-limit-label"
+context = "Settings control label."
+description = "Session history limit label"
+[[messages]]
+id = "settings-session-history-limit-description"
+context = "Settings control help."
+description = "Session history limit description"
+[[messages]]
+id = "settings-default-ssh-directory-label"
+context = "Settings control label."
+description = "Default SSH directory label"
+[[messages]]
+id = "settings-default-ssh-directory-description"
+context = "Settings control help."
+description = "Default SSH directory description"
+[[messages]]
+id = "settings-auto-reconnect-label"
+context = "Settings control label."
+description = "Automatic reconnect label"
+[[messages]]
+id = "settings-auto-reconnect-description"
+context = "Settings control help."
+description = "Automatic reconnect description"
+[[messages]]
+id = "settings-ssh-keepalive-label"
+context = "Settings control label."
+description = "SSH keepalive label"
+[[messages]]
+id = "settings-ssh-keepalive-description"
+context = "Settings control help."
+description = "SSH keepalive description"
+[[messages]]
+id = "settings-reconnect-delay-label"
+context = "Settings control label."
+description = "Reconnect delay label"
+[[messages]]
+id = "settings-reconnect-delay-description"
+context = "Settings control help."
+description = "Reconnect delay description"
+[[messages]]
+id = "settings-local-shell-program-label"
+context = "Settings form label."
+description = "Local shell program label"
+[[messages]]
+id = "settings-local-shell-cwd-label"
+context = "Settings form label."
+description = "Local shell working directory label"
+[[messages]]
+id = "settings-local-shell-description"
+context = "Settings control help."
+description = "Local shell description"
+[[messages]]
+id = "settings-keyboard-shortcuts-title"
+context = "Settings card title."
+description = "Keyboard shortcuts title"
+[[messages]]
+id = "settings-keyboard-shortcuts-description"
+context = "Settings card description."
+description = "Keyboard shortcuts description"
+[[messages]]
+id = "settings-portable-data-title"
+context = "Settings card title."
+description = "Portable data title"
+[[messages]]
+id = "settings-portable-data-description"
+context = "Settings card description."
+description = "Portable data description"
+[[messages]]
+id = "settings-encrypted-backup-title"
+context = "Settings card title."
+description = "Encrypted backup title"
+[[messages]]
+id = "settings-encrypted-backup-description"
+context = "Settings card description."
+description = "Encrypted backup description"
+[[messages]]
+id = "settings-export-passphrase-label"
+context = "Settings form label."
+description = "Export passphrase label"
+[[messages]]
+id = "settings-import-passphrase-label"
+context = "Settings form label."
+description = "Import passphrase label"
+[[messages]]
+id = "settings-passphrase-safety-notice"
+context = "Encrypted backup passphrase safety help."
+description = "Passphrase safety notice"
+[[messages]]
+id = "settings-encrypted-import-description"
+context = "Encrypted backup import help."
+description = "Encrypted import description"
+[[messages]]
+id = "settings-mobile-vault-label"
+context = "Mobile vault Settings control."
+description = "Mobile vault label"
+[[messages]]
+id = "settings-mobile-vault-description"
+context = "Mobile vault Settings help."
+description = "Mobile vault description"
+[[messages]]
+id = "settings-mobile-pairing-label"
+context = "Mobile pairing Settings control."
+description = "Mobile pairing label"
+[[messages]]
+id = "settings-mobile-pairing-description"
+context = "Mobile pairing Settings help."
+description = "Mobile pairing description"
+[[messages]]
+id = "settings-shared-folder-sync-title"
+context = "Shared-folder sync Settings card title."
+description = "Shared-folder sync title"
+[[messages]]
+id = "settings-shared-folder-sync-description"
+context = "Shared-folder sync Settings help."
+description = "Shared-folder sync description"
+[[messages]]
+id = "settings-sync-folder-label"
+context = "Shared-folder sync form label."
+description = "Sync folder label"
+[[messages]]
+id = "settings-sync-folder-description"
+context = "Shared-folder sync control help."
+description = "Sync folder description"
+[[messages]]
+id = "settings-value-on"
+context = "Generic enabled value in Settings."
+description = "On value"
+[[messages]]
+id = "settings-value-off"
+context = "Generic disabled value in Settings."
+description = "Off value"
+[[messages]]
+id = "settings-confirm-passphrase-label"
+context = "Settings form label."
+description = "Confirm passphrase label"
+[[messages]]
+id = "settings-theme-ocean"
+context = "Ocean theme value in Settings semantics."
+description = "Ocean theme"
+[[messages]]
+id = "settings-theme-daylight"
+context = "Daylight theme value in Settings semantics."
+description = "Daylight theme"
+[[messages]]
+id = "settings-locale-english"
+context = "English development locale value."
+description = "English locale"
+[[messages]]
+id = "settings-locale-expanded"
+context = "Expanded pseudo-locale value."
+description = "Expanded locale"
+[[messages]]
+id = "settings-locale-rtl"
+context = "RTL pseudo-locale value."
+description = "RTL locale"
+
+[[messages]]
+id = "settings-search-count"
+context = "Number of Settings search results."
+description = "Settings search result count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"

@@ -12,6 +12,7 @@ use crate::preset_runtime_surface::{
 use crate::product_session_surface::{
     ProductSessionAccessibilityCommand, ProductSessionSemanticSnapshot,
 };
+use crate::settings_surface::{SettingsAccessibilityCommand, SettingsSemanticSnapshot};
 use crate::sftp_surface::{SftpAccessibilityCommand, SftpSemanticSnapshot};
 use crate::vault_key_snippet_surface::{
     VaultKeySnippetAccessibilityCommand, VaultKeySnippetSemanticSnapshot,
@@ -453,6 +454,7 @@ pub enum ShellAccessibilityCommand {
     HostConnection(HostConnectionAccessibilityCommand),
     Sftp(SftpAccessibilityCommand),
     VaultKeySnippet(VaultKeySnippetAccessibilityCommand),
+    Settings(SettingsAccessibilityCommand),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -469,6 +471,7 @@ pub struct ShellSemanticSnapshot {
     pub host_connection: Option<HostConnectionSemanticSnapshot>,
     pub sftp: Option<SftpSemanticSnapshot>,
     pub vault_key_snippet: Option<VaultKeySnippetSemanticSnapshot>,
+    pub settings: Option<SettingsSemanticSnapshot>,
 }
 
 impl Default for ShellSemanticSnapshot {
@@ -486,6 +489,7 @@ impl Default for ShellSemanticSnapshot {
             host_connection: None,
             sftp: None,
             vault_key_snippet: None,
+            settings: None,
         }
     }
 }
@@ -568,6 +572,11 @@ impl ShellSemanticSnapshot {
             && let Some(vault_key_snippet) = self.vault_key_snippet.as_ref()
         {
             nodes.extend(vault_key_snippet.try_nodes(shell_region_node(ShellRegionId::Content))?);
+        }
+        if !self.palette_open
+            && let Some(settings) = self.settings.as_ref()
+        {
+            nodes.extend(settings.try_nodes(shell_region_node(ShellRegionId::Content))?);
         }
 
         if self.palette_open {
@@ -697,6 +706,16 @@ impl ShellSemanticSnapshot {
                     .map(|(key, command)| {
                         (key, ShellAccessibilityCommand::VaultKeySnippet(command))
                     }),
+            );
+        }
+        if !self.palette_open
+            && let Some(settings) = self.settings.as_ref()
+        {
+            routes.extend(
+                settings
+                    .routes()
+                    .into_iter()
+                    .map(|(key, command)| (key, ShellAccessibilityCommand::Settings(command))),
             );
         }
         if self.palette_open {

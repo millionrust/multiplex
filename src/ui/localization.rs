@@ -44,6 +44,30 @@ pub fn static_message(id: MessageId) -> String {
     message_id(id).unwrap_or_default()
 }
 
+pub fn settings_search_count(count: usize) -> String {
+    text(&SettingsSearchCountArgs::new(Count(count as u64)))
+}
+
+pub fn settings_font_size_option(size: u16) -> String {
+    text(&SettingsFontSizeOptionArgs::new(Count(u64::from(size))))
+}
+
+pub fn settings_history_option(count: u16) -> String {
+    text(&SettingsHistoryOptionArgs::new(Count(u64::from(count))))
+}
+
+pub fn settings_history_current(count: usize) -> String {
+    text(&SettingsHistoryCurrentArgs::new(Count(count as u64)))
+}
+
+pub fn settings_attempts_option(count: u8) -> String {
+    text(&SettingsAttemptsOptionArgs::new(Count(u64::from(count))))
+}
+
+pub fn settings_seconds_option(seconds: u16) -> String {
+    text(&SettingsSecondsOptionArgs::new(Count(u64::from(seconds))))
+}
+
 pub fn set_development_locale(locale: &str) -> Result<Locale, String> {
     let locale = match locale
         .trim()

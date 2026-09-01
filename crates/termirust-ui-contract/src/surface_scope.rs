@@ -33,6 +33,36 @@ pub fn files_for_surface(surface: &str) -> Option<&'static [SurfaceFile]> {
                 marked: true,
             },
         ]),
+        "settings" => Some(&[
+            SurfaceFile {
+                path: "src/ui/app/library.rs",
+                marked: true,
+            },
+            SurfaceFile {
+                path: "src/ui/app/notification_settings.rs",
+                marked: false,
+            },
+            SurfaceFile {
+                path: "src/ui/app/cli_status.rs",
+                marked: false,
+            },
+            SurfaceFile {
+                path: "src/ui/app/remote_devices.rs",
+                marked: false,
+            },
+            SurfaceFile {
+                path: "src/ui/settings.rs",
+                marked: false,
+            },
+            SurfaceFile {
+                path: "src/ui/app/settings_surface.rs",
+                marked: false,
+            },
+            SurfaceFile {
+                path: "src/ui/app/mod.rs",
+                marked: true,
+            },
+        ]),
         _ => None,
     }
 }

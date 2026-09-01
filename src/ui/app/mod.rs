@@ -28,6 +28,7 @@ mod session_coordinator;
 mod session_library;
 mod session_resume;
 mod session_sidebar;
+mod settings_surface;
 mod sftp;
 mod transcript_export;
 mod types;
@@ -179,6 +180,10 @@ fn primary_shortcut_label() -> &'static str {
     {
         "Ctrl"
     }
+}
+
+fn platform_shortcut_label(keys: &str) -> String {
+    keys.replace("Cmd", primary_shortcut_label())
 }
 
 fn ssh_directory_label() -> &'static str {
@@ -411,6 +416,7 @@ struct SnippetInputs {
 }
 
 struct SettingsInputs {
+    search: Entity<InputState>,
     local_shell_program: Entity<InputState>,
     local_shell_cwd: Entity<InputState>,
     export_backup_passphrase: Entity<InputState>,
@@ -446,39 +452,65 @@ impl SnippetInputs {
     }
 }
 
+// termirust-ui-surface:settings:start
 impl SettingsInputs {
     fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
         Self {
-            local_shell_program: cx
-                .new(|cx| InputState::new(window, cx).placeholder("Shell executable")),
-            local_shell_cwd: cx
-                .new(|cx| InputState::new(window, cx).placeholder("Optional working directory")),
+            search: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::SettingsSearchPlaceholder,
+                ))
+            }),
+            local_shell_program: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::SettingsLocalShellProgramLabel,
+                ))
+            }),
+            local_shell_cwd: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::SettingsLocalShellCwdLabel,
+                ))
+            }),
             export_backup_passphrase: cx.new(|cx| {
                 InputState::new(window, cx)
                     .masked(true)
-                    .placeholder("Backup passphrase")
+                    .placeholder(localization::static_message(
+                        MessageId::SettingsExportPassphraseLabel,
+                    ))
             }),
             export_backup_confirm: cx.new(|cx| {
                 InputState::new(window, cx)
                     .masked(true)
-                    .placeholder("Confirm passphrase")
+                    .placeholder(localization::static_message(
+                        MessageId::SettingsConfirmPassphraseLabel,
+                    ))
             }),
             import_backup_passphrase: cx.new(|cx| {
                 InputState::new(window, cx)
                     .masked(true)
-                    .placeholder("Backup passphrase")
+                    .placeholder(localization::static_message(
+                        MessageId::SettingsImportPassphraseLabel,
+                    ))
             }),
-            default_ssh_startup_directory: cx
-                .new(|cx| InputState::new(window, cx).placeholder("e.g. /home/user/projects")),
+            default_ssh_startup_directory: cx.new(|cx| {
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::SettingsDefaultSshDirectoryLabel,
+                ))
+            }),
             terminal_font_family: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("e.g. JetBrains Mono, Fira Code")
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::SettingsTerminalFontFamilyLabel,
+                ))
             }),
             sync_folder_input: cx.new(|cx| {
-                InputState::new(window, cx)
-                    .placeholder("e.g. ~/Dropbox/TermiRust or any cloud-synced folder")
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::SettingsSyncFolderLabel,
+                ))
             }),
             mobile_pairing_request: cx.new(|cx| {
-                InputState::new(window, cx).placeholder("Paste mobile pairing request JSON")
+                InputState::new(window, cx).placeholder(localization::static_message(
+                    MessageId::SettingsMobilePairingLabel,
+                ))
             }),
             remote_identity_reset: cx.new(|cx| {
                 InputState::new(window, cx)
@@ -495,6 +527,7 @@ impl SettingsInputs {
         }
     }
 }
+// termirust-ui-surface:settings:end
 
 impl VaultInputs {
     fn new(window: &mut Window, cx: &mut Context<TermiRustApp>) -> Self {
@@ -1245,6 +1278,7 @@ pub struct TermiRustApp {
     _canvas_project_editor_subscription: Subscription,
     _canvas_note_editor_subscription: Subscription,
     _command_palette_subscription: Subscription,
+    _settings_search_subscription: Subscription,
     _window_bounds_subscription: Option<Subscription>,
     _window_activation_subscription: Option<Subscription>,
     _window_bounds_save_task: Option<Task<()>>,
@@ -1309,6 +1343,12 @@ impl TermiRustApp {
                 }
             },
         );
+        let settings_search_subscription =
+            cx.subscribe(&settings_inputs.search, |_, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
+            });
         let known_hosts =
             Arc::new(KnownHostStore::load().expect("unable to initialize known host storage"));
         let (connection_diagnostic_manager, connection_diagnostic_event_rx) =
@@ -1560,6 +1600,7 @@ impl TermiRustApp {
             _canvas_project_editor_subscription: canvas_project_editor_subscription,
             _canvas_note_editor_subscription: canvas_note_editor_subscription,
             _command_palette_subscription: command_palette_subscription,
+            _settings_search_subscription: settings_search_subscription,
             _window_bounds_subscription: None,
             _window_activation_subscription: None,
             _window_bounds_save_task: None,
@@ -1736,6 +1777,9 @@ impl TermiRustApp {
                         window,
                         cx,
                     );
+                }
+                ShellAccessibilityCommand::Settings(command) => {
+                    self.handle_settings_accessibility_command(command, event.value, window, cx);
                 }
             }
         }
@@ -4541,9 +4585,11 @@ impl TermiRustApp {
         }
     }
 
+    // termirust-ui-surface:settings:start
     fn dismiss_onboarding(&mut self, cx: &mut Context<Self>) {
         self.mark_onboarding_complete();
-        self.status_message = "Welcome panel dismissed.".to_string();
+        self.status_message =
+            localization::static_message(MessageId::SettingsWelcomeDismissedStatus);
         self.error_message.clear();
         cx.notify();
     }
@@ -4552,7 +4598,7 @@ impl TermiRustApp {
         self.saved.settings.theme_preset = preset;
         theme::set_theme_preset(preset);
         self.save_settings();
-        self.status_message = format!("Theme set to {}.", preset.label());
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
     }
@@ -4560,11 +4606,7 @@ impl TermiRustApp {
     fn update_restore_workspaces_on_launch(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.saved.settings.restore_workspaces_on_launch = enabled;
         self.save_settings();
-        self.status_message = if enabled {
-            "Saved workspaces will reopen on launch.".to_string()
-        } else {
-            "Launch now opens directly into the library.".to_string()
-        };
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
     }
@@ -4578,7 +4620,7 @@ impl TermiRustApp {
             self.saved.session_logs.drain(..drain_count);
         }
         self.save_settings();
-        self.status_message = format!("Session history retention set to {limit} entries.");
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
     }
@@ -4589,11 +4631,7 @@ impl TermiRustApp {
         self.connection_coordinator
             .set_ssh_keepalive_secs(self.saved.settings.ssh_keepalive_secs);
         self.save_settings();
-        self.status_message = if secs == 0 {
-            "SSH keep-alive disabled.".to_string()
-        } else {
-            format!("SSH keep-alive set to {secs}s.")
-        };
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
     }
@@ -4606,11 +4644,7 @@ impl TermiRustApp {
             self.saved.settings.auto_reconnect_delay_secs,
         );
         self.save_settings();
-        self.status_message = if attempts == 0 {
-            "Auto-reconnect disabled.".to_string()
-        } else {
-            format!("Auto-reconnect set to {attempts} attempts.")
-        };
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
     }
@@ -4623,7 +4657,7 @@ impl TermiRustApp {
             self.saved.settings.auto_reconnect_delay_secs,
         );
         self.save_settings();
-        self.status_message = format!("Auto-reconnect delay set to {delay_secs}s.");
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
     }
@@ -4631,11 +4665,7 @@ impl TermiRustApp {
     fn update_confirm_multiline_paste(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.saved.settings.confirm_multiline_paste = enabled;
         self.save_settings();
-        self.status_message = if enabled {
-            "Multi-line clipboards now require confirmation before pasting.".to_string()
-        } else {
-            "Multi-line paste confirmation disabled.".to_string()
-        };
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
     }
@@ -4643,11 +4673,7 @@ impl TermiRustApp {
     fn update_copy_on_select(&mut self, enabled: bool, cx: &mut Context<Self>) {
         self.saved.settings.copy_on_select = enabled;
         self.save_settings();
-        self.status_message = if enabled {
-            "Selecting text now copies it to the clipboard automatically.".to_string()
-        } else {
-            "Auto-copy on selection disabled.".to_string()
-        };
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
     }
@@ -4763,8 +4789,13 @@ impl TermiRustApp {
         };
         let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
             FileDialog::new()
-                .add_filter("JSON", &["json"])
-                .set_file_name("termirust-diagnostics.json")
+                .add_filter(
+                    localization::static_message(MessageId::SettingsJsonFileType),
+                    &["json"],
+                )
+                .set_file_name(localization::static_message(
+                    MessageId::SettingsDiagnosticsFilename,
+                ))
                 .save_file()
         }) else {
             self.diagnostic_preview = Some(preview);
@@ -5067,7 +5098,7 @@ impl TermiRustApp {
     fn reset_onboarding_panel(&mut self, cx: &mut Context<Self>) {
         self.saved.settings.onboarding_dismissed = false;
         self.save_settings();
-        self.status_message = "Welcome panel reset. Open Connections to see it again.".to_string();
+        self.status_message = localization::static_message(MessageId::SettingsWelcomeResetStatus);
         self.error_message.clear();
         cx.notify();
     }
@@ -5081,7 +5112,7 @@ impl TermiRustApp {
         self.saved.settings.terminal_font_size = font_size;
         self.save_settings();
         self.sync_terminal_layout(window, cx);
-        self.status_message = format!("Terminal font size set to {} px.", font_size);
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
     }
@@ -5095,7 +5126,8 @@ impl TermiRustApp {
             .trim()
             .to_string();
         if program.is_empty() {
-            self.error_message = "Local shell program cannot be empty.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::SettingsShellProgramRequired);
             cx.notify();
             return;
         }
@@ -5111,7 +5143,7 @@ impl TermiRustApp {
         self.saved.settings.default_local_shell.cwd = (!cwd.is_empty()).then_some(cwd.clone());
         self.save_settings();
         self.load_settings_inputs(window, cx);
-        self.status_message = format!("Default local shell set to {}.", program);
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
     }
@@ -5127,11 +5159,7 @@ impl TermiRustApp {
         self.saved.settings.terminal_font_family = (!family.is_empty()).then(|| family.clone());
         self.save_settings();
         self.sync_terminal_layout(window, cx);
-        self.status_message = if family.is_empty() {
-            "Terminal font family reset to the app default.".to_string()
-        } else {
-            format!("Terminal font family set to {family}.")
-        };
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
     }
@@ -5146,7 +5174,7 @@ impl TermiRustApp {
             cx,
         );
         self.sync_terminal_layout(window, cx);
-        self.status_message = "Terminal font family reset to the app default.".to_string();
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
     }
@@ -5162,12 +5190,7 @@ impl TermiRustApp {
         self.saved.settings.default_ssh_startup_directory =
             (!dir.is_empty()).then_some(dir.clone());
         self.save_settings();
-        self.status_message = if let Some(ref d) = self.saved.settings.default_ssh_startup_directory
-        {
-            format!("Default SSH startup directory set to {}.", d)
-        } else {
-            "Default SSH startup directory cleared.".to_string()
-        };
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
     }
@@ -5181,7 +5204,7 @@ impl TermiRustApp {
             window,
             cx,
         );
-        self.status_message = "Default SSH startup directory cleared.".to_string();
+        self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
     }
@@ -5189,27 +5212,27 @@ impl TermiRustApp {
     fn export_portable_data(&mut self, cx: &mut Context<Self>) {
         let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
             FileDialog::new()
-                .add_filter("JSON", &["json"])
-                .set_file_name("termirust-export.json")
+                .add_filter(
+                    localization::static_message(MessageId::SettingsJsonFileType),
+                    &["json"],
+                )
+                .set_file_name(localization::static_message(
+                    MessageId::SettingsPortableFilename,
+                ))
                 .save_file()
         }) else {
             return;
         };
 
         match export_portable_data_bundle(&path, &self.saved, &self.known_hosts) {
-            Ok(report) => {
-                self.status_message = format!(
-                    "Exported {} hosts, {} identities, {} snippets, {} vaults, and {} known hosts.",
-                    report.profiles,
-                    report.identities,
-                    report.snippets,
-                    report.vaults,
-                    report.known_hosts
-                );
+            Ok(_) => {
+                self.status_message =
+                    localization::static_message(MessageId::SettingsDataExportedStatus);
                 self.error_message.clear();
             }
-            Err(error) => {
-                self.error_message = format!("Failed to export data bundle: {error:#}");
+            Err(_) => {
+                self.error_message =
+                    localization::static_message(MessageId::SettingsOperationFailed);
             }
         }
         cx.notify();
@@ -5221,21 +5244,16 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) -> bool {
         match export_portable_data_bundle(path, &self.saved, &self.known_hosts) {
-            Ok(report) => {
-                self.status_message = format!(
-                    "Exported {} hosts, {} identities, {} snippets, {} vaults, and {} known hosts.",
-                    report.profiles,
-                    report.identities,
-                    report.snippets,
-                    report.vaults,
-                    report.known_hosts
-                );
+            Ok(_) => {
+                self.status_message =
+                    localization::static_message(MessageId::SettingsDataExportedStatus);
                 self.error_message.clear();
                 cx.notify();
                 true
             }
-            Err(error) => {
-                self.error_message = format!("Failed to export data bundle: {error:#}");
+            Err(_) => {
+                self.error_message =
+                    localization::static_message(MessageId::SettingsOperationFailed);
                 cx.notify();
                 false
             }
@@ -5267,7 +5285,8 @@ impl TermiRustApp {
             window,
             cx,
         );
-        self.status_message = format!("Sync folder set to {path_str}.");
+        self.status_message =
+            localization::static_message(MessageId::SettingsSyncFolderSavedStatus);
         self.error_message.clear();
         cx.notify();
     }
@@ -5283,9 +5302,9 @@ impl TermiRustApp {
         self.saved.settings.sync_folder_path = (!entered.is_empty()).then(|| entered.clone());
         self.save_settings();
         self.status_message = if entered.is_empty() {
-            "Sync folder cleared.".to_string()
+            localization::static_message(MessageId::SettingsSyncFolderClearedStatus)
         } else {
-            format!("Sync folder set to {entered}.")
+            localization::static_message(MessageId::SettingsSyncFolderSavedStatus)
         };
         self.error_message.clear();
         cx.notify();
@@ -5303,7 +5322,7 @@ impl TermiRustApp {
     fn push_to_sync_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(target) = self.sync_bundle_path() else {
             self.error_message =
-                "Pick a sync folder before pushing the encrypted bundle.".to_string();
+                localization::static_message(MessageId::SettingsSyncFolderRequired);
             cx.notify();
             return;
         };
@@ -5321,21 +5340,22 @@ impl TermiRustApp {
             .to_string();
         if passphrase.trim().is_empty() {
             self.error_message =
-                "Set a backup passphrase in the Encrypted Backup card before pushing.".to_string();
+                localization::static_message(MessageId::SettingsBackupPassphraseRequired);
             cx.notify();
             return;
         }
         if passphrase != confirm {
-            self.error_message = "Backup passphrase confirmation does not match.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::SettingsBackupPassphraseMismatch);
             cx.notify();
             return;
         }
-        if let Some(parent) = target.parent() {
-            if let Err(error) = std::fs::create_dir_all(parent) {
-                self.error_message = format!("Unable to create sync folder: {error}");
-                cx.notify();
-                return;
-            }
+        if let Some(parent) = target.parent()
+            && std::fs::create_dir_all(parent).is_err()
+        {
+            self.error_message = localization::static_message(MessageId::SettingsOperationFailed);
+            cx.notify();
+            return;
         }
         match export_encrypted_portable_data_bundle(
             &target,
@@ -5343,21 +5363,17 @@ impl TermiRustApp {
             &self.known_hosts,
             &passphrase,
         ) {
-            Ok(report) => {
+            Ok(_) => {
                 self.clear_backup_inputs(window, cx);
                 self.saved.settings.sync_last_pushed_at = Some(current_unix_millis());
                 self.save_settings();
-                self.status_message = format!(
-                    "Synced to {}: {} hosts, {} identities, {} snippets.",
-                    target.display(),
-                    report.profiles,
-                    report.identities,
-                    report.snippets
-                );
+                self.status_message =
+                    localization::static_message(MessageId::SettingsSyncPushedStatus);
                 self.error_message.clear();
             }
-            Err(error) => {
-                self.error_message = format!("Failed to push to sync folder: {error:#}");
+            Err(_) => {
+                self.error_message =
+                    localization::static_message(MessageId::SettingsOperationFailed);
             }
         }
         cx.notify();
@@ -5376,15 +5392,12 @@ impl TermiRustApp {
     fn pull_from_sync_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(target) = self.sync_bundle_path() else {
             self.error_message =
-                "Pick a sync folder before pulling the encrypted bundle.".to_string();
+                localization::static_message(MessageId::SettingsSyncFolderRequired);
             cx.notify();
             return;
         };
         if !target.exists() {
-            self.error_message = format!(
-                "No bundle to pull at {} - push from another machine first.",
-                target.display()
-            );
+            self.error_message = localization::static_message(MessageId::SettingsSyncBundleMissing);
             cx.notify();
             return;
         }
@@ -5396,27 +5409,22 @@ impl TermiRustApp {
             .to_string();
         if passphrase.trim().is_empty() {
             self.error_message =
-                "Enter the backup passphrase in the Encrypted Backup card before pulling."
-                    .to_string();
+                localization::static_message(MessageId::SettingsBackupPassphraseRequired);
             cx.notify();
             return;
         }
-        if !self.sync_pull_force {
-            if let (Some(remote_at), Some(pushed_at)) = (
+        if !self.sync_pull_force
+            && let (Some(remote_at), Some(pushed_at)) = (
                 self.sync_bundle_modified_at(),
                 self.saved.settings.sync_last_pushed_at,
-            ) {
-                if pushed_at > remote_at + 5_000 {
-                    self.sync_pull_pending_warning = true;
-                    self.error_message = format!(
-                        "Conflict: this machine's last push ({}) is newer than the bundle in the sync folder ({}). Confirm to overwrite local state.",
-                        format_relative_time(pushed_at),
-                        format_relative_time(remote_at),
-                    );
-                    cx.notify();
-                    return;
-                }
-            }
+            )
+            && pushed_at > remote_at + 5_000
+        {
+            self.sync_pull_pending_warning = true;
+            self.error_message =
+                localization::static_message(MessageId::SettingsSyncConflictWarning);
+            cx.notify();
+            return;
         }
         self.sync_pull_force = false;
         self.sync_pull_pending_warning = false;
@@ -5426,23 +5434,19 @@ impl TermiRustApp {
             &self.known_hosts,
             &passphrase,
         ) {
-            Ok(report) => {
+            Ok(_) => {
                 let _ = save_saved_state(&self.saved);
                 self.load_settings_inputs(window, cx);
                 theme::set_theme_preset(self.saved.settings.theme_preset);
                 self.saved.settings.sync_last_pulled_at = Some(current_unix_millis());
                 self.save_settings();
-                self.status_message = format!(
-                    "Pulled from {}: merged {} hosts, {} identities, {} snippets.",
-                    target.display(),
-                    report.profiles,
-                    report.identities,
-                    report.snippets
-                );
+                self.status_message =
+                    localization::static_message(MessageId::SettingsSyncPulledStatus);
                 self.error_message.clear();
             }
-            Err(error) => {
-                self.error_message = format!("Failed to pull from sync folder: {error:#}");
+            Err(_) => {
+                self.error_message =
+                    localization::static_message(MessageId::SettingsOperationFailed);
             }
         }
         cx.notify();
@@ -5452,6 +5456,7 @@ impl TermiRustApp {
         self.sync_pull_force = true;
         self.pull_from_sync_folder(window, cx);
     }
+    // termirust-ui-surface:settings:end
 
     fn remove_known_host_entry(&mut self, endpoint: &str, cx: &mut Context<Self>) -> bool {
         match self.known_hosts.remove(endpoint) {
@@ -5475,6 +5480,7 @@ impl TermiRustApp {
         }
     }
 
+    // termirust-ui-surface:settings:start
     fn export_encrypted_portable_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let passphrase = self
             .settings_inputs
@@ -5490,20 +5496,27 @@ impl TermiRustApp {
             .to_string();
 
         if passphrase.trim().is_empty() {
-            self.error_message = "Backup passphrase cannot be empty.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::SettingsBackupPassphraseRequired);
             cx.notify();
             return;
         }
         if passphrase != confirm {
-            self.error_message = "Backup passphrase confirmation does not match.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::SettingsBackupPassphraseMismatch);
             cx.notify();
             return;
         }
 
         let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
             FileDialog::new()
-                .add_filter("Encrypted Backup", &["json"])
-                .set_file_name("termirust-backup.encrypted.json")
+                .add_filter(
+                    localization::static_message(MessageId::SettingsEncryptedBackupFileType),
+                    &["json"],
+                )
+                .set_file_name(localization::static_message(
+                    MessageId::SettingsBackupFilename,
+                ))
                 .save_file()
         }) else {
             return;
@@ -5515,20 +5528,15 @@ impl TermiRustApp {
             &self.known_hosts,
             &passphrase,
         ) {
-            Ok(report) => {
+            Ok(_) => {
                 self.clear_backup_inputs(window, cx);
-                self.status_message = format!(
-                    "Encrypted backup exported with {} hosts, {} identities, {} snippets, {} vaults, and {} known hosts.",
-                    report.profiles,
-                    report.identities,
-                    report.snippets,
-                    report.vaults,
-                    report.known_hosts
-                );
+                self.status_message =
+                    localization::static_message(MessageId::SettingsBackupExportedStatus);
                 self.error_message.clear();
             }
-            Err(error) => {
-                self.error_message = format!("Failed to export encrypted backup: {error:#}");
+            Err(_) => {
+                self.error_message =
+                    localization::static_message(MessageId::SettingsOperationFailed);
             }
         }
         cx.notify();
@@ -5551,18 +5559,17 @@ impl TermiRustApp {
             export_id,
             source_device_id,
         ) {
-            Ok(report) => {
+            Ok(_) => {
                 self.clear_backup_inputs(window, cx);
-                self.status_message = format!(
-                    "Mobile vault exported with {} hosts, {} identities, {} vaults, and {} known hosts.",
-                    report.hosts, report.identities, report.vaults, report.known_hosts
-                );
+                self.status_message =
+                    localization::static_message(MessageId::SettingsMobileExportedStatus);
                 self.error_message.clear();
                 cx.notify();
                 true
             }
-            Err(error) => {
-                self.error_message = format!("Failed to export mobile vault: {error:#}");
+            Err(_) => {
+                self.error_message =
+                    localization::static_message(MessageId::SettingsOperationFailed);
                 cx.notify();
                 false
             }
@@ -5584,20 +5591,27 @@ impl TermiRustApp {
             .to_string();
 
         if passphrase.trim().is_empty() {
-            self.error_message = "Mobile vault passphrase cannot be empty.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::SettingsBackupPassphraseRequired);
             cx.notify();
             return;
         }
         if passphrase != confirm {
-            self.error_message = "Mobile vault passphrase confirmation does not match.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::SettingsBackupPassphraseMismatch);
             cx.notify();
             return;
         }
 
         let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
             FileDialog::new()
-                .add_filter("Encrypted Mobile Vault", &["json"])
-                .set_file_name("termirust-mobile-vault.encrypted.json")
+                .add_filter(
+                    localization::static_message(MessageId::SettingsEncryptedMobileFileType),
+                    &["json"],
+                )
+                .set_file_name(localization::static_message(
+                    MessageId::SettingsMobileFilename,
+                ))
                 .save_file()
         }) else {
             return;
@@ -5615,21 +5629,21 @@ impl TermiRustApp {
             .trim()
             .to_string();
         if raw.is_empty() {
-            self.error_message = "Paste a mobile pairing request before importing.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::SettingsPairingRequestRequired);
             cx.notify();
             return;
         }
 
         let request: MobileDevicePairingRequest = match serde_json::from_str(&raw) {
             Ok(request) => request,
-            Err(error) => {
-                self.error_message = format!("Invalid mobile pairing request JSON: {error}");
+            Err(_) => {
+                self.error_message =
+                    localization::static_message(MessageId::SettingsPairingRequestInvalid);
                 cx.notify();
                 return;
             }
         };
-        let device_id = request.device_id.clone();
-        let label = request.label.clone();
         match self
             .saved
             .settings
@@ -5638,13 +5652,13 @@ impl TermiRustApp {
             Ok(()) => {
                 self.save_settings();
                 Self::set_input_value(&self.settings_inputs.mobile_pairing_request, "", window, cx);
-                self.status_message = format!(
-                    "Mobile device '{label}' ({device_id}) approved. Export a new mobile vault for this device."
-                );
+                self.status_message =
+                    localization::static_message(MessageId::SettingsMobileApprovedStatus);
                 self.error_message.clear();
             }
-            Err(error) => {
-                self.error_message = format!("Failed to import mobile pairing request: {error}");
+            Err(_) => {
+                self.error_message =
+                    localization::static_message(MessageId::SettingsOperationFailed);
             }
         }
         cx.notify();
@@ -5659,41 +5673,42 @@ impl TermiRustApp {
             Ok(()) => {
                 self.save_settings();
                 self.status_message =
-                    format!("Mobile device '{device_id}' revoked. Export a new mobile vault.");
+                    localization::static_message(MessageId::SettingsMobileRevokedStatus);
                 self.error_message.clear();
             }
-            Err(error) => {
-                self.error_message = format!("Failed to revoke mobile device: {error}");
+            Err(_) => {
+                self.error_message =
+                    localization::static_message(MessageId::SettingsOperationFailed);
             }
         }
         cx.notify();
     }
 
     fn import_portable_data(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(path) = Self::take_dialog_path_for_tests()
-            .or_else(|| FileDialog::new().add_filter("JSON", &["json"]).pick_file())
-        else {
+        let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
+            FileDialog::new()
+                .add_filter(
+                    localization::static_message(MessageId::SettingsJsonFileType),
+                    &["json"],
+                )
+                .pick_file()
+        }) else {
             return;
         };
 
         match import_portable_data_bundle(&path, &mut self.saved, &self.known_hosts) {
-            Ok(report) => {
+            Ok(_) => {
                 let _ = save_saved_state(&self.saved);
                 self.load_settings_inputs(window, cx);
                 theme::set_theme_preset(self.saved.settings.theme_preset);
-                self.status_message = format!(
-                    "Imported {} hosts, {} identities, {} snippets, {} vaults, and {} known hosts.",
-                    report.profiles,
-                    report.identities,
-                    report.snippets,
-                    report.vaults,
-                    report.known_hosts
-                );
+                self.status_message =
+                    localization::static_message(MessageId::SettingsDataImportedStatus);
                 self.error_message.clear();
                 cx.notify();
             }
-            Err(error) => {
-                self.error_message = format!("Failed to import data bundle: {error:#}");
+            Err(_) => {
+                self.error_message =
+                    localization::static_message(MessageId::SettingsOperationFailed);
                 cx.notify();
             }
         }
@@ -5706,24 +5721,19 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) -> bool {
         match import_portable_data_bundle(path, &mut self.saved, &self.known_hosts) {
-            Ok(report) => {
+            Ok(_) => {
                 let _ = save_saved_state(&self.saved);
                 self.load_settings_inputs(window, cx);
                 theme::set_theme_preset(self.saved.settings.theme_preset);
-                self.status_message = format!(
-                    "Imported {} hosts, {} identities, {} snippets, {} vaults, and {} known hosts.",
-                    report.profiles,
-                    report.identities,
-                    report.snippets,
-                    report.vaults,
-                    report.known_hosts
-                );
+                self.status_message =
+                    localization::static_message(MessageId::SettingsDataImportedStatus);
                 self.error_message.clear();
                 cx.notify();
                 true
             }
-            Err(error) => {
-                self.error_message = format!("Failed to import data bundle: {error:#}");
+            Err(_) => {
+                self.error_message =
+                    localization::static_message(MessageId::SettingsOperationFailed);
                 cx.notify();
                 false
             }
@@ -5739,14 +5749,18 @@ impl TermiRustApp {
             .to_string();
 
         if passphrase.trim().is_empty() {
-            self.error_message = "Backup passphrase cannot be empty.".to_string();
+            self.error_message =
+                localization::static_message(MessageId::SettingsBackupPassphraseRequired);
             cx.notify();
             return;
         }
 
         let Some(path) = Self::take_dialog_path_for_tests().or_else(|| {
             FileDialog::new()
-                .add_filter("Encrypted Backup", &["json"])
+                .add_filter(
+                    localization::static_message(MessageId::SettingsEncryptedBackupFileType),
+                    &["json"],
+                )
                 .pick_file()
         }) else {
             return;
@@ -5758,28 +5772,24 @@ impl TermiRustApp {
             &self.known_hosts,
             &passphrase,
         ) {
-            Ok(report) => {
+            Ok(_) => {
                 let _ = save_saved_state(&self.saved);
                 self.load_settings_inputs(window, cx);
                 theme::set_theme_preset(self.saved.settings.theme_preset);
-                self.status_message = format!(
-                    "Encrypted backup imported with {} hosts, {} identities, {} snippets, {} vaults, and {} known hosts.",
-                    report.profiles,
-                    report.identities,
-                    report.snippets,
-                    report.vaults,
-                    report.known_hosts
-                );
+                self.status_message =
+                    localization::static_message(MessageId::SettingsBackupImportedStatus);
                 self.error_message.clear();
                 cx.notify();
             }
-            Err(error) => {
-                self.error_message = format!("Failed to import encrypted backup: {error:#}");
+            Err(_) => {
+                self.error_message =
+                    localization::static_message(MessageId::SettingsOperationFailed);
                 cx.notify();
             }
         }
     }
 
+    // termirust-ui-surface:settings:end
     fn persist_runtime_state(&mut self) {
         let mut restored_workspaces = Vec::new();
         let mut active_workspace_index = None;
@@ -6141,7 +6151,6 @@ impl TermiRustApp {
             .focus(window);
         cx.notify();
     }
-
     fn commit_workspace_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(workspace_id) = self.tab_rename_workspace_id else {
             return;
@@ -12080,6 +12089,9 @@ impl Render for TermiRustApp {
             .then(|| self.sftp_semantic_snapshot(cx))
             .flatten();
         let vault_key_snippet = self.vault_key_snippet_semantic_snapshot(cx);
+        let settings = background_surface_available
+            .then(|| self.settings_semantic_snapshot(cx))
+            .flatten();
         self.shell_accessibility.sync(ShellSemanticSnapshot {
             generation: 1,
             inspector_visible: self.show_editor_panel || worktree_modal_open || host_modal_open,
@@ -12097,6 +12109,7 @@ impl Render for TermiRustApp {
             host_connection,
             sftp,
             vault_key_snippet,
+            settings,
         });
 
         // When the active workspace changes, scroll the tab strip so the
@@ -12749,7 +12762,7 @@ mod tests {
     #[cfg(unix)]
     use crate::test_support::TestSshAgent;
     use crate::test_support::{
-        DockerSshServer, TestIsolation, allocate_local_port, queue_dialog_path,
+        DockerSshServer, TEST_POLL_INTERVAL, TestIsolation, allocate_local_port, queue_dialog_path,
     };
     use crate::ui::keys::TerminalCellPos;
     use crate::ui::localization;
@@ -16717,7 +16730,7 @@ sleep 1
             {
                 return;
             }
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(TEST_POLL_INTERVAL);
         }
         panic!("remote target did not receive the reviewed same-host context handoff");
     }
@@ -16902,7 +16915,7 @@ sleep 1
                 Instant::now() < deadline,
                 "timed out waiting for restored startup marker"
             );
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(TEST_POLL_INTERVAL);
         }
 
         app.read_with(cx, |app, _| {
@@ -18652,7 +18665,7 @@ sleep 1
             })
             .expect("window update should succeed");
 
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(TEST_POLL_INTERVAL);
         assert!(!output_path.exists(), "Snippet insertion must not execute");
         app.update(cx, |app, cx| {
             assert!(app.send_input_bytes(pane_id, vec![b'\n'], cx));
@@ -18764,7 +18777,7 @@ sleep 1
             })
             .expect("window update should succeed");
 
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(TEST_POLL_INTERVAL);
         assert!(!output_path.exists(), "prompt review must not execute text");
 
         window
@@ -19777,11 +19790,11 @@ sleep 1
 
         app_b.read_with(cx, |app, _| {
             assert!(app.sync_pull_pending_warning);
-            assert!(
-                app.error_message
-                    .contains("Confirm to overwrite local state"),
-                "expected conflict warning, got: {}",
-                app.error_message
+            assert_eq!(
+                app.error_message,
+                localization::static_message(
+                    termirust_ui_contract::MessageId::SettingsSyncConflictWarning,
+                ),
             );
             assert!(
                 app.saved
@@ -25638,8 +25651,116 @@ sleep 1
                     .value(),
                 ""
             );
-            assert_eq!(app.status_message, "Default SSH startup directory cleared.");
+            assert_eq!(
+                app.status_message,
+                localization::static_message(
+                    termirust_ui_contract::MessageId::SettingsOperationUpdated,
+                )
+            );
         });
+    }
+
+    #[gpui::test]
+    fn e2e_settings_search_and_semantics_exclude_private_values(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Settings, window, cx);
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.export_backup_passphrase,
+                        "super-secret-value",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.sync_folder_input,
+                        "/Users/private/project",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.search,
+                        "super-secret-value",
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, cx| {
+            let snapshot = app.settings_semantic_snapshot(cx).unwrap();
+            assert!(snapshot.query_active);
+            assert!(snapshot.search_results.is_empty());
+            let passphrase = snapshot
+                .settings
+                .iter()
+                .find(|setting| {
+                    setting.id == termirust_ui_contract::SettingId::BackupExportPassphrase
+                })
+                .unwrap();
+            assert_eq!(
+                passphrase.value,
+                termirust_ui_contract::SettingValuePresentation::Masked
+            );
+        });
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    TermiRustApp::set_input_value(
+                        &app.settings_inputs.search,
+                        "font family",
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("window update should succeed");
+
+        app.read_with(cx, |app, cx| {
+            let snapshot = app.settings_semantic_snapshot(cx).unwrap();
+            assert_eq!(
+                snapshot.search_results,
+                vec![termirust_ui_contract::SettingId::TerminalFontFamily]
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_settings_accessibility_rejects_invalid_numeric_values(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Settings, window, cx);
+                    let initial = app.saved.settings.terminal_font_size;
+                    app.handle_settings_accessibility_command(
+                        termirust_ui_contract::SettingsAccessibilityCommand::SetSettingValue(
+                            termirust_ui_contract::SettingId::TerminalFontSize,
+                        ),
+                        Some(termirust_ui_contract::SemanticActionValue::Number(1_000)),
+                        window,
+                        cx,
+                    );
+                    assert_eq!(app.saved.settings.terminal_font_size, initial);
+                    app.handle_settings_accessibility_command(
+                        termirust_ui_contract::SettingsAccessibilityCommand::SetSettingValue(
+                            termirust_ui_contract::SettingId::TerminalFontSize,
+                        ),
+                        Some(termirust_ui_contract::SemanticActionValue::Number(18)),
+                        window,
+                        cx,
+                    );
+                    assert_eq!(app.saved.settings.terminal_font_size, 18);
+                })
+            })
+            .expect("window update should succeed");
     }
 
     #[gpui::test]
@@ -25733,7 +25854,12 @@ sleep 1
                 app.settings_inputs.local_shell_cwd.read(cx).value(),
                 "/tmp/settings-click-shell"
             );
-            assert_eq!(app.status_message, "Default local shell set to /bin/bash.");
+            assert_eq!(
+                app.status_message,
+                localization::static_message(
+                    termirust_ui_contract::MessageId::SettingsOperationUpdated,
+                )
+            );
             assert!(app.error_message.is_empty());
         });
 
@@ -25766,7 +25892,9 @@ sleep 1
             assert!(!app.saved.settings.onboarding_dismissed);
             assert_eq!(
                 app.status_message,
-                "Welcome panel reset. Open Connections to see it again."
+                localization::static_message(
+                    termirust_ui_contract::MessageId::SettingsWelcomeResetStatus,
+                )
             );
             assert!(app.error_message.is_empty());
         });
@@ -25884,7 +26012,9 @@ sleep 1
             assert_eq!(app.saved.session_logs.last().unwrap().id, "log-119");
             assert_eq!(
                 app.status_message,
-                "Session history retention set to 50 entries."
+                localization::static_message(
+                    termirust_ui_contract::MessageId::SettingsOperationUpdated,
+                )
             );
         });
     }

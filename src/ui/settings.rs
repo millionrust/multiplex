@@ -17,6 +17,63 @@ pub struct DiagnosticsViewModel {
     pub can_export: bool,
 }
 
+#[cfg(test)]
+mod search {
+    use termirust_ui_contract::{
+        MAX_SETTINGS_QUERY_CHARS, SettingId, SettingsSearchDocument, SettingsSectionId,
+        search_settings,
+    };
+
+    fn documents() -> Vec<SettingsSearchDocument> {
+        vec![
+            SettingsSearchDocument {
+                id: SettingId::TerminalFontSize,
+                section: SettingsSectionId::Terminal,
+                label: "Terminal font size".to_string(),
+                help: "Adjust terminal typography".to_string(),
+            },
+            SettingsSearchDocument {
+                id: SettingId::BackupExportPassphrase,
+                section: SettingsSectionId::StoragePrivacyDiagnostics,
+                label: "Export passphrase".to_string(),
+                help: "Protect an encrypted backup".to_string(),
+            },
+            SettingsSearchDocument {
+                id: SettingId::SyncFolder,
+                section: SettingsSectionId::StoragePrivacyDiagnostics,
+                label: "Sync folder".to_string(),
+                help: "Choose the shared bundle folder".to_string(),
+            },
+        ]
+    }
+
+    #[test]
+    fn labels_and_help_filter_deterministically_without_values() {
+        let docs = documents();
+        let first = search_settings("terminal", &docs).unwrap();
+        let second = search_settings("terminal", &docs).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].id, SettingId::TerminalFontSize);
+        assert!(
+            search_settings("super-secret-value", &docs)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            search_settings("/Users/private/project", &docs)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn oversized_queries_fail_closed() {
+        let query = "x".repeat(MAX_SETTINGS_QUERY_CHARS + 1);
+        assert!(search_settings(&query, &documents()).is_err());
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HealthFindingView {
     pub kind: HealthCheckKind,

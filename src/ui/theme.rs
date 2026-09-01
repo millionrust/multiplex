@@ -288,10 +288,6 @@ pub fn pane_focus_glow() -> Hsla {
     with_alpha(accent(), 0.15)
 }
 
-pub fn card_shadow_color() -> Hsla {
-    with_alpha(color(0x0a1322), 0.05)
-}
-
 pub fn soft_border() -> Hsla {
     with_alpha(color(0x0a1322), 0.06)
 }
@@ -443,6 +439,7 @@ pub const INSPECTOR_DEFAULT_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
 // Host and connection layouts preserve their current geometry while sourcing it
 // exclusively from the governed design scale.
 pub const HOST_CARD_WIDTH: f32 = INSPECTOR_DEFAULT_WIDTH + ICON_SIZE_MEDIUM;
+pub const SETTINGS_THEME_PREVIEW_WIDTH: f32 = SPACE_9 + SPACE_9 + SPACE_8 + SPACE_2;
 pub const HOST_CARD_HEIGHT: f32 = SPACE_9;
 pub const HOST_CARD_RADIUS: f32 = CARD_RADIUS + SPACE_1;
 pub const HOST_ICON_SIZE_DENSE: f32 = TYPE_BODY_SMALL_SIZE;

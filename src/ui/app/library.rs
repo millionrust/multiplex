@@ -4,13 +4,13 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     Context, Div, InteractiveElement as _, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement as _, Styled, div, point, px, relative,
+    StatefulInteractiveElement as _, Styled, div, px, relative,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::Input;
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Disableable, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
-use termirust_ui_contract::MessageId;
+use termirust_ui_contract::{MessageId, SettingsSectionId};
 
 use crate::models::{
     AuthMode, DEFAULT_VAULT_ID, SessionLogEntry, SessionLogStatus, ThemePreset, VaultKind,
@@ -18,11 +18,11 @@ use crate::models::{
 };
 use crate::ui::app::{
     ICON_KEY, ICON_SHIELD_CHECK, KeychainTab, NavSection, TermiRustApp, app_icon,
-    primary_shortcut_label,
+    platform_shortcut_label,
 };
 use crate::ui::localization;
 use crate::ui::theme;
-use crate::ui::util::{format_relative_time, short_host_key};
+use crate::ui::util::short_host_key;
 
 fn library_copy(id: MessageId) -> String {
     localization::message_id(id).unwrap_or_default()
@@ -1749,6 +1749,7 @@ impl TermiRustApp {
     }
 
     // termirust-ui-surface:vault-keys-snippets:end
+    // termirust-ui-surface:settings:start
     pub(super) fn settings_section_card<E: IntoElement>(
         &self,
         title: impl Into<SharedString>,
@@ -1759,33 +1760,20 @@ impl TermiRustApp {
         let description: SharedString = description.into();
         v_flex()
             .w_full()
-            .gap(px(16.))
-            .px(px(22.))
-            .py(px(20.))
+            .gap(px(theme::SPACE_5))
+            .px(px(theme::SPACE_6))
+            .py(px(theme::SPACE_5))
             .rounded(px(theme::CARD_RADIUS))
             .bg(theme::library_card())
             .border_1()
             .border_color(theme::soft_border())
-            .shadow(vec![
-                gpui::BoxShadow {
-                    color: theme::card_shadow_color(),
-                    offset: point(px(0.), px(1.)),
-                    blur_radius: px(2.),
-                    spread_radius: px(0.),
-                },
-                gpui::BoxShadow {
-                    color: theme::card_shadow_color(),
-                    offset: point(px(0.), px(8.)),
-                    blur_radius: px(24.),
-                    spread_radius: px(-8.),
-                },
-            ])
+            .shadow_sm()
             .child(
                 v_flex()
-                    .gap(px(4.))
+                    .gap(px(theme::SPACE_2))
                     .child(
                         div()
-                            .text_size(px(15.))
+                            .text_size(px(theme::TYPE_HEADING_SMALL_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
                             .child(title),
@@ -1812,7 +1800,7 @@ impl TermiRustApp {
             .gap_1()
             .child(
                 div()
-                    .text_size(px(14.))
+                    .text_size(px(theme::TYPE_BODY_SIZE))
                     .font_medium()
                     .text_color(theme::text_main())
                     .child(title),
@@ -1825,9 +1813,28 @@ impl TermiRustApp {
             )
     }
 
+    fn settings_hierarchy_heading(&self, section: SettingsSectionId) -> Div {
+        v_flex()
+            .gap(px(theme::SPACE_FINE))
+            .pt(px(theme::SPACE_2))
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_HEADING_SMALL_SIZE))
+                    .font_semibold()
+                    .text_color(theme::text_main())
+                    .child(library_copy(section.title())),
+            )
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                    .text_color(theme::text_muted())
+                    .child(library_copy(section.description())),
+            )
+    }
+
     pub(super) fn settings_divider(&self) -> Div {
         div()
-            .h(px(1.))
+            .h(px(theme::BORDER_HAIRLINE))
             .w_full()
             .bg(theme::with_alpha(theme::border(), 0.6))
     }
@@ -1837,26 +1844,28 @@ impl TermiRustApp {
         v_flex()
             .gap_2()
             .child(self.settings_subhead(
-                "Approved Mobile Devices",
-                "Revoked devices are included in the next mobile vault export so phones can block themselves.",
+                library_copy(MessageId::SettingsMobileDevicesTitle),
+                library_copy(MessageId::SettingsMobileDevicesDescription),
             ))
             .when(devices.is_empty(), |this| {
                 this.child(
                     div()
                         .text_size(px(theme::TYPE_CAPTION_SIZE))
                         .text_color(theme::text_muted())
-                        .child("No mobile devices approved yet."),
+                        .child(library_copy(MessageId::SettingsMobileDevicesEmpty)),
                 )
             })
             .children(devices.into_iter().enumerate().map(|(index, device)| {
                 let device_id = device.device_id.clone();
-                let platform = device.platform.unwrap_or_else(|| "mobile".to_string());
-                let status = if let Some(revoked_at) = device.revoked_at_millis {
-                    format!("Revoked {}", format_relative_time(revoked_at as u64))
-                } else if let Some(last_seen_at) = device.last_seen_at_millis {
-                    format!("Last seen {}", format_relative_time(last_seen_at as u64))
+                let platform = device
+                    .platform
+                    .unwrap_or_else(|| library_copy(MessageId::SettingsMobilePlatformFallback));
+                let status = if device.revoked_at_millis.is_some() {
+                    library_copy(MessageId::SettingsMobileStatusRevoked)
+                } else if device.last_seen_at_millis.is_some() {
+                    library_copy(MessageId::SettingsMobileStatusSeen)
                 } else {
-                    "Approved".to_string()
+                    library_copy(MessageId::SettingsMobileStatusApproved)
                 };
                 let revoked = device.revoked_at_millis.is_some();
                 h_flex()
@@ -1864,7 +1873,7 @@ impl TermiRustApp {
                     .items_center()
                     .gap_3()
                     .p_3()
-                    .rounded(px(10.))
+                    .rounded(px(theme::CARD_RADIUS))
                     .bg(theme::library_card())
                     .border_1()
                     .border_color(theme::soft_border())
@@ -1884,16 +1893,27 @@ impl TermiRustApp {
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(11.))
+                                            .text_size(px(theme::TYPE_MICRO_SIZE))
                                             .text_color(theme::text_muted())
                                             .child(platform),
                                     ),
                             )
                             .child(
-                                div()
-                                    .text_size(px(11.))
-                                    .text_color(theme::text_muted())
-                                    .child(format!("{device_id} - {status}")),
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_size(px(theme::TYPE_MICRO_SIZE))
+                                            .text_color(theme::text_muted())
+                                            .child(device_id.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(theme::TYPE_MICRO_SIZE))
+                                            .text_color(theme::text_muted())
+                                            .child(status),
+                                    ),
                             ),
                     )
                     .when(!revoked, |this| {
@@ -1902,7 +1922,7 @@ impl TermiRustApp {
                             Button::new(("settings-revoke-mobile-device", index))
                                 .small()
                                 .custom(Self::action_button_style(theme::ActionTone::Danger, cx))
-                                .label("Revoke")
+                                .label(library_copy(MessageId::SettingsMobileRevokeAction))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.revoke_mobile_device(&revoke_id, cx);
                                 })),
@@ -1921,7 +1941,7 @@ impl TermiRustApp {
             .justify_between()
             .items_center()
             .gap_3()
-            .py(px(4.))
+            .py(px(theme::SPACE_2))
             .child(
                 div()
                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
@@ -1931,7 +1951,7 @@ impl TermiRustApp {
             .child(
                 div()
                     .px_2()
-                    .py(px(2.))
+                    .py(px(theme::SPACE_1))
                     .rounded(px(theme::CONTROL_RADIUS))
                     .bg(theme::with_alpha(theme::hover(), 0.85))
                     .border_1()
@@ -1939,18 +1959,19 @@ impl TermiRustApp {
                     .text_size(px(theme::TYPE_CAPTION_SIZE))
                     .font_medium()
                     .text_color(theme::text_muted())
-                    .child(keys.replace("Cmd", primary_shortcut_label())),
+                    .child(platform_shortcut_label(keys)),
             )
     }
 
     fn settings_shortcut_group<const N: usize, D>(
         &self,
-        title: &'static str,
+        title: impl Into<SharedString>,
         rows: [(&'static str, D); N],
     ) -> Div
     where
         D: Into<SharedString>,
     {
+        let title = title.into();
         v_flex()
             .gap_1()
             .child(
@@ -1967,6 +1988,26 @@ impl TermiRustApp {
     }
 
     pub(super) fn render_settings_view(&self, cx: &Context<Self>) -> Div {
+        let settings_snapshot = self
+            .settings_semantic_snapshot(cx)
+            .expect("Settings snapshot is available while rendering Settings");
+        let query_active = settings_snapshot.query_active;
+        let result_count = settings_snapshot.search_results.len();
+        let section_visible = |section: SettingsSectionId| {
+            !query_active
+                || settings_snapshot
+                    .search_results
+                    .iter()
+                    .any(|setting| setting.section() == section)
+        };
+        let appearance_visible = section_visible(SettingsSectionId::Appearance);
+        let terminal_visible = section_visible(SettingsSectionId::Terminal);
+        let projects_sessions_visible = section_visible(SettingsSectionId::ProjectsSessions);
+        let presets_runtimes_visible = section_visible(SettingsSectionId::PresetsRuntimes);
+        let notifications_visible = section_visible(SettingsSectionId::Notifications);
+        let keyboard_visible = section_visible(SettingsSectionId::Keyboard);
+        let storage_visible = section_visible(SettingsSectionId::StoragePrivacyDiagnostics);
+        let remote_devices_visible = section_visible(SettingsSectionId::RemoteDevices);
         let theme_preset = self.saved.settings.theme_preset;
         let terminal_font_size = self.saved.settings.terminal_font_size;
         let restore_workspaces_on_launch = self.saved.settings.restore_workspaces_on_launch;
@@ -2011,8 +2052,8 @@ impl TermiRustApp {
         );
 
         let appearance_card = self.settings_section_card(
-            "Appearance",
-            "Switch the global UI palette across the whole desktop app.",
+            library_copy(MessageId::SettingsThemeLabel),
+            library_copy(MessageId::SettingsThemeDescription),
             v_flex()
                 .gap_3()
                 .child(
@@ -2026,8 +2067,8 @@ impl TermiRustApp {
                                     .id(("settings-theme", index))
                                     .debug_selector(move || format!("settings-theme-{index}"))
                                     .px_3()
-                                    .py(px(8.))
-                                    .rounded(px(999.))
+                                    .py(px(theme::SPACE_3))
+                                    .rounded(px(theme::PILL_RADIUS))
                                     .bg(if selected {
                                         theme::accent_soft()
                                     } else {
@@ -2053,7 +2094,12 @@ impl TermiRustApp {
                                             } else {
                                                 theme::text_muted()
                                             })
-                                            .child(preset.label()),
+                                            .child(library_copy(match preset {
+                                                ThemePreset::Daylight => {
+                                                    MessageId::SettingsThemeDaylight
+                                                }
+                                                _ => MessageId::SettingsThemeOcean,
+                                            })),
                                     )
                                     .into_any_element()
                             }),
@@ -2062,16 +2108,31 @@ impl TermiRustApp {
                 .child(
                     h_flex().gap_3().flex_wrap().children(
                         [
-                            ("Library", theme::library_card(), theme::text_main()),
-                            ("Chrome", theme::chrome_bg(), theme::text_on_dark()),
-                            ("Terminal", theme::terminal_bg(), theme::text_on_dark()),
+                            (
+                                MessageId::SettingsPreviewLibrary,
+                                MessageId::SettingsPreviewLibraryDescription,
+                                theme::library_card(),
+                                theme::text_main(),
+                            ),
+                            (
+                                MessageId::SettingsPreviewChrome,
+                                MessageId::SettingsPreviewChromeDescription,
+                                theme::chrome_bg(),
+                                theme::text_on_dark(),
+                            ),
+                            (
+                                MessageId::SettingsPreviewTerminal,
+                                MessageId::SettingsPreviewTerminalDescription,
+                                theme::terminal_bg(),
+                                theme::text_on_dark(),
+                            ),
                         ]
                         .into_iter()
                         .enumerate()
-                        .map(|(index, (label, bg, fg))| {
+                        .map(|(index, (label, description, bg, fg))| {
                             v_flex()
                                 .id(("settings-preview", index))
-                                .w(px(180.))
+                                .w(px(theme::SETTINGS_THEME_PREVIEW_WIDTH))
                                 .gap_1()
                                 .p_3()
                                 .rounded(px(theme::CARD_RADIUS))
@@ -2083,17 +2144,13 @@ impl TermiRustApp {
                                         .text_size(px(theme::TYPE_CAPTION_SIZE))
                                         .font_semibold()
                                         .text_color(fg)
-                                        .child(label),
+                                        .child(library_copy(label)),
                                 )
                                 .child(
                                     div()
                                         .text_size(px(theme::TYPE_CAPTION_SIZE))
                                         .text_color(theme::with_alpha(fg, 0.78))
-                                        .child(match label {
-                                            "Library" => "Forms, host cards, and management views",
-                                            "Chrome" => "Tabs, status bar, and workspace header",
-                                            _ => "Terminal panels and focused work sessions",
-                                        }),
+                                        .child(library_copy(description)),
                                 )
                                 .into_any_element()
                         }),
@@ -2137,115 +2194,124 @@ impl TermiRustApp {
         });
 
         let terminal_card = self.settings_section_card(
-            "Terminal",
-            "Tune what feels right inside every PTY: font size, selection behavior, and clipboard flow.",
+            library_copy(MessageId::SettingsSectionTerminal),
+            library_copy(MessageId::SettingsSectionTerminalDescription),
             v_flex()
                 .gap_4()
                 .child(self.settings_subhead(
-                    "Font size",
-                    "Apply a larger or tighter monospace size across every terminal pane.",
+                    library_copy(MessageId::SettingsTerminalFontSizeLabel),
+                    library_copy(MessageId::SettingsTerminalFontSizeDescription),
                 ))
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .flex_wrap()
-                        .children([12u16, 13, 14, 15, 16, 18].into_iter().enumerate().map(
-                            |(index, font_size)| {
-                                let selected = font_size == terminal_font_size;
-                                div()
-                                    .id(("settings-font-size", index))
-                                    .debug_selector(move || {
-                                        format!("settings-font-size-{index}")
-                                    })
-                                    .px_3()
-                                    .py(px(8.))
-                                    .rounded(px(999.))
-                                    .bg(if selected {
-                                        theme::accent_soft()
-                                    } else {
-                                        theme::with_alpha(theme::hover(), 0.72)
-                                    })
-                                    .border_1()
-                                    .border_color(if selected {
-                                        theme::with_alpha(theme::accent(), 0.42)
-                                    } else {
-                                        theme::border()
-                                    })
-                                    .cursor_pointer()
-                                    .hover(|style| style.bg(theme::hover()))
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.update_terminal_font_size(font_size, window, cx);
-                                    }))
-                                    .child(
-                                        div()
-                                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
-                                            .font_medium()
-                                            .text_color(if selected {
-                                                theme::text_main()
-                                            } else {
-                                                theme::text_muted()
-                                            })
-                                            .child(format!("{font_size} px")),
-                                    )
-                                    .into_any_element()
-                            },
-                        )),
-                )
+                .child(h_flex().gap_2().flex_wrap().children(
+                    [12u16, 13, 14, 15, 16, 18].into_iter().enumerate().map(
+                        |(index, font_size)| {
+                            let selected = font_size == terminal_font_size;
+                            div()
+                                .id(("settings-font-size", index))
+                                .debug_selector(move || format!("settings-font-size-{index}"))
+                                .px_3()
+                                .py(px(theme::SPACE_3))
+                                .rounded(px(theme::PILL_RADIUS))
+                                .bg(if selected {
+                                    theme::accent_soft()
+                                } else {
+                                    theme::with_alpha(theme::hover(), 0.72)
+                                })
+                                .border_1()
+                                .border_color(if selected {
+                                    theme::with_alpha(theme::accent(), 0.42)
+                                } else {
+                                    theme::border()
+                                })
+                                .cursor_pointer()
+                                .hover(|style| style.bg(theme::hover()))
+                                .on_click(cx.listener(move |this, _, window, cx| {
+                                    this.update_terminal_font_size(font_size, window, cx);
+                                }))
+                                .child(
+                                    div()
+                                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                        .font_medium()
+                                        .text_color(if selected {
+                                            theme::text_main()
+                                        } else {
+                                            theme::text_muted()
+                                        })
+                                        .child(localization::settings_font_size_option(font_size)),
+                                )
+                                .into_any_element()
+                        },
+                    ),
+                ))
                 .child(self.settings_divider())
                 .child(self.settings_subhead(
-                    "Copy on select",
-                    "When enabled, releasing the mouse over a selection automatically copies it to the clipboard, like classic Unix terminals and Termius.",
+                    library_copy(MessageId::SettingsCopyOnSelectLabel),
+                    library_copy(MessageId::SettingsCopyOnSelectDescription),
                 ))
                 .child(
                     h_flex()
-                        .p(px(3.))
-                        .rounded(px(8.))
+                        .p(px(theme::SPACE_MICRO))
+                        .rounded(px(theme::CONTROL_RADIUS))
                         .bg(theme::hover())
-                        .children([true, false].into_iter().enumerate().map(
-                            |(index, enabled)| {
-                                let active = enabled == copy_on_select;
-                                Button::new(("settings-copy-on-select", index))
-                                    .small()
-                                    .custom(Self::segmented_button_style(active, cx))
-                                    .label(if enabled { "Auto Copy" } else { "Manual Only" })
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.update_copy_on_select(enabled, cx);
-                                    }))
-                                    .into_any_element()
-                            },
-                        )),
+                        .children(
+                            [true, false]
+                                .into_iter()
+                                .enumerate()
+                                .map(|(index, enabled)| {
+                                    let active = enabled == copy_on_select;
+                                    Button::new(("settings-copy-on-select", index))
+                                        .small()
+                                        .custom(Self::segmented_button_style(active, cx))
+                                        .label(library_copy(if enabled {
+                                            MessageId::SettingsAutoCopyValue
+                                        } else {
+                                            MessageId::SettingsManualCopyValue
+                                        }))
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.update_copy_on_select(enabled, cx);
+                                        }))
+                                        .into_any_element()
+                                }),
+                        ),
                 )
                 .child(self.settings_divider())
                 .child(self.settings_subhead(
-                    "Multi-line paste safety",
-                    "Hold the paste in a confirmation banner when the clipboard contains newlines, so you don't accidentally execute a script you didn't mean to.",
+                    library_copy(MessageId::SettingsConfirmMultilinePasteLabel),
+                    library_copy(MessageId::SettingsConfirmMultilinePasteDescription),
                 ))
                 .child(
                     h_flex()
-                        .p(px(3.))
-                        .rounded(px(8.))
+                        .p(px(theme::SPACE_MICRO))
+                        .rounded(px(theme::CONTROL_RADIUS))
                         .bg(theme::hover())
-                        .children([true, false].into_iter().enumerate().map(
-                            |(index, enabled)| {
-                                let active = enabled == confirm_multiline_paste;
-                                Button::new(("settings-confirm-paste", index))
-                                    .small()
-                                    .custom(Self::segmented_button_style(active, cx))
-                                    .label(if enabled { "Confirm" } else { "Direct" })
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.update_confirm_multiline_paste(enabled, cx);
-                                    }))
-                                    .into_any_element()
-                            },
-                        )),
+                        .children(
+                            [true, false]
+                                .into_iter()
+                                .enumerate()
+                                .map(|(index, enabled)| {
+                                    let active = enabled == confirm_multiline_paste;
+                                    Button::new(("settings-confirm-paste", index))
+                                        .small()
+                                        .custom(Self::segmented_button_style(active, cx))
+                                        .label(library_copy(if enabled {
+                                            MessageId::SettingsConfirmPasteValue
+                                        } else {
+                                            MessageId::SettingsDirectPasteValue
+                                        }))
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.update_confirm_multiline_paste(enabled, cx);
+                                        }))
+                                        .into_any_element()
+                                }),
+                        ),
                 )
                 .child(self.settings_divider())
                 .child(self.settings_subhead(
-                    "Font family",
-                    "Override the monospace font used in every terminal pane. Leave blank to inherit the app default.",
+                    library_copy(MessageId::SettingsTerminalFontFamilyLabel),
+                    library_copy(MessageId::SettingsTerminalFontFamilyDescription),
                 ))
                 .child(self.form_field(
-                    "Font Family",
+                    library_copy(MessageId::SettingsTerminalFontFamilyLabel),
                     Input::new(&self.settings_inputs.terminal_font_family),
                 ))
                 .child(
@@ -2254,15 +2320,10 @@ impl TermiRustApp {
                         .items_center()
                         .child(
                             Button::new("settings-terminal-font-family-save")
-                                .debug_selector(|| {
-                                    "settings-terminal-font-family-save".to_string()
-                                })
+                                .debug_selector(|| "settings-terminal-font-family-save".to_string())
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Accent,
-                                    cx,
-                                ))
-                                .label("Save Font Family")
+                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                                .label(library_copy(MessageId::SettingsSaveFontFamilyAction))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.save_terminal_font_family(window, cx);
                                 })),
@@ -2273,11 +2334,8 @@ impl TermiRustApp {
                                     "settings-terminal-font-family-reset".to_string()
                                 })
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                ))
-                                .label("Reset")
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label(library_copy(MessageId::SettingsResetAction))
                                 .disabled(self.saved.settings.terminal_font_family.is_none())
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.clear_terminal_font_family(window, cx);
@@ -2287,41 +2345,44 @@ impl TermiRustApp {
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child("Font names are passed to the platform font system; install the family first."),
+                                .child(library_copy(MessageId::SettingsFontFamilyInstallHint)),
                         ),
                 ),
         );
 
         let startup_card = self.settings_section_card(
-            "Startup",
-            "Pick how the app comes back when you launch it and whether the first-run guide reappears.",
+            library_copy(MessageId::SettingsStartupTitle),
+            library_copy(MessageId::SettingsStartupDescription),
             v_flex()
                 .gap_3()
                 .child(
                     h_flex()
-                        .p(px(3.))
-                        .rounded(px(8.))
+                        .p(px(theme::SPACE_MICRO))
+                        .rounded(px(theme::CONTROL_RADIUS))
                         .bg(theme::hover())
-                        .children([true, false].into_iter().enumerate().map(
-                            |(index, restore)| {
-                                let active = restore == restore_workspaces_on_launch;
-                                Button::new(("settings-restore-workspaces", index))
-                                    .debug_selector(move || {
-                                        format!("settings-restore-workspaces-{index}")
-                                    })
-                                    .small()
-                                    .custom(Self::segmented_button_style(active, cx))
-                                    .label(if restore {
-                                        "Restore Workspaces"
-                                    } else {
-                                        "Open Library"
-                                    })
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.update_restore_workspaces_on_launch(restore, cx);
-                                    }))
-                                    .into_any_element()
-                            },
-                        )),
+                        .children(
+                            [true, false]
+                                .into_iter()
+                                .enumerate()
+                                .map(|(index, restore)| {
+                                    let active = restore == restore_workspaces_on_launch;
+                                    Button::new(("settings-restore-workspaces", index))
+                                        .debug_selector(move || {
+                                            format!("settings-restore-workspaces-{index}")
+                                        })
+                                        .small()
+                                        .custom(Self::segmented_button_style(active, cx))
+                                        .label(library_copy(if restore {
+                                            MessageId::SettingsRestoreValue
+                                        } else {
+                                            MessageId::SettingsLibraryValue
+                                        }))
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.update_restore_workspaces_on_launch(restore, cx);
+                                        }))
+                                        .into_any_element()
+                                }),
+                        ),
                 )
                 .child(
                     h_flex()
@@ -2331,15 +2392,12 @@ impl TermiRustApp {
                             Button::new("settings-reset-onboarding")
                                 .debug_selector(|| "settings-reset-onboarding".to_string())
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                ))
-                                .label(if onboarding_dismissed {
-                                    "Show Welcome Panel Again"
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label(library_copy(if onboarding_dismissed {
+                                    MessageId::SettingsShowWelcomeAction
                                 } else {
-                                    "Welcome Panel Visible"
-                                })
+                                    MessageId::SettingsWelcomeVisible
+                                }))
                                 .disabled(!onboarding_dismissed)
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.reset_onboarding_panel(cx);
@@ -2349,30 +2407,30 @@ impl TermiRustApp {
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child(if onboarding_dismissed {
-                                    "Bring the first-run Connections guide back after you have dismissed it."
+                                .child(library_copy(if onboarding_dismissed {
+                                    MessageId::SettingsOnboardingDismissedHint
                                 } else {
-                                    "The first-run Connections guide is already available in the library."
-                                }),
+                                    MessageId::SettingsOnboardingVisibleHint
+                                })),
                         ),
                 ),
         );
 
         let sessions_card = self.settings_section_card(
-            "Sessions",
-            "Control how connection history is retained and where SSH sessions begin by default.",
+            library_copy(MessageId::SettingsSessionsTitle),
+            library_copy(MessageId::SettingsSessionsDescription),
             v_flex()
                 .gap_4()
                 .child(self.settings_subhead(
-                    "History retention",
-                    "Keep this many connection history entries locally before older items roll off.",
+                    library_copy(MessageId::SettingsSessionHistoryLimitLabel),
+                    library_copy(MessageId::SettingsSessionHistoryLimitDescription),
                 ))
                 .child(
-                    h_flex()
-                        .gap_2()
-                        .flex_wrap()
-                        .children([100u16, 200, 500, 1000].into_iter().enumerate().map(
-                            |(index, limit)| {
+                    h_flex().gap_2().flex_wrap().children(
+                        [100u16, 200, 500, 1000]
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, limit)| {
                                 let selected = limit == session_log_limit;
                                 Button::new(("settings-session-log-limit", index))
                                     .small()
@@ -2384,29 +2442,27 @@ impl TermiRustApp {
                                         },
                                         cx,
                                     ))
-                                    .label(format!("{limit} entries"))
+                                    .label(localization::settings_history_option(limit))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.update_session_log_limit(limit, cx);
                                     }))
                                     .into_any_element()
-                            },
-                        )),
+                            }),
+                    ),
                 )
                 .child(
                     div()
                         .text_size(px(theme::TYPE_CAPTION_SIZE))
                         .text_color(theme::text_muted())
-                        .child(format!(
-                            "{session_log_count} history entries currently stored."
-                        )),
+                        .child(localization::settings_history_current(session_log_count)),
                 )
                 .child(self.settings_divider())
                 .child(self.settings_subhead(
-                    "Default SSH startup directory",
-                    "When a host has no startup directory set, SSH sessions cd into this directory after connecting.",
+                    library_copy(MessageId::SettingsDefaultSshDirectoryLabel),
+                    library_copy(MessageId::SettingsDefaultSshDirectoryDescription),
                 ))
                 .child(self.form_field(
-                    "Startup Directory",
+                    library_copy(MessageId::SettingsDefaultSshDirectoryLabel),
                     Input::new(&self.settings_inputs.default_ssh_startup_directory),
                 ))
                 .child(
@@ -2415,30 +2471,20 @@ impl TermiRustApp {
                         .items_center()
                         .child(
                             Button::new("settings-default-ssh-dir-save")
-                                .debug_selector(|| {
-                                    "settings-default-ssh-dir-save".to_string()
-                                })
+                                .debug_selector(|| "settings-default-ssh-dir-save".to_string())
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Accent,
-                                    cx,
-                                ))
-                                .label("Save Default Directory")
+                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                                .label(library_copy(MessageId::SettingsSaveDefaultDirectoryAction))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.save_default_ssh_startup_directory(cx);
                                 })),
                         )
                         .child(
                             Button::new("settings-default-ssh-dir-clear")
-                                .debug_selector(|| {
-                                    "settings-default-ssh-dir-clear".to_string()
-                                })
+                                .debug_selector(|| "settings-default-ssh-dir-clear".to_string())
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                ))
-                                .label("Clear")
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label(library_copy(MessageId::SettingsClearAction))
                                 .disabled(!has_default_ssh_dir)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.clear_default_ssh_startup_directory(window, cx);
@@ -2448,20 +2494,22 @@ impl TermiRustApp {
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child("Per-host startup directories always take priority over this default."),
+                                .child(library_copy(
+                                    MessageId::SettingsDefaultDirectoryPriorityHint,
+                                )),
                         ),
                 )
                 .child(self.settings_divider())
                 .child(self.settings_subhead(
-                    "Auto-reconnect",
-                    "When an SSH session drops with an error or unexpected disconnect, retry this many times before giving up.",
+                    library_copy(MessageId::SettingsAutoReconnectLabel),
+                    library_copy(MessageId::SettingsAutoReconnectDescription),
                 ))
                 .child(
-                    h_flex()
-                        .gap_2()
-                        .flex_wrap()
-                        .children([0u8, 1, 3, 5, 10].into_iter().enumerate().map(
-                            |(index, attempts)| {
+                    h_flex().gap_2().flex_wrap().children(
+                        [0u8, 1, 3, 5, 10]
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, attempts)| {
                                 let selected = attempts == auto_reconnect_attempts;
                                 Button::new(("settings-auto-reconnect-attempts", index))
                                     .small()
@@ -2474,28 +2522,28 @@ impl TermiRustApp {
                                         cx,
                                     ))
                                     .label(if attempts == 0 {
-                                        "Off".to_string()
+                                        library_copy(MessageId::SettingsValueOff)
                                     } else {
-                                        format!("{attempts} attempts")
+                                        localization::settings_attempts_option(attempts)
                                     })
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.update_auto_reconnect_attempts(attempts, cx);
                                     }))
                                     .into_any_element()
-                            },
-                        )),
+                            }),
+                    ),
                 )
                 .child(self.settings_divider())
                 .child(self.settings_subhead(
-                    "SSH keep-alive",
-                    "Send a SSH-level keep-alive ping at this interval so idle sessions survive NAT timeouts and load balancer drops.",
+                    library_copy(MessageId::SettingsSshKeepaliveLabel),
+                    library_copy(MessageId::SettingsSshKeepaliveDescription),
                 ))
                 .child(
-                    h_flex()
-                        .gap_2()
-                        .flex_wrap()
-                        .children([0u16, 15, 30, 60, 120].into_iter().enumerate().map(
-                            |(index, secs)| {
+                    h_flex().gap_2().flex_wrap().children(
+                        [0u16, 15, 30, 60, 120]
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, secs)| {
                                 let selected = secs == ssh_keepalive_secs;
                                 Button::new(("settings-ssh-keepalive", index))
                                     .small()
@@ -2508,28 +2556,28 @@ impl TermiRustApp {
                                         cx,
                                     ))
                                     .label(if secs == 0 {
-                                        "Off".to_string()
+                                        library_copy(MessageId::SettingsValueOff)
                                     } else {
-                                        format!("{secs}s")
+                                        localization::settings_seconds_option(secs)
                                     })
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.update_ssh_keepalive_secs(secs, cx);
                                     }))
                                     .into_any_element()
-                            },
-                        )),
+                            }),
+                    ),
                 )
                 .child(self.settings_divider())
                 .child(self.settings_subhead(
-                    "Reconnect delay",
-                    "Wait this many seconds between automatic retry attempts.",
+                    library_copy(MessageId::SettingsReconnectDelayLabel),
+                    library_copy(MessageId::SettingsReconnectDelayDescription),
                 ))
                 .child(
-                    h_flex()
-                        .gap_2()
-                        .flex_wrap()
-                        .children([2u8, 5, 10, 30].into_iter().enumerate().map(
-                            |(index, delay)| {
+                    h_flex().gap_2().flex_wrap().children(
+                        [2u8, 5, 10, 30]
+                            .into_iter()
+                            .enumerate()
+                            .map(|(index, delay)| {
                                 let selected = delay == auto_reconnect_delay_secs;
                                 Button::new(("settings-auto-reconnect-delay", index))
                                     .small()
@@ -2541,27 +2589,27 @@ impl TermiRustApp {
                                         },
                                         cx,
                                     ))
-                                    .label(format!("{delay}s"))
+                                    .label(localization::settings_seconds_option(u16::from(delay)))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.update_auto_reconnect_delay(delay, cx);
                                     }))
                                     .into_any_element()
-                            },
-                        )),
+                            }),
+                    ),
                 ),
         );
 
         let local_shell_card = self.settings_section_card(
-            "Local Shell",
-            "Choose which shell binary and working directory new local terminals use.",
+            library_copy(MessageId::SettingsLocalShellTitle),
+            library_copy(MessageId::SettingsLocalShellDescription),
             v_flex()
                 .gap_3()
                 .child(self.form_field(
-                    "Shell Program",
+                    library_copy(MessageId::SettingsLocalShellProgramLabel),
                     Input::new(&self.settings_inputs.local_shell_program),
                 ))
                 .child(self.form_field(
-                    "Working Directory",
+                    library_copy(MessageId::SettingsLocalShellCwdLabel),
                     Input::new(&self.settings_inputs.local_shell_cwd),
                 ))
                 .child(
@@ -2572,11 +2620,8 @@ impl TermiRustApp {
                             Button::new("settings-local-shell-save")
                                 .debug_selector(|| "settings-local-shell-save".to_string())
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Accent,
-                                    cx,
-                                ))
-                                .label("Save Shell Defaults")
+                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                                .label(library_copy(MessageId::SettingsSaveShellAction))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.save_local_shell_settings(window, cx);
                                 })),
@@ -2585,7 +2630,7 @@ impl TermiRustApp {
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child("Args stay empty for now; this sets the default executable and startup directory."),
+                                .child(library_copy(MessageId::SettingsLocalShellArgsHint)),
                         ),
                 ),
         );
@@ -2627,8 +2672,8 @@ impl TermiRustApp {
                 )
                 .child(
                     h_flex()
-                        .p(px(3.))
-                        .rounded(px(8.))
+                        .p(px(theme::SPACE_MICRO))
+                        .rounded(px(theme::CONTROL_RADIUS))
                         .bg(theme::hover())
                         .children(
                             [true, false]
@@ -3010,18 +3055,15 @@ impl TermiRustApp {
         );
 
         let portable_card = self.settings_section_card(
-            "Portable Data Bundle",
-            "Export or import hosts, vaults, identities, snippets, and known-host trust records as a local JSON bundle. Passwords and system credential-store secrets are intentionally excluded, so this is safe for portability but not a full account sync.",
+            library_copy(MessageId::SettingsPortableDataTitle),
+            library_copy(MessageId::SettingsPortableDataDescription),
             h_flex()
                 .gap_2()
                 .child(
                     Button::new("settings-export-data")
                         .small()
-                        .custom(Self::action_button_style(
-                            theme::ActionTone::Neutral,
-                            cx,
-                        ))
-                        .label("Export Data")
+                        .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                        .label(library_copy(MessageId::SettingsExportDataAction))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.export_portable_data(cx);
                         })),
@@ -3029,11 +3071,8 @@ impl TermiRustApp {
                 .child(
                     Button::new("settings-import-data")
                         .small()
-                        .custom(Self::action_button_style(
-                            theme::ActionTone::Accent,
-                            cx,
-                        ))
-                        .label("Import Data")
+                        .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                        .label(library_copy(MessageId::SettingsImportDataAction))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.import_portable_data(window, cx);
                         })),
@@ -3041,16 +3080,16 @@ impl TermiRustApp {
         );
 
         let encrypted_card = self.settings_section_card(
-            "Encrypted Backup",
-            "Wrap the same portable bundle in passphrase-based encryption for device backups, handoff, or manual sync. The file stays locally managed; no cloud account is involved yet.",
+            library_copy(MessageId::SettingsEncryptedBackupTitle),
+            library_copy(MessageId::SettingsEncryptedBackupDescription),
             v_flex()
                 .gap_3()
                 .child(self.form_field(
-                    "Export Passphrase",
+                    library_copy(MessageId::SettingsExportPassphraseLabel),
                     Input::new(&self.settings_inputs.export_backup_passphrase),
                 ))
                 .child(self.form_field(
-                    "Confirm Passphrase",
+                    library_copy(MessageId::SettingsConfirmPassphraseLabel),
                     Input::new(&self.settings_inputs.export_backup_confirm),
                 ))
                 .child(
@@ -3060,11 +3099,8 @@ impl TermiRustApp {
                         .child(
                             Button::new("settings-export-encrypted-data")
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Accent,
-                                    cx,
-                                ))
-                                .label("Export Encrypted Backup")
+                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                                .label(library_copy(MessageId::SettingsExportEncryptedAction))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.export_encrypted_portable_data(window, cx);
                                 })),
@@ -3073,7 +3109,7 @@ impl TermiRustApp {
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child("Use a strong passphrase you can recover later. The file cannot be opened without it."),
+                                .child(library_copy(MessageId::SettingsPassphraseSafetyNotice)),
                         ),
                 )
                 .child(
@@ -3083,11 +3119,8 @@ impl TermiRustApp {
                         .child(
                             Button::new("settings-export-mobile-vault")
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Accent,
-                                    cx,
-                                ))
-                                .label("Export Mobile Vault")
+                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                                .label(library_copy(MessageId::SettingsExportMobileVaultAction))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.export_mobile_vault(window, cx);
                                 })),
@@ -3096,11 +3129,11 @@ impl TermiRustApp {
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child("Creates the encrypted host vault for iOS and Android import, including tmux settings and known-host pins."),
+                                .child(library_copy(MessageId::SettingsMobileVaultDescription)),
                         ),
                 )
                 .child(self.form_field(
-                    "Mobile Pairing Request",
+                    library_copy(MessageId::SettingsMobilePairingLabel),
                     Input::new(&self.settings_inputs.mobile_pairing_request),
                 ))
                 .child(
@@ -3110,11 +3143,8 @@ impl TermiRustApp {
                         .child(
                             Button::new("settings-import-mobile-pairing-request")
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                ))
-                                .label("Approve Mobile Device")
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label(library_copy(MessageId::SettingsApproveMobileAction))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.import_mobile_pairing_request(window, cx);
                                 })),
@@ -3123,13 +3153,13 @@ impl TermiRustApp {
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child("Paste the pairing request copied from iOS or Android, then export a fresh mobile vault."),
+                                .child(library_copy(MessageId::SettingsMobilePairingDescription)),
                         ),
                 )
                 .child(self.render_mobile_devices_settings(cx))
                 .child(self.settings_divider())
                 .child(self.form_field(
-                    "Import Passphrase",
+                    library_copy(MessageId::SettingsImportPassphraseLabel),
                     Input::new(&self.settings_inputs.import_backup_passphrase),
                 ))
                 .child(
@@ -3139,11 +3169,8 @@ impl TermiRustApp {
                         .child(
                             Button::new("settings-import-encrypted-data")
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                ))
-                                .label("Import Encrypted Backup")
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label(library_copy(MessageId::SettingsImportEncryptedAction))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.import_encrypted_portable_data(window, cx);
                                 })),
@@ -3152,7 +3179,7 @@ impl TermiRustApp {
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child("Import merges vaults, hosts, snippets, and trust records without exposing the plaintext bundle on disk."),
+                                .child(library_copy(MessageId::SettingsEncryptedImportDescription)),
                         ),
                 ),
         );
@@ -3161,21 +3188,21 @@ impl TermiRustApp {
             .saved
             .settings
             .sync_last_pushed_at
-            .map(|ts| format!("Last push: {}", format_relative_time(ts)))
-            .unwrap_or_else(|| "Never pushed.".to_string());
+            .map(|_| library_copy(MessageId::SettingsSyncLastPushed))
+            .unwrap_or_else(|| library_copy(MessageId::SettingsSyncNeverPushed));
         let last_pulled = self
             .saved
             .settings
             .sync_last_pulled_at
-            .map(|ts| format!("Last pull: {}", format_relative_time(ts)))
-            .unwrap_or_else(|| "Never pulled.".to_string());
+            .map(|_| library_copy(MessageId::SettingsSyncLastPulled))
+            .unwrap_or_else(|| library_copy(MessageId::SettingsSyncNeverPulled));
         let sync_card = self.settings_section_card(
-            "Shared-folder sync",
-            "Cross-device sync without a server. Point at a Dropbox / iCloud Drive / Google Drive / Syncthing folder. Push writes the encrypted bundle; Pull merges the latest one. Your existing cloud drive carries the bundle between machines, so the encrypted file never lives on our servers.",
+            library_copy(MessageId::SettingsSharedFolderSyncTitle),
+            library_copy(MessageId::SettingsSharedFolderSyncDescription),
             v_flex()
                 .gap_3()
                 .child(self.form_field(
-                    "Sync Folder",
+                    library_copy(MessageId::SettingsSyncFolderLabel),
                     Input::new(&self.settings_inputs.sync_folder_input),
                 ))
                 .child(
@@ -3185,11 +3212,8 @@ impl TermiRustApp {
                         .child(
                             Button::new("settings-sync-pick-folder")
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                ))
-                                .label("Choose Folder…")
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label(library_copy(MessageId::SettingsChooseFolderAction))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.pick_sync_folder(window, cx);
                                 })),
@@ -3197,11 +3221,8 @@ impl TermiRustApp {
                         .child(
                             Button::new("settings-sync-save-folder")
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                ))
-                                .label("Save Folder Path")
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label(library_copy(MessageId::SettingsSaveFolderAction))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.save_sync_folder_input(window, cx);
                                 })),
@@ -3214,11 +3235,8 @@ impl TermiRustApp {
                         .child(
                             Button::new("settings-sync-push")
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Accent,
-                                    cx,
-                                ))
-                                .label("Push to Folder")
+                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                                .label(library_copy(MessageId::SettingsPushFolderAction))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.push_to_sync_folder(window, cx);
                                 })),
@@ -3230,7 +3248,7 @@ impl TermiRustApp {
                                     theme::ActionTone::AccentSoft,
                                     cx,
                                 ))
-                                .label("Pull from Folder")
+                                .label(library_copy(MessageId::SettingsPullFolderAction))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.pull_from_sync_folder(window, cx);
                                 })),
@@ -3243,7 +3261,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Danger,
                                         cx,
                                     ))
-                                    .label("Force Overwrite")
+                                    .label(library_copy(MessageId::SettingsForceOverwriteAction))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.force_pull_from_sync_folder(window, cx);
                                     })),
@@ -3253,7 +3271,7 @@ impl TermiRustApp {
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child("Push reuses the passphrase set in Encrypted Backup; Pull uses the import passphrase."),
+                                .child(library_copy(MessageId::SettingsSyncPassphraseHint)),
                         ),
                 )
                 .child(
@@ -3275,53 +3293,116 @@ impl TermiRustApp {
         );
 
         let shortcuts_card = self.settings_section_card(
-            "Keyboard Shortcuts",
-            "Every shortcut available right now. Anything that uses a modifier follows your platform convention (Cmd on macOS, Ctrl elsewhere).",
+            library_copy(MessageId::SettingsKeyboardShortcutsTitle),
+            library_copy(MessageId::SettingsKeyboardShortcutsDescription),
             v_flex()
                 .gap_4()
                 .child(self.settings_shortcut_group(
-                    "Navigation",
+                    library_copy(MessageId::SettingsShortcutNavigation),
                     [
-                        ("Cmd+1", "Open Activity".to_string()),
+                        (
+                            "Cmd+1",
+                            library_copy(MessageId::SettingsShortcutOpenActivity),
+                        ),
                         ("Cmd+2", localization::projects_shortcut_description()),
-                        ("Cmd+3", "Open Connections".to_string()),
-                        ("Cmd+4", "Open Sessions".to_string()),
-                        ("Cmd+5", "Open Files / Artifacts".to_string()),
-                        ("Cmd+6", "Open Devices".to_string()),
-                        ("Cmd+7", "Open Settings".to_string()),
-                        ("Cmd+,", "Jump to Settings".to_string()),
-                        ("Cmd+L", "Focus host search / toggle Logs".to_string()),
-                        ("Cmd+N", "Create a new host (in library)".to_string()),
+                        (
+                            "Cmd+3",
+                            library_copy(MessageId::SettingsShortcutOpenConnections),
+                        ),
+                        (
+                            "Cmd+4",
+                            library_copy(MessageId::SettingsShortcutOpenSessions),
+                        ),
+                        ("Cmd+5", library_copy(MessageId::SettingsShortcutOpenFiles)),
+                        (
+                            "Cmd+6",
+                            library_copy(MessageId::SettingsShortcutOpenDevices),
+                        ),
+                        (
+                            "Cmd+7",
+                            library_copy(MessageId::SettingsShortcutOpenSettings),
+                        ),
+                        (
+                            "Cmd+,",
+                            library_copy(MessageId::SettingsShortcutJumpSettings),
+                        ),
+                        ("Cmd+L", library_copy(MessageId::SettingsShortcutFocusHosts)),
+                        ("Cmd+N", library_copy(MessageId::SettingsShortcutNewHost)),
                     ],
                 ))
                 .child(self.settings_divider())
                 .child(self.settings_shortcut_group(
-                    "Workspace",
+                    library_copy(MessageId::SettingsShortcutWorkspace),
                     [
-                        ("Cmd+K", "Open the command palette"),
-                        ("Cmd+F", "Search the active terminal"),
-                        ("Cmd+T", "Open a new local terminal in a fresh tab"),
-                        ("Cmd+W", "Close the active workspace tab"),
-                        ("Cmd+D", "Duplicate the active pane"),
-                        ("Cmd+Alt+Right", "Cycle to the next workspace tab"),
-                        ("Cmd+Alt+Left", "Cycle to the previous workspace tab"),
-                        ("Cmd+Shift+B", "Toggle broadcast input across panes"),
-                        ("Cmd+Shift+L", "Clear the active pane screen and scrollback"),
-                        ("Cmd+Shift+F", "Open the workspace files browser"),
-                        ("Cmd+Shift+T", "Toggle Files / Terminal view"),
-                        ("Esc", "Close dialogs or return from Files"),
+                        (
+                            "Cmd+K",
+                            library_copy(MessageId::SettingsShortcutCommandPalette),
+                        ),
+                        (
+                            "Cmd+F",
+                            library_copy(MessageId::SettingsShortcutTerminalSearch),
+                        ),
+                        (
+                            "Cmd+T",
+                            library_copy(MessageId::SettingsShortcutNewTerminal),
+                        ),
+                        (
+                            "Cmd+W",
+                            library_copy(MessageId::SettingsShortcutCloseWorkspace),
+                        ),
+                        (
+                            "Cmd+D",
+                            library_copy(MessageId::SettingsShortcutDuplicatePane),
+                        ),
+                        (
+                            "Cmd+Alt+Right",
+                            library_copy(MessageId::SettingsShortcutNextWorkspace),
+                        ),
+                        (
+                            "Cmd+Alt+Left",
+                            library_copy(MessageId::SettingsShortcutPreviousWorkspace),
+                        ),
+                        (
+                            "Cmd+Shift+B",
+                            library_copy(MessageId::SettingsShortcutBroadcast),
+                        ),
+                        (
+                            "Cmd+Shift+L",
+                            library_copy(MessageId::SettingsShortcutClearTerminal),
+                        ),
+                        (
+                            "Cmd+Shift+F",
+                            library_copy(MessageId::SettingsShortcutFilesBrowser),
+                        ),
+                        (
+                            "Cmd+Shift+T",
+                            library_copy(MessageId::SettingsShortcutToggleFiles),
+                        ),
+                        ("Esc", library_copy(MessageId::SettingsShortcutCloseDialog)),
                     ],
                 ))
                 .child(self.settings_divider())
                 .child(self.settings_shortcut_group(
-                    "Terminal",
+                    library_copy(MessageId::SettingsShortcutTerminal),
                     [
-                        ("Cmd+C", "Copy current selection"),
-                        ("Cmd+V", "Paste from clipboard"),
-                        ("Shift+PageUp", "Scroll back one screen"),
-                        ("Shift+PageDown", "Scroll forward one screen"),
-                        ("Up / Down", "Move autocomplete selection"),
-                        ("Enter", "Accept the highlighted suggestion"),
+                        ("Cmd+C", library_copy(MessageId::SettingsShortcutCopy)),
+                        ("Cmd+V", library_copy(MessageId::SettingsShortcutPaste)),
+                        (
+                            "Shift+PageUp",
+                            library_copy(MessageId::SettingsShortcutScrollBack),
+                        ),
+                        (
+                            "Shift+PageDown",
+                            library_copy(MessageId::SettingsShortcutScrollForward),
+                        ),
+                        (
+                            "Up / Down",
+                            library_copy(MessageId::SettingsShortcutAutocompleteMove),
+                        ),
+                        (
+                            "Enter",
+                            library_copy(MessageId::SettingsShortcutAutocompleteAccept),
+                        ),
                     ],
                 )),
         );
@@ -3338,21 +3419,52 @@ impl TermiRustApp {
             .bg(theme::library_bg())
             .child(
                 v_flex()
-                    .gap(px(2.))
+                    .gap(px(theme::SPACE_1))
                     .child(
                         div()
-                            .text_size(px(22.))
+                            .text_size(px(theme::TYPE_HEADING_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
-                            .child("Settings"),
+                            .child(library_copy(MessageId::SettingsTitle)),
                     )
                     .child(
                         div()
                             .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .text_color(theme::text_muted())
-                            .child("Local desktop preferences"),
+                            .child(library_copy(MessageId::SettingsSubtitle)),
                     ),
             )
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_2()
+                    .items_center()
+                    .child(Input::new(&self.settings_inputs.search).flex_1())
+                    .when(query_active, |this| {
+                        this.child(
+                            Button::new("settings-search-clear")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label(library_copy(MessageId::SettingsSearchClear))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    Self::set_input_value(
+                                        &this.settings_inputs.search,
+                                        "",
+                                        window,
+                                        cx,
+                                    );
+                                })),
+                        )
+                    }),
+            )
+            .when(query_active, |this| {
+                this.child(
+                    div()
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .text_color(theme::text_muted())
+                        .child(localization::settings_search_count(result_count)),
+                )
+            })
             .child(
                 v_flex()
                     .id("settings-scroll-viewport")
@@ -3364,23 +3476,95 @@ impl TermiRustApp {
                             .id("settings-scroll")
                             .gap_4()
                             .track_scroll(&self.settings_scroll)
-                            .child(appearance_card)
-                            .when_some(localization_card, |this, card| this.child(card))
-                            .child(terminal_card)
-                            .child(startup_card)
-                            .child(sessions_card)
-                            .child(diagnostics_card)
-                            .child(health_card)
-                            .child(notification_card)
-                            .child(remote_devices_card)
-                            .child(local_shell_card)
-                            .child(cli_card)
-                            .child(shortcuts_card)
-                            .child(portable_card)
-                            .child(encrypted_card)
-                            .child(sync_card)
+                            .when(query_active && result_count == 0, |this| {
+                                this.child(
+                                    v_flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .p_5()
+                                        .child(
+                                            div()
+                                                .text_size(px(theme::TYPE_HEADING_SMALL_SIZE))
+                                                .font_semibold()
+                                                .text_color(theme::text_main())
+                                                .child(library_copy(
+                                                    MessageId::SettingsSearchEmptyTitle,
+                                                )),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                                                .text_color(theme::text_muted())
+                                                .child(library_copy(
+                                                    MessageId::SettingsSearchEmptyDescription,
+                                                )),
+                                        ),
+                                )
+                            })
+                            .when(appearance_visible, |this| {
+                                this.child(
+                                    self.settings_hierarchy_heading(SettingsSectionId::Appearance),
+                                )
+                                .child(appearance_card)
+                                .when_some(localization_card, |this, card| this.child(card))
+                            })
+                            .when(terminal_visible, |this| {
+                                this.child(
+                                    self.settings_hierarchy_heading(SettingsSectionId::Terminal),
+                                )
+                                .child(terminal_card)
+                            })
+                            .when(projects_sessions_visible, |this| {
+                                this.child(self.settings_hierarchy_heading(
+                                    SettingsSectionId::ProjectsSessions,
+                                ))
+                                .child(startup_card)
+                                .child(sessions_card)
+                            })
+                            .when(presets_runtimes_visible, |this| {
+                                this.child(
+                                    self.settings_hierarchy_heading(
+                                        SettingsSectionId::PresetsRuntimes,
+                                    ),
+                                )
+                                .child(local_shell_card)
+                                .child(cli_card)
+                            })
+                            .when(notifications_visible, |this| {
+                                this.child(
+                                    self.settings_hierarchy_heading(
+                                        SettingsSectionId::Notifications,
+                                    ),
+                                )
+                                .child(notification_card)
+                            })
+                            .when(keyboard_visible, |this| {
+                                this.child(
+                                    self.settings_hierarchy_heading(SettingsSectionId::Keyboard),
+                                )
+                                .child(shortcuts_card)
+                            })
+                            .when(storage_visible, |this| {
+                                this.child(self.settings_hierarchy_heading(
+                                    SettingsSectionId::StoragePrivacyDiagnostics,
+                                ))
+                                .child(diagnostics_card)
+                                .child(health_card)
+                                .child(portable_card)
+                                .child(encrypted_card)
+                                .child(sync_card)
+                            })
+                            .when(remote_devices_visible, |this| {
+                                this.child(
+                                    self.settings_hierarchy_heading(
+                                        SettingsSectionId::RemoteDevices,
+                                    ),
+                                )
+                                .child(remote_devices_card)
+                            })
                             .overflow_y_scrollbar(),
                     ),
             )
     }
+    // termirust-ui-surface:settings:end
 }
