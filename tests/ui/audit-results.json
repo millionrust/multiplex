@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "inventory_sha256": "215d8674447fa8773b93f7073ad5c42e6123b697ece40c7dc741755f40a2d532",
+  "inventory_cases": 157,
+  "expanded_automated_variants": 12348,
+  "platform": "macos",
+  "reader": "voiceover",
+  "case_results": {
+    "automated_pass": 143,
+    "pre_frozen_n_a": 14,
+    "manual_unverified": 143,
+    "unclassified": 0
+  },
+  "machine_checks": {
+    "wcag_contrast_pairs": "pass:50",
+    "localization_catalogs": "pass:en-US,en-XA,ar-XB",
+    "whole_ui_legacy_copy": "fail:345",
+    "whole_ui_legacy_visuals": "fail:135",
+    "deterministic_rendered_visuals": "unavailable"
+  },
+  "surface_results": {
+    "accessibility-harness": "pass",
+    "agent-canvas": "pass",
+    "hosts-connections": "pass",
+    "presets-runtimes": "pass",
+    "projects-groups-sessions": "pass",
+    "settings": "pass",
+    "sftp": "pass",
+    "shell-overlays-palette": "pass",
+    "terminal-chrome": "pass",
+    "vault-keys-snippets": "pass",
+    "worktrees-artifacts": "pass"
+  },
+  "findings": [
+    {
+      "id": "AUD-AX-MANUAL-001",
+      "severity": "A1",
+      "case_selector": "manual_required=true",
+      "evidence": "automated semantics cannot prove human-audible keyboard-only and VoiceOver traversal for every frozen route",
+      "owning_surface": "cross-screen",
+      "release_impact": "blocks whole-product WCAG/VoiceOver conformance claims",
+      "follow_up_goal": "21.1.7"
+    },
+    {
+      "id": "AUD-VISUAL-001",
+      "severity": "A1",
+      "case_selector": "all themes/scales/viewports",
+      "evidence": "no deterministic GPUI screenshot baseline/capture driver exists for cross-screen 100/200/400% clipping and reflow inspection",
+      "owning_surface": "cross-screen",
+      "release_impact": "blocks whole-product visual reflow and contrast-rendering claims",
+      "follow_up_goal": "21.1.8"
+    },
+    {
+      "id": "AUD-L10N-LEGACY-001",
+      "severity": "A1",
+      "case_selector": "whole UI source inventory",
+      "evidence": "the exact zero-legacy localization audit reports 345 immutable copy findings; generated en-US, en-XA and ar-XB catalogs remain internally valid",
+      "owning_surface": "cross-screen",
+      "release_impact": "blocks a complete whole-product localization claim",
+      "follow_up_goal": "21.1.9"
+    },
+    {
+      "id": "AUD-TOKEN-LEGACY-001",
+      "severity": "A1",
+      "case_selector": "whole UI source inventory",
+      "evidence": "the exact zero-legacy design-token audit reports 135 visual literals after excluding documented named exceptions",
+      "owning_surface": "cross-screen",
+      "release_impact": "blocks a complete whole-product token and visual-consistency claim",
+      "follow_up_goal": "21.1.10"
+    }
+  ]
+}
