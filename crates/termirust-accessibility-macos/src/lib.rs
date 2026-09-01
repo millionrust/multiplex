@@ -79,7 +79,7 @@ pub use macos::MacAccessibilityBridge;
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::{BTreeMap, BTreeSet, HashMap};
     use std::ffi::CStr;
     use std::os::raw::c_char;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -101,15 +101,17 @@ mod macos {
 
     type Id = *mut Object;
     type MessageResolver = Arc<dyn Fn(MessageId) -> Option<String> + Send + Sync>;
-    const ELEMENT_CLASS: &str = "TermiRustAccessibilityElement";
+    const ELEMENT_BASE_CLASS: &str = "TermiRustAccessibilityElementBase";
     const BRIDGE_IVAR: &str = "termirustBridgeId";
     const GENERATION_IVAR: &str = "termirustGeneration";
     const NODE_IVAR: &str = "termirustNodeId";
     const ACTIONS_IVAR: &str = "termirustActionBits";
+    const FOCUSED_IVAR: &str = "termirustFocused";
     const ACTION_QUEUE_CAPACITY: usize = 64;
 
     static NEXT_BRIDGE_ID: AtomicU64 = AtomicU64::new(1);
-    static ELEMENT_CLASS_ONCE: Once = Once::new();
+    static ELEMENT_BASE_CLASS_ONCE: Once = Once::new();
+    static ELEMENT_CLASSES: OnceLock<Mutex<HashMap<u64, &'static Class>>> = OnceLock::new();
     static ACTION_ROUTES: OnceLock<Mutex<HashMap<u64, SyncSender<SemanticActionRequest>>>> =
         OnceLock::new();
 
@@ -126,6 +128,10 @@ mod macos {
         static NSAccessibilityAnnouncementRequestedNotification: Id;
         static NSAccessibilityAnnouncementKey: Id;
         static NSAccessibilityPriorityKey: Id;
+        static NSAccessibilityPressAction: Id;
+        static NSAccessibilityIncrementAction: Id;
+        static NSAccessibilityDecrementAction: Id;
+        static NSAccessibilityCancelAction: Id;
     }
 
     pub struct MacAccessibilityBridge {
@@ -136,6 +142,7 @@ mod macos {
         resolver: MessageResolver,
         models: BTreeMap<SemanticNodeId, SemanticNode>,
         elements: BTreeMap<SemanticNodeId, StrongPtr>,
+        focused: Option<SemanticNodeId>,
     }
 
     impl MacAccessibilityBridge {
@@ -164,6 +171,7 @@ mod macos {
                 resolver,
                 models: BTreeMap::new(),
                 elements: BTreeMap::new(),
+                focused: None,
             })
         }
 
@@ -273,7 +281,8 @@ mod macos {
                         self.elements.remove(id);
                     }
                     SemanticChange::Added(node) => {
-                        self.elements.insert(node.id, create_element()?);
+                        self.elements
+                            .insert(node.id, create_element(&node.actions)?);
                         self.models.insert(node.id, node.clone());
                     }
                     SemanticChange::Updated(node) => {
@@ -282,6 +291,12 @@ mod macos {
                                 SemanticErrorCode::StaleNode,
                                 Some(node.id),
                             ));
+                        }
+                        if self.models.get(&node.id).is_some_and(|current| {
+                            action_bits(&current.actions) != action_bits(&node.actions)
+                        }) {
+                            self.elements
+                                .insert(node.id, create_element(&node.actions)?);
                         }
                         self.models.insert(node.id, node.clone());
                     }
@@ -296,12 +311,23 @@ mod macos {
             target: Option<SemanticNodeId>,
         ) -> Result<(), SemanticError> {
             self.require_generation(generation)?;
+            if self.focused != target
+                && let Some(previous) = self.focused
+                && let Some(previous) = self.elements.get(&previous)
+            {
+                unsafe { set_model_accessibility_focused(**previous, NO) };
+            }
             let element = match target {
-                Some(target) => **self.elements.get(&target).ok_or_else(|| {
-                    SemanticError::new(SemanticErrorCode::StaleNode, Some(target))
-                })?,
+                Some(target) => {
+                    let element = **self.elements.get(&target).ok_or_else(|| {
+                        SemanticError::new(SemanticErrorCode::StaleNode, Some(target))
+                    })?;
+                    unsafe { set_model_accessibility_focused(element, YES) };
+                    element
+                }
                 None => *self.parent_view,
             };
+            self.focused = target;
             unsafe {
                 NSAccessibilityPostNotification(
                     element,
@@ -356,9 +382,8 @@ mod macos {
         ACTION_ROUTES.get_or_init(|| Mutex::new(HashMap::new()))
     }
 
-    fn create_element() -> Result<StrongPtr, SemanticError> {
-        register_element_class();
-        let class = Class::get(ELEMENT_CLASS).ok_or_else(bridge_unavailable)?;
+    fn create_element(actions: &BTreeSet<SemanticAction>) -> Result<StrongPtr, SemanticError> {
+        let class = element_class(action_bits(actions))?;
         unsafe {
             let allocated: Id = msg_send![class, alloc];
             let element: Id = msg_send![allocated, init];
@@ -370,42 +395,88 @@ mod macos {
         }
     }
 
-    fn register_element_class() {
-        ELEMENT_CLASS_ONCE.call_once(|| unsafe {
+    fn register_element_base_class() {
+        ELEMENT_BASE_CLASS_ONCE.call_once(|| unsafe {
             let superclass = class!(NSAccessibilityElement);
-            let Some(mut declaration) = ClassDecl::new(ELEMENT_CLASS, superclass) else {
+            let Some(mut declaration) = ClassDecl::new(ELEMENT_BASE_CLASS, superclass) else {
                 return;
             };
             declaration.add_ivar::<u64>(BRIDGE_IVAR);
             declaration.add_ivar::<u64>(GENERATION_IVAR);
             declaration.add_ivar::<u64>(NODE_IVAR);
             declaration.add_ivar::<u64>(ACTIONS_IVAR);
+            declaration.add_ivar::<u64>(FOCUSED_IVAR);
             declaration.add_method(
-                sel!(accessibilityPerformPress),
-                perform_press as extern "C" fn(&Object, Sel) -> BOOL,
+                sel!(accessibilityActionNames),
+                accessibility_action_names as extern "C" fn(&Object, Sel) -> Id,
             );
             declaration.add_method(
-                sel!(setAccessibilityFocused:),
-                set_focused as extern "C" fn(&mut Object, Sel, BOOL),
+                sel!(isAccessibilitySelectorAllowed:),
+                is_accessibility_selector_allowed as extern "C" fn(&Object, Sel, Sel) -> BOOL,
             );
             declaration.add_method(
-                sel!(setAccessibilityValue:),
-                set_value as extern "C" fn(&mut Object, Sel, Id),
-            );
-            declaration.add_method(
-                sel!(accessibilityPerformIncrement),
-                perform_increment as extern "C" fn(&Object, Sel),
-            );
-            declaration.add_method(
-                sel!(accessibilityPerformDecrement),
-                perform_decrement as extern "C" fn(&Object, Sel),
-            );
-            declaration.add_method(
-                sel!(accessibilityPerformCancel),
-                perform_cancel as extern "C" fn(&Object, Sel) -> BOOL,
+                sel!(accessibilityFocused),
+                accessibility_focused as extern "C" fn(&Object, Sel) -> BOOL,
             );
             declaration.register();
         });
+    }
+
+    fn element_class(actions: u64) -> Result<&'static Class, SemanticError> {
+        register_element_base_class();
+        let superclass = Class::get(ELEMENT_BASE_CLASS).ok_or_else(bridge_unavailable)?;
+        let classes = ELEMENT_CLASSES.get_or_init(|| Mutex::new(HashMap::new()));
+        let mut classes = classes.lock().map_err(|_| bridge_unavailable())?;
+        if let Some(class) = classes.get(&actions) {
+            return Ok(*class);
+        }
+        let name = format!("TermiRustAccessibilityElement{actions:016x}");
+        let mut declaration = ClassDecl::new(&name, superclass).ok_or_else(bridge_unavailable)?;
+        unsafe {
+            if actions & (1_u64 << (SemanticAction::Activate as u8)) != 0 {
+                declaration.add_method(
+                    sel!(accessibilityPerformPress),
+                    perform_press as extern "C" fn(&Object, Sel) -> BOOL,
+                );
+            }
+            if actions & (1_u64 << (SemanticAction::Focus as u8)) != 0 {
+                declaration.add_method(
+                    sel!(setAccessibilityFocused:),
+                    set_focused as extern "C" fn(&mut Object, Sel, BOOL),
+                );
+            }
+            if actions & (1_u64 << (SemanticAction::SetValue as u8)) != 0 {
+                declaration.add_method(
+                    sel!(setAccessibilityValue:),
+                    set_value as extern "C" fn(&mut Object, Sel, Id),
+                );
+            }
+            if actions & (1_u64 << (SemanticAction::Increment as u8)) != 0 {
+                declaration.add_method(
+                    sel!(accessibilityPerformIncrement),
+                    perform_increment as extern "C" fn(&Object, Sel),
+                );
+            }
+            if actions & (1_u64 << (SemanticAction::Decrement as u8)) != 0 {
+                declaration.add_method(
+                    sel!(accessibilityPerformDecrement),
+                    perform_decrement as extern "C" fn(&Object, Sel),
+                );
+            }
+            if actions
+                & ((1_u64 << (SemanticAction::Cancel as u8))
+                    | (1_u64 << (SemanticAction::Dismiss as u8)))
+                != 0
+            {
+                declaration.add_method(
+                    sel!(accessibilityPerformCancel),
+                    perform_cancel as extern "C" fn(&Object, Sel) -> BOOL,
+                );
+            }
+        }
+        let class = declaration.register();
+        classes.insert(actions, class);
+        Ok(class)
     }
 
     fn configure_element(
@@ -469,16 +540,21 @@ mod macos {
             if let Some(checked) = node.state.checked {
                 let value: Id =
                     msg_send![class!(NSNumber), numberWithBool: if checked { YES } else { NO }];
-                let _: () = msg_send![element, setAccessibilityValue: value];
+                set_model_accessibility_value(element, value);
             }
             match &node.value {
                 Some(SemanticValue::PublicText(_)) => {
-                    let _: () = msg_send![element, setAccessibilityValue: **public_text_value.as_ref().expect("public semantic text was resolved")];
+                    set_model_accessibility_value(
+                        element,
+                        **public_text_value
+                            .as_ref()
+                            .expect("public semantic text was resolved"),
+                    );
                 }
                 Some(SemanticValue::Boolean(value)) => {
                     let value: Id =
                         msg_send![class!(NSNumber), numberWithBool: if *value { YES } else { NO }];
-                    let _: () = msg_send![element, setAccessibilityValue: value];
+                    set_model_accessibility_value(element, value);
                 }
                 Some(SemanticValue::Number {
                     current,
@@ -488,7 +564,7 @@ mod macos {
                     let current: Id = msg_send![class!(NSNumber), numberWithLongLong: *current];
                     let minimum: Id = msg_send![class!(NSNumber), numberWithLongLong: *minimum];
                     let maximum: Id = msg_send![class!(NSNumber), numberWithLongLong: *maximum];
-                    let _: () = msg_send![element, setAccessibilityValue: current];
+                    set_model_accessibility_value(element, current);
                     let _: () = msg_send![element, setAccessibilityMinValue: minimum];
                     let _: () = msg_send![element, setAccessibilityMaxValue: maximum];
                 }
@@ -498,6 +574,84 @@ mod macos {
             let _: () = msg_send![element, setAccessibilityHelp: help.as_ref().map_or(nil, |value| **value)];
         }
         Ok(())
+    }
+
+    unsafe fn set_model_accessibility_value(element: Id, value: Id) {
+        // The subclass setter handles edits originating from assistive technology.
+        // Bypass it while publishing the authoritative model value so the inherited
+        // NSAccessibilityElement storage remains readable through AXValue.
+        let _: () = unsafe {
+            msg_send![super(element, class!(NSAccessibilityElement)), setAccessibilityValue: value]
+        };
+    }
+
+    unsafe fn set_model_accessibility_focused(element: Id, focused: BOOL) {
+        unsafe {
+            (*element).set_ivar(FOCUSED_IVAR, u64::from(focused == YES));
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn stored_model_text_value_for_test(value: &str) -> Option<String> {
+        let actions = BTreeSet::from([SemanticAction::SetValue]);
+        let element = create_element(&actions).ok()?;
+        let value = ns_string(value);
+        unsafe {
+            set_model_accessibility_value(*element, *value);
+            let stored: Id = msg_send![*element, accessibilityValue];
+            if stored.is_null() {
+                return None;
+            }
+            let utf8: *const c_char = msg_send![stored, UTF8String];
+            (!utf8.is_null()).then(|| CStr::from_ptr(utf8).to_string_lossy().into_owned())
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn stored_model_focus_for_test(focused: bool) -> bool {
+        let actions = BTreeSet::from([SemanticAction::Focus]);
+        let element = create_element(&actions).expect("native accessibility element");
+        unsafe {
+            set_model_accessibility_focused(*element, if focused { YES } else { NO });
+            let stored: BOOL = msg_send![*element, accessibilityFocused];
+            stored == YES
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn native_action_names_for_test(
+        actions: &std::collections::BTreeSet<SemanticAction>,
+    ) -> Vec<String> {
+        let element = create_element(actions).expect("native accessibility element");
+        unsafe {
+            (**element).set_ivar(ACTIONS_IVAR, action_bits(actions));
+            let names: Id = msg_send![*element, accessibilityActionNames];
+            let count: usize = msg_send![names, count];
+            (0..count)
+                .filter_map(|index| {
+                    let name: Id = msg_send![names, objectAtIndex: index];
+                    let utf8: *const c_char = msg_send![name, UTF8String];
+                    (!utf8.is_null()).then(|| CStr::from_ptr(utf8).to_string_lossy().into_owned())
+                })
+                .collect()
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn native_action_selector_permissions_for_test(
+        actions: &std::collections::BTreeSet<SemanticAction>,
+    ) -> [bool; 4] {
+        let element = create_element(actions).expect("native accessibility element");
+        unsafe {
+            (**element).set_ivar(ACTIONS_IVAR, action_bits(actions));
+            [
+                msg_send![*element, isAccessibilitySelectorAllowed: sel!(accessibilityPerformPress)],
+                msg_send![*element, isAccessibilitySelectorAllowed: sel!(accessibilityPerformIncrement)],
+                msg_send![*element, isAccessibilitySelectorAllowed: sel!(accessibilityPerformDecrement)],
+                msg_send![*element, isAccessibilitySelectorAllowed: sel!(accessibilityPerformCancel)],
+            ]
+            .map(|allowed: BOOL| allowed == YES)
+        }
     }
 
     fn configure_relations(
@@ -607,9 +761,91 @@ mod macos {
         }
     }
 
+    extern "C" fn accessibility_action_names(this: &Object, _: Sel) -> Id {
+        let actions = unsafe { *this.get_ivar::<u64>(ACTIONS_IVAR) };
+        let mut names = Vec::with_capacity(4);
+        unsafe {
+            if actions & (1_u64 << (SemanticAction::Activate as u8)) != 0 {
+                names.push(NSAccessibilityPressAction);
+            }
+            if actions & (1_u64 << (SemanticAction::Increment as u8)) != 0 {
+                names.push(NSAccessibilityIncrementAction);
+            }
+            if actions & (1_u64 << (SemanticAction::Decrement as u8)) != 0 {
+                names.push(NSAccessibilityDecrementAction);
+            }
+            if actions
+                & ((1_u64 << (SemanticAction::Cancel as u8))
+                    | (1_u64 << (SemanticAction::Dismiss as u8)))
+                != 0
+            {
+                names.push(NSAccessibilityCancelAction);
+            }
+            NSArray::arrayWithObjects(nil, &names)
+        }
+    }
+
+    extern "C" fn is_accessibility_selector_allowed(this: &Object, _: Sel, selector: Sel) -> BOOL {
+        let actions = unsafe { *this.get_ivar::<u64>(ACTIONS_IVAR) };
+        let supports = |action: SemanticAction| actions & (1_u64 << (action as u8)) != 0;
+        if selector == sel!(accessibilityPerformPress) {
+            return if supports(SemanticAction::Activate) {
+                YES
+            } else {
+                NO
+            };
+        }
+        if selector == sel!(setAccessibilityFocused:) {
+            return if supports(SemanticAction::Focus) {
+                YES
+            } else {
+                NO
+            };
+        }
+        if selector == sel!(setAccessibilityValue:) {
+            return if supports(SemanticAction::SetValue) {
+                YES
+            } else {
+                NO
+            };
+        }
+        if selector == sel!(accessibilityPerformIncrement) {
+            return if supports(SemanticAction::Increment) {
+                YES
+            } else {
+                NO
+            };
+        }
+        if selector == sel!(accessibilityPerformDecrement) {
+            return if supports(SemanticAction::Decrement) {
+                YES
+            } else {
+                NO
+            };
+        }
+        if selector == sel!(accessibilityPerformCancel) {
+            return if supports(SemanticAction::Cancel) || supports(SemanticAction::Dismiss) {
+                YES
+            } else {
+                NO
+            };
+        }
+        unsafe {
+            msg_send![super(this, class!(NSAccessibilityElement)), isAccessibilitySelectorAllowed: selector]
+        }
+    }
+
     extern "C" fn set_focused(this: &mut Object, _: Sel, focused: BOOL) {
         if focused == YES {
             let _ = dispatch(this, SemanticAction::Focus, None);
+        }
+    }
+
+    extern "C" fn accessibility_focused(this: &Object, _: Sel) -> BOOL {
+        if unsafe { *this.get_ivar::<u64>(FOCUSED_IVAR) } == 0 {
+            NO
+        } else {
+            YES
         }
     }
 
@@ -756,5 +992,54 @@ mod tests {
         }
         assert!(sender.try_send(request).is_err());
         assert_eq!(receiver.try_iter().count(), 64);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_model_text_value_is_readable_through_ax_value() {
+        assert_eq!(
+            super::macos::stored_model_text_value_for_test("Temporary label").as_deref(),
+            Some("Temporary label")
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_model_focus_is_readable_through_ax_focused() {
+        assert!(super::macos::stored_model_focus_for_test(true));
+        assert!(!super::macos::stored_model_focus_for_test(false));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_action_names_only_advertise_supported_actions() {
+        use std::collections::BTreeSet;
+
+        use termirust_ui_contract::SemanticAction;
+
+        let button = BTreeSet::from([SemanticAction::Focus, SemanticAction::Activate]);
+        assert_eq!(
+            super::macos::native_action_names_for_test(&button),
+            ["AXPress"]
+        );
+        assert_eq!(
+            super::macos::native_action_selector_permissions_for_test(&button),
+            [true, false, false, false]
+        );
+
+        let progress = BTreeSet::from([
+            SemanticAction::Focus,
+            SemanticAction::Increment,
+            SemanticAction::Decrement,
+            SemanticAction::Cancel,
+        ]);
+        assert_eq!(
+            super::macos::native_action_names_for_test(&progress),
+            ["AXIncrement", "AXDecrement", "AXCancel"]
+        );
+        assert_eq!(
+            super::macos::native_action_selector_permissions_for_test(&progress),
+            [false, true, true, true]
+        );
     }
 }
