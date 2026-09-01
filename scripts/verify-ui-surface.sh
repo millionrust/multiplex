@@ -19,7 +19,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$states" != "all" || "$locales" != "en-US,en-XA,ar-XB" || "$themes" != "all" ]]; then
-  echo "Usage: $0 --surface shell-overlays-palette|projects-groups-sessions|presets-runtimes|worktrees-artifacts|hosts-connections [--states all] --locales en-US,en-XA,ar-XB --themes all" >&2
+  echo "Usage: $0 --surface shell-overlays-palette|projects-groups-sessions|presets-runtimes|worktrees-artifacts|hosts-connections|sftp [--states all] --locales en-US,en-XA,ar-XB --themes all" >&2
   exit 2
 fi
 
@@ -48,6 +48,11 @@ case "$surface" in
     paths="src/ui/app/hosts.rs,src/ui/app/connect.rs,src/ui/app/editor.rs"
     test_filter="host_connection_surface"
     description="Hosts and Connections"
+    ;;
+  sftp)
+    paths="src/ui/app/sftp.rs,src/ui/sftp_local.rs"
+    test_filter="sftp_surface"
+    description="local and remote SFTP"
     ;;
   *)
     echo "unknown UI surface: $surface" >&2

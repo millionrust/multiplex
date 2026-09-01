@@ -250,6 +250,10 @@ impl ArtifactGalleryState {
 }
 
 impl TermiRustApp {
+    pub(super) fn sftp_library_tab_active(&self) -> bool {
+        self.artifact_gallery.files_tab == FilesLibraryTab::Sftp
+    }
+
     pub(super) fn artifact_semantic_snapshot(&self) -> Option<WorktreeArtifactSemanticSnapshot> {
         if self.artifact_gallery.files_tab != FilesLibraryTab::Artifacts {
             return None;

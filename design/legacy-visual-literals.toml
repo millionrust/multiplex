@@ -3353,757 +3353,99 @@ fingerprint = "sha256:1e03f8eee42d4bd1c408d0dca56a994d6085c459032ea35d3ea7bda9f5
 reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
 owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 28
-category = "dimension"
-fingerprint = "sha256:d5d54f0aad0960e33dc1e30a509cec647c8d6a3317021b9304f2a969b2023bc2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 62
-category = "dimension"
-fingerprint = "sha256:a5976d369317ec457c8a84513ecbc2e3edcf78cb959e2a0cbed75bf4ec0a7952"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 68
-category = "spacing"
-fingerprint = "sha256:8d29ad33c98ad76e512f52289bb07bf4ac892d830e256de33a94484341eadc97"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 72
-category = "dimension"
-fingerprint = "sha256:08c6d478f4d4f7520fc7b6b2f3c885a56c5dd262009888594ae7fd139dec5fd0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 73
-category = "radius"
-fingerprint = "sha256:e5345dc0e0234a2930c3d6cda1d214c2007417ee17cb914d164324e11c90c8f4"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 80
-category = "dimension"
-fingerprint = "sha256:c4d497979c96c5742ca71fdf8535f01b8c59a715f3ad11d5fb5cd9dcc4dd9f39"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 86
-category = "font"
-fingerprint = "sha256:9555c1400854e0b08d8ced5ee1c289bb1fd5bc6dfd30c5edf99a096088e718ac"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 94
-category = "spacing"
-fingerprint = "sha256:a1cd8caa5fbd45b3a9ed3ee95c04c4f08bdcf997660b89e327492f139987a350"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 99
-category = "spacing"
-fingerprint = "sha256:e14b807b91aa7b9e4fb9de57c9f297da12df2814c3d57b442716464fb47762e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 105
-category = "dimension"
-fingerprint = "sha256:1a811b63a22647bc1001da4c179be70000bd6e35465490f9da6bac8b75c004cd"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 110
-category = "font"
-fingerprint = "sha256:9d1a85deaae76a2fc743d79bdb7db062e98f4d105c2f8e527f5018b8295da603"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 128
-category = "spacing"
-fingerprint = "sha256:e14b807b91aa7b9e4fb9de57c9f297da12df2814c3d57b442716464fb47762e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 134
-category = "font"
-fingerprint = "sha256:9d1a85deaae76a2fc743d79bdb7db062e98f4d105c2f8e527f5018b8295da603"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 140
-category = "dimension"
-fingerprint = "sha256:087f02c3f2ee6d7b72510f5c2a1c0da0df96461be48ac1644146d8aa33bec991"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 156
-category = "dimension"
-fingerprint = "sha256:2011c533b150c9d90c6531aa905625d1d125091529cb506c0bf1e6529de136bc"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 159
-category = "spacing"
-fingerprint = "sha256:c5d975ad03a90446387bc16a80ef7f1207574239938b5e50383e5f98c1abecb0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 163
-category = "dimension"
-fingerprint = "sha256:08c6d478f4d4f7520fc7b6b2f3c885a56c5dd262009888594ae7fd139dec5fd0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 164
-category = "radius"
-fingerprint = "sha256:e5345dc0e0234a2930c3d6cda1d214c2007417ee17cb914d164324e11c90c8f4"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 172
-category = "dimension"
-fingerprint = "sha256:c4d497979c96c5742ca71fdf8535f01b8c59a715f3ad11d5fb5cd9dcc4dd9f39"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 184
-category = "dimension"
-fingerprint = "sha256:c4d497979c96c5742ca71fdf8535f01b8c59a715f3ad11d5fb5cd9dcc4dd9f39"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 192
-category = "spacing"
-fingerprint = "sha256:e14b807b91aa7b9e4fb9de57c9f297da12df2814c3d57b442716464fb47762e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 196
-category = "dimension"
-fingerprint = "sha256:1a811b63a22647bc1001da4c179be70000bd6e35465490f9da6bac8b75c004cd"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 201
-category = "font"
-fingerprint = "sha256:9d1a85deaae76a2fc743d79bdb7db062e98f4d105c2f8e527f5018b8295da603"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 210
-category = "dimension"
-fingerprint = "sha256:087f02c3f2ee6d7b72510f5c2a1c0da0df96461be48ac1644146d8aa33bec991"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 222
-category = "spacing"
-fingerprint = "sha256:f5de1a8046d65d2f78236901c2cebc5a78bc3160086e66134438ae70e71022fc"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 228
-category = "dimension"
-fingerprint = "sha256:5a6872ec77be4c46389d455ae10b07614403afd38ed127aa3f78451f2bb66ae4"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 236
-category = "dimension"
-fingerprint = "sha256:3aae1c2083956ad0a462346d000facd9dcd90d29cf0129f4dea12516f5c5825f"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 237
-category = "font"
-fingerprint = "sha256:132c1a8dbcb6c03903fe13f75d6375228a386ee2d8c11b84107238aabbf14b52"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 244
-category = "dimension"
-fingerprint = "sha256:b5e599bb4a0f9bc93fe5fba14e64fd42c1e2f414fbc450061f6a834c8e8df913"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 245
-category = "font"
-fingerprint = "sha256:132c1a8dbcb6c03903fe13f75d6375228a386ee2d8c11b84107238aabbf14b52"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 252
-category = "dimension"
-fingerprint = "sha256:ee2695ae44093050313a7855c3606723683fd25c835541bbc0336eb154daaff7"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 253
-category = "font"
-fingerprint = "sha256:132c1a8dbcb6c03903fe13f75d6375228a386ee2d8c11b84107238aabbf14b52"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 260
-category = "font"
-fingerprint = "sha256:132c1a8dbcb6c03903fe13f75d6375228a386ee2d8c11b84107238aabbf14b52"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 289
-category = "dimension"
-fingerprint = "sha256:2011c533b150c9d90c6531aa905625d1d125091529cb506c0bf1e6529de136bc"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 296
-category = "dimension"
-fingerprint = "sha256:3aae1c2083956ad0a462346d000facd9dcd90d29cf0129f4dea12516f5c5825f"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 297
-category = "spacing"
-fingerprint = "sha256:8d29ad33c98ad76e512f52289bb07bf4ac892d830e256de33a94484341eadc97"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 305
-category = "dimension"
-fingerprint = "sha256:04fd0a2886e42552d2e58b4f73726be231fc05660840670e5ad9cef7eb7b433f"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 310
-category = "font"
-fingerprint = "sha256:9d1a85deaae76a2fc743d79bdb7db062e98f4d105c2f8e527f5018b8295da603"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 317
-category = "dimension"
-fingerprint = "sha256:b5e599bb4a0f9bc93fe5fba14e64fd42c1e2f414fbc450061f6a834c8e8df913"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 318
-category = "font"
-fingerprint = "sha256:132c1a8dbcb6c03903fe13f75d6375228a386ee2d8c11b84107238aabbf14b52"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 324
-category = "dimension"
-fingerprint = "sha256:ee2695ae44093050313a7855c3606723683fd25c835541bbc0336eb154daaff7"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 325
-category = "font"
-fingerprint = "sha256:132c1a8dbcb6c03903fe13f75d6375228a386ee2d8c11b84107238aabbf14b52"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 331
-category = "font"
-fingerprint = "sha256:132c1a8dbcb6c03903fe13f75d6375228a386ee2d8c11b84107238aabbf14b52"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 352
-category = "spacing"
-fingerprint = "sha256:c64f29cedf7d7d3e5bde72c0d60c17bf7be7c38854cf251b0549c876165cc7ff"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 355
-category = "dimension"
-fingerprint = "sha256:e28c39c6cf58c66be30af72c9f2afb618df6f109f57ca29ee540c176ccd8e0bc"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 356
-category = "radius"
-fingerprint = "sha256:805a2cda9d805ae6a58add656c87779e73bb726f8dec2753b1305011b1070f14"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 363
-category = "dimension"
-fingerprint = "sha256:e7d6304751295f22b9995a2e8e0022992f4ab3778614075169f8165b226671f2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 369
-category = "font"
-fingerprint = "sha256:59928e8224f4eac2b948d1fecf2e0a7d11888282c1b879d12f7d127c0239e0aa"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 376
-category = "font"
-fingerprint = "sha256:9d1a85deaae76a2fc743d79bdb7db062e98f4d105c2f8e527f5018b8295da603"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 378
-category = "dimension"
-fingerprint = "sha256:99706ad4bb42bbe610e628b7dc4afd37c0a34a254bd233187571d7727bbe3233"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 400
-category = "dimension"
-fingerprint = "sha256:a5976d369317ec457c8a84513ecbc2e3edcf78cb959e2a0cbed75bf4ec0a7952"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 406
-category = "spacing"
-fingerprint = "sha256:554c34a78ede42abb15d9580364c2c33fb5cc4d34639d44cdae72d5583abec24"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 411
-category = "dimension"
-fingerprint = "sha256:08c6d478f4d4f7520fc7b6b2f3c885a56c5dd262009888594ae7fd139dec5fd0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 412
-category = "radius"
-fingerprint = "sha256:e5345dc0e0234a2930c3d6cda1d214c2007417ee17cb914d164324e11c90c8f4"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 420
-category = "dimension"
-fingerprint = "sha256:c4d497979c96c5742ca71fdf8535f01b8c59a715f3ad11d5fb5cd9dcc4dd9f39"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 430
-category = "spacing"
-fingerprint = "sha256:246d7a1390ad36e3c5eb0f6b74db1a46ef8469da3704d0c383e0946370a96b67"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 433
-category = "font"
-fingerprint = "sha256:9555c1400854e0b08d8ced5ee1c289bb1fd5bc6dfd30c5edf99a096088e718ac"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 440
-category = "spacing"
-fingerprint = "sha256:e14b807b91aa7b9e4fb9de57c9f297da12df2814c3d57b442716464fb47762e2"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 444
-category = "font"
-fingerprint = "sha256:132c1a8dbcb6c03903fe13f75d6375228a386ee2d8c11b84107238aabbf14b52"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 450
-category = "dimension"
-fingerprint = "sha256:d0a2ddbec5c7c498fb3ec77856586fa3f88d4db9b72cd2f93e4e29d8073d7602"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 458
-category = "dimension"
-fingerprint = "sha256:97b01d09bdfd3d8bb7178da3857d979546e8c50019677af41ca74a878d9f9fd8"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 460
-category = "spacing"
-fingerprint = "sha256:c5d975ad03a90446387bc16a80ef7f1207574239938b5e50383e5f98c1abecb0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 462
-category = "radius"
-fingerprint = "sha256:3b95f4a4b0af80f5a70f0a7e1523af9a02b99415142a759ed5280b1a077d7fc6"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 468
-category = "dimension"
-fingerprint = "sha256:087f02c3f2ee6d7b72510f5c2a1c0da0df96461be48ac1644146d8aa33bec991"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 473
-category = "font"
-fingerprint = "sha256:132c1a8dbcb6c03903fe13f75d6375228a386ee2d8c11b84107238aabbf14b52"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 482
-category = "dimension"
-fingerprint = "sha256:2011c533b150c9d90c6531aa905625d1d125091529cb506c0bf1e6529de136bc"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 483
-category = "spacing"
-fingerprint = "sha256:b36d9044a986ff129cd7b8274ab6cdda38f12dd33e8e23dceb0395364aae0690"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 485
-category = "spacing"
-fingerprint = "sha256:c5d975ad03a90446387bc16a80ef7f1207574239938b5e50383e5f98c1abecb0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 487
-category = "radius"
-fingerprint = "sha256:3b95f4a4b0af80f5a70f0a7e1523af9a02b99415142a759ed5280b1a077d7fc6"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 493
-category = "dimension"
-fingerprint = "sha256:c4d497979c96c5742ca71fdf8535f01b8c59a715f3ad11d5fb5cd9dcc4dd9f39"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 498
-category = "font"
-fingerprint = "sha256:9d1a85deaae76a2fc743d79bdb7db062e98f4d105c2f8e527f5018b8295da603"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 506
-category = "spacing"
-fingerprint = "sha256:fc6935c99acc07f862e3c49e3b0e371dc87f780a080de03df1b45e16607f4543"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 507
-category = "spacing"
-fingerprint = "sha256:c5d975ad03a90446387bc16a80ef7f1207574239938b5e50383e5f98c1abecb0"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 510
-category = "font"
-fingerprint = "sha256:132c1a8dbcb6c03903fe13f75d6375228a386ee2d8c11b84107238aabbf14b52"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 527
-category = "dimension"
-fingerprint = "sha256:2fe6983c91200ab849a37b2fe0092b95d1b8c51061cd51e1ea1fa1e5cb1bb970"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 528
-category = "spacing"
-fingerprint = "sha256:554c34a78ede42abb15d9580364c2c33fb5cc4d34639d44cdae72d5583abec24"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 531
-category = "radius"
-fingerprint = "sha256:3b95f4a4b0af80f5a70f0a7e1523af9a02b99415142a759ed5280b1a077d7fc6"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 536
-category = "dimension"
-fingerprint = "sha256:dfc5558e594a6511881374001cbb49b003aa3f29e2bd63d01a8869efe22b7e73"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 537
-category = "radius"
-fingerprint = "sha256:3b95f4a4b0af80f5a70f0a7e1523af9a02b99415142a759ed5280b1a077d7fc6"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 544
-category = "dimension"
-fingerprint = "sha256:c865f3dead78221f63dfc1f5881a3be324841a8d4a7adec367d6d2240da6ca8c"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 551
-category = "spacing"
-fingerprint = "sha256:246d7a1390ad36e3c5eb0f6b74db1a46ef8469da3704d0c383e0946370a96b67"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 554
-category = "font"
-fingerprint = "sha256:9d1a85deaae76a2fc743d79bdb7db062e98f4d105c2f8e527f5018b8295da603"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 561
-category = "font"
-fingerprint = "sha256:fd82592f670c27cf970528b77e98b80d9bbfca76cda729c012750c118a2212f3"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 115
-category = "dimension"
-fingerprint = "sha256:6ff0e9c4cdbaff52f6cbf8c859c8f49bed164f88ecccfac94176dfadb8f26274"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 140
-category = "dimension"
-fingerprint = "sha256:6ff0e9c4cdbaff52f6cbf8c859c8f49bed164f88ecccfac94176dfadb8f26274"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 221
-category = "font"
-fingerprint = "sha256:47e8b2f9020d085378d8d29da7f3d2eb9e4d46bb1bf283fe68a71e985df65a0f"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 377
-category = "spacing"
-fingerprint = "sha256:246d7a1390ad36e3c5eb0f6b74db1a46ef8469da3704d0c383e0946370a96b67"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 563
-category = "dimension"
-fingerprint = "sha256:6ff0e9c4cdbaff52f6cbf8c859c8f49bed164f88ecccfac94176dfadb8f26274"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 568
-category = "font"
-fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 578
-category = "dimension"
-fingerprint = "sha256:6ff0e9c4cdbaff52f6cbf8c859c8f49bed164f88ecccfac94176dfadb8f26274"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 606
-category = "radius"
-fingerprint = "sha256:30db1fb90b7a8ed9fdede8b16d23dc1b03829267fb44a79e1463019a7120e5bf"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 637
-category = "dimension"
-fingerprint = "sha256:f7d0fa0a4bd0045d639c6fcb8a30bf752dbdaf945208837e88641569d59cb5ce"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 648
-category = "spacing"
-fingerprint = "sha256:97164bd9a469c384d9ad80014e081939cd53235376eebc01a8bd111daed76ac6"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 651
-category = "font"
-fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
-reason = "Pre-token UI literal scheduled for semantic-token migration under G21.1."
-owner = "G21.1"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 [[exceptions]]
 file = "src/ui/app/workspace.rs"

@@ -105,6 +105,62 @@ pub fn common_retry() -> String {
     text(&CommonRetryArgs::new())
 }
 
+pub fn sftp_opened_local_folder(path: impl Into<String>) -> String {
+    text(&SftpOpenedLocalFolderArgs::new(UserData::new(path)))
+}
+
+pub fn sftp_host_summary(username: impl Into<String>, endpoint: impl Into<String>) -> String {
+    text(&SftpHostSummaryArgs::new(
+        UserData::new(username),
+        UserData::new(endpoint),
+    ))
+}
+
+pub fn sftp_selected_folder(path: impl Into<String>) -> String {
+    text(&SftpSelectedFolderArgs::new(UserData::new(path)))
+}
+
+pub fn sftp_selected_file(path: impl Into<String>, size: impl Into<String>) -> String {
+    text(&SftpSelectedFileArgs::new(
+        UserData::new(path),
+        Text::new(size),
+    ))
+}
+
+pub fn sftp_transfer_progress(
+    transferred: impl Into<String>,
+    total: impl Into<String>,
+    percent: u32,
+) -> String {
+    text(&SftpTransferProgressArgs::new(
+        Text::new(transferred),
+        Text::new(total),
+        Count(percent as u64),
+    ))
+}
+
+pub fn sftp_transfer_progress_resumed(
+    transferred: impl Into<String>,
+    total: impl Into<String>,
+    percent: u32,
+    resumed: impl Into<String>,
+) -> String {
+    text(&SftpTransferProgressResumedArgs::new(
+        Text::new(transferred),
+        Text::new(total),
+        Count(percent as u64),
+        Text::new(resumed),
+    ))
+}
+
+pub fn sftp_conflict_description(size: impl Into<String>) -> String {
+    text(&SftpConflictDescriptionArgs::new(Text::new(size)))
+}
+
+pub fn sftp_checksum(checksum: impl Into<String>) -> String {
+    text(&SftpChecksumArgs::new(UserData::new(checksum)))
+}
+
 pub fn common_run() -> String {
     text(&CommonRunArgs::new())
 }

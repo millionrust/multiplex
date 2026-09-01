@@ -12,6 +12,7 @@ use crate::preset_runtime_surface::{
 use crate::product_session_surface::{
     ProductSessionAccessibilityCommand, ProductSessionSemanticSnapshot,
 };
+use crate::sftp_surface::{SftpAccessibilityCommand, SftpSemanticSnapshot};
 use crate::worktree_artifact_surface::{
     WorktreeArtifactAccessibilityCommand, WorktreeArtifactSemanticSnapshot,
 };
@@ -447,6 +448,7 @@ pub enum ShellAccessibilityCommand {
     PresetRuntime(PresetRuntimeAccessibilityCommand),
     WorktreeArtifact(WorktreeArtifactAccessibilityCommand),
     HostConnection(HostConnectionAccessibilityCommand),
+    Sftp(SftpAccessibilityCommand),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -461,6 +463,7 @@ pub struct ShellSemanticSnapshot {
     pub preset_runtime: Option<PresetRuntimeSemanticSnapshot>,
     pub worktree_artifact: Option<WorktreeArtifactSemanticSnapshot>,
     pub host_connection: Option<HostConnectionSemanticSnapshot>,
+    pub sftp: Option<SftpSemanticSnapshot>,
 }
 
 impl Default for ShellSemanticSnapshot {
@@ -476,6 +479,7 @@ impl Default for ShellSemanticSnapshot {
             preset_runtime: None,
             worktree_artifact: None,
             host_connection: None,
+            sftp: None,
         }
     }
 }
@@ -548,6 +552,11 @@ impl ShellSemanticSnapshot {
             && let Some(host_connection) = self.host_connection.as_ref()
         {
             nodes.extend(host_connection.try_nodes(shell_region_node(ShellRegionId::Content))?);
+        }
+        if !self.palette_open
+            && let Some(sftp) = self.sftp.as_ref()
+        {
+            nodes.extend(sftp.try_nodes(shell_region_node(ShellRegionId::Content))?);
         }
 
         if self.palette_open {
@@ -656,6 +665,15 @@ impl ShellSemanticSnapshot {
                 host_connection.routes().into_iter().map(|(key, command)| {
                     (key, ShellAccessibilityCommand::HostConnection(command))
                 }),
+            );
+        }
+        if !self.palette_open
+            && let Some(sftp) = self.sftp.as_ref()
+        {
+            routes.extend(
+                sftp.routes()
+                    .into_iter()
+                    .map(|(key, command)| (key, ShellAccessibilityCommand::Sftp(command))),
             );
         }
         if self.palette_open {
@@ -1168,6 +1186,71 @@ mod tests {
             ShellAccessibilityCommand::HostConnection(
                 crate::HostConnectionAccessibilityCommand::ActivateControl(action)
             )
+        );
+    }
+
+    #[test]
+    fn shell_routes_exact_sftp_transfer_action_and_masks_paths() {
+        let row = crate::SftpRowId::transfer(17, 41);
+        let action = crate::SftpAction::CancelTransfer {
+            workspace_id: 17,
+            operation_id: 41,
+        };
+        let surface = crate::SftpSemanticSnapshot {
+            screen: crate::SftpScreen::Workspace,
+            state: crate::SftpSurfaceState::Transferring,
+            rows: vec![crate::SftpRow {
+                id: row,
+                name: "/Users/private/upload.txt".to_string(),
+                detail: Some("/remote/private/upload.txt".to_string()),
+                status: MessageId::SftpStateTransferring,
+                selected: true,
+                disabled: false,
+                activatable: false,
+                stale: false,
+                position: 1,
+                set_size: 1,
+            }],
+            controls: vec![crate::SftpControl {
+                action,
+                parent: Some(row),
+                role: crate::SftpControlRole::Button,
+                name: MessageId::CommonCancel,
+                value: None,
+                selected: false,
+                disabled: false,
+                invalid: false,
+            }],
+            recording_friendly: true,
+        };
+        let route = surface
+            .routes()
+            .into_iter()
+            .find(|(_, command)| {
+                *command == crate::SftpAccessibilityCommand::ActivateControl(action)
+            })
+            .unwrap();
+        let snapshot = ShellSemanticSnapshot {
+            sftp: Some(surface),
+            ..ShellSemanticSnapshot::default()
+        };
+        let tree = snapshot.try_tree().unwrap();
+        let debug_tree = format!("{tree:?}");
+        assert!(!debug_tree.contains("/Users/private"));
+        assert!(!debug_tree.contains("/remote/private"));
+        let router = snapshot.try_router(&tree).unwrap();
+        assert_eq!(
+            *router
+                .resolve(crate::SemanticActionRequest {
+                    generation: tree.generation(),
+                    node: route.0.0,
+                    action: route.0.1,
+                    value: None,
+                })
+                .unwrap(),
+            ShellAccessibilityCommand::Sftp(crate::SftpAccessibilityCommand::ActivateControl(
+                action
+            ))
         );
     }
 }

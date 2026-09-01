@@ -4823,3 +4823,406 @@ name = "vault"
 type = "UserData"
 sensitivity = "sensitive"
 bidi = "isolate"
+[[messages]]
+id = "sftp-library-title"
+context = "Accessible title for the local-files and Host-picker SFTP library."
+description = "SFTP library title"
+[[messages]]
+id = "sftp-workspace-title"
+context = "Accessible title for an SSH workspace remote-files browser."
+description = "Workspace SFTP title"
+[[messages]]
+id = "sftp-host-picker-title"
+context = "Accessible title for selecting a saved Host for SFTP."
+description = "SFTP Host picker title"
+[[messages]]
+id = "sftp-state-ready"
+context = "Status when an SFTP file surface is ready."
+description = "SFTP ready status"
+[[messages]]
+id = "sftp-state-loading"
+context = "Status while a local or remote directory is loading."
+description = "SFTP loading status"
+[[messages]]
+id = "sftp-state-empty"
+context = "Status when the current directory has no visible entries."
+description = "SFTP empty status"
+[[messages]]
+id = "sftp-state-filter-empty"
+context = "Status when no local entry matches the current filter."
+description = "SFTP filter empty status"
+[[messages]]
+id = "sftp-state-host-required"
+context = "Status before a saved SSH Host is selected for SFTP."
+description = "SFTP Host required status"
+[[messages]]
+id = "sftp-state-local-unavailable"
+context = "Status explaining that remote SFTP is unavailable for local shells."
+description = "SFTP local-shell unavailable status"
+[[messages]]
+id = "sftp-state-disconnected"
+context = "Status when the SSH route needed for SFTP is disconnected."
+description = "SFTP disconnected status"
+[[messages]]
+id = "sftp-state-permission"
+context = "Status when file access is denied."
+description = "SFTP permission-denied status"
+[[messages]]
+id = "sftp-state-offline"
+context = "Status when the SFTP route is offline."
+description = "SFTP offline status"
+[[messages]]
+id = "sftp-state-stale"
+context = "Status when a selected entry or operation is stale."
+description = "SFTP stale status"
+[[messages]]
+id = "sftp-state-queued"
+context = "Status when an exact transfer is queued."
+description = "SFTP transfer queued status"
+[[messages]]
+id = "sftp-state-transferring"
+context = "Status while an exact SFTP transfer is active."
+description = "SFTP transferring status"
+[[messages]]
+id = "sftp-state-conflict"
+context = "Status while a transfer destination conflict awaits a decision."
+description = "SFTP conflict status"
+[[messages]]
+id = "sftp-state-cancel-requested"
+context = "Status after cancellation is requested but before its boundary is known."
+description = "SFTP cancellation requested status"
+[[messages]]
+id = "sftp-state-cancelled"
+context = "Status after an SFTP transfer reports cancellation."
+description = "SFTP cancelled status"
+[[messages]]
+id = "sftp-state-partial"
+context = "Status when partial transfer or cleanup evidence remains."
+description = "SFTP partial status"
+[[messages]]
+id = "sftp-state-completed"
+context = "Status after a transfer completes and verifies."
+description = "SFTP completed status"
+[[messages]]
+id = "sftp-state-disk-full"
+context = "Status when local or remote storage has insufficient space."
+description = "SFTP disk-full status"
+[[messages]]
+id = "sftp-state-limit"
+context = "Status when an SFTP resource or size limit is reached."
+description = "SFTP resource-limit status"
+[[messages]]
+id = "sftp-state-timeout"
+context = "Status after an SFTP operation times out."
+description = "SFTP timeout status"
+[[messages]]
+id = "sftp-state-error"
+context = "Safe generic SFTP failure status."
+description = "SFTP generic error"
+[[messages]]
+id = "sftp-private-entry"
+context = "Recording-friendly replacement for a user file or directory name."
+description = "Private file entry"
+[[messages]]
+id = "sftp-private-path"
+context = "Recording-friendly replacement for a local or remote path."
+description = "Private file path"
+[[messages]]
+id = "sftp-private-host"
+context = "Recording-friendly replacement for a saved Host row in SFTP."
+description = "Private SFTP Host"
+[[messages]]
+id = "sftp-local-pane"
+context = "Landmark label for the local file pane."
+description = "Local files pane"
+[[messages]]
+id = "sftp-remote-pane"
+context = "Landmark label for the remote file pane."
+description = "Remote files pane"
+[[messages]]
+id = "sftp-filter-action"
+context = "Action showing or hiding the local-file filter."
+description = "SFTP filter action"
+[[messages]]
+id = "sftp-filter-field"
+context = "Accessible label for the local-file filter field."
+description = "SFTP filter field"
+[[messages]]
+id = "sftp-open-local-action"
+context = "Action opening the current local directory in the system file manager."
+description = "Open local directory action"
+[[messages]]
+id = "sftp-parent-action"
+context = "Action navigating to the parent directory."
+description = "SFTP parent action"
+[[messages]]
+id = "sftp-select-host-action"
+context = "Action opening the saved Host picker for SFTP."
+description = "Select SFTP Host action"
+[[messages]]
+id = "sftp-close-host-picker-action"
+context = "Action returning from the SFTP Host picker."
+description = "Close SFTP Host picker"
+[[messages]]
+id = "sftp-connect-host-action"
+context = "Action starting existing connection setup for a saved SFTP Host."
+description = "Connect SFTP Host action"
+[[messages]]
+id = "sftp-open-files-action"
+context = "Action opening remote files for the active SSH pane."
+description = "Open workspace files action"
+[[messages]]
+id = "sftp-back-terminal-action"
+context = "Action returning from remote files to the terminal."
+description = "Back to terminal action"
+[[messages]]
+id = "sftp-refresh-action"
+context = "Action refreshing the exact current remote directory."
+description = "Refresh SFTP directory action"
+[[messages]]
+id = "sftp-upload-action"
+context = "Action selecting a local file to upload to the exact remote directory."
+description = "SFTP upload action"
+[[messages]]
+id = "sftp-download-action"
+context = "Action downloading the exact selected remote file."
+description = "SFTP download action"
+[[messages]]
+id = "sftp-delete-action"
+context = "Action deleting the exact selected remote entry through existing confirmation rules."
+description = "SFTP delete action"
+[[messages]]
+id = "sftp-select-entry-action"
+context = "Action selecting an exact file or directory entry."
+description = "Select SFTP entry action"
+[[messages]]
+id = "sftp-open-folder-action"
+context = "Action opening the exact selected directory."
+description = "Open SFTP folder action"
+[[messages]]
+id = "sftp-cancel-transfer-action"
+context = "Action requesting cancellation of the exact active transfer."
+description = "Cancel SFTP transfer action"
+[[messages]]
+id = "sftp-retry-transfer-action"
+context = "Action retrying the exact failed transfer after current-state validation."
+description = "Retry SFTP transfer action"
+[[messages]]
+id = "sftp-resume-transfer-action"
+context = "Action resuming the exact retained transfer staging data."
+description = "Resume SFTP transfer action"
+[[messages]]
+id = "sftp-replace-action"
+context = "Conflict action replacing the exact destination through existing safe publish behavior."
+description = "Replace SFTP destination action"
+[[messages]]
+id = "sftp-skip-action"
+context = "Conflict action leaving the exact existing destination unchanged."
+description = "Skip SFTP conflict action"
+[[messages]]
+id = "sftp-row-local-folder"
+context = "Accessible status for a local directory row."
+description = "Local folder row status"
+[[messages]]
+id = "sftp-row-local-file"
+context = "Accessible status for a local file row."
+description = "Local file row status"
+[[messages]]
+id = "sftp-row-host"
+context = "Accessible status for a saved Host row in the SFTP picker."
+description = "SFTP Host row status"
+[[messages]]
+id = "sftp-row-remote-folder"
+context = "Accessible status for a remote directory row."
+description = "Remote folder row status"
+[[messages]]
+id = "sftp-row-remote-file"
+context = "Accessible status for a remote regular-file row."
+description = "Remote file row status"
+[[messages]]
+id = "sftp-row-remote-symlink"
+context = "Accessible status for a remote symbolic-link row."
+description = "Remote symlink row status"
+[[messages]]
+id = "sftp-column-name"
+context = "Column heading for a file or directory name."
+description = "SFTP name column"
+[[messages]]
+id = "sftp-column-modified"
+context = "Column heading for file modification time."
+description = "SFTP modified column"
+[[messages]]
+id = "sftp-column-size"
+context = "Column heading for file size."
+description = "SFTP size column"
+[[messages]]
+id = "sftp-column-kind"
+context = "Column heading for file kind."
+description = "SFTP kind column"
+[[messages]]
+id = "sftp-connect-empty-title"
+context = "Heading before selecting a saved Host for SFTP."
+description = "SFTP Host empty title"
+[[messages]]
+id = "sftp-connect-empty-description"
+context = "Explanation before selecting a saved Host for SFTP."
+description = "SFTP Host empty description"
+[[messages]]
+id = "sftp-remote-path-label"
+context = "Label above the current remote path."
+description = "Remote path label"
+[[messages]]
+id = "sftp-syncing-status"
+context = "Short status while a remote directory is syncing."
+description = "SFTP syncing status"
+[[messages]]
+id = "sftp-folder-kind"
+context = "Visible file-kind label for a directory."
+description = "Folder kind"
+[[messages]]
+id = "sftp-file-kind"
+context = "Visible file-kind label for a regular file."
+description = "File kind"
+[[messages]]
+id = "sftp-symlink-kind"
+context = "Visible file-kind label for a symbolic link."
+description = "Symlink kind"
+[[messages]]
+id = "sftp-workspace-local-title"
+context = "Heading when remote files are unavailable for a local shell."
+description = "Local shell files unavailable title"
+[[messages]]
+id = "sftp-workspace-local-description"
+context = "Explanation that SFTP applies only to SSH Hosts."
+description = "Local shell files unavailable description"
+[[messages]]
+id = "sftp-workspace-open-title"
+context = "Heading before remote files are opened for an SSH Host."
+description = "Open remote files title"
+[[messages]]
+id = "sftp-workspace-open-description"
+context = "Explanation of existing remote file actions."
+description = "Open remote files description"
+[[messages]]
+id = "sftp-directory-empty-title"
+context = "Heading for an empty remote directory."
+description = "Empty remote directory title"
+[[messages]]
+id = "sftp-directory-empty-description"
+context = "Recovery guidance for an empty remote directory."
+description = "Empty remote directory description"
+[[messages]]
+id = "sftp-loading-directory"
+context = "Visible progress while a remote directory loads."
+description = "Loading remote directory"
+[[messages]]
+id = "sftp-transfer-waiting"
+context = "Transfer total placeholder before the total byte count is known."
+description = "SFTP transfer waiting label"
+[[messages]]
+id = "sftp-selected-folder"
+context = "Selected remote directory detail with an isolated user path."
+description = "Selected remote folder detail"
+[[messages.args]]
+name = "path"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "sftp-selected-file"
+context = "Selected remote file detail with isolated path and public formatted size."
+description = "Selected remote file detail"
+[[messages.args]]
+name = "path"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "size"
+type = "Text"
+sensitivity = "public"
+bidi = "isolate"
+[[messages]]
+id = "sftp-transfer-progress"
+context = "Transfer progress summary with public formatted byte counts and percentage."
+description = "SFTP transfer progress"
+[[messages.args]]
+name = "transferred"
+type = "Text"
+sensitivity = "public"
+bidi = "isolate"
+[[messages.args]]
+name = "total"
+type = "Text"
+sensitivity = "public"
+bidi = "isolate"
+[[messages.args]]
+name = "percent"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "sftp-transfer-progress-resumed"
+context = "Transfer progress summary including the public formatted resume offset."
+description = "Resumed SFTP transfer progress"
+[[messages.args]]
+name = "transferred"
+type = "Text"
+sensitivity = "public"
+bidi = "isolate"
+[[messages.args]]
+name = "total"
+type = "Text"
+sensitivity = "public"
+bidi = "isolate"
+[[messages.args]]
+name = "percent"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "resumed"
+type = "Text"
+sensitivity = "public"
+bidi = "isolate"
+[[messages]]
+id = "sftp-conflict-description"
+context = "Conflict evidence describing the existing destination size and unchanged state."
+description = "SFTP conflict description"
+[[messages.args]]
+name = "size"
+type = "Text"
+sensitivity = "public"
+bidi = "isolate"
+[[messages]]
+id = "sftp-checksum"
+context = "Verified transfer checksum displayed as isolated sensitive metadata."
+description = "SFTP checksum"
+[[messages.args]]
+name = "checksum"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "sftp-opened-local-folder"
+context = "Status after opening an isolated local path in the system file manager."
+description = "Local folder opened status"
+[[messages.args]]
+name = "path"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "sftp-host-summary"
+context = "Saved Host picker detail containing isolated username and endpoint."
+description = "SFTP Host summary"
+[[messages.args]]
+name = "username"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "endpoint"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"

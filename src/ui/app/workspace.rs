@@ -32,6 +32,7 @@ use crate::ui::render_terminal::{
 use crate::ui::theme;
 use gpui_component::ActiveTheme as _;
 use termirust_domain::{HostedSessionState, SessionLaunchRoute};
+use termirust_ui_contract::MessageId;
 
 impl TermiRustApp {
     fn render_workspace_search(&self, _window: &mut Window, cx: &mut Context<Self>) -> Option<Div> {
@@ -112,35 +113,29 @@ impl TermiRustApp {
             let empty_state = if active_pane_is_local {
                 self.render_workspace_empty_state(
                     Icon::new(IconName::FolderOpen)
-                        .size(px(24.))
+                        .size(px(theme::ICON_SIZE_LARGE))
                         .text_color(theme::accent()),
-                    "Files view is unavailable for local shells",
-                    "SFTP file browsing only applies to SSH hosts. Switch back to the terminal to keep working locally.",
+                    workspace_sftp_text(MessageId::SftpWorkspaceLocalTitle),
+                    workspace_sftp_text(MessageId::SftpWorkspaceLocalDescription),
                 )
                 .child(
-                    h_flex()
-                        .gap_2()
-                        .justify_center()
-                        .child(
-                            Button::new("workspace-files-local-back")
-                                .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Accent,
-                                    cx,
-                                ))
-                                .label("Back to Terminal")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.show_active_workspace_terminal(cx);
-                                })),
-                        ),
+                    h_flex().gap_2().justify_center().child(
+                        Button::new("workspace-files-local-back")
+                            .small()
+                            .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                            .label(workspace_sftp_text(MessageId::SftpBackTerminalAction))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.show_active_workspace_terminal(cx);
+                            })),
+                    ),
                 )
             } else {
                 self.render_workspace_empty_state(
                     Icon::new(IconName::FolderOpen)
-                        .size(px(24.))
+                        .size(px(theme::ICON_SIZE_LARGE))
                         .text_color(theme::accent()),
-                    "Open Files for this host",
-                    "Browse the active SSH host over SFTP, upload and download files, or switch back to the terminal.",
+                    workspace_sftp_text(MessageId::SftpWorkspaceOpenTitle),
+                    workspace_sftp_text(MessageId::SftpWorkspaceOpenDescription),
                 )
                 .child(
                     h_flex()
@@ -149,11 +144,8 @@ impl TermiRustApp {
                         .child(
                             Button::new("workspace-files-open")
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Accent,
-                                    cx,
-                                ))
-                                .label("Open Files")
+                                .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
+                                .label(workspace_sftp_text(MessageId::SftpOpenFilesAction))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.open_active_workspace_files(cx);
                                 })),
@@ -161,11 +153,8 @@ impl TermiRustApp {
                         .child(
                             Button::new("workspace-files-back")
                                 .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::Neutral,
-                                    cx,
-                                ))
-                                .label("Back to Terminal")
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label(workspace_sftp_text(MessageId::SftpBackTerminalAction))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.show_active_workspace_terminal(cx);
                                 })),
@@ -208,17 +197,19 @@ impl TermiRustApp {
                             .gap_3()
                             .child(
                                 v_flex()
-                    .gap(px(theme::SPACE_1))
+                                    .gap(px(theme::SPACE_1))
                                     .child(
                                         div()
                                             .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                             .font_medium()
                                             .text_color(theme::text_muted_dark())
-                                            .child("Remote Path"),
+                                            .child(workspace_sftp_text(
+                                                MessageId::SftpRemotePathLabel,
+                                            )),
                                     )
                                     .child(
                                         div()
-                                            .text_size(px(16.))
+                                            .text_size(px(theme::TYPE_HEADING_SMALL_SIZE))
                                             .font_semibold()
                                             .text_color(theme::text_on_dark())
                                             .child(browser.current_path.clone()),
@@ -235,14 +226,18 @@ impl TermiRustApp {
                                     ))
                                     .when(browser.loading, |this| {
                                         this.child(self.status_badge(
-                                            "Syncing",
+                                            workspace_sftp_text(MessageId::SftpSyncingStatus),
                                             theme::terminal_bg(),
                                             theme::warning(),
                                         ))
                                     })
                                     .when_some(selected_entry.as_ref(), |this, entry| {
                                         this.child(self.status_badge(
-                                            if entry.is_dir { "Folder" } else { "File" },
+                                            if entry.is_dir {
+                                                workspace_sftp_text(MessageId::SftpFolderKind)
+                                            } else {
+                                                workspace_sftp_text(MessageId::SftpFileKind)
+                                            },
                                             theme::terminal_bg(),
                                             theme::success(),
                                         ))
@@ -255,12 +250,11 @@ impl TermiRustApp {
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted_dark())
                                 .child(if entry.is_dir {
-                                    format!("Selected folder: {}", entry.path)
+                                    localization::sftp_selected_folder(entry.path.clone())
                                 } else {
-                                    format!(
-                                        "Selected file: {}  •  {}",
-                                        entry.path,
-                                        format_file_size(entry.size.unwrap_or(0))
+                                    localization::sftp_selected_file(
+                                        entry.path.clone(),
+                                        format_file_size(entry.size.unwrap_or(0)),
                                     )
                                 }),
                         )
@@ -276,7 +270,7 @@ impl TermiRustApp {
                             .small()
                             .ghost()
                             .icon(IconName::ChevronUp)
-                            .label("Up")
+                            .label(workspace_sftp_text(MessageId::SftpParentAction))
                             .disabled(remote_parent_path(&browser.current_path).is_none())
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.navigate_workspace_files_up(cx);
@@ -287,7 +281,7 @@ impl TermiRustApp {
                             .small()
                             .ghost()
                             .icon(IconName::Redo2)
-                            .label("Refresh")
+                            .label(workspace_sftp_text(MessageId::SftpRefreshAction))
                             .disabled(browser.loading)
                             .on_click(cx.listener(move |this, _, _, _| {
                                 this.refresh_workspace_files(workspace_id);
@@ -298,7 +292,7 @@ impl TermiRustApp {
                             .small()
                             .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
                             .icon(IconName::Plus)
-                            .label("Upload")
+                            .label(workspace_sftp_text(MessageId::SftpUploadAction))
                             .disabled(transfer_active)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.upload_workspace_file(window, cx);
@@ -309,7 +303,7 @@ impl TermiRustApp {
                             .small()
                             .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
                             .icon(IconName::ArrowDown)
-                            .label("Download")
+                            .label(workspace_sftp_text(MessageId::SftpDownloadAction))
                             .disabled(transfer_active || !selected_is_file)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.download_workspace_file(window, cx);
@@ -320,7 +314,7 @@ impl TermiRustApp {
                             .small()
                             .ghost()
                             .icon(IconName::Delete)
-                            .label("Delete")
+                            .label(workspace_sftp_text(MessageId::SftpDeleteAction))
                             .disabled(transfer_active || selected_entry.is_none())
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.delete_workspace_file(cx);
@@ -331,7 +325,7 @@ impl TermiRustApp {
                             .small()
                             .ghost()
                             .icon(IconName::SquareTerminal)
-                            .label("Terminal")
+                            .label(workspace_sftp_text(MessageId::SftpBackTerminalAction))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.show_active_workspace_terminal(cx);
                             })),
@@ -341,7 +335,8 @@ impl TermiRustApp {
                 let progress = if transfer.total_bytes == 0 {
                     0.0
                 } else {
-                    (transfer.transferred_bytes as f32 / transfer.total_bytes as f32).clamp(0.0, 1.0)
+                    (transfer.transferred_bytes as f32 / transfer.total_bytes as f32)
+                        .clamp(0.0, 1.0)
                 };
                 let progress_percent = (progress * 100.0).round() as u32;
                 let can_retry = !transfer.active
@@ -374,35 +369,53 @@ impl TermiRustApp {
                                 .gap_2()
                                 .child(
                                     v_flex()
-                                        .gap(px(2.))
+                                        .gap(px(theme::SPACE_1))
                                         .child(
                                             div()
                                                 .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                                 .font_semibold()
                                                 .text_color(theme::text_on_dark())
-                                                .child(transfer.status.clone()),
+                                                .child(workspace_sftp_text(
+                                                    super::sftp::classify_sftp_transfer_state(
+                                                        transfer,
+                                                    )
+                                                    .message(),
+                                                )),
                                         )
                                         .child(
                                             div()
                                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                                 .text_color(theme::text_muted_dark())
-                                                .child(format!(
-                                                    "{} of {}  ·  {progress_percent}%{}",
-                                                    format_file_size(transfer.transferred_bytes),
-                                                    if transfer.total_bytes > 0 {
-                                                        format_file_size(transfer.total_bytes)
-                                                    } else {
-                                                        "waiting".to_string()
-                                                    },
-                                                    if transfer.resumed_from > 0 {
-                                                        format!(
-                                                            "  ·  resumed at {}",
-                                                            format_file_size(transfer.resumed_from)
-                                                        )
-                                                    } else {
-                                                        String::new()
-                                                    }
-                                                )),
+                                                .child(if transfer.resumed_from > 0 {
+                                                    localization::sftp_transfer_progress_resumed(
+                                                        format_file_size(
+                                                            transfer.transferred_bytes,
+                                                        ),
+                                                        if transfer.total_bytes > 0 {
+                                                            format_file_size(transfer.total_bytes)
+                                                        } else {
+                                                            workspace_sftp_text(
+                                                                MessageId::SftpTransferWaiting,
+                                                            )
+                                                        },
+                                                        progress_percent,
+                                                        format_file_size(transfer.resumed_from),
+                                                    )
+                                                } else {
+                                                    localization::sftp_transfer_progress(
+                                                        format_file_size(
+                                                            transfer.transferred_bytes,
+                                                        ),
+                                                        if transfer.total_bytes > 0 {
+                                                            format_file_size(transfer.total_bytes)
+                                                        } else {
+                                                            workspace_sftp_text(
+                                                                MessageId::SftpTransferWaiting,
+                                                            )
+                                                        },
+                                                        progress_percent,
+                                                    )
+                                                }),
                                         ),
                                 )
                                 .when(transfer.active, |this| {
@@ -411,7 +424,9 @@ impl TermiRustApp {
                                             .small()
                                             .ghost()
                                             .icon(IconName::Close)
-                                            .label("Cancel")
+                                            .label(workspace_sftp_text(
+                                                MessageId::SftpCancelTransferAction,
+                                            ))
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 this.cancel_workspace_transfer(workspace_id, cx);
                                             })),
@@ -427,9 +442,13 @@ impl TermiRustApp {
                                             ))
                                             .icon(IconName::Redo2)
                                             .label(if transfer.transferred_bytes > 0 {
-                                                "Resume"
+                                                workspace_sftp_text(
+                                                    MessageId::SftpResumeTransferAction,
+                                                )
                                             } else {
-                                                "Retry"
+                                                workspace_sftp_text(
+                                                    MessageId::SftpRetryTransferAction,
+                                                )
                                             })
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 this.retry_workspace_transfer(workspace_id, cx);
@@ -441,24 +460,18 @@ impl TermiRustApp {
                             this.child(
                                 div()
                                     .w_full()
-                                    .h(px(
-                                        theme::current_design_tokens()
-                                            .layout_progress_compact_height()
-                                            .0,
-                                    ))
-                                    .rounded(px(
-                                        theme::current_design_tokens().radius_progress().0,
-                                    ))
+                                    .h(px(theme::current_design_tokens()
+                                        .layout_progress_compact_height()
+                                        .0))
+                                    .rounded(px(theme::current_design_tokens().radius_progress().0))
                                     .bg(theme::with_alpha(theme::border_dark(), 0.7))
                                     .child(
                                         div()
                                             .h_full()
                                             .w(relative(progress))
-                                            .rounded(px(
-                                                theme::current_design_tokens()
-                                                    .radius_progress()
-                                                    .0,
-                                            ))
+                                            .rounded(px(theme::current_design_tokens()
+                                                .radius_progress()
+                                                .0))
                                             .bg(theme::accent()),
                                     ),
                             )
@@ -474,9 +487,8 @@ impl TermiRustApp {
                                         div()
                                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                                             .text_color(theme::warning())
-                                            .child(format!(
-                                                "Destination contains {}. Nothing has been changed.",
-                                                format_file_size(conflict.existing_bytes)
+                                            .child(localization::sftp_conflict_description(
+                                                format_file_size(conflict.existing_bytes),
                                             )),
                                     )
                                     .child(
@@ -487,7 +499,9 @@ impl TermiRustApp {
                                                 cx,
                                             ))
                                             .icon(IconName::Replace)
-                                            .label("Replace")
+                                            .label(workspace_sftp_text(
+                                                MessageId::SftpReplaceAction,
+                                            ))
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 this.resolve_workspace_transfer(
                                                     workspace_id,
@@ -500,7 +514,7 @@ impl TermiRustApp {
                                         Button::new("workspace-transfer-skip")
                                             .small()
                                             .ghost()
-                                            .label("Skip")
+                                            .label(workspace_sftp_text(MessageId::SftpSkipAction))
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 this.resolve_workspace_transfer(
                                                     workspace_id,
@@ -518,7 +532,9 @@ impl TermiRustApp {
                                                     cx,
                                                 ))
                                                 .icon(IconName::Redo2)
-                                                .label("Resume staging")
+                                                .label(workspace_sftp_text(
+                                                    MessageId::SftpResumeTransferAction,
+                                                ))
                                                 .on_click(cx.listener(move |this, _, _, cx| {
                                                     this.resolve_workspace_transfer(
                                                         workspace_id,
@@ -535,7 +551,7 @@ impl TermiRustApp {
                                 div()
                                     .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .text_color(theme::text_muted_dark())
-                                    .child(format!("SHA-256 {checksum}")),
+                                    .child(localization::sftp_checksum(checksum.clone())),
                             )
                         }),
                 )
@@ -560,14 +576,16 @@ impl TermiRustApp {
                                 .gap_2()
                                 .child(
                                     Icon::new(IconName::LoaderCircle)
-                                        .size(px(24.))
+                                        .size(px(theme::ICON_SIZE_LARGE))
                                         .text_color(theme::accent()),
                                 )
                                 .child(
                                     div()
-                                        .text_size(px(14.))
+                                        .text_size(px(theme::TYPE_BODY_SIZE))
                                         .text_color(theme::text_muted_dark())
-                                        .child("Loading remote directory..."),
+                                        .child(workspace_sftp_text(
+                                            MessageId::SftpLoadingDirectory,
+                                        )),
                                 ),
                         )
                     })
@@ -575,10 +593,10 @@ impl TermiRustApp {
                         this.child(
                             self.render_workspace_empty_state(
                                 Icon::new(IconName::Folder)
-                                    .size(px(24.))
+                                    .size(px(theme::ICON_SIZE_LARGE))
                                     .text_color(theme::accent()),
-                                "This directory is empty",
-                                "Try a different path, upload a file, or switch back to the terminal for shell work.",
+                                workspace_sftp_text(MessageId::SftpDirectoryEmptyTitle),
+                                workspace_sftp_text(MessageId::SftpDirectoryEmptyDescription),
                             )
                             .w_full(),
                         )
@@ -589,9 +607,9 @@ impl TermiRustApp {
                         let is_selected =
                             browser.selected_path.as_deref() == Some(entry.path.as_str());
                         let kind = if entry.is_dir {
-                            "Folder".to_string()
+                            workspace_sftp_text(MessageId::SftpFolderKind)
                         } else if entry.is_symlink {
-                            "Symlink".to_string()
+                            workspace_sftp_text(MessageId::SftpSymlinkKind)
                         } else {
                             format_file_size(entry.size.unwrap_or(0))
                         };
@@ -603,7 +621,7 @@ impl TermiRustApp {
                             .justify_between()
                             .gap_3()
                             .p_3()
-                            .rounded(px(14.))
+                            .rounded(px(theme::SFTP_REMOTE_ROW_RADIUS))
                             .bg(if is_selected {
                                 theme::with_alpha(theme::accent(), 0.18)
                             } else {
@@ -634,7 +652,7 @@ impl TermiRustApp {
                                         } else {
                                             IconName::File
                                         })
-                                        .size(px(16.))
+                                        .size(px(theme::ICON_SIZE_DEFAULT))
                                         .text_color(
                                             if entry.is_dir {
                                                 theme::warning()
@@ -645,10 +663,10 @@ impl TermiRustApp {
                                     )
                                     .child(
                                         v_flex()
-                                            .gap(px(1.))
+                                            .gap(px(theme::SFTP_ROW_LABEL_GAP))
                                             .child(
                                                 div()
-                                                    .text_size(px(14.))
+                                                    .text_size(px(theme::TYPE_BODY_SIZE))
                                                     .font_medium()
                                                     .text_color(theme::text_on_dark())
                                                     .child(entry.name.clone()),
@@ -1295,4 +1313,8 @@ impl TermiRustApp {
             .unwrap_or(DropZone::Right);
         self.merge_tab_as_split(source_workspace_id, target_pane_id, zone, window, cx);
     }
+}
+
+fn workspace_sftp_text(message: MessageId) -> String {
+    localization::message_id(message).unwrap_or_default()
 }

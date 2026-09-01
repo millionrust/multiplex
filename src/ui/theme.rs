@@ -469,6 +469,25 @@ pub const HOST_EDITOR_ICON_CONTAINER: f32 = SHELL_COMPACT_CONTROL_HEIGHT + SPACE
 pub const HOST_COMPACT_ROW_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
     .layout_host_compact_row_height()
     .0;
+
+// SFTP library geometry is composed from the governed global scale so the
+// dense two-pane browser preserves its current proportions without literals.
+pub const SFTP_PATH_ROW_HEIGHT: f32 = SPACE_6 + SPACE_4;
+pub const SFTP_COLUMN_HEADER_HEIGHT: f32 = SPACE_7;
+pub const SFTP_LOCAL_ROW_HEIGHT: f32 = SFTP_PATH_ROW_HEIGHT;
+pub const SFTP_HOST_ROW_HEIGHT: f32 = SPACE_8 - SPACE_1;
+pub const SFTP_PICKER_BADGE_HEIGHT: f32 = SPACE_6 + SPACE_1;
+pub const SFTP_ICON_CONTAINER: f32 = SPACE_7 + SPACE_1;
+pub const SFTP_ICON_CONTAINER_SMALL: f32 = TYPE_HEADING_SIZE + SPACE_1;
+pub const SFTP_EMPTY_ICON_CONTAINER: f32 = SPACE_9;
+pub const SFTP_COLUMN_NAME_WIDTH: f32 = HOST_SIDEBAR_WIDTH + SPACE_9 - SPACE_2;
+pub const SFTP_COLUMN_MODIFIED_WIDTH: f32 = (SPACE_9 + SPACE_5) + (SPACE_9 + SPACE_5);
+pub const SFTP_COLUMN_SIZE_WIDTH: f32 = SPACE_9 + SPACE_5;
+pub const SFTP_EMPTY_COPY_WIDTH: f32 =
+    SFTP_COLUMN_SIZE_WIDTH + SFTP_COLUMN_SIZE_WIDTH + SFTP_COLUMN_SIZE_WIDTH;
+pub const SFTP_EMPTY_ICON_SIZE: f32 = SPACE_6 + SPACE_2;
+pub const SFTP_REMOTE_ROW_RADIUS: f32 = CARD_RADIUS + SPACE_1;
+pub const SFTP_ROW_LABEL_GAP: f32 = BORDER_HAIRLINE;
 pub const SHELL_COMPACT_CONTROL_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
     .layout_shell_compact_control_height()
     .0;

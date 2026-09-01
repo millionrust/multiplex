@@ -1714,6 +1714,9 @@ impl TermiRustApp {
                         cx,
                     );
                 }
+                ShellAccessibilityCommand::Sftp(command) => {
+                    self.handle_sftp_accessibility_command(command, event.value, window, cx);
+                }
             }
         }
     }
@@ -11871,12 +11874,17 @@ impl Render for TermiRustApp {
             })
             .flatten();
         let worktree_artifact = self.worktree_semantic_snapshot(cx).or_else(|| {
-            (background_surface_available && self.nav_section == NavSection::Sftp)
-                .then(|| self.artifact_semantic_snapshot())
-                .flatten()
+            (background_surface_available
+                && self.nav_section == NavSection::Sftp
+                && !self.sftp_library_tab_active())
+            .then(|| self.artifact_semantic_snapshot())
+            .flatten()
         });
         let host_connection = (!worktree_modal_open)
             .then(|| self.host_connection_semantic_snapshot(cx))
+            .flatten();
+        let sftp = background_surface_available
+            .then(|| self.sftp_semantic_snapshot(cx))
             .flatten();
         self.shell_accessibility.sync(ShellSemanticSnapshot {
             generation: 1,
@@ -11893,6 +11901,7 @@ impl Render for TermiRustApp {
             preset_runtime,
             worktree_artifact,
             host_connection,
+            sftp,
         });
 
         // When the active workspace changes, scroll the tab strip so the
@@ -22304,6 +22313,123 @@ sleep 1
                 })
             })
             .expect("Host editor contract should preserve literal values");
+    }
+
+    #[gpui::test]
+    fn e2e_sftp_contract_projects_literal_paths_and_rejects_stale_rows(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let temp = tempfile::tempdir().expect("temporary SFTP directory");
+        let hostile_name = "literal $(touch must-not-run); file.txt";
+        std::fs::write(temp.path().join(hostile_name), b"inert").expect("write SFTP fixture");
+        let (app, window) = open_test_app(cx);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.sftp_local_path = temp.path().to_path_buf();
+                    app.open_files_library(
+                        crate::ui::app::artifact_gallery::FilesLibraryTab::Sftp,
+                        window,
+                        cx,
+                    );
+                    let snapshot = app
+                        .sftp_semantic_snapshot(cx)
+                        .expect("SFTP semantics should be available");
+                    let row = snapshot
+                        .rows
+                        .iter()
+                        .find(|row| row.name == hostile_name)
+                        .expect("literal file should be projected")
+                        .id;
+                    let semantics = format!(
+                        "{:?}",
+                        snapshot
+                            .try_nodes(termirust_ui_contract::shell_region_semantic_node(
+                                termirust_ui_contract::ShellRegionId::Content,
+                            ))
+                            .unwrap()
+                    );
+                    assert!(semantics.contains("touch must-not-run"));
+
+                    std::fs::remove_file(temp.path().join(hostile_name))
+                        .expect("remove SFTP fixture");
+                    let before = app.sftp_local_path.clone();
+                    app.handle_sftp_accessibility_command(
+                        termirust_ui_contract::SftpAccessibilityCommand::ActivateRow(row),
+                        None,
+                        window,
+                        cx,
+                    );
+                    assert_eq!(app.sftp_local_path, before);
+
+                    let literal_filter = "$(touch still-must-not-run)";
+                    app.handle_sftp_accessibility_command(
+                        termirust_ui_contract::SftpAccessibilityCommand::SetControlValue(
+                            termirust_ui_contract::SftpAction::SetLocalFilter,
+                        ),
+                        Some(termirust_ui_contract::SemanticActionValue::Text(
+                            literal_filter.to_string(),
+                        )),
+                        window,
+                        cx,
+                    );
+                    assert_eq!(
+                        app.shell_inputs.sftp_local_filter.read(cx).value(),
+                        literal_filter
+                    );
+                })
+            })
+            .expect("SFTP contract should preserve literal values and fail stale rows closed");
+    }
+
+    #[gpui::test]
+    fn e2e_sftp_contract_rejects_stale_host_picker_action(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let profile = HostProfile {
+            id: "sftp-host-contract".to_string(),
+            label: "SFTP Contract Host".to_string(),
+            host: "example.test".to_string(),
+            port: 22,
+            username: "deploy".to_string(),
+            ..HostProfile::default()
+        };
+        let saved = SavedState {
+            profiles: vec![profile],
+            ..SavedState::default()
+        };
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_files_library(
+                        crate::ui::app::artifact_gallery::FilesLibraryTab::Sftp,
+                        window,
+                        cx,
+                    );
+                    app.sftp_show_host_picker = true;
+                    let snapshot = app.sftp_semantic_snapshot(cx).unwrap();
+                    let action = snapshot
+                        .controls
+                        .iter()
+                        .find_map(|control| match control.action {
+                            termirust_ui_contract::SftpAction::ConnectHost(_) => {
+                                Some(control.action)
+                            }
+                            _ => None,
+                        })
+                        .expect("Host connect action");
+                    app.saved.profiles.clear();
+                    app.handle_sftp_accessibility_command(
+                        termirust_ui_contract::SftpAccessibilityCommand::ActivateControl(action),
+                        None,
+                        window,
+                        cx,
+                    );
+                    assert!(app.workspaces.is_empty());
+                })
+            })
+            .expect("stale SFTP Host action should fail closed");
     }
 
     #[gpui::test]

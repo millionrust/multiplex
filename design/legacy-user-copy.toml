@@ -10,6 +10,38 @@ reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1
 owner = "G21.1"
 
 [[exceptions]]
+file = "src/ui/app/workspace.rs"
+line = 72
+category = "sentence_concatenation"
+fingerprint = "sha256:8c40c5ec11a4c14c92a57e489c35707a68f0a872e4f8c8d1cabde43972fa8807"
+reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
+owner = "G21.1"
+
+[[exceptions]]
+file = "src/ui/app/workspace.rs"
+line = 72
+category = "user_copy"
+fingerprint = "sha256:e7f7796c6cce1e6f81c239affa1f9b91d3e715bce021efcdf7b4ab96018dc310"
+reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
+owner = "G21.1"
+
+[[exceptions]]
+file = "src/ui/app/workspace.rs"
+line = 78
+category = "user_copy"
+fingerprint = "sha256:6f0233d3d19d67116fe3e15d8d7f6447edc95416b088b969efd536a21082c8a7"
+reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
+owner = "G21.1"
+
+[[exceptions]]
+file = "src/ui/app/workspace.rs"
+line = 87
+category = "user_copy"
+fingerprint = "sha256:67239fa732916f837d2c8872910a46405cd01d7bca15c992531020e7f109e4f8"
+reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
+owner = "G21.1"
+
+[[exceptions]]
 file = "src/ui/app/canvas.rs"
 line = 1160
 category = "user_copy"
@@ -7961,389 +7993,49 @@ fingerprint = "sha256:56616206709856d677dabd41bc5075237190b5926213715f7ef7245a7b
 reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
 owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 89
-category = "user_copy"
-fingerprint = "sha256:fe93b107a8a7a756c300643fb099d3388c129dcb6ea7e9d25985f243a0c9692a"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 112
-category = "user_copy"
-fingerprint = "sha256:e5d59a4874d35b6f41faf97664653f52705da002306fd8ae1165bd153c541837"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 136
-category = "user_copy"
-fingerprint = "sha256:93a5d53f48a0e2e25d63f6455991c69c7ac0e67a4a39e1cc17f661b050b34891"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 148
-category = "sentence_concatenation"
-fingerprint = "sha256:ab6b8c75106d9c0eecccaaeb72ae720c8f2fd41569a9e7743b195ee90932ebc6"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 148
-category = "user_copy"
-fingerprint = "sha256:961419e760f05110bd6c87708491f75de54bbc7a8a9dca64ba8eea33a9981231"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 240
-category = "user_copy"
-fingerprint = "sha256:820fa4453c4444e2f8c178d8bb69cd610b73fc281fd0fde29e29d9630dbb9c38"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 248
-category = "user_copy"
-fingerprint = "sha256:3a67a0bb5866e8c32f65413a859597d413f556978c4077346e63a0a76ae0748a"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 256
-category = "user_copy"
-fingerprint = "sha256:b2d9b9bff5c45d58e3d45de0fe8bf10df4a1efc01aeb6d5166f8d081dc117784"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 263
-category = "user_copy"
-fingerprint = "sha256:b0ec07a7ca9028b6a32b6d7f9174d0bd6769b43effe070844cd838ba1aef07e2"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 372
-category = "user_copy"
-fingerprint = "sha256:e2d6a966df646ee66fffb1dcfbcfb443306045c7ae7b584cee61c587080c7294"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 379
-category = "user_copy"
-fingerprint = "sha256:cd28b000298317feb5aee8625805309f8f2a12b8d0e61599fa4807cddb4f3ffb"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 385
-category = "user_copy"
-fingerprint = "sha256:571e4820548f386e4682a5e4065671a7e9864f6535bf06a319ab75177d5e17e2"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 436
-category = "user_copy"
-fingerprint = "sha256:65c6828c7944cd94f141a09b8f68d3305184b985e082ea39c2f82e926c9bdef7"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 446
-category = "user_copy"
-fingerprint = "sha256:43e868aacbfd5218aa175572df73caac2fb514790144c28d025266c81e004b36"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 476
-category = "user_copy"
-fingerprint = "sha256:fe93b107a8a7a756c300643fb099d3388c129dcb6ea7e9d25985f243a0c9692a"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 500
-category = "user_copy"
-fingerprint = "sha256:520ddb19c290a830b4c01c07a8915c1bfdc29d0b639ff9afb4f23d04a6a38671"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/sftp.rs"
-line = 513
-category = "user_copy"
-fingerprint = "sha256:6942b5ed3d1291c13b2363c8da3e4da4f97496a2ae3ab05d833b41c603ef6fe7"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 71
-category = "sentence_concatenation"
-fingerprint = "sha256:8c40c5ec11a4c14c92a57e489c35707a68f0a872e4f8c8d1cabde43972fa8807"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 71
-category = "user_copy"
-fingerprint = "sha256:e7f7796c6cce1e6f81c239affa1f9b91d3e715bce021efcdf7b4ab96018dc310"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 77
-category = "user_copy"
-fingerprint = "sha256:6f0233d3d19d67116fe3e15d8d7f6447edc95416b088b969efd536a21082c8a7"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 86
-category = "user_copy"
-fingerprint = "sha256:67239fa732916f837d2c8872910a46405cd01d7bca15c992531020e7f109e4f8"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 131
-category = "user_copy"
-fingerprint = "sha256:f98532fa03383d29fa344ee6b5df7bfa866d68c22fdd361e9378fc02685d8e65"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 156
-category = "user_copy"
-fingerprint = "sha256:da8c112c2533baa61b001ec7203e31b778466d7dc255ba4a1854f1b0a77136c8"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 168
-category = "user_copy"
-fingerprint = "sha256:f98532fa03383d29fa344ee6b5df7bfa866d68c22fdd361e9378fc02685d8e65"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 217
-category = "user_copy"
-fingerprint = "sha256:686cc92522312b521dc6bc6268fa861a1a9b7aaf063c42316c2aa229ca89b9dc"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 238
-category = "user_copy"
-fingerprint = "sha256:3f20f12e777b70fe9a6d3de16f93c8c1a5c949dbf33076106eed7fc3a16c388b"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 245
-category = "user_copy"
-fingerprint = "sha256:aac7b38d6a53a176cdf8e05228d34fb1a8882abf56b7da894e56e0eb00bad62e"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 245
-category = "user_copy"
-fingerprint = "sha256:e424fd4013f72a4d3015bd11bf0b140134d9d1db04a9b39096c0211d78170359"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 258
-category = "sentence_concatenation"
-fingerprint = "sha256:87714ff24b95ccc8c21885bf1387403d2c12ae11080ed3201ce304eae0133cea"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 258
-category = "user_copy"
-fingerprint = "sha256:7637d23a4c59ef11d8cb4f4bc92274752a20668ef5f5031717928228f22f2130"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 279
-category = "user_copy"
-fingerprint = "sha256:c242a65f863f750d76c07e1d45ed6b4f3e1769428d4d11567d623e8b7fc1fceb"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 290
-category = "user_copy"
-fingerprint = "sha256:c11c0caf26d91a1d98f8cb82462980b02dcc9c5e62ee8784cbf33165c509d47a"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 301
-category = "user_copy"
-fingerprint = "sha256:8726928f376dda997de21911ffb462adde6e4b755c271742b697feaa3e112cb7"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 312
-category = "user_copy"
-fingerprint = "sha256:542a5900a37b26c9b11d882cdb78e8b9e8585988f98430dc040169cd9ac04618"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 323
-category = "user_copy"
-fingerprint = "sha256:8ab546ce1dc67c574e6aa9349b890850478ec6b28bbbd4ca197d96b1faec1fe8"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 334
-category = "user_copy"
-fingerprint = "sha256:b1ad8b2f33c44efe20b41b26faa522c31c28759e5a4f854e31eb11d721a87ced"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 390
-category = "sentence_concatenation"
-fingerprint = "sha256:b19da235179e59a95940aca8ca0a15f28269585035496efa9749f61865c45067"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 390
-category = "user_copy"
-fingerprint = "sha256:7ca4d05f53d85c7734edb03d7584e51598c13c9f566b4f99b1bde8dd77bc4217"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 414
-category = "user_copy"
-fingerprint = "sha256:63d69af38ac6ad0882be740443a7500c398096c54a8b0eb794446810a68d35b5"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 430
-category = "user_copy"
-fingerprint = "sha256:5abdd3c6019f182f89299e599333d011fa3afff709a37c95646d4b991ce07438"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 468
-category = "sentence_concatenation"
-fingerprint = "sha256:ebe4f44859008ba6398ba516aea3510cd1678189aa1d7c29f302a2f2e731cf97"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 468
-category = "user_copy"
-fingerprint = "sha256:4f4d978e0b90d4086c890587188bff804b6f1d9cc62e2358684430f175a92ddc"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 480
-category = "user_copy"
-fingerprint = "sha256:1cf099f93717c77af7b69fee1a267155af8c3c0ffb6ffc008907757853fafa75"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 493
-category = "user_copy"
-fingerprint = "sha256:a65a85e4d1f0e92c978b96fb2749285c2d1805cd810d4b6d798d8ca45f1be852"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 511
-category = "user_copy"
-fingerprint = "sha256:cabc982e7276d852cef6c247665a1e7c6878ae354c34554cbe62c1757ea8dea1"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 528
-category = "sentence_concatenation"
-fingerprint = "sha256:f734ca07413eca77eab0ccac07a86ee2f92bc7b400a0cfa0c326ee24eb6c4fe9"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 528
-category = "user_copy"
-fingerprint = "sha256:d9dc0f599db409503845503a200c695efda51e20cc33e2f07b6c1f620353e795"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/workspace.rs"
-line = 560
-category = "user_copy"
-fingerprint = "sha256:193b1f9f2176efdc52c642eca39836bb43bc41e1f6c408dcaeed061cc9795ff9"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
 
 [[exceptions]]
 file = "src/ui/app/workspace.rs"

@@ -8,6 +8,7 @@ pub mod messages;
 pub mod preset_runtime_surface;
 pub mod product_session_surface;
 pub mod semantics;
+pub mod sftp_surface;
 pub mod shell_surface;
 pub mod worktree_artifact_surface;
 
@@ -22,6 +23,7 @@ pub use messages::*;
 pub use preset_runtime_surface::*;
 pub use product_session_surface::*;
 pub use semantics::*;
+pub use sftp_surface::*;
 pub use shell_surface::*;
 pub use worktree_artifact_surface::*;
 
