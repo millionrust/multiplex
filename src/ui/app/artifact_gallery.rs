@@ -25,6 +25,12 @@ use termirust_store::{
     ArtifactIngestProgress, ArtifactIngestRequest, ArtifactRepository, ArtifactSnapshot,
     ArtifactStoreError,
 };
+use termirust_ui_contract::{
+    MessageId, SemanticActionValue, WorktreeArtifactAccessibilityCommand, WorktreeArtifactAction,
+    WorktreeArtifactControl, WorktreeArtifactControlRole, WorktreeArtifactProgress,
+    WorktreeArtifactRow, WorktreeArtifactRowId, WorktreeArtifactRowKind, WorktreeArtifactScreen,
+    WorktreeArtifactSemanticSnapshot, WorktreeArtifactSurfaceState,
+};
 
 use super::{TermiRustApp, theme};
 use crate::artifact_preview::{ArtifactPreview, build_preview};
@@ -244,6 +250,352 @@ impl ArtifactGalleryState {
 }
 
 impl TermiRustApp {
+    pub(super) fn artifact_semantic_snapshot(&self) -> Option<WorktreeArtifactSemanticSnapshot> {
+        if self.artifact_gallery.files_tab != FilesLibraryTab::Artifacts {
+            return None;
+        }
+        let global_rows = global_artifact_rows(
+            &self.saved.app_attached_sessions,
+            &self.artifact_gallery.snapshots,
+        );
+        let selected_session = self
+            .artifact_gallery
+            .global_selected_session
+            .filter(|selected| global_rows.iter().any(|row| row.session_id == *selected))
+            .or_else(|| global_rows.first().map(|row| row.session_id));
+        let row_count = global_rows.len().max(1);
+        let rows = global_rows
+            .iter()
+            .enumerate()
+            .map(|(index, row)| {
+                let id = accessible_artifact_row(row.session_id, row.artifact.id);
+                WorktreeArtifactRow {
+                    id,
+                    parent: None,
+                    name: row.artifact.display_name.as_str().to_string(),
+                    status: artifact_state_message_id(row.artifact.state),
+                    detail: Some(localization::artifact_semantic_provenance(
+                        artifact_type_label(row.artifact.media_type),
+                        format_size(row.artifact.byte_len),
+                        artifact_origin_label(row.artifact.origin),
+                        row.project_label.clone(),
+                        row.session_title.clone(),
+                    )),
+                    selected: selected_session == Some(row.session_id),
+                    disabled: false,
+                    expanded: Some(
+                        self.artifact_gallery.metadata_expanded == Some(row.artifact.id),
+                    ),
+                    invalid: matches!(row.artifact.state, ArtifactState::Corrupt),
+                    stale: matches!(row.artifact.state, ArtifactState::Staging),
+                    position: index + 1,
+                    set_size: row_count,
+                }
+            })
+            .collect::<Vec<_>>();
+        let busy = self.artifact_gallery.operation.is_some();
+        let mut controls = vec![
+            artifact_button(
+                WorktreeArtifactAction::ShowArtifactList,
+                None,
+                MessageId::ArtifactLayoutList,
+                false,
+                self.artifact_gallery.layout == GalleryLayout::List,
+            ),
+            artifact_button(
+                WorktreeArtifactAction::ShowArtifactGrid,
+                None,
+                MessageId::ArtifactLayoutGrid,
+                false,
+                self.artifact_gallery.layout == GalleryLayout::Grid,
+            ),
+        ];
+        if let Some(session_id) = selected_session {
+            controls.push(artifact_button(
+                WorktreeArtifactAction::ImportArtifact(session_id.as_uuid().as_u128()),
+                None,
+                MessageId::ArtifactImportAction,
+                busy || self.artifact_gallery.repository.is_none(),
+                false,
+            ));
+        }
+        if self.artifact_gallery.pending_import.is_some() {
+            controls.extend([
+                artifact_button(
+                    WorktreeArtifactAction::ConfirmArtifactImport,
+                    None,
+                    MessageId::ArtifactImportConfirm,
+                    busy,
+                    false,
+                ),
+                artifact_button(
+                    WorktreeArtifactAction::CancelArtifactImport,
+                    None,
+                    MessageId::CommonCancel,
+                    busy,
+                    false,
+                ),
+            ]);
+        }
+        if self.artifact_gallery.operation.is_some() {
+            controls.push(artifact_button(
+                WorktreeArtifactAction::CancelArtifactOperation,
+                None,
+                MessageId::CommonCancel,
+                false,
+                false,
+            ));
+        }
+        for row in global_rows
+            .iter()
+            .filter(|row| selected_session == Some(row.session_id))
+        {
+            let id = accessible_artifact_row(row.session_id, row.artifact.id);
+            let ready = row.artifact.state == ArtifactState::Ready;
+            controls.extend([
+                artifact_button(
+                    WorktreeArtifactAction::PreviewArtifact(id),
+                    Some(id),
+                    MessageId::ArtifactPreviewAction,
+                    busy || !ready || row.artifact.media_type == ArtifactMediaType::MetadataOnly,
+                    false,
+                ),
+                artifact_button(
+                    WorktreeArtifactAction::ExportArtifact(id),
+                    Some(id),
+                    MessageId::ArtifactExportAction,
+                    busy || row.artifact.state == ArtifactState::Corrupt,
+                    false,
+                ),
+                artifact_button(
+                    WorktreeArtifactAction::ToggleArtifactMetadata(id),
+                    Some(id),
+                    if self.artifact_gallery.metadata_expanded == Some(row.artifact.id) {
+                        MessageId::ArtifactHideMetadataAction
+                    } else {
+                        MessageId::ArtifactShowMetadataAction
+                    },
+                    false,
+                    self.artifact_gallery.metadata_expanded == Some(row.artifact.id),
+                ),
+            ]);
+            if ready {
+                controls.push(artifact_button(
+                    WorktreeArtifactAction::QuarantineArtifact(id),
+                    Some(id),
+                    MessageId::ArtifactQuarantineAction,
+                    busy,
+                    false,
+                ));
+            }
+            if row.artifact.state == ArtifactState::Quarantined {
+                controls.extend([
+                    artifact_button(
+                        WorktreeArtifactAction::RestoreArtifact(id),
+                        Some(id),
+                        MessageId::ArtifactRestoreAction,
+                        busy,
+                        false,
+                    ),
+                    artifact_button(
+                        WorktreeArtifactAction::RequestArtifactPurge(id),
+                        Some(id),
+                        MessageId::ArtifactPurgeAction,
+                        busy,
+                        false,
+                    ),
+                ]);
+            }
+            if self.artifact_gallery.pending_purge == Some((row.session_id, row.artifact.id)) {
+                controls.extend([
+                    artifact_button(
+                        WorktreeArtifactAction::ConfirmArtifactPurge(id),
+                        Some(id),
+                        MessageId::ArtifactPurgeConfirm,
+                        busy,
+                        false,
+                    ),
+                    artifact_button(
+                        WorktreeArtifactAction::CancelArtifactPurge,
+                        Some(id),
+                        MessageId::CommonCancel,
+                        busy,
+                        false,
+                    ),
+                ]);
+            }
+        }
+        let progress = self.artifact_gallery.operation.as_ref().map(|operation| {
+            let progress = operation.progress.as_ref();
+            WorktreeArtifactProgress {
+                label: artifact_operation_message_id(operation.kind),
+                current: progress.map_or(0, |progress| progress.bytes),
+                maximum: progress.map(|progress| progress.item_limit),
+                cancellable: true,
+            }
+        });
+        Some(WorktreeArtifactSemanticSnapshot {
+            screen: WorktreeArtifactScreen::ArtifactGallery,
+            state: artifact_surface_state(&self.artifact_gallery, &global_rows),
+            rows,
+            controls,
+            progress,
+            recording_friendly: self.activity_center.policy().recording_friendly,
+        })
+    }
+
+    pub(super) fn handle_artifact_accessibility_command(
+        &mut self,
+        command: WorktreeArtifactAccessibilityCommand,
+        _value: Option<SemanticActionValue>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match command {
+            WorktreeArtifactAccessibilityCommand::FocusRow(row)
+            | WorktreeArtifactAccessibilityCommand::ActivateRow(row) => {
+                if self.artifact_semantic_snapshot().is_some_and(|snapshot| {
+                    snapshot.rows.iter().any(|candidate| candidate.id == row)
+                }) && let Some((session_id, _)) = domain_artifact_row(row)
+                {
+                    self.select_global_artifact_session(session_id, cx);
+                }
+                self.project_list_focus.focus(window);
+            }
+            WorktreeArtifactAccessibilityCommand::FocusControl(_) => {
+                self.project_list_focus.focus(window);
+            }
+            WorktreeArtifactAccessibilityCommand::ActivateControl(action) => {
+                self.activate_artifact_accessibility_action(action, window, cx);
+            }
+            WorktreeArtifactAccessibilityCommand::CancelProgress => {
+                self.cancel_artifact_operation(cx);
+            }
+            WorktreeArtifactAccessibilityCommand::SetControlValue(_) => {}
+        }
+    }
+
+    fn activate_artifact_accessibility_action(
+        &mut self,
+        action: WorktreeArtifactAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.artifact_semantic_snapshot().is_some_and(|snapshot| {
+            snapshot
+                .controls
+                .iter()
+                .any(|control| control.action == action && !control.disabled)
+        }) {
+            return;
+        }
+        match action {
+            WorktreeArtifactAction::SelectArtifactSession(value) => self
+                .select_global_artifact_session(
+                    HostedSessionId::from_uuid(uuid::Uuid::from_u128(value)),
+                    cx,
+                ),
+            WorktreeArtifactAction::ImportArtifact(value) => self.choose_artifact_import(
+                HostedSessionId::from_uuid(uuid::Uuid::from_u128(value)),
+                window,
+                cx,
+            ),
+            WorktreeArtifactAction::ShowArtifactList => {
+                self.artifact_gallery.layout = GalleryLayout::List;
+                cx.notify();
+            }
+            WorktreeArtifactAction::ShowArtifactGrid => {
+                self.artifact_gallery.layout = GalleryLayout::Grid;
+                cx.notify();
+            }
+            WorktreeArtifactAction::ConfirmArtifactImport => self.confirm_artifact_import(cx),
+            WorktreeArtifactAction::CancelArtifactImport => {
+                self.cancel_artifact_import_review(cx);
+            }
+            WorktreeArtifactAction::CancelArtifactOperation => {
+                self.cancel_artifact_operation(cx);
+            }
+            WorktreeArtifactAction::PreviewArtifact(row) => {
+                if let Some((session_id, artifact_id)) = domain_artifact_row(row) {
+                    self.request_artifact_preview(session_id, artifact_id, cx);
+                }
+            }
+            WorktreeArtifactAction::ExportArtifact(row) => {
+                if let Some((session_id, artifact_id)) = domain_artifact_row(row)
+                    && let Some(display_name) = self.artifact_display_name(session_id, artifact_id)
+                {
+                    self.choose_artifact_export(session_id, artifact_id, display_name, window, cx);
+                }
+            }
+            WorktreeArtifactAction::ToggleArtifactMetadata(row) => {
+                if let Some((_, artifact_id)) = domain_artifact_row(row) {
+                    self.toggle_artifact_metadata(artifact_id, cx);
+                }
+            }
+            WorktreeArtifactAction::QuarantineArtifact(row) => {
+                if let Some((session_id, artifact_id)) = domain_artifact_row(row) {
+                    self.start_artifact_mutation(
+                        session_id,
+                        artifact_id,
+                        ArtifactOperationKind::Quarantine,
+                        cx,
+                    );
+                }
+            }
+            WorktreeArtifactAction::RestoreArtifact(row) => {
+                if let Some((session_id, artifact_id)) = domain_artifact_row(row) {
+                    self.start_artifact_mutation(
+                        session_id,
+                        artifact_id,
+                        ArtifactOperationKind::Restore,
+                        cx,
+                    );
+                }
+            }
+            WorktreeArtifactAction::RequestArtifactPurge(row) => {
+                if let Some((session_id, artifact_id)) = domain_artifact_row(row) {
+                    self.request_artifact_purge(session_id, artifact_id, cx);
+                }
+            }
+            WorktreeArtifactAction::ConfirmArtifactPurge(row) => {
+                if let Some((session_id, artifact_id)) = domain_artifact_row(row) {
+                    self.start_artifact_mutation(
+                        session_id,
+                        artifact_id,
+                        ArtifactOperationKind::Purge,
+                        cx,
+                    );
+                }
+            }
+            WorktreeArtifactAction::CancelArtifactPurge => self.cancel_artifact_purge(cx),
+            WorktreeArtifactAction::SetWorktreeBase
+            | WorktreeArtifactAction::SetWorktreeBranch
+            | WorktreeArtifactAction::ReviewWorktree
+            | WorktreeArtifactAction::FetchWorktree
+            | WorktreeArtifactAction::ConfirmCurrentBase
+            | WorktreeArtifactAction::CreateWorktree
+            | WorktreeArtifactAction::VerifyRecovery
+            | WorktreeArtifactAction::ForgetRecovery
+            | WorktreeArtifactAction::SelectPreset(_)
+            | WorktreeArtifactAction::StartSession
+            | WorktreeArtifactAction::CancelOrCloseWorktree => {}
+        }
+    }
+
+    fn artifact_display_name(
+        &self,
+        session_id: HostedSessionId,
+        artifact_id: ArtifactId,
+    ) -> Option<String> {
+        self.artifact_gallery
+            .snapshots
+            .get(&session_id)?
+            .artifacts
+            .iter()
+            .find(|artifact| artifact.id == artifact_id)
+            .map(|artifact| artifact.display_name.as_str().to_string())
+    }
+
     pub(super) fn open_files_library(
         &mut self,
         tab: FilesLibraryTab,
@@ -381,15 +733,13 @@ impl TermiRustApp {
                                     .text_size(px(theme::TYPE_HEADING_SIZE))
                                     .font_semibold()
                                     .text_color(theme::text_main())
-                                    .child("Files / Artifacts"),
+                                    .child(localization::files_artifacts_title()),
                             )
                             .child(
                                 div()
                                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .text_color(theme::text_muted())
-                                    .child(
-                                        "Browse live files separately from durable Session artifacts.",
-                                    ),
+                                    .child(localization::files_artifacts_description()),
                             ),
                     )
                     .child(
@@ -404,12 +754,9 @@ impl TermiRustApp {
                                         self.artifact_gallery.files_tab
                                             == FilesLibraryTab::Artifacts,
                                     )
-                                    .label("Session artifacts")
+                                    .label(localization::files_artifacts_session_tab())
                                     .on_click(cx.listener(|app, _, _, cx| {
-                                        app.set_files_library_tab(
-                                            FilesLibraryTab::Artifacts,
-                                            cx,
-                                        );
+                                        app.set_files_library_tab(FilesLibraryTab::Artifacts, cx);
                                     })),
                             )
                             .child(
@@ -420,7 +767,7 @@ impl TermiRustApp {
                                     .selected(
                                         self.artifact_gallery.files_tab == FilesLibraryTab::Sftp,
                                     )
-                                    .label("SFTP files")
+                                    .label(localization::files_artifacts_sftp_tab())
                                     .on_click(cx.listener(|app, _, _, cx| {
                                         app.set_files_library_tab(FilesLibraryTab::Sftp, cx);
                                     })),
@@ -435,6 +782,7 @@ impl TermiRustApp {
     }
 
     fn render_global_artifact_index(&self, cx: &Context<Self>) -> AnyElement {
+        let recording_friendly = self.activity_center.policy().recording_friendly;
         let rows = global_artifact_rows(
             &self.saved.app_attached_sessions,
             &self.artifact_gallery.snapshots,
@@ -454,19 +802,15 @@ impl TermiRustApp {
             .items_start()
             .child(
                 v_flex()
-                    .w(px(
-                        theme::current_design_tokens().layout_artifact_index_width().0,
-                    ))
-                    .max_w(px(
-                        theme::current_design_tokens()
-                            .layout_artifact_index_maximum()
-                            .0,
-                    ))
-                    .min_w(px(
-                        theme::current_design_tokens()
-                            .layout_artifact_index_minimum()
-                            .0,
-                    ))
+                    .w(px(theme::current_design_tokens()
+                        .layout_artifact_index_width()
+                        .0))
+                    .max_w(px(theme::current_design_tokens()
+                        .layout_artifact_index_maximum()
+                        .0))
+                    .min_w(px(theme::current_design_tokens()
+                        .layout_artifact_index_minimum()
+                        .0))
                     .h_full()
                     .min_h_0()
                     .border_r_1()
@@ -480,8 +824,8 @@ impl TermiRustApp {
                             .border_color(theme::soft_border())
                             .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .text_color(theme::text_muted())
-                            .child("All authoritative Sessions")
-                            .child(format!("{} artifacts", rows.len())),
+                            .child(localization::files_artifacts_authoritative_heading())
+                            .child(localization::files_artifacts_count(rows.len())),
                     )
                     .when(self.artifact_gallery.global_loading, |this| {
                         this.child(
@@ -490,7 +834,7 @@ impl TermiRustApp {
                                 .p(px(theme::SPACE_4))
                                 .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                 .text_color(theme::text_muted())
-                            .child(localization::artifact_gallery_loading()),
+                                .child(localization::artifact_gallery_loading()),
                         )
                     })
                     .when_some(
@@ -511,8 +855,7 @@ impl TermiRustApp {
                                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .text_color(theme::danger())
                                     .child(
-                                        Icon::new(IconName::TriangleAlert)
-                                            .size(px(theme::SPACE_4)),
+                                        Icon::new(IconName::TriangleAlert).size(px(theme::SPACE_4)),
                                     )
                                     .child(div().min_w_0().child(artifact_error_label(error))),
                             )
@@ -529,109 +872,105 @@ impl TermiRustApp {
                                     .p(px(theme::SPACE_5))
                                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                     .text_color(theme::text_muted())
-                                    .child(
-                                        "No Session artifacts yet. Select a Session and import a file to keep it here.",
-                                    ),
+                                    .child(localization::files_artifacts_global_empty()),
                             )
                         },
                     )
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .min_h_0()
-                            .overflow_y_scrollbar()
-                            .children(rows.iter().enumerate().map(|(index, row)| {
-                                let session_id = row.session_id;
-                                let selected = selected_session == Some(session_id);
-                                v_flex()
-                                    .id(("global-artifact-row", index))
-                                    .debug_selector(|| "global-artifact-row".to_string())
-                                    .gap(px(theme::SPACE_2))
-                                    .px(px(theme::SPACE_4))
-                                    .py(px(theme::SPACE_3))
-                                    .border_b_1()
-                                    .border_color(theme::soft_border())
-                                    .bg(if selected {
-                                        theme::accent_soft()
-                                    } else {
-                                        gpui::transparent_black()
-                                    })
-                                    .cursor_pointer()
-                                    .hover(|style| style.bg(theme::hover()))
-                                    .on_click(cx.listener(move |app, _, _, cx| {
-                                        app.select_global_artifact_session(session_id, cx);
-                                    }))
-                                    .child(
-                                        h_flex()
-                                            .justify_between()
-                                            .gap(px(theme::SPACE_2))
-                                            .child(
-                                                div()
-                                                    .min_w_0()
-                                                    .truncate()
-                                                    .font_medium()
-                                                    .text_color(theme::text_main())
-                                                    .child(
-                                                        row.artifact
-                                                            .display_name
-                                                            .as_str()
-                                                            .to_string(),
-                                                    ),
-                                            )
-                                            .child(
-                                                div()
-                                                    .flex_none()
-                                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                                    .text_color(artifact_state_color(
-                                                        row.artifact.state,
-                                                    ))
-                                                    .child(artifact_state_label(
-                                                        row.artifact.state,
-                                                    )),
-                                            ),
-                                    )
-                                    .child(
+                    .child(v_flex().flex_1().min_h_0().overflow_y_scrollbar().children(
+                        rows.iter().enumerate().map(|(index, row)| {
+                            let session_id = row.session_id;
+                            let selected = selected_session == Some(session_id);
+                            v_flex()
+                                .id(("global-artifact-row", index))
+                                .debug_selector(|| "global-artifact-row".to_string())
+                                .gap(px(theme::SPACE_2))
+                                .px(px(theme::SPACE_4))
+                                .py(px(theme::SPACE_3))
+                                .border_b_1()
+                                .border_color(theme::soft_border())
+                                .bg(if selected {
+                                    theme::accent_soft()
+                                } else {
+                                    gpui::transparent_black()
+                                })
+                                .cursor_pointer()
+                                .hover(|style| style.bg(theme::hover()))
+                                .on_click(cx.listener(move |app, _, _, cx| {
+                                    app.select_global_artifact_session(session_id, cx);
+                                }))
+                                .child(
+                                    h_flex()
+                                        .justify_between()
+                                        .gap(px(theme::SPACE_2))
+                                        .child(
+                                            div()
+                                                .min_w_0()
+                                                .truncate()
+                                                .font_medium()
+                                                .text_color(theme::text_main())
+                                                .child(if recording_friendly {
+                                                    localization::artifact_private_row()
+                                                } else {
+                                                    row.artifact.display_name.as_str().to_string()
+                                                }),
+                                        )
+                                        .child(
+                                            div()
+                                                .flex_none()
+                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                                .text_color(artifact_state_color(
+                                                    row.artifact.state,
+                                                ))
+                                                .child(artifact_state_label(row.artifact.state)),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .debug_selector(|| "global-artifact-origin".to_string())
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                        .text_color(theme::text_muted())
+                                        .child(localization::artifact_index_summary(
+                                            artifact_type_label(row.artifact.media_type),
+                                            format_size(row.artifact.byte_len),
+                                            artifact_origin_label(row.artifact.origin),
+                                        )),
+                                )
+                                .child(
+                                    div()
+                                        .debug_selector(|| "global-artifact-project".to_string())
+                                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                        .text_color(theme::text_muted())
+                                        .truncate()
+                                        .child(localization::files_artifacts_project_session(
+                                            if recording_friendly {
+                                                localization::product_private_project_row()
+                                            } else {
+                                                row.project_label.clone()
+                                            },
+                                            if recording_friendly {
+                                                localization::product_private_session_row()
+                                            } else {
+                                                row.session_title.clone()
+                                            },
+                                        )),
+                                )
+                                .when(!row.preset_label.is_empty(), |this| {
+                                    this.child(
                                         div()
-                                            .debug_selector(|| {
-                                                "global-artifact-origin".to_string()
-                                            })
-                                            .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                            .text_color(theme::text_muted())
-                                            .child(format!(
-                                                "{} · {} · {}",
-                                                artifact_type_label(row.artifact.media_type),
-                                                format_size(row.artifact.byte_len),
-                                                artifact_origin_label(row.artifact.origin),
-                                            )),
-                                    )
-                                    .child(
-                                        div()
-                                            .debug_selector(|| {
-                                                "global-artifact-project".to_string()
-                                            })
+                                            .debug_selector(|| "global-artifact-preset".to_string())
                                             .text_size(px(theme::TYPE_CAPTION_SIZE))
                                             .text_color(theme::text_muted())
                                             .truncate()
-                                            .child(format!(
-                                                "{} / {}",
-                                                row.project_label, row.session_title
-                                            )),
+                                            .child(if recording_friendly {
+                                                localization::preset_private_row()
+                                            } else {
+                                                row.preset_label.clone()
+                                            }),
                                     )
-                                    .when(!row.preset_label.is_empty(), |this| {
-                                        this.child(
-                                            div()
-                                                .debug_selector(|| {
-                                                    "global-artifact-preset".to_string()
-                                                })
-                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                                .text_color(theme::text_muted())
-                                                .truncate()
-                                                .child(row.preset_label.clone()),
-                                        )
-                                    })
-                                    .into_any_element()
-                            })),
-                    ),
+                                })
+                                .into_any_element()
+                        }),
+                    )),
             )
             .child(
                 v_flex()
@@ -650,9 +989,7 @@ impl TermiRustApp {
                                 .p(px(theme::SPACE_5))
                                 .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                                 .text_color(theme::text_muted())
-                                .child(
-                                    "Artifact actions appear here after an artifact is available.",
-                                ),
+                                .child(localization::files_artifacts_detail_empty()),
                         )
                     }),
             )
@@ -1318,7 +1655,11 @@ impl TermiRustApp {
                     .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .text_color(theme::text_main())
                     .child(localization::artifact_import_review_file(
-                        review.display_name.clone(),
+                        if self.activity_center.policy().recording_friendly {
+                            localization::artifact_private_row()
+                        } else {
+                            review.display_name.clone()
+                        },
                         format_size(review.byte_len),
                     )),
             )
@@ -1411,6 +1752,7 @@ impl TermiRustApp {
         cx: &Context<Self>,
     ) -> AnyElement {
         let artifact_id = artifact.id;
+        let recording_friendly = self.activity_center.policy().recording_friendly;
         let key = index;
         let show_metadata = self.artifact_gallery.metadata_expanded == Some(artifact_id);
         let pending_purge = self.artifact_gallery.pending_purge == Some((session_id, artifact_id));
@@ -1457,7 +1799,11 @@ impl TermiRustApp {
                                     .font_medium()
                                     .text_color(theme::text_main())
                                     .truncate()
-                                    .child(artifact.display_name.as_str().to_string()),
+                                    .child(if recording_friendly {
+                                        localization::artifact_private_row()
+                                    } else {
+                                        artifact.display_name.as_str().to_string()
+                                    }),
                             )
                             .child(
                                 div()
@@ -1654,6 +2000,13 @@ impl TermiRustApp {
     }
 
     fn render_artifact_preview(&self, preview: &ArtifactUiPreview) -> AnyElement {
+        if self.activity_center.policy().recording_friendly {
+            return div()
+                .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
+                .text_color(theme::text_muted())
+                .child(localization::artifact_private_preview())
+                .into_any_element();
+        }
         match preview {
             ArtifactUiPreview::Text {
                 value, truncated, ..
@@ -1715,6 +2068,135 @@ impl TermiRustApp {
                 .child(localization::artifact_preview_metadata_only())
                 .into_any_element(),
         }
+    }
+}
+
+fn accessible_artifact_row(
+    session_id: HostedSessionId,
+    artifact_id: ArtifactId,
+) -> WorktreeArtifactRowId {
+    WorktreeArtifactRowId::artifact(
+        session_id.as_uuid().as_u128(),
+        artifact_id.as_uuid().as_u128(),
+    )
+}
+
+fn domain_artifact_row(row: WorktreeArtifactRowId) -> Option<(HostedSessionId, ArtifactId)> {
+    (row.kind == WorktreeArtifactRowKind::Artifact).then(|| {
+        (
+            HostedSessionId::from_uuid(uuid::Uuid::from_u128(row.owner)),
+            ArtifactId::from_uuid(uuid::Uuid::from_u128(row.value)),
+        )
+    })
+}
+
+fn artifact_button(
+    action: WorktreeArtifactAction,
+    parent: Option<WorktreeArtifactRowId>,
+    name: MessageId,
+    disabled: bool,
+    selected: bool,
+) -> WorktreeArtifactControl {
+    WorktreeArtifactControl {
+        action,
+        parent,
+        role: if matches!(
+            action,
+            WorktreeArtifactAction::ShowArtifactList | WorktreeArtifactAction::ShowArtifactGrid
+        ) {
+            WorktreeArtifactControlRole::RadioButton
+        } else {
+            WorktreeArtifactControlRole::Button
+        },
+        name,
+        value: None,
+        selected,
+        disabled,
+        invalid: matches!(action, WorktreeArtifactAction::ConfirmArtifactPurge(_)),
+    }
+}
+
+fn artifact_state_message_id(state: ArtifactState) -> MessageId {
+    match state {
+        ArtifactState::Staging => MessageId::ArtifactStateStaging,
+        ArtifactState::Ready => MessageId::ArtifactStateReady,
+        ArtifactState::Quarantined => MessageId::ArtifactStateQuarantined,
+        ArtifactState::Corrupt => MessageId::ArtifactStateCorrupt,
+    }
+}
+
+fn artifact_operation_message_id(kind: ArtifactOperationKind) -> MessageId {
+    match kind {
+        ArtifactOperationKind::Import => MessageId::ArtifactOperationImporting,
+        ArtifactOperationKind::Preview => MessageId::ArtifactOperationPreviewing,
+        ArtifactOperationKind::Export => MessageId::ArtifactOperationExporting,
+        ArtifactOperationKind::Quarantine => MessageId::ArtifactOperationQuarantining,
+        ArtifactOperationKind::Restore => MessageId::ArtifactOperationRestoring,
+        ArtifactOperationKind::Purge => MessageId::ArtifactOperationPurging,
+    }
+}
+
+fn artifact_surface_state(
+    state: &ArtifactGalleryState,
+    rows: &[GlobalArtifactRow],
+) -> WorktreeArtifactSurfaceState {
+    if state.global_loading || state.loading.is_some() {
+        return WorktreeArtifactSurfaceState::Loading;
+    }
+    if let Some(error) = state.error {
+        return match error {
+            ArtifactError::ItemQuotaExceeded
+            | ArtifactError::SessionQuotaExceeded
+            | ArtifactError::GlobalQuotaExceeded
+            | ArtifactError::CountQuotaExceeded => WorktreeArtifactSurfaceState::Quota,
+            ArtifactError::SourceChanged => WorktreeArtifactSurfaceState::Recovery,
+            ArtifactError::UnsupportedSource | ArtifactError::UnsafeEntry => {
+                WorktreeArtifactSurfaceState::Unsupported
+            }
+            ArtifactError::Corrupt
+            | ArtifactError::InvalidDigest
+            | ArtifactError::InvalidMetadata
+            | ArtifactError::InvalidState => WorktreeArtifactSurfaceState::Corrupt,
+            ArtifactError::PermissionDenied => WorktreeArtifactSurfaceState::PermissionDenied,
+            ArtifactError::StorageFull => WorktreeArtifactSurfaceState::DiskFull,
+            ArtifactError::Cancelled => WorktreeArtifactSurfaceState::Cancelled,
+            ArtifactError::Timeout => WorktreeArtifactSurfaceState::Timeout,
+            ArtifactError::InvalidDisplayName | ArtifactError::InvalidLimits => {
+                WorktreeArtifactSurfaceState::Malformed
+            }
+            ArtifactError::Unavailable => WorktreeArtifactSurfaceState::Unavailable,
+            ArtifactError::Conflict | ArtifactError::DecodeFailed => {
+                WorktreeArtifactSurfaceState::Error
+            }
+        };
+    }
+    if state.pending_purge.is_some() {
+        return WorktreeArtifactSurfaceState::RiskReview;
+    }
+    if let Some(operation) = state.operation.as_ref() {
+        return if operation.kind == ArtifactOperationKind::Import {
+            WorktreeArtifactSurfaceState::Importing
+        } else {
+            WorktreeArtifactSurfaceState::Loading
+        };
+    }
+    if rows
+        .iter()
+        .any(|row| row.artifact.state == ArtifactState::Corrupt)
+    {
+        return WorktreeArtifactSurfaceState::Partial;
+    }
+    if !rows.is_empty()
+        && rows
+            .iter()
+            .all(|row| row.artifact.state == ArtifactState::Quarantined)
+    {
+        return WorktreeArtifactSurfaceState::Quarantined;
+    }
+    if rows.is_empty() {
+        WorktreeArtifactSurfaceState::Empty
+    } else {
+        WorktreeArtifactSurfaceState::Ready
     }
 }
 

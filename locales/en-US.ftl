@@ -532,6 +532,26 @@ activity-age-years = { $count ->
    *[other] { $count } years ago
     }
 artifact-gallery-title = Artifacts
+files-artifacts-title = Files / Artifacts
+files-artifacts-description = Browse live files separately from durable Session artifacts.
+files-artifacts-session-tab = Session artifacts
+files-artifacts-sftp-tab = SFTP files
+files-artifacts-authoritative-heading = All authoritative Sessions
+files-artifacts-count = { $count ->
+    [one] 1 artifact
+    [many] { $count } artifacts
+   *[other] { $count } artifacts
+    }
+files-artifacts-global-empty = No Session artifacts yet. Select a Session and import a file to keep it here.
+files-artifacts-detail-empty = Artifact actions appear here after an artifact is available.
+artifact-semantic-provenance = { $kind }, { $size }, { $origin }, Project { $project }, Session { $session }
+artifact-index-summary = Artifact: { $kind } · { $size } · { $origin }
+artifact-private-row = Private artifact
+artifact-private-preview = Preview hidden while recording-friendly mode is on
+preset-private-row = Private preset
+worktree-private-reference = Private Git reference
+worktree-private-path = Private managed path
+files-artifacts-project-session = Context: { $project } / { $session }
 artifact-gallery-description = Keep inert text, images, and evidence with this session.
 artifact-gallery-empty = No artifacts in this session. Import a local file to add one.
 artifact-gallery-loading = Loading artifacts…

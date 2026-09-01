@@ -9,6 +9,9 @@ use crate::preset_runtime_surface::{
 use crate::product_session_surface::{
     ProductSessionAccessibilityCommand, ProductSessionSemanticSnapshot,
 };
+use crate::worktree_artifact_surface::{
+    WorktreeArtifactAccessibilityCommand, WorktreeArtifactSemanticSnapshot,
+};
 use crate::{
     LiveRegionPoliteness, MessageId, SemanticAction, SemanticActionRouter, SemanticError,
     SemanticNode, SemanticNodeId, SemanticRole, SemanticText, SemanticTree, SemanticValue,
@@ -439,6 +442,7 @@ pub enum ShellAccessibilityCommand {
     ActivatePaletteResult(usize),
     ProductSession(ProductSessionAccessibilityCommand),
     PresetRuntime(PresetRuntimeAccessibilityCommand),
+    WorktreeArtifact(WorktreeArtifactAccessibilityCommand),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -451,6 +455,7 @@ pub struct ShellSemanticSnapshot {
     pub status_urgency: AnnouncementPolicy,
     pub product_session: Option<ProductSessionSemanticSnapshot>,
     pub preset_runtime: Option<PresetRuntimeSemanticSnapshot>,
+    pub worktree_artifact: Option<WorktreeArtifactSemanticSnapshot>,
 }
 
 impl Default for ShellSemanticSnapshot {
@@ -464,6 +469,7 @@ impl Default for ShellSemanticSnapshot {
             status_urgency: AnnouncementPolicy::Polite,
             product_session: None,
             preset_runtime: None,
+            worktree_artifact: None,
         }
     }
 }
@@ -526,6 +532,11 @@ impl ShellSemanticSnapshot {
             && let Some(preset_runtime) = self.preset_runtime.as_ref()
         {
             nodes.extend(preset_runtime.try_nodes(shell_region_node(ShellRegionId::Content))?);
+        }
+        if !self.palette_open
+            && let Some(worktree_artifact) = self.worktree_artifact.as_ref()
+        {
+            nodes.extend(worktree_artifact.try_nodes(shell_region_node(ShellRegionId::Content))?);
         }
 
         if self.palette_open {
@@ -613,6 +624,18 @@ impl ShellSemanticSnapshot {
                     .routes()
                     .into_iter()
                     .map(|(key, command)| (key, ShellAccessibilityCommand::PresetRuntime(command))),
+            );
+        }
+        if !self.palette_open
+            && let Some(worktree_artifact) = self.worktree_artifact.as_ref()
+        {
+            routes.extend(
+                worktree_artifact
+                    .routes()
+                    .into_iter()
+                    .map(|(key, command)| {
+                        (key, ShellAccessibilityCommand::WorktreeArtifact(command))
+                    }),
             );
         }
         if self.palette_open {
@@ -986,6 +1009,69 @@ mod tests {
             *command,
             ShellAccessibilityCommand::ProductSession(
                 ProductSessionAccessibilityCommand::ActivateRow(row_id)
+            )
+        );
+    }
+
+    #[test]
+    fn shell_routes_worktree_artifact_controls_without_exposing_preview_bytes() {
+        let row = crate::WorktreeArtifactRowId::artifact(7, 11);
+        let action = crate::WorktreeArtifactAction::PreviewArtifact(row);
+        let surface = crate::WorktreeArtifactSemanticSnapshot {
+            screen: crate::WorktreeArtifactScreen::ArtifactGallery,
+            state: crate::WorktreeArtifactSurfaceState::Ready,
+            rows: vec![crate::WorktreeArtifactRow {
+                id: row,
+                parent: None,
+                name: "evidence.html".to_string(),
+                status: MessageId::ArtifactStateReady,
+                detail: Some("metadata only, explicit import".to_string()),
+                selected: true,
+                disabled: false,
+                expanded: Some(false),
+                invalid: false,
+                stale: false,
+                position: 1,
+                set_size: 1,
+            }],
+            controls: vec![crate::WorktreeArtifactControl {
+                action,
+                parent: Some(row),
+                role: crate::WorktreeArtifactControlRole::Button,
+                name: MessageId::ArtifactPreviewAction,
+                value: None,
+                selected: false,
+                disabled: false,
+                invalid: false,
+            }],
+            progress: None,
+            recording_friendly: false,
+        };
+        let route = surface
+            .routes()
+            .into_iter()
+            .find(|(_, command)| {
+                *command == crate::WorktreeArtifactAccessibilityCommand::ActivateControl(action)
+            })
+            .unwrap();
+        let snapshot = ShellSemanticSnapshot {
+            worktree_artifact: Some(surface),
+            ..ShellSemanticSnapshot::default()
+        };
+        let tree = snapshot.try_tree().unwrap();
+        assert!(!format!("{tree:?}").contains("preview-byte-canary"));
+        let router = snapshot.try_router(&tree).unwrap();
+        assert_eq!(
+            *router
+                .resolve(crate::SemanticActionRequest {
+                    generation: tree.generation(),
+                    node: route.0.0,
+                    action: route.0.1,
+                    value: None,
+                })
+                .unwrap(),
+            ShellAccessibilityCommand::WorktreeArtifact(
+                crate::WorktreeArtifactAccessibilityCommand::ActivateControl(action)
             )
         );
     }

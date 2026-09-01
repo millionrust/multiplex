@@ -1689,6 +1689,23 @@ impl TermiRustApp {
                     }
                     _ => {}
                 },
+                ShellAccessibilityCommand::WorktreeArtifact(command) => {
+                    if self.worktree_launch.is_some() {
+                        self.handle_worktree_accessibility_command(
+                            command,
+                            event.value,
+                            window,
+                            cx,
+                        );
+                    } else if self.nav_section == NavSection::Sftp {
+                        self.handle_artifact_accessibility_command(
+                            command,
+                            event.value,
+                            window,
+                            cx,
+                        );
+                    }
+                }
             }
         }
     }
@@ -11830,12 +11847,22 @@ impl Render for TermiRustApp {
         } else {
             0
         };
-        let product_session = self.product_session_semantic_snapshot(cx);
-        let preset_runtime = match self.nav_section {
-            NavSection::Presets => Some(self.preset_runtime_semantic_snapshot(cx)),
-            NavSection::Sessions => self.runtime_inspector_semantic_snapshot(),
-            _ => None,
-        };
+        let worktree_modal_open = self.worktree_launch.is_some();
+        let product_session = (!worktree_modal_open)
+            .then(|| self.product_session_semantic_snapshot(cx))
+            .flatten();
+        let preset_runtime = (!worktree_modal_open)
+            .then(|| match self.nav_section {
+                NavSection::Presets => Some(self.preset_runtime_semantic_snapshot(cx)),
+                NavSection::Sessions => self.runtime_inspector_semantic_snapshot(),
+                _ => None,
+            })
+            .flatten();
+        let worktree_artifact = self.worktree_semantic_snapshot(cx).or_else(|| {
+            (self.nav_section == NavSection::Sftp)
+                .then(|| self.artifact_semantic_snapshot())
+                .flatten()
+        });
         self.shell_accessibility.sync(ShellSemanticSnapshot {
             generation: 1,
             inspector_visible: self.show_editor_panel,
@@ -11849,6 +11876,7 @@ impl Render for TermiRustApp {
             },
             product_session,
             preset_runtime,
+            worktree_artifact,
         });
 
         // When the active workspace changes, scroll the tab strip so the
@@ -22027,6 +22055,173 @@ sleep 1
                 })
             })
             .expect("safe action should activate");
+    }
+
+    #[gpui::test]
+    fn e2e_worktree_contract_exposes_progress_and_cancels_exact_operation(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let cancellation = crate::worktree_launch::WorktreeCancellation::default();
+        let observed_cancellation = cancellation.clone();
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.worktree_launch = Some(super::worktree_launch::WorktreeLaunchUiState {
+                        source_project_id: termirust_domain::ProjectId::new(),
+                        worktree_id: termirust_domain::ManagedWorktreeId::new(),
+                        child_project_id: termirust_domain::ProjectId::new(),
+                        stage: termirust_domain::WorktreeLaunchStage::Creating,
+                        inspection: None,
+                        selected_preset_id: None,
+                        registered_child_id: None,
+                        error: None,
+                        generation: 7,
+                        cancellation,
+                        fetched: false,
+                        current_branch_confirmed: false,
+                        recovering: false,
+                    });
+                    let snapshot = app.worktree_semantic_snapshot(cx).unwrap();
+                    assert_eq!(
+                        snapshot.state,
+                        termirust_ui_contract::WorktreeArtifactSurfaceState::Creating
+                    );
+                    assert!(snapshot.progress.is_some_and(|progress| {
+                        progress.current == 2 && progress.maximum == Some(4) && progress.cancellable
+                    }));
+                    app.handle_worktree_accessibility_command(
+                        termirust_ui_contract::WorktreeArtifactAccessibilityCommand::CancelProgress,
+                        None,
+                        window,
+                        cx,
+                    );
+                })
+            })
+            .expect("worktree progress should be accessible");
+
+        assert!(observed_cancellation.is_cancelled());
+        app.read_with(cx, |app, _| {
+            assert!(app.worktree_launch.is_some());
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_artifact_contract_keeps_hostile_content_inert_and_routes_safe_actions(
+        cx: &mut TestAppContext,
+    ) {
+        let _isolation = TestIsolation::acquire();
+        let session_id = termirust_domain::HostedSessionId::new();
+        let artifact_id = termirust_domain::ArtifactId::new();
+        let saved = SavedState {
+            app_attached_sessions: vec![crate::models::SavedAppAttachedSession {
+                id: session_id,
+                route: termirust_domain::SessionLaunchRoute::DurableHost,
+                origin: termirust_domain::SessionOrigin {
+                    project_id: termirust_domain::ProjectId::new(),
+                    preset_id: termirust_domain::PresetId::new(),
+                },
+                state: termirust_domain::HostedSessionState::Exited,
+                project_label: "Project <script>canary</script>".to_string(),
+                preset_label: "Safe preset".to_string(),
+                title: "Evidence session".to_string(),
+                title_source: termirust_domain::TitleSource::Manual,
+                activity: termirust_domain::ActivityAggregate::default(),
+                pinned: false,
+                read_through_sequence: 0,
+                unread_sequence: None,
+                archived_at: None,
+                revision: termirust_domain::Revision::ZERO,
+                durable_host: Some(crate::models::SavedDurableHost::default()),
+                group_id: None,
+                position: termirust_domain::PositionKey::FIRST,
+                started_at: 1,
+                updated_at: 1,
+            }],
+            ..SavedState::default()
+        };
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.artifact_gallery.install_test_snapshots(vec![
+                        termirust_store::ArtifactSnapshot {
+                            scope: termirust_domain::ArtifactScope { session_id },
+                            artifacts: vec![termirust_domain::ArtifactMetadata {
+                                id: artifact_id,
+                                scope: termirust_domain::ArtifactScope { session_id },
+                                display_name: termirust_domain::ArtifactDisplayName::new(
+                                    "\u{202e}$(touch must-not-run).html",
+                                )
+                                .unwrap(),
+                                origin: termirust_domain::ArtifactOrigin::ExplicitImport,
+                                media_type: termirust_domain::ArtifactMediaType::MetadataOnly,
+                                byte_len: 37,
+                                sha256: termirust_domain::ArtifactSha256::new([7; 32]),
+                                created_at: 1,
+                                preview_kind: termirust_domain::ArtifactPreviewKind::MetadataOnly,
+                                state: termirust_domain::ArtifactState::Ready,
+                            }],
+                            session_bytes: 37,
+                            session_limit: 1_024,
+                            global_bytes: 37,
+                            global_limit: 2_048,
+                            durability: termirust_store::Durability::Full,
+                        },
+                    ]);
+                    app.activate_library_section(NavSection::Sftp, window, cx);
+                    let snapshot = app.artifact_semantic_snapshot().unwrap();
+                    let row = termirust_ui_contract::WorktreeArtifactRowId::artifact(
+                        session_id.as_uuid().as_u128(),
+                        artifact_id.as_uuid().as_u128(),
+                    );
+                    assert!(snapshot.rows.iter().any(|candidate| {
+                        candidate.id == row
+                            && candidate.detail.as_ref().is_some_and(|detail| {
+                                detail.contains("Evidence session")
+                                    && detail.contains(
+                                        &localization::artifact_origin_import(),
+                                    )
+                            })
+                    }));
+                    assert!(snapshot.controls.iter().any(|control| {
+                        control.action
+                            == termirust_ui_contract::WorktreeArtifactAction::PreviewArtifact(row)
+                            && control.disabled
+                    }));
+                    let semantics = format!(
+                        "{:?}",
+                        snapshot
+                            .try_nodes(termirust_ui_contract::shell_region_semantic_node(
+                                termirust_ui_contract::ShellRegionId::Content,
+                            ))
+                            .unwrap()
+                    );
+                    assert!(semantics.contains("touch must-not-run"));
+                    assert!(!semantics.contains("preview-byte-canary"));
+                    app.handle_artifact_accessibility_command(
+                        termirust_ui_contract::WorktreeArtifactAccessibilityCommand::ActivateControl(
+                            termirust_ui_contract::WorktreeArtifactAction::ToggleArtifactMetadata(
+                                row,
+                            ),
+                        ),
+                        None,
+                        window,
+                        cx,
+                    );
+                    assert!(app.artifact_semantic_snapshot().unwrap().rows.iter().any(
+                        |candidate| candidate.id == row && candidate.expanded == Some(true)
+                    ));
+                })
+            })
+            .expect("artifact contract should route safe metadata action");
+
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        assert!(visual.debug_bounds("files-artifacts-view").is_some());
+        assert!(visual.debug_bounds("global-artifact-row").is_some());
+        assert!(visual.debug_bounds("artifact-card").is_some());
     }
 
     #[gpui::test]

@@ -2519,6 +2519,127 @@ id = "artifact-gallery-title"
 context = "Heading for the per-session inert artifact gallery."
 description = "Artifact gallery title"
 [[messages]]
+id = "files-artifacts-title"
+context = "Heading for the Files and Artifacts library destination."
+description = "Files and artifacts title"
+[[messages]]
+id = "files-artifacts-description"
+context = "Description distinguishing live file browsing from durable inert artifacts."
+description = "Files and artifacts description"
+[[messages]]
+id = "files-artifacts-session-tab"
+context = "Tab that selects durable Session artifacts."
+description = "Session artifacts tab"
+[[messages]]
+id = "files-artifacts-sftp-tab"
+context = "Tab that selects live SFTP file browsing."
+description = "SFTP files tab"
+[[messages]]
+id = "files-artifacts-authoritative-heading"
+context = "Heading for the artifact index sourced only from authoritative Sessions."
+description = "Authoritative Sessions heading"
+[[messages]]
+id = "files-artifacts-count"
+context = "Bounded artifact count shown above the global artifact index."
+description = "Artifact count"
+plural_arg = "count"
+plural_variants = ["one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "files-artifacts-global-empty"
+context = "Empty state for the authoritative global artifact index."
+description = "Global artifact empty state"
+[[messages]]
+id = "files-artifacts-detail-empty"
+context = "Placeholder shown when no artifact Session is selected."
+description = "Artifact detail empty state"
+[[messages]]
+id = "artifact-semantic-provenance"
+context = "Screen-reader summary of safe artifact metadata and authoritative provenance."
+description = "Artifact semantic provenance"
+[[messages.args]]
+name = "kind"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "size"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "origin"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "project"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "session"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "artifact-index-summary"
+context = "Compact global artifact index summary with inert type, size, and import provenance."
+description = "Artifact index summary"
+[[messages.args]]
+name = "kind"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "size"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "origin"
+type = "Text"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "artifact-private-row"
+context = "Recording-friendly replacement for a user-supplied artifact name."
+description = "Private artifact row"
+[[messages]]
+id = "artifact-private-preview"
+context = "Recording-friendly replacement shown instead of artifact preview content."
+description = "Private artifact preview"
+[[messages]]
+id = "preset-private-row"
+context = "Recording-friendly replacement for a user-supplied preset label."
+description = "Private preset row"
+[[messages]]
+id = "worktree-private-reference"
+context = "Recording-friendly replacement for a Git branch or base reference."
+description = "Private Git reference"
+[[messages]]
+id = "worktree-private-path"
+context = "Recording-friendly replacement for a managed worktree path."
+description = "Private worktree path"
+[[messages]]
+id = "files-artifacts-project-session"
+context = "Global artifact index context joining authoritative Project and Session labels."
+description = "Artifact Project and Session context"
+[[messages.args]]
+name = "project"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "session"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
 id = "artifact-gallery-description"
 context = "Safety-focused description below the artifact gallery heading."
 description = "Artifact gallery description"

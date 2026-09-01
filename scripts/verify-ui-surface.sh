@@ -19,7 +19,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$states" != "all" || "$locales" != "en-US,en-XA,ar-XB" || "$themes" != "all" ]]; then
-  echo "Usage: $0 --surface shell-overlays-palette|projects-groups-sessions|presets-runtimes [--states all] --locales en-US,en-XA,ar-XB --themes all" >&2
+  echo "Usage: $0 --surface shell-overlays-palette|projects-groups-sessions|presets-runtimes|worktrees-artifacts [--states all] --locales en-US,en-XA,ar-XB --themes all" >&2
   exit 2
 fi
 
@@ -38,6 +38,11 @@ case "$surface" in
     paths="src/ui/app/presets.rs,src/ui/app/runtimes.rs,src/ui/app/session_sidebar.rs"
     test_filter="preset_runtime_surface"
     description="preset and runtime"
+    ;;
+  worktrees-artifacts)
+    paths="src/ui/app/worktree_launch.rs,src/ui/app/artifact_gallery.rs"
+    test_filter="worktree_artifact_surface"
+    description="worktree and artifact"
     ;;
   *)
     echo "unknown UI surface: $surface" >&2

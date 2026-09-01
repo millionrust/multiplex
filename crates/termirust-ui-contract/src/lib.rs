@@ -8,6 +8,7 @@ pub mod preset_runtime_surface;
 pub mod product_session_surface;
 pub mod semantics;
 pub mod shell_surface;
+pub mod worktree_artifact_surface;
 
 pub use accessibility_lab::*;
 pub use contract::{
@@ -20,6 +21,7 @@ pub use preset_runtime_surface::*;
 pub use product_session_surface::*;
 pub use semantics::*;
 pub use shell_surface::*;
+pub use worktree_artifact_surface::*;
 
 #[cfg(test)]
 mod tokens_tests {

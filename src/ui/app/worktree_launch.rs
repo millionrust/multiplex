@@ -16,6 +16,12 @@ use termirust_domain::{
     WorktreeIntentState, WorktreeLaunchDraft, WorktreeLaunchStage, WorktreeRegistration,
 };
 use termirust_store::StoreError;
+use termirust_ui_contract::{
+    MessageId, SemanticActionValue, WorktreeArtifactAccessibilityCommand, WorktreeArtifactAction,
+    WorktreeArtifactControl, WorktreeArtifactControlRole, WorktreeArtifactProgress,
+    WorktreeArtifactRow, WorktreeArtifactRowId, WorktreeArtifactScreen,
+    WorktreeArtifactSemanticSnapshot, WorktreeArtifactSurfaceState,
+};
 
 use super::project_coordinator::{WorktreeInspectionRequest, WorktreePlanRequest};
 use super::{TermiRustApp, theme};
@@ -40,6 +46,247 @@ pub(super) struct WorktreeLaunchUiState {
 }
 
 impl TermiRustApp {
+    pub(super) fn worktree_semantic_snapshot(
+        &self,
+        cx: &Context<Self>,
+    ) -> Option<WorktreeArtifactSemanticSnapshot> {
+        let state = self.worktree_launch.as_ref()?;
+        let busy = worktree_busy(state.stage);
+        let recording_friendly = self.activity_center.policy().recording_friendly;
+        let row_id = WorktreeArtifactRowId::worktree(state.worktree_id.as_uuid().as_u128());
+        let inspection = state.inspection.as_ref();
+        let name = inspection
+            .map(|inspection| inspection.repository_basename.clone())
+            .unwrap_or_else(|| state.worktree_id.to_string());
+        let detail = inspection.map(|inspection| {
+            format!(
+                "{} · {} · {}",
+                inspection.plan.selected_base.ref_name,
+                inspection.plan.selected_base.commit_oid.short(),
+                managed_path_preview(&inspection.plan),
+            )
+        });
+        let path_missing = inspection.is_some_and(|inspection| {
+            matches!(
+                fs::symlink_metadata(inspection.plan.managed_path.as_path()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound
+            )
+        });
+        let mut controls = vec![
+            worktree_text_control(
+                WorktreeArtifactAction::SetWorktreeBase,
+                MessageId::WorktreeBaseField,
+                self.worktree_base_input.read(cx).value().to_string(),
+                busy || state.recovering || state.stage == WorktreeLaunchStage::Registered,
+            ),
+            worktree_text_control(
+                WorktreeArtifactAction::SetWorktreeBranch,
+                MessageId::WorktreeBranchField,
+                self.worktree_branch_input.read(cx).value().to_string(),
+                busy || state.recovering || state.stage == WorktreeLaunchStage::Registered,
+            ),
+        ];
+        if !state.recovering && state.stage != WorktreeLaunchStage::Registered {
+            controls.extend([
+                worktree_button(
+                    WorktreeArtifactAction::ReviewWorktree,
+                    MessageId::WorktreeRefreshAction,
+                    busy,
+                ),
+                worktree_button(
+                    WorktreeArtifactAction::FetchWorktree,
+                    MessageId::WorktreeFetchAction,
+                    busy,
+                ),
+                worktree_button(
+                    WorktreeArtifactAction::ConfirmCurrentBase,
+                    MessageId::WorktreeCurrentAction,
+                    busy,
+                ),
+                worktree_button(
+                    WorktreeArtifactAction::CreateWorktree,
+                    MessageId::WorktreeCreateAction,
+                    busy || inspection.is_none(),
+                ),
+            ]);
+        }
+        if state.recovering {
+            controls.push(worktree_button(
+                WorktreeArtifactAction::VerifyRecovery,
+                MessageId::WorktreeVerifyAction,
+                busy || path_missing,
+            ));
+            if path_missing {
+                controls.push(worktree_button(
+                    WorktreeArtifactAction::ForgetRecovery,
+                    MessageId::WorktreeForgetRecoveryAction,
+                    busy,
+                ));
+            }
+        }
+        if state.stage == WorktreeLaunchStage::Registered {
+            controls.push(worktree_button(
+                WorktreeArtifactAction::StartSession,
+                MessageId::WorktreeStartSessionAction,
+                state.selected_preset_id.is_none(),
+            ));
+        }
+        if let Some(snapshot) = self.preset_library.snapshot.as_ref() {
+            controls.extend(snapshot.presets.iter().filter(|preset| preset.enabled).map(
+                |preset| WorktreeArtifactControl {
+                    action: WorktreeArtifactAction::SelectPreset(preset.id.as_uuid().as_u128()),
+                    parent: Some(row_id),
+                    role: WorktreeArtifactControlRole::RadioButton,
+                    name: MessageId::WorktreePresetField,
+                    value: Some(preset.label.as_str().to_string()),
+                    selected: state.selected_preset_id == Some(preset.id),
+                    disabled: busy,
+                    invalid: false,
+                },
+            ));
+        }
+        controls.push(worktree_button(
+            WorktreeArtifactAction::CancelOrCloseWorktree,
+            if busy {
+                MessageId::CommonCancel
+            } else {
+                MessageId::CommonClose
+            },
+            false,
+        ));
+
+        Some(WorktreeArtifactSemanticSnapshot {
+            screen: WorktreeArtifactScreen::WorktreeLaunch,
+            state: worktree_surface_state(state),
+            rows: vec![WorktreeArtifactRow {
+                id: row_id,
+                parent: None,
+                name,
+                status: worktree_stage_message_id(state.stage),
+                detail,
+                selected: true,
+                disabled: false,
+                expanded: None,
+                invalid: state.error.is_some(),
+                stale: state.recovering,
+                position: 1,
+                set_size: 1,
+            }],
+            controls,
+            progress: busy.then_some(WorktreeArtifactProgress {
+                label: worktree_stage_message_id(state.stage),
+                current: worktree_stage_progress(state.stage),
+                maximum: Some(4),
+                cancellable: true,
+            }),
+            recording_friendly,
+        })
+    }
+
+    pub(super) fn handle_worktree_accessibility_command(
+        &mut self,
+        command: WorktreeArtifactAccessibilityCommand,
+        value: Option<SemanticActionValue>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match command {
+            WorktreeArtifactAccessibilityCommand::FocusRow(_)
+            | WorktreeArtifactAccessibilityCommand::ActivateRow(_) => {
+                self.project_list_focus.focus(window);
+            }
+            WorktreeArtifactAccessibilityCommand::FocusControl(action) => match action {
+                WorktreeArtifactAction::SetWorktreeBase => self
+                    .worktree_base_input
+                    .update(cx, |input, cx| input.focus(window, cx)),
+                WorktreeArtifactAction::SetWorktreeBranch => self
+                    .worktree_branch_input
+                    .update(cx, |input, cx| input.focus(window, cx)),
+                _ => self.project_list_focus.focus(window),
+            },
+            WorktreeArtifactAccessibilityCommand::SetControlValue(action) => {
+                let Some(SemanticActionValue::Text(value)) = value else {
+                    return;
+                };
+                if !self.worktree_semantic_snapshot(cx).is_some_and(|snapshot| {
+                    snapshot.controls.iter().any(|control| {
+                        control.action == action
+                            && control.role == WorktreeArtifactControlRole::TextField
+                            && !control.disabled
+                    })
+                }) {
+                    return;
+                }
+                match action {
+                    WorktreeArtifactAction::SetWorktreeBase => {
+                        Self::set_input_value(&self.worktree_base_input, value, window, cx);
+                    }
+                    WorktreeArtifactAction::SetWorktreeBranch => {
+                        Self::set_input_value(&self.worktree_branch_input, value, window, cx);
+                    }
+                    _ => return,
+                }
+                cx.notify();
+            }
+            WorktreeArtifactAccessibilityCommand::ActivateControl(action) => {
+                self.activate_worktree_accessibility_action(action, window, cx);
+            }
+            WorktreeArtifactAccessibilityCommand::CancelProgress => {
+                self.close_worktree_launch(cx);
+            }
+        }
+    }
+
+    fn activate_worktree_accessibility_action(
+        &mut self,
+        action: WorktreeArtifactAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.worktree_semantic_snapshot(cx).is_some_and(|snapshot| {
+            snapshot
+                .controls
+                .iter()
+                .any(|control| control.action == action && !control.disabled)
+        }) {
+            return;
+        }
+        match action {
+            WorktreeArtifactAction::ReviewWorktree => self.review_worktree_choices(window, cx),
+            WorktreeArtifactAction::FetchWorktree => self.fetch_worktree_choices(window, cx),
+            WorktreeArtifactAction::ConfirmCurrentBase => {
+                self.confirm_current_worktree_base(window, cx);
+            }
+            WorktreeArtifactAction::CreateWorktree => self.create_worktree(window, cx),
+            WorktreeArtifactAction::VerifyRecovery => {
+                self.verify_recovered_worktree(window, cx);
+            }
+            WorktreeArtifactAction::ForgetRecovery => self.forget_empty_worktree_recovery(cx),
+            WorktreeArtifactAction::SelectPreset(value) => {
+                self.select_worktree_preset(PresetId::from_uuid(uuid::Uuid::from_u128(value)), cx)
+            }
+            WorktreeArtifactAction::StartSession => self.start_worktree_session(window, cx),
+            WorktreeArtifactAction::CancelOrCloseWorktree => self.close_worktree_launch(cx),
+            WorktreeArtifactAction::SetWorktreeBase
+            | WorktreeArtifactAction::SetWorktreeBranch
+            | WorktreeArtifactAction::SelectArtifactSession(_)
+            | WorktreeArtifactAction::ImportArtifact(_)
+            | WorktreeArtifactAction::ShowArtifactList
+            | WorktreeArtifactAction::ShowArtifactGrid
+            | WorktreeArtifactAction::ConfirmArtifactImport
+            | WorktreeArtifactAction::CancelArtifactImport
+            | WorktreeArtifactAction::CancelArtifactOperation
+            | WorktreeArtifactAction::PreviewArtifact(_)
+            | WorktreeArtifactAction::ExportArtifact(_)
+            | WorktreeArtifactAction::ToggleArtifactMetadata(_)
+            | WorktreeArtifactAction::QuarantineArtifact(_)
+            | WorktreeArtifactAction::RestoreArtifact(_)
+            | WorktreeArtifactAction::RequestArtifactPurge(_)
+            | WorktreeArtifactAction::ConfirmArtifactPurge(_)
+            | WorktreeArtifactAction::CancelArtifactPurge => {}
+        }
+    }
+
     pub(super) fn open_worktree_launch(
         &mut self,
         project_id: ProjectId,
@@ -627,6 +874,7 @@ impl TermiRustApp {
             return div().into_any_element();
         };
         let busy = worktree_busy(state.stage);
+        let recording_friendly = self.activity_center.policy().recording_friendly;
         let stage = worktree_stage_message(state.stage);
         let presets = self
             .preset_library
@@ -747,19 +995,31 @@ impl TermiRustApp {
                             .when_some(inspection, |this, inspection| {
                                 this.child(review_row(
                                     localization::worktree_repository_field(),
-                                    inspection.repository_basename.clone(),
+                                    if recording_friendly {
+                                        localization::product_private_project_row()
+                                    } else {
+                                        inspection.repository_basename.clone()
+                                    },
                                 ))
                                 .child(review_row(
                                     localization::worktree_base_field(),
-                                    format!(
-                                        "{} · {}",
-                                        inspection.plan.selected_base.ref_name,
-                                        inspection.plan.selected_base.commit_oid.short()
-                                    ),
+                                    if recording_friendly {
+                                        localization::worktree_private_reference()
+                                    } else {
+                                        format!(
+                                            "{} · {}",
+                                            inspection.plan.selected_base.ref_name,
+                                            inspection.plan.selected_base.commit_oid.short()
+                                        )
+                                    },
                                 ))
                                 .child(review_row(
                                     localization::worktree_path_field(),
-                                    managed_path_preview(&inspection.plan),
+                                    if recording_friendly {
+                                        localization::worktree_private_path()
+                                    } else {
+                                        managed_path_preview(&inspection.plan)
+                                    },
                                 ))
                             })
                             .when(!state.recovering && state.stage != WorktreeLaunchStage::Registered, |this| {
@@ -844,7 +1104,11 @@ impl TermiRustApp {
                                                     preset_id.as_uuid().as_u128() as u64,
                                                 ))
                                                 .small()
-                                                .label(preset.label.as_str().to_string())
+                                                .label(if recording_friendly {
+                                                    localization::preset_private_row()
+                                                } else {
+                                                    preset.label.as_str().to_string()
+                                                })
                                                 .selected(state.selected_preset_id == Some(preset_id))
                                                 .disabled(busy)
                                                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -930,6 +1194,110 @@ impl TermiRustApp {
                     ),
             )
             .into_any_element()
+    }
+}
+
+fn worktree_button(
+    action: WorktreeArtifactAction,
+    name: MessageId,
+    disabled: bool,
+) -> WorktreeArtifactControl {
+    WorktreeArtifactControl {
+        action,
+        parent: None,
+        role: WorktreeArtifactControlRole::Button,
+        name,
+        value: None,
+        selected: false,
+        disabled,
+        invalid: false,
+    }
+}
+
+fn worktree_text_control(
+    action: WorktreeArtifactAction,
+    name: MessageId,
+    value: String,
+    disabled: bool,
+) -> WorktreeArtifactControl {
+    WorktreeArtifactControl {
+        action,
+        parent: None,
+        role: WorktreeArtifactControlRole::TextField,
+        name,
+        value: Some(value),
+        selected: false,
+        disabled,
+        invalid: false,
+    }
+}
+
+fn worktree_surface_state(state: &WorktreeLaunchUiState) -> WorktreeArtifactSurfaceState {
+    if state.recovering {
+        return if state.error.is_some() {
+            WorktreeArtifactSurfaceState::UnknownCompletion
+        } else {
+            WorktreeArtifactSurfaceState::Recovery
+        };
+    }
+    if let Some(error) = state.error.as_ref() {
+        return match error {
+            WorktreeError::FetchFailed => WorktreeArtifactSurfaceState::Offline,
+            WorktreeError::PermissionDenied => WorktreeArtifactSurfaceState::PermissionDenied,
+            WorktreeError::StorageFull => WorktreeArtifactSurfaceState::DiskFull,
+            WorktreeError::Timeout => WorktreeArtifactSurfaceState::Timeout,
+            WorktreeError::Cancelled => WorktreeArtifactSurfaceState::Cancelled,
+            WorktreeError::GitUnavailable => WorktreeArtifactSurfaceState::Unavailable,
+            WorktreeError::OutputLimit | WorktreeError::ResourceLimit { .. } => {
+                WorktreeArtifactSurfaceState::Quota
+            }
+            WorktreeError::InvalidReference
+            | WorktreeError::InvalidOid
+            | WorktreeError::InvalidPath => WorktreeArtifactSurfaceState::Malformed,
+            WorktreeError::VerificationMismatch
+            | WorktreeError::Containment
+            | WorktreeError::SymlinkSwap
+            | WorktreeError::RegistrationConflict
+            | WorktreeError::Store { .. } => WorktreeArtifactSurfaceState::Recovery,
+            WorktreeError::DirtySource
+            | WorktreeError::SubmodulesUnsupported
+            | WorktreeError::DetachedHead => WorktreeArtifactSurfaceState::RiskReview,
+            WorktreeError::InvalidRepository
+            | WorktreeError::NoBase
+            | WorktreeError::BranchCollision
+            | WorktreeError::PathCollision
+            | WorktreeError::GitFailed { .. } => WorktreeArtifactSurfaceState::Error,
+        };
+    }
+    match state.stage {
+        WorktreeLaunchStage::Inspecting => WorktreeArtifactSurfaceState::Inspecting,
+        WorktreeLaunchStage::Ready => WorktreeArtifactSurfaceState::Ready,
+        WorktreeLaunchStage::Creating => WorktreeArtifactSurfaceState::Creating,
+        WorktreeLaunchStage::Verifying | WorktreeLaunchStage::Launching => {
+            WorktreeArtifactSurfaceState::Verifying
+        }
+        WorktreeLaunchStage::Registered => WorktreeArtifactSurfaceState::Registered,
+    }
+}
+
+fn worktree_stage_message_id(stage: WorktreeLaunchStage) -> MessageId {
+    match stage {
+        WorktreeLaunchStage::Inspecting => MessageId::WorktreeStageInspecting,
+        WorktreeLaunchStage::Ready => MessageId::WorktreeStageReady,
+        WorktreeLaunchStage::Creating => MessageId::WorktreeStageCreating,
+        WorktreeLaunchStage::Verifying => MessageId::WorktreeStageVerifying,
+        WorktreeLaunchStage::Registered => MessageId::WorktreeStageRegistered,
+        WorktreeLaunchStage::Launching => MessageId::WorktreeStageLaunching,
+    }
+}
+
+fn worktree_stage_progress(stage: WorktreeLaunchStage) -> u64 {
+    match stage {
+        WorktreeLaunchStage::Inspecting => 1,
+        WorktreeLaunchStage::Creating => 2,
+        WorktreeLaunchStage::Verifying => 3,
+        WorktreeLaunchStage::Registered | WorktreeLaunchStage::Launching => 4,
+        WorktreeLaunchStage::Ready => 0,
     }
 }
 
