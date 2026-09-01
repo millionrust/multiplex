@@ -3,6 +3,9 @@ use std::fmt;
 use std::num::NonZeroU64;
 use std::time::{Duration, Instant};
 
+use crate::preset_runtime_surface::{
+    PresetRuntimeAccessibilityCommand, PresetRuntimeSemanticSnapshot,
+};
 use crate::product_session_surface::{
     ProductSessionAccessibilityCommand, ProductSessionSemanticSnapshot,
 };
@@ -435,6 +438,7 @@ pub enum ShellAccessibilityCommand {
     FocusPaletteResult(usize),
     ActivatePaletteResult(usize),
     ProductSession(ProductSessionAccessibilityCommand),
+    PresetRuntime(PresetRuntimeAccessibilityCommand),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -446,6 +450,7 @@ pub struct ShellSemanticSnapshot {
     pub selected_palette_result: usize,
     pub status_urgency: AnnouncementPolicy,
     pub product_session: Option<ProductSessionSemanticSnapshot>,
+    pub preset_runtime: Option<PresetRuntimeSemanticSnapshot>,
 }
 
 impl Default for ShellSemanticSnapshot {
@@ -458,6 +463,7 @@ impl Default for ShellSemanticSnapshot {
             selected_palette_result: 0,
             status_urgency: AnnouncementPolicy::Polite,
             product_session: None,
+            preset_runtime: None,
         }
     }
 }
@@ -515,6 +521,11 @@ impl ShellSemanticSnapshot {
             && let Some(product_session) = self.product_session.as_ref()
         {
             nodes.extend(product_session.try_nodes(shell_region_node(ShellRegionId::Content))?);
+        }
+        if !self.palette_open
+            && let Some(preset_runtime) = self.preset_runtime.as_ref()
+        {
+            nodes.extend(preset_runtime.try_nodes(shell_region_node(ShellRegionId::Content))?);
         }
 
         if self.palette_open {
@@ -592,6 +603,16 @@ impl ShellSemanticSnapshot {
                 product_session.routes().into_iter().map(|(key, command)| {
                     (key, ShellAccessibilityCommand::ProductSession(command))
                 }),
+            );
+        }
+        if !self.palette_open
+            && let Some(preset_runtime) = self.preset_runtime.as_ref()
+        {
+            routes.extend(
+                preset_runtime
+                    .routes()
+                    .into_iter()
+                    .map(|(key, command)| (key, ShellAccessibilityCommand::PresetRuntime(command))),
             );
         }
         if self.palette_open {

@@ -16,9 +16,17 @@ use termirust_domain::{
     PresetOrigin, RuntimeDetectionStatus, WorkingDirectoryRule, classify_argument_strings,
 };
 use termirust_store::{PresetRepository, PresetSnapshot, StoreError, StoreHealth};
+use termirust_ui_contract::{
+    MessageId, PresetMoveDirection, PresetPermissionChoice, PresetRuntimeAccessibilityCommand,
+    PresetRuntimeAction, PresetRuntimeControl, PresetRuntimeControlRole, PresetRuntimeRow,
+    PresetRuntimeRowId, PresetRuntimeRowKind, PresetRuntimeScreen, PresetRuntimeSemanticSnapshot,
+    PresetRuntimeSurfaceState, PresetWorkingDirectoryChoice, SemanticActionValue,
+    stable_capability_row_value, stable_runtime_row_value,
+};
 
 use super::runtimes::{
-    capability_summary, detection_status_label, executable_basename, runtime_label,
+    capability_summary, detection_status_label, executable_basename, runtime_capability_label,
+    runtime_capability_message, runtime_label,
 };
 use super::{TermiRustApp, theme};
 use crate::agents::{
@@ -521,6 +529,624 @@ impl TermiRustApp {
                 .unwrap_or_else(localization::preset_store_unavailable);
         }
         cx.notify();
+    }
+
+    pub(super) fn preset_runtime_semantic_snapshot(
+        &self,
+        cx: &Context<Self>,
+    ) -> PresetRuntimeSemanticSnapshot {
+        let snapshot = self.preset_library.snapshot.as_ref();
+        let presets = snapshot
+            .map(|snapshot| snapshot.presets.as_slice())
+            .unwrap_or_default();
+        let read_only = snapshot.is_some_and(|snapshot| snapshot.read_only);
+        let runtime_count = self
+            .preset_library
+            .scan_report
+            .as_ref()
+            .map(|report| report.entries.len())
+            .unwrap_or_else(|| known_runtime_descriptors().len());
+        let top_level_count = (presets.len() + runtime_count).max(1);
+        let editing = self
+            .preset_library
+            .editor
+            .as_ref()
+            .and_then(|editor| editor.editing_id);
+        let mut rows = presets
+            .iter()
+            .enumerate()
+            .map(|(index, preset)| {
+                let available = executable_available(&preset.executable);
+                PresetRuntimeRow {
+                    id: accessible_preset_id(preset.id),
+                    parent: None,
+                    name: preset.label.as_str().to_string(),
+                    status: preset_status_message_id(preset, available),
+                    detail: Some(format!(
+                        "{}; {}",
+                        executable_display(&preset.executable),
+                        localization::preset_argument_count(preset.args.len())
+                    )),
+                    selected: editing == Some(preset.id),
+                    disabled: read_only,
+                    checked: Some(preset.enabled),
+                    risky: preset.risk.is_risky(),
+                    stale: false,
+                    position: index + 1,
+                    set_size: top_level_count,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        if let Some(report) = self.preset_library.scan_report.as_ref() {
+            for (index, candidate) in report.entries.iter().enumerate() {
+                append_runtime_semantic_rows(
+                    &mut rows,
+                    candidate,
+                    presets.len() + index + 1,
+                    top_level_count,
+                );
+            }
+        } else {
+            for (index, descriptor) in known_runtime_descriptors().into_iter().enumerate() {
+                rows.push(PresetRuntimeRow {
+                    id: runtime_row_id(descriptor.id.as_str()),
+                    parent: None,
+                    name: runtime_label(descriptor.id.as_str()),
+                    status: MessageId::RuntimeStatusNotChecked,
+                    detail: Some(localization::runtime_registry_contract(
+                        descriptor.descriptor_version,
+                    )),
+                    selected: false,
+                    disabled: false,
+                    checked: None,
+                    risky: false,
+                    stale: false,
+                    position: presets.len() + index + 1,
+                    set_size: top_level_count,
+                });
+            }
+        }
+
+        PresetRuntimeSemanticSnapshot {
+            screen: PresetRuntimeScreen::PresetsAndRuntimes,
+            state: self.preset_runtime_surface_state(cx),
+            controls: self.preset_runtime_controls(cx),
+            rows,
+            recording_friendly: self.activity_center.policy().recording_friendly,
+        }
+    }
+
+    fn preset_runtime_surface_state(&self, cx: &Context<Self>) -> PresetRuntimeSurfaceState {
+        match self.preset_library.load_state {
+            PresetLibraryLoadState::Loading => return PresetRuntimeSurfaceState::Loading,
+            PresetLibraryLoadState::Failed(PresetStoreFailure::Corrupt) => {
+                return PresetRuntimeSurfaceState::Corrupt;
+            }
+            PresetLibraryLoadState::Failed(PresetStoreFailure::Newer) => {
+                return PresetRuntimeSurfaceState::NewerFormat;
+            }
+            PresetLibraryLoadState::Failed(PresetStoreFailure::Unavailable) => {
+                return PresetRuntimeSurfaceState::Unavailable;
+            }
+            PresetLibraryLoadState::Ready => {}
+        }
+        if self.preset_library.scan_cancel.is_some() {
+            return PresetRuntimeSurfaceState::Scanning;
+        }
+        if let Some(editor) = self.preset_library.editor.as_ref() {
+            let args = self
+                .preset_argument_inputs
+                .iter()
+                .map(|input| input.read(cx).value().to_string())
+                .collect::<Vec<_>>();
+            if classify_argument_strings(editor.runtime.as_deref(), &args).is_risky() {
+                return PresetRuntimeSurfaceState::RiskReview;
+            }
+        }
+        if let Some(report) = self.preset_library.scan_report.as_ref() {
+            if report.cancelled {
+                return PresetRuntimeSurfaceState::Cancelled;
+            }
+            if report
+                .entries
+                .iter()
+                .any(|entry| entry.result.status == RuntimeDetectionStatus::PermissionDenied)
+            {
+                return PresetRuntimeSurfaceState::PermissionDenied;
+            }
+            if report
+                .entries
+                .iter()
+                .any(|entry| entry.result.diagnostic_code.as_deref() == Some("timeout"))
+            {
+                return PresetRuntimeSurfaceState::Timeout;
+            }
+            if report
+                .entries
+                .iter()
+                .any(|entry| entry.result.diagnostic_code.as_deref() == Some("malformed-version"))
+            {
+                return PresetRuntimeSurfaceState::Malformed;
+            }
+            if report.partial {
+                return PresetRuntimeSurfaceState::Partial;
+            }
+            if !report.entries.is_empty()
+                && report.entries.iter().all(|entry| {
+                    entry.result.status != RuntimeDetectionStatus::Available
+                        || entry.result.capabilities.is_empty()
+                })
+            {
+                return PresetRuntimeSurfaceState::Unsupported;
+            }
+        }
+        if self
+            .preset_library
+            .snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.health == StoreHealth::RecoveredLastGood)
+        {
+            return PresetRuntimeSurfaceState::Recovery;
+        }
+        if self
+            .preset_library
+            .snapshot
+            .as_ref()
+            .is_none_or(|snapshot| snapshot.presets.is_empty())
+        {
+            PresetRuntimeSurfaceState::Empty
+        } else {
+            PresetRuntimeSurfaceState::Ready
+        }
+    }
+
+    fn preset_runtime_controls(&self, cx: &Context<Self>) -> Vec<PresetRuntimeControl> {
+        if matches!(
+            self.preset_library.load_state,
+            PresetLibraryLoadState::Failed(_)
+        ) {
+            return vec![preset_runtime_button(
+                PresetRuntimeAction::RetryStore,
+                MessageId::CommonRetry,
+                None,
+            )];
+        }
+
+        let snapshot = self.preset_library.snapshot.as_ref();
+        let read_only = snapshot.is_some_and(|snapshot| snapshot.read_only);
+        let scanning = self.preset_library.scan_cancel.is_some();
+        let mut controls = vec![preset_runtime_button(
+            if scanning {
+                PresetRuntimeAction::CancelScan
+            } else {
+                PresetRuntimeAction::StartScan
+            },
+            if scanning {
+                MessageId::CommonCancel
+            } else {
+                MessageId::PresetsScanAction
+            },
+            None,
+        )];
+        controls.push(preset_runtime_button(
+            PresetRuntimeAction::AddPreset,
+            MessageId::PresetsAddAction,
+            None,
+        ));
+        controls.last_mut().expect("add control exists").disabled = read_only;
+
+        if let Some(report) = self.preset_library.scan_report.as_ref() {
+            for candidate in &report.entries {
+                let row = runtime_row_id(candidate.result.runtime_id.as_str());
+                let mut control = preset_runtime_button(
+                    PresetRuntimeAction::AcceptRuntime(row),
+                    MessageId::PresetAcceptAction,
+                    Some(row),
+                );
+                control.disabled = scanning
+                    || read_only
+                    || candidate.result.status != RuntimeDetectionStatus::Available
+                    || candidate.result.capabilities.is_empty()
+                    || candidate.executable.is_none()
+                    || self.preset_exists_for(candidate);
+                controls.push(control);
+            }
+        }
+
+        if let Some(snapshot) = snapshot {
+            for (index, preset) in snapshot.presets.iter().enumerate() {
+                let row = accessible_preset_id(preset.id);
+                let actions = [
+                    (
+                        PresetRuntimeAction::MovePreset(row, PresetMoveDirection::Up),
+                        MessageId::PresetMoveUpAction,
+                        index == 0,
+                    ),
+                    (
+                        PresetRuntimeAction::MovePreset(row, PresetMoveDirection::Down),
+                        MessageId::PresetMoveDownAction,
+                        index + 1 == snapshot.presets.len(),
+                    ),
+                    (
+                        PresetRuntimeAction::TogglePresetEnabled(row),
+                        MessageId::PresetEnabledField,
+                        false,
+                    ),
+                    (
+                        PresetRuntimeAction::TogglePresetFavorite(row),
+                        MessageId::PresetFavoriteField,
+                        preset.risk.is_risky() && !preset.favorite,
+                    ),
+                    (
+                        PresetRuntimeAction::EditPreset(row),
+                        MessageId::PresetEditAction,
+                        false,
+                    ),
+                    (
+                        PresetRuntimeAction::DeletePreset(row),
+                        MessageId::PresetDeleteAction,
+                        false,
+                    ),
+                ];
+                for (action, name, unavailable) in actions {
+                    let mut control = preset_runtime_button(action, name, Some(row));
+                    control.disabled = read_only || unavailable;
+                    control.selected = match action {
+                        PresetRuntimeAction::TogglePresetEnabled(_) => preset.enabled,
+                        PresetRuntimeAction::TogglePresetFavorite(_) => preset.favorite,
+                        _ => false,
+                    };
+                    controls.push(control);
+                }
+            }
+        }
+
+        if let Some(editor) = self.preset_library.editor.as_ref() {
+            controls.extend(self.preset_editor_semantic_controls(editor, cx));
+        }
+        controls
+    }
+
+    fn preset_editor_semantic_controls(
+        &self,
+        editor: &PresetEditorState,
+        cx: &Context<Self>,
+    ) -> Vec<PresetRuntimeControl> {
+        let mut controls = vec![
+            preset_runtime_text_field(
+                PresetRuntimeAction::SetPresetLabel,
+                MessageId::PresetLabelField,
+                self.preset_label_input.read(cx).value().to_string(),
+            ),
+            preset_runtime_text_field(
+                PresetRuntimeAction::SetPresetExecutable,
+                MessageId::PresetExecutableField,
+                self.preset_executable_input.read(cx).value().to_string(),
+            ),
+        ];
+        for (index, input) in self.preset_argument_inputs.iter().enumerate() {
+            controls.push(preset_runtime_text_field(
+                PresetRuntimeAction::SetPresetArgument(index),
+                MessageId::PresetArgumentsField,
+                input.read(cx).value().to_string(),
+            ));
+            controls.push(preset_runtime_button(
+                PresetRuntimeAction::RemovePresetArgument(index),
+                MessageId::PresetArgumentRemove,
+                None,
+            ));
+        }
+        let mut add_argument = preset_runtime_button(
+            PresetRuntimeAction::AddPresetArgument,
+            MessageId::PresetArgumentAdd,
+            None,
+        );
+        add_argument.disabled =
+            self.preset_argument_inputs.len() >= termirust_domain::MAX_ARGUMENTS;
+        controls.push(add_argument);
+
+        for (choice, name, selected) in [
+            (
+                PresetWorkingDirectoryChoice::ProjectRoot,
+                MessageId::PresetWorkingProjectRoot,
+                editor.working_choice == PresetWorkingChoice::ProjectRoot,
+            ),
+            (
+                PresetWorkingDirectoryChoice::PlatformHome,
+                MessageId::PresetWorkingHome,
+                editor.working_choice == PresetWorkingChoice::PlatformHome,
+            ),
+            (
+                PresetWorkingDirectoryChoice::ContainedSubdirectory,
+                MessageId::PresetWorkingSubdirectory,
+                editor.working_choice == PresetWorkingChoice::ContainedSubdirectory,
+            ),
+        ] {
+            controls.push(preset_runtime_choice(
+                PresetRuntimeAction::SelectWorkingDirectory(choice),
+                name,
+                selected,
+            ));
+        }
+        if editor.working_choice == PresetWorkingChoice::ContainedSubdirectory {
+            controls.push(preset_runtime_text_field(
+                PresetRuntimeAction::SetPresetSubdirectory,
+                MessageId::PresetSubdirectoryField,
+                self.preset_subdirectory_input.read(cx).value().to_string(),
+            ));
+        }
+        for (choice, name, selected) in [
+            (
+                PresetPermissionChoice::AskAsNeeded,
+                MessageId::PresetPermissionAsk,
+                editor.permission_policy == PermissionPolicy::AskAsNeeded,
+            ),
+            (
+                PresetPermissionChoice::ReadOnly,
+                MessageId::PresetPermissionReadOnly,
+                editor.permission_policy == PermissionPolicy::ReadOnly,
+            ),
+            (
+                PresetPermissionChoice::WorkspaceWrite,
+                MessageId::PresetPermissionWorkspaceWrite,
+                editor.permission_policy == PermissionPolicy::WorkspaceWrite,
+            ),
+        ] {
+            controls.push(preset_runtime_choice(
+                PresetRuntimeAction::SelectPermission(choice),
+                name,
+                selected,
+            ));
+        }
+        controls.push(preset_runtime_checkbox(
+            PresetRuntimeAction::ToggleEditorEnabled,
+            MessageId::PresetEnabledField,
+            editor.enabled,
+            false,
+        ));
+        controls.push(preset_runtime_checkbox(
+            PresetRuntimeAction::ToggleEditorFavorite,
+            MessageId::PresetFavoriteField,
+            editor.favorite,
+            false,
+        ));
+
+        let args = self
+            .preset_argument_inputs
+            .iter()
+            .map(|input| input.read(cx).value().to_string())
+            .collect::<Vec<_>>();
+        let risky = classify_argument_strings(editor.runtime.as_deref(), &args).is_risky();
+        if risky {
+            controls.push(preset_runtime_checkbox(
+                PresetRuntimeAction::ConfirmRisk,
+                MessageId::PresetRiskConfirmField,
+                editor.confirm_risky_favorite,
+                !editor.confirm_risky_favorite,
+            ));
+        }
+        let mut save = preset_runtime_button(
+            PresetRuntimeAction::SavePreset,
+            MessageId::PresetSaveAction,
+            None,
+        );
+        save.disabled = risky && editor.favorite && !editor.confirm_risky_favorite;
+        controls.push(save);
+        controls.push(preset_runtime_button(
+            PresetRuntimeAction::CancelPreset,
+            MessageId::CommonCancel,
+            None,
+        ));
+        controls
+    }
+
+    pub(super) fn handle_preset_runtime_accessibility_command(
+        &mut self,
+        command: PresetRuntimeAccessibilityCommand,
+        value: Option<SemanticActionValue>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match command {
+            PresetRuntimeAccessibilityCommand::FocusRow(_) => {
+                self.preset_list_focus.focus(window);
+            }
+            PresetRuntimeAccessibilityCommand::ActivateRow(row) => {
+                if let Some(id) = accessible_preset_row_id(row)
+                    && self.preset_exists(id)
+                {
+                    self.edit_preset(id, window, cx);
+                }
+            }
+            PresetRuntimeAccessibilityCommand::FocusControl(action) => match action {
+                PresetRuntimeAction::SetPresetLabel => self
+                    .preset_label_input
+                    .update(cx, |input, cx| input.focus(window, cx)),
+                PresetRuntimeAction::SetPresetExecutable => self
+                    .preset_executable_input
+                    .update(cx, |input, cx| input.focus(window, cx)),
+                PresetRuntimeAction::SetPresetSubdirectory => self
+                    .preset_subdirectory_input
+                    .update(cx, |input, cx| input.focus(window, cx)),
+                PresetRuntimeAction::SetPresetArgument(index) => {
+                    if let Some(input) = self.preset_argument_inputs.get(index) {
+                        input.update(cx, |input, cx| input.focus(window, cx));
+                    }
+                }
+                _ => self.preset_list_focus.focus(window),
+            },
+            PresetRuntimeAccessibilityCommand::SetControlValue(action) => {
+                let Some(SemanticActionValue::Text(value)) = value else {
+                    return;
+                };
+                if self.preset_library.editor.is_none() {
+                    return;
+                }
+                match action {
+                    PresetRuntimeAction::SetPresetLabel => {
+                        Self::set_input_value(&self.preset_label_input, value, window, cx);
+                    }
+                    PresetRuntimeAction::SetPresetExecutable => {
+                        Self::set_input_value(&self.preset_executable_input, value, window, cx);
+                    }
+                    PresetRuntimeAction::SetPresetSubdirectory => {
+                        Self::set_input_value(&self.preset_subdirectory_input, value, window, cx);
+                    }
+                    PresetRuntimeAction::SetPresetArgument(index) => {
+                        if let Some(input) = self.preset_argument_inputs.get(index).cloned() {
+                            Self::set_input_value(&input, value, window, cx);
+                        }
+                    }
+                    _ => return,
+                }
+                cx.notify();
+            }
+            PresetRuntimeAccessibilityCommand::ActivateControl(action) => {
+                self.activate_preset_runtime_control(action, window, cx);
+            }
+        }
+    }
+
+    fn activate_preset_runtime_control(
+        &mut self,
+        action: PresetRuntimeAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match action {
+            PresetRuntimeAction::RetryStore => self.retry_preset_library(window, cx),
+            PresetRuntimeAction::StartScan => self.start_preset_scan(true, window, cx),
+            PresetRuntimeAction::CancelScan => self.cancel_preset_scan(cx),
+            PresetRuntimeAction::AddPreset => self.open_new_preset(window, cx),
+            PresetRuntimeAction::AcceptRuntime(row) => {
+                if row.kind != PresetRuntimeRowKind::Runtime {
+                    return;
+                }
+                let candidate = self
+                    .preset_library
+                    .scan_report
+                    .as_ref()
+                    .and_then(|report| {
+                        report.entries.iter().find(|candidate| {
+                            runtime_row_id(candidate.result.runtime_id.as_str()) == row
+                        })
+                    })
+                    .cloned();
+                if let Some(candidate) = candidate {
+                    self.accept_detected_preset(candidate, cx);
+                }
+            }
+            PresetRuntimeAction::MovePreset(row, direction) => {
+                if let Some(id) = accessible_preset_row_id(row)
+                    && self.preset_exists(id)
+                {
+                    self.move_preset(
+                        id,
+                        if direction == PresetMoveDirection::Up {
+                            -1
+                        } else {
+                            1
+                        },
+                        cx,
+                    );
+                }
+            }
+            PresetRuntimeAction::TogglePresetEnabled(row) => {
+                if let Some(id) = accessible_preset_row_id(row)
+                    && let Some(preset) = self.preset(id)
+                {
+                    self.update_preset_flags(id, Some(!preset.enabled), None, cx);
+                }
+            }
+            PresetRuntimeAction::TogglePresetFavorite(row) => {
+                if let Some(id) = accessible_preset_row_id(row)
+                    && let Some(preset) = self.preset(id)
+                {
+                    self.update_preset_flags(id, None, Some(!preset.favorite), cx);
+                }
+            }
+            PresetRuntimeAction::EditPreset(row) => {
+                if let Some(id) = accessible_preset_row_id(row)
+                    && self.preset_exists(id)
+                {
+                    self.edit_preset(id, window, cx);
+                }
+            }
+            PresetRuntimeAction::DeletePreset(row) => {
+                if let Some(id) = accessible_preset_row_id(row)
+                    && self.preset_exists(id)
+                {
+                    self.delete_preset(id, cx);
+                }
+            }
+            PresetRuntimeAction::AddPresetArgument => self.add_preset_argument(window, cx),
+            PresetRuntimeAction::RemovePresetArgument(index) => {
+                self.remove_preset_argument(index, cx);
+            }
+            PresetRuntimeAction::SelectWorkingDirectory(choice) => {
+                if let Some(editor) = self.preset_library.editor.as_mut() {
+                    editor.working_choice = match choice {
+                        PresetWorkingDirectoryChoice::ProjectRoot => {
+                            PresetWorkingChoice::ProjectRoot
+                        }
+                        PresetWorkingDirectoryChoice::PlatformHome => {
+                            PresetWorkingChoice::PlatformHome
+                        }
+                        PresetWorkingDirectoryChoice::ContainedSubdirectory => {
+                            PresetWorkingChoice::ContainedSubdirectory
+                        }
+                    };
+                    cx.notify();
+                }
+            }
+            PresetRuntimeAction::SelectPermission(choice) => {
+                if let Some(editor) = self.preset_library.editor.as_mut() {
+                    editor.permission_policy = match choice {
+                        PresetPermissionChoice::AskAsNeeded => PermissionPolicy::AskAsNeeded,
+                        PresetPermissionChoice::ReadOnly => PermissionPolicy::ReadOnly,
+                        PresetPermissionChoice::WorkspaceWrite => PermissionPolicy::WorkspaceWrite,
+                    };
+                    cx.notify();
+                }
+            }
+            PresetRuntimeAction::ToggleEditorEnabled => {
+                if let Some(editor) = self.preset_library.editor.as_mut() {
+                    editor.enabled = !editor.enabled;
+                    cx.notify();
+                }
+            }
+            PresetRuntimeAction::ToggleEditorFavorite => {
+                if let Some(editor) = self.preset_library.editor.as_mut() {
+                    editor.favorite = !editor.favorite;
+                    cx.notify();
+                }
+            }
+            PresetRuntimeAction::ConfirmRisk => {
+                if let Some(editor) = self.preset_library.editor.as_mut() {
+                    editor.confirm_risky_favorite = !editor.confirm_risky_favorite;
+                    cx.notify();
+                }
+            }
+            PresetRuntimeAction::SavePreset => self.save_preset_editor(cx),
+            PresetRuntimeAction::CancelPreset => self.cancel_preset_editor(cx),
+            PresetRuntimeAction::SetPresetLabel
+            | PresetRuntimeAction::SetPresetExecutable
+            | PresetRuntimeAction::SetPresetArgument(_)
+            | PresetRuntimeAction::SetPresetSubdirectory => {}
+        }
+    }
+
+    fn preset(&self, id: PresetId) -> Option<LaunchPreset> {
+        self.preset_library
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.presets.iter().find(|preset| preset.id == id))
+            .cloned()
+    }
+
+    fn preset_exists(&self, id: PresetId) -> bool {
+        self.preset(id).is_some()
     }
 
     pub(super) fn render_presets_view(&self, cx: &Context<Self>) -> AnyElement {
@@ -1293,6 +1919,11 @@ impl TermiRustApp {
                         Button::new("preset-save")
                             .primary()
                             .label(localization::preset_save_action())
+                            .disabled(
+                                risk.is_risky()
+                                    && editor.favorite
+                                    && !editor.confirm_risky_favorite,
+                            )
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.save_preset_editor(cx);
                             })),
@@ -1306,6 +1937,159 @@ impl TermiRustApp {
                     ),
             )
             .into_any_element()
+    }
+}
+
+fn accessible_preset_id(id: PresetId) -> PresetRuntimeRowId {
+    PresetRuntimeRowId::preset(id.as_uuid().as_u128())
+}
+
+fn accessible_preset_row_id(row: PresetRuntimeRowId) -> Option<PresetId> {
+    (row.kind == PresetRuntimeRowKind::Preset)
+        .then(|| PresetId::from_uuid(uuid::Uuid::from_u128(row.value)))
+}
+
+fn runtime_row_id(runtime_id: &str) -> PresetRuntimeRowId {
+    PresetRuntimeRowId::runtime(stable_runtime_row_value(runtime_id))
+}
+
+fn runtime_detection_message_id(status: RuntimeDetectionStatus) -> MessageId {
+    match status {
+        RuntimeDetectionStatus::Available => MessageId::PresetStatusSupported,
+        RuntimeDetectionStatus::UnsupportedVersion => MessageId::PresetStatusUnsupported,
+        RuntimeDetectionStatus::Missing => MessageId::PresetStatusMissing,
+        RuntimeDetectionStatus::PermissionDenied => MessageId::PresetStatusPermission,
+        RuntimeDetectionStatus::Partial => MessageId::PresetStatusFailed,
+    }
+}
+
+fn preset_status_message_id(preset: &LaunchPreset, executable_available: bool) -> MessageId {
+    if preset.risk.is_risky() {
+        MessageId::PresetStatusRisky
+    } else if !preset.enabled {
+        MessageId::PresetStatusDisabled
+    } else if executable_available {
+        MessageId::PresetStatusSupported
+    } else {
+        MessageId::PresetStatusMissing
+    }
+}
+
+fn append_runtime_semantic_rows(
+    rows: &mut Vec<PresetRuntimeRow>,
+    candidate: &RuntimeDiscoveryEntry,
+    position: usize,
+    set_size: usize,
+) {
+    let runtime_id = candidate.result.runtime_id.as_str();
+    let runtime_row = runtime_row_id(runtime_id);
+    let capabilities = candidate.result.capabilities.iter().collect::<Vec<_>>();
+    rows.push(PresetRuntimeRow {
+        id: runtime_row,
+        parent: None,
+        name: runtime_label(runtime_id),
+        status: runtime_detection_message_id(candidate.result.status),
+        detail: Some(
+            candidate
+                .result
+                .safe_version
+                .clone()
+                .unwrap_or_else(localization::runtime_version_unverified),
+        ),
+        selected: false,
+        disabled: candidate.result.status != RuntimeDetectionStatus::Available,
+        checked: Some(!capabilities.is_empty()),
+        risky: false,
+        stale: false,
+        position,
+        set_size,
+    });
+    let capability_count = capabilities.len().max(1);
+    for (index, capability) in capabilities.into_iter().enumerate() {
+        let message = runtime_capability_message(capability);
+        rows.push(PresetRuntimeRow {
+            id: PresetRuntimeRowId::capability(stable_capability_row_value(runtime_id, message)),
+            parent: Some(runtime_row),
+            name: runtime_capability_label(capability),
+            status: MessageId::RuntimeConfidenceVerified,
+            detail: None,
+            selected: false,
+            disabled: false,
+            checked: Some(true),
+            risky: false,
+            stale: false,
+            position: index + 1,
+            set_size: capability_count,
+        });
+    }
+}
+
+fn preset_runtime_button(
+    action: PresetRuntimeAction,
+    name: MessageId,
+    parent: Option<PresetRuntimeRowId>,
+) -> PresetRuntimeControl {
+    PresetRuntimeControl {
+        action,
+        parent,
+        role: PresetRuntimeControlRole::Button,
+        name,
+        value: None,
+        selected: false,
+        disabled: false,
+        invalid: false,
+    }
+}
+
+fn preset_runtime_text_field(
+    action: PresetRuntimeAction,
+    name: MessageId,
+    value: String,
+) -> PresetRuntimeControl {
+    PresetRuntimeControl {
+        action,
+        parent: None,
+        role: PresetRuntimeControlRole::TextField,
+        name,
+        value: Some(value),
+        selected: false,
+        disabled: false,
+        invalid: false,
+    }
+}
+
+fn preset_runtime_choice(
+    action: PresetRuntimeAction,
+    name: MessageId,
+    selected: bool,
+) -> PresetRuntimeControl {
+    PresetRuntimeControl {
+        action,
+        parent: None,
+        role: PresetRuntimeControlRole::RadioButton,
+        name,
+        value: None,
+        selected,
+        disabled: false,
+        invalid: false,
+    }
+}
+
+fn preset_runtime_checkbox(
+    action: PresetRuntimeAction,
+    name: MessageId,
+    selected: bool,
+    invalid: bool,
+) -> PresetRuntimeControl {
+    PresetRuntimeControl {
+        action,
+        parent: None,
+        role: PresetRuntimeControlRole::Checkbox,
+        name,
+        value: None,
+        selected,
+        disabled: false,
+        invalid,
     }
 }
 

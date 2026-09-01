@@ -21,13 +21,18 @@ use termirust_domain::{
 use termirust_store::{RecoveryResult, SessionRemovalPlan, StoreError};
 use termirust_ui_contract::{
     AccessibleCollectionRow, AccessibleRowId, DestructiveActionKind, DestructiveActionPresentation,
-    HierarchyLevel, MessageId, ProductControlRole, ProductMoveDirection,
-    ProductSessionAccessibilityCommand, ProductSessionAction, ProductSessionControl,
-    ProductSessionScreen, ProductSessionSemanticSnapshot, ProductSessionSurfaceState,
-    SemanticActionValue,
+    HierarchyLevel, MessageId, PresetRuntimeRow, PresetRuntimeRowId, PresetRuntimeScreen,
+    PresetRuntimeSemanticSnapshot, PresetRuntimeSurfaceState, ProductControlRole,
+    ProductMoveDirection, ProductSessionAccessibilityCommand, ProductSessionAction,
+    ProductSessionControl, ProductSessionScreen, ProductSessionSemanticSnapshot,
+    ProductSessionSurfaceState, SemanticActionValue, stable_capability_row_value,
+    stable_runtime_row_value,
 };
 
-use super::runtimes::runtime_inspector_projection;
+use super::runtimes::{
+    runtime_capability_label, runtime_capability_message, runtime_inspector_projection,
+    runtime_label,
+};
 use super::session_coordinator::PendingArchiveAction;
 use super::session_library::{SessionLibraryFilter, SessionLibraryRecovery, SessionLibraryView};
 use super::session_resume::{resume_error_message, session_resume_projection};
@@ -1025,6 +1030,102 @@ impl TermiRustApp {
             .iter()
             .filter(|session| session.group_id == Some(id))
             .count()
+    }
+
+    pub(super) fn runtime_inspector_semantic_snapshot(
+        &self,
+    ) -> Option<PresetRuntimeSemanticSnapshot> {
+        let selected = self.session_sidebar.selected_session?;
+        let session = self
+            .saved
+            .app_attached_sessions
+            .iter()
+            .find(|session| session.id == selected)?;
+        if session.route != termirust_domain::SessionLaunchRoute::DurableHost {
+            return None;
+        }
+        let recognition = session
+            .durable_host
+            .as_ref()
+            .and_then(|host| host.runtime_recognition.as_ref());
+        let projection = runtime_inspector_projection(recognition);
+        let occupant = recognition.and_then(|recognition| recognition.occupant.as_ref());
+        let runtime_id = occupant
+            .map(|occupant| occupant.runtime_id.as_str())
+            .unwrap_or("generic");
+        let runtime_row = PresetRuntimeRowId::runtime(stable_runtime_row_value(runtime_id));
+        let capabilities = occupant
+            .map(|occupant| occupant.effective_capabilities().iter().collect::<Vec<_>>())
+            .unwrap_or_default();
+        let confidence = recognition
+            .map(|recognition| recognition.confidence)
+            .unwrap_or(termirust_domain::RecognitionConfidence::Uncertain);
+        let confidence_message = match confidence {
+            termirust_domain::RecognitionConfidence::Verified => {
+                MessageId::RuntimeConfidenceVerified
+            }
+            termirust_domain::RecognitionConfidence::Observed => {
+                MessageId::RuntimeConfidenceObserved
+            }
+            termirust_domain::RecognitionConfidence::Uncertain => {
+                MessageId::RuntimeConfidenceUncertain
+            }
+        };
+        let mut rows = vec![PresetRuntimeRow {
+            id: runtime_row,
+            parent: None,
+            name: runtime_label(runtime_id),
+            status: confidence_message,
+            detail: Some(format!(
+                "{}; {}; {}; {}",
+                projection.version,
+                projection.ownership,
+                projection.confidence,
+                projection.generation
+            )),
+            selected: true,
+            disabled: occupant.is_none(),
+            checked: Some(!capabilities.is_empty()),
+            risky: false,
+            stale: projection.stale,
+            position: 1,
+            set_size: 1,
+        }];
+        let capability_count = capabilities.len().max(1);
+        for (index, capability) in capabilities.into_iter().enumerate() {
+            let message = runtime_capability_message(capability);
+            rows.push(PresetRuntimeRow {
+                id: PresetRuntimeRowId::capability(stable_capability_row_value(
+                    runtime_id, message,
+                )),
+                parent: Some(runtime_row),
+                name: runtime_capability_label(capability),
+                status: confidence_message,
+                detail: None,
+                selected: false,
+                disabled: false,
+                checked: Some(true),
+                risky: false,
+                stale: projection.stale,
+                position: index + 1,
+                set_size: capability_count,
+            });
+        }
+        Some(PresetRuntimeSemanticSnapshot {
+            screen: PresetRuntimeScreen::RuntimeInspector,
+            state: if occupant.is_none() {
+                PresetRuntimeSurfaceState::Unsupported
+            } else if projection.stale
+                || confidence != termirust_domain::RecognitionConfidence::Verified
+            {
+                PresetRuntimeSurfaceState::Partial
+            } else {
+                PresetRuntimeSurfaceState::Ready
+            },
+            rows,
+            controls: Vec::new(),
+            recording_friendly: self.activity_center.policy().recording_friendly,
+        })
     }
 
     pub(super) fn product_session_semantic_snapshot(

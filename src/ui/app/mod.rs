@@ -1672,6 +1672,23 @@ impl TermiRustApp {
                         cx,
                     );
                 }
+                ShellAccessibilityCommand::PresetRuntime(command) => match self.nav_section {
+                    NavSection::Presets => self.handle_preset_runtime_accessibility_command(
+                        command,
+                        event.value,
+                        window,
+                        cx,
+                    ),
+                    NavSection::Sessions
+                        if matches!(
+                            command,
+                            termirust_ui_contract::PresetRuntimeAccessibilityCommand::FocusRow(_)
+                        ) =>
+                    {
+                        self.project_list_focus.focus(window);
+                    }
+                    _ => {}
+                },
             }
         }
     }
@@ -11814,6 +11831,11 @@ impl Render for TermiRustApp {
             0
         };
         let product_session = self.product_session_semantic_snapshot(cx);
+        let preset_runtime = match self.nav_section {
+            NavSection::Presets => Some(self.preset_runtime_semantic_snapshot(cx)),
+            NavSection::Sessions => self.runtime_inspector_semantic_snapshot(),
+            _ => None,
+        };
         self.shell_accessibility.sync(ShellSemanticSnapshot {
             generation: 1,
             inspector_visible: self.show_editor_panel,
@@ -11826,6 +11848,7 @@ impl Render for TermiRustApp {
                 AnnouncementPolicy::Immediate
             },
             product_session,
+            preset_runtime,
         });
 
         // When the active workspace changes, scroll the tab strip so the
@@ -22015,14 +22038,53 @@ sleep 1
             .update(cx, |_, window, cx| {
                 app.update(cx, |app, cx| {
                     app.activate_library_section(NavSection::Presets, window, cx);
-                    app.open_new_preset(window, cx);
-                    let label = app.preset_label_input.clone();
-                    let executable = app.preset_executable_input.clone();
-                    let argument = app.preset_argument_inputs[0].clone();
-                    TermiRustApp::set_input_value(&label, "Literal Codex", window, cx);
-                    TermiRustApp::set_input_value(&executable, "codex", window, cx);
-                    TermiRustApp::set_input_value(&argument, "$(touch must-not-run)", window, cx);
-                    app.save_preset_editor(cx);
+                    let activate = |action| {
+                        termirust_ui_contract::PresetRuntimeAccessibilityCommand::ActivateControl(
+                            action,
+                        )
+                    };
+                    app.handle_preset_runtime_accessibility_command(
+                        activate(termirust_ui_contract::PresetRuntimeAction::AddPreset),
+                        None,
+                        window,
+                        cx,
+                    );
+                    for (action, value) in [
+                        (
+                            termirust_ui_contract::PresetRuntimeAction::SetPresetLabel,
+                            "Literal Codex",
+                        ),
+                        (
+                            termirust_ui_contract::PresetRuntimeAction::SetPresetExecutable,
+                            "codex",
+                        ),
+                        (
+                            termirust_ui_contract::PresetRuntimeAction::SetPresetArgument(0),
+                            "$(touch must-not-run)",
+                        ),
+                    ] {
+                        app.handle_preset_runtime_accessibility_command(
+                            termirust_ui_contract::PresetRuntimeAccessibilityCommand::SetControlValue(
+                                action,
+                            ),
+                            Some(termirust_ui_contract::SemanticActionValue::Text(
+                                value.to_string(),
+                            )),
+                            window,
+                            cx,
+                        );
+                    }
+                    let semantic = app.preset_runtime_semantic_snapshot(cx);
+                    assert!(semantic.controls.iter().any(|control| {
+                        control.action == termirust_ui_contract::PresetRuntimeAction::SavePreset
+                            && !control.disabled
+                    }));
+                    app.handle_preset_runtime_accessibility_command(
+                        activate(termirust_ui_contract::PresetRuntimeAction::SavePreset),
+                        None,
+                        window,
+                        cx,
+                    );
                 })
             })
             .expect("window update should succeed");
@@ -22262,11 +22324,36 @@ sleep 1
                 updated_at: 1,
             }
         };
-        let active_durable = make_session(
+        let mut active_durable = make_session(
             termirust_domain::SessionLaunchRoute::DurableHost,
             "Alpha",
             false,
         );
+        let host_instance = termirust_domain::HostInstanceId::new();
+        active_durable
+            .durable_host
+            .as_mut()
+            .expect("durable fixture has Host metadata")
+            .runtime_recognition = Some(termirust_domain::RuntimeRecognition {
+            occupant: Some(termirust_domain::RuntimeOccupant {
+                runtime_id: termirust_domain::RuntimeId::new("codex").unwrap(),
+                descriptor_version: 1,
+                safe_version: Some("1.0.7".to_string()),
+                executable_fingerprint: None,
+                generation: termirust_domain::OccupantGeneration::new(4),
+                ownership: termirust_domain::OccupantOwnership::Managed {
+                    host_instance,
+                    child_token: termirust_domain::ProcessToken::new(host_instance, 42, 4),
+                },
+                capabilities: termirust_domain::RuntimeCapabilitySet::new([
+                    termirust_domain::RuntimeCapability::InteractivePty,
+                    termirust_domain::RuntimeCapability::Cancellation,
+                ]),
+                stale: false,
+            }),
+            confidence: termirust_domain::RecognitionConfidence::Verified,
+            observed_at_nanos: 7,
+        });
         let active_durable_id = active_durable.id;
         let active_attached = make_session(
             termirust_domain::SessionLaunchRoute::LegacyAppAttached,
@@ -22344,6 +22431,24 @@ sleep 1
                     assert_eq!(
                         app.session_sidebar.selected_session,
                         Some(active_durable_id)
+                    );
+                    let runtime = app
+                        .runtime_inspector_semantic_snapshot()
+                        .expect("selected managed runtime should expose inspector semantics");
+                    assert_eq!(
+                        runtime.screen,
+                        termirust_ui_contract::PresetRuntimeScreen::RuntimeInspector
+                    );
+                    assert_eq!(
+                        runtime
+                            .rows
+                            .iter()
+                            .filter(|row| {
+                                row.id.kind
+                                    == termirust_ui_contract::PresetRuntimeRowKind::Capability
+                            })
+                            .count(),
+                        2
                     );
                     app.handle_product_session_accessibility_command(
                         termirust_ui_contract::ProductSessionAccessibilityCommand::ActivateControl(

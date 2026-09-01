@@ -4,6 +4,7 @@ pub mod generated;
 pub mod lint;
 pub mod localization_lint;
 pub mod messages;
+pub mod preset_runtime_surface;
 pub mod product_session_surface;
 pub mod semantics;
 pub mod shell_surface;
@@ -15,6 +16,7 @@ pub use contract::{
 };
 pub use generated::*;
 pub use messages::*;
+pub use preset_runtime_surface::*;
 pub use product_session_surface::*;
 pub use semantics::*;
 pub use shell_surface::*;

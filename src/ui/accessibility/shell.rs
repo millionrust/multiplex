@@ -169,6 +169,23 @@ fn semantic_shape(snapshot: &ShellSemanticSnapshot) -> u64 {
             })
             .hash(&mut hasher);
     }
+    if let Some(preset_runtime) = snapshot.preset_runtime.as_ref() {
+        preset_runtime.screen.hash(&mut hasher);
+        preset_runtime.state.hash(&mut hasher);
+        for row in &preset_runtime.rows {
+            row.id.hash(&mut hasher);
+            row.parent.hash(&mut hasher);
+            row.disabled.hash(&mut hasher);
+            row.risky.hash(&mut hasher);
+            row.stale.hash(&mut hasher);
+        }
+        for control in &preset_runtime.controls {
+            control.action.hash(&mut hasher);
+            control.role.hash(&mut hasher);
+            control.disabled.hash(&mut hasher);
+            control.invalid.hash(&mut hasher);
+        }
+    }
     hasher.finish()
 }
 
@@ -183,7 +200,9 @@ mod tests {
     use super::*;
     use termirust_ui_contract::{
         AccessibleRowId, DestructiveActionKind, DestructiveActionPresentation, MessageId,
-        ProductControlRole, ProductSessionAction, ProductSessionControl, ProductSessionScreen,
+        PresetRuntimeAction, PresetRuntimeControl, PresetRuntimeControlRole, PresetRuntimeScreen,
+        PresetRuntimeSemanticSnapshot, PresetRuntimeSurfaceState, ProductControlRole,
+        ProductSessionAction, ProductSessionControl, ProductSessionScreen,
         ProductSessionSemanticSnapshot, ProductSessionSurfaceState,
     };
 
@@ -220,5 +239,32 @@ mod tests {
         let baseline = semantic_shape(&product_snapshot(false, false));
         assert_ne!(baseline, semantic_shape(&product_snapshot(true, false)));
         assert_ne!(baseline, semantic_shape(&product_snapshot(false, true)));
+    }
+
+    #[test]
+    fn semantic_generation_shape_tracks_preset_runtime_action_availability() {
+        let snapshot = |disabled| ShellSemanticSnapshot {
+            preset_runtime: Some(PresetRuntimeSemanticSnapshot {
+                screen: PresetRuntimeScreen::PresetsAndRuntimes,
+                state: PresetRuntimeSurfaceState::Ready,
+                rows: Vec::new(),
+                controls: vec![PresetRuntimeControl {
+                    action: PresetRuntimeAction::SavePreset,
+                    parent: None,
+                    role: PresetRuntimeControlRole::Button,
+                    name: MessageId::PresetSaveAction,
+                    value: None,
+                    selected: false,
+                    disabled,
+                    invalid: disabled,
+                }],
+                recording_friendly: false,
+            }),
+            ..ShellSemanticSnapshot::default()
+        };
+        assert_ne!(
+            semantic_shape(&snapshot(false)),
+            semantic_shape(&snapshot(true))
+        );
     }
 }

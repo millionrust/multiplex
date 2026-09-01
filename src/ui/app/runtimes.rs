@@ -51,21 +51,41 @@ pub(super) fn detection_status_label(status: RuntimeDetectionStatus) -> String {
 pub(super) fn capability_summary(capabilities: &RuntimeCapabilitySet) -> String {
     let labels = capabilities
         .iter()
-        .map(|capability| match capability {
-            RuntimeCapability::InteractivePty => localization::runtime_capability_interactive(),
-            RuntimeCapability::StructuredEvents => localization::runtime_capability_structured(),
-            RuntimeCapability::ApprovalRequests => localization::runtime_capability_approvals(),
-            RuntimeCapability::Cancellation => localization::runtime_capability_cancellation(),
-            RuntimeCapability::ContextHandoff => localization::runtime_capability_context(),
-            RuntimeCapability::RemoteLaunch => localization::runtime_capability_remote(),
-            RuntimeCapability::Resume => localization::runtime_capability_resume(),
-            RuntimeCapability::TranscriptExport => localization::runtime_capability_transcript(),
-        })
+        .map(runtime_capability_label)
         .collect::<Vec<_>>();
     if labels.is_empty() {
         localization::runtime_capabilities_none()
     } else {
         labels.join(", ")
+    }
+}
+
+pub(super) const fn runtime_capability_message(
+    capability: RuntimeCapability,
+) -> termirust_ui_contract::MessageId {
+    use termirust_ui_contract::MessageId;
+    match capability {
+        RuntimeCapability::InteractivePty => MessageId::RuntimeCapabilityInteractive,
+        RuntimeCapability::StructuredEvents => MessageId::RuntimeCapabilityStructured,
+        RuntimeCapability::ApprovalRequests => MessageId::RuntimeCapabilityApprovals,
+        RuntimeCapability::Cancellation => MessageId::RuntimeCapabilityCancellation,
+        RuntimeCapability::ContextHandoff => MessageId::RuntimeCapabilityContext,
+        RuntimeCapability::RemoteLaunch => MessageId::RuntimeCapabilityRemote,
+        RuntimeCapability::Resume => MessageId::RuntimeCapabilityResume,
+        RuntimeCapability::TranscriptExport => MessageId::RuntimeCapabilityTranscript,
+    }
+}
+
+pub(super) fn runtime_capability_label(capability: RuntimeCapability) -> String {
+    match capability {
+        RuntimeCapability::InteractivePty => localization::runtime_capability_interactive(),
+        RuntimeCapability::StructuredEvents => localization::runtime_capability_structured(),
+        RuntimeCapability::ApprovalRequests => localization::runtime_capability_approvals(),
+        RuntimeCapability::Cancellation => localization::runtime_capability_cancellation(),
+        RuntimeCapability::ContextHandoff => localization::runtime_capability_context(),
+        RuntimeCapability::RemoteLaunch => localization::runtime_capability_remote(),
+        RuntimeCapability::Resume => localization::runtime_capability_resume(),
+        RuntimeCapability::TranscriptExport => localization::runtime_capability_transcript(),
     }
 }
 
