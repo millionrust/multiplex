@@ -1,4 +1,89 @@
 # Authoritative English catalog. Pseudo-locales are generated from this parsed AST.
+hosts-title = Hosts & Connections
+hosts-state-ready = Hosts are ready.
+hosts-state-loading = Loading Hosts…
+hosts-state-partial = Some connection checks are unavailable. Other Hosts remain usable.
+hosts-empty-title = No saved Hosts yet
+hosts-empty-description = Save connection details to connect again without re-entering them.
+hosts-filter-empty = No Hosts match the current filter.
+hosts-add-action = New Host
+hosts-search-field = Search Hosts or enter user@host
+hosts-quick-connect-action = Quick connect
+hosts-quick-connect-password-field = Optional quick-connect password
+hosts-connections-heading = Connections
+hosts-select-visible = Select visible
+hosts-clear-selection = Clear selection
+hosts-diagnose-action = Diagnose selected
+hosts-bulk-group-field = Group for selected Hosts
+hosts-bulk-group-apply = Apply group
+host-private-row = Private Host
+host-private-diagnostic = Private connection diagnostic
+host-private-address = Private Host address
+host-private-username = Private SSH username
+host-private-key-path = Private key path
+host-private-agent-socket = Private SSH agent socket
+host-private-value = Private Host value
+host-secret-set = Secret is set
+host-auth-password = Password authentication
+host-auth-private-key = Private key authentication
+host-auth-local-agent = Local SSH agent authentication
+host-editor-title = Host editor
+host-editor-state-editing = Editing Host settings.
+host-label-field = Host name
+host-address-field = Host or IP address
+host-port-field = SSH port
+host-username-field = Username
+host-password-field = Password
+host-key-path-field = Private key file
+host-key-passphrase-field = Private key passphrase
+host-agent-socket-field = SSH agent socket
+host-delete-action = Delete Host
+host-edit-action = Edit Host
+host-star-action = Star Host
+host-unstar-action = Unstar Host
+host-select-action = Select Host
+host-deselect-action = Remove Host from selection
+host-diagnostics-title = Connection diagnostics
+host-diagnostics-clear = Clear finished
+host-diagnostic-cancel = Cancel diagnostic
+host-diagnostic-retry = Retry diagnostic
+host-diagnostic-queued = Diagnostic queued
+host-diagnostic-running = Checking connection
+host-diagnostic-passed = Connection healthy
+host-diagnostic-failed = Connection needs attention
+host-diagnostic-cancelled = Diagnostic cancelled
+host-diagnostic-stage-configuration = Configuration
+host-diagnostic-stage-authentication = Route and authentication
+host-diagnostic-stage-channel = SSH channel
+host-diagnostic-stage-sftp = SFTP
+connect-username-title = Confirm username
+connect-continue-save = Continue & Save
+connect-protocol-title = Connection settings
+connect-protocol-ssh = SSH
+connect-protocol-port = Port
+connect-continue-action = Continue
+connect-forward-agent-warning = Agent forwarding lets this server request signatures from your local SSH agent for this connection only.
+connect-forward-agent-action = Connect + Forward Agent Once
+connect-failure-title = Connection failed
+connect-failure-description = Review the connection log, edit this Host, or retry the same target.
+connect-copy-log-action = Copy log
+connect-edit-host-action = Edit Host
+connect-retry-action = Retry connection
+connect-state-validating = Checking connection settings…
+connect-state-connecting = Opening SSH connection…
+connect-state-cancelled = Connection setup was cancelled.
+connect-state-recovery = Connection recovery actions are available.
+connect-error-offline = The network route to this Host is offline.
+connect-error-permission = Local permission prevented connection setup.
+connect-error-authentication = SSH authentication was denied. Review the username and authentication settings.
+connect-error-host-key-unknown = This Host key is not trusted for read-only diagnostics. Connect normally once to review and pin it.
+connect-error-host-key-mismatch = The received Host key does not match the saved key. Verify the server before changing trust.
+connect-error-timeout = The connection timed out. Check the target and network route.
+connect-error-invalid-target = Enter a valid Host address, port, and username.
+connect-error-credential-store = The system credential store is unavailable. No secret was saved.
+connect-error-stale = This Host changed during review. Reload it before continuing.
+connect-error-unavailable = Connection services are unavailable. Existing Host data was preserved.
+connect-error-generic = The connection could not be completed safely. Existing Host data was preserved.
 common-cancel = Cancel
 common-close = Close
 common-connect = Connect
@@ -867,3 +952,72 @@ shell-region-inspector = Inspector
 shell-region-status = Application status
 shell-skip-content = Skip to current content
 shell-palette-result = Palette result
+hosts-open-fleet-action = Open Fleet
+hosts-open-fleet-tooltip = { $count ->
+    [one] Open { $count } visible Host in one SSH Fleet canvas
+    [many] Open all { $count } visible Hosts in one SSH Fleet canvas
+   *[other] Open all { $count } visible Hosts in one SSH Fleet canvas
+    }
+hosts-clear-search = Clear search
+hosts-import-description = Import from SSH config. OpenSSH entries also load automatically.
+hosts-provider-unavailable = { $provider } integration is not available yet.
+hosts-imported-count = { $count ->
+    [zero] No Hosts were imported from ~/.ssh/config.
+    [one] Imported { $count } Host from ~/.ssh/config.
+    [many] Imported { $count } Hosts from ~/.ssh/config.
+   *[other] Imported { $count } Hosts from ~/.ssh/config.
+    }
+hosts-import-error = Could not import SSH config: { $reason }
+hosts-add-tags-action = Add tags
+hosts-tags-help = Tags help filter Hosts and can be changed in the Host editor.
+hosts-email-opened = Opened the email client for a team invitation.
+hosts-email-copied = Copied the invitation email address.
+hosts-agent-canvas-action = Agent Canvas
+hosts-terminal-action = Terminal
+hosts-selected-count = { $count ->
+    [zero] No Hosts selected
+    [one] { $count } Host selected
+    [many] { $count } Hosts selected
+   *[other] { $count } Hosts selected
+    }
+hosts-diagnose-tooltip = Check SSH trust, authentication, channel, and SFTP without opening a terminal.
+hosts-star-selected = Star selected
+hosts-unstar-selected = Unstar selected
+hosts-diagnostic-summary = { $active } active · { $passed } healthy · { $attention } need attention
+connect-host-required = Enter a Host before choosing connection settings.
+connect-log-heading = Connection failure log
+connect-start-over-action = Start over
+host-editor-host-required = Enter a Host name or address to connect.
+host-editor-save-error = The Host could not be saved.
+host-editor-theme-tooltip = Select to cycle through terminal themes.
+host-editor-protocol-prefix = SSH on
+host-editor-address-help = Use localhost, an IP address, or a domain. Enter the username separately.
+host-editor-display-name-help = This name is shown only inside TermiRust.
+host-editor-group-field = Group
+host-editor-group-help = Optional organization such as Local, Production, or Staging.
+host-editor-tags-field = Tags
+host-editor-tags-help = Optional search and color labels separated by commas.
+host-editor-credentials-heading = Credentials
+host-editor-username-help = The account name on the SSH server.
+host-editor-password-help = Required only for password authentication.
+common-browse = Browse
+host-editor-key-picker-help = Select the private-key file used by this Host.
+host-editor-key-passphrase-help = Leave empty when the private key has no passphrase.
+host-editor-certificate-field = OpenSSH user certificate (optional)
+host-editor-certificate-help = The certificate is paired with the private key above; no plain-key fallback is attempted.
+host-editor-agent-help = Leave empty to use SSH_AUTH_SOCK. TermiRust never copies or stores private keys from your agent.
+host-editor-agent-detected = A usable local SSH agent was detected. Authentication does not forward it.
+host-editor-agent-missing = No usable local SSH agent was detected. Start one or enter its absolute socket path.
+host-editor-agent-forwarding-help = Forwarding is a separate action for one connection on the SSH settings screen.
+host-editor-identity-kinds = SSH identity, key, certificate, or FIDO2
+host-editor-startup-command-field = Startup command
+host-editor-jump-host-field = Jump Host
+host-editor-environment-field = Environment variables (KEY=value, comma-separated)
+host-editor-terminal-theme-field = Terminal theme
+host-editor-show-more = Show more
+host-editor-show-less = Show less
+host-editor-address-section = Address
+host-editor-general-section = General
+host-editor-existing-title = Host details
+host-editor-new-title = New Host
+host-editor-vault-label = { $vault } vault

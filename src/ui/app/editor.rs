@@ -11,6 +11,7 @@ use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::{Input, InputState};
 use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
+use termirust_ui_contract::MessageId;
 
 use crate::models::{AuthMode, ThemePreset};
 use crate::ui::app::{
@@ -18,6 +19,10 @@ use crate::ui::app::{
 };
 use crate::ui::localization;
 use crate::ui::theme;
+
+fn editor_message(id: MessageId) -> String {
+    localization::message_id(id).unwrap_or_default()
+}
 
 impl TermiRustApp {
     pub(super) fn open_editor_for_new_host(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -70,13 +75,13 @@ impl TermiRustApp {
         }
         let host_after = self.inputs.host.read(cx).value().trim().to_string();
         if host_after.is_empty() {
-            self.error_message = "Type a host name or address to connect.".to_string();
+            self.error_message = editor_message(MessageId::HostEditorHostRequired);
             cx.notify();
             return;
         }
         self.save_profile(window, cx);
         let Some(profile_id) = self.selected_profile_id.clone() else {
-            self.error_message = "Could not save host.".to_string();
+            self.error_message = editor_message(MessageId::HostEditorSaveError);
             cx.notify();
             return;
         };
@@ -93,16 +98,19 @@ impl TermiRustApp {
         let _ = suffix;
         h_flex()
             .w_full()
-            .gap(px(8.))
+            .gap(px(theme::SPACE_3))
             .items_center()
             .when_some(icon, |this, ic| {
                 this.child(
                     div()
-                        .size(px(20.))
+                        .size(px(theme::ICON_SIZE_MEDIUM))
                         .flex()
                         .items_center()
                         .justify_center()
-                        .child(ic.size(px(14.)).text_color(theme::text_muted())),
+                        .child(
+                            ic.size(px(theme::HOST_ICON_SIZE_BODY))
+                                .text_color(theme::text_muted()),
+                        ),
                 )
             })
             .child(Input::new(state).flex_1())
@@ -139,14 +147,14 @@ impl TermiRustApp {
     fn editor_section_card(&self, title: Option<&str>, body: Div) -> Div {
         v_flex()
             .w_full()
-            .p(px(14.))
-            .gap(px(10.))
-            .rounded(px(10.))
+            .p(px(theme::HOST_ICON_SIZE_BODY))
+            .gap(px(theme::SPACE_COMPACT))
+            .rounded(px(theme::HOST_CARD_RADIUS))
             .bg(theme::with_alpha(theme::hover(), 0.25))
             .when_some(title, |this, t| {
                 this.child(
                     div()
-                        .text_size(px(13.))
+                        .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                         .font_semibold()
                         .text_color(theme::text_main())
                         .child(t.to_string()),
@@ -161,11 +169,11 @@ impl TermiRustApp {
         h_flex()
             .id("editor-theme-toggle")
             .w_full()
-            .h(px(56.))
-            .px(px(10.))
-            .gap(px(12.))
+            .h(px(theme::HOST_COMPACT_ROW_HEIGHT))
+            .px(px(theme::SPACE_COMPACT))
+            .gap(px(theme::SPACE_4))
             .items_center()
-            .rounded(px(8.))
+            .rounded(px(theme::CARD_RADIUS))
             .bg(theme::library_bg())
             .border_1()
             .border_color(theme::soft_border())
@@ -173,44 +181,44 @@ impl TermiRustApp {
             .hover(|s| s.bg(theme::with_alpha(theme::hover(), 0.5)))
             .child(
                 div()
-                    .w(px(64.))
-                    .h(px(40.))
-                    .rounded(px(6.))
+                    .w(px(theme::HOST_CARD_HEIGHT))
+                    .h(px(theme::HOST_CONTROL_HEIGHT))
+                    .rounded(px(theme::CONTROL_RADIUS))
                     .bg(theme::terminal_bg())
                     .border_1()
                     .border_color(theme::with_alpha(theme::accent(), 0.6))
                     .flex()
                     .items_center()
-                    .pl(px(8.))
+                    .pl(px(theme::SPACE_3))
                     .child(
                         div()
-                            .w(px(34.))
-                            .h(px(2.))
-                            .rounded(px(2.))
+                            .w(px(theme::HOST_EDITOR_ICON_CONTAINER))
+                            .h(px(theme::SPACE_1))
+                            .rounded(px(theme::SPACE_1))
                             .bg(theme::accent()),
                     ),
             )
             .child(
                 v_flex()
                     .flex_1()
-                    .gap(px(2.))
+                    .gap(px(theme::SPACE_1))
                     .child(
                         div()
-                            .text_size(px(13.))
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
                             .child(preset_label),
                     )
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
-                            .child("Click to toggle terminal theme"),
+                            .child(editor_message(MessageId::HostEditorThemeTooltip)),
                     ),
             )
             .child(
                 Icon::new(IconName::ChevronDown)
-                    .size(px(14.))
+                    .size(px(theme::HOST_ICON_SIZE_BODY))
                     .text_color(theme::text_muted()),
             )
             .on_click(cx.listener(|this, _, _, cx| {
@@ -225,31 +233,35 @@ impl TermiRustApp {
             }))
     }
 
-    fn editor_protocol_row(&self, protocol: &str, port_state: &Entity<InputState>) -> Div {
+    fn editor_protocol_row(&self, port_state: &Entity<InputState>) -> Div {
         h_flex()
-            .gap(px(8.))
+            .gap(px(theme::SPACE_3))
             .items_center()
             .child(
                 div()
-                    .text_size(px(13.))
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .font_semibold()
                     .text_color(theme::text_main())
-                    .child(format!("{protocol} on")),
+                    .child(editor_message(MessageId::HostEditorProtocolPrefix)),
             )
-            .child(div().w(px(70.)).child(Input::new(port_state).xsmall()))
             .child(
                 div()
-                    .text_size(px(13.))
+                    .w(px(theme::HOST_EDITOR_TALL_CONTROL))
+                    .child(Input::new(port_state).xsmall()),
+            )
+            .child(
+                div()
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .font_semibold()
                     .text_color(theme::text_main())
-                    .child("port"),
+                    .child(editor_message(MessageId::ConnectProtocolPort)),
             )
     }
 
     fn editor_auth_mode_button(
         &self,
         id: &'static str,
-        label: &'static str,
+        label: String,
         mode: AuthMode,
         active: bool,
         cx: &mut Context<Self>,
@@ -257,12 +269,12 @@ impl TermiRustApp {
         div()
             .id(id)
             .flex_1()
-            .h(px(30.))
+            .h(px(theme::SHELL_TOOLBAR_BUTTON_SIZE))
             .flex()
             .items_center()
             .justify_center()
-            .rounded(px(6.))
-            .text_size(px(13.))
+            .rounded(px(theme::CONTROL_RADIUS))
+            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
             .font_medium()
             .cursor_pointer()
             .when(active, |this| {
@@ -294,82 +306,82 @@ impl TermiRustApp {
         )
         .is_ok();
         let address_row = self.editor_labeled_input_row(
-            "Server address",
-            Some("Use localhost, an IP address, or a domain. Do not put the username here."),
+            &editor_message(MessageId::HostAddressField),
+            Some(&editor_message(MessageId::HostEditorAddressHelp)),
             Some(Icon::new(IconName::Globe)),
             &self.inputs.host,
         );
 
         let general_body = v_flex()
-            .gap(px(8.))
+            .gap(px(theme::SPACE_3))
             .child(self.editor_labeled_input_row(
-                "Display name",
-                Some("Only the name shown inside the app."),
+                &editor_message(MessageId::HostLabelField),
+                Some(&editor_message(MessageId::HostEditorDisplayNameHelp)),
                 None,
                 &self.inputs.label,
             ))
             .child(self.editor_labeled_input_row(
-                "Group / folder",
-                Some("Optional app organization, e.g. Local, Production, Staging."),
+                &editor_message(MessageId::HostEditorGroupField),
+                Some(&editor_message(MessageId::HostEditorGroupHelp)),
                 Some(Icon::new(IconName::Folder)),
                 &self.inputs.group,
             ))
             .child(self.editor_labeled_input_row(
-                "Tags",
-                Some("Optional search/color labels separated by commas."),
+                &editor_message(MessageId::HostEditorTagsField),
+                Some(&editor_message(MessageId::HostEditorTagsHelp)),
                 Some(app_icon(ICON_TAG)),
                 &self.inputs.tags,
             ));
 
         let ssh_body = v_flex()
-            .gap(px(10.))
-            .child(self.editor_protocol_row("SSH", &self.inputs.port))
+            .gap(px(theme::SPACE_COMPACT))
+            .child(self.editor_protocol_row(&self.inputs.port))
             .child(self.render_persistent_session_editor(cx))
-            .child(div().h(px(1.)).bg(theme::soft_border()))
+            .child(div().h(px(theme::BORDER_HAIRLINE)).bg(theme::soft_border()))
             .child(
                 div()
-                    .text_size(px(13.))
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .font_semibold()
                     .text_color(theme::text_main())
-                    .child("Credentials"),
+                    .child(editor_message(MessageId::HostEditorCredentialsHeading)),
             )
             .child(
                 h_flex()
-                    .p(px(3.))
-                    .rounded(px(8.))
+                    .p(px(theme::SPACE_MICRO))
+                    .rounded(px(theme::CARD_RADIUS))
                     .bg(theme::hover())
                     .child(self.editor_auth_mode_button(
                         "editor-auth-password",
-                        "Password",
+                        editor_message(MessageId::HostAuthPassword),
                         AuthMode::Password,
                         auth_mode == AuthMode::Password,
                         cx,
                     ))
                     .child(self.editor_auth_mode_button(
                         "editor-auth-private-key",
-                        "Private Key",
+                        editor_message(MessageId::HostAuthPrivateKey),
                         AuthMode::PrivateKey,
                         auth_mode == AuthMode::PrivateKey,
                         cx,
                     ))
                     .child(self.editor_auth_mode_button(
                         "editor-auth-agent",
-                        "SSH Agent",
+                        editor_message(MessageId::HostAuthLocalAgent),
                         AuthMode::LocalAgent,
                         auth_mode == AuthMode::LocalAgent,
                         cx,
                     )),
             )
             .child(self.editor_labeled_input_row(
-                "Username",
-                Some("The account on the SSH server. For your local Mac test use jacob."),
+                &editor_message(MessageId::HostUsernameField),
+                Some(&editor_message(MessageId::HostEditorUsernameHelp)),
                 Some(Icon::new(IconName::User)),
                 &self.inputs.username,
             ))
             .when(auth_mode == AuthMode::Password, |this| {
                 this.child(self.editor_labeled_input_row(
-                    "Password",
-                    Some("Only needed when using password auth."),
+                    &editor_message(MessageId::HostPasswordField),
+                    Some(&editor_message(MessageId::HostEditorPasswordHelp)),
                     Some(app_icon(ICON_KEY)),
                     &self.inputs.password,
                 ))
@@ -378,24 +390,24 @@ impl TermiRustApp {
                 this.child(
                     v_flex()
                         .w_full()
-                        .gap(px(5.))
+                        .gap(px(theme::SPACE_FINE))
                         .child(
                             div()
-                                .text_size(px(11.))
+                                .text_size(px(theme::TYPE_MICRO_SIZE))
                                 .font_medium()
                                 .text_color(theme::text_muted())
-                                .child("Private key file"),
+                                .child(editor_message(MessageId::HostKeyPathField)),
                         )
                         .child(
                             h_flex()
-                            .gap(px(theme::SPACE_DENSE))
+                                .gap(px(theme::SPACE_DENSE))
                                 .child(Input::new(&self.inputs.key_path).flex_1())
                                 .child(
                                     Button::new("editor-pick-key-file")
                                         .small()
                                         .ghost()
                                         .icon(IconName::FolderOpen)
-                                        .label("Browse")
+                                        .label(editor_message(MessageId::CommonBrowse))
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.set_auth_mode(AuthMode::PrivateKey, cx);
                                             this.pick_key_file(window, cx);
@@ -406,47 +418,49 @@ impl TermiRustApp {
                             div()
                                 .text_size(px(theme::TYPE_NANO_SIZE))
                                 .text_color(theme::text_muted())
-                                .child("Click Browse and select your private key file."),
+                                .child(editor_message(MessageId::HostEditorKeyPickerHelp)),
                         )
                         .child(self.editor_labeled_input_row(
-                            "Key passphrase",
-                            Some("Leave empty for the local test key we created."),
+                            &editor_message(MessageId::HostKeyPassphraseField),
+                            Some(&editor_message(MessageId::HostEditorKeyPassphraseHelp)),
                             Some(app_icon(ICON_KEY)),
                             &self.inputs.key_passphrase,
                         ))
                         .child(
                             v_flex()
                                 .w_full()
-                                .gap(px(5.))
+                                .gap(px(theme::SPACE_FINE))
                                 .child(
                                     div()
-                                        .text_size(px(11.))
+                                        .text_size(px(theme::TYPE_MICRO_SIZE))
                                         .font_medium()
                                         .text_color(theme::text_muted())
-                                        .child("OpenSSH user certificate (optional)"),
+                                        .child(editor_message(
+                                            MessageId::HostEditorCertificateField,
+                                        )),
                                 )
                                 .child(
                                     h_flex()
-                            .gap(px(theme::SPACE_DENSE))
+                                        .gap(px(theme::SPACE_DENSE))
                                         .child(Input::new(&self.inputs.certificate_path).flex_1())
                                         .child(
                                             Button::new("editor-pick-certificate-file")
                                                 .small()
                                                 .ghost()
                                                 .icon(IconName::FolderOpen)
-                                                .label("Browse")
-                                                .on_click(cx.listener(
-                                                    |this, _, window, cx| {
-                                                        this.pick_certificate_file(window, cx);
-                                                    },
-                                                )),
+                                                .label(editor_message(MessageId::CommonBrowse))
+                                                .on_click(cx.listener(|this, _, window, cx| {
+                                                    this.pick_certificate_file(window, cx);
+                                                })),
                                         ),
                                 )
                                 .child(
                                     div()
                                         .text_size(px(theme::TYPE_NANO_SIZE))
                                         .text_color(theme::text_muted())
-                                        .child("Paired with the private key above; no plain-key fallback."),
+                                        .child(editor_message(
+                                            MessageId::HostEditorCertificateHelp,
+                                        )),
                                 ),
                         ),
                 )
@@ -455,10 +469,10 @@ impl TermiRustApp {
                 this.child(
                     v_flex()
                         .w_full()
-                        .gap(px(6.))
+                        .gap(px(theme::SPACE_DENSE))
                         .child(self.editor_labeled_input_row(
-                            "Agent socket",
-                            Some("Leave empty to use SSH_AUTH_SOCK. TermiRust never copies or stores private keys from your agent."),
+                            &editor_message(MessageId::HostAgentSocketField),
+                            Some(&editor_message(MessageId::HostEditorAgentHelp)),
                             Some(app_icon(ICON_KEY)),
                             &self.inputs.identity_agent,
                         ))
@@ -471,45 +485,45 @@ impl TermiRustApp {
                                     theme::warning()
                                 })
                                 .child(if agent_available {
-                                    "Local SSH agent detected. Authentication does not forward it."
+                                    editor_message(MessageId::HostEditorAgentDetected)
                                 } else {
-                                    "No usable local SSH agent detected. Start one or enter its absolute socket path."
+                                    editor_message(MessageId::HostEditorAgentMissing)
                                 }),
                         )
                         .child(
                             div()
                                 .text_size(px(theme::TYPE_NANO_SIZE))
                                 .text_color(theme::text_muted())
-                                .child("Forwarding is a separate one-connection action on the SSH protocol screen."),
+                                .child(editor_message(MessageId::HostEditorAgentForwardingHelp)),
                         ),
                 )
             })
             .child(
                 div().id("editor-credentials-add").cursor_pointer().child(
                     h_flex()
-                        .gap(px(6.))
+                        .gap(px(theme::SPACE_DENSE))
                         .items_center()
-                        .pt(px(2.))
+                        .pt(px(theme::SPACE_1))
                         .child(
                             Icon::new(IconName::Plus)
-                                .size(px(12.))
+                                .size(px(theme::SPACE_4))
                                 .text_color(theme::text_muted()),
                         )
                         .child(
                             div()
-                                .text_size(px(12.))
+                                .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child("SSH.id, Key, Certificate, FIDO2"),
+                                .child(editor_message(MessageId::HostEditorIdentityKinds)),
                         ),
                 ),
             )
             .when(self.editor_advanced_expanded, |this| {
-                this.child(div().h(px(1.)).bg(theme::soft_border()))
+                this.child(div().h(px(theme::BORDER_HAIRLINE)).bg(theme::soft_border()))
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
-                            .child("Startup command"),
+                            .child(editor_message(MessageId::HostEditorStartupCommandField)),
                     )
                     .child(self.editor_input_row(
                         Some(Icon::new(IconName::SquareTerminal)),
@@ -518,10 +532,10 @@ impl TermiRustApp {
                     ))
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
-                            .pt(px(4.))
-                            .child("Host chaining (jump host)"),
+                            .pt(px(theme::SPACE_2))
+                            .child(editor_message(MessageId::HostEditorJumpHostField)),
                     )
                     .child(self.editor_input_row(
                         Some(Icon::new(IconName::Globe)),
@@ -530,10 +544,10 @@ impl TermiRustApp {
                     ))
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
-                            .pt(px(4.))
-                            .child("Environment variables (KEY=value, comma-separated)"),
+                            .pt(px(theme::SPACE_2))
+                            .child(editor_message(MessageId::HostEditorEnvironmentField)),
                     )
                     .child(self.editor_input_row(
                         Some(app_icon(ICON_TAG)),
@@ -542,10 +556,10 @@ impl TermiRustApp {
                     ))
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
-                            .pt(px(4.))
-                            .child("Terminal theme"),
+                            .pt(px(theme::SPACE_2))
+                            .child(editor_message(MessageId::HostEditorTerminalThemeField)),
                     )
                     .child(self.editor_theme_row(cx))
             })
@@ -553,19 +567,19 @@ impl TermiRustApp {
                 div()
                     .id("editor-show-more")
                     .cursor_pointer()
-                    .pt(px(2.))
+                    .pt(px(theme::SPACE_1))
                     .child(
                         h_flex()
-                            .gap(px(4.))
+                            .gap(px(theme::SPACE_2))
                             .items_center()
                             .child(
                                 div()
-                                    .text_size(px(12.))
+                                    .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .text_color(theme::text_muted())
                                     .child(if self.editor_advanced_expanded {
-                                        "Show less"
+                                        editor_message(MessageId::HostEditorShowLess)
                                     } else {
-                                        "Show more"
+                                        editor_message(MessageId::HostEditorShowMore)
                                     }),
                             )
                             .child(
@@ -574,7 +588,7 @@ impl TermiRustApp {
                                 } else {
                                     IconName::ChevronDown
                                 })
-                                .size(px(12.))
+                                .size(px(theme::SPACE_4))
                                 .text_color(theme::text_muted()),
                             ),
                     )
@@ -586,9 +600,15 @@ impl TermiRustApp {
 
         v_flex()
             .w_full()
-            .gap(px(12.))
-            .child(self.editor_section_card(Some("Address"), address_row))
-            .child(self.editor_section_card(Some("General"), general_body))
+            .gap(px(theme::SPACE_4))
+            .child(self.editor_section_card(
+                Some(&editor_message(MessageId::HostEditorAddressSection)),
+                address_row,
+            ))
+            .child(self.editor_section_card(
+                Some(&editor_message(MessageId::HostEditorGeneralSection)),
+                general_body,
+            ))
             .child(self.editor_section_card(None, ssh_body))
     }
 
@@ -646,16 +666,16 @@ impl TermiRustApp {
         let overflow_open = self.open_editor_menu == Some(EditorMenu::Overflow);
         h_flex()
             .flex_none()
-            .h(px(60.))
-            .px(px(16.))
+            .h(px(theme::CONNECT_PORT_WIDTH))
+            .px(px(theme::ICON_SIZE_DEFAULT))
             .items_center()
             .justify_between()
             .child(
                 v_flex()
-                    .gap(px(2.))
+                    .gap(px(theme::SPACE_1))
                     .child(
                         div()
-                            .text_size(px(15.))
+                            .text_size(px(theme::ICON_SIZE_COMPACT))
                             .font_semibold()
                             .text_color(theme::text_main())
                             .child(title.to_string()),
@@ -665,14 +685,16 @@ impl TermiRustApp {
                             .id("editor-vault-trigger")
                             .child(
                                 h_flex()
-                                    .gap(px(4.))
+                                    .gap(px(theme::SPACE_2))
                                     .items_center()
                                     .cursor_pointer()
                                     .child(
                                         div()
-                                            .text_size(px(11.))
+                                            .text_size(px(theme::TYPE_MICRO_SIZE))
                                             .text_color(theme::text_muted())
-                                            .child(format!("{vault_label} vault")),
+                                            .child(localization::host_editor_vault_label(
+                                                vault_label,
+                                            )),
                                     )
                                     .child(
                                         Icon::new(if vault_open {
@@ -680,7 +702,7 @@ impl TermiRustApp {
                                         } else {
                                             IconName::ChevronDown
                                         })
-                                        .size(px(10.))
+                                        .size(px(theme::SPACE_COMPACT))
                                         .text_color(theme::text_muted()),
                                     ),
                             )
@@ -697,13 +719,13 @@ impl TermiRustApp {
             )
             .child(
                 h_flex()
-                    .gap(px(6.))
+                    .gap(px(theme::SPACE_DENSE))
                     .items_center()
                     .child(
                         div()
                             .id("editor-side-overflow")
-                            .size(px(28.))
-                            .rounded(px(6.))
+                            .size(px(theme::STATUS_HEIGHT))
+                            .rounded(px(theme::CONTROL_RADIUS))
                             .flex()
                             .items_center()
                             .justify_center()
@@ -714,7 +736,7 @@ impl TermiRustApp {
                             .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.7)))
                             .child(
                                 Icon::new(IconName::Ellipsis)
-                                    .size(px(15.))
+                                    .size(px(theme::ICON_SIZE_COMPACT))
                                     .text_color(theme::text_main()),
                             )
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -730,8 +752,8 @@ impl TermiRustApp {
                     .child(
                         div()
                             .id("editor-side-collapse")
-                            .size(px(28.))
-                            .rounded(px(6.))
+                            .size(px(theme::STATUS_HEIGHT))
+                            .rounded(px(theme::CONTROL_RADIUS))
                             .flex()
                             .items_center()
                             .justify_center()
@@ -739,7 +761,7 @@ impl TermiRustApp {
                             .hover(|style| style.bg(theme::with_alpha(theme::hover(), 0.7)))
                             .child(
                                 app_icon(ICON_PANEL_COLLAPSE_RIGHT)
-                                    .size(px(15.))
+                                    .size(px(theme::ICON_SIZE_COMPACT))
                                     .text_color(theme::text_main()),
                             )
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -755,16 +777,16 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let title = if self.selected_profile_id.is_some() {
-            "Host Details"
+            editor_message(MessageId::HostEditorExistingTitle)
         } else {
-            "New Host"
+            editor_message(MessageId::HostEditorNewTitle)
         };
         let vault_label = self.effective_vault_name(self.draft_vault_id.as_deref());
 
         v_flex()
             .id("editor-side-panel")
             .flex_none()
-            .w(px(380.))
+            .w(px(theme::HOST_EDITOR_WIDTH))
             .h_full()
             .bg(theme::library_card())
             .border_l_1()
@@ -777,7 +799,7 @@ impl TermiRustApp {
                 }
                 this.close_editor_dialog(window, cx);
             }))
-            .child(self.render_editor_side_header(title, &vault_label, cx))
+            .child(self.render_editor_side_header(&title, &vault_label, cx))
             .child(
                 v_flex().flex_1().min_h_0().child(
                     v_flex()
@@ -785,8 +807,8 @@ impl TermiRustApp {
                         .debug_selector(|| "editor-side-scroll".to_string())
                         .flex_1()
                         .min_h_0()
-                        .px(px(20.))
-                        .py(px(16.))
+                        .px(px(theme::ICON_SIZE_MEDIUM))
+                        .py(px(theme::ICON_SIZE_DEFAULT))
                         .track_scroll(&self.host_editor_scroll)
                         .child(self.render_editor_panel_termius(cx))
                         .overflow_y_scrollbar(),
@@ -795,32 +817,32 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .flex_none()
-                    .px(px(20.))
-                    .py(px(14.))
-                    .gap(px(10.))
+                    .px(px(theme::ICON_SIZE_MEDIUM))
+                    .py(px(theme::HOST_ICON_SIZE_BODY))
+                    .gap(px(theme::SPACE_COMPACT))
                     .border_t_1()
                     .border_color(theme::soft_border())
                     .bg(theme::library_card())
                     .when(!self.error_message.is_empty(), |this| {
                         this.child(
                             h_flex()
-                                .gap(px(8.))
+                                .gap(px(theme::SPACE_3))
                                 .items_start()
-                                .px(px(10.))
-                                .py(px(8.))
-                                .rounded(px(6.))
+                                .px(px(theme::SPACE_COMPACT))
+                                .py(px(theme::SPACE_3))
+                                .rounded(px(theme::CONTROL_RADIUS))
                                 .bg(theme::with_alpha(theme::danger(), 0.12))
                                 .border_1()
                                 .border_color(theme::with_alpha(theme::danger(), 0.4))
                                 .child(
                                     Icon::new(IconName::TriangleAlert)
-                                        .size(px(13.))
+                                        .size(px(theme::HOST_ICON_SIZE_DENSE))
                                         .text_color(theme::danger()),
                                 )
                                 .child(
                                     div()
                                         .flex_1()
-                                        .text_size(px(11.))
+                                        .text_size(px(theme::TYPE_MICRO_SIZE))
                                         .text_color(theme::danger())
                                         .child(self.error_message.clone()),
                                 ),

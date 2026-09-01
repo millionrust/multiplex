@@ -292,10 +292,6 @@ pub fn card_shadow_color() -> Hsla {
     with_alpha(color(0x0a1322), 0.05)
 }
 
-pub fn card_shadow_strong_color() -> Hsla {
-    with_alpha(color(0x0a1322), 0.12)
-}
-
 pub fn soft_border() -> Hsla {
     with_alpha(color(0x0a1322), 0.06)
 }
@@ -410,6 +406,8 @@ pub const SPACE_4: f32 = DesignTokens::new(ThemeKind::System).space_4().0;
 pub const SPACE_5: f32 = DesignTokens::new(ThemeKind::System).space_5().0;
 pub const SPACE_6: f32 = DesignTokens::new(ThemeKind::System).space_6().0;
 pub const SPACE_7: f32 = DesignTokens::new(ThemeKind::System).space_7().0;
+pub const SPACE_8: f32 = DesignTokens::new(ThemeKind::System).space_8().0;
+pub const SPACE_9: f32 = DesignTokens::new(ThemeKind::System).space_9().0;
 pub const SPACE_0: f32 = DesignTokens::new(ThemeKind::System).space_0().0;
 pub const SPACE_1: f32 = DesignTokens::new(ThemeKind::System).space_1().0;
 pub const SPACE_COMPACT: f32 = DesignTokens::new(ThemeKind::System).space_compact().0;
@@ -432,6 +430,45 @@ pub const TYPE_HEADING_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_hea
 pub const TYPE_MICRO_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_micro().size;
 pub const TYPE_NANO_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_nano().size;
 pub const TYPE_METRIC_SIZE: f32 = DesignTokens::new(ThemeKind::System).type_metric().size;
+pub const STATUS_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_status_height()
+    .0;
+pub const CONNECT_PANEL_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_connect_panel_width()
+    .0;
+pub const INSPECTOR_DEFAULT_WIDTH: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_inspector_default()
+    .0;
+
+// Host and connection layouts preserve their current geometry while sourcing it
+// exclusively from the governed design scale.
+pub const HOST_CARD_WIDTH: f32 = INSPECTOR_DEFAULT_WIDTH + ICON_SIZE_MEDIUM;
+pub const HOST_CARD_HEIGHT: f32 = SPACE_9;
+pub const HOST_CARD_RADIUS: f32 = CARD_RADIUS + SPACE_1;
+pub const HOST_ICON_SIZE_DENSE: f32 = TYPE_BODY_SMALL_SIZE;
+pub const HOST_ICON_SIZE_BODY: f32 = TYPE_BODY_SIZE;
+pub const HOST_ICON_SIZE_TINY: f32 = TYPE_MICRO_SIZE;
+pub const HOST_CONTROL_HEIGHT: f32 = SPACE_6 + SPACE_5;
+pub const HOST_MENU_WIDTH: f32 = HOST_SIDEBAR_WIDTH - HOST_CONTROL_HEIGHT;
+pub const HOST_MENU_NARROW_WIDTH: f32 = SHELL_TAB_LABEL_MAXIMUM - ICON_SIZE_MEDIUM;
+pub const HOST_MENU_WIDE_WIDTH: f32 = HOST_SIDEBAR_WIDTH + ICON_SIZE_MEDIUM;
+pub const HOST_BULK_GROUP_WIDTH: f32 = SHELL_TAB_LABEL_MAXIMUM - SHELL_TOOLBAR_BUTTON_SIZE;
+pub const HOST_OVERLAY_TOP: f32 = PALETTE_OFFSET_TOP + SPACE_DENSE;
+pub const HOST_OVERLAY_LOW_TOP: f32 = PALETTE_OFFSET_TOP + SPACE_9 - SPACE_2;
+pub const HOST_OVERLAY_RIGHT_WIDE: f32 = HOST_SIDEBAR_WIDTH - ICON_SIZE_MEDIUM;
+pub const HOST_OVERLAY_RIGHT_NARROW: f32 = SPACE_8 + SPACE_1;
+pub const HOST_TOOLBAR_OFFSET_VIEW: f32 = SHELL_TAB_LABEL_MAXIMUM + SPACE_COMPACT;
+pub const HOST_TOOLBAR_OFFSET_TAG: f32 = CHROME_HEIGHT + STATUS_HEIGHT + SPACE_8 + BORDER_HAIRLINE;
+pub const HOST_TOOLBAR_OFFSET_SORT: f32 = SPACE_9 + SPACE_3;
+pub const CONNECT_CONTENT_TOP: f32 = SPACE_8 + SPACE_8;
+pub const CONNECT_FAILURE_PANEL_WIDTH: f32 = CONNECT_PANEL_WIDTH + SPACE_8 + SPACE_8 + SPACE_2;
+pub const CONNECT_PORT_WIDTH: f32 = SPACE_9 - SPACE_2;
+pub const HOST_EDITOR_WIDTH: f32 = HOST_CARD_WIDTH + HOST_CONTROL_HEIGHT;
+pub const HOST_EDITOR_TALL_CONTROL: f32 = SPACE_9 + SPACE_DENSE;
+pub const HOST_EDITOR_ICON_CONTAINER: f32 = SHELL_COMPACT_CONTROL_HEIGHT + SPACE_1;
+pub const HOST_COMPACT_ROW_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
+    .layout_host_compact_row_height()
+    .0;
 pub const SHELL_COMPACT_CONTROL_HEIGHT: f32 = DesignTokens::new(ThemeKind::System)
     .layout_shell_compact_control_height()
     .0;

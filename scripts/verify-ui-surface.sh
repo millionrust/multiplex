@@ -19,7 +19,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$states" != "all" || "$locales" != "en-US,en-XA,ar-XB" || "$themes" != "all" ]]; then
-  echo "Usage: $0 --surface shell-overlays-palette|projects-groups-sessions|presets-runtimes|worktrees-artifacts [--states all] --locales en-US,en-XA,ar-XB --themes all" >&2
+  echo "Usage: $0 --surface shell-overlays-palette|projects-groups-sessions|presets-runtimes|worktrees-artifacts|hosts-connections [--states all] --locales en-US,en-XA,ar-XB --themes all" >&2
   exit 2
 fi
 
@@ -43,6 +43,11 @@ case "$surface" in
     paths="src/ui/app/worktree_launch.rs,src/ui/app/artifact_gallery.rs"
     test_filter="worktree_artifact_surface"
     description="worktree and artifact"
+    ;;
+  hosts-connections)
+    paths="src/ui/app/hosts.rs,src/ui/app/connect.rs,src/ui/app/editor.rs"
+    test_filter="host_connection_surface"
+    description="Hosts and Connections"
     ;;
   *)
     echo "unknown UI surface: $surface" >&2

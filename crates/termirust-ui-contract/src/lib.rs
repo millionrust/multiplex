@@ -1,6 +1,7 @@
 pub mod accessibility_lab;
 mod contract;
 pub mod generated;
+pub mod host_connection_surface;
 pub mod lint;
 pub mod localization_lint;
 pub mod messages;
@@ -16,6 +17,7 @@ pub use contract::{
     parse_manifest,
 };
 pub use generated::*;
+pub use host_connection_surface::*;
 pub use messages::*;
 pub use preset_runtime_surface::*;
 pub use product_session_surface::*;

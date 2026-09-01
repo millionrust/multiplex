@@ -3,6 +3,431 @@ default_locale = "en-US"
 supported_locales = ["en-US", "en-XA", "ar-XB"]
 
 [[messages]]
+id = "hosts-title"
+context = "Heading for the saved SSH Hosts and Connections library."
+description = "Hosts screen title"
+
+[[messages]]
+id = "hosts-state-ready"
+context = "Status when the Hosts library is available."
+description = "Hosts ready status"
+
+[[messages]]
+id = "hosts-state-loading"
+context = "Status while saved Hosts are loading."
+description = "Hosts loading status"
+
+[[messages]]
+id = "hosts-state-partial"
+context = "Status when only part of the connection diagnostics are available."
+description = "Hosts partial status"
+
+[[messages]]
+id = "hosts-empty-title"
+context = "Heading when no saved Hosts exist."
+description = "Hosts empty title"
+
+[[messages]]
+id = "hosts-empty-description"
+context = "Explanation below the empty Hosts heading."
+description = "Hosts empty explanation"
+
+[[messages]]
+id = "hosts-filter-empty"
+context = "Status when no saved Host matches the current filter."
+description = "Hosts filter empty status"
+
+[[messages]]
+id = "hosts-add-action"
+context = "Action that opens the new Host editor."
+description = "Add Host action"
+
+[[messages]]
+id = "hosts-search-field"
+context = "Accessible label for the Hosts search and quick-connect field."
+description = "Hosts search field"
+
+[[messages]]
+id = "hosts-quick-connect-action"
+context = "Action that connects using the target typed in the Hosts search field."
+description = "Quick connect action"
+
+[[messages]]
+id = "hosts-quick-connect-password-field"
+context = "Accessible label for the optional quick-connect password."
+description = "Quick connect password field"
+
+[[messages]]
+id = "hosts-connections-heading"
+context = "Heading above saved Host rows."
+description = "Connections list heading"
+
+[[messages]]
+id = "hosts-select-visible"
+context = "Action that selects all Hosts visible under the current filter."
+description = "Select visible Hosts"
+
+[[messages]]
+id = "hosts-clear-selection"
+context = "Action that clears the current Host batch selection."
+description = "Clear Host selection"
+
+[[messages]]
+id = "hosts-diagnose-action"
+context = "Action that runs read-only connection diagnostics for selected Hosts."
+description = "Diagnose selected Hosts"
+
+[[messages]]
+id = "hosts-bulk-group-field"
+context = "Accessible label for the Host batch group input."
+description = "Host batch group field"
+
+[[messages]]
+id = "hosts-bulk-group-apply"
+context = "Action that assigns the entered group to selected Hosts."
+description = "Apply Host group"
+
+[[messages]]
+id = "host-private-row"
+context = "Recording-friendly replacement for a user-supplied Host name."
+description = "Private Host row"
+
+[[messages]]
+id = "host-private-diagnostic"
+context = "Recording-friendly replacement for a Host diagnostic row."
+description = "Private Host diagnostic"
+
+[[messages]]
+id = "host-private-address"
+context = "Recording-friendly replacement for a Host address."
+description = "Private Host address"
+
+[[messages]]
+id = "host-private-username"
+context = "Recording-friendly replacement for an SSH username."
+description = "Private SSH username"
+
+[[messages]]
+id = "host-private-key-path"
+context = "Recording-friendly replacement for a private-key path."
+description = "Private key path"
+
+[[messages]]
+id = "host-private-agent-socket"
+context = "Recording-friendly replacement for an SSH-agent socket path."
+description = "Private SSH agent socket"
+
+[[messages]]
+id = "host-private-value"
+context = "Recording-friendly replacement for other Host form values."
+description = "Private Host value"
+
+[[messages]]
+id = "host-secret-set"
+context = "Non-secret value announced when a password or passphrase field is populated."
+description = "Secret is set"
+
+[[messages]]
+id = "host-auth-password"
+context = "Password authentication option for an SSH Host."
+description = "Password authentication"
+
+[[messages]]
+id = "host-auth-private-key"
+context = "Private-key authentication option for an SSH Host."
+description = "Private key authentication"
+
+[[messages]]
+id = "host-auth-local-agent"
+context = "Local SSH-agent authentication option for an SSH Host."
+description = "Local SSH agent authentication"
+
+[[messages]]
+id = "host-editor-title"
+context = "Accessible title for both new and existing Host editors."
+description = "Host editor title"
+
+[[messages]]
+id = "host-editor-state-editing"
+context = "Status while a Host form is being edited."
+description = "Host editor state"
+
+[[messages]]
+id = "host-label-field"
+context = "Label for the user-visible Host name field."
+description = "Host name field"
+
+[[messages]]
+id = "host-address-field"
+context = "Label for the SSH host name or IP address field."
+description = "Host address field"
+
+[[messages]]
+id = "host-port-field"
+context = "Label for the SSH port field."
+description = "SSH port field"
+
+[[messages]]
+id = "host-username-field"
+context = "Label for the SSH username field."
+description = "SSH username field"
+
+[[messages]]
+id = "host-password-field"
+context = "Label for the SSH password field. Never include its value in messages."
+description = "SSH password field"
+
+[[messages]]
+id = "host-key-path-field"
+context = "Label for the private-key file path field."
+description = "Private key path field"
+
+[[messages]]
+id = "host-key-passphrase-field"
+context = "Label for the private-key passphrase field. Never include its value in messages."
+description = "Private key passphrase field"
+
+[[messages]]
+id = "host-agent-socket-field"
+context = "Label for the local SSH-agent socket field."
+description = "SSH agent socket field"
+
+[[messages]]
+id = "host-delete-action"
+context = "Action that deletes the selected saved Host after existing safety checks."
+description = "Delete Host action"
+
+[[messages]]
+id = "host-edit-action"
+context = "Action that opens a saved Host in the editor."
+description = "Edit Host action"
+
+[[messages]]
+id = "host-star-action"
+context = "Action that marks a saved Host as a favorite."
+description = "Star Host action"
+
+[[messages]]
+id = "host-unstar-action"
+context = "Action that removes a saved Host from favorites."
+description = "Unstar Host action"
+
+[[messages]]
+id = "host-select-action"
+context = "Action that adds a Host to batch selection."
+description = "Select Host action"
+
+[[messages]]
+id = "host-deselect-action"
+context = "Action that removes a Host from batch selection."
+description = "Deselect Host action"
+
+[[messages]]
+id = "host-diagnostics-title"
+context = "Heading for read-only SSH connection diagnostics."
+description = "Connection diagnostics title"
+
+[[messages]]
+id = "host-diagnostics-clear"
+context = "Action that clears finished connection diagnostic rows."
+description = "Clear finished diagnostics"
+
+[[messages]]
+id = "host-diagnostic-cancel"
+context = "Action that cancels the exact active connection diagnostic."
+description = "Cancel connection diagnostic"
+
+[[messages]]
+id = "host-diagnostic-retry"
+context = "Action that retries a finished connection diagnostic for the same Host."
+description = "Retry connection diagnostic"
+
+[[messages]]
+id = "host-diagnostic-queued"
+context = "Status for a queued connection diagnostic."
+description = "Diagnostic queued"
+
+[[messages]]
+id = "host-diagnostic-running"
+context = "Status for a running connection diagnostic."
+description = "Diagnostic running"
+
+[[messages]]
+id = "host-diagnostic-passed"
+context = "Status for a successful connection diagnostic."
+description = "Diagnostic passed"
+
+[[messages]]
+id = "host-diagnostic-failed"
+context = "Status for a failed connection diagnostic."
+description = "Diagnostic failed"
+
+[[messages]]
+id = "host-diagnostic-cancelled"
+context = "Status for a cancelled connection diagnostic."
+description = "Diagnostic cancelled"
+
+[[messages]]
+id = "host-diagnostic-stage-configuration"
+context = "Connection diagnostic stage that validates saved configuration."
+description = "Configuration diagnostic stage"
+
+[[messages]]
+id = "host-diagnostic-stage-authentication"
+context = "Connection diagnostic stage that checks the route, host key, and authentication."
+description = "Route and authentication stage"
+
+[[messages]]
+id = "host-diagnostic-stage-channel"
+context = "Connection diagnostic stage that checks an SSH session channel."
+description = "SSH channel stage"
+
+[[messages]]
+id = "host-diagnostic-stage-sftp"
+context = "Connection diagnostic stage that checks SFTP support."
+description = "SFTP stage"
+
+[[messages]]
+id = "connect-username-title"
+context = "Title for the username step before connecting to a saved Host."
+description = "Connect username dialog title"
+
+[[messages]]
+id = "connect-continue-save"
+context = "Action that accepts the username and saves it before protocol review."
+description = "Continue and save action"
+
+[[messages]]
+id = "connect-protocol-title"
+context = "Title for choosing connection protocol and port."
+description = "Connection protocol dialog title"
+
+[[messages]]
+id = "connect-protocol-ssh"
+context = "SSH protocol option."
+description = "SSH protocol"
+
+[[messages]]
+id = "connect-protocol-port"
+context = "Label for the selected connection protocol port."
+description = "Connection port field"
+
+[[messages]]
+id = "connect-continue-action"
+context = "Action that validates the selected protocol and starts connecting."
+description = "Continue connection action"
+
+[[messages]]
+id = "connect-forward-agent-warning"
+context = "Warning that one-shot agent forwarding lets the server request local signatures."
+description = "Agent forwarding warning"
+
+[[messages]]
+id = "connect-forward-agent-action"
+context = "Explicit one-shot action that connects with SSH-agent forwarding."
+description = "Connect and forward agent once"
+
+[[messages]]
+id = "connect-failure-title"
+context = "Title shown after connection setup fails before the terminal starts."
+description = "Connection failure title"
+
+[[messages]]
+id = "connect-failure-description"
+context = "Explanation that a connection failed and the log can be reviewed."
+description = "Connection failure explanation"
+
+[[messages]]
+id = "connect-copy-log-action"
+context = "Explicit action that copies the visible connection log."
+description = "Copy connection log"
+
+[[messages]]
+id = "connect-edit-host-action"
+context = "Action that returns to the failed Host editor."
+description = "Edit failed Host"
+
+[[messages]]
+id = "connect-retry-action"
+context = "Action that retries protocol review for the exact failed Host."
+description = "Retry failed connection"
+
+[[messages]]
+id = "connect-state-validating"
+context = "Status while the target and connection configuration are being validated."
+description = "Connection validating status"
+
+[[messages]]
+id = "connect-state-connecting"
+context = "Status while an SSH connection is opening."
+description = "Connection opening status"
+
+[[messages]]
+id = "connect-state-cancelled"
+context = "Status after connection setup or diagnostics are cancelled."
+description = "Connection cancelled status"
+
+[[messages]]
+id = "connect-state-recovery"
+context = "Status when safe recovery actions are available for a failed connection."
+description = "Connection recovery status"
+
+[[messages]]
+id = "connect-error-offline"
+context = "Error when the target network route is offline."
+description = "Connection offline error"
+
+[[messages]]
+id = "connect-error-permission"
+context = "Error when local permission prevents connection setup."
+description = "Connection permission error"
+
+[[messages]]
+id = "connect-error-authentication"
+context = "Error when SSH authentication is denied."
+description = "Authentication denied error"
+
+[[messages]]
+id = "connect-error-host-key-unknown"
+context = "Error when read-only diagnostics require a previously trusted Host key."
+description = "Unknown Host key error"
+
+[[messages]]
+id = "connect-error-host-key-mismatch"
+context = "Blocking error when the received Host key differs from the saved key."
+description = "Host key mismatch error"
+
+[[messages]]
+id = "connect-error-timeout"
+context = "Error when connection setup or diagnostics time out."
+description = "Connection timeout error"
+
+[[messages]]
+id = "connect-error-invalid-target"
+context = "Error when the Host address, port, or username is invalid."
+description = "Invalid connection target error"
+
+[[messages]]
+id = "connect-error-credential-store"
+context = "Error when the system credential store is unavailable."
+description = "Credential store unavailable error"
+
+[[messages]]
+id = "connect-error-stale"
+context = "Error when the selected Host changed before an action was applied."
+description = "Stale Host selection error"
+
+[[messages]]
+id = "connect-error-unavailable"
+context = "Error when connection facilities are unavailable."
+description = "Connection unavailable error"
+
+[[messages]]
+id = "connect-error-generic"
+context = "Generic safe connection failure that preserves the reviewed Host."
+description = "Generic connection error"
+
+[[messages]]
 id = "common-cancel"
 context = "Shared button used to dismiss an operation without applying it."
 description = "Cancel"
@@ -4127,3 +4552,274 @@ description = "Skip to content action"
 id = "shell-palette-result"
 context = "Privacy-safe accessible name for one global palette result."
 description = "Palette result name"
+[[messages]]
+id = "hosts-open-fleet-action"
+context = "Action opening every visible Host in a group as an SSH Fleet canvas."
+description = "Open fleet action"
+[[messages]]
+id = "hosts-open-fleet-tooltip"
+context = "Tooltip describing how many visible Hosts will open in the SSH Fleet canvas."
+description = "Open fleet tooltip"
+plural_arg = "count"
+plural_variants = ["one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "hosts-clear-search"
+context = "Action clearing the current Hosts search query."
+description = "Clear Host search"
+[[messages]]
+id = "hosts-import-description"
+context = "Description for SSH config import behavior."
+description = "SSH config import description"
+[[messages]]
+id = "hosts-provider-unavailable"
+context = "Notice that a named cloud Host provider integration is not available yet."
+description = "Host provider unavailable"
+[[messages.args]]
+name = "provider"
+type = "Text"
+sensitivity = "public"
+bidi = "isolate"
+[[messages]]
+id = "hosts-imported-count"
+context = "Status after importing Hosts from the local SSH config."
+description = "Imported Host count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "hosts-import-error"
+context = "Safe status when local SSH config import fails."
+description = "SSH config import error"
+[[messages.args]]
+name = "reason"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "hosts-add-tags-action"
+context = "Action opening the Host tag editor."
+description = "Add Host tags"
+[[messages]]
+id = "hosts-tags-help"
+context = "Short help text explaining Host tags."
+description = "Host tags help"
+[[messages]]
+id = "hosts-email-opened"
+context = "Status after opening the system email client for a team invitation."
+description = "Email client opened"
+[[messages]]
+id = "hosts-email-copied"
+context = "Status after copying an invitation email address."
+description = "Email copied"
+[[messages]]
+id = "hosts-agent-canvas-action"
+context = "Action opening selected Hosts in Agent Canvas mode."
+description = "Host Agent Canvas action"
+[[messages]]
+id = "hosts-terminal-action"
+context = "Action opening selected Hosts in terminal mode."
+description = "Host terminal action"
+[[messages]]
+id = "hosts-selected-count"
+context = "Count of Hosts selected for a batch operation."
+description = "Selected Host count"
+plural_arg = "count"
+plural_variants = ["zero", "one", "many", "other"]
+[[messages.args]]
+name = "count"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "hosts-diagnose-tooltip"
+context = "Tooltip describing the bounded read-only Host diagnostic."
+description = "Host diagnostic tooltip"
+[[messages]]
+id = "hosts-star-selected"
+context = "Batch action starring selected Hosts."
+description = "Star selected Hosts"
+[[messages]]
+id = "hosts-unstar-selected"
+context = "Batch action unstarring selected Hosts."
+description = "Unstar selected Hosts"
+[[messages]]
+id = "hosts-diagnostic-summary"
+context = "Summary of active, healthy, and attention-needed Host diagnostics."
+description = "Host diagnostic summary"
+[[messages.args]]
+name = "active"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "passed"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages.args]]
+name = "attention"
+type = "Count"
+sensitivity = "public"
+bidi = "none"
+[[messages]]
+id = "connect-host-required"
+context = "Validation error shown before opening connection settings without a Host."
+description = "Host required error"
+[[messages]]
+id = "connect-log-heading"
+context = "Heading before the bounded connection failure log."
+description = "Connection log heading"
+[[messages]]
+id = "connect-start-over-action"
+context = "Recovery action returning to connection setup."
+description = "Start connection setup over"
+[[messages]]
+id = "host-editor-host-required"
+context = "Validation error when the Host editor has no address."
+description = "Host editor address required"
+[[messages]]
+id = "host-editor-save-error"
+context = "Safe error when a Host cannot be saved before connection setup."
+description = "Host editor save error"
+[[messages]]
+id = "host-editor-theme-tooltip"
+context = "Help text for cycling through terminal themes in the Host editor."
+description = "Host terminal theme help"
+[[messages]]
+id = "host-editor-protocol-prefix"
+context = "Label before the SSH port input in the Host editor."
+description = "Host editor SSH protocol prefix"
+[[messages]]
+id = "host-editor-address-help"
+context = "Help below the Host address field."
+description = "Host address help"
+[[messages]]
+id = "host-editor-display-name-help"
+context = "Help below the user-visible Host name field."
+description = "Host display name help"
+[[messages]]
+id = "host-editor-group-field"
+context = "Label for the optional Host organization group."
+description = "Host group field"
+[[messages]]
+id = "host-editor-group-help"
+context = "Help below the optional Host organization group."
+description = "Host group help"
+[[messages]]
+id = "host-editor-tags-field"
+context = "Label for comma-separated Host tags."
+description = "Host tags field"
+[[messages]]
+id = "host-editor-tags-help"
+context = "Help below the Host tags field."
+description = "Host tags field help"
+[[messages]]
+id = "host-editor-credentials-heading"
+context = "Heading above SSH authentication choices."
+description = "Host credentials heading"
+[[messages]]
+id = "host-editor-username-help"
+context = "Help below the SSH username field."
+description = "Host username help"
+[[messages]]
+id = "host-editor-password-help"
+context = "Help below the password field without exposing a password value."
+description = "Host password help"
+[[messages]]
+id = "common-browse"
+context = "Action opening a local file picker."
+description = "Browse files action"
+[[messages]]
+id = "host-editor-key-picker-help"
+context = "Help for selecting a private-key file."
+description = "Private key picker help"
+[[messages]]
+id = "host-editor-key-passphrase-help"
+context = "Help below the optional private-key passphrase field."
+description = "Private key passphrase help"
+[[messages]]
+id = "host-editor-certificate-field"
+context = "Label for an optional OpenSSH user certificate."
+description = "OpenSSH certificate field"
+[[messages]]
+id = "host-editor-certificate-help"
+context = "Safety behavior for an OpenSSH certificate and private-key pair."
+description = "OpenSSH certificate safety help"
+[[messages]]
+id = "host-editor-agent-help"
+context = "Privacy and default behavior below the SSH-agent socket field."
+description = "SSH agent socket help"
+[[messages]]
+id = "host-editor-agent-detected"
+context = "Status when a usable local SSH agent is detected."
+description = "SSH agent detected status"
+[[messages]]
+id = "host-editor-agent-missing"
+context = "Recovery guidance when no usable local SSH agent is detected."
+description = "SSH agent missing status"
+[[messages]]
+id = "host-editor-agent-forwarding-help"
+context = "Explanation that SSH-agent forwarding is a separate one-connection action."
+description = "SSH agent forwarding help"
+[[messages]]
+id = "host-editor-identity-kinds"
+context = "Summary of supported SSH identity credential kinds."
+description = "SSH identity kinds"
+[[messages]]
+id = "host-editor-startup-command-field"
+context = "Label for the Host startup command."
+description = "Host startup command field"
+[[messages]]
+id = "host-editor-jump-host-field"
+context = "Label for Host chaining through a jump Host."
+description = "Host jump field"
+[[messages]]
+id = "host-editor-environment-field"
+context = "Label and syntax hint for Host environment variables."
+description = "Host environment field"
+[[messages]]
+id = "host-editor-terminal-theme-field"
+context = "Label for the Host terminal theme control."
+description = "Host terminal theme field"
+[[messages]]
+id = "host-editor-show-more"
+context = "Action revealing advanced Host settings."
+description = "Show advanced Host settings"
+[[messages]]
+id = "host-editor-show-less"
+context = "Action hiding advanced Host settings."
+description = "Hide advanced Host settings"
+[[messages]]
+id = "host-editor-address-section"
+context = "Heading for the Host address section."
+description = "Host address section"
+[[messages]]
+id = "host-editor-general-section"
+context = "Heading for general Host settings."
+description = "Host general section"
+[[messages]]
+id = "host-editor-existing-title"
+context = "Visible title when editing an existing Host."
+description = "Existing Host title"
+[[messages]]
+id = "host-editor-new-title"
+context = "Visible title when creating a Host."
+description = "New Host title"
+[[messages]]
+id = "host-editor-vault-label"
+context = "Visible vault picker label containing a user-defined vault name."
+description = "Host vault label"
+[[messages.args]]
+name = "vault"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"

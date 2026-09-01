@@ -1706,6 +1706,14 @@ impl TermiRustApp {
                         );
                     }
                 }
+                ShellAccessibilityCommand::HostConnection(command) => {
+                    self.handle_host_connection_accessibility_command(
+                        command,
+                        event.value,
+                        window,
+                        cx,
+                    );
+                }
             }
         }
     }
@@ -11848,10 +11856,14 @@ impl Render for TermiRustApp {
             0
         };
         let worktree_modal_open = self.worktree_launch.is_some();
-        let product_session = (!worktree_modal_open)
+        let host_modal_open = self.active_workspace().is_some_and(|workspace| {
+            workspace.pending_connect.is_some() || workspace.connect_failure.is_some()
+        });
+        let background_surface_available = !worktree_modal_open && !host_modal_open;
+        let product_session = background_surface_available
             .then(|| self.product_session_semantic_snapshot(cx))
             .flatten();
-        let preset_runtime = (!worktree_modal_open)
+        let preset_runtime = background_surface_available
             .then(|| match self.nav_section {
                 NavSection::Presets => Some(self.preset_runtime_semantic_snapshot(cx)),
                 NavSection::Sessions => self.runtime_inspector_semantic_snapshot(),
@@ -11859,13 +11871,16 @@ impl Render for TermiRustApp {
             })
             .flatten();
         let worktree_artifact = self.worktree_semantic_snapshot(cx).or_else(|| {
-            (self.nav_section == NavSection::Sftp)
+            (background_surface_available && self.nav_section == NavSection::Sftp)
                 .then(|| self.artifact_semantic_snapshot())
                 .flatten()
         });
+        let host_connection = (!worktree_modal_open)
+            .then(|| self.host_connection_semantic_snapshot(cx))
+            .flatten();
         self.shell_accessibility.sync(ShellSemanticSnapshot {
             generation: 1,
-            inspector_visible: self.show_editor_panel,
+            inspector_visible: self.show_editor_panel || worktree_modal_open || host_modal_open,
             palette_open: self.show_command_palette,
             palette_result_count,
             selected_palette_result: self.selected_command_palette_index(palette_result_count),
@@ -11877,6 +11892,7 @@ impl Render for TermiRustApp {
             product_session,
             preset_runtime,
             worktree_artifact,
+            host_connection,
         });
 
         // When the active workspace changes, scroll the tab strip so the
@@ -12498,15 +12514,16 @@ fn apply_group_defaults_to_draft(
 #[cfg(test)]
 mod tests {
     use super::{
-        AutocompleteSource, ConnectDialogMode, DropZone, HostsSort, HostsViewMode,
-        KeyLifecycleDialog, KeychainTab, MAX_SPLIT_PANES, NavSection, OutputSuggestionContext,
-        PathSuggestionContext, SessionLibraryView, SplitNode, TermiRustApp, WorkspaceIndicators,
-        WorkspaceRuntimeTone, WorkspaceViewMode, apply_group_defaults_to_draft,
-        collect_autocomplete_candidates, collect_command_palette_candidates,
-        extract_snippet_prompt_names, shell_command_requires_continuation,
-        startup_bytes_for_request, substitute_snippet_placeholders, substitute_snippet_prompts,
-        workspace_runtime_summary,
+        AutocompleteSource, ConnectDialogMode, ConnectionDiagnosticRow, ConnectionDiagnosticStatus,
+        DropZone, HostsSort, HostsViewMode, KeyLifecycleDialog, KeychainTab, MAX_SPLIT_PANES,
+        NavSection, OutputSuggestionContext, PathSuggestionContext, SessionLibraryView, SplitNode,
+        TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone, WorkspaceViewMode,
+        apply_group_defaults_to_draft, collect_autocomplete_candidates,
+        collect_command_palette_candidates, extract_snippet_prompt_names,
+        shell_command_requires_continuation, startup_bytes_for_request,
+        substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
     };
+    use crate::connection_diagnostics::{DiagnosticFailureKind, DiagnosticStage};
     use crate::credentials;
     use crate::models::{
         AgentBackendKind, AgentLocation, AgentProvider, AuthConfig, AuthMode, CanvasNodeId,
@@ -22225,6 +22242,153 @@ sleep 1
     }
 
     #[gpui::test]
+    fn e2e_host_contract_masks_secrets_and_routes_literal_field_values(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let password_canary = "password-canary-must-not-enter-semantics";
+        let literal_label = "Literal $(touch must-not-run); <script>inert</script>";
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.activate_library_section(NavSection::Hosts, window, cx);
+                    app.open_editor_for_new_host(window, cx);
+                    app.set_auth_mode(AuthMode::Password, cx);
+                    TermiRustApp::set_input_value(
+                        &app.inputs.password,
+                        password_canary,
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(
+                        &app.inputs.host,
+                        "private.example.test",
+                        window,
+                        cx,
+                    );
+                    TermiRustApp::set_input_value(&app.inputs.username, "deploy", window, cx);
+
+                    let snapshot = app
+                        .host_connection_semantic_snapshot(cx)
+                        .expect("Host editor semantics should be available");
+                    assert_eq!(
+                        snapshot.screen,
+                        termirust_ui_contract::HostConnectionScreen::HostEditor
+                    );
+                    assert!(snapshot.controls.iter().any(|control| {
+                        control.action
+                            == termirust_ui_contract::HostConnectionAction::SetHostPassword
+                            && control.value.as_deref() == Some("set")
+                    }));
+                    let semantics = format!(
+                        "{:?}",
+                        snapshot
+                            .try_nodes(termirust_ui_contract::shell_region_semantic_node(
+                                termirust_ui_contract::ShellRegionId::Inspector,
+                            ))
+                            .unwrap()
+                    );
+                    assert!(!semantics.contains(password_canary));
+
+                    app.handle_host_connection_accessibility_command(
+                        termirust_ui_contract::HostConnectionAccessibilityCommand::SetControlValue(
+                            termirust_ui_contract::HostConnectionAction::SetHostLabel,
+                        ),
+                        Some(termirust_ui_contract::SemanticActionValue::Text(
+                            literal_label.to_string(),
+                        )),
+                        window,
+                        cx,
+                    );
+                    assert_eq!(app.inputs.label.read(cx).value(), literal_label);
+                })
+            })
+            .expect("Host editor contract should preserve literal values");
+    }
+
+    #[gpui::test]
+    fn e2e_host_contract_rejects_stale_targets_and_surfaces_key_mismatch(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let profile = HostProfile {
+            id: "host-contract-1".to_string(),
+            label: "Contract Host".to_string(),
+            host: "example.test".to_string(),
+            port: 22,
+            username: "deploy".to_string(),
+            auth_mode: AuthMode::Password,
+            ..HostProfile::default()
+        };
+        let saved = SavedState {
+            profiles: vec![profile.clone()],
+            ..SavedState::default()
+        };
+        let (app, window) = open_test_app_with_state(cx, saved);
+
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.nav_section = NavSection::Hosts;
+                    app.show_editor_panel = false;
+                    app.connection_diagnostics.push(ConnectionDiagnosticRow {
+                        operation_id: 41,
+                        profile_id: profile.id.clone(),
+                        title: profile.display_name(),
+                        address: profile.endpoint(),
+                        route: "direct".to_string(),
+                        status: ConnectionDiagnosticStatus::Failed,
+                        stage: DiagnosticStage::RouteAndAuthentication,
+                        failure_kind: Some(DiagnosticFailureKind::HostKeyMismatch),
+                        message: "received fingerprint differs from pinned fingerprint".to_string(),
+                        recovery: DiagnosticFailureKind::HostKeyMismatch
+                            .recovery()
+                            .to_string(),
+                        elapsed: Duration::ZERO,
+                        control: None,
+                    });
+                    let snapshot = app
+                        .host_connection_semantic_snapshot(cx)
+                        .expect("Hosts semantics should be available");
+                    assert_eq!(
+                        snapshot.state,
+                        termirust_ui_contract::HostConnectionSurfaceState::HostKeyMismatch
+                    );
+                    let row = termirust_ui_contract::HostConnectionRowId::host(
+                        termirust_ui_contract::stable_host_row_value(&profile.id),
+                    );
+                    let stale_action =
+                        termirust_ui_contract::HostConnectionAction::ConnectHost(row);
+                    assert!(
+                        snapshot
+                            .controls
+                            .iter()
+                            .any(|control| { control.action == stale_action && !control.disabled })
+                    );
+                    let diagnostic =
+                        termirust_ui_contract::HostConnectionRowId::diagnostic(row.value, 41);
+                    assert!(snapshot.controls.iter().any(|control| {
+                        control.parent == Some(diagnostic)
+                            && control.action
+                                == termirust_ui_contract::HostConnectionAction::RetryDiagnostic(
+                                    diagnostic,
+                                )
+                    }));
+
+                    app.saved.profiles.clear();
+                    app.handle_host_connection_accessibility_command(
+                        termirust_ui_contract::HostConnectionAccessibilityCommand::ActivateControl(
+                            stale_action,
+                        ),
+                        None,
+                        window,
+                        cx,
+                    );
+                    assert!(app.workspaces.is_empty());
+                })
+            })
+            .expect("stale Host action should fail closed");
+    }
+
+    #[gpui::test]
     fn e2e_preset_form_persists_literal_arguments_and_renders_row(cx: &mut TestAppContext) {
         let _isolation = TestIsolation::acquire();
         let (app, window) = open_test_app(cx);
@@ -26148,7 +26312,10 @@ sleep 1
         app.read_with(cx, |app, _| {
             assert_eq!(
                 app.status_message,
-                "Opened your email client to invite a teammate."
+                crate::ui::localization::message_id(
+                    termirust_ui_contract::MessageId::HostsEmailOpened,
+                )
+                .unwrap_or_default()
             );
             assert!(app.open_toolbar_menu.is_none());
         });
@@ -26166,7 +26333,13 @@ sleep 1
             .expect("avatar dropdown should copy email");
         assert!(clipboard.text().is_some());
         app.read_with(cx, |app, _| {
-            assert_eq!(app.status_message, "Copied email to clipboard.");
+            assert_eq!(
+                app.status_message,
+                crate::ui::localization::message_id(
+                    termirust_ui_contract::MessageId::HostsEmailCopied,
+                )
+                .unwrap_or_default()
+            );
             assert!(app.open_toolbar_menu.is_none());
         });
     }
@@ -26236,7 +26409,10 @@ sleep 1
             assert_eq!(profile.port, 2201);
             assert_eq!(profile.source, ProfileSource::SshConfig);
             assert!(!app.show_new_host_menu);
-            assert_eq!(app.status_message, "Imported 1 hosts from ~/.ssh/config.");
+            assert_eq!(
+                app.status_message,
+                crate::ui::localization::hosts_imported_count(1)
+            );
             assert!(app.error_message.is_empty());
         });
 

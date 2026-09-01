@@ -109,6 +109,38 @@ pub fn common_run() -> String {
     text(&CommonRunArgs::new())
 }
 
+pub fn hosts_open_fleet_tooltip(count: usize) -> String {
+    text(&HostsOpenFleetTooltipArgs::new(Count(count as u64)))
+}
+
+pub fn hosts_provider_unavailable(provider: impl Into<String>) -> String {
+    text(&HostsProviderUnavailableArgs::new(Text::new(provider)))
+}
+
+pub fn hosts_imported_count(count: usize) -> String {
+    text(&HostsImportedCountArgs::new(Count(count as u64)))
+}
+
+pub fn hosts_import_error(reason: impl Into<String>) -> String {
+    text(&HostsImportErrorArgs::new(UserData::new(reason)))
+}
+
+pub fn hosts_selected_count(count: usize) -> String {
+    text(&HostsSelectedCountArgs::new(Count(count as u64)))
+}
+
+pub fn hosts_diagnostic_summary(active: usize, passed: usize, attention: usize) -> String {
+    text(&HostsDiagnosticSummaryArgs::new(
+        Count(active as u64),
+        Count(passed as u64),
+        Count(attention as u64),
+    ))
+}
+
+pub fn host_editor_vault_label(vault: impl Into<String>) -> String {
+    text(&HostEditorVaultLabelArgs::new(UserData::new(vault)))
+}
+
 macro_rules! static_message {
     ($(#[$attribute:meta])* $function:ident, $arguments:ty) => {
         $(#[$attribute])*

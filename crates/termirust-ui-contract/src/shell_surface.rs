@@ -3,6 +3,9 @@ use std::fmt;
 use std::num::NonZeroU64;
 use std::time::{Duration, Instant};
 
+use crate::host_connection_surface::{
+    HostConnectionAccessibilityCommand, HostConnectionSemanticSnapshot,
+};
 use crate::preset_runtime_surface::{
     PresetRuntimeAccessibilityCommand, PresetRuntimeSemanticSnapshot,
 };
@@ -443,6 +446,7 @@ pub enum ShellAccessibilityCommand {
     ProductSession(ProductSessionAccessibilityCommand),
     PresetRuntime(PresetRuntimeAccessibilityCommand),
     WorktreeArtifact(WorktreeArtifactAccessibilityCommand),
+    HostConnection(HostConnectionAccessibilityCommand),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -456,6 +460,7 @@ pub struct ShellSemanticSnapshot {
     pub product_session: Option<ProductSessionSemanticSnapshot>,
     pub preset_runtime: Option<PresetRuntimeSemanticSnapshot>,
     pub worktree_artifact: Option<WorktreeArtifactSemanticSnapshot>,
+    pub host_connection: Option<HostConnectionSemanticSnapshot>,
 }
 
 impl Default for ShellSemanticSnapshot {
@@ -470,6 +475,7 @@ impl Default for ShellSemanticSnapshot {
             product_session: None,
             preset_runtime: None,
             worktree_artifact: None,
+            host_connection: None,
         }
     }
 }
@@ -537,6 +543,11 @@ impl ShellSemanticSnapshot {
             && let Some(worktree_artifact) = self.worktree_artifact.as_ref()
         {
             nodes.extend(worktree_artifact.try_nodes(shell_region_node(ShellRegionId::Content))?);
+        }
+        if !self.palette_open
+            && let Some(host_connection) = self.host_connection.as_ref()
+        {
+            nodes.extend(host_connection.try_nodes(shell_region_node(ShellRegionId::Content))?);
         }
 
         if self.palette_open {
@@ -636,6 +647,15 @@ impl ShellSemanticSnapshot {
                     .map(|(key, command)| {
                         (key, ShellAccessibilityCommand::WorktreeArtifact(command))
                     }),
+            );
+        }
+        if !self.palette_open
+            && let Some(host_connection) = self.host_connection.as_ref()
+        {
+            routes.extend(
+                host_connection.routes().into_iter().map(|(key, command)| {
+                    (key, ShellAccessibilityCommand::HostConnection(command))
+                }),
             );
         }
         if self.palette_open {
@@ -1072,6 +1092,81 @@ mod tests {
                 .unwrap(),
             ShellAccessibilityCommand::WorktreeArtifact(
                 crate::WorktreeArtifactAccessibilityCommand::ActivateControl(action)
+            )
+        );
+    }
+
+    #[test]
+    fn shell_routes_host_controls_without_exposing_password_values() {
+        let row = crate::HostConnectionRowId::host(crate::stable_host_row_value("host-1"));
+        let action = crate::HostConnectionAction::ConnectHost(row);
+        let surface = crate::HostConnectionSemanticSnapshot {
+            screen: crate::HostConnectionScreen::HostEditor,
+            state: crate::HostConnectionSurfaceState::Editing,
+            rows: vec![crate::HostConnectionRow {
+                id: row,
+                parent: None,
+                name: "Production".to_string(),
+                status: MessageId::HostAuthPassword,
+                detail: None,
+                selected: true,
+                disabled: false,
+                checked: None,
+                invalid: false,
+                stale: false,
+                position: 1,
+                set_size: 1,
+            }],
+            controls: vec![
+                crate::HostConnectionControl {
+                    action: crate::HostConnectionAction::SetHostPassword,
+                    parent: None,
+                    role: crate::HostConnectionControlRole::PasswordField,
+                    name: MessageId::HostPasswordField,
+                    value: Some("password-canary".to_string()),
+                    selected: false,
+                    disabled: false,
+                    invalid: false,
+                },
+                crate::HostConnectionControl {
+                    action,
+                    parent: Some(row),
+                    role: crate::HostConnectionControlRole::Button,
+                    name: MessageId::CommonConnect,
+                    value: None,
+                    selected: false,
+                    disabled: false,
+                    invalid: false,
+                },
+            ],
+            recording_friendly: false,
+        };
+        let route = surface
+            .routes()
+            .into_iter()
+            .find(|(_, command)| {
+                *command == crate::HostConnectionAccessibilityCommand::ActivateControl(action)
+            })
+            .unwrap();
+        let snapshot = ShellSemanticSnapshot {
+            host_connection: Some(surface),
+            inspector_visible: true,
+            ..ShellSemanticSnapshot::default()
+        };
+        let tree = snapshot.try_tree().unwrap();
+        assert!(!format!("{tree:?}").contains("password-canary"));
+        let router = snapshot.try_router(&tree).unwrap();
+        assert_eq!(
+            *router
+                .resolve(crate::SemanticActionRequest {
+                    generation: tree.generation(),
+                    node: route.0.0,
+                    action: route.0.1,
+                    value: None,
+                })
+                .unwrap(),
+            ShellAccessibilityCommand::HostConnection(
+                crate::HostConnectionAccessibilityCommand::ActivateControl(action)
             )
         );
     }

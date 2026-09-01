@@ -18,6 +18,7 @@ use crate::ui::app::{
 };
 use crate::ui::localization;
 use crate::ui::theme;
+use termirust_ui_contract::MessageId;
 
 impl TermiRustApp {
     pub(super) fn open_connect_dialog_tab(
@@ -50,7 +51,7 @@ impl TermiRustApp {
     ) {
         let host = self.inputs.host.read(cx).value().trim().to_string();
         if host.is_empty() {
-            self.error_message = "Enter a host before choosing a protocol.".to_string();
+            self.error_message = connect_message(MessageId::ConnectHostRequired);
             cx.notify();
             return;
         }
@@ -242,16 +243,16 @@ impl TermiRustApp {
         v_flex()
             .flex_1()
             .items_center()
-            .pt(px(96.))
-            .gap(px(20.))
+            .pt(px(theme::CONNECT_CONTENT_TOP))
+            .gap(px(theme::ICON_SIZE_MEDIUM))
             .child(
                 h_flex()
-                    .w(px(520.))
-                    .gap(px(12.))
+                    .w(px(theme::CONNECT_FAILURE_PANEL_WIDTH))
+                    .gap(px(theme::SPACE_4))
                     .items_center()
                     .child(
                         div()
-                            .size(px(44.))
+                            .size(px(theme::CHROME_HEIGHT))
                             .rounded(px(theme::CARD_RADIUS))
                             .flex()
                             .items_center()
@@ -259,24 +260,24 @@ impl TermiRustApp {
                             .bg(theme::with_alpha(theme::accent(), 0.18))
                             .child(
                                 Icon::new(IconName::SquareTerminal)
-                                    .size(px(20.))
+                                    .size(px(theme::ICON_SIZE_MEDIUM))
                                     .text_color(theme::accent()),
                             ),
                     )
                     .child(
                         v_flex()
                             .flex_1()
-                            .gap(px(2.))
+                            .gap(px(theme::SPACE_1))
                             .child(
                                 div()
-                                    .text_size(px(15.))
+                                    .text_size(px(theme::ICON_SIZE_COMPACT))
                                     .font_semibold()
                                     .text_color(theme::text_main())
                                     .child(title),
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .text_color(theme::text_muted())
                                     .child(endpoint),
                             ),
@@ -291,7 +292,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Neutral,
                                         cx,
                                     ))
-                                    .label("Copy logs")
+                                    .label(connect_message(MessageId::ConnectCopyLogAction))
                                     .on_click(cx.listener({
                                         let log = log_lines.clone();
                                         move |_, _, _, cx| {
@@ -305,64 +306,64 @@ impl TermiRustApp {
             )
             .child(
                 h_flex()
-                    .w(px(520.))
+                    .w(px(theme::CONNECT_FAILURE_PANEL_WIDTH))
                     .items_center()
                     .gap(px(theme::SPACE_3))
                     .child(
                         div()
-                            .size(px(28.))
-                            .rounded(px(999.))
+                            .size(px(theme::STATUS_HEIGHT))
+                            .rounded(px(theme::PILL_RADIUS))
                             .flex()
                             .items_center()
                             .justify_center()
                             .bg(theme::danger())
                             .child(
                                 Icon::new(IconName::User)
-                                    .size(px(14.))
+                                    .size(px(theme::HOST_ICON_SIZE_BODY))
                                     .text_color(theme::library_card()),
                             ),
                     )
                     .child(
                         div()
                             .flex_1()
-                            .h(px(2.))
+                            .h(px(theme::SPACE_1))
                             .bg(theme::with_alpha(theme::danger(), 0.7)),
                     )
                     .child(
                         div()
-                            .size(px(28.))
-                            .rounded(px(999.))
+                            .size(px(theme::STATUS_HEIGHT))
+                            .rounded(px(theme::PILL_RADIUS))
                             .flex()
                             .items_center()
                             .justify_center()
                             .bg(theme::danger())
                             .child(
                                 Icon::new(IconName::SquareTerminal)
-                                    .size(px(14.))
+                                    .size(px(theme::HOST_ICON_SIZE_BODY))
                                     .text_color(theme::library_card()),
                             ),
                     ),
             )
             .child(
                 div()
-                    .w(px(520.))
-                    .text_size(px(13.))
+                    .w(px(theme::CONNECT_FAILURE_PANEL_WIDTH))
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .font_semibold()
                     .text_color(theme::danger())
-                    .child("Connection failed with connection log:"),
+                    .child(connect_message(MessageId::ConnectLogHeading)),
             )
             .child(
                 v_flex()
-                    .w(px(520.))
-                    .p(px(14.))
-                    .gap(px(8.))
-                    .rounded(px(8.))
+                    .w(px(theme::CONNECT_FAILURE_PANEL_WIDTH))
+                    .p(px(theme::HOST_ICON_SIZE_BODY))
+                    .gap(px(theme::SPACE_3))
+                    .rounded(px(theme::CARD_RADIUS))
                     .bg(theme::with_alpha(theme::hover(), 0.4))
                     .border_1()
                     .border_color(theme::soft_border())
                     .children(log_lines.iter().map(|line| {
                         div()
-                            .text_size(px(12.))
+                            .text_size(px(theme::TYPE_CAPTION_SIZE))
                             .text_color(theme::text_main())
                             .child(line.clone())
                             .into_any_element()
@@ -370,9 +371,9 @@ impl TermiRustApp {
             )
             .child(
                 h_flex()
-                    .w(px(520.))
-                    .pt(px(8.))
-                    .gap(px(10.))
+                    .w(px(theme::CONNECT_FAILURE_PANEL_WIDTH))
+                    .pt(px(theme::SPACE_3))
+                    .gap(px(theme::SPACE_COMPACT))
                     .justify_end()
                     .items_center()
                     .child(
@@ -399,7 +400,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Neutral,
                                         cx,
                                     ))
-                                    .label("Edit host")
+                                    .label(connect_message(MessageId::ConnectEditHostAction))
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.close_connect_dialog_tab(workspace_id, window, cx);
                                         this.activate_library_section(
@@ -422,7 +423,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Accent,
                                         cx,
                                     ))
-                                    .label("Start over")
+                                    .label(connect_message(MessageId::ConnectStartOverAction))
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.restart_choose_protocol(workspace_id, cx);
                                     })),
@@ -439,43 +440,44 @@ impl TermiRustApp {
         cx: &mut Context<Self>,
     ) -> Div {
         let host = profile.host.clone();
+        let ssh_title = connect_message(MessageId::ConnectProtocolSsh);
         let display = profile.display_name();
         v_flex()
             .flex_1()
             .items_center()
-            .pt(px(96.))
-            .gap(px(28.))
+            .pt(px(theme::CONNECT_CONTENT_TOP))
+            .gap(px(theme::STATUS_HEIGHT))
             .child(
                 h_flex()
-                    .gap(px(12.))
+                    .gap(px(theme::SPACE_4))
                     .items_center()
                     .child(
                         div()
-                            .size(px(44.))
-                            .rounded(px(8.))
+                            .size(px(theme::CHROME_HEIGHT))
+                            .rounded(px(theme::CARD_RADIUS))
                             .flex()
                             .items_center()
                             .justify_center()
                             .bg(theme::with_alpha(theme::accent(), 0.18))
                             .child(
                                 Icon::new(IconName::SquareTerminal)
-                                    .size(px(20.))
+                                    .size(px(theme::ICON_SIZE_MEDIUM))
                                     .text_color(theme::accent()),
                             ),
                     )
                     .child(
                         v_flex()
-                            .gap(px(2.))
+                            .gap(px(theme::SPACE_1))
                             .child(
                                 div()
-                                    .text_size(px(15.))
+                                    .text_size(px(theme::ICON_SIZE_COMPACT))
                                     .font_semibold()
                                     .text_color(theme::text_main())
                                     .child(display.clone()),
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .text_color(theme::text_muted())
                                     .child(host.clone()),
                             ),
@@ -483,56 +485,56 @@ impl TermiRustApp {
             )
             .child(
                 h_flex()
-                    .w(px(420.))
+                    .w(px(theme::CONNECT_PANEL_WIDTH))
                     .items_center()
-                    .gap(px(8.))
+                    .gap(px(theme::SPACE_3))
                     .child(
                         div()
-                            .size(px(28.))
-                            .rounded(px(999.))
+                            .size(px(theme::STATUS_HEIGHT))
+                            .rounded(px(theme::PILL_RADIUS))
                             .flex()
                             .items_center()
                             .justify_center()
                             .bg(theme::accent())
                             .child(
                                 Icon::new(IconName::User)
-                                    .size(px(14.))
+                                    .size(px(theme::HOST_ICON_SIZE_BODY))
                                     .text_color(theme::library_card()),
                             ),
                     )
                     .child(
                         div()
                             .flex_1()
-                            .h(px(2.))
+                            .h(px(theme::SPACE_1))
                             .bg(theme::with_alpha(theme::text_muted(), 0.4)),
                     )
                     .child(
                         div()
-                            .size(px(28.))
-                            .rounded(px(999.))
+                            .size(px(theme::STATUS_HEIGHT))
+                            .rounded(px(theme::PILL_RADIUS))
                             .flex()
                             .items_center()
                             .justify_center()
                             .bg(theme::with_alpha(theme::text_muted(), 0.3))
                             .child(
                                 Icon::new(IconName::SquareTerminal)
-                                    .size(px(14.))
+                                    .size(px(theme::HOST_ICON_SIZE_BODY))
                                     .text_color(theme::text_main()),
                             ),
                     ),
             )
             .child(
                 div()
-                    .w(px(420.))
-                    .text_size(px(13.))
+                    .w(px(theme::CONNECT_PANEL_WIDTH))
+                    .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                     .font_semibold()
                     .text_color(theme::text_main())
-                    .child("Connection settings"),
+                    .child(connect_message(MessageId::ConnectProtocolTitle)),
             )
             .child(self.protocol_card(
                 "proto-ssh",
                 ConnectProtocol::Ssh,
-                "SSH",
+                &ssh_title,
                 &format!("ssh {host}"),
                 None,
                 &self.shell_inputs.protocol_ssh_port.clone(),
@@ -540,16 +542,15 @@ impl TermiRustApp {
                 cx,
             ))
             .when(
-                profile.auth_mode == AuthMode::LocalAgent
-                    && selected == ConnectProtocol::Ssh,
+                profile.auth_mode == AuthMode::LocalAgent && selected == ConnectProtocol::Ssh,
                 |this| {
                     this.child(
                         v_flex()
-                            .w(px(420.))
-                            .gap(px(8.))
-                            .px(px(12.))
-                            .py(px(10.))
-                            .rounded(px(8.))
+                            .w(px(theme::CONNECT_PANEL_WIDTH))
+                            .gap(px(theme::SPACE_3))
+                            .px(px(theme::SPACE_4))
+                            .py(px(theme::SPACE_COMPACT))
+                            .rounded(px(theme::CARD_RADIUS))
                             .border_1()
                             .border_color(theme::with_alpha(theme::warning(), 0.45))
                             .bg(theme::with_alpha(theme::warning(), 0.08))
@@ -557,15 +558,11 @@ impl TermiRustApp {
                                 div()
                                     .text_size(px(theme::TYPE_CAPTION_SIZE))
                                     .text_color(theme::text_main())
-                                    .child(
-                                        "Agent forwarding lets this server request signatures from your local SSH agent for this connection only.",
-                                    ),
+                                    .child(connect_message(MessageId::ConnectForwardAgentWarning)),
                             )
                             .child(
                                 div()
-                                    .debug_selector(|| {
-                                        "choose-proto-forward-agent".to_string()
-                                    })
+                                    .debug_selector(|| "choose-proto-forward-agent".to_string())
                                     .child(
                                         Button::new("choose-proto-forward-agent")
                                             .w_full()
@@ -574,7 +571,9 @@ impl TermiRustApp {
                                                 cx,
                                             ))
                                             .icon(IconName::TriangleAlert)
-                                            .label("Connect + Forward Agent Once")
+                                            .label(connect_message(
+                                                MessageId::ConnectForwardAgentAction,
+                                            ))
                                             .on_click(cx.listener(move |this, _, window, cx| {
                                                 this.confirm_choose_protocol_with_agent_forwarding(
                                                     workspace_id,
@@ -589,11 +588,11 @@ impl TermiRustApp {
             )
             .child(
                 h_flex()
-                    .w(px(420.))
-                    .pt(px(20.))
+                    .w(px(theme::CONNECT_PANEL_WIDTH))
+                    .pt(px(theme::ICON_SIZE_MEDIUM))
                     .justify_between()
                     .items_center()
-                    .gap(px(12.))
+                    .gap(px(theme::SPACE_4))
                     .child(
                         div()
                             .debug_selector(|| "choose-proto-close".to_string())
@@ -618,7 +617,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Accent,
                                         cx,
                                     ))
-                                    .label("Continue")
+                                    .label(connect_message(MessageId::ConnectContinueAction))
                                     .on_click(cx.listener(move |this, _, window, cx| {
                                         this.confirm_choose_protocol(workspace_id, window, cx);
                                     })),
@@ -645,12 +644,12 @@ impl TermiRustApp {
             .w(px(theme::current_design_tokens()
                 .layout_connect_panel_width()
                 .0))
-            .min_h(px(64.))
+            .min_h(px(theme::HOST_CARD_HEIGHT))
             .py(px(theme::SPACE_COMPACT))
-            .px(px(14.))
-            .gap(px(12.))
+            .px(px(theme::HOST_ICON_SIZE_BODY))
+            .gap(px(theme::SPACE_4))
             .items_center()
-            .rounded(px(10.))
+            .rounded(px(theme::HOST_CARD_RADIUS))
             .bg(theme::library_card())
             .border_2()
             .border_color(if selected {
@@ -663,17 +662,17 @@ impl TermiRustApp {
             .child(
                 v_flex()
                     .flex_1()
-                    .gap(px(4.))
+                    .gap(px(theme::SPACE_2))
                     .child(
                         div()
-                            .text_size(px(13.))
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .font_semibold()
                             .text_color(theme::text_main())
                             .child(title),
                     )
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
                             .child(subtitle),
                     )
@@ -683,15 +682,19 @@ impl TermiRustApp {
             )
             .child(
                 h_flex()
-                    .gap(px(6.))
+                    .gap(px(theme::SPACE_DENSE))
                     .items_center()
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
                             .child("port:"),
                     )
-                    .child(div().w(px(60.)).child(Input::new(port_input).xsmall())),
+                    .child(
+                        div()
+                            .w(px(theme::CONNECT_PORT_WIDTH))
+                            .child(Input::new(port_input).xsmall()),
+                    ),
             )
             .on_click(cx.listener(move |this, _, _, cx| {
                 if let Some(workspace) = this
@@ -713,13 +716,45 @@ impl TermiRustApp {
         self.confirm_choose_protocol_impl(workspace_id, false, window, cx);
     }
 
-    fn confirm_choose_protocol_with_agent_forwarding(
+    pub(super) fn confirm_choose_protocol_with_agent_forwarding(
         &mut self,
         workspace_id: u64,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.confirm_choose_protocol_impl(workspace_id, true, window, cx);
+    }
+
+    pub(super) fn copy_active_connect_failure_log(&self, cx: &mut Context<Self>) {
+        let Some(failure) = self
+            .active_workspace()
+            .and_then(|workspace| workspace.connect_failure.as_ref())
+        else {
+            return;
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string(failure.log.join("\n")));
+    }
+
+    pub(super) fn edit_active_connect_failure(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(workspace_id) = self.active_workspace_id else {
+            return;
+        };
+        let Some(profile_id) = self
+            .workspace(workspace_id)
+            .and_then(|workspace| workspace.connect_failure.as_ref())
+            .map(|failure| failure.profile.id.clone())
+        else {
+            return;
+        };
+        self.close_connect_dialog_tab(workspace_id, window, cx);
+        self.activate_library_section(NavSection::Hosts, window, cx);
+        self.load_profile_into_inputs(&profile_id, window, cx);
+        self.show_editor_panel = true;
+        cx.notify();
     }
 
     fn confirm_choose_protocol_impl(
@@ -866,39 +901,39 @@ impl TermiRustApp {
         v_flex()
             .flex_1()
             .items_center()
-            .pt(px(96.))
-            .gap(px(28.))
+            .pt(px(theme::CONNECT_CONTENT_TOP))
+            .gap(px(theme::STATUS_HEIGHT))
             .child(
                 h_flex()
-                    .gap(px(12.))
+                    .gap(px(theme::SPACE_4))
                     .items_center()
                     .child(
                         div()
-                            .size(px(44.))
-                            .rounded(px(8.))
+                            .size(px(theme::CHROME_HEIGHT))
+                            .rounded(px(theme::CARD_RADIUS))
                             .flex()
                             .items_center()
                             .justify_center()
                             .bg(theme::with_alpha(theme::accent(), 0.18))
                             .child(
                                 Icon::new(IconName::SquareTerminal)
-                                    .size(px(20.))
+                                    .size(px(theme::ICON_SIZE_MEDIUM))
                                     .text_color(theme::accent()),
                             ),
                     )
                     .child(
                         v_flex()
-                            .gap(px(2.))
+                            .gap(px(theme::SPACE_1))
                             .child(
                                 div()
-                                    .text_size(px(15.))
+                                    .text_size(px(theme::ICON_SIZE_COMPACT))
                                     .font_semibold()
                                     .text_color(theme::text_main())
                                     .child(title),
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(px(theme::TYPE_MICRO_SIZE))
                                     .text_color(theme::text_muted())
                                     .child(endpoint),
                             ),
@@ -906,65 +941,65 @@ impl TermiRustApp {
             )
             .child(
                 h_flex()
-                    .w(px(420.))
+                    .w(px(theme::CONNECT_PANEL_WIDTH))
                     .items_center()
-                    .gap(px(8.))
+                    .gap(px(theme::SPACE_3))
                     .child(
                         div()
-                            .size(px(28.))
-                            .rounded(px(999.))
+                            .size(px(theme::STATUS_HEIGHT))
+                            .rounded(px(theme::PILL_RADIUS))
                             .flex()
                             .items_center()
                             .justify_center()
                             .bg(theme::accent())
                             .child(
                                 Icon::new(IconName::User)
-                                    .size(px(14.))
+                                    .size(px(theme::HOST_ICON_SIZE_BODY))
                                     .text_color(theme::library_card()),
                             ),
                     )
                     .child(
                         div()
                             .flex_1()
-                            .h(px(2.))
+                            .h(px(theme::SPACE_1))
                             .bg(theme::with_alpha(theme::text_muted(), 0.4)),
                     )
                     .child(
                         div()
-                            .size(px(28.))
-                            .rounded(px(999.))
+                            .size(px(theme::STATUS_HEIGHT))
+                            .rounded(px(theme::PILL_RADIUS))
                             .flex()
                             .items_center()
                             .justify_center()
                             .bg(theme::with_alpha(theme::text_muted(), 0.3))
                             .child(
                                 Icon::new(IconName::SquareTerminal)
-                                    .size(px(14.))
+                                    .size(px(theme::HOST_ICON_SIZE_BODY))
                                     .text_color(theme::text_main()),
                             ),
                     ),
             )
             .child(
                 v_flex()
-                    .w(px(420.))
-                    .gap(px(6.))
+                    .w(px(theme::CONNECT_PANEL_WIDTH))
+                    .gap(px(theme::SPACE_DENSE))
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(px(theme::TYPE_MICRO_SIZE))
                             .text_color(theme::text_muted())
-                            .child("Username"),
+                            .child(connect_message(MessageId::HostUsernameField)),
                     )
                     .child(
                         h_flex()
                             .w_full()
-                            .h(px(40.))
-                            .px(px(12.))
+                            .h(px(theme::HOST_CONTROL_HEIGHT))
+                            .px(px(theme::SPACE_4))
                             .items_center()
-                            .rounded(px(8.))
+                            .rounded(px(theme::CARD_RADIUS))
                             .bg(theme::library_card())
                             .border_1()
                             .border_color(theme::soft_border())
-                            .text_size(px(13.))
+                            .text_size(px(theme::TYPE_BODY_SMALL_SIZE))
                             .text_color(theme::text_main())
                             .child(
                                 Input::new(&self.shell_inputs.connect_username)
@@ -975,10 +1010,10 @@ impl TermiRustApp {
             )
             .child(
                 h_flex()
-                    .w(px(420.))
+                    .w(px(theme::CONNECT_PANEL_WIDTH))
                     .justify_between()
                     .items_center()
-                    .gap(px(12.))
+                    .gap(px(theme::SPACE_4))
                     .child(
                         div()
                             .debug_selector(|| "connect-dialog-close".to_string())
@@ -1003,7 +1038,7 @@ impl TermiRustApp {
                                         theme::ActionTone::Accent,
                                         cx,
                                     ))
-                                    .label("Continue & Save")
+                                    .label(connect_message(MessageId::ConnectContinueSave))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.confirm_connect_dialog(true, window, cx);
                                     })),
@@ -1011,4 +1046,8 @@ impl TermiRustApp {
                     ),
             )
     }
+}
+
+fn connect_message(id: MessageId) -> String {
+    localization::message_id(id).unwrap_or_default()
 }
