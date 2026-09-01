@@ -8738,22 +8738,6 @@ reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/session_library.rs"
-line = 531
-category = "user_copy"
-fingerprint = "sha256:940794b8847454f415003ca8182eb50afad23a549ca7fe9d9e218077a0b775dc"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
-file = "src/ui/app/session_library.rs"
-line = 532
-category = "user_copy"
-fingerprint = "sha256:70409018dd8b3b75b5ba8456a6cd496fbade63a1ac93cf117bdedb8966b35eea"
-reason = "Pre-localization UI copy scheduled for MessageId migration under G21.1."
-owner = "G21.1"
-
-[[exceptions]]
 file = "src/ui/app/sftp.rs"
 line = 89
 category = "user_copy"

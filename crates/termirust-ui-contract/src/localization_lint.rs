@@ -208,7 +208,7 @@ pub fn scan_copy_source(file: &str, source: &str) -> Vec<CopyFinding> {
             continue;
         }
         if cfg_test_pending {
-            if code.starts_with("mod tests") {
+            if code.starts_with("mod ") && code.ends_with('{') {
                 break;
             }
             cfg_test_pending = false;
@@ -547,6 +547,17 @@ mod localization_lint_tests {
             let path = "icons/save.svg";
         "#;
         assert!(scan_copy_source("src/ui/probe.rs", source).is_empty());
+    }
+
+    #[test]
+    fn named_cfg_test_modules_do_not_create_product_copy_findings() {
+        let source = r#"
+            #[cfg(test)]
+            mod local_controller_conformance_tests {
+                fn fixture() -> &'static str { "Conformance project" }
+            }
+        "#;
+        assert!(scan_copy_source("src/ui/app/session_library.rs", source).is_empty());
     }
 
     #[test]

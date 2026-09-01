@@ -3,6 +3,9 @@ use std::fmt;
 use std::num::NonZeroU64;
 use std::time::{Duration, Instant};
 
+use crate::product_session_surface::{
+    ProductSessionAccessibilityCommand, ProductSessionSemanticSnapshot,
+};
 use crate::{
     LiveRegionPoliteness, MessageId, SemanticAction, SemanticActionRouter, SemanticError,
     SemanticNode, SemanticNodeId, SemanticRole, SemanticText, SemanticTree, SemanticValue,
@@ -431,9 +434,10 @@ pub enum ShellAccessibilityCommand {
     SetPaletteQuery,
     FocusPaletteResult(usize),
     ActivatePaletteResult(usize),
+    ProductSession(ProductSessionAccessibilityCommand),
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ShellSemanticSnapshot {
     pub generation: u64,
     pub inspector_visible: bool,
@@ -441,6 +445,7 @@ pub struct ShellSemanticSnapshot {
     pub palette_result_count: usize,
     pub selected_palette_result: usize,
     pub status_urgency: AnnouncementPolicy,
+    pub product_session: Option<ProductSessionSemanticSnapshot>,
 }
 
 impl Default for ShellSemanticSnapshot {
@@ -452,12 +457,13 @@ impl Default for ShellSemanticSnapshot {
             palette_result_count: 0,
             selected_palette_result: 0,
             status_urgency: AnnouncementPolicy::Polite,
+            product_session: None,
         }
     }
 }
 
 impl ShellSemanticSnapshot {
-    pub fn try_tree(self) -> Result<SemanticTree, SemanticError> {
+    pub fn try_tree(&self) -> Result<SemanticTree, SemanticError> {
         if self.palette_result_count > MAX_PALETTE_RESULTS {
             return Err(SemanticError::new(
                 crate::SemanticErrorCode::ResourceLimit,
@@ -503,6 +509,12 @@ impl ShellSemanticSnapshot {
                 };
             }
             nodes.push(node);
+        }
+
+        if !self.palette_open
+            && let Some(product_session) = self.product_session.as_ref()
+        {
+            nodes.extend(product_session.try_nodes(shell_region_node(ShellRegionId::Content))?);
         }
 
         if self.palette_open {
@@ -558,7 +570,7 @@ impl ShellSemanticSnapshot {
     }
 
     pub fn try_router(
-        self,
+        &self,
         tree: &SemanticTree,
     ) -> Result<SemanticActionRouter<ShellAccessibilityCommand>, SemanticError> {
         let mut routes = vec![(
@@ -572,6 +584,15 @@ impl ShellSemanticSnapshot {
                     ShellAccessibilityCommand::FocusRegion(region),
                 ));
             }
+        }
+        if !self.palette_open
+            && let Some(product_session) = self.product_session.as_ref()
+        {
+            routes.extend(
+                product_session.routes().into_iter().map(|(key, command)| {
+                    (key, ShellAccessibilityCommand::ProductSession(command))
+                }),
+            );
         }
         if self.palette_open {
             routes.extend([
@@ -652,6 +673,10 @@ fn named_node(value: u64, role: SemanticRole, name: MessageId) -> SemanticNode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        AccessibleCollectionRow, AccessibleRowId, HierarchyLevel, ProductSessionScreen,
+        ProductSessionSurfaceState,
+    };
 
     fn id(value: u64) -> OverlayId {
         OverlayId::new(value).unwrap()
@@ -874,5 +899,73 @@ mod tests {
             assert!(tokens.color_focus().alpha > 0);
             assert!(tokens.radius_dialog().0 >= tokens.radius_control().0);
         }
+    }
+
+    #[test]
+    fn shell_routes_product_collection_rows_by_typed_identity() {
+        let project_id = AccessibleRowId::project(0x1111);
+        let row_id = AccessibleRowId::session(0x1234);
+        let product = ProductSessionSemanticSnapshot {
+            screen: ProductSessionScreen::Sessions,
+            state: ProductSessionSurfaceState::Ready,
+            rows: vec![
+                AccessibleCollectionRow {
+                    id: project_id,
+                    parent: None,
+                    level: HierarchyLevel::Project,
+                    name: "Synthetic project".to_string(),
+                    status: MessageId::ProductSurfaceStateReady,
+                    selected: false,
+                    expanded: Some(true),
+                    unread: false,
+                    disabled: false,
+                    position: 1,
+                    set_size: 1,
+                },
+                AccessibleCollectionRow {
+                    id: row_id,
+                    parent: Some(project_id),
+                    level: HierarchyLevel::Session,
+                    name: "Synthetic session".to_string(),
+                    status: MessageId::ProductSurfaceStateReady,
+                    selected: true,
+                    expanded: None,
+                    unread: true,
+                    disabled: false,
+                    position: 1,
+                    set_size: 1,
+                },
+            ],
+            controls: Vec::new(),
+            dialog: None,
+            recording_friendly: false,
+        };
+        let product_route = product
+            .routes()
+            .into_iter()
+            .find(|(_, command)| {
+                *command == ProductSessionAccessibilityCommand::ActivateRow(row_id)
+            })
+            .unwrap();
+        let snapshot = ShellSemanticSnapshot {
+            product_session: Some(product),
+            ..ShellSemanticSnapshot::default()
+        };
+        let tree = snapshot.try_tree().unwrap();
+        let router = snapshot.try_router(&tree).unwrap();
+        let command = router
+            .resolve(crate::SemanticActionRequest {
+                generation: tree.generation(),
+                node: product_route.0.0,
+                action: product_route.0.1,
+                value: None,
+            })
+            .unwrap();
+        assert_eq!(
+            *command,
+            ShellAccessibilityCommand::ProductSession(
+                ProductSessionAccessibilityCommand::ActivateRow(row_id)
+            )
+        );
     }
 }

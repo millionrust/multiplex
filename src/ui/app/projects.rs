@@ -15,6 +15,7 @@ use termirust_domain::{AddProject, CanonicalPath, ProjectError, ProjectId, Proje
 use termirust_store::{
     ProjectRepository, ProjectSnapshot, RemovedProject, StoreError, StoreHealth,
 };
+use termirust_ui_contract::{AccessibleRowId, reconcile_collection_selection};
 
 use super::{TermiRustApp, theme};
 use crate::storage::project_store_dir;
@@ -91,16 +92,31 @@ impl ProjectLibraryState {
             self.snapshot = None;
             return;
         };
+        let previous_ids = self
+            .snapshot
+            .as_ref()
+            .map(|snapshot| {
+                snapshot
+                    .projects
+                    .iter()
+                    .map(|summary| AccessibleRowId::project(summary.project.id.as_uuid().as_u128()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let selected = self
+            .selected_id
+            .map(|id| AccessibleRowId::project(id.as_uuid().as_u128()));
         match repository.load() {
             Ok(snapshot) => {
-                if self.selected_id.is_some_and(|selected| {
-                    !snapshot
-                        .projects
-                        .iter()
-                        .any(|summary| summary.project.id == selected)
-                }) {
-                    self.selected_id = None;
-                }
+                let next_ids = snapshot
+                    .projects
+                    .iter()
+                    .map(|summary| AccessibleRowId::project(summary.project.id.as_uuid().as_u128()))
+                    .collect::<Vec<_>>();
+                self.selected_id =
+                    reconcile_collection_selection(&previous_ids, &next_ids, selected)
+                        .selected
+                        .map(|id| ProjectId::from_uuid(uuid::Uuid::from_u128(id.value)));
                 self.snapshot = Some(snapshot);
                 self.load_state = ProjectLibraryLoadState::Ready;
             }

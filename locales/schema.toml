@@ -211,6 +211,86 @@ context = "Privacy note explaining that the project library is local and needs n
 description = "Local-only project metadata statement"
 
 [[messages]]
+id = "product-private-project-row"
+context = "Recording-friendly accessible name replacing a sensitive Project title or path."
+description = "Private Project row"
+
+[[messages]]
+id = "product-private-group-row"
+context = "Recording-friendly accessible name replacing a sensitive session-group title."
+description = "Private group row"
+
+[[messages]]
+id = "product-private-session-row"
+context = "Recording-friendly accessible name replacing a sensitive Session title."
+description = "Private Session row"
+
+[[messages]]
+id = "product-surface-state-ready"
+context = "Accessible status for a ready Project or Session collection."
+description = "Product collection ready"
+
+[[messages]]
+id = "product-surface-state-loading"
+context = "Accessible status while a Project or Session collection loads."
+description = "Product collection loading"
+
+[[messages]]
+id = "product-surface-state-empty"
+context = "Accessible status for an empty Project or Session collection."
+description = "Product collection empty"
+
+[[messages]]
+id = "product-surface-state-filter-empty"
+context = "Accessible status when a Project or Session filter has no matches."
+description = "Product collection filter empty"
+
+[[messages]]
+id = "product-surface-state-partial"
+context = "Accessible status when only part of Project or Session data is available."
+description = "Product collection partially available"
+
+[[messages]]
+id = "product-surface-state-unavailable"
+context = "Accessible status when Project or Session data is unavailable."
+description = "Product collection unavailable"
+
+[[messages]]
+id = "product-surface-state-offline"
+context = "Accessible status when the Session Host is offline."
+description = "Product collection offline"
+
+[[messages]]
+id = "product-surface-state-permission"
+context = "Accessible status when Project or Session metadata permission is denied."
+description = "Product collection permission denied"
+
+[[messages]]
+id = "product-surface-state-stale"
+context = "Accessible status when Project or Session metadata changed during review."
+description = "Product collection stale revision"
+
+[[messages]]
+id = "product-surface-state-disk-limit"
+context = "Accessible status when a Project or Session operation reaches a disk limit."
+description = "Product collection disk limit"
+
+[[messages]]
+id = "product-surface-state-error"
+context = "Accessible status when a Project or Session operation fails safely."
+description = "Product collection error"
+
+[[messages]]
+id = "product-surface-state-cancelled"
+context = "Accessible status when a Project or Session operation is cancelled before commit."
+description = "Product collection operation cancelled"
+
+[[messages]]
+id = "product-surface-state-recovery"
+context = "Accessible status while safe Project or Session recovery information is shown."
+description = "Product collection recovery"
+
+[[messages]]
 id = "project-review-title"
 context = "Heading for the add-project review sheet after folder selection."
 description = "Review selected project"

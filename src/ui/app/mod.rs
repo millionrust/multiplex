@@ -1664,6 +1664,14 @@ impl TermiRustApp {
                         self.activate_command_palette_candidate(index, window, cx);
                     }
                 }
+                ShellAccessibilityCommand::ProductSession(command) => {
+                    self.handle_product_session_accessibility_command(
+                        command,
+                        event.value,
+                        window,
+                        cx,
+                    );
+                }
             }
         }
     }
@@ -11805,6 +11813,7 @@ impl Render for TermiRustApp {
         } else {
             0
         };
+        let product_session = self.product_session_semantic_snapshot(cx);
         self.shell_accessibility.sync(ShellSemanticSnapshot {
             generation: 1,
             inspector_visible: self.show_editor_panel,
@@ -11816,6 +11825,7 @@ impl Render for TermiRustApp {
             } else {
                 AnnouncementPolicy::Immediate
             },
+            product_session,
         });
 
         // When the active workspace changes, scroll the tab strip so the
@@ -22257,6 +22267,7 @@ sleep 1
             "Alpha",
             false,
         );
+        let active_durable_id = active_durable.id;
         let active_attached = make_session(
             termirust_domain::SessionLaunchRoute::LegacyAppAttached,
             "Beta",
@@ -22281,6 +22292,9 @@ sleep 1
                 })
             })
             .expect("Sessions should activate");
+        let semantic_snapshot = app
+            .update(cx, |app, cx| app.product_session_semantic_snapshot(cx))
+            .expect("Sessions should expose product semantics");
         app.read_with(cx, |app, _| {
             let visible = app.session_library.visible_sessions_all();
             assert_eq!(visible.len(), 2);
@@ -22296,7 +22310,82 @@ sleep 1
                 .collect::<Vec<_>>();
             assert!(routes.contains(&termirust_domain::SessionLaunchRoute::DurableHost));
             assert!(routes.contains(&termirust_domain::SessionLaunchRoute::LegacyAppAttached));
+            let snapshot = &semantic_snapshot;
+            assert_eq!(
+                snapshot.screen,
+                termirust_ui_contract::ProductSessionScreen::Sessions
+            );
+            assert_eq!(
+                snapshot
+                    .rows
+                    .iter()
+                    .filter(|row| {
+                        row.id.kind == termirust_ui_contract::AccessibleRowKind::Session
+                    })
+                    .count(),
+                2
+            );
         });
+        window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    let saved_count = app.saved.app_attached_sessions.len();
+                    let pane_count = app.panes.len();
+                    app.handle_product_session_accessibility_command(
+                        termirust_ui_contract::ProductSessionAccessibilityCommand::ActivateRow(
+                            termirust_ui_contract::AccessibleRowId::session(
+                                active_durable_id.as_uuid().as_u128(),
+                            ),
+                        ),
+                        None,
+                        window,
+                        cx,
+                    );
+                    assert_eq!(
+                        app.session_sidebar.selected_session,
+                        Some(active_durable_id)
+                    );
+                    app.handle_product_session_accessibility_command(
+                        termirust_ui_contract::ProductSessionAccessibilityCommand::ActivateControl(
+                            termirust_ui_contract::ProductSessionAction::RenameSession(
+                                termirust_ui_contract::AccessibleRowId::session(
+                                    active_durable_id.as_uuid().as_u128(),
+                                ),
+                            ),
+                        ),
+                        None,
+                        window,
+                        cx,
+                    );
+                    app.handle_product_session_accessibility_command(
+                        termirust_ui_contract::ProductSessionAccessibilityCommand::SetControlValue(
+                            termirust_ui_contract::ProductSessionAction::SetSessionTitle,
+                        ),
+                        Some(termirust_ui_contract::SemanticActionValue::Text(
+                            "Accessible durable session".to_string(),
+                        )),
+                        window,
+                        cx,
+                    );
+                    app.handle_product_session_accessibility_command(
+                        termirust_ui_contract::ProductSessionAccessibilityCommand::ActivateControl(
+                            termirust_ui_contract::ProductSessionAction::SaveSessionTitle,
+                        ),
+                        None,
+                        window,
+                        cx,
+                    );
+                    assert_eq!(
+                        app.session_library
+                            .session(active_durable_id)
+                            .map(|session| session.title.as_str()),
+                        Some("Accessible durable session")
+                    );
+                    assert_eq!(app.saved.app_attached_sessions.len(), saved_count);
+                    assert_eq!(app.panes.len(), pane_count);
+                })
+            })
+            .expect("accessible row activation should update selection");
         let mut visual = VisualTestContext::from_window(window.into(), cx);
         assert!(visual.debug_bounds("global-session-library").is_some());
         assert!(visual.debug_bounds("project-session-row").is_some());
@@ -22311,6 +22400,7 @@ sleep 1
             let visible = app.session_library.visible_sessions_all();
             assert_eq!(visible.len(), 1);
             assert_eq!(visible[0].id, archived_id);
+            assert_eq!(app.session_sidebar.selected_session, Some(archived_id));
         });
     }
 

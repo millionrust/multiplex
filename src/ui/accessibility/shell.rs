@@ -1,7 +1,10 @@
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash as _, Hasher as _};
 use termirust_ui_contract::{
     AccessibilityBridge, SemanticActionRequest, SemanticActionRouter, SemanticActionValue,
     SemanticDiffer, SemanticErrorCode, ShellAccessibilityCommand, ShellRegionId,
-    ShellSemanticSnapshot, shell_palette_input_semantic_node, shell_region_semantic_node,
+    ShellSemanticSnapshot, product_dialog_safe_semantic_node, shell_palette_input_semantic_node,
+    shell_region_semantic_node,
 };
 
 #[cfg(target_os = "macos")]
@@ -20,6 +23,9 @@ pub struct ShellAccessibilityAdapter {
     differ: SemanticDiffer,
     router: Option<SemanticActionRouter<ShellAccessibilityCommand>>,
     last_palette_open: bool,
+    last_product_dialog_open: bool,
+    semantic_generation: u64,
+    last_shape: Option<u64>,
     pub last_error: Option<SemanticErrorCode>,
     #[cfg(target_os = "macos")]
     bridge: Option<MacAccessibilityBridge>,
@@ -41,6 +47,9 @@ impl ShellAccessibilityAdapter {
                 differ: SemanticDiffer::default(),
                 router: None,
                 last_palette_open: false,
+                last_product_dialog_open: false,
+                semantic_generation: 1,
+                last_shape: None,
                 last_error: bridge
                     .as_ref()
                     .is_none()
@@ -54,11 +63,24 @@ impl ShellAccessibilityAdapter {
             differ: SemanticDiffer::default(),
             router: None,
             last_palette_open: false,
+            last_product_dialog_open: false,
+            semantic_generation: 1,
+            last_shape: None,
             last_error: None,
         }
     }
 
-    pub fn sync(&mut self, snapshot: ShellSemanticSnapshot) {
+    pub fn sync(&mut self, mut snapshot: ShellSemanticSnapshot) {
+        let shape = semantic_shape(&snapshot);
+        if self.last_shape.is_some_and(|previous| previous != shape) {
+            self.semantic_generation = self.semantic_generation.wrapping_add(1).max(1);
+        }
+        self.last_shape = Some(shape);
+        snapshot.generation = self.semantic_generation;
+        let product_dialog_open = snapshot
+            .product_session
+            .as_ref()
+            .is_some_and(|product| product.dialog.is_some());
         let result = (|| {
             let tree = snapshot.try_tree()?;
             let router = snapshot.try_router(&tree)?;
@@ -73,10 +95,20 @@ impl ShellAccessibilityAdapter {
                         shell_region_semantic_node(ShellRegionId::Content)
                     };
                     bridge.set_focus(snapshot.generation.max(1), Some(focus))?;
+                } else if !snapshot.palette_open
+                    && self.last_product_dialog_open != product_dialog_open
+                {
+                    let focus = if product_dialog_open {
+                        product_dialog_safe_semantic_node()
+                    } else {
+                        shell_region_semantic_node(ShellRegionId::Content)
+                    };
+                    bridge.set_focus(snapshot.generation.max(1), Some(focus))?;
                 }
             }
             self.router = Some(router);
             self.last_palette_open = snapshot.palette_open;
+            self.last_product_dialog_open = product_dialog_open;
             Ok::<_, termirust_ui_contract::SemanticError>(())
         })();
         self.last_error = result.err().map(|error| error.code);
@@ -107,8 +139,86 @@ impl ShellAccessibilityAdapter {
     }
 }
 
+fn semantic_shape(snapshot: &ShellSemanticSnapshot) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    snapshot.inspector_visible.hash(&mut hasher);
+    snapshot.palette_open.hash(&mut hasher);
+    snapshot.palette_result_count.hash(&mut hasher);
+    if let Some(product) = snapshot.product_session.as_ref() {
+        product.screen.hash(&mut hasher);
+        for row in &product.rows {
+            row.id.hash(&mut hasher);
+            row.parent.hash(&mut hasher);
+            row.disabled.hash(&mut hasher);
+        }
+        for control in &product.controls {
+            control.action.hash(&mut hasher);
+            control.role.hash(&mut hasher);
+            control.in_dialog.hash(&mut hasher);
+            control.disabled.hash(&mut hasher);
+        }
+        product
+            .dialog
+            .map(|dialog| {
+                (
+                    dialog.kind,
+                    dialog.target,
+                    dialog.revision,
+                    dialog.confirm_enabled,
+                )
+            })
+            .hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
 impl Default for ShellAccessibilityAdapter {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use termirust_ui_contract::{
+        AccessibleRowId, DestructiveActionKind, DestructiveActionPresentation, MessageId,
+        ProductControlRole, ProductSessionAction, ProductSessionControl, ProductSessionScreen,
+        ProductSessionSemanticSnapshot, ProductSessionSurfaceState,
+    };
+
+    fn product_snapshot(control_disabled: bool, confirm_enabled: bool) -> ShellSemanticSnapshot {
+        ShellSemanticSnapshot {
+            product_session: Some(ProductSessionSemanticSnapshot {
+                screen: ProductSessionScreen::Projects,
+                state: ProductSessionSurfaceState::Ready,
+                rows: Vec::new(),
+                controls: vec![ProductSessionControl {
+                    action: ProductSessionAction::AddProject,
+                    parent: None,
+                    role: ProductControlRole::Button,
+                    name: MessageId::ProjectsAddAction,
+                    value: None,
+                    selected: false,
+                    disabled: control_disabled,
+                    in_dialog: false,
+                }],
+                dialog: Some(DestructiveActionPresentation {
+                    kind: DestructiveActionKind::RemoveProject,
+                    target: AccessibleRowId::project(7),
+                    revision: 3,
+                    confirm_enabled,
+                }),
+                recording_friendly: false,
+            }),
+            ..ShellSemanticSnapshot::default()
+        }
+    }
+
+    #[test]
+    fn semantic_generation_shape_tracks_action_and_confirmation_availability() {
+        let baseline = semantic_shape(&product_snapshot(false, false));
+        assert_ne!(baseline, semantic_shape(&product_snapshot(true, false)));
+        assert_ne!(baseline, semantic_shape(&product_snapshot(false, true)));
     }
 }

@@ -19,6 +19,13 @@ use termirust_domain::{
     SessionStateError, SessionTitle,
 };
 use termirust_store::{RecoveryResult, SessionRemovalPlan, StoreError};
+use termirust_ui_contract::{
+    AccessibleCollectionRow, AccessibleRowId, DestructiveActionKind, DestructiveActionPresentation,
+    HierarchyLevel, MessageId, ProductControlRole, ProductMoveDirection,
+    ProductSessionAccessibilityCommand, ProductSessionAction, ProductSessionControl,
+    ProductSessionScreen, ProductSessionSemanticSnapshot, ProductSessionSurfaceState,
+    SemanticActionValue,
+};
 
 use super::runtimes::runtime_inspector_projection;
 use super::session_coordinator::PendingArchiveAction;
@@ -285,15 +292,19 @@ impl TermiRustApp {
     }
 
     fn set_session_library_view(&mut self, view: SessionLibraryView, cx: &mut Context<Self>) {
+        let previous = self.visible_accessible_session_ids();
         self.session_library.view = view;
         self.session_library.pending_stop_archive_review = None;
         self.session_library.pending_removal = None;
         self.session_library.renaming = None;
+        self.reconcile_visible_session_selection(&previous);
         cx.notify();
     }
 
     fn set_session_library_filter(&mut self, filter: SessionLibraryFilter, cx: &mut Context<Self>) {
+        let previous = self.visible_accessible_session_ids();
         self.session_library.filter = filter;
+        self.reconcile_visible_session_selection(&previous);
         cx.notify();
     }
 
@@ -344,8 +355,10 @@ impl TermiRustApp {
         id: HostedSessionId,
         mutation: SessionMutation,
     ) -> bool {
+        let previous = self.visible_accessible_session_ids();
         match self.session_library.mutate(&mut self.saved, id, mutation) {
             Ok(_) => {
+                self.reconcile_visible_session_selection(&previous);
                 self.persist_session_projection();
                 self.status_message = localization::session_library_operation_complete();
                 self.error_message.clear();
@@ -687,6 +700,7 @@ impl TermiRustApp {
     }
 
     fn confirm_session_removal(&mut self, cx: &mut Context<Self>) {
+        let previous = self.visible_accessible_session_ids();
         let confirmation = self
             .session_remove_confirm_input
             .read(cx)
@@ -698,13 +712,33 @@ impl TermiRustApp {
         {
             Ok(_) => {
                 self.persist_session_projection();
-                self.session_sidebar.selected_session = None;
+                self.reconcile_visible_session_selection(&previous);
                 self.status_message = localization::session_library_operation_complete();
                 self.error_message.clear();
             }
             Err(error) => self.handle_session_library_error(error),
         }
         cx.notify();
+    }
+
+    fn visible_accessible_session_ids(&self) -> Vec<AccessibleRowId> {
+        self.session_library
+            .visible_sessions_all()
+            .into_iter()
+            .map(|session| accessible_session_id(session.id))
+            .collect()
+    }
+
+    fn reconcile_visible_session_selection(&mut self, previous: &[AccessibleRowId]) {
+        let next = self.visible_accessible_session_ids();
+        let selected = self
+            .session_sidebar
+            .selected_session
+            .map(accessible_session_id);
+        self.session_sidebar.selected_session =
+            termirust_ui_contract::reconcile_collection_selection(previous, &next, selected)
+                .selected
+                .map(|id| HostedSessionId::from_uuid(uuid::Uuid::from_u128(id.value)));
     }
 
     fn move_session_to(
@@ -991,6 +1025,845 @@ impl TermiRustApp {
             .iter()
             .filter(|session| session.group_id == Some(id))
             .count()
+    }
+
+    pub(super) fn product_session_semantic_snapshot(
+        &self,
+        cx: &Context<Self>,
+    ) -> Option<ProductSessionSemanticSnapshot> {
+        let screen = match self.nav_section {
+            super::NavSection::Projects => ProductSessionScreen::Projects,
+            super::NavSection::Sessions => ProductSessionScreen::Sessions,
+            _ => return None,
+        };
+        let project_snapshot = self.project_library.snapshot.as_ref();
+        let projects = project_snapshot
+            .map(|snapshot| snapshot.projects.as_slice())
+            .unwrap_or_default();
+        let mut rows = Vec::new();
+        let project_ids = if screen == ProductSessionScreen::Projects {
+            projects
+                .iter()
+                .map(|summary| summary.project.id)
+                .collect::<Vec<_>>()
+        } else {
+            let mut ids = self
+                .session_library
+                .visible_sessions_all()
+                .into_iter()
+                .map(|session| session.project_id)
+                .collect::<Vec<_>>();
+            ids.sort_unstable();
+            ids.dedup();
+            ids
+        };
+
+        for (project_index, project_id) in project_ids.iter().copied().enumerate() {
+            let summary = projects
+                .iter()
+                .find(|summary| summary.project.id == project_id);
+            let project_name = summary
+                .map(|summary| summary.project.display_name.as_str().to_string())
+                .or_else(|| {
+                    self.saved
+                        .app_attached_sessions
+                        .iter()
+                        .find(|session| session.origin.project_id == project_id)
+                        .map(|session| session.project_label.clone())
+                })
+                .unwrap_or_else(localization::projects_nav_label);
+            let project_status = summary
+                .map(|summary| summary.status)
+                .unwrap_or(termirust_domain::ProjectStatus::Unavailable);
+            let project_row_id = accessible_project_id(project_id);
+            rows.push(AccessibleCollectionRow {
+                id: project_row_id,
+                parent: None,
+                level: HierarchyLevel::Project,
+                name: project_name,
+                status: project_status_message_id(project_status),
+                selected: self.project_library.selected_id == Some(project_id),
+                expanded: Some(
+                    screen == ProductSessionScreen::Sessions
+                        || self.project_library.selected_id == Some(project_id),
+                ),
+                unread: false,
+                disabled: project_status != termirust_domain::ProjectStatus::Available,
+                position: project_index + 1,
+                set_size: project_ids.len().max(1),
+            });
+
+            let include_children = screen == ProductSessionScreen::Sessions
+                || self.project_library.selected_id == Some(project_id);
+            if !include_children {
+                continue;
+            }
+
+            let ungrouped = self.sessions_in_destination(project_id, None);
+            let groups = self.project_groups(project_id);
+            let project_child_count = ungrouped.len() + groups.len();
+            append_accessible_session_rows(
+                &mut rows,
+                &ungrouped,
+                project_row_id,
+                &self.session_library,
+                self.session_sidebar.selected_session,
+                0,
+                project_child_count,
+            );
+            for (group_index, group) in groups.iter().enumerate() {
+                let group_row_id = accessible_group_id(group.id);
+                rows.push(AccessibleCollectionRow {
+                    id: group_row_id,
+                    parent: Some(project_row_id),
+                    level: HierarchyLevel::Group,
+                    name: group.name.as_str().to_string(),
+                    status: MessageId::ProductSurfaceStateReady,
+                    selected: false,
+                    expanded: Some(!group.collapsed),
+                    unread: false,
+                    disabled: false,
+                    position: ungrouped.len() + group_index + 1,
+                    set_size: project_child_count.max(1),
+                });
+                if !group.collapsed {
+                    let sessions = self.sessions_in_destination(project_id, Some(group.id));
+                    let session_count = sessions.len();
+                    append_accessible_session_rows(
+                        &mut rows,
+                        &sessions,
+                        group_row_id,
+                        &self.session_library,
+                        self.session_sidebar.selected_session,
+                        0,
+                        session_count,
+                    );
+                }
+            }
+        }
+
+        let dialog = self.product_destructive_presentation(cx);
+        let controls = self.product_session_controls(screen, cx);
+        let state = product_session_surface_state(
+            &self.project_library.load_state,
+            self.session_library.recovery_state(),
+            rows.is_empty(),
+            self.session_library.filter != SessionLibraryFilter::All,
+        );
+        Some(ProductSessionSemanticSnapshot {
+            screen,
+            state,
+            rows,
+            controls,
+            dialog,
+            recording_friendly: self.activity_center.policy().recording_friendly,
+        })
+    }
+
+    fn product_session_controls(
+        &self,
+        screen: ProductSessionScreen,
+        cx: &Context<Self>,
+    ) -> Vec<ProductSessionControl> {
+        let mut controls = Vec::new();
+        if matches!(
+            &self.project_library.load_state,
+            super::projects::ProjectLibraryLoadState::Failed(_)
+        ) {
+            controls.push(product_button(
+                ProductSessionAction::RetryProjects,
+                MessageId::CommonRetry,
+                None,
+            ));
+            return controls;
+        }
+
+        if screen == ProductSessionScreen::Projects {
+            let mut add = product_button(
+                ProductSessionAction::AddProject,
+                MessageId::ProjectsAddAction,
+                None,
+            );
+            add.disabled = self.project_library.add_draft.is_some()
+                || self.project_library.add_validation.is_some();
+            controls.push(add);
+            if self.project_library.add_draft.is_some() {
+                controls.extend([
+                    product_text_field(
+                        ProductSessionAction::SetProjectName,
+                        MessageId::ProjectLabelField,
+                        self.project_label_input.read(cx).value().to_string(),
+                        false,
+                    ),
+                    product_button(
+                        ProductSessionAction::ConfirmProjectAdd,
+                        MessageId::ProjectAddConfirm,
+                        None,
+                    ),
+                    product_button(
+                        ProductSessionAction::CancelProjectAdd,
+                        MessageId::CommonCancel,
+                        None,
+                    ),
+                ]);
+            } else if self.project_library.add_validation.is_some() {
+                controls.push(product_button(
+                    ProductSessionAction::CancelProjectAdd,
+                    MessageId::CommonCancel,
+                    None,
+                ));
+            }
+            if self.project_library.pending_removal.is_some() {
+                controls.push(product_button(
+                    ProductSessionAction::UndoProjectRemoval,
+                    MessageId::ProjectUndoAction,
+                    None,
+                ));
+            }
+            if let Some(snapshot) = self.project_library.snapshot.as_ref() {
+                for summary in &snapshot.projects {
+                    if summary.status == termirust_domain::ProjectStatus::Available {
+                        let id = accessible_project_id(summary.project.id);
+                        controls.push(product_button(
+                            ProductSessionAction::RemoveProject(id),
+                            MessageId::ProjectRemoveAction,
+                            Some(id),
+                        ));
+                    }
+                }
+            }
+            if let Some(project_id) = self.project_library.selected_id {
+                let project = accessible_project_id(project_id);
+                controls.push(product_button(
+                    ProductSessionAction::AddGroup(project),
+                    MessageId::GroupNewAction,
+                    Some(project),
+                ));
+                let groups = self.project_groups(project_id);
+                for (index, group) in groups.iter().enumerate() {
+                    let group_id = accessible_group_id(group.id);
+                    controls.push(product_button(
+                        ProductSessionAction::ToggleGroup(group_id),
+                        if group.collapsed {
+                            MessageId::GroupExpandAction
+                        } else {
+                            MessageId::GroupCollapseAction
+                        },
+                        Some(group_id),
+                    ));
+                    let mut move_up = product_button(
+                        ProductSessionAction::MoveGroup(group_id, ProductMoveDirection::Up),
+                        MessageId::GroupMoveUpAction,
+                        Some(group_id),
+                    );
+                    move_up.disabled = index == 0;
+                    controls.push(move_up);
+                    let mut move_down = product_button(
+                        ProductSessionAction::MoveGroup(group_id, ProductMoveDirection::Down),
+                        MessageId::GroupMoveDownAction,
+                        Some(group_id),
+                    );
+                    move_down.disabled = index + 1 == groups.len();
+                    controls.push(move_down);
+                    controls.extend([
+                        product_button(
+                            ProductSessionAction::RenameGroup(group_id),
+                            MessageId::GroupRenameAction,
+                            Some(group_id),
+                        ),
+                        product_button(
+                            ProductSessionAction::RemoveGroup(group_id),
+                            MessageId::GroupRemoveAction,
+                            Some(group_id),
+                        ),
+                    ]);
+                }
+            }
+            if self.session_sidebar.pending_undo.is_some() {
+                controls.push(product_button(
+                    ProductSessionAction::UndoOrganization,
+                    MessageId::GroupUndoAction,
+                    None,
+                ));
+            }
+            if self.session_sidebar.editor.is_some() {
+                controls.extend([
+                    product_text_field(
+                        ProductSessionAction::SetGroupName,
+                        MessageId::GroupNameField,
+                        self.group_name_input.read(cx).value().to_string(),
+                        false,
+                    ),
+                    product_button(ProductSessionAction::SaveGroup, MessageId::CommonSave, None),
+                    product_button(
+                        ProductSessionAction::CancelGroup,
+                        MessageId::CommonCancel,
+                        None,
+                    ),
+                ]);
+            }
+            if let Some(pending) = self.session_sidebar.pending_removal.as_ref() {
+                let mut move_to_root = product_button(
+                    ProductSessionAction::RemoveGroupTo(
+                        accessible_group_id(pending.group_id),
+                        None,
+                    ),
+                    MessageId::GroupMoveToRootAction,
+                    None,
+                );
+                move_to_root.in_dialog = true;
+                controls.push(move_to_root);
+                if let Some(group) = self.group(pending.group_id) {
+                    for destination in self
+                        .project_groups(group.project_id)
+                        .into_iter()
+                        .filter(|destination| destination.id != pending.group_id)
+                    {
+                        let mut move_to_group = product_button(
+                            ProductSessionAction::RemoveGroupTo(
+                                accessible_group_id(pending.group_id),
+                                Some(accessible_group_id(destination.id)),
+                            ),
+                            MessageId::GroupMoveSessionAction,
+                            None,
+                        );
+                        move_to_group.value = Some(destination.name.as_str().to_string());
+                        move_to_group.in_dialog = true;
+                        controls.push(move_to_group);
+                    }
+                }
+            }
+        }
+
+        if screen == ProductSessionScreen::Sessions {
+            controls.extend([
+                product_tab(
+                    ProductSessionAction::ShowActiveSessions,
+                    MessageId::SessionLibraryActiveView,
+                    self.session_library.view == SessionLibraryView::Active,
+                ),
+                product_tab(
+                    ProductSessionAction::ShowArchivedSessions,
+                    MessageId::SessionLibraryArchiveView,
+                    self.session_library.view == SessionLibraryView::Archive,
+                ),
+                product_tab(
+                    ProductSessionAction::FilterAllSessions,
+                    MessageId::SessionLibraryFilterAll,
+                    self.session_library.filter == SessionLibraryFilter::All,
+                ),
+                product_tab(
+                    ProductSessionAction::FilterUnreadSessions,
+                    MessageId::SessionLibraryFilterUnread,
+                    self.session_library.filter == SessionLibraryFilter::Unread,
+                ),
+                product_tab(
+                    ProductSessionAction::FilterPinnedSessions,
+                    MessageId::SessionLibraryFilterPinned,
+                    self.session_library.filter == SessionLibraryFilter::Pinned,
+                ),
+            ]);
+        }
+
+        let Some(selected_id) = self.session_sidebar.selected_session else {
+            return controls;
+        };
+        let Some(metadata) = self.session_library.session(selected_id) else {
+            return controls;
+        };
+        let row_id = accessible_session_id(selected_id);
+        let record = self
+            .saved
+            .app_attached_sessions
+            .iter()
+            .find(|record| record.id == selected_id);
+        controls.push(product_button(
+            ProductSessionAction::RenameSession(row_id),
+            MessageId::SessionLibraryRenameAction,
+            Some(row_id),
+        ));
+        controls.push(product_button(
+            ProductSessionAction::ToggleSessionPin(row_id),
+            if metadata.pinned {
+                MessageId::SessionLibraryUnpinAction
+            } else {
+                MessageId::SessionLibraryPinAction
+            },
+            Some(row_id),
+        ));
+        let mut read = product_button(
+            ProductSessionAction::ToggleSessionRead(row_id),
+            if metadata.unread() {
+                MessageId::SessionLibraryMarkReadAction
+            } else {
+                MessageId::SessionLibraryMarkUnreadAction
+            },
+            Some(row_id),
+        );
+        read.disabled = !metadata.unread() && metadata.last_output_sequence == OutputSequence::ZERO;
+        controls.push(read);
+        if let Some(record) = record {
+            if record.route == termirust_domain::SessionLaunchRoute::DurableHost {
+                controls.push(product_button(
+                    ProductSessionAction::OpenSession(row_id),
+                    MessageId::CommonOpen,
+                    Some(row_id),
+                ));
+            }
+            if metadata.lifecycle.can_stop() {
+                controls.push(product_button(
+                    ProductSessionAction::StopSession(row_id),
+                    MessageId::NewSessionStopAction,
+                    Some(row_id),
+                ));
+            }
+            let resume = session_resume_projection(record, metadata);
+            if resume.visible {
+                let mut control = product_button(
+                    ProductSessionAction::ResumeSession(row_id),
+                    MessageId::SessionLibraryResumeAction,
+                    Some(row_id),
+                );
+                control.disabled = !resume.enabled;
+                controls.push(control);
+            }
+            let sessions = self.sessions_in_destination(record.origin.project_id, record.group_id);
+            if let Some(index) = sessions
+                .iter()
+                .position(|candidate| candidate.id == selected_id)
+            {
+                let mut up = product_button(
+                    ProductSessionAction::MoveSession(row_id, ProductMoveDirection::Up),
+                    MessageId::GroupMoveUpAction,
+                    Some(row_id),
+                );
+                up.disabled = index == 0;
+                controls.push(up);
+                let mut down = product_button(
+                    ProductSessionAction::MoveSession(row_id, ProductMoveDirection::Down),
+                    MessageId::GroupMoveDownAction,
+                    Some(row_id),
+                );
+                down.disabled = index + 1 == sessions.len();
+                controls.push(down);
+            }
+            controls.push(product_button(
+                ProductSessionAction::MoveSessionToRoot(row_id),
+                MessageId::GroupMoveToRootAction,
+                Some(row_id),
+            ));
+        }
+        if metadata.archived_at.is_none() {
+            let mut archive = product_button(
+                ProductSessionAction::ArchiveOrStopSession(row_id),
+                if metadata.lifecycle.can_stop() {
+                    MessageId::SessionLibraryStopArchiveAction
+                } else {
+                    MessageId::SessionLibraryArchiveAction
+                },
+                Some(row_id),
+            );
+            archive.disabled = !metadata.lifecycle.can_stop() && !metadata.lifecycle.is_exited();
+            controls.push(archive);
+        } else {
+            controls.push(product_button(
+                ProductSessionAction::RestoreSession(row_id),
+                MessageId::SessionLibraryRestoreAction,
+                Some(row_id),
+            ));
+            let mut remove = product_button(
+                ProductSessionAction::BeginSessionRemoval(row_id),
+                MessageId::SessionLibraryRemoveAction,
+                Some(row_id),
+            );
+            remove.disabled = !metadata.can_remove();
+            controls.push(remove);
+        }
+        if self.session_library.renaming == Some(selected_id) {
+            controls.extend([
+                product_text_field(
+                    ProductSessionAction::SetSessionTitle,
+                    MessageId::SessionLibraryTitleField,
+                    self.session_title_input.read(cx).value().to_string(),
+                    false,
+                ),
+                product_button(
+                    ProductSessionAction::SaveSessionTitle,
+                    MessageId::CommonSave,
+                    Some(row_id),
+                ),
+                product_button(
+                    ProductSessionAction::CancelSessionTitle,
+                    MessageId::CommonCancel,
+                    Some(row_id),
+                ),
+            ]);
+        }
+        if self
+            .session_library
+            .pending_removal
+            .as_ref()
+            .is_some_and(|pending| {
+                pending.session_id == selected_id && pending.manifest.requires_title_confirmation()
+            })
+        {
+            controls.push(product_text_field(
+                ProductSessionAction::SetSessionRemovalConfirmation,
+                MessageId::SessionLibraryRemoveConfirmPlaceholder,
+                self.session_remove_confirm_input
+                    .read(cx)
+                    .value()
+                    .to_string(),
+                true,
+            ));
+        }
+        controls
+    }
+
+    fn product_destructive_presentation(
+        &self,
+        cx: &Context<Self>,
+    ) -> Option<DestructiveActionPresentation> {
+        let revision = self.session_library.revision().get();
+        if let Some(pending) = self.session_library.pending_removal.as_ref() {
+            return Some(DestructiveActionPresentation {
+                kind: DestructiveActionKind::RemoveSessionData,
+                target: accessible_session_id(pending.session_id),
+                revision: pending.expected_revision.get(),
+                confirm_enabled: !pending.manifest.requires_title_confirmation()
+                    || self.session_remove_confirm_input.read(cx).value().as_ref()
+                        == pending.title.as_str(),
+            });
+        }
+        if let Some(id) = self.session_library.pending_stop_archive_review {
+            return Some(DestructiveActionPresentation {
+                kind: DestructiveActionKind::StopAndArchive,
+                target: accessible_session_id(id),
+                revision,
+                confirm_enabled: true,
+            });
+        }
+        self.session_sidebar
+            .pending_removal
+            .as_ref()
+            .map(|pending| DestructiveActionPresentation {
+                kind: DestructiveActionKind::RemoveGroup,
+                target: accessible_group_id(pending.group_id),
+                revision: self
+                    .project_library
+                    .snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.revision.get())
+                    .unwrap_or_default(),
+                confirm_enabled: false,
+            })
+    }
+
+    pub(super) fn handle_product_session_accessibility_command(
+        &mut self,
+        command: ProductSessionAccessibilityCommand,
+        value: Option<SemanticActionValue>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match command {
+            ProductSessionAccessibilityCommand::FocusRow(row)
+            | ProductSessionAccessibilityCommand::ActivateRow(row) => {
+                match row.kind {
+                    termirust_ui_contract::AccessibleRowKind::Project => {
+                        let id = ProjectId::from_uuid(uuid::Uuid::from_u128(row.value));
+                        if self
+                            .project_library
+                            .snapshot
+                            .as_ref()
+                            .is_some_and(|snapshot| {
+                                snapshot
+                                    .projects
+                                    .iter()
+                                    .any(|summary| summary.project.id == id)
+                            })
+                        {
+                            self.project_library.selected_id = Some(id);
+                            self.project_list_focus.focus(window);
+                        }
+                    }
+                    termirust_ui_contract::AccessibleRowKind::Group => {
+                        let id = GroupId::from_uuid(uuid::Uuid::from_u128(row.value));
+                        if let Some(group) = self.group(id).cloned() {
+                            self.project_library.selected_id = Some(group.project_id);
+                            if matches!(command, ProductSessionAccessibilityCommand::ActivateRow(_))
+                            {
+                                self.set_group_collapsed(id, !group.collapsed, cx);
+                            }
+                            self.project_list_focus.focus(window);
+                        }
+                    }
+                    termirust_ui_contract::AccessibleRowKind::Session => {
+                        let id = HostedSessionId::from_uuid(uuid::Uuid::from_u128(row.value));
+                        if let Some(session) = self.session_library.session(id) {
+                            self.project_library.selected_id = Some(session.project_id);
+                            self.session_sidebar.selected_session = Some(id);
+                            self.project_list_focus.focus(window);
+                            self.refresh_artifacts(id, cx);
+                        }
+                    }
+                }
+                cx.notify();
+            }
+            ProductSessionAccessibilityCommand::FocusControl(action) => match action {
+                ProductSessionAction::SetProjectName => self
+                    .project_label_input
+                    .update(cx, |input, cx| input.focus(window, cx)),
+                ProductSessionAction::SetGroupName => self
+                    .group_name_input
+                    .update(cx, |input, cx| input.focus(window, cx)),
+                ProductSessionAction::SetSessionTitle => self
+                    .session_title_input
+                    .update(cx, |input, cx| input.focus(window, cx)),
+                ProductSessionAction::SetSessionRemovalConfirmation => self
+                    .session_remove_confirm_input
+                    .update(cx, |input, cx| input.focus(window, cx)),
+                _ => self.project_list_focus.focus(window),
+            },
+            ProductSessionAccessibilityCommand::SetControlValue(action) => {
+                let Some(SemanticActionValue::Text(value)) = value else {
+                    return;
+                };
+                match action {
+                    ProductSessionAction::SetProjectName
+                        if self.project_library.add_draft.is_some() =>
+                    {
+                        Self::set_input_value(&self.project_label_input, value, window, cx);
+                    }
+                    ProductSessionAction::SetGroupName if self.session_sidebar.editor.is_some() => {
+                        Self::set_input_value(&self.group_name_input, value, window, cx);
+                    }
+                    ProductSessionAction::SetSessionTitle
+                        if self.session_library.renaming.is_some() =>
+                    {
+                        Self::set_input_value(&self.session_title_input, value, window, cx);
+                    }
+                    ProductSessionAction::SetSessionRemovalConfirmation
+                        if self.session_library.pending_removal.is_some() =>
+                    {
+                        Self::set_input_value(
+                            &self.session_remove_confirm_input,
+                            value,
+                            window,
+                            cx,
+                        );
+                    }
+                    _ => return,
+                }
+                cx.notify();
+            }
+            ProductSessionAccessibilityCommand::ActivateControl(action) => match action {
+                ProductSessionAction::RetryProjects => self.retry_project_library(window, cx),
+                ProductSessionAction::AddProject => self.choose_project_folder(window, cx),
+                ProductSessionAction::ConfirmProjectAdd => self.commit_project_add(window, cx),
+                ProductSessionAction::CancelProjectAdd => self.cancel_project_add(cx),
+                ProductSessionAction::RemoveProject(row) => {
+                    if let Some(id) = accessible_project_row_id(row)
+                        && self
+                            .project_library
+                            .snapshot
+                            .as_ref()
+                            .is_some_and(|snapshot| {
+                                snapshot
+                                    .projects
+                                    .iter()
+                                    .any(|summary| summary.project.id == id)
+                            })
+                    {
+                        self.remove_project(id, cx);
+                    }
+                }
+                ProductSessionAction::UndoProjectRemoval => {
+                    self.undo_project_removal(window, cx);
+                }
+                ProductSessionAction::AddGroup(row) => {
+                    if let Some(id) = accessible_project_row_id(row)
+                        && self
+                            .project_library
+                            .snapshot
+                            .as_ref()
+                            .is_some_and(|snapshot| {
+                                snapshot
+                                    .projects
+                                    .iter()
+                                    .any(|summary| summary.project.id == id)
+                            })
+                    {
+                        self.open_group_editor(id, None, window, cx);
+                    }
+                }
+                ProductSessionAction::RenameGroup(row) => {
+                    if let Some(id) = accessible_group_row_id(row)
+                        && let Some(group) = self.group(id).cloned()
+                    {
+                        self.open_group_editor(group.project_id, Some(id), window, cx);
+                    }
+                }
+                ProductSessionAction::SaveGroup => self.save_group_editor(cx),
+                ProductSessionAction::CancelGroup => self.cancel_group_editor(cx),
+                ProductSessionAction::ToggleGroup(row) => {
+                    if let Some(id) = accessible_group_row_id(row)
+                        && let Some(group) = self.group(id).cloned()
+                    {
+                        self.set_group_collapsed(id, !group.collapsed, cx);
+                    }
+                }
+                ProductSessionAction::MoveGroup(row, direction) => {
+                    if let Some(id) = accessible_group_row_id(row)
+                        && self.group(id).is_some()
+                    {
+                        self.move_group(id, product_move_delta(direction), cx);
+                    }
+                }
+                ProductSessionAction::RemoveGroup(row) => {
+                    if let Some(id) = accessible_group_row_id(row)
+                        && self.group(id).is_some()
+                    {
+                        self.begin_group_removal(id, cx);
+                    }
+                }
+                ProductSessionAction::RemoveGroupTo(row, destination) => {
+                    if let Some(id) = accessible_group_row_id(row)
+                        && self.group(id).is_some()
+                    {
+                        let destination = match destination {
+                            Some(destination) => {
+                                let Some(destination) = accessible_group_row_id(destination) else {
+                                    return;
+                                };
+                                if self.group(destination).is_none() {
+                                    return;
+                                }
+                                GroupDestination::Group(destination)
+                            }
+                            None => GroupDestination::ProjectRoot,
+                        };
+                        self.remove_group_to(id, Some(destination), cx);
+                    }
+                }
+                ProductSessionAction::UndoOrganization => self.undo_organization(cx),
+                ProductSessionAction::ShowActiveSessions => {
+                    self.set_session_library_view(SessionLibraryView::Active, cx);
+                }
+                ProductSessionAction::ShowArchivedSessions => {
+                    self.set_session_library_view(SessionLibraryView::Archive, cx);
+                }
+                ProductSessionAction::FilterAllSessions => {
+                    self.set_session_library_filter(SessionLibraryFilter::All, cx);
+                }
+                ProductSessionAction::FilterUnreadSessions => {
+                    self.set_session_library_filter(SessionLibraryFilter::Unread, cx);
+                }
+                ProductSessionAction::FilterPinnedSessions => {
+                    self.set_session_library_filter(SessionLibraryFilter::Pinned, cx);
+                }
+                ProductSessionAction::RenameSession(row) => {
+                    if let Some(id) = accessible_session_row_id(row)
+                        && self.session_library.session(id).is_some()
+                    {
+                        self.begin_session_rename(id, window, cx);
+                    }
+                }
+                ProductSessionAction::SaveSessionTitle => self.save_session_rename(cx),
+                ProductSessionAction::CancelSessionTitle => self.cancel_session_rename(cx),
+                ProductSessionAction::ToggleSessionPin(row) => {
+                    if let Some(id) = accessible_session_row_id(row) {
+                        self.toggle_session_pin(id, cx);
+                    }
+                }
+                ProductSessionAction::ToggleSessionRead(row) => {
+                    if let Some(id) = accessible_session_row_id(row) {
+                        self.toggle_session_read(id, cx);
+                    }
+                }
+                ProductSessionAction::OpenSession(row) => {
+                    if let Some(id) = accessible_session_row_id(row) {
+                        self.open_session_from_entry(id, window, cx);
+                    }
+                }
+                ProductSessionAction::StopSession(row) => {
+                    if let Some(id) = accessible_session_row_id(row)
+                        && self.session_library.session(id).is_some()
+                    {
+                        self.stop_session_only(id, cx);
+                    }
+                }
+                ProductSessionAction::ResumeSession(row) => {
+                    if let Some(id) = accessible_session_row_id(row)
+                        && self.session_library.session(id).is_some()
+                    {
+                        self.open_session_resume(id, cx);
+                    }
+                }
+                ProductSessionAction::ArchiveOrStopSession(row) => {
+                    if let Some(id) = accessible_session_row_id(row) {
+                        self.archive_or_stop_session(id, cx);
+                    }
+                }
+                ProductSessionAction::RestoreSession(row) => {
+                    if let Some(id) = accessible_session_row_id(row) {
+                        self.restore_session(id, cx);
+                    }
+                }
+                ProductSessionAction::BeginSessionRemoval(row) => {
+                    if let Some(id) = accessible_session_row_id(row)
+                        && self.session_library.session(id).is_some()
+                    {
+                        self.begin_session_removal(id, window, cx);
+                    }
+                }
+                ProductSessionAction::MoveSession(row, direction) => {
+                    if let Some(id) = accessible_session_row_id(row)
+                        && self.session_library.session(id).is_some()
+                    {
+                        self.move_session_by(id, product_move_delta(direction), cx);
+                    }
+                }
+                ProductSessionAction::MoveSessionToRoot(row) => {
+                    if let Some(id) = accessible_session_row_id(row)
+                        && self.session_library.session(id).is_some()
+                    {
+                        self.move_session_to(id, GroupDestination::ProjectRoot, None, cx);
+                    }
+                }
+                ProductSessionAction::SetProjectName
+                | ProductSessionAction::SetGroupName
+                | ProductSessionAction::SetSessionTitle
+                | ProductSessionAction::SetSessionRemovalConfirmation => {}
+            },
+            ProductSessionAccessibilityCommand::FocusSafeAction
+            | ProductSessionAccessibilityCommand::FocusConfirmAction => {
+                self.project_list_focus.focus(window);
+            }
+            ProductSessionAccessibilityCommand::ConfirmDialog => {
+                let Some(dialog) = self.product_destructive_presentation(cx) else {
+                    return;
+                };
+                if !dialog.confirm_enabled {
+                    return;
+                }
+                if self.session_library.pending_removal.is_some() {
+                    self.confirm_session_removal(cx);
+                } else if self.session_library.pending_stop_archive_review.is_some() {
+                    self.confirm_stop_and_archive(cx);
+                }
+            }
+            ProductSessionAccessibilityCommand::CancelDialog => {
+                if self.session_library.pending_removal.is_some() {
+                    self.cancel_session_removal(cx);
+                } else if self.session_library.pending_stop_archive_review.is_some() {
+                    self.cancel_stop_and_archive(cx);
+                } else if self.session_sidebar.pending_removal.is_some() {
+                    self.cancel_group_removal(cx);
+                }
+                self.project_list_focus.focus(window);
+            }
+        }
     }
 
     pub(super) fn render_global_session_library(&self, cx: &Context<Self>) -> AnyElement {
@@ -2418,6 +3291,196 @@ fn inspector_row(label: String, value: String) -> AnyElement {
 
 fn removal_manifest_row(label: String, value: u64) -> AnyElement {
     inspector_row(label, value.to_string())
+}
+
+fn product_button(
+    action: ProductSessionAction,
+    name: MessageId,
+    parent: Option<AccessibleRowId>,
+) -> ProductSessionControl {
+    ProductSessionControl {
+        action,
+        parent,
+        role: ProductControlRole::Button,
+        name,
+        value: None,
+        selected: false,
+        disabled: false,
+        in_dialog: false,
+    }
+}
+
+fn product_tab(
+    action: ProductSessionAction,
+    name: MessageId,
+    selected: bool,
+) -> ProductSessionControl {
+    ProductSessionControl {
+        action,
+        parent: None,
+        role: ProductControlRole::Tab,
+        name,
+        value: None,
+        selected,
+        disabled: false,
+        in_dialog: false,
+    }
+}
+
+fn product_text_field(
+    action: ProductSessionAction,
+    name: MessageId,
+    value: String,
+    in_dialog: bool,
+) -> ProductSessionControl {
+    ProductSessionControl {
+        action,
+        parent: None,
+        role: ProductControlRole::TextField,
+        name,
+        value: Some(value),
+        selected: false,
+        disabled: false,
+        in_dialog,
+    }
+}
+
+fn append_accessible_session_rows(
+    rows: &mut Vec<AccessibleCollectionRow>,
+    sessions: &[SavedAppAttachedSession],
+    parent: AccessibleRowId,
+    library: &super::session_library::SessionLibraryState,
+    selected: Option<HostedSessionId>,
+    position_offset: usize,
+    set_size: usize,
+) {
+    for (index, session) in sessions.iter().enumerate() {
+        let Some(metadata) = library.session(session.id) else {
+            continue;
+        };
+        rows.push(AccessibleCollectionRow {
+            id: accessible_session_id(session.id),
+            parent: Some(parent),
+            level: HierarchyLevel::Session,
+            name: metadata.title.as_str().to_string(),
+            status: session_state_message_id(metadata.lifecycle),
+            selected: selected == Some(session.id),
+            expanded: None,
+            unread: metadata.unread(),
+            disabled: false,
+            position: position_offset + index + 1,
+            set_size: set_size.max(1),
+        });
+    }
+}
+
+fn accessible_project_id(id: ProjectId) -> AccessibleRowId {
+    AccessibleRowId::project(id.as_uuid().as_u128())
+}
+
+fn accessible_group_id(id: GroupId) -> AccessibleRowId {
+    AccessibleRowId::group(id.as_uuid().as_u128())
+}
+
+fn accessible_session_id(id: HostedSessionId) -> AccessibleRowId {
+    AccessibleRowId::session(id.as_uuid().as_u128())
+}
+
+fn accessible_project_row_id(id: AccessibleRowId) -> Option<ProjectId> {
+    (id.kind == termirust_ui_contract::AccessibleRowKind::Project)
+        .then(|| ProjectId::from_uuid(uuid::Uuid::from_u128(id.value)))
+}
+
+fn accessible_group_row_id(id: AccessibleRowId) -> Option<GroupId> {
+    (id.kind == termirust_ui_contract::AccessibleRowKind::Group)
+        .then(|| GroupId::from_uuid(uuid::Uuid::from_u128(id.value)))
+}
+
+fn accessible_session_row_id(id: AccessibleRowId) -> Option<HostedSessionId> {
+    (id.kind == termirust_ui_contract::AccessibleRowKind::Session)
+        .then(|| HostedSessionId::from_uuid(uuid::Uuid::from_u128(id.value)))
+}
+
+fn product_move_delta(direction: ProductMoveDirection) -> isize {
+    match direction {
+        ProductMoveDirection::Up => -1,
+        ProductMoveDirection::Down => 1,
+    }
+}
+
+fn project_status_message_id(status: termirust_domain::ProjectStatus) -> MessageId {
+    match status {
+        termirust_domain::ProjectStatus::Available => MessageId::ProjectStatusAvailable,
+        termirust_domain::ProjectStatus::Unavailable => MessageId::ProjectStatusUnavailable,
+        termirust_domain::ProjectStatus::PermissionDenied => {
+            MessageId::ProjectStatusPermissionDenied
+        }
+    }
+}
+
+fn session_state_message_id(state: HostedSessionState) -> MessageId {
+    match state {
+        HostedSessionState::Draft => MessageId::NewSessionPhaseDraft,
+        HostedSessionState::Validating => MessageId::NewSessionPhaseValidating,
+        HostedSessionState::Starting => MessageId::NewSessionPhaseStarting,
+        HostedSessionState::Provisioning => MessageId::NewSessionPhaseProvisioning,
+        HostedSessionState::Attaching => MessageId::NewSessionPhaseAttaching,
+        HostedSessionState::Replaying => MessageId::NewSessionPhaseReplaying,
+        HostedSessionState::Live => MessageId::NewSessionPhaseLive,
+        HostedSessionState::RecordingPaused => MessageId::NewSessionPhaseRecordingPaused,
+        HostedSessionState::Stopping => MessageId::NewSessionStatusStopping,
+        HostedSessionState::Offline => MessageId::NewSessionPhaseOffline,
+        HostedSessionState::Orphaned => MessageId::NewSessionPhaseOrphaned,
+        HostedSessionState::Gap => MessageId::NewSessionPhaseGap,
+        HostedSessionState::PermissionDenied => MessageId::NewSessionPhasePermissionDenied,
+        HostedSessionState::Incompatible => MessageId::NewSessionPhaseIncompatible,
+        HostedSessionState::RunningAppAttached => MessageId::NewSessionPhaseRunning,
+        HostedSessionState::Failed => MessageId::NewSessionPhaseFailed,
+        HostedSessionState::Cancelled => MessageId::NewSessionPhaseCancelled,
+        HostedSessionState::Exited => MessageId::NewSessionPhaseExited,
+    }
+}
+
+fn product_session_surface_state(
+    project_load: &super::projects::ProjectLibraryLoadState,
+    recovery: Option<SessionLibraryRecovery>,
+    rows_empty: bool,
+    filtered: bool,
+) -> ProductSessionSurfaceState {
+    match project_load {
+        super::projects::ProjectLibraryLoadState::Loading => {
+            return ProductSessionSurfaceState::Loading;
+        }
+        super::projects::ProjectLibraryLoadState::Failed(
+            super::projects::ProjectStoreFailure::Unavailable,
+        ) => return ProductSessionSurfaceState::Unavailable,
+        super::projects::ProjectLibraryLoadState::Failed(
+            super::projects::ProjectStoreFailure::Corrupt
+            | super::projects::ProjectStoreFailure::Newer,
+        ) => return ProductSessionSurfaceState::Recovery,
+        super::projects::ProjectLibraryLoadState::Ready => {}
+    }
+    if let Some(recovery) = recovery {
+        return match recovery {
+            SessionLibraryRecovery::RecoveredLastGood => ProductSessionSurfaceState::Partial,
+            SessionLibraryRecovery::Corrupt | SessionLibraryRecovery::Newer => {
+                ProductSessionSurfaceState::Recovery
+            }
+            SessionLibraryRecovery::PermissionDenied => {
+                ProductSessionSurfaceState::PermissionDenied
+            }
+            SessionLibraryRecovery::Unavailable => ProductSessionSurfaceState::Unavailable,
+        };
+    }
+    if rows_empty {
+        if filtered {
+            ProductSessionSurfaceState::FilterEmpty
+        } else {
+            ProductSessionSurfaceState::Empty
+        }
+    } else {
+        ProductSessionSurfaceState::Ready
+    }
 }
 
 fn title_source_label(source: termirust_domain::TitleSource) -> String {
