@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use termirust_ui_contract::localization_lint::{
-    verify_copy_baseline, verify_zero_copy_paths, verify_zero_copy_surface, write_copy_baseline,
+    scan_ui_copy_tree, verify_copy_baseline, verify_zero_copy_paths, verify_zero_copy_surface,
+    write_copy_baseline,
 };
 use termirust_ui_contract::{load_catalog, load_message_schema, validate_catalog_set};
 
@@ -88,6 +89,26 @@ fn run() -> Result<(), String> {
         }
         let paths = paths.split(',').map(PathBuf::from).collect::<Vec<_>>();
         verify_zero_copy_paths(&root, &paths).map_err(|error| error.to_string())?
+    } else if zero_legacy {
+        let findings = scan_ui_copy_tree(&root).map_err(|error| error.to_string())?;
+        if !findings.is_empty() {
+            let summary = findings
+                .iter()
+                .take(25)
+                .map(|finding| {
+                    format!(
+                        "{}:{} {}: {}",
+                        finding.file, finding.line, finding.category, finding.excerpt
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(format!(
+                "all UI contains {} legacy copy finding(s):\n{summary}",
+                findings.len()
+            ));
+        }
+        0
     } else if write {
         if env::var("TERMIRUST_MAINTENANCE_ALLOW_COPY_BASELINE_WRITE").as_deref() != Ok("1") {
             return Err(

@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use termirust_ui_contract::lint::{
-    verify_baseline, verify_zero_paths, verify_zero_surface, verify_zero_surface_except,
-    write_baseline,
+    scan_ui_tree, verify_baseline, verify_zero_paths, verify_zero_surface,
+    verify_zero_surface_except, write_baseline,
 };
 
 fn main() -> ExitCode {
@@ -95,6 +95,30 @@ fn run() -> Result<(), String> {
         let paths = paths.split(',').map(PathBuf::from).collect::<Vec<_>>();
         verify_zero_paths(&root, &paths).map_err(|error| error.to_string())?;
         println!("verified zero scoped legacy visual literals");
+    } else if zero_legacy {
+        let findings = scan_ui_tree(&root).map_err(|error| error.to_string())?;
+        let findings = findings
+            .into_iter()
+            .filter(|finding| !is_named_exception(&root, &finding.file, finding.line))
+            .collect::<Vec<_>>();
+        if !findings.is_empty() {
+            let summary = findings
+                .iter()
+                .take(25)
+                .map(|finding| {
+                    format!(
+                        "{}:{} {}: {}",
+                        finding.file, finding.line, finding.category, finding.excerpt
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            return Err(format!(
+                "all UI contains {} legacy visual literal(s):\n{summary}",
+                findings.len()
+            ));
+        }
+        println!("verified zero whole-UI legacy visual literals except named exceptions");
     } else if write {
         if env::var("TERMIRUST_MAINTENANCE_ALLOW_BASELINE_WRITE").as_deref() != Ok("1") {
             return Err(
@@ -109,6 +133,18 @@ fn run() -> Result<(), String> {
         println!("verified {count} legacy visual literal fingerprints; no new baseline entries");
     }
     Ok(())
+}
+
+fn is_named_exception(root: &Path, file: &str, line: usize) -> bool {
+    std::fs::read_to_string(root.join(file))
+        .ok()
+        .and_then(|source| {
+            source
+                .lines()
+                .nth(line.saturating_sub(1))
+                .map(str::to_string)
+        })
+        .is_some_and(|source| source.contains("termirust-ui-exception:"))
 }
 
 fn workspace_root() -> PathBuf {

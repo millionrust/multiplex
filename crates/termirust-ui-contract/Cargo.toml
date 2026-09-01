@@ -31,3 +31,7 @@ path = "src/bin/verify_localization.rs"
 [[bin]]
 name = "bench-terminal-accessibility"
 path = "src/bin/bench_terminal_accessibility.rs"
+
+[[bin]]
+name = "ui-audit"
+path = "src/bin/ui_audit.rs"
