@@ -1,6 +1,11 @@
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use gpui::{ObjectFit, RenderImage, StyledImage as _, img};
 use gpui_component::Disableable as _;
+use image::{Frame, Rgba, RgbaImage};
+use qrcode::{Color, QrCode};
+use smallvec::SmallVec;
 use termirust_controller_listener::{
     GeneratedPortSource as _, ListenerLaunchDescriptor, ListenerProcessEvent,
     ProcessPairingDecision, SystemGeneratedPortSource,
@@ -67,11 +72,13 @@ pub(super) struct RemoteDevicesState {
     pending_interface: Option<NetworkInterfaceCandidate>,
     listener_state: ListenerState,
     listener_process: Option<ControllerListenerProcess>,
+    desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
     listener_last_polled: Instant,
     host_private: Option<StaticPrivateKey>,
     pairing_state: PairingUiState,
     pairing_offer_id: Option<PairingOfferId>,
     pairing_offer_text: Option<String>,
+    pairing_offer_qr: Option<Arc<RenderImage>>,
     pairing_sas: Option<String>,
     ssh_pairing_broker: Option<SshPairingBroker>,
     ssh_pairing_active: bool,
@@ -82,7 +89,10 @@ pub(super) struct RemoteDevicesState {
 
 impl RemoteDevicesState {
     #[cfg(not(test))]
-    pub(super) fn open_default(controller_coordinator: &ControllerCoordinator) -> Self {
+    pub(super) fn open_default(
+        controller_coordinator: &ControllerCoordinator,
+        desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
+    ) -> Self {
         let root = match crate::storage::controller_store_dir() {
             Ok(root) => root,
             Err(_) => return Self::failed(RemoteDevicesFailure::Unavailable),
@@ -115,7 +125,7 @@ impl RemoteDevicesState {
                 .ok();
         match repository.load() {
             Ok(snapshot) => {
-                let devices = snapshot.authority.devices;
+                let devices = deduplicated_devices(snapshot.authority.devices);
                 let device_count = devices.len();
                 let mut state = Self {
                     repository: Some(repository),
@@ -131,11 +141,13 @@ impl RemoteDevicesState {
                     pending_interface: None,
                     listener_state: ListenerState::Disabled,
                     listener_process: None,
+                    desktop_pane_bridge,
                     listener_last_polled: Instant::now(),
                     host_private,
                     pairing_state: PairingUiState::Idle,
                     pairing_offer_id: None,
                     pairing_offer_text: None,
+                    pairing_offer_qr: None,
                     pairing_sas: None,
                     ssh_pairing_broker,
                     ssh_pairing_active: false,
@@ -153,7 +165,10 @@ impl RemoteDevicesState {
     }
 
     #[cfg(test)]
-    pub(super) fn open_default(_controller_coordinator: &ControllerCoordinator) -> Self {
+    pub(super) fn open_default(
+        _controller_coordinator: &ControllerCoordinator,
+        _desktop_pane_bridge: Option<termirust_controller_listener::DesktopPaneBridgeEndpoint>,
+    ) -> Self {
         Self {
             repository: None,
             identity_state: HostIdentityState::Ready,
@@ -171,11 +186,13 @@ impl RemoteDevicesState {
             pending_interface: None,
             listener_state: ListenerState::Disabled,
             listener_process: None,
+            desktop_pane_bridge: None,
             listener_last_polled: Instant::now(),
             host_private: Some(StaticPrivateKey::from_fixture_bytes([3; 32])),
             pairing_state: PairingUiState::Idle,
             pairing_offer_id: None,
             pairing_offer_text: None,
+            pairing_offer_qr: None,
             pairing_sas: None,
             ssh_pairing_broker: None,
             ssh_pairing_active: false,
@@ -201,11 +218,13 @@ impl RemoteDevicesState {
             pending_interface: None,
             listener_state: ListenerState::Failed(termirust_domain::ListenerFailureCode::Internal),
             listener_process: None,
+            desktop_pane_bridge: None,
             listener_last_polled: Instant::now(),
             host_private: None,
             pairing_state: PairingUiState::StorageFailure,
             pairing_offer_id: None,
             pairing_offer_text: None,
+            pairing_offer_qr: None,
             pairing_sas: None,
             ssh_pairing_broker: None,
             ssh_pairing_active: false,
@@ -222,7 +241,7 @@ impl RemoteDevicesState {
         })?;
         self.identity_state = snapshot.authority.state;
         self.identity = snapshot.authority.identity;
-        self.devices = snapshot.authority.devices;
+        self.devices = deduplicated_devices(snapshot.authority.devices);
         self.failure = None;
         Ok(())
     }
@@ -303,6 +322,9 @@ impl RemoteDevicesState {
             self.network_policy.clone(),
             host_private,
         )
+        .and_then(|descriptor| {
+            descriptor.with_desktop_pane_bridge(self.desktop_pane_bridge.clone())
+        })
         .map_err(|_| ())?;
         match controller_coordinator.start_listener(&descriptor) {
             Ok(process) => {
@@ -471,6 +493,7 @@ impl RemoteDevicesState {
                 offer_id,
                 offer_text,
             } => {
+                self.pairing_offer_qr = pairing_offer_qr(&offer_text);
                 self.pairing_offer_id = Some(offer_id);
                 self.pairing_offer_text = Some(offer_text);
                 self.pairing_sas = None;
@@ -516,6 +539,7 @@ impl RemoteDevicesState {
         self.pairing_state = state;
         self.pairing_offer_id = None;
         self.pairing_offer_text = None;
+        self.pairing_offer_qr = None;
         self.pairing_sas = None;
         self.ssh_pairing_active = false;
         self.ssh_pairing_expires_at = None;
@@ -541,19 +565,19 @@ impl RemoteDevicesState {
 }
 
 #[cfg(target_os = "macos")]
-fn durable_runtime_parent(_: &std::path::Path) -> std::path::PathBuf {
+pub(super) fn durable_runtime_parent(_: &std::path::Path) -> std::path::PathBuf {
     std::path::PathBuf::from(format!("/private/tmp/termirust-{}", unsafe {
         libc::geteuid()
     }))
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
-fn durable_runtime_parent(_: &std::path::Path) -> std::path::PathBuf {
+pub(super) fn durable_runtime_parent(_: &std::path::Path) -> std::path::PathBuf {
     std::path::PathBuf::from(format!("/tmp/termirust-{}", unsafe { libc::geteuid() }))
 }
 
 #[cfg(not(unix))]
-fn durable_runtime_parent(app_root: &std::path::Path) -> std::path::PathBuf {
+pub(super) fn durable_runtime_parent(app_root: &std::path::Path) -> std::path::PathBuf {
     app_root.join("session-host-runtime")
 }
 
@@ -648,6 +672,7 @@ impl TermiRustApp {
                     localization::remote_devices_listener_discovery_off()
                 )
             });
+        let pairing_offer_qr = self.remote_devices.pairing_offer_qr.clone();
         let mut content = v_flex()
             .gap_2()
             .child(
@@ -738,7 +763,7 @@ impl TermiRustApp {
                     let copy_value = offer_text.clone();
                     this.child(
                         v_flex()
-                            .gap_2()
+                            .gap_3()
                             .p_3()
                             .rounded(px(theme::CONTROL_RADIUS))
                             .border_1()
@@ -751,18 +776,37 @@ impl TermiRustApp {
                                     .child(localization::remote_devices_pairing_offer_help()),
                             )
                             .child(
-                                Button::new("remote-devices-copy-pairing-offer")
-                                    .small()
-                                    .icon(IconName::Copy)
-                                    .label(localization::remote_devices_pairing_offer_copy_action())
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        cx.write_to_clipboard(ClipboardItem::new_string(
-                                            copy_value.clone(),
-                                        ));
-                                        this.status_message =
-                                            localization::remote_devices_pairing_offer_copied();
-                                        cx.notify();
-                                    })),
+                                h_flex()
+                                    .items_center()
+                                    .flex_wrap()
+                                    .gap_3()
+                                    .when_some(pairing_offer_qr, |this, qr| {
+                                        this.child(
+                                            div()
+                                                .p_2()
+                                                .rounded(px(theme::CONTROL_RADIUS))
+                                                .bg(rgb(0xffffff))
+                                                .child(
+                                                    img(qr)
+                                                        .w(px(208.0))
+                                                        .h(px(208.0))
+                                                        .object_fit(ObjectFit::Contain),
+                                                ),
+                                        )
+                                    })
+                                    .child(
+                                        Button::new("remote-devices-copy-pairing-offer")
+                                            .small()
+                                            .icon(IconName::Copy)
+                                            .label(localization::remote_devices_pairing_offer_copy_action())
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                cx.write_to_clipboard(ClipboardItem::new_string(
+                                                    copy_value.clone(),
+                                                ));
+                                                this.status_message = localization::remote_devices_pairing_offer_copied();
+                                                cx.notify();
+                                            })),
+                                    ),
                             ),
                     )
                 },
@@ -1561,6 +1605,58 @@ fn remote_device_status(status: PairedDeviceStatus) -> String {
     }
 }
 
+fn pairing_offer_qr(offer_text: &str) -> Option<Arc<RenderImage>> {
+    const QUIET_ZONE_MODULES: usize = 4;
+    const TARGET_PIXELS: usize = 512;
+
+    let code = QrCode::new(offer_text.as_bytes()).ok()?;
+    let modules = code.width();
+    let total_modules = modules.checked_add(QUIET_ZONE_MODULES * 2)?;
+    let module_pixels = (TARGET_PIXELS / total_modules).max(1);
+    let image_size = u32::try_from(total_modules.checked_mul(module_pixels)?).ok()?;
+    let mut image = RgbaImage::from_pixel(image_size, image_size, Rgba([255, 255, 255, 255]));
+
+    for y in 0..modules {
+        for x in 0..modules {
+            if code[(x, y)] != Color::Dark {
+                continue;
+            }
+            let left = (x + QUIET_ZONE_MODULES) * module_pixels;
+            let top = (y + QUIET_ZONE_MODULES) * module_pixels;
+            for pixel_y in top..top + module_pixels {
+                for pixel_x in left..left + module_pixels {
+                    image.put_pixel(
+                        u32::try_from(pixel_x).ok()?,
+                        u32::try_from(pixel_y).ok()?,
+                        Rgba([0, 0, 0, 255]),
+                    );
+                }
+            }
+        }
+    }
+
+    Some(Arc::new(RenderImage::new(SmallVec::from_vec(vec![
+        Frame::new(image),
+    ]))))
+}
+
+fn deduplicated_devices(devices: Vec<PairedDeviceRecord>) -> Vec<PairedDeviceRecord> {
+    let mut unique: Vec<PairedDeviceRecord> = Vec::with_capacity(devices.len());
+    for device in devices {
+        if let Some(existing) = unique
+            .iter_mut()
+            .find(|existing| existing.device_id == device.device_id)
+        {
+            if device.created_at >= existing.created_at {
+                *existing = device;
+            }
+        } else {
+            unique.push(device);
+        }
+    }
+    unique
+}
+
 fn pairing_ui_status(state: PairingUiState) -> String {
     match state {
         PairingUiState::Idle => localization::remote_devices_pairing_idle(),
@@ -1594,7 +1690,7 @@ mod network_tests {
 
     #[test]
     fn remote_devices_add_controller_is_disabled_without_route() {
-        let state = RemoteDevicesState::open_default(&ControllerCoordinator::default());
+        let state = RemoteDevicesState::open_default(&ControllerCoordinator::default(), None);
         assert!(!state.route_available);
         assert!(state.devices.is_empty());
         assert_eq!(
@@ -1675,7 +1771,7 @@ mod network_tests {
     #[test]
     fn pairing_events_require_one_matching_offer_and_fail_closed() {
         let coordinator = ControllerCoordinator::default();
-        let mut state = RemoteDevicesState::open_default(&coordinator);
+        let mut state = RemoteDevicesState::open_default(&coordinator, None);
         let offer_id = PairingOfferId::new();
         state
             .apply_listener_event(
@@ -1685,6 +1781,7 @@ mod network_tests {
             .unwrap();
         assert_eq!(state.pairing_state, PairingUiState::Waiting);
         assert_eq!(state.pairing_offer_text.as_deref(), Some("bounded-offer"));
+        assert!(state.pairing_offer_qr.is_some());
 
         assert!(
             state
@@ -1717,6 +1814,7 @@ mod network_tests {
         assert_eq!(state.pairing_state, PairingUiState::RateLimited);
         assert!(state.pairing_offer_id.is_none());
         assert!(state.pairing_offer_text.is_none());
+        assert!(state.pairing_offer_qr.is_none());
         assert!(state.pairing_sas.is_none());
     }
 

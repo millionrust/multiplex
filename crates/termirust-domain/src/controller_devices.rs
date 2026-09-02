@@ -599,12 +599,27 @@ impl ControllerDeviceAuthority {
             .iter()
             .find(|device| device.public_key == public_key || device.source_offer_id == offer_id)
         {
-            if existing.public_key == public_key && existing.source_offer_id == offer_id {
+            if existing.device_id == device_id
+                && existing.public_key == public_key
+                && existing.source_offer_id == offer_id
+            {
                 return Ok(existing.clone());
             }
-            return Err(ControllerDeviceError::PairingConflict);
+            if existing.device_id != device_id {
+                return Err(ControllerDeviceError::PairingConflict);
+            }
         }
-        if self.devices.len() >= MAX_PAIRED_DEVICES {
+        let previous_capability_bits = self
+            .devices
+            .iter()
+            .filter(|device| device.device_id == device_id)
+            .fold(0_u16, |bits, device| bits | device.capabilities.bits());
+        let distinct_device_count = self
+            .devices
+            .iter()
+            .filter(|device| device.device_id != device_id)
+            .count();
+        if distinct_device_count >= MAX_PAIRED_DEVICES {
             return Err(ControllerDeviceError::DeviceLimit);
         }
         let offer = self
@@ -622,11 +637,14 @@ impl ControllerDeviceAuthority {
         ) {
             return Err(ControllerDeviceError::OfferConsumed);
         }
+        let capabilities = ControllerCapabilities::from_bits(
+            offer.capabilities.bits() | previous_capability_bits,
+        )?;
         let record = PairedDeviceRecord {
             device_id,
             public_key,
             display_name,
-            capabilities: offer.capabilities,
+            capabilities,
             protocol_range: offer.protocol_range,
             created_at: now,
             last_seen_at: None,
@@ -638,6 +656,7 @@ impl ControllerDeviceAuthority {
         record.validate()?;
         offer.state = PairingOfferState::Persisted;
         offer.paired_device_key = Some(public_key);
+        self.devices.retain(|device| device.device_id != device_id);
         self.devices.push(record.clone());
         Ok(record)
     }
@@ -666,18 +685,20 @@ impl ControllerDeviceAuthority {
         &mut self,
         device_id: ControllerDeviceId,
     ) -> Result<u64, ControllerDeviceError> {
-        let target_index = self
+        if !self
             .devices
             .iter()
-            .position(|device| device.device_id == device_id)
-            .ok_or(ControllerDeviceError::DeviceNotFound)?;
+            .any(|device| device.device_id == device_id)
+        {
+            return Err(ControllerDeviceError::DeviceNotFound);
+        }
         self.revocation_epoch = self
             .revocation_epoch
             .checked_add(1)
             .ok_or(ControllerDeviceError::CounterOverflow)?;
-        for (index, device) in self.devices.iter_mut().enumerate() {
+        for device in &mut self.devices {
             device.revocation_epoch = self.revocation_epoch;
-            if index == target_index {
+            if device.device_id == device_id {
                 device.status = PairedDeviceStatus::Revoked;
             }
         }
@@ -966,6 +987,63 @@ mod tests {
         assert_eq!(first, reconciled);
         assert_eq!(authority.devices.len(), 1);
         assert_eq!(authority.acknowledge_pairing(offer_id, key), Ok(device_id));
+    }
+
+    #[test]
+    fn controller_devices_repair_replaces_old_key_and_preserves_approved_capabilities() {
+        let mut authority = authority();
+        let device_id = ControllerDeviceId::new();
+        let first_offer = PairingOfferId::new();
+        let approved = ControllerCapabilities::default()
+            .with(ControllerCapability::ObserveSessions)
+            .with(ControllerCapability::AttachOutput)
+            .with(ControllerCapability::SendInput)
+            .with(ControllerCapability::Resize);
+        authority
+            .create_offer(first_offer, [3; 32], 10, 70, approved, vec![])
+            .unwrap();
+        authority.offers[0].state = PairingOfferState::SasReady;
+        authority
+            .persist_pairing(
+                first_offer,
+                device_id,
+                DevicePublicKey([8; 32]),
+                "Phone".into(),
+                20,
+            )
+            .unwrap();
+
+        let second_offer = PairingOfferId::new();
+        let read_only = ControllerCapabilities::default()
+            .with(ControllerCapability::ObserveSessions)
+            .with(ControllerCapability::AttachOutput);
+        authority
+            .create_offer(second_offer, [4; 32], 21, 80, read_only, vec![])
+            .unwrap();
+        authority
+            .offers
+            .iter_mut()
+            .find(|offer| offer.offer_id == second_offer)
+            .unwrap()
+            .state = PairingOfferState::SasReady;
+        let repaired = authority
+            .persist_pairing(
+                second_offer,
+                device_id,
+                DevicePublicKey([9; 32]),
+                "Phone".into(),
+                30,
+            )
+            .unwrap();
+
+        assert_eq!(authority.devices.len(), 1);
+        assert_eq!(repaired.public_key, DevicePublicKey([9; 32]));
+        assert!(
+            repaired
+                .capabilities
+                .contains(ControllerCapability::SendInput)
+        );
+        assert!(repaired.capabilities.contains(ControllerCapability::Resize));
     }
 
     #[test]

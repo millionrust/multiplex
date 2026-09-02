@@ -69,13 +69,19 @@ impl ControllerDeviceService {
     ) -> Result<(), ControllerDeviceServiceError> {
         let snapshot = self.repository.load()?;
         self.repository.update(snapshot.revision, |authority| {
-            let device = authority
+            let mut found = false;
+            for device in authority
                 .devices
                 .iter_mut()
-                .find(|device| device.device_id == device_id)
-                .ok_or(ControllerDeviceError::DeviceNotFound)?;
-            device.display_name = display_name;
-            device.validate()
+                .filter(|device| device.device_id == device_id)
+            {
+                device.display_name = display_name.clone();
+                device.validate()?;
+                found = true;
+            }
+            found
+                .then_some(())
+                .ok_or(ControllerDeviceError::DeviceNotFound)
         })?;
         Ok(())
     }
@@ -89,16 +95,21 @@ impl ControllerDeviceService {
             .map_err(ControllerDeviceServiceError::Domain)?;
         let snapshot = self.repository.load()?;
         self.repository.update(snapshot.revision, |authority| {
-            let device = authority
+            let mut found = false;
+            for device in authority
                 .devices
                 .iter_mut()
-                .find(|device| device.device_id == device_id)
-                .ok_or(ControllerDeviceError::DeviceNotFound)?;
-            if device.status == PairedDeviceStatus::Revoked {
-                return Err(ControllerDeviceError::DeviceNotFound);
+                .filter(|device| device.device_id == device_id)
+            {
+                if device.status != PairedDeviceStatus::Revoked {
+                    device.capabilities = capabilities;
+                    device.validate()?;
+                    found = true;
+                }
             }
-            device.capabilities = capabilities;
-            device.validate()
+            found
+                .then_some(())
+                .ok_or(ControllerDeviceError::DeviceNotFound)
         })?;
         Ok(())
     }
@@ -221,5 +232,44 @@ mod tests {
             ))
         ));
         assert!(channels.closed.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn capability_updates_reconcile_legacy_duplicate_device_ids() {
+        let fixture = tempfile::tempdir().unwrap();
+        let repository = ControllerDeviceRepository::open(fixture.path()).unwrap();
+        let device_id = ControllerDeviceId::new();
+        let mut saved_authority = authority(device_id);
+        let mut repaired = saved_authority.devices[0].clone();
+        repaired.public_key = DevicePublicKey([3; 32]);
+        repaired.created_at = 2;
+        repaired.source_offer_id = PairingOfferId::new();
+        saved_authority.devices.push(repaired);
+        repository
+            .save(DeviceStoreRevision::ZERO, saved_authority)
+            .unwrap();
+        let service =
+            ControllerDeviceService::new(repository.clone(), Arc::new(NoControllerChannels));
+        let interactive = ControllerCapabilities::default()
+            .with(ControllerCapability::ObserveSessions)
+            .with(ControllerCapability::AttachOutput)
+            .with(ControllerCapability::SendInput)
+            .with(ControllerCapability::Resize);
+
+        service.set_capabilities(device_id, interactive).unwrap();
+
+        let snapshot = repository.load().unwrap();
+        let matching: Vec<_> = snapshot
+            .authority
+            .devices
+            .iter()
+            .filter(|device| device.device_id == device_id)
+            .collect();
+        assert_eq!(matching.len(), 2);
+        assert!(
+            matching
+                .iter()
+                .all(|device| device.capabilities == interactive)
+        );
     }
 }

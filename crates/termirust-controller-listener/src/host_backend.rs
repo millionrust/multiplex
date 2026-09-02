@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 
 use async_trait::async_trait;
@@ -11,6 +11,8 @@ use termirust_domain::{
 use termirust_store::{ProjectRepository, SessionRepository, read_host_metadata};
 use tokio_util::sync::CancellationToken;
 
+use crate::DesktopPaneBridgeEndpoint;
+use crate::desktop_pane_bridge::DesktopPaneBridgeClient;
 use crate::{
     ControllerBackendFactory, ControllerCommand, ControllerCommandEnvelope,
     ControllerConnectionBackend, ControllerResponse, ControllerSessionCapability,
@@ -23,6 +25,7 @@ pub struct HostBackendFactory {
     sessions: SessionRepository,
     projects: ProjectRepository,
     runtime_parent: PathBuf,
+    desktop_pane_bridge: Option<DesktopPaneBridgeEndpoint>,
 }
 
 impl std::fmt::Debug for HostBackendFactory {
@@ -32,6 +35,7 @@ impl std::fmt::Debug for HostBackendFactory {
             .field("sessions", &"[REDACTED]")
             .field("projects", &"[REDACTED]")
             .field("runtime_parent", &"[REDACTED]")
+            .field("desktop_pane_bridge", &self.desktop_pane_bridge.is_some())
             .finish()
     }
 }
@@ -46,7 +50,13 @@ impl HostBackendFactory {
             sessions,
             projects,
             runtime_parent: runtime_parent.into(),
+            desktop_pane_bridge: None,
         }
+    }
+
+    pub fn with_desktop_pane_bridge(mut self, endpoint: Option<DesktopPaneBridgeEndpoint>) -> Self {
+        self.desktop_pane_bridge = endpoint;
+        self
     }
 }
 
@@ -63,6 +73,10 @@ impl ControllerBackendFactory for HostBackendFactory {
             clients: HashMap::new(),
             active_attach: None,
             pending_output: VecDeque::new(),
+            desktop_pane_bridge_endpoint: self.desktop_pane_bridge.clone(),
+            desktop_pane_bridge: None,
+            live_commands: HashSet::new(),
+            live_attach: false,
         }))
     }
 }
@@ -75,6 +89,10 @@ struct HostConnectionBackend {
     clients: HashMap<HostedSessionId, HostClient>,
     active_attach: Option<ActiveAttach>,
     pending_output: VecDeque<ControllerResponse>,
+    desktop_pane_bridge_endpoint: Option<DesktopPaneBridgeEndpoint>,
+    desktop_pane_bridge: Option<DesktopPaneBridgeClient>,
+    live_commands: HashSet<termirust_domain::CommandId>,
+    live_attach: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -96,6 +114,22 @@ impl ControllerConnectionBackend for HostConnectionBackend {
         let Some(session_id) = command.command.session_id() else {
             return Ok(HostCommandContext::default());
         };
+        if self.ensure_desktop_bridge().await {
+            let context = self
+                .desktop_pane_bridge
+                .as_mut()
+                .expect("desktop bridge was connected")
+                .context(session_id)
+                .await;
+            match context {
+                Ok(Some(context)) => {
+                    self.live_commands.insert(command.command_id);
+                    return Ok(context);
+                }
+                Ok(None) => {}
+                Err(_) => self.desktop_pane_bridge = None,
+            }
+        }
         let occupant_generation = self.occupant_generation(session_id)?;
         let has_writer_lease = if command.command.kind().requires_writer_lease() {
             let client = self
@@ -122,12 +156,43 @@ impl ControllerConnectionBackend for HostConnectionBackend {
         cancel: &CancellationToken,
     ) -> Result<Vec<ControllerResponse>, ListenerError> {
         let command_id = command.command_id;
+        if self.live_commands.remove(&command_id) {
+            if matches!(command.command, ControllerCommand::Attach { .. }) {
+                if let Some(active) = self.active_attach.take()
+                    && let Some(mut client) = self.clients.remove(&active.session_id)
+                {
+                    client.disconnect();
+                }
+                self.pending_output.clear();
+                self.live_attach = true;
+            }
+            let is_detach = matches!(command.command, ControllerCommand::Detach { .. });
+            let responses = self
+                .desktop_pane_bridge
+                .as_mut()
+                .ok_or_else(|| ListenerError::new(ListenerErrorCode::HostUnavailable))?
+                .execute(command_id, command.command)
+                .await?;
+            if is_detach {
+                self.live_attach = false;
+            }
+            return Ok(responses);
+        }
+        if matches!(command.command, ControllerCommand::Attach { .. }) && self.live_attach {
+            if let Some(bridge) = self.desktop_pane_bridge.as_mut() {
+                bridge.reset().await?;
+            }
+            self.live_attach = false;
+        }
         match command.command {
             ControllerCommand::ListSessions {
                 offset,
                 limit,
                 expected_revision,
-            } => self.list_sessions(command_id, offset, limit, expected_revision),
+            } => {
+                self.list_sessions(command_id, offset, limit, expected_revision)
+                    .await
+            }
             ControllerCommand::Attach {
                 session_id,
                 occupant_generation,
@@ -319,6 +384,14 @@ impl ControllerConnectionBackend for HostConnectionBackend {
         &mut self,
         cancel: &CancellationToken,
     ) -> Result<Option<ControllerResponse>, ListenerError> {
+        if self.live_attach {
+            return self
+                .desktop_pane_bridge
+                .as_mut()
+                .ok_or_else(|| ListenerError::new(ListenerErrorCode::HostUnavailable))?
+                .next()
+                .await;
+        }
         if let Some(response) = self.pending_output.pop_front() {
             return Ok(Some(response));
         }
@@ -359,6 +432,22 @@ impl ControllerConnectionBackend for HostConnectionBackend {
 }
 
 impl HostConnectionBackend {
+    async fn ensure_desktop_bridge(&mut self) -> bool {
+        if self.desktop_pane_bridge.is_some() {
+            return true;
+        }
+        let Some(endpoint) = self.desktop_pane_bridge_endpoint.clone() else {
+            return false;
+        };
+        match DesktopPaneBridgeClient::connect(&endpoint).await {
+            Ok(client) => {
+                self.desktop_pane_bridge = Some(client);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
     fn replace_active_session(&mut self, session_id: HostedSessionId) {
         if let Some(active) = self.active_attach
             && active.session_id != session_id
@@ -370,13 +459,95 @@ impl HostConnectionBackend {
         self.active_attach = None;
     }
 
-    fn list_sessions(
-        &self,
+    async fn list_sessions(
+        &mut self,
         command_id: termirust_domain::CommandId,
         offset: u32,
         limit: u16,
         expected_revision: Option<u64>,
     ) -> Result<Vec<ControllerResponse>, ListenerError> {
+        let (durable_revision, mut sessions) = self.durable_session_summaries()?;
+        let (live_revision, mut live_sessions) = if self.ensure_desktop_bridge().await {
+            match self
+                .desktop_pane_bridge
+                .as_mut()
+                .expect("desktop bridge was connected")
+                .list()
+                .await
+            {
+                Ok(snapshot) => snapshot,
+                Err(_) => {
+                    self.desktop_pane_bridge = None;
+                    (1, Vec::new())
+                }
+            }
+        } else {
+            (1, Vec::new())
+        };
+        let live_capabilities = controller_session_capabilities(self.capabilities)
+            .into_iter()
+            .filter(|capability| *capability != ControllerSessionCapability::Resize)
+            .collect::<Vec<_>>();
+        for session in &mut live_sessions {
+            session.capabilities = live_capabilities.clone();
+        }
+        let live_ids = live_sessions
+            .iter()
+            .map(|session| session.session_id)
+            .collect::<HashSet<_>>();
+        sessions.retain(|session| !live_ids.contains(&session.session_id));
+        live_sessions.append(&mut sessions);
+        let sessions = live_sessions;
+        let revision = durable_revision
+            .wrapping_mul(31)
+            .wrapping_add(live_revision)
+            .max(1);
+        if expected_revision.is_some_and(|expected| expected != revision) {
+            return Ok(vec![ControllerResponse::Error {
+                command_id,
+                code: "snapshot_changed".into(),
+                completion_unknown: false,
+            }]);
+        }
+        let start = usize::try_from(offset)
+            .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?;
+        if start > sessions.len() {
+            return Ok(vec![ControllerResponse::Error {
+                command_id,
+                code: "page_out_of_range".into(),
+                completion_unknown: false,
+            }]);
+        }
+        let requested_end = start.saturating_add(usize::from(limit)).min(sessions.len());
+        let mut encoded_bytes = 512usize;
+        let mut page = Vec::new();
+        for summary in &sessions[start..requested_end] {
+            let summary_bytes = serde_json::to_vec(summary)
+                .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?
+                .len()
+                .saturating_add(1);
+            if !page.is_empty()
+                && encoded_bytes.saturating_add(summary_bytes) > MAX_SESSION_PAGE_BYTES
+            {
+                break;
+            }
+            encoded_bytes = encoded_bytes.saturating_add(summary_bytes);
+            page.push(summary.clone());
+        }
+        let end = start.saturating_add(page.len());
+        let next_offset = (end < sessions.len()).then(|| u32::try_from(end).unwrap_or(u32::MAX));
+        Ok(vec![ControllerResponse::Sessions {
+            command_id,
+            revision,
+            update_sequence: revision,
+            sessions: page,
+            next_offset,
+        }])
+    }
+
+    fn durable_session_summaries(
+        &self,
+    ) -> Result<(u64, Vec<ControllerSessionSummary>), ListenerError> {
         let session_snapshot = self
             .sessions
             .load()
@@ -390,25 +561,6 @@ impl HostConnectionBackend {
             .get()
             .saturating_add(project_snapshot.revision.get())
             .saturating_add(1);
-        if expected_revision.is_some_and(|expected| expected != revision) {
-            return Ok(vec![ControllerResponse::Error {
-                command_id,
-                code: "snapshot_changed".into(),
-                completion_unknown: false,
-            }]);
-        }
-        let start = usize::try_from(offset)
-            .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?;
-        if start > session_snapshot.sessions.len() {
-            return Ok(vec![ControllerResponse::Error {
-                command_id,
-                code: "page_out_of_range".into(),
-                completion_unknown: false,
-            }]);
-        }
-        let requested_end = start
-            .saturating_add(usize::from(limit))
-            .min(session_snapshot.sessions.len());
         let project_names = project_snapshot
             .projects
             .iter()
@@ -424,9 +576,8 @@ impl HostConnectionBackend {
             .iter()
             .map(|group| (group.id, group.name.to_string()))
             .collect::<HashMap<_, _>>();
-        let mut encoded_bytes = 512usize;
         let mut sessions = Vec::new();
-        for session in &session_snapshot.sessions[start..requested_end] {
+        for session in &session_snapshot.sessions {
             let metadata = read_host_metadata(&self.sessions.session_data_path(session.id)).ok();
             let occupant = metadata
                 .as_ref()
@@ -452,33 +603,16 @@ impl HostConnectionBackend {
                     .and_then(|group_id| group_names.get(&group_id).cloned()),
                 lifecycle: lifecycle_code(session.lifecycle).to_owned(),
                 activity: activity_code(session.activity.state).to_owned(),
-                occupant_generation: occupant.map(|occupant| occupant.generation),
+                occupant_generation: metadata
+                    .as_ref()
+                    .map(|metadata| metadata.activity.generation),
                 last_output_sequence: session.last_output_sequence,
                 has_writer: false,
                 unread: session.unread(),
             };
-            let summary_bytes = serde_json::to_vec(&summary)
-                .map_err(|_| ListenerError::new(ListenerErrorCode::MalformedFrame))?
-                .len()
-                .saturating_add(1);
-            if !sessions.is_empty()
-                && encoded_bytes.saturating_add(summary_bytes) > MAX_SESSION_PAGE_BYTES
-            {
-                break;
-            }
-            encoded_bytes = encoded_bytes.saturating_add(summary_bytes);
             sessions.push(summary);
         }
-        let end = start.saturating_add(sessions.len());
-        let next_offset =
-            (end < session_snapshot.sessions.len()).then(|| u32::try_from(end).unwrap_or(u32::MAX));
-        Ok(vec![ControllerResponse::Sessions {
-            command_id,
-            revision,
-            update_sequence: revision,
-            sessions,
-            next_offset,
-        }])
+        Ok((revision, sessions))
     }
 
     fn occupant_generation(
@@ -487,9 +621,7 @@ impl HostConnectionBackend {
     ) -> Result<OccupantGeneration, ListenerError> {
         read_host_metadata(&self.sessions.session_data_path(session_id))
             .ok()
-            .and_then(|metadata| metadata.runtime_recognition)
-            .and_then(|recognition| recognition.occupant)
-            .map(|occupant| occupant.generation)
+            .map(|metadata| metadata.activity.generation)
             .ok_or_else(|| ListenerError::new(ListenerErrorCode::HostUnavailable))
     }
 
@@ -578,5 +710,201 @@ fn activity_code(state: ActivityState) -> &'static str {
         ActivityState::NeedsInput => "needs_input",
         ActivityState::Done => "done",
         ActivityState::Failed => "failed",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicUsize;
+
+    use termirust_domain::CommandId;
+
+    use super::*;
+    use crate::{
+        DesktopPaneBridgeServer, DesktopPaneRegistration, DesktopPaneRegistry, DesktopPaneTransport,
+    };
+
+    #[tokio::test]
+    async fn session_list_puts_live_desktop_panes_before_durable_history() {
+        let fixture = tempfile::tempdir().unwrap();
+        let project_root = fixture.path().join("projects");
+        let sessions =
+            SessionRepository::open(project_root.clone(), fixture.path().join("session-data"))
+                .unwrap();
+        let projects = ProjectRepository::open(project_root).unwrap();
+        let registry = DesktopPaneRegistry::default();
+        let session_id = HostedSessionId::new();
+        let writes = Arc::new(AtomicUsize::new(0));
+        registry.register(DesktopPaneRegistration {
+            session_id,
+            title: "Current SSH terminal".to_owned(),
+            runtime: "ssh".to_owned(),
+            columns: 120,
+            rows: 36,
+            transport: DesktopPaneTransport::new(move |bytes| {
+                writes.fetch_add(bytes.len(), std::sync::atomic::Ordering::Relaxed);
+                true
+            }),
+        });
+        let server =
+            DesktopPaneBridgeServer::start(fixture.path().join("bridge"), registry).unwrap();
+        let capabilities = ControllerCapabilities::default()
+            .with(ControllerCapability::ObserveSessions)
+            .with(ControllerCapability::AttachOutput)
+            .with(ControllerCapability::SendInput)
+            .with(ControllerCapability::Resize);
+        let mut backend = HostConnectionBackend {
+            sessions,
+            projects,
+            runtime_parent: fixture.path().join("runtime"),
+            capabilities,
+            clients: HashMap::new(),
+            active_attach: None,
+            pending_output: VecDeque::new(),
+            desktop_pane_bridge_endpoint: Some(server.endpoint()),
+            desktop_pane_bridge: None,
+            live_commands: HashSet::new(),
+            live_attach: false,
+        };
+
+        let responses = backend
+            .list_sessions(CommandId::new(), 0, 100, None)
+            .await
+            .unwrap();
+        let [ControllerResponse::Sessions { sessions, .. }] = responses.as_slice() else {
+            panic!("expected one session page");
+        };
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, session_id);
+        assert_eq!(sessions[0].title, "Current SSH terminal");
+        assert_eq!(sessions[0].runtime.as_deref(), Some("ssh"));
+        assert!(
+            sessions[0]
+                .capabilities
+                .contains(&ControllerSessionCapability::SendInput)
+        );
+        assert!(
+            !sessions[0]
+                .capabilities
+                .contains(&ControllerSessionCapability::Resize)
+        );
+
+        drop(backend);
+        drop(server);
+    }
+
+    #[tokio::test]
+    async fn live_desktop_pane_attach_replays_output_and_accepts_input() {
+        let fixture = tempfile::tempdir().unwrap();
+        let project_root = fixture.path().join("projects");
+        let sessions =
+            SessionRepository::open(project_root.clone(), fixture.path().join("session-data"))
+                .unwrap();
+        let projects = ProjectRepository::open(project_root).unwrap();
+        let registry = DesktopPaneRegistry::default();
+        let session_id = HostedSessionId::new();
+        let written = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let written_for_transport = written.clone();
+        registry.register(DesktopPaneRegistration {
+            session_id,
+            title: "Current local terminal".to_owned(),
+            runtime: "local_shell".to_owned(),
+            columns: 120,
+            rows: 36,
+            transport: DesktopPaneTransport::new(move |bytes| {
+                written_for_transport.lock().unwrap().extend(bytes);
+                true
+            }),
+        });
+        registry.append_output(session_id, b"desktop history\r\n", Vec::new);
+        let server =
+            DesktopPaneBridgeServer::start(fixture.path().join("bridge"), registry).unwrap();
+        let capabilities = ControllerCapabilities::default()
+            .with(ControllerCapability::ObserveSessions)
+            .with(ControllerCapability::AttachOutput)
+            .with(ControllerCapability::SendInput);
+        let mut backend = HostConnectionBackend {
+            sessions,
+            projects,
+            runtime_parent: fixture.path().join("runtime"),
+            capabilities,
+            clients: HashMap::new(),
+            active_attach: None,
+            pending_output: VecDeque::new(),
+            desktop_pane_bridge_endpoint: Some(server.endpoint()),
+            desktop_pane_bridge: None,
+            live_commands: HashSet::new(),
+            live_attach: false,
+        };
+        let cancel = CancellationToken::new();
+        let generation = OccupantGeneration::new(1);
+
+        let attach_id = CommandId::new();
+        let attach = ControllerCommandEnvelope::new(
+            attach_id,
+            1,
+            1,
+            ControllerCommand::Attach {
+                session_id,
+                occupant_generation: generation,
+                from_sequence: termirust_domain::OutputSequence::ZERO,
+                columns: 80,
+                rows: 24,
+            },
+        );
+        let context = backend.command_context(&attach, &cancel).await.unwrap();
+        assert_eq!(context.occupant_generation, Some(generation));
+        let responses = backend.execute(attach, &cancel).await.unwrap();
+        assert!(responses.iter().any(|response| matches!(
+            response,
+            ControllerResponse::Attached { command_id, .. } if *command_id == attach_id
+        )));
+        assert!(responses.iter().any(|response| matches!(
+            response,
+            ControllerResponse::Output { session_id: actual, bytes, .. }
+                if *actual == session_id && bytes == b"desktop history\r\n"
+        )));
+
+        let acquire_id = CommandId::new();
+        let acquire = ControllerCommandEnvelope::new(
+            acquire_id,
+            1,
+            1,
+            ControllerCommand::AcquireWriter {
+                session_id,
+                occupant_generation: generation,
+            },
+        );
+        backend.command_context(&acquire, &cancel).await.unwrap();
+        assert_eq!(
+            backend.execute(acquire, &cancel).await.unwrap(),
+            vec![ControllerResponse::Completed {
+                command_id: acquire_id,
+                applied: true,
+            }]
+        );
+
+        let input_id = CommandId::new();
+        let input = ControllerCommandEnvelope::new(
+            input_id,
+            1,
+            1,
+            ControllerCommand::Input {
+                session_id,
+                occupant_generation: generation,
+                bytes: b"from phone\n".to_vec(),
+            },
+        );
+        let context = backend.command_context(&input, &cancel).await.unwrap();
+        assert!(context.has_writer_lease);
+        assert_eq!(
+            backend.execute(input, &cancel).await.unwrap(),
+            vec![ControllerResponse::Completed {
+                command_id: input_id,
+                applied: true,
+            }]
+        );
+        assert_eq!(*written.lock().unwrap(), b"from phone\n");
     }
 }

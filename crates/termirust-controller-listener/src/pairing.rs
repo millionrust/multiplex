@@ -2,8 +2,9 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use termirust_controller_security::{
-    ControllerCapability, ControllerFrameKind, DeviceStaticPublicKey, PairingMachine,
-    PairingOfferCore, PairingState, RevocationEpoch, SasCode, StaticPrivateKey,
+    ControllerCapability, ControllerFrameKind, DeviceStaticPublicKey,
+    MAX_PAIRING_OFFER_LIFETIME_SECONDS, PairingMachine, PairingOfferCore, PairingState,
+    RevocationEpoch, SasCode, StaticPrivateKey,
 };
 use termirust_domain::{
     AuthenticatedPeer, ControllerDeviceId, HostIdentityGeneration, PairingOfferId,
@@ -20,7 +21,9 @@ use crate::{
 
 const MAX_PAIRING_HANDSHAKE_BYTES: usize = 1_024;
 const MAX_PAIRING_SECURE_FRAME_BYTES: usize = 64 * 1024;
-const PAIRING_TIMEOUT: Duration = Duration::from_secs(30);
+// Pairing includes a deliberate human SAS comparison. Bound the connection by the
+// signed offer lifetime instead of the shorter machine-handshake deadline.
+const PAIRING_TIMEOUT: Duration = Duration::from_secs(MAX_PAIRING_OFFER_LIFETIME_SECONDS);
 
 pub struct PairingAuthoritySnapshot {
     pub offer: PairingOfferCore,

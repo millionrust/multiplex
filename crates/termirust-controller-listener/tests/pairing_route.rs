@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use termirust_controller_listener::{
@@ -35,6 +35,7 @@ struct Authority {
     offer: PairingOfferCore,
     host_private: StaticPrivateKey,
     decision: HostPairingDecision,
+    decision_delay: Duration,
     states: Mutex<Vec<PairingOfferState>>,
     persisted: Mutex<Option<AuthenticatedPeer>>,
     acknowledged: Mutex<bool>,
@@ -74,6 +75,7 @@ impl ControllerPairingAuthority for Authority {
     ) -> Result<HostPairingDecision, ListenerError> {
         assert_eq!(offer_id, self.offer_id);
         assert_eq!(sas.as_str().len(), 9);
+        tokio::time::sleep(self.decision_delay).await;
         Ok(self.decision)
     }
 
@@ -117,8 +119,8 @@ fn unix_seconds() -> u64 {
         .as_secs()
 }
 
-#[tokio::test]
-async fn synthetic_controller_pairs_only_after_matching_host_confirmation() {
+#[tokio::test(start_paused = true)]
+async fn synthetic_controller_allows_human_confirmation_after_thirty_seconds() {
     let now = unix_seconds();
     let offer_id = PairingOfferId::new();
     let host_private = StaticPrivateKey::from_fixture_bytes([1; 32]);
@@ -135,6 +137,7 @@ async fn synthetic_controller_pairs_only_after_matching_host_confirmation() {
         offer: offer.clone(),
         host_private,
         decision: HostPairingDecision::Confirm,
+        decision_delay: Duration::from_secs(31),
         states: Mutex::new(Vec::new()),
         persisted: Mutex::new(None),
         acknowledged: Mutex::new(false),
@@ -197,6 +200,7 @@ async fn rejected_sas_never_persists_or_acknowledges_a_device() {
         offer: offer.clone(),
         host_private,
         decision: HostPairingDecision::Reject,
+        decision_delay: Duration::ZERO,
         states: Mutex::new(Vec::new()),
         persisted: Mutex::new(None),
         acknowledged: Mutex::new(false),

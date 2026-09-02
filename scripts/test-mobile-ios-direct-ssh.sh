@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IOS_DIR="${TERMIRUST_IOS_DIR:-/Users/jacob/Projects/terminal_app/terminal_swift}"
-IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 17 Pro}"
+IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-}"
 SSH_IMAGE="${TERMIRUST_MOBILE_TEST_SSH_IMAGE:-termirust-e2e-sshd:local}"
 CONFIG_PATH="$IOS_DIR/TermiRustMobileTests/.termirust-mobile-live-ssh.properties"
 
@@ -12,9 +12,21 @@ if [[ ! -d "$IOS_DIR/TermiRustMobile.xcodeproj" ]]; then
   exit 1
 fi
 
+if [[ -z "$IOS_DESTINATION" ]]; then
+  simulator_id="$(
+    xcrun simctl list devices available 2>/dev/null \
+      | awk -F '[()]' '/iPhone/ { print $2; exit }'
+  )"
+  if [[ -z "$simulator_id" ]]; then
+    echo "No available iPhone simulator. Set TERMIRUST_IOS_DESTINATION for an eligible device." >&2
+    exit 1
+  fi
+  IOS_DESTINATION="platform=iOS Simulator,id=$simulator_id"
+fi
+
 run_ios_smoke() {
   cd "$IOS_DIR"
-  xcodebuild test \
+  xcodebuild test -quiet \
     -project TermiRustMobile.xcodeproj \
     -scheme TermiRustMobile \
     -destination "$IOS_DESTINATION" \
@@ -86,7 +98,7 @@ PORT="$(docker inspect -f '{{(index (index .NetworkSettings.Ports "22/tcp") 0).H
 KNOWN_HOST_KEY=""
 for _ in {1..30}; do
   KNOWN_HOST_KEY="$(
-    ssh-keyscan -t ed25519 -p "$PORT" 127.0.0.1 2>/dev/null \
+    { ssh-keyscan -t ed25519 -p "$PORT" 127.0.0.1 2>/dev/null || true; } \
       | awk 'NF >= 3 && $2 ~ /^ssh-/ { print $2 " " $3; exit }'
   )"
   if [[ -n "$KNOWN_HOST_KEY" ]]; then

@@ -83,7 +83,7 @@ PORT="$(docker inspect -f '{{(index (index .NetworkSettings.Ports "22/tcp") 0).H
 KNOWN_HOST_KEY=""
 for _ in {1..30}; do
   KNOWN_HOST_KEY="$(
-    ssh-keyscan -t ed25519 -p "$PORT" 127.0.0.1 2>/dev/null \
+    { ssh-keyscan -t ed25519 -p "$PORT" 127.0.0.1 2>/dev/null || true; } \
       | awk 'NF >= 3 && $2 ~ /^ssh-/ { print $2 " " $3; exit }'
   )"
   if [[ -n "$KNOWN_HOST_KEY" ]]; then

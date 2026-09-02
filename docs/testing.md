@@ -14,6 +14,71 @@ It runs:
 - `cargo clippy --all-targets --all-features`
 - `git diff --check`
 
+## Cross-Repository Product Baseline
+
+Run the deterministic Rust, Swift, and Kotlin product-model baseline from this
+repository with:
+
+```bash
+./scripts/verify-product-model.sh --local
+```
+
+`--local` is the default when no mode is supplied. It runs the Rust workspace
+format, compile, Clippy, test, documentation, and policy checks; verifies the
+shared terminal and route fixtures; runs strict iOS source/lifecycle
+verification; runs Android unit tests and builds the debug APK; and checks diff
+hygiene in all three repositories.
+
+Every verifier step prints a text `PASS`, `FAIL`, or `SKIPPED` result. Local mode
+does not require Docker, an iOS runtime, an Android emulator, or provider
+credentials. Missing runtime-only dependencies are reported as explicit skips,
+not successful executions. In particular, a Docker-named Rust test may return
+success through its own skip path when Docker is unavailable; that result is not
+evidence that live SSH ran.
+
+To require disposable real SSH and Controller smokes, use:
+
+```bash
+./scripts/verify-product-model.sh --live
+```
+
+Live mode first runs the complete local baseline. It requires a working Docker
+daemon for the bundled desktop/Host golden run, then requires an eligible iOS
+destination before the mobile and remaining Controller smokes. A missing live
+prerequisite is a failure with a setup instruction. Live fixtures use loopback
+resources, and interruption terminates the verifier's active child and removes
+verifier-owned temporary files.
+
+Neither mode prints credentials, SSH keys, application state, terminal content,
+or environment values. The current evidence records and known limitations are in
+[`docs/engineering-evidence/`](engineering-evidence/).
+
+## Bundled Desktop And Host Golden Run
+
+On macOS with Docker Desktop running and `cargo-bundle` installed, run:
+
+```bash
+./scripts/verify-desktop-host-golden-run.sh
+```
+
+This N02 gate uses only disposable local fixtures. It:
+
+- starts three separate real `termirust-session-host` processes for a local PTY,
+  Docker SSH, and a fingerprint-verified deterministic fake agent
+- connects through the authenticated and encrypted Controller channel, closes
+  and reopens it at an exact replay watermark, and verifies contiguous output
+  with no gaps or duplicates
+- transfers writer authority, proves new input, revokes the Controller device,
+  and verifies that stale authority can no longer write
+- builds and launches the real unsigned release app bundle with an isolated
+  config, then proves restored local-PTY and SSH startup
+- removes only its owned app process group, Host processes, Docker container,
+  copied test key, state, and temporary files
+
+The script fails when Docker is unavailable; it never reports a live skip as a
+pass. Its evidence record is
+[`N02-desktop-host-golden.md`](engineering-evidence/N02-desktop-host-golden.md).
+
 ## Docker SSH E2E
 
 `cargo test` now includes two Docker-backed end-to-end checks when Docker is available:
@@ -229,10 +294,9 @@ If you use your normal SSH agent or default key, omit `TERMIRUST_TEST_SSH_KEY`.
 
 This smoke check proves the target is reachable and authenticated before you test the app UI against the same host.
 
-## Real Bundled-App SSH Smoke
+## Legacy Bundled-App SSH Smoke
 
-On macOS, you can also verify the packaged `TermiRust.app` against a disposable
-Docker SSH server:
+The older SSH-only packaged-app smoke remains available for focused debugging:
 
 ```bash
 ./scripts/test-real-app-ssh-ax.sh
@@ -245,7 +309,7 @@ desktop smoke faster, you can reuse it with:
 TERMIRUST_SKIP_RELEASE_BUILD=1 ./scripts/test-real-app-ssh-ax.sh
 ```
 
-That smoke path:
+That narrower smoke path:
 
 - builds `TermiRust.app` with `cargo bundle --release`
 - starts the Docker SSH fixture from `tests/fixtures/ssh-server/`
@@ -255,9 +319,9 @@ That smoke path:
 - verifies the restored startup directory / startup command path runs on the remote side
 - verifies `known_hosts.json` was written for the launched-app endpoint
 
-It is intentionally separate from `auto-test.sh` because it is macOS-specific,
-launches a real desktop bundle, and mutates local app state temporarily while it
-runs.
+Prefer the N02 golden-run command for qualification. The older command predates
+the isolated Controller, Host lifecycle, replay, authority, and comprehensive
+cleanup assertions.
 
 ## What Still Needs Manual UI Testing
 

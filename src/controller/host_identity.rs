@@ -307,6 +307,7 @@ impl<S: SecretStore, E: IdentityEntropy> HostIdentityService<S, E> {
             identity: Some(public.clone()),
             secret_ref: Some(reference.clone()),
             state: HostIdentityState::Ready,
+            session_generation: 1,
             ..ControllerDeviceAuthority::default()
         };
         if let Err(error) = self.repository.save(snapshot.revision, authority) {
@@ -504,6 +505,15 @@ mod tests {
         let second = service(fixture.path(), secrets).load_or_create().unwrap();
         assert_eq!(first.public, second.public);
         assert!(first.can_authorize());
+        assert_eq!(
+            ControllerDeviceRepository::open(fixture.path())
+                .unwrap()
+                .load()
+                .unwrap()
+                .authority
+                .session_generation,
+            1
+        );
         let json = fs::read_to_string(fixture.path().join("controller-devices.json")).unwrap();
         let secret_encoding = base64::engine::general_purpose::STANDARD_NO_PAD.encode([3; 32]);
         assert!(!json.contains(&secret_encoding));

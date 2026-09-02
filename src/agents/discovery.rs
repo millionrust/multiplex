@@ -840,7 +840,7 @@ mod tests {
             descriptor("aaa-changed-fixture", "changed"),
             descriptor("codex", "stable"),
         ];
-        let discovery = CliDiscovery::default();
+        let discovery = loaded_test_discovery();
         let path = std::env::join_paths([fixture.path()]).unwrap();
         let initial = discovery.discover(
             &descriptors,

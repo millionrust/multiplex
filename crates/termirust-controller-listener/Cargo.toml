@@ -27,3 +27,5 @@ libc = "0.2"
 [dev-dependencies]
 proptest = "=1.11.0"
 tempfile = "3.27"
+termirust-session-host = { version = "0.1.0", path = "../termirust-session-host" }
+tokio = { version = "1", features = ["test-util"] }

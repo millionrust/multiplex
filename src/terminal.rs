@@ -81,6 +81,10 @@ impl TerminalState {
         self.parser.process(data);
     }
 
+    pub fn controller_snapshot_bytes(&self) -> Vec<u8> {
+        self.parser.screen().state_formatted()
+    }
+
     pub fn resize(&mut self, size: TerminalSize) {
         if self.size.cols == size.cols && self.size.rows == size.rows {
             self.size = size;

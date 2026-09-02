@@ -80,6 +80,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
+use termirust_controller_listener::{
+    DesktopPaneBridgeServer, DesktopPaneRegistration, DesktopPaneRegistry, DesktopPaneTransport,
+};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -718,6 +721,7 @@ struct SessionPane {
     auto_reconnect_at: Option<u64>,
     user_closed: bool,
     app_attached: Option<AppAttachedPaneState>,
+    controller_session_id: HostedSessionId,
 }
 
 struct AppAttachedPaneState {
@@ -1282,6 +1286,8 @@ pub struct TermiRustApp {
     artifact_gallery: artifact_gallery::ArtifactGalleryState,
     activity_center: ActivityCenterState,
     remote_devices: RemoteDevicesState,
+    desktop_panes: DesktopPaneRegistry,
+    _desktop_pane_bridge_server: Option<DesktopPaneBridgeServer>,
     dev_url_ui: DevUrlUiState,
     window_active: bool,
     global_search: GlobalSearchState,
@@ -1528,7 +1534,26 @@ impl TermiRustApp {
         let artifact_gallery = artifact_gallery::ArtifactGalleryState::open_default();
         let activity_center = ActivityCenterState::open_default();
         let controller_coordinator = ControllerCoordinator::default();
-        let remote_devices = RemoteDevicesState::open_default(&controller_coordinator);
+        let desktop_panes = DesktopPaneRegistry::default();
+        #[cfg(not(test))]
+        let desktop_pane_bridge_server = crate::storage::app_dir().ok().and_then(|app_root| {
+            DesktopPaneBridgeServer::start(
+                remote_devices::durable_runtime_parent(&app_root).join("desktop-pane-bridge"),
+                desktop_panes.clone(),
+            )
+            .map_err(|error| {
+                eprintln!("[controller] desktop pane bridge unavailable: {error}");
+                error
+            })
+            .ok()
+        });
+        #[cfg(test)]
+        let desktop_pane_bridge_server: Option<DesktopPaneBridgeServer> = None;
+        let desktop_pane_bridge_endpoint = desktop_pane_bridge_server
+            .as_ref()
+            .map(DesktopPaneBridgeServer::endpoint);
+        let remote_devices =
+            RemoteDevicesState::open_default(&controller_coordinator, desktop_pane_bridge_endpoint);
         let project_label_input = cx
             .new(|cx| InputState::new(window, cx).placeholder(localization::project_label_field()));
         let group_name_input =
@@ -1605,6 +1630,8 @@ impl TermiRustApp {
             artifact_gallery,
             activity_center,
             remote_devices,
+            desktop_panes,
+            _desktop_pane_bridge_server: desktop_pane_bridge_server,
             dev_url_ui: DevUrlUiState::open_default(cx),
             window_active: window.is_window_active(),
             global_search: GlobalSearchState::new(),
@@ -6420,10 +6447,12 @@ impl TermiRustApp {
             self.cancel_pane_rename(window, cx);
             return;
         }
+        let desktop_panes = self.desktop_panes.clone();
         if let Some(pane) = self.pane_mut(pane_id) {
             pane.title = new_title.clone();
             pane.request.title = new_title.clone();
             pane.terminal_accessibility.set_title(new_title.clone());
+            desktop_panes.update_title(pane.controller_session_id, new_title.clone());
         }
         self.pane_rename_id = None;
         self.persist_runtime_state();
@@ -7239,9 +7268,53 @@ impl TermiRustApp {
             auto_reconnect_at: None,
             user_closed: false,
             app_attached: None,
+            controller_session_id: HostedSessionId::new(),
         });
 
         pane_id
+    }
+
+    fn publish_desktop_pane(&self, pane_id: u64) {
+        let Some(pane) = self.pane(pane_id) else {
+            return;
+        };
+        if pane.app_attached.is_some() || !pane.connected || pane.closed {
+            return;
+        }
+        let input_tx = pane.runtime.command_tx.clone();
+        let resize_tx = pane.runtime.command_tx.clone();
+        let runtime = if pane.request.persistent_session {
+            "tmux"
+        } else if pane.request.is_local_shell() {
+            "local_shell"
+        } else {
+            "ssh"
+        };
+        let size = pane.terminal.size();
+        self.desktop_panes.register(DesktopPaneRegistration {
+            session_id: pane.controller_session_id,
+            title: pane.title.clone(),
+            runtime: runtime.to_owned(),
+            columns: u32::from(size.cols),
+            rows: u32::from(size.rows),
+            transport: DesktopPaneTransport::with_resize(
+                move |bytes| input_tx.send(SessionCommand::Input(bytes)).is_ok(),
+                move |columns, rows| {
+                    let (Ok(cols), Ok(rows)) = (u16::try_from(columns), u16::try_from(rows)) else {
+                        return false;
+                    };
+                    resize_tx
+                        .send(SessionCommand::Resize(TerminalSize::new(cols, rows, 0, 0)))
+                        .is_ok()
+                },
+            ),
+        });
+    }
+
+    fn unpublish_desktop_pane(&self, pane_id: u64) {
+        if let Some(pane) = self.pane(pane_id) {
+            self.desktop_panes.remove(pane.controller_session_id);
+        }
     }
 
     fn open_local_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -7525,6 +7598,7 @@ impl TermiRustApp {
         if let Some(old_pane) = self.pane(pane_id) {
             let _ = old_pane.runtime.command_tx.send(SessionCommand::Disconnect);
         }
+        self.unpublish_desktop_pane(pane_id);
         self.panes.retain(|p| p.id != pane_id);
 
         self.status_message = if request.kind == ConnectionKind::LocalShell {
@@ -7796,6 +7870,7 @@ impl TermiRustApp {
             remove_workspace = workspace.pane_ids.is_empty();
         }
 
+        self.unpublish_desktop_pane(pane_id);
         self.panes.retain(|item| item.id != pane_id);
 
         if remove_workspace {
@@ -7844,6 +7919,7 @@ impl TermiRustApp {
             if let Some(pane) = self.pane(*pane_id) {
                 let _ = pane.runtime.command_tx.send(SessionCommand::Disconnect);
             }
+            self.unpublish_desktop_pane(*pane_id);
         }
 
         self.workspaces.retain(|item| item.id != workspace_id);
@@ -8056,13 +8132,36 @@ impl TermiRustApp {
                     };
                     self.error_message.clear();
                     self.app_attached_ready(session_id, cx);
+                    self.publish_desktop_pane(session_id);
                 }
                 SshEvent::Output { session_id, data } => {
                     if let Some(workspace_id) = self.pane_workspace_id(session_id) {
                         self.record_workspace_activity(workspace_id);
                     }
+                    let desktop_panes = self.desktop_panes.clone();
                     if let Some(pane) = self.pane_mut(session_id) {
+                        let effective_size = desktop_panes
+                            .controller_viewport(pane.controller_session_id)
+                            .and_then(|(columns, rows)| {
+                                Some(TerminalSize::new(
+                                    u16::try_from(columns).ok()?,
+                                    u16::try_from(rows).ok()?,
+                                    0,
+                                    0,
+                                ))
+                            })
+                            .or(pane.last_size);
+                        if let Some(size) = effective_size
+                            && pane.terminal.size() != size
+                        {
+                            pane.terminal.resize(size);
+                        }
                         pane.terminal.process_bytes(&data);
+                        if pane.app_attached.is_none() {
+                            desktop_panes.append_output(pane.controller_session_id, &data, || {
+                                pane.terminal.controller_snapshot_bytes()
+                            });
+                        }
                         pane.append_accessible_output(&data, None);
                         if pane.selection.is_some() {
                             pane.selection = None;
@@ -8241,6 +8340,7 @@ impl TermiRustApp {
                             .update_session_log(&log_id, |e| e.mark_error(&message));
                         let _ = save_saved_state(&self.saved);
                     }
+                    self.unpublish_desktop_pane(session_id);
                     self.set_app_attached_terminal_state(session_id, true, &message);
                     let scheduled_reconnect = self.maybe_schedule_auto_reconnect(session_id);
 
@@ -8312,6 +8412,7 @@ impl TermiRustApp {
                             .update_session_log(&log_id, |e| e.mark_disconnected());
                         let _ = save_saved_state(&self.saved);
                     }
+                    self.unpublish_desktop_pane(session_id);
                     self.set_app_attached_terminal_state(session_id, false, &message);
                     let mut scheduled = false;
                     if !was_user_closed && !durable {
@@ -8786,6 +8887,7 @@ impl TermiRustApp {
 
     fn sync_terminal_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let layouts = self.pane_layouts(window, cx);
+        let desktop_panes = self.desktop_panes.clone();
         let mut changed = false;
 
         for layout in layouts {
@@ -8797,12 +8899,40 @@ impl TermiRustApp {
             );
 
             if let Some(pane) = self.pane_mut(layout.pane_id) {
+                if let Some((columns, rows)) =
+                    desktop_panes.controller_viewport(pane.controller_session_id)
+                {
+                    let controller_size = TerminalSize::new(
+                        u16::try_from(columns).unwrap_or(u16::MAX),
+                        u16::try_from(rows).unwrap_or(u16::MAX),
+                        0,
+                        0,
+                    );
+                    if pane.terminal.size() != controller_size {
+                        pane.terminal.resize(controller_size);
+                        changed = true;
+                    }
+                    if pane.last_size != Some(size) {
+                        pane.last_size = Some(size);
+                        desktop_panes.update_size(
+                            pane.controller_session_id,
+                            u32::from(size.cols),
+                            u32::from(size.rows),
+                        );
+                    }
+                    continue;
+                }
                 if pane.last_size == Some(size) {
                     continue;
                 }
 
                 pane.terminal.resize(size);
                 pane.last_size = Some(size);
+                desktop_panes.update_size(
+                    pane.controller_session_id,
+                    u32::from(size.cols),
+                    u32::from(size.rows),
+                );
                 if !pane.closed {
                     let _ = pane.runtime.command_tx.send(SessionCommand::Resize(size));
                 }
@@ -19922,6 +20052,39 @@ sleep 1
             assert!(!workspace.search_visible);
             assert!(workspace.search_results.is_empty());
             assert_eq!(workspace.active_search_index, None);
+        });
+    }
+
+    #[gpui::test]
+    fn e2e_live_local_pane_is_published_for_mobile_and_removed_on_close(cx: &mut TestAppContext) {
+        let _isolation = TestIsolation::acquire();
+        let (app, window) = open_test_app(cx);
+        let request = ConnectRequest::local_shell_with_config(
+            0,
+            LocalShellConfig {
+                program: "/bin/sh".to_string(),
+                args: Vec::new(),
+                cwd: Some(std::env::temp_dir().display().to_string()),
+            },
+        );
+        let (_, pane_id) = window
+            .update(cx, |_, window, cx| {
+                app.update(cx, |app, cx| {
+                    app.open_request_workspace(request, window, cx)
+                        .expect("local workspace should open")
+                })
+            })
+            .expect("window update should succeed");
+
+        wait_for_app_state(cx, &app, Duration::from_secs(10), |app| {
+            (app.pane(pane_id).is_some_and(|pane| pane.connected) && app.desktop_panes.len() == 1)
+                .then_some(())
+        });
+
+        app.update(cx, |app, cx| app.close_pane(pane_id, cx));
+        app.read_with(cx, |app, _| {
+            assert!(app.desktop_panes.is_empty());
+            assert!(app.pane(pane_id).is_none());
         });
     }
 

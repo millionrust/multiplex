@@ -118,6 +118,8 @@ pub struct ListenerLaunchDescriptor {
     pub project_root: PathBuf,
     pub session_data_root: PathBuf,
     pub runtime_parent: PathBuf,
+    #[serde(default)]
+    pub desktop_pane_bridge: Option<crate::DesktopPaneBridgeEndpoint>,
     pub network_revision: ControllerNetworkRevision,
     pub policy: ControllerListenPolicy,
     host_private: [u8; 32],
@@ -140,12 +142,22 @@ impl ListenerLaunchDescriptor {
             project_root,
             session_data_root,
             runtime_parent,
+            desktop_pane_bridge: None,
             network_revision,
             policy,
             host_private: host_private.copy_for_process_handoff(),
         };
         descriptor.validate()?;
         Ok(descriptor)
+    }
+
+    pub fn with_desktop_pane_bridge(
+        mut self,
+        endpoint: Option<crate::DesktopPaneBridgeEndpoint>,
+    ) -> Result<Self, ListenerError> {
+        self.desktop_pane_bridge = endpoint;
+        self.validate()?;
+        Ok(self)
     }
 
     pub fn read(reader: impl BufRead) -> Result<Self, ListenerError> {
@@ -202,6 +214,9 @@ impl ListenerLaunchDescriptor {
             .any(|path| !safe_absolute_path(path))
         {
             return Err(ListenerError::new(ListenerErrorCode::InvalidPolicy));
+        }
+        if let Some(endpoint) = &self.desktop_pane_bridge {
+            endpoint.validate()?;
         }
         Ok(())
     }
@@ -866,11 +881,10 @@ where
     });
     let authority: Arc<dyn ControllerAuthorityProvider> = repository_authority.clone();
     let pairing: Arc<dyn ControllerPairingAuthority> = repository_authority.clone();
-    let backends = Arc::new(HostBackendFactory::new(
-        sessions,
-        projects,
-        descriptor.runtime_parent.clone(),
-    ));
+    let backends = Arc::new(
+        HostBackendFactory::new(sessions, projects, descriptor.runtime_parent.clone())
+            .with_desktop_pane_bridge(descriptor.desktop_pane_bridge.clone()),
+    );
     let mut source_key = [0; 32];
     rand::rngs::OsRng
         .try_fill_bytes(&mut source_key)

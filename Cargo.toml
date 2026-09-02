@@ -69,6 +69,7 @@ image = { version = "0.25.10", default-features = false, features = ["jpeg", "pn
 keyring = { version = "3.6.2", default-features = false, features = ["apple-native", "windows-native", "linux-native-sync-persistent", "crypto-rust"] }
 libc = "0.2"
 portable-pty = "0.9"
+qrcode = { version = "0.14", default-features = false }
 rand = "0.8"
 rfd = "0.15"
 russh = { version = "0.57", default-features = false, features = ["ring", "rsa"] }

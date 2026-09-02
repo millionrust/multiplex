@@ -23,7 +23,7 @@ SIM_DIR="$DIST_DIR/simulator"
 HEADER="$ROOT_DIR/crates/termirust-mobile-ffi/include/termirust_mobile.h"
 LIB_NAME="libtermirust_mobile_ffi.a"
 
-rm -rf "$DIST_DIR/TermiRustMobileCrypto.xcframework" "$SIM_DIR"
+rm -rf "$SIM_DIR"
 mkdir -p "$SIM_DIR"
 
 lipo -create \
@@ -31,11 +31,11 @@ lipo -create \
   "$ROOT_DIR/target/x86_64-apple-ios/release/$LIB_NAME" \
   -output "$SIM_DIR/$LIB_NAME"
 
-xcodebuild -create-xcframework \
-  -library "$ROOT_DIR/target/aarch64-apple-ios/release/$LIB_NAME" \
-  -headers "$(dirname "$HEADER")" \
-  -library "$SIM_DIR/$LIB_NAME" \
-  -headers "$(dirname "$HEADER")" \
-  -output "$DIST_DIR/TermiRustMobileCrypto.xcframework"
+"$ROOT_DIR/scripts/create-ios-static-xcframework.sh" \
+  TermiRustMobileCrypto \
+  "$ROOT_DIR/target/aarch64-apple-ios/release/$LIB_NAME" \
+  "$SIM_DIR/$LIB_NAME" \
+  "$(dirname "$HEADER")" \
+  "$DIST_DIR/TermiRustMobileCrypto.xcframework"
 
 printf 'Built %s\n' "$DIST_DIR/TermiRustMobileCrypto.xcframework"

@@ -474,9 +474,9 @@ async fn serve_authenticated_stream<S: AsyncRead + AsyncWrite + Unpin>(
                         .seal(kind, capability, RevocationEpoch(peer.revocation_epoch), &payload)
                         .map_err(|_| ListenerError::new(ListenerErrorCode::AuthenticationFailed))?;
                     outbound.push(queue_class(kind), sealed.as_bytes().to_vec())?;
-                }
-                while let Some((class, sealed)) = outbound.pop() {
-                    write_bounded_frame(&mut writer, &sealed, queue_frame_limit(class)).await?;
+                    while let Some((class, sealed)) = outbound.pop() {
+                        write_bounded_frame(&mut writer, &sealed, queue_frame_limit(class)).await?;
+                    }
                 }
                 drop(incoming);
                 incoming = Box::pin(read_bounded_frame(&mut reader, MAX_TERMINAL_FRAME_BYTES));

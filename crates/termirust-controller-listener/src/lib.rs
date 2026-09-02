@@ -6,6 +6,7 @@
 mod authorization;
 mod bind;
 mod client_channel;
+mod desktop_pane_bridge;
 mod devices;
 mod error;
 mod firewall;
@@ -29,6 +30,10 @@ pub use bind::{
     SystemGeneratedPortSource, bind_selected_route,
 };
 pub use client_channel::ControllerClientChannel;
+pub use desktop_pane_bridge::{
+    DesktopPaneBridgeEndpoint, DesktopPaneBridgeServer, DesktopPaneRegistration,
+    DesktopPaneRegistry, DesktopPaneTransport,
+};
 pub use devices::{
     ControllerChannelCloser, ControllerDeviceService, ControllerDeviceServiceError,
     NoControllerChannels,
