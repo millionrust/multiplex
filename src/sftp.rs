@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, Weak};
 use std::thread;
@@ -86,13 +86,16 @@ pub struct SftpTransferControl {
     workspace_id: u64,
     operation_id: u64,
     cancellation: CancellationToken,
+    terminal: Arc<SftpTransferTerminal>,
 }
 
 impl SftpTransferControl {
     pub fn cancel(&self) {
-        self.cancellation.cancel();
-        if let Some(inner) = self.inner.upgrade() {
-            cancel_queued_transfer(&inner, self.workspace_id, self.operation_id);
+        if self.terminal.request_cancellation() {
+            self.cancellation.cancel();
+            if let Some(inner) = self.inner.upgrade() {
+                cancel_queued_transfer(&inner, self.workspace_id, self.operation_id);
+            }
         }
     }
 }
@@ -195,6 +198,106 @@ struct SftpTransferJob {
     known_hosts: Arc<KnownHostStore>,
     event_tx: Sender<SftpEvent>,
     cancellation: CancellationToken,
+    terminal: Arc<SftpTransferTerminal>,
+}
+
+const TRANSFER_TERMINAL_OPEN: u8 = 0;
+const TRANSFER_CANCELLATION_REQUESTED: u8 = 1;
+const TRANSFER_TERMINAL_EMITTED: u8 = 2;
+
+struct SftpTransferTerminal {
+    state: AtomicU8,
+    workspace_id: u64,
+    operation_id: u64,
+    direction: SftpTransferDirection,
+    transferred_bytes: AtomicU64,
+    staging_retained: AtomicBool,
+    event_tx: Sender<SftpEvent>,
+}
+
+impl SftpTransferTerminal {
+    fn new(spec: &SftpTransferSpec, event_tx: Sender<SftpEvent>) -> Self {
+        Self {
+            state: AtomicU8::new(TRANSFER_TERMINAL_OPEN),
+            workspace_id: spec.workspace_id,
+            operation_id: spec.operation_id,
+            direction: spec.direction,
+            transferred_bytes: AtomicU64::new(0),
+            staging_retained: AtomicBool::new(false),
+            event_tx,
+        }
+    }
+
+    fn request_cancellation(&self) -> bool {
+        self.state
+            .compare_exchange(
+                TRANSFER_TERMINAL_OPEN,
+                TRANSFER_CANCELLATION_REQUESTED,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            )
+            .is_ok()
+    }
+
+    fn note_progress(&self, transferred_bytes: u64, staging_retained: bool) {
+        self.transferred_bytes
+            .fetch_max(transferred_bytes, Ordering::SeqCst);
+        if staging_retained {
+            self.staging_retained.store(true, Ordering::SeqCst);
+        }
+    }
+
+    fn emit_cancelled(&self, transferred_bytes: u64, staging_retained: bool) {
+        self.note_progress(transferred_bytes, staging_retained);
+        let committed = self
+            .state
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |state| match state {
+                TRANSFER_TERMINAL_OPEN | TRANSFER_CANCELLATION_REQUESTED => {
+                    Some(TRANSFER_TERMINAL_EMITTED)
+                }
+                _ => None,
+            })
+            .is_ok();
+        if committed {
+            let _ = self.event_tx.send(SftpEvent::TransferCancelled {
+                workspace_id: self.workspace_id,
+                operation_id: self.operation_id,
+                direction: self.direction,
+                transferred_bytes: self.transferred_bytes.load(Ordering::SeqCst),
+                staging_retained: self.staging_retained.load(Ordering::SeqCst),
+            });
+        }
+    }
+
+    fn emit_or_cancel(&self, event: SftpEvent, transferred_bytes: u64, staging_retained: bool) {
+        self.note_progress(transferred_bytes, staging_retained);
+        if self
+            .state
+            .compare_exchange(
+                TRANSFER_TERMINAL_OPEN,
+                TRANSFER_TERMINAL_EMITTED,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            )
+            .is_ok()
+        {
+            let _ = self.event_tx.send(event);
+        } else if self.state.load(Ordering::SeqCst) == TRANSFER_CANCELLATION_REQUESTED {
+            self.emit_cancelled(transferred_bytes, staging_retained);
+        }
+    }
+
+    fn emit_error(&self, message: String) {
+        self.emit_or_cancel(
+            SftpEvent::Error {
+                workspace_id: self.workspace_id,
+                operation_id: self.operation_id,
+                message,
+            },
+            self.transferred_bytes.load(Ordering::SeqCst),
+            self.staging_retained.load(Ordering::SeqCst),
+        );
+    }
 }
 
 impl Default for SftpTransferManager {
@@ -216,6 +319,7 @@ impl SftpTransferManager {
     ) -> Result<SftpTransferControl> {
         validate_transfer_spec(&spec)?;
         let cancellation = CancellationToken::new();
+        let terminal = Arc::new(SftpTransferTerminal::new(&spec, event_tx.clone()));
         let queued_ahead = {
             let mut state = self
                 .inner
@@ -237,6 +341,7 @@ impl SftpTransferManager {
                 known_hosts,
                 event_tx: event_tx.clone(),
                 cancellation: cancellation.clone(),
+                terminal: terminal.clone(),
             });
             queued_ahead
         };
@@ -254,6 +359,7 @@ impl SftpTransferManager {
             workspace_id: spec.workspace_id,
             operation_id: spec.operation_id,
             cancellation,
+            terminal,
         })
     }
 }
@@ -281,13 +387,7 @@ fn cancel_queued_transfer(
         state.queued.remove(index)
     });
     if let Some(job) = removed {
-        let _ = job.event_tx.send(SftpEvent::TransferCancelled {
-            workspace_id,
-            operation_id,
-            direction: job.spec.direction,
-            transferred_bytes: 0,
-            staging_retained: false,
-        });
+        job.terminal.emit_cancelled(0, false);
     }
 }
 
@@ -310,8 +410,8 @@ fn dispatch_transfers(inner: Arc<SftpTransferManagerInner>) {
         let worker_inner = inner.clone();
         let workspace_id = job.spec.workspace_id;
         let operation_id = job.spec.operation_id;
-        let event_tx = job.event_tx.clone();
-        let worker_event_tx = event_tx.clone();
+        let terminal = job.terminal.clone();
+        let worker_terminal = terminal.clone();
         let spawn_result = thread::Builder::new()
             .name(format!("sftp-transfer-{workspace_id}-{operation_id}"))
             .spawn(move || {
@@ -322,21 +422,13 @@ fn dispatch_transfers(inner: Arc<SftpTransferManagerInner>) {
                     .context("Unable to initialize the SFTP transfer runtime")
                     .and_then(|runtime| runtime.block_on(run_transfer(job)));
                 if let Err(error) = result {
-                    let _ = worker_event_tx.send(SftpEvent::Error {
-                        workspace_id,
-                        operation_id,
-                        message: format!("SFTP transfer failed: {error:#}"),
-                    });
+                    worker_terminal.emit_error(format!("SFTP transfer failed: {error:#}"));
                 }
                 finish_transfer(&worker_inner);
             });
 
         if let Err(error) = spawn_result {
-            let _ = event_tx.send(SftpEvent::Error {
-                workspace_id,
-                operation_id,
-                message: format!("Unable to start the SFTP transfer worker: {error}"),
-            });
+            terminal.emit_error(format!("Unable to start the SFTP transfer worker: {error}"));
             finish_transfer(&inner);
         }
     }
@@ -361,16 +453,11 @@ async fn run_transfer(job: SftpTransferJob) -> Result<()> {
 }
 
 fn send_transfer_cancelled(job: &SftpTransferJob, transferred: u64, retained: bool) {
-    let _ = job.event_tx.send(SftpEvent::TransferCancelled {
-        workspace_id: job.spec.workspace_id,
-        operation_id: job.spec.operation_id,
-        direction: job.spec.direction,
-        transferred_bytes: transferred,
-        staging_retained: retained,
-    });
+    job.terminal.emit_cancelled(transferred, retained);
 }
 
 fn send_transfer_progress(job: &SftpTransferJob, transferred: u64, total: u64) {
+    job.terminal.note_progress(transferred, true);
     let _ = job.event_tx.send(SftpEvent::TransferProgress {
         workspace_id: job.spec.workspace_id,
         operation_id: job.spec.operation_id,
@@ -390,6 +477,32 @@ fn send_transfer_started(job: &SftpTransferJob, total: u64, resumed_from: u64) {
     });
 }
 
+fn send_transfer_conflict(job: &SftpTransferJob, existing_bytes: u64, resume_available: bool) {
+    job.terminal.emit_or_cancel(
+        SftpEvent::TransferConflict {
+            workspace_id: job.spec.workspace_id,
+            operation_id: job.spec.operation_id,
+            direction: job.spec.direction,
+            existing_bytes,
+            resume_available,
+        },
+        0,
+        false,
+    );
+}
+
+fn send_transfer_skipped(job: &SftpTransferJob) {
+    job.terminal.emit_or_cancel(
+        SftpEvent::TransferSkipped {
+            workspace_id: job.spec.workspace_id,
+            operation_id: job.spec.operation_id,
+            direction: job.spec.direction,
+        },
+        0,
+        false,
+    );
+}
+
 fn send_transfer_complete(
     job: &SftpTransferJob,
     transferred: u64,
@@ -397,15 +510,20 @@ fn send_transfer_complete(
     hasher: Sha256,
     cleanup_warning: bool,
 ) {
-    let _ = job.event_tx.send(SftpEvent::TransferComplete {
-        workspace_id: job.spec.workspace_id,
-        operation_id: job.spec.operation_id,
-        direction: job.spec.direction,
-        transferred_bytes: transferred,
-        resumed_from,
-        sha256: encode_sha256(hasher.finalize().as_slice()),
-        cleanup_warning,
-    });
+    job.terminal.staging_retained.store(false, Ordering::SeqCst);
+    job.terminal.emit_or_cancel(
+        SftpEvent::TransferComplete {
+            workspace_id: job.spec.workspace_id,
+            operation_id: job.spec.operation_id,
+            direction: job.spec.direction,
+            transferred_bytes: transferred,
+            resumed_from,
+            sha256: encode_sha256(hasher.finalize().as_slice()),
+            cleanup_warning,
+        },
+        transferred,
+        false,
+    );
 }
 
 async fn cancellable_transfer_step<T, E, F>(
@@ -541,33 +659,19 @@ async fn run_upload(job: SftpTransferJob) -> Result<()> {
                         .is_some_and(|part| {
                             part.is_regular() && !part.is_empty() && part.len() < total
                         });
-                let _ = job.event_tx.send(SftpEvent::TransferConflict {
-                    workspace_id: job.spec.workspace_id,
-                    operation_id: job.spec.operation_id,
-                    direction: job.spec.direction,
-                    existing_bytes: metadata.len(),
-                    resume_available,
-                });
+                send_transfer_conflict(&job, metadata.len(), resume_available);
                 let _ = sftp.close().await;
                 return Ok(());
             }
             SftpConflictPolicy::Skip => {
-                let _ = job.event_tx.send(SftpEvent::TransferSkipped {
-                    workspace_id: job.spec.workspace_id,
-                    operation_id: job.spec.operation_id,
-                    direction: job.spec.direction,
-                });
+                send_transfer_skipped(&job);
                 let _ = sftp.close().await;
                 return Ok(());
             }
             SftpConflictPolicy::Replace | SftpConflictPolicy::Resume => {}
         }
     } else if job.spec.conflict_policy == SftpConflictPolicy::Skip {
-        let _ = job.event_tx.send(SftpEvent::TransferSkipped {
-            workspace_id: job.spec.workspace_id,
-            operation_id: job.spec.operation_id,
-            direction: job.spec.direction,
-        });
+        send_transfer_skipped(&job);
         let _ = sftp.close().await;
         return Ok(());
     }
@@ -790,33 +894,19 @@ async fn run_download(job: SftpTransferJob) -> Result<()> {
             SftpConflictPolicy::Ask => {
                 let resume_available =
                     staged_before.is_some_and(|(size, _)| size > 0 && size < total);
-                let _ = job.event_tx.send(SftpEvent::TransferConflict {
-                    workspace_id: job.spec.workspace_id,
-                    operation_id: job.spec.operation_id,
-                    direction: job.spec.direction,
-                    existing_bytes: *existing_bytes,
-                    resume_available,
-                });
+                send_transfer_conflict(&job, *existing_bytes, resume_available);
                 let _ = sftp.close().await;
                 return Ok(());
             }
             SftpConflictPolicy::Skip => {
-                let _ = job.event_tx.send(SftpEvent::TransferSkipped {
-                    workspace_id: job.spec.workspace_id,
-                    operation_id: job.spec.operation_id,
-                    direction: job.spec.direction,
-                });
+                send_transfer_skipped(&job);
                 let _ = sftp.close().await;
                 return Ok(());
             }
             SftpConflictPolicy::Replace | SftpConflictPolicy::Resume => {}
         }
     } else if job.spec.conflict_policy == SftpConflictPolicy::Skip {
-        let _ = job.event_tx.send(SftpEvent::TransferSkipped {
-            workspace_id: job.spec.workspace_id,
-            operation_id: job.spec.operation_id,
-            direction: job.spec.direction,
-        });
+        send_transfer_skipped(&job);
         let _ = sftp.close().await;
         return Ok(());
     }
@@ -1906,7 +1996,7 @@ mod tests {
         AuthorizedKeyAction, AuthorizedKeyEvent, AuthorizedKeyOutcome, GeneratedKeyVerification,
         SFTP_TRANSFER_CHUNK_BYTES, SFTP_TRANSFER_MAX_ACTIVE, SFTP_TRANSFER_MAX_BYTES,
         SFTP_TRANSFER_MAX_QUEUED, SftpConflictPolicy, SftpEvent, SftpTransferDirection,
-        SftpTransferManager, SftpTransferSpec, cancellable_transfer_step,
+        SftpTransferManager, SftpTransferSpec, SftpTransferTerminal, cancellable_transfer_step,
         local_destination_identity, local_file_identity, local_staging_path, publish_local_staging,
         spawn_authorized_key_operation, spawn_delete_path, spawn_list_directory,
     };
@@ -1924,8 +2014,8 @@ mod tests {
     use std::io::Read as _;
     use std::net::TcpListener;
     use std::path::PathBuf;
-    use std::sync::Arc;
     use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+    use std::sync::{Arc, Barrier};
     use std::time::Duration;
 
     fn sha256(bytes: &[u8]) -> String {
@@ -2059,6 +2149,39 @@ mod tests {
         }
     }
 
+    fn assert_no_additional_terminal_event(rx: &Receiver<SftpEvent>, operation_id: u64) {
+        while let Ok(event) = rx.recv_timeout(Duration::from_millis(100)) {
+            let actual = match event {
+                SftpEvent::TransferConflict { operation_id, .. }
+                | SftpEvent::TransferSkipped { operation_id, .. }
+                | SftpEvent::TransferCancelled { operation_id, .. }
+                | SftpEvent::TransferComplete { operation_id, .. }
+                | SftpEvent::Error { operation_id, .. } => Some(operation_id),
+                _ => None,
+            };
+            assert_ne!(
+                actual,
+                Some(operation_id),
+                "transfer emitted two terminal events"
+            );
+        }
+    }
+
+    fn wait_for_transfer_manager_idle(manager: &SftpTransferManager) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            let active = manager.inner.state.lock().unwrap().active;
+            if active == 0 {
+                return;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "transfer worker remained active after its terminal event"
+            );
+            std::thread::yield_now();
+        }
+    }
+
     #[test]
     fn transfer_manager_bounds_queue_and_cancels_queued_jobs_immediately() {
         let _isolation = TestIsolation::acquire();
@@ -2104,6 +2227,7 @@ mod tests {
         assert!(rejected.unwrap_err().to_string().contains("queue is full"));
 
         controls[7].cancel();
+        controls[7].cancel();
         assert_eq!(manager.inner.state.lock().unwrap().queued.len(), 31);
         let cancelled = recv_transfer_terminal(&event_rx, 8);
         assert!(matches!(
@@ -2114,6 +2238,7 @@ mod tests {
                 ..
             }
         ));
+        assert_no_additional_terminal_event(&event_rx, 8);
         manager
             .enqueue(
                 SftpTransferSpec {
@@ -2221,14 +2346,32 @@ mod tests {
         let listener = TcpListener::bind(("127.0.0.1", 0)).expect("listener should bind");
         let port = listener.local_addr().unwrap().port();
         let (accepted_tx, accepted_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("test connection should arrive");
             accepted_tx.send(()).unwrap();
+            release_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("test should release the stalled fixture");
             stream
-                .set_read_timeout(Some(Duration::from_secs(3)))
+                .set_read_timeout(Some(Duration::from_secs(2)))
                 .unwrap();
             let mut buffer = [0u8; 64];
-            let _ = stream.read(&mut buffer);
+            loop {
+                match stream.read(&mut buffer) {
+                    Ok(0) => return true,
+                    Ok(_) => {}
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                        ) =>
+                    {
+                        return false;
+                    }
+                    Err(error) => panic!("stalled fixture read failed: {error}"),
+                }
+            }
         });
         let manager = SftpTransferManager::default();
         let known_hosts = Arc::new(KnownHostStore::load().expect("known-host store should load"));
@@ -2256,7 +2399,88 @@ mod tests {
         let event = recv_transfer_terminal(&event_rx, 200);
         assert!(matches!(event, SftpEvent::TransferCancelled { .. }));
         assert!(started.elapsed() < Duration::from_secs(2));
-        server.join().unwrap();
+        wait_for_transfer_manager_idle(&manager);
+        release_tx.send(()).unwrap();
+        assert!(
+            server.join().unwrap(),
+            "cancelled worker left its socket open"
+        );
+        assert_no_additional_terminal_event(&event_rx, 200);
+    }
+
+    #[test]
+    fn active_transfer_cancellation_wins_before_worker_failure_commit() {
+        let (event_tx, event_rx) = mpsc::channel();
+        let spec = SftpTransferSpec {
+            workspace_id: 1,
+            operation_id: 201,
+            request: synthetic_sftp_request(9),
+            direction: SftpTransferDirection::Upload,
+            local_path: PathBuf::from("/tmp/active-race"),
+            remote_path: "/active-race".to_string(),
+            conflict_policy: SftpConflictPolicy::Replace,
+        };
+        let terminal = Arc::new(SftpTransferTerminal::new(&spec, event_tx));
+        terminal.note_progress(64, true);
+        let barrier = Arc::new(Barrier::new(2));
+        let worker_terminal = terminal.clone();
+        let worker_barrier = barrier.clone();
+        let worker = std::thread::spawn(move || {
+            worker_barrier.wait();
+            worker_terminal.emit_error("synthetic transport failure".to_string());
+        });
+
+        assert!(terminal.request_cancellation());
+        barrier.wait();
+        worker.join().unwrap();
+        assert!(matches!(
+            recv_transfer_terminal(&event_rx, 201),
+            SftpEvent::TransferCancelled {
+                transferred_bytes: 64,
+                staging_retained: true,
+                ..
+            }
+        ));
+        assert_no_additional_terminal_event(&event_rx, 201);
+    }
+
+    #[test]
+    fn cancellation_after_terminal_completion_is_a_no_op() {
+        let (event_tx, event_rx) = mpsc::channel();
+        let spec = SftpTransferSpec {
+            workspace_id: 1,
+            operation_id: 202,
+            request: synthetic_sftp_request(9),
+            direction: SftpTransferDirection::Download,
+            local_path: PathBuf::from("/tmp/completed-transfer"),
+            remote_path: "/completed-transfer".to_string(),
+            conflict_policy: SftpConflictPolicy::Replace,
+        };
+        let terminal = SftpTransferTerminal::new(&spec, event_tx);
+        terminal.emit_or_cancel(
+            SftpEvent::TransferComplete {
+                workspace_id: 1,
+                operation_id: 202,
+                direction: SftpTransferDirection::Download,
+                transferred_bytes: 32,
+                resumed_from: 0,
+                sha256: "synthetic".to_string(),
+                cleanup_warning: false,
+            },
+            32,
+            false,
+        );
+
+        assert!(!terminal.request_cancellation());
+        terminal.emit_cancelled(32, false);
+        assert!(matches!(
+            recv_transfer_terminal(&event_rx, 202),
+            SftpEvent::TransferComplete {
+                transferred_bytes: 32,
+                ..
+            }
+        ));
+        assert_no_additional_terminal_event(&event_rx, 202);
     }
 
     #[test]
