@@ -48,6 +48,21 @@ class ControllerFleetTests {
     }
 
     @Test
+    fun fleetSnapshotCarriesOnlySupportedNegotiatedCapabilities() {
+        val writable = ControllerFleetSnapshot(
+            revision = 1,
+            updateSequence = 1,
+            sessions = listOf(session(1)),
+            capabilityBits = 0b1_1111,
+        )
+        writable.validate()
+        assertEquals(0b1_1111, writable.capabilityBits)
+        assertThrows(IllegalArgumentException::class.java) {
+            writable.copy(capabilityBits = 0b10_0000).validate()
+        }
+    }
+
+    @Test
     fun cacheEvictsOldestThenFingerprintAndNeverSelectedHost() {
         val selected = cached("selected", viewed = 100)
         val sameTimeB = cached("host-b", viewed = 10)

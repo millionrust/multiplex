@@ -278,7 +278,7 @@ fn run() -> Result<(), String> {
     };
 
     let control_listener =
-        TcpListener::bind(SocketAddr::new(interface.address, 0)).map_err(|_| "control_bind")?;
+        TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], 0))).map_err(|_| "control_bind")?;
     let control_port = control_listener
         .local_addr()
         .map_err(|_| "control_bind")?
@@ -531,14 +531,16 @@ fn serve_control(
     while !shutdown.load(Ordering::Acquire) {
         match listener.accept() {
             Ok((stream, _)) => {
-                let _ = handle_control(
+                if let Err(code) = handle_control(
                     stream,
                     &token,
                     &repository,
                     &mut listener_control,
                     &status,
                     &shutdown,
-                );
+                ) {
+                    eprintln!("fixture control request failed: {code}");
+                }
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                 thread::sleep(Duration::from_millis(20));
@@ -557,13 +559,16 @@ fn handle_control(
     shutdown: &Arc<AtomicBool>,
 ) -> Result<(), String> {
     stream
+        .set_nonblocking(false)
+        .map_err(|_| "control_blocking")?;
+    stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .map_err(|_| "control_timeout")?;
     let mut bytes = Vec::new();
     BufReader::new(&stream)
         .take(MAX_CONTROL_BYTES + 1)
         .read_until(b'\n', &mut bytes)
-        .map_err(|_| "control_read")?;
+        .map_err(|error| format!("control_read:{:?}", error.kind()))?;
     if bytes.is_empty() || bytes.len() as u64 > MAX_CONTROL_BYTES {
         return Err("control_frame".to_owned());
     }

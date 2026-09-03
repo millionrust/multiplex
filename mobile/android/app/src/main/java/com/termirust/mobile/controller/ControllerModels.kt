@@ -110,9 +110,11 @@ data class ControllerFleetSnapshot(
     val revision: Long,
     @SerialName("update_sequence") val updateSequence: Long,
     val sessions: List<ControllerSessionSummary>,
+    @SerialName("capability_bits") val capabilityBits: Int = 0,
 ) {
     fun validate() {
         require(revision > 0 && updateSequence > 0)
+        require(capabilityBits in 0..0x1f)
         require(sessions.size <= ControllerLimits.MAX_SESSIONS_PER_HOST)
         sessions.forEach(ControllerSessionSummary::validate)
         require(sessions.map { it.id }.toSet().size == sessions.size)

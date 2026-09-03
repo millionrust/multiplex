@@ -8,10 +8,11 @@ IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-platform=iOS Simulator,name=iPhone
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 
 run_live_ssh=false
+run_live_controller=false
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/verify-mobile-mvp.sh [--live-ssh]
+Usage: scripts/verify-mobile-mvp.sh [--live-ssh] [--live-controller]
 
 Runs the local mobile MVP verification gates:
   - Rust shared protocol and mobile FFI tests
@@ -27,6 +28,9 @@ Those smoke tests require either Docker Desktop to be running or these env vars:
   TERMIRUST_MOBILE_TEST_SSH_KEY
   TERMIRUST_MOBILE_TEST_KNOWN_HOST_KEY
 
+Use --live-controller to run the real Rust Host/Controller lifecycle against
+eligible iOS and Android simulator/device destinations.
+
 Path overrides:
   TERMIRUST_IOS_DIR
   TERMIRUST_ANDROID_DIR
@@ -41,6 +45,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --live-ssh)
       run_live_ssh=true
+      shift
+      ;;
+    --live-controller)
+      run_live_controller=true
       shift
       ;;
     -h|--help)
@@ -103,7 +111,9 @@ run_step "Android host Controller binding" prepare_android_test_native
 run_step "Mobile helper script syntax" bash -n \
   scripts/sync-mobile-ffi-artifacts.sh \
   scripts/test-mobile-ios-direct-ssh.sh \
-  scripts/test-mobile-android-direct-ssh.sh
+  scripts/test-mobile-android-direct-ssh.sh \
+  scripts/test-mobile-ios-controller-host.sh \
+  scripts/test-mobile-android-controller-host.sh
 
 run_step "iOS unit and build tests" \
   xcodebuild test \
@@ -127,5 +137,16 @@ else
 
 Skipped live SSH/tmux smoke tests.
 Run with --live-ssh after starting Docker Desktop, or set TERMIRUST_MOBILE_TEST_SSH_* env vars for a reachable SSH host.
+NOTE
+fi
+
+if [[ "$run_live_controller" == true ]]; then
+  run_step "iOS Controller/Host golden run" "$ROOT_DIR/scripts/test-mobile-ios-controller-host.sh"
+  run_step "Android Controller/Host golden run" "$ROOT_DIR/scripts/test-mobile-android-controller-host.sh"
+else
+  cat <<'NOTE'
+
+Skipped live Controller/Host golden runs.
+Run with --live-controller when eligible iOS and Android destinations are available.
 NOTE
 fi

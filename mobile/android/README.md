@@ -37,6 +37,9 @@ Implemented:
 - SSHJ-backed direct SSH session wiring with pinned known-host verification, Keystore-backed `secret_ref` lookup, PTY shell startup, tmux bootstrap injection, terminal input, resize, and disconnect.
 - Transcript-level terminal buffering for common redraw/control sequences such as carriage return, backspace, ANSI SGR, line erase, cursor movement, and clear screen.
 - JVM route, terminal, schema, tmux, lifecycle, and Controller protocol tests.
+- Device/emulator instrumentation golden run against the real Rust Session Host,
+  including pairing, Keystore storage, capability refresh, terminal control,
+  reconnect, resize, revocation, and cleanup.
 
 The production Device transport currently implements private LAN/VPN. Direct SSH is fully
 available under **Connections**, but it is not mislabeled as Controller over SSH. The
@@ -64,3 +67,15 @@ mobile/android/scripts/verify-android-unified-routes.sh
 
 If Android Studio installed the SDK somewhere else, replace the `sdk.dir` path
 or set `ANDROID_HOME` for the Gradle commands.
+
+Run the real Controller/Host golden path from the repository root. The runner
+uses the sole connected device, or starts the first installed AVD when no device
+is connected:
+
+```bash
+cd /Users/jacob/Projects/terminal
+./scripts/test-mobile-android-controller-host.sh
+```
+
+Use `--serial <adb-serial>` when multiple devices are connected, or
+`--avd <name>` to select a specific emulator.

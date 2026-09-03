@@ -598,7 +598,7 @@ class ControllerConnection(
                 hostStaticPublicKey = hostKey,
                 identityGeneration = host.identityGeneration.toULong(),
                 revocationEpoch = host.revocationEpoch.toULong(),
-                requestedCapabilityBits = OBSERVE_CAPABILITY.toUShort(),
+                requestedCapabilityBits = ALL_SUPPORTED_CAPABILITIES.toUShort(),
                 clientNonce = randomBytes(32),
                 nowMillis = uptimeMillis().toULong(),
             )
@@ -616,9 +616,11 @@ class ControllerConnection(
                 require(publicResult.hostStaticPublicKey.contentEquals(hostKey))
                 require(publicResult.identityGeneration.toLong() == host.identityGeneration)
                 require(publicResult.revocationEpoch.toLong() == host.revocationEpoch)
-                require(publicResult.grantedCapabilityBits.toInt() == OBSERVE_CAPABILITY)
+                val grantedCapabilityBits = publicResult.grantedCapabilityBits.toInt()
+                require(grantedCapabilityBits and OBSERVE_CAPABILITY == OBSERVE_CAPABILITY)
+                require(grantedCapabilityBits and ALL_SUPPORTED_CAPABILITIES.inv() == 0)
                 progress(ControllerConnectionState.Syncing)
-                return fetchStableSnapshot(host, session, input, output)
+                return fetchStableSnapshot(host, session, input, output, grantedCapabilityBits)
             } finally {
                 runCatching { session.finish() }
                 session.close()
@@ -634,6 +636,7 @@ class ControllerConnection(
         session: ControllerConnectionSession,
         input: DataInputStream,
         output: DataOutputStream,
+        capabilityBits: Int,
     ): ControllerFleetSnapshot {
         repeat(3) {
             var offset = 0
@@ -699,6 +702,7 @@ class ControllerConnection(
                 revision = requireNotNull(revision),
                 updateSequence = requireNotNull(updateSequence),
                 sessions = summaries,
+                capabilityBits = capabilityBits,
             )
             snapshot.validate()
             return snapshot
@@ -771,6 +775,7 @@ class ControllerConnection(
         const val APPROVAL_CAPABILITY = 1 shl 4
         const val ALL_INTERACTIVE_CAPABILITIES = ATTACH_CAPABILITY or INPUT_CAPABILITY or
             RESIZE_CAPABILITY or APPROVAL_CAPABILITY
+        const val ALL_SUPPORTED_CAPABILITIES = OBSERVE_CAPABILITY or ALL_INTERACTIVE_CAPABILITIES
         val PAIRING_PREFACE = byteArrayOf(0x54, 0x52, 0x43, 0x4e, 0, 1, 2, 0)
         val AUTH_PREFACE = byteArrayOf(0x54, 0x52, 0x43, 0x4e, 0, 1, 1, 0)
     }

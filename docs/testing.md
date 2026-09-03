@@ -27,7 +27,7 @@ repository with:
 format, compile, Clippy, test, documentation, and policy checks; verifies the
 shared terminal and route fixtures; runs strict iOS source/lifecycle
 verification; runs Android unit tests and builds the debug APK; and checks diff
-hygiene in all three repositories.
+hygiene across the Rust, Swift, and Kotlin codebases in this repository.
 
 Every verifier step prints a text `PASS`, `FAIL`, or `SKIPPED` result. Local mode
 does not require Docker, an iOS runtime, an Android emulator, or provider
@@ -43,11 +43,11 @@ To require disposable real SSH and Controller smokes, use:
 ```
 
 Live mode first runs the complete local baseline. It requires a working Docker
-daemon for the bundled desktop/Host golden run, then requires an eligible iOS
-destination before the mobile and remaining Controller smokes. A missing live
-prerequisite is a failure with a setup instruction. Live fixtures use loopback
-resources, and interruption terminates the verifier's active child and removes
-verifier-owned temporary files.
+daemon for the bundled desktop/Host golden run, then requires eligible iOS and
+Android destinations for the mobile and remaining Controller smokes. A missing
+live prerequisite is a failure with a setup instruction. Live fixtures use
+loopback or private-LAN resources, and interruption terminates the verifier's
+active child and removes verifier-owned temporary files.
 
 Neither mode prints credentials, SSH keys, application state, terminal content,
 or environment values. The current evidence records and known limitations are in
@@ -78,6 +78,33 @@ This N02 gate uses only disposable local fixtures. It:
 The script fails when Docker is unavailable; it never reports a live skip as a
 pass. Its evidence record is
 [`N02-desktop-host-golden.md`](engineering-evidence/N02-desktop-host-golden.md).
+
+## Android Controller And Host Golden Run
+
+With one authorized Android device connected, run:
+
+```bash
+./scripts/test-mobile-android-controller-host.sh --serial <adb-serial>
+```
+
+To use a named emulator instead, run:
+
+```bash
+./scripts/test-mobile-android-controller-host.sh --avd Pixel_9
+```
+
+With neither option, the script uses the sole authorized device or starts the
+first installed AVD. It fails when multiple devices are present unless
+`--serial` selects one. The N03 gate builds the real Rust Session Host and
+Controller listener, installs production and instrumentation APKs, and proves
+SAS pairing, Android Keystore persistence, Session listing, capability refresh,
+read-only attach, writer acquisition, typed and multiline input without
+duplication, resize, exact-cursor reconnect, revocation, and secret deletion.
+
+The fixture configuration is injected only into the test APK and restored
+immediately after building. The script removes its ADB reverse, emulator,
+processes, and guarded temporary files. See
+[`N03-android-controller-golden.md`](engineering-evidence/N03-android-controller-golden.md).
 
 ## Docker SSH E2E
 

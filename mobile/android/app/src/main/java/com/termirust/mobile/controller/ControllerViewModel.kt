@@ -423,7 +423,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private suspend fun refreshSelected(retry: Boolean) {
-        val host = selectedHost() ?: return
+        var host = selectedHost() ?: return
         val route = selectedRoute()
         val connection = try {
             connectionFor(route)
@@ -447,6 +447,10 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
                     _state.value = makeState(host.id, state)
                 }
                 markAuthenticated(route)
+                if (host.capabilityBits != snapshot.capabilityBits) {
+                    host = host.copy(capabilityBits = snapshot.capabilityBits)
+                    hosts = hostStore.upsert(host)
+                }
                 cache = cacheStore.saveSnapshot(
                     current = cache,
                     selectedHostId = host.id,
