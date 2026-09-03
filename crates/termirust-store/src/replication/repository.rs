@@ -3,10 +3,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use serde::Deserialize;
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-
-use serde::Deserialize;
 use termirust_domain::{ReplicationDocument, ReplicationPolicy, ReplicationWorkspaceId};
 use termirust_replication_security::{ReplicationSecretBackend, ReplicationSecretRef};
 
@@ -499,9 +498,15 @@ fn same_file(left: &Path, right: &Path) -> Result<bool, ReplicationStoreError> {
     Ok(left.dev() == right.dev() && left.ino() == right.ino())
 }
 
-#[cfg(not(unix))]
+#[cfg(all(not(unix), not(windows)))]
 fn same_file(_left: &Path, _right: &Path) -> Result<bool, ReplicationStoreError> {
     Err(ReplicationStoreError::UnsupportedPlatform)
+}
+
+#[cfg(windows)]
+fn same_file(left: &Path, right: &Path) -> Result<bool, ReplicationStoreError> {
+    same_file::is_same_file(left, right)
+        .map_err(|error| io_error("compare recovery evidence", error))
 }
 
 fn snapshot(

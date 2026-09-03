@@ -20,6 +20,16 @@ run rustc --version
 section "Formatting"
 run cargo fmt --check
 
+section "GPUI dependency boundaries"
+run python3 scripts/verify-gpui-boundaries.py
+
+section "Read-only MCP boundary"
+run ./scripts/verify-mcp-readonly.sh
+run ./scripts/verify-mcp-actions.sh
+
+section "Isolated browser capability"
+run ./scripts/verify-browser-capability.sh
+
 section "Compile"
 run cargo check
 

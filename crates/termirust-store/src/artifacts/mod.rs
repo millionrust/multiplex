@@ -7,11 +7,8 @@ use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-#[cfg(unix)]
-use std::os::fd::AsRawFd as _;
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 
@@ -20,7 +17,7 @@ use termirust_domain::{
     ArtifactScope,
 };
 
-use crate::{AtomicWriter, Durability, SystemAtomicWriter};
+use crate::{AtomicWriter, Durability, SystemAtomicWriter, file_lock};
 
 const ARTIFACTS_DIR: &str = "artifacts";
 const READY_DIR: &str = "ready";
@@ -228,25 +225,8 @@ impl ArtifactRepository {
         {
             return Err(ArtifactStoreError::UnsafeEntry { entry: "lock" });
         }
-        #[cfg(unix)]
-        {
-            let deadline = Instant::now() + LOCK_TIMEOUT;
-            loop {
-                let result =
-                    unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-                if result == 0 {
-                    break;
-                }
-                let error = io::Error::last_os_error();
-                let retryable = error
-                    .raw_os_error()
-                    .is_some_and(|code| code == libc::EWOULDBLOCK || code == libc::EAGAIN);
-                if !retryable || Instant::now() >= deadline {
-                    return Err(io_error("lock metadata", error));
-                }
-                thread::sleep(LOCK_RETRY);
-            }
-        }
+        file_lock::exclusive_with_timeout(&file, LOCK_TIMEOUT, LOCK_RETRY)
+            .map_err(|error| io_error("lock metadata", error))?;
         Ok(ArtifactLock { file })
     }
 }
@@ -257,10 +237,7 @@ struct ArtifactLock {
 
 impl Drop for ArtifactLock {
     fn drop(&mut self) {
-        #[cfg(unix)]
-        unsafe {
-            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
-        }
+        file_lock::release(&self.file);
     }
 }
 

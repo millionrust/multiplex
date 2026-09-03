@@ -13,6 +13,9 @@ on:
 
 permissions:
   contents: write
+  actions: read
+  attestations: write
+  id-token: write
 
 jobs:
   build:
@@ -23,11 +26,11 @@ jobs:
       matrix:
         target:
           - name: macos-aarch64
-            runner: macos-14
+            runner: macos-26
             triple: aarch64-apple-darwin
             bundle: macos
           - name: macos-x86_64
-            runner: macos-13
+            runner: macos-15-intel
             triple: x86_64-apple-darwin
             bundle: macos
           - name: linux-x86_64
@@ -43,7 +46,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.97.1
         with:
           targets: ${{ matrix.target.triple }}
 
@@ -61,53 +64,105 @@ jobs:
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
             pkg-config
 
-      - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target.triple }} --locked
+      - name: Build release application and sidecars
+        run: >-
+          cargo build --release --target ${{ matrix.target.triple }} --locked
+          -p termirust
+          -p termirust-cli
+          -p termirust-session-host
+          -p termirust-mcp
+          -p termirust-relay-server
 
-      - name: Install cargo-bundle (macOS / Linux)
-        if: matrix.target.bundle != 'windows'
-        run: cargo install cargo-bundle --locked || true
+      - name: Install cargo-bundle (macOS)
+        if: matrix.target.bundle == 'macos'
+        run: cargo install cargo-bundle --version 0.11.0 --locked
 
       - name: Bundle macOS .app
         if: matrix.target.bundle == 'macos'
         run: |
-          cargo bundle --release --target ${{ matrix.target.triple }} || true
+          cargo bundle --release --target ${{ matrix.target.triple }}
           mkdir -p dist
-          if [ -d "target/${{ matrix.target.triple }}/release/bundle/osx/TermiRust.app" ]; then
-            ditto -c -k --keepParent \
-              "target/${{ matrix.target.triple }}/release/bundle/osx/TermiRust.app" \
-              "dist/TermiRust-${{ matrix.target.name }}.zip"
-          else
-            # Fallback: ship the bare binary if bundling failed (e.g. icon missing).
-            cp "target/${{ matrix.target.triple }}/release/termirust" \
-               "dist/termirust-${{ matrix.target.name }}"
-          fi
+          APP="target/${{ matrix.target.triple }}/release/bundle/osx/TermiRust.app"
+          test -d "$APP/Contents/MacOS"
+          for name in termirust-cli termirust-session-host termirust-mcp termirust-mcp-authorize termirust-relay; do
+            install -m 755 "target/${{ matrix.target.triple }}/release/$name" "$APP/Contents/MacOS/$name"
+          done
+          ./scripts/verify-release-package.sh "$APP/Contents/MacOS"
+          ditto -c -k --keepParent "$APP" "dist/TermiRust-${{ matrix.target.name }}.zip"
+          shasum -a 256 "dist/TermiRust-${{ matrix.target.name }}.zip" > "dist/TermiRust-${{ matrix.target.name }}.zip.sha256"
 
-      - name: Bundle Linux deb + binary
+      - name: Bundle Linux deb and portable archive
         if: matrix.target.bundle == 'linux'
         run: |
           mkdir -p dist
-          cargo bundle --release --target ${{ matrix.target.triple }} --format deb || true
-          DEB=$(find target/${{ matrix.target.triple }}/release/bundle/deb -name "*.deb" | head -n1 || true)
-          if [ -n "$DEB" ]; then
-            cp "$DEB" "dist/$(basename $DEB)"
-          fi
-          cp "target/${{ matrix.target.triple }}/release/termirust" \
-             "dist/termirust-${{ matrix.target.name }}"
+          BIN="target/${{ matrix.target.triple }}/release"
+          PORTABLE="dist/TermiRust-${{ matrix.target.name }}"
+          mkdir -p "$PORTABLE"
+          for name in termirust termirust-cli termirust-session-host termirust-mcp termirust-mcp-authorize termirust-relay; do
+            install -m 755 "$BIN/$name" "$PORTABLE/$name"
+          done
+          ./scripts/verify-release-package.sh "$PORTABLE"
+          tar -C dist -czf "dist/TermiRust-${{ matrix.target.name }}.tar.gz" "TermiRust-${{ matrix.target.name }}"
+
+          VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)
+          ROOT="dist/deb-root"
+          mkdir -p "$ROOT/DEBIAN" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/icons/hicolor/512x512/apps"
+          install -m 755 "$PORTABLE"/* "$ROOT/usr/bin/"
+          install -m 644 assets/icons/app.png "$ROOT/usr/share/icons/hicolor/512x512/apps/termirust.png"
+          printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=TermiRust' 'Exec=termirust' 'Icon=termirust' 'Categories=Development;Utility;' 'Terminal=false' > "$ROOT/usr/share/applications/termirust.desktop"
+          printf 'Package: termirust\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: TermiRust contributors\nDepends: libssl3, libxkbcommon0\nDescription: Native desktop SSH client\n' "$VERSION" > "$ROOT/DEBIAN/control"
+          dpkg-deb --root-owner-group --build "$ROOT" "dist/termirust_${VERSION}_amd64.deb"
+          sha256sum "dist/TermiRust-${{ matrix.target.name }}.tar.gz" "dist/termirust_${VERSION}_amd64.deb" > "dist/TermiRust-${{ matrix.target.name }}.sha256"
+          rm -rf "$PORTABLE" "$ROOT"
 
       - name: Package Windows artifact
         if: matrix.target.bundle == 'windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item "target/${{ matrix.target.triple }}/release/termirust.exe" `
-            "dist/termirust-${{ matrix.target.name }}.exe"
+          $stage = "dist/TermiRust-${{ matrix.target.name }}"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          $required = @(
+            "termirust.exe",
+            "termirust-cli.exe",
+            "termirust-session-host.exe",
+            "termirust-mcp.exe",
+            "termirust-mcp-authorize.exe",
+            "termirust-relay.exe"
+          )
+          foreach ($name in $required) {
+            $source = Join-Path "target/${{ matrix.target.triple }}/release" $name
+            if (-not (Test-Path -PathType Leaf $source)) {
+              throw "required Windows release executable is missing: $source"
+            }
+            Copy-Item $source $stage
+          }
+          Compress-Archive -Path "$stage/*" -DestinationPath "dist/TermiRust-${{ matrix.target.name }}.zip"
+          $hash = (Get-FileHash "dist/TermiRust-${{ matrix.target.name }}.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  TermiRust-${{ matrix.target.name }}.zip" | Set-Content -Encoding ascii "dist/TermiRust-${{ matrix.target.name }}.zip.sha256"
+          Remove-Item -Recurse -Force $stage
+
+      - name: Generate platform SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: dist
+          format: spdx-json
+          output-file: dist/TermiRust-${{ matrix.target.name }}.spdx.json
+          artifact-name: TermiRust-${{ matrix.target.name }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Attest release artifacts
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: termirust-${{ matrix.target.name }}
           path: dist/*
+          if-no-files-found: error
 
   release:
     name: publish
@@ -134,5 +189,7 @@ jobs:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
           generate_release_notes: true
           files: flat/*
-          draft: false
-          prerelease: false
+          # Signing/notarization credentials and platform install/rollback proof are
+          # external N14 gates. Never publish an unsigned workflow artifact directly.
+          draft: true
+          prerelease: true

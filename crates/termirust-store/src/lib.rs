@@ -3,6 +3,7 @@ mod atomic;
 pub mod continuity;
 pub mod controller_devices;
 pub mod controller_network;
+mod file_lock;
 mod fleet;
 pub mod health;
 pub mod journal;

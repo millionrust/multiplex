@@ -130,6 +130,9 @@ docker_available() {
 
 require_file "$IOS_DIR/scripts/verify-ios-unified-routes.sh" "iOS unified-route verifier"
 require_file "$ANDROID_DIR/scripts/verify-android-unified-routes.sh" "Android unified-route verifier"
+require_file "$ROOT_DIR/scripts/test-mobile-controller-ssh-transports.sh" "native mobile SSH Controller verifier"
+require_file "$ROOT_DIR/scripts/test-mobile-controller-relay-transport.sh" "native iOS relay verifier"
+require_file "$ROOT_DIR/scripts/test-mobile-android-relay-transport.sh" "native Android relay verifier"
 
 cd "$ROOT_DIR"
 status_line "MODE" "$MODE"
@@ -197,6 +200,12 @@ run_step "real Android direct SSH and tmux smoke" \
   "$ROOT_DIR/scripts/test-mobile-android-direct-ssh.sh"
 run_step "real Android Controller and Host golden run" \
   "$ROOT_DIR/scripts/test-mobile-android-controller-host.sh"
+run_step "real native mobile SSH Controller transports" \
+  "$ROOT_DIR/scripts/test-mobile-controller-ssh-transports.sh"
+run_step "real native iOS self-hosted relay transport" \
+  "$ROOT_DIR/scripts/test-mobile-controller-relay-transport.sh"
+run_step "real native Android self-hosted relay transport" \
+  "$ROOT_DIR/scripts/test-mobile-android-relay-transport.sh"
 run_step "real private-network Controller route smoke" \
   "$ROOT_DIR/scripts/verify-controller-lan.sh"
 run_step "real SSH Controller route smoke" "$ROOT_DIR/scripts/test-controller-ssh.sh"

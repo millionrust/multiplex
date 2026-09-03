@@ -5,8 +5,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[cfg(unix)]
-use std::os::fd::AsRawFd as _;
-#[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt as _;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt as _;
@@ -14,7 +12,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use serde::{Deserialize, Serialize};
 use termirust_domain::{NotificationLedger, NotificationPolicy, PermissionState, Revision};
 
-use crate::{AtomicWriter, Durability, SystemAtomicWriter};
+use crate::{AtomicWriter, Durability, SystemAtomicWriter, file_lock};
 
 const NOTIFICATIONS_FILE: &str = "notifications.json";
 const NOTIFICATIONS_LOCK_FILE: &str = "notifications.lock";
@@ -242,13 +240,7 @@ impl NotificationRepository {
         let file = options
             .open(self.root.join(NOTIFICATIONS_LOCK_FILE))
             .map_err(|error| io_error("open lock", error))?;
-        #[cfg(unix)]
-        {
-            let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
-            if result != 0 {
-                return Err(io_error("lock", io::Error::last_os_error()));
-            }
-        }
+        file_lock::exclusive(&file).map_err(|error| io_error("lock", error))?;
         Ok(NotificationStoreLock { file })
     }
 
@@ -297,10 +289,7 @@ struct NotificationStoreLock {
 
 impl Drop for NotificationStoreLock {
     fn drop(&mut self) {
-        #[cfg(unix)]
-        unsafe {
-            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
-        }
+        file_lock::release(&self.file);
     }
 }
 

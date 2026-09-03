@@ -423,7 +423,126 @@ mod native {
     }
 }
 
-#[cfg(all(not(target_os = "macos"), not(test)))]
+#[cfg(all(target_os = "linux", not(test)))]
+mod native {
+    use std::collections::HashMap;
+
+    use notify_rust::{Notification, NotificationHandle};
+
+    use super::*;
+
+    pub(super) struct NativePlatformNotifications {
+        delivered: HashMap<String, NotificationHandle>,
+    }
+
+    pub(super) fn system() -> Box<dyn PlatformNotifications> {
+        Box::new(NativePlatformNotifications {
+            delivered: HashMap::new(),
+        })
+    }
+
+    impl PlatformNotifications for NativePlatformNotifications {
+        fn query_permission(&self) -> PermissionState {
+            if notify_rust::get_server_information().is_ok() {
+                PermissionState::Granted
+            } else {
+                PermissionState::Unavailable
+            }
+        }
+
+        fn request_permission(&mut self) -> PermissionState {
+            self.query_permission()
+        }
+
+        fn deliver(
+            &mut self,
+            request: &PlatformNotificationRequest,
+        ) -> Result<(), PlatformNotificationError> {
+            if let Some(previous) = self.delivered.remove(request.identifier()) {
+                previous.close();
+            }
+            let handle = Notification::new()
+                .appname("TermiRust")
+                .summary(request.title())
+                .body(request.body())
+                .show()
+                .map_err(|_| PlatformNotificationError::DeliveryFailed)?;
+            self.delivered
+                .insert(request.identifier().to_string(), handle);
+            Ok(())
+        }
+
+        fn remove(&mut self, identifier: &str) -> Result<(), PlatformNotificationError> {
+            if let Some(handle) = self.delivered.remove(identifier) {
+                handle.close();
+            }
+            Ok(())
+        }
+
+        fn take_activation(&mut self) -> Option<String> {
+            None
+        }
+    }
+}
+
+#[cfg(all(target_os = "windows", not(test)))]
+mod native {
+    use notify_rust::Notification;
+
+    use super::*;
+
+    pub(super) struct NativePlatformNotifications {
+        delivery_available: Option<bool>,
+    }
+
+    pub(super) fn system() -> Box<dyn PlatformNotifications> {
+        Box::new(NativePlatformNotifications {
+            delivery_available: None,
+        })
+    }
+
+    impl PlatformNotifications for NativePlatformNotifications {
+        fn query_permission(&self) -> PermissionState {
+            match self.delivery_available {
+                Some(true) => PermissionState::Granted,
+                Some(false) => PermissionState::Unavailable,
+                None => PermissionState::Unknown,
+            }
+        }
+
+        fn request_permission(&mut self) -> PermissionState {
+            // Windows does not expose a notification permission prompt through this
+            // API. The first delivery truthfully establishes availability.
+            self.query_permission()
+        }
+
+        fn deliver(
+            &mut self,
+            request: &PlatformNotificationRequest,
+        ) -> Result<(), PlatformNotificationError> {
+            let result = Notification::new()
+                .summary(request.title())
+                .body(request.body())
+                .show();
+            self.delivery_available = Some(result.is_ok());
+            result.map_err(|_| PlatformNotificationError::DeliveryFailed)
+        }
+
+        fn remove(&mut self, _identifier: &str) -> Result<(), PlatformNotificationError> {
+            // The Windows backend does not return a removable notification handle.
+            Err(PlatformNotificationError::Unavailable)
+        }
+
+        fn take_activation(&mut self) -> Option<String> {
+            None
+        }
+    }
+}
+
+#[cfg(all(
+    not(test),
+    not(any(target_os = "macos", target_os = "linux", target_os = "windows"))
+))]
 mod native {
     use super::*;
 

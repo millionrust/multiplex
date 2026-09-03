@@ -144,11 +144,13 @@ mobile, background-sync, credential-store, or production-record-mapping acceptan
 
 ## Platform and product boundary
 
-The current lock implementation fails closed outside Unix rather than pretending a no-op lock is
-safe. macOS and Linux use the same `flock`-based path; later platform acceptance must add and test a
-Windows lock adapter before a Windows persistence claim. Filesystem tests use disposable local
-directories and injected writers. No live Dropbox, iCloud Drive, Google Drive, Syncthing, keychain,
-account, or user data is touched.
+The repository uses a real advisory file lock on Unix and Windows, held together with the
+in-process writer guard. Unix retains `O_NOFOLLOW`; Windows opens the lock itself with
+`FILE_FLAG_OPEN_REPARSE_POINT` and rejects a non-regular handle before locking. Recovery retry
+compares Unix device/inode identity or Windows volume/file identity. Other platforms fail closed
+rather than pretending a no-op lock is safe. Filesystem tests use disposable local directories and
+injected writers. No live Dropbox, iCloud Drive, Google Drive, Syncthing, keychain, account, or user
+data is touched.
 
 D04 still owns final retention count/duration, backup/export inclusion, recovery policy, and delete
 wording. D05 still prohibits an operated TermiRust cloud service. No production UI, automatic

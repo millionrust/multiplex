@@ -892,6 +892,7 @@ mod tests {
         let error = store.append(&frame(2, b"gap")).unwrap_err();
         assert_eq!(error.code, JournalErrorCode::Sequence);
         assert_eq!(error.expected_sequence, Some(OutputSequence::new(1)));
+        #[cfg(unix)]
         assert_eq!(
             fs::metadata(segment_path(lease.session_dir(), 1))
                 .unwrap()

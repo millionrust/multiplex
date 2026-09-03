@@ -32,6 +32,10 @@ verify_versions() {
 
 focused() {
   cargo fmt --all -- --check
+  python3 scripts/verify-gpui-boundaries.py
+  ./scripts/verify-mcp-readonly.sh
+  ./scripts/verify-mcp-actions.sh
+  ./scripts/verify-browser-capability.sh
   cargo check -p termirust --all-targets --all-features --locked
   python3 scripts/clippy-changed.py
   cargo test -p termirust local::tests::local_tmux_session_survives_disconnect_and_reattaches -- --exact --nocapture
@@ -78,6 +82,10 @@ PY
 
 workspace() {
   cargo fmt --all -- --check
+  python3 scripts/verify-gpui-boundaries.py
+  ./scripts/verify-mcp-readonly.sh
+  ./scripts/verify-mcp-actions.sh
+  ./scripts/verify-browser-capability.sh
   cargo check --workspace --all-targets --all-features --locked
   cargo clippy --workspace --all-targets --all-features
   python3 scripts/clippy-changed.py

@@ -5,7 +5,7 @@ permissions:
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, test]
   pull_request:
 
 jobs:
@@ -50,6 +50,9 @@ jobs:
       - name: Verify localization contract and copy policy
         run: ./scripts/verify-localization.sh --locales en-US,en-XA,ar-XB --no-new-baseline
 
+      - name: Verify fail-closed release contract
+        run: ./scripts/verify-release-workflow.sh
+
       - name: Verify Rust workspace
         env:
           TERMIRUST_CLIPPY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -83,3 +86,79 @@ jobs:
 
       - name: Check minimum supported Rust version
         run: cargo +1.88.0 check --workspace --all-targets --all-features --locked
+
+  windows:
+    name: windows runtime and sidecars
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Compile and test Windows workspace
+        run: cargo test --workspace --all-targets --all-features --locked
+
+      - name: Build required Windows release executables
+        run: >-
+          cargo build --release --locked
+          -p termirust
+          -p termirust-cli
+          -p termirust-session-host
+          -p termirust-mcp
+          -p termirust-relay-server
+
+      - name: Verify required Windows release executables
+        shell: pwsh
+        run: |
+          $required = @(
+            "termirust.exe",
+            "termirust-cli.exe",
+            "termirust-session-host.exe",
+            "termirust-mcp.exe",
+            "termirust-mcp-authorize.exe",
+            "termirust-relay.exe"
+          )
+          foreach ($name in $required) {
+            $path = Join-Path "target/release" $name
+            if (-not (Test-Path -PathType Leaf $path)) {
+              throw "required Windows release executable is missing: $path"
+            }
+          }
+
+  android:
+    name: native Android application
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify Kotlin contracts, unit tests, lint, and debug APK
+        env:
+          GRADLE_OPTS: -Dorg.gradle.daemon=false
+        run: |
+          mobile/android/scripts/verify-android-unified-routes.sh
+          mobile/android/gradlew -p mobile/android lintDebug --console=plain
+
+  ios:
+    name: native iOS and iPadOS application
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Verify Swift 6 contracts and generic application build
+        run: mobile/ios/scripts/verify-ios-unified-routes.sh

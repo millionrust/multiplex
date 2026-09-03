@@ -5,14 +5,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[cfg(unix)]
-use std::os::fd::AsRawFd as _;
-#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 
 use serde::{Deserialize, Serialize};
 use termirust_domain::{ControllerListenPolicy, ControllerNetworkError, ControllerNetworkRevision};
 
-use crate::{AtomicWriter, Durability, SystemAtomicWriter};
+use crate::{AtomicWriter, Durability, SystemAtomicWriter, file_lock};
 
 const CONTROLLER_NETWORK_FILE: &str = "controller-network.json";
 const CONTROLLER_NETWORK_LOCK_FILE: &str = "controller-network.lock";
@@ -230,13 +228,7 @@ impl ControllerNetworkRepository {
         let file = options
             .open(self.root.join(CONTROLLER_NETWORK_LOCK_FILE))
             .map_err(|error| io_error("open lock", error))?;
-        #[cfg(unix)]
-        {
-            let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
-            if result != 0 {
-                return Err(io_error("lock", io::Error::last_os_error()));
-            }
-        }
+        file_lock::exclusive(&file).map_err(|error| io_error("lock", error))?;
         Ok(ControllerNetworkStoreLock { file })
     }
 
@@ -282,10 +274,7 @@ struct ControllerNetworkStoreLock {
 
 impl Drop for ControllerNetworkStoreLock {
     fn drop(&mut self) {
-        #[cfg(unix)]
-        unsafe {
-            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
-        }
+        file_lock::release(&self.file);
     }
 }
 

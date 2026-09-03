@@ -4,10 +4,9 @@ use std::io::{self, Seek as _, Write as _};
 use std::path::{Path, PathBuf};
 
 #[cfg(unix)]
-use std::os::fd::AsRawFd as _;
-#[cfg(unix)]
 use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
 
+use fs2::FileExt as _;
 use serde::{Deserialize, Serialize};
 use termirust_domain::{
     ActivityAggregate, DurabilityWatermark, HostInstanceId, HostLifecycle, HostedSessionId,
@@ -310,32 +309,18 @@ fn reject_unsafe_file_if_present(path: &Path) -> Result<(), LeaseError> {
     }
 }
 
-#[cfg(unix)]
 fn lock_exclusive_nonblocking(file: &File) -> Result<(), LeaseError> {
-    let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(LeaseError::io(io::Error::last_os_error()))
-    }
+    file.try_lock_exclusive().map_err(LeaseError::io)
 }
 
-#[cfg(not(unix))]
-fn lock_exclusive_nonblocking(_: &File) -> Result<(), LeaseError> {
-    Err(LeaseError::new(LeaseErrorCode::PermissionDenied))
-}
-
-#[cfg(unix)]
 fn unlock(file: &File) {
-    let _: i32 = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) };
+    let _ = fs2::FileExt::unlock(file);
 }
-
-#[cfg(not(unix))]
-fn unlock(_: &File) {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::symlink;
 
     #[test]
@@ -344,6 +329,7 @@ mod tests {
         let session_dir = fixture.path().join("session");
         let host = HostInstanceId::new();
         let lease = HostLease::acquire(&session_dir, host).unwrap();
+        #[cfg(unix)]
         assert_eq!(
             fs::metadata(&session_dir).unwrap().permissions().mode() & 0o777,
             0o700
@@ -367,6 +353,7 @@ mod tests {
             durability_watermark: None,
         };
         lease.write_metadata(&metadata).unwrap();
+        #[cfg(unix)]
         assert_eq!(
             fs::metadata(session_dir.join(HOST_FILE))
                 .unwrap()
@@ -377,6 +364,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn lease_rejects_symlink_session_directory() {
         let fixture = tempfile::tempdir().unwrap();

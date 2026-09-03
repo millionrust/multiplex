@@ -14,6 +14,48 @@ It runs:
 - `cargo clippy --all-targets --all-features`
 - `git diff --check`
 
+The Rust baseline also runs the capability-scoped read-only MCP gate. Run it directly with:
+
+```bash
+./scripts/verify-mcp-readonly.sh
+```
+
+The separately approved action surface has an additional gate:
+
+```bash
+./scripts/verify-mcp-actions.sh
+```
+
+The isolated browser policy, artifact, hostile-page, and opt-in live Chrome gates run with:
+
+```bash
+./scripts/verify-browser-capability.sh
+```
+
+If Chrome/Chromium is unavailable, its live portion prints `SKIPPED(browser)` while the unit,
+MCP-contract, strict Clippy, and static containment checks still run.
+
+## Launch Qualification
+
+Run the bounded automated qualification matrix with:
+
+```bash
+./scripts/verify-launch-qualification.sh --automated
+```
+
+This adds crash/recovery matrices, update-trust attacks, protocol fuzz smoke, Session stress,
+desktop terminal and relay performance budgets, a 100 MiB terminal parser run, isolated-browser
+containment, release-workflow checks, and Controller fixture integrity. It does not replace the
+required 48-hour endurance run, sustained libFuzzer campaign, signed upgrade/rollback drill, or
+physical-device and non-macOS platform journeys documented in
+[`N15-qualification.md`](engineering-evidence/N15-qualification.md).
+
+The bounded endurance runner refuses durations below 48 hours:
+
+```bash
+./scripts/soak-session-relay.sh --hours 48
+```
+
 ## Cross-Repository Product Baseline
 
 Run the deterministic Rust, Swift, and Kotlin product-model baseline from this
@@ -44,10 +86,10 @@ To require disposable real SSH and Controller smokes, use:
 
 Live mode first runs the complete local baseline. It requires a working Docker
 daemon for the bundled desktop/Host golden run, then requires eligible iOS and
-Android destinations for the mobile and remaining Controller smokes. A missing
-live prerequisite is a failure with a setup instruction. Live fixtures use
-loopback or private-LAN resources, and interruption terminates the verifier's
-active child and removes verifier-owned temporary files.
+Android destinations for direct SSH, private-network Controller, Controller-over-SSH, and
+self-hosted relay smokes on both mobile platforms. A missing live prerequisite is a failure with
+a setup instruction. Live fixtures use loopback or private-LAN resources, and interruption
+terminates the verifier's active child and removes verifier-owned temporary files.
 
 Neither mode prints credentials, SSH keys, application state, terminal content,
 or environment values. The current evidence records and known limitations are in
@@ -105,6 +147,26 @@ The fixture configuration is injected only into the test APK and restored
 immediately after building. The script removes its ADB reverse, emulator,
 processes, and guarded temporary files. See
 [`N03-android-controller-golden.md`](engineering-evidence/N03-android-controller-golden.md).
+
+## Native Mobile Relay Transports
+
+The iOS simulator relay transport gate is:
+
+```bash
+./scripts/test-mobile-controller-relay-transport.sh
+```
+
+The equivalent Android emulator or attached-device gate is:
+
+```bash
+./scripts/test-mobile-android-relay-transport.sh --avd Pixel_9
+```
+
+Both gates use a disposable TLS relay and Rust echo Host, open two fresh native mobile
+transports, and require exact bidirectional echoes across reconnect. The Android gate injects a
+disposable test CA only into the instrumentation HTTP client while retaining production SPKI
+pinning and native admission/envelope processing. Generated route credentials and certificates
+are restored or removed during cleanup.
 
 ## Docker SSH E2E
 

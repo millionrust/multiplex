@@ -4,11 +4,8 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read as _};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-#[cfg(unix)]
-use std::os::fd::AsRawFd as _;
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 
@@ -21,7 +18,7 @@ use termirust_domain::{
     WorktreeRegistration, validate_group_set,
 };
 
-use crate::{AtomicWriter, Durability, SystemAtomicWriter};
+use crate::{AtomicWriter, Durability, SystemAtomicWriter, file_lock};
 
 pub const CURRENT_FORMAT_VERSION: u16 = 1;
 const MINIMUM_READER_VERSION: u16 = 1;
@@ -1041,25 +1038,8 @@ impl ProjectRepository {
         let file = options
             .open(path)
             .map_err(|error| io_error("open metadata lock", error))?;
-        #[cfg(unix)]
-        {
-            let deadline = Instant::now() + INTERACTIVE_LOCK_TIMEOUT;
-            loop {
-                let result =
-                    unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-                if result == 0 {
-                    break;
-                }
-                let error = io::Error::last_os_error();
-                let retryable = error
-                    .raw_os_error()
-                    .is_some_and(|code| code == libc::EWOULDBLOCK || code == libc::EAGAIN);
-                if !retryable || Instant::now() >= deadline {
-                    return Err(io_error("lock project metadata", error));
-                }
-                thread::sleep(LOCK_RETRY_INTERVAL);
-            }
-        }
+        file_lock::exclusive_with_timeout(&file, INTERACTIVE_LOCK_TIMEOUT, LOCK_RETRY_INTERVAL)
+            .map_err(|error| io_error("lock project metadata", error))?;
         Ok(MetadataLock { file })
     }
 }
@@ -1088,10 +1068,7 @@ struct MetadataLock {
 
 impl Drop for MetadataLock {
     fn drop(&mut self) {
-        #[cfg(unix)]
-        unsafe {
-            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
-        }
+        file_lock::release(&self.file);
     }
 }
 

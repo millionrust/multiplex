@@ -5,14 +5,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[cfg(unix)]
-use std::os::fd::AsRawFd as _;
-#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 
 use serde::{Deserialize, Serialize};
 use termirust_domain::{ContinuityLink, Revision};
 
-use crate::{AtomicWriter, Durability, SystemAtomicWriter};
+use crate::{AtomicWriter, Durability, SystemAtomicWriter, file_lock};
 
 const CONTINUITY_FILE: &str = "resume-continuity.json";
 const CONTINUITY_LOCK_FILE: &str = "resume-continuity.lock";
@@ -225,11 +223,8 @@ impl ContinuityRepository {
                 fs::Permissions::from_mode(0o600),
             )
             .map_err(|error| io_error("lock permissions", error))?;
-            let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
-            if result != 0 {
-                return Err(io_error("lock", io::Error::last_os_error()));
-            }
         }
+        file_lock::exclusive(&file).map_err(|error| io_error("lock", error))?;
         Ok(ContinuityStoreLock { file })
     }
 
@@ -311,10 +306,7 @@ struct ContinuityStoreLock {
 
 impl Drop for ContinuityStoreLock {
     fn drop(&mut self) {
-        #[cfg(unix)]
-        unsafe {
-            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
-        }
+        file_lock::release(&self.file);
     }
 }
 

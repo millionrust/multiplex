@@ -10,10 +10,11 @@ use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
 #[cfg(unix)]
-use std::os::fd::AsRawFd as _;
-#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+#[cfg(windows)]
+use std::os::windows::fs::OpenOptionsExt as _;
 
+use fs2::FileExt as _;
 use serde::de::{DeserializeSeed, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -607,50 +608,46 @@ static REPLICATION_PROCESS_LOCK: Mutex<()> = Mutex::new(());
 
 impl AdvisoryLock {
     fn acquire(path: &Path) -> Result<Self, ReplicationStoreError> {
-        #[cfg(not(unix))]
+        let process_guard = REPLICATION_PROCESS_LOCK
+            .lock()
+            .map_err(|_| ReplicationStoreError::Corrupt)?;
+        reject_unsafe_file_if_present(path)?;
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create(true);
+        #[cfg(unix)]
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+        #[cfg(windows)]
+        options.custom_flags(0x0020_0000); // FILE_FLAG_OPEN_REPARSE_POINT
+        let file = options.open(path).map_err(|error| {
+            #[cfg(unix)]
+            if error.raw_os_error() == Some(libc::ELOOP) {
+                return ReplicationStoreError::UnsafeEntry;
+            }
+            io_error("open lock", error)
+        })?;
+        if !file
+            .metadata()
+            .map_err(|error| io_error("inspect lock", error))?
+            .is_file()
         {
-            let _ = path;
-            return Err(ReplicationStoreError::UnsupportedPlatform);
+            return Err(ReplicationStoreError::UnsafeEntry);
         }
         #[cfg(unix)]
         {
-            let process_guard = REPLICATION_PROCESS_LOCK
-                .lock()
-                .map_err(|_| ReplicationStoreError::Corrupt)?;
-            reject_unsafe_file_if_present(path)?;
-            let mut options = OpenOptions::new();
-            options
-                .read(true)
-                .write(true)
-                .create(true)
-                .mode(0o600)
-                .custom_flags(libc::O_NOFOLLOW);
-            let file = options.open(path).map_err(|error| {
-                if error.raw_os_error() == Some(libc::ELOOP) {
-                    ReplicationStoreError::UnsafeEntry
-                } else {
-                    io_error("open lock", error)
-                }
-            })?;
             file.set_permissions(fs::Permissions::from_mode(0o600))
                 .map_err(|error| io_error("set lock permissions", error))?;
-            let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
-            if result != 0 {
-                return Err(io_error("lock", io::Error::last_os_error()));
-            }
-            Ok(Self {
-                _process_guard: process_guard,
-                file,
-            })
         }
+        file.lock_exclusive()
+            .map_err(|error| io_error("lock", error))?;
+        Ok(Self {
+            _process_guard: process_guard,
+            file,
+        })
     }
 }
 
 impl Drop for AdvisoryLock {
     fn drop(&mut self) {
-        #[cfg(unix)]
-        unsafe {
-            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
-        }
+        let _ = fs2::FileExt::unlock(&self.file);
     }
 }

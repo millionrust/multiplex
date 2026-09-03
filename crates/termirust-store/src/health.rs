@@ -6,8 +6,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(unix)]
-use std::os::fd::AsRawFd as _;
-#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 
 use serde::{Deserialize, Serialize};
@@ -21,7 +19,7 @@ use uuid::Uuid;
 use crate::presets::read_preset_health_source;
 use crate::projects::{ProjectHealthSource, read_project_health_source, read_regular_bounded};
 use crate::sessions::read_session_health_source;
-use crate::{CURRENT_FORMAT_VERSION, StoreError};
+use crate::{CURRENT_FORMAT_VERSION, StoreError, file_lock};
 
 const FORMAT_FILE: &str = "format.json";
 const LOCK_FILE: &str = "metadata.lock";
@@ -777,34 +775,22 @@ impl MetadataLock {
             operation: "open health metadata lock",
             kind: error.kind(),
         })?;
-        #[cfg(unix)]
-        {
-            let operation = if exclusive {
-                libc::LOCK_EX
-            } else {
-                libc::LOCK_SH
-            };
-            let result = unsafe { libc::flock(file.as_raw_fd(), operation) };
-            if result != 0 {
-                let error = io::Error::last_os_error();
-                return Err(StoreError::Io {
-                    operation: "lock health metadata",
-                    kind: error.kind(),
-                });
-            }
-        }
-        #[cfg(not(unix))]
-        let _ = exclusive;
+        let lock_result = if exclusive {
+            file_lock::exclusive(&file)
+        } else {
+            file_lock::shared(&file)
+        };
+        lock_result.map_err(|error| StoreError::Io {
+            operation: "lock health metadata",
+            kind: error.kind(),
+        })?;
         Ok(Self { file })
     }
 }
 
 impl Drop for MetadataLock {
     fn drop(&mut self) {
-        #[cfg(unix)]
-        unsafe {
-            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
-        }
+        file_lock::release(&self.file);
     }
 }
 
