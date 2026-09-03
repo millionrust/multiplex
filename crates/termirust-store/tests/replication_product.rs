@@ -7,6 +7,7 @@ use termirust_replication_security::{
     generate_replication_device_private_key,
 };
 use termirust_store::{
+    ReplicationConflictChoice, ReplicationEnrollmentBundle, ReplicationEnrollmentRequest,
     ReplicationProductError, ReplicationProductService, ReplicationSyncDisposition,
 };
 use zeroize::Zeroizing;
@@ -21,6 +22,7 @@ struct MemorySecretsState {
     values: BTreeMap<Vec<u8>, Vec<u8>>,
     puts: usize,
     fail_at_put: Option<usize>,
+    fail_delete: bool,
 }
 
 impl MemorySecrets {
@@ -50,6 +52,10 @@ impl MemorySecrets {
                     .is_some_and(|value| value.get() == epoch)
             })
             .expect("epoch reference should exist")
+    }
+
+    fn set_delete_failure(&self, fail: bool) {
+        self.inner.lock().unwrap().fail_delete = fail;
     }
 }
 
@@ -92,10 +98,11 @@ impl ReplicationSecretBackend for MemorySecrets {
         &self,
         reference: &ReplicationSecretRef,
     ) -> Result<bool, ReplicationSecretStoreError> {
-        Ok(self
-            .inner
-            .lock()
-            .unwrap()
+        let mut state = self.inner.lock().unwrap();
+        if state.fail_delete {
+            return Err(ReplicationSecretStoreError::Unavailable);
+        }
+        Ok(state
             .values
             .remove(reference.to_bytes().as_slice())
             .is_some())
@@ -323,6 +330,7 @@ struct TestStoredTransaction {
     next_authority_state_hex: String,
     new_epoch_reference_hex: String,
     packages: Vec<TestStoredPackage>,
+    publish_update: bool,
 }
 
 #[test]
@@ -348,6 +356,7 @@ fn restart_finishes_repository_committed_authority_transition() {
         next_authority_state_hex: stored_update.authority_state_hex,
         new_epoch_reference_hex: hex_bytes(&epoch_reference.to_bytes()),
         packages: stored_update.packages,
+        publish_update: true,
     };
     std::fs::write(root.join("profile.json"), old_profile).unwrap();
     std::fs::remove_file(root.join("authority-update.json")).unwrap();
@@ -379,4 +388,208 @@ fn hex_bytes(bytes: &[u8]) -> String {
         encoded.push(HEX[(byte & 0x0f) as usize] as char);
     }
     encoded
+}
+
+#[test]
+fn real_two_device_enrollment_converges_with_member_only_custody() {
+    let owner_parent = tempfile::tempdir().unwrap();
+    let member_parent = tempfile::tempdir().unwrap();
+    let shared = tempfile::tempdir().unwrap();
+    let owner_root = owner_parent.path().join("replication");
+    let member_root = member_parent.path().join("replication");
+    let owner_backend = MemorySecrets::default();
+    let member_backend = MemorySecrets::default();
+    let existing = record_key("existing");
+    let from_phone = record_key("from-phone");
+
+    let mut owner =
+        ReplicationProductService::bootstrap(&owner_root, shared.path(), owner_backend.clone())
+            .unwrap();
+    owner
+        .put_record(existing.clone(), b"already saved")
+        .unwrap();
+    let publish = owner.review_sync().unwrap();
+    owner.apply_sync(&publish).unwrap();
+
+    let request = ReplicationProductService::<MemorySecrets>::prepare_enrollment(
+        &member_root,
+        shared.path(),
+        member_backend.clone(),
+    )
+    .unwrap();
+    let request =
+        ReplicationEnrollmentRequest::from_canonical_bytes(&request.to_canonical_bytes().unwrap())
+            .unwrap();
+    let bundle = owner.enroll_request(&request).unwrap();
+    let bundle =
+        ReplicationEnrollmentBundle::from_canonical_bytes(&bundle.to_canonical_bytes().unwrap())
+            .unwrap();
+    let verification_code = bundle.verification_code(&request).unwrap();
+    assert_eq!(verification_code.len(), 13);
+
+    let rekey_publish = owner.review_sync().unwrap();
+    assert_eq!(
+        rekey_publish.disposition(),
+        ReplicationSyncDisposition::PublishLocal
+    );
+    owner.apply_sync(&rekey_publish).unwrap();
+    let member = ReplicationProductService::accept_enrollment(
+        &member_root,
+        member_backend.clone(),
+        &bundle,
+        &verification_code,
+    )
+    .unwrap();
+    assert!(!member.status().unwrap().authority_owner);
+    assert_eq!(member_backend.count(), 2);
+    assert!(matches!(
+        ReplicationProductService::accept_enrollment(
+            &member_root,
+            member_backend.clone(),
+            &bundle,
+            &verification_code,
+        ),
+        Err(ReplicationProductError::NotConfigured | ReplicationProductError::AlreadyConfigured)
+    ));
+
+    let pull = member.review_sync().unwrap();
+    assert_eq!(pull.disposition(), ReplicationSyncDisposition::UpdateLocal);
+    member.apply_sync(&pull).unwrap();
+    assert_eq!(
+        member.read_record(&existing).unwrap(),
+        Some(b"already saved".to_vec())
+    );
+    assert!(owner.acknowledge_authority_update(2).unwrap());
+    let rotation = owner.rotate_keys().unwrap();
+    let rotation = termirust_store::ReplicationAuthorityUpdate::from_canonical_bytes(
+        &rotation.to_canonical_bytes().unwrap(),
+    )
+    .unwrap();
+    let mut member = member;
+    member.apply_authority_update(&rotation).unwrap();
+    assert_eq!(member.status().unwrap().key_epoch, 3);
+    assert!(!member.status().unwrap().authority_owner);
+    assert_eq!(
+        member.read_record(&existing).unwrap(),
+        Some(b"already saved".to_vec())
+    );
+    member
+        .put_record(from_phone.clone(), b"created on phone")
+        .unwrap();
+    let member_publish = member.review_sync().unwrap();
+    member.apply_sync(&member_publish).unwrap();
+    let owner_pull = owner.review_sync().unwrap();
+    owner.apply_sync(&owner_pull).unwrap();
+    assert_eq!(
+        owner.read_record(&from_phone).unwrap(),
+        Some(b"created on phone".to_vec())
+    );
+
+    owner.put_record(existing.clone(), b"owner edit").unwrap();
+    member.put_record(existing.clone(), b"phone edit").unwrap();
+    let owner_publish = owner.review_sync().unwrap();
+    owner.apply_sync(&owner_publish).unwrap();
+    let conflict = member.review_sync().unwrap();
+    assert_eq!(
+        conflict.disposition(),
+        ReplicationSyncDisposition::ConflictReviewRequired
+    );
+    let candidates = member.conflict_candidates(&conflict, &existing).unwrap();
+    let mut values = candidates
+        .iter()
+        .filter_map(|candidate| candidate.value().map(<[u8]>::to_vec))
+        .collect::<Vec<_>>();
+    values.sort();
+    assert_eq!(values, vec![b"owner edit".to_vec(), b"phone edit".to_vec()]);
+    member
+        .resolve_sync(
+            &conflict,
+            vec![
+                ReplicationConflictChoice::put(existing.clone(), b"reviewed result".to_vec())
+                    .unwrap(),
+            ],
+        )
+        .unwrap();
+    let owner_resolution = owner.review_sync().unwrap();
+    owner.apply_sync(&owner_resolution).unwrap();
+    assert_eq!(
+        owner.read_record(&existing).unwrap(),
+        Some(b"reviewed result".to_vec())
+    );
+
+    assert!(matches!(
+        member.rotate_keys(),
+        Err(ReplicationProductError::AuthorityOwnerRequired)
+    ));
+}
+
+#[test]
+fn local_replica_deletion_requires_confirmation_and_rejects_stale_plan() {
+    let parent = tempfile::tempdir().unwrap();
+    let shared = tempfile::tempdir().unwrap();
+    let root = parent.path().join("replication");
+    let backend = MemorySecrets::default();
+    let service =
+        ReplicationProductService::bootstrap(&root, shared.path(), backend.clone()).unwrap();
+    let plan = service.deletion_plan().unwrap();
+    assert_eq!(plan.secret_count, 3);
+    assert!(plan.authority_owner);
+    assert!(matches!(
+        service.delete_local_replica(&plan, "delete"),
+        Err(ReplicationProductError::DeletionConfirmationRequired)
+    ));
+    assert!(root.exists());
+    assert_eq!(backend.count(), 3);
+
+    let service = ReplicationProductService::open(&root, backend.clone()).unwrap();
+    let stale = service.deletion_plan().unwrap();
+    service
+        .put_record(record_key("changed"), b"changed")
+        .unwrap();
+    assert!(matches!(
+        service.delete_local_replica(
+            &stale,
+            termirust_store::ReplicationDeletionPlan::confirmation_phrase(),
+        ),
+        Err(ReplicationProductError::StaleDeletionPlan)
+    ));
+    assert!(root.exists());
+
+    let service = ReplicationProductService::open(&root, backend.clone()).unwrap();
+    let current = service.deletion_plan().unwrap();
+    service
+        .delete_local_replica(
+            &current,
+            termirust_store::ReplicationDeletionPlan::confirmation_phrase(),
+        )
+        .unwrap();
+    assert!(!root.exists());
+    assert_eq!(backend.count(), 0);
+}
+
+#[test]
+fn interrupted_local_deletion_resumes_before_profile_open() {
+    let parent = tempfile::tempdir().unwrap();
+    let shared = tempfile::tempdir().unwrap();
+    let root = parent.path().join("replication");
+    let backend = MemorySecrets::default();
+    let service =
+        ReplicationProductService::bootstrap(&root, shared.path(), backend.clone()).unwrap();
+    let plan = service.deletion_plan().unwrap();
+    backend.set_delete_failure(true);
+    assert!(matches!(
+        service.delete_local_replica(
+            &plan,
+            termirust_store::ReplicationDeletionPlan::confirmation_phrase(),
+        ),
+        Err(ReplicationProductError::Custody(_))
+    ));
+    assert!(root.join("deletion.transaction.json").exists());
+    backend.set_delete_failure(false);
+    assert!(matches!(
+        ReplicationProductService::open(&root, backend.clone()),
+        Err(ReplicationProductError::NotConfigured)
+    ));
+    assert!(!root.exists());
+    assert_eq!(backend.count(), 0);
 }

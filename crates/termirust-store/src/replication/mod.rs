@@ -29,8 +29,10 @@ use termirust_replication_security::{
 };
 
 pub use product::{
-    ReplicationAuthorityUpdate, ReplicationDeviceKeyPackage, ReplicationProductError,
-    ReplicationProductService, ReplicationProductStatus,
+    ReplicationAuthorityUpdate, ReplicationConflictCandidate, ReplicationConflictChoice,
+    ReplicationDeletionPlan, ReplicationDeviceKeyPackage, ReplicationEnrollmentBundle,
+    ReplicationEnrollmentRequest, ReplicationProductError, ReplicationProductService,
+    ReplicationProductStatus,
 };
 pub use repository::{
     ReplicationRecoveryOutcome, ReplicationRepository, ReplicationRepositorySnapshot,
@@ -155,7 +157,7 @@ impl fmt::Debug for SharedFolderSlot {
 
 #[derive(Clone)]
 pub struct ReplicationCustodyMetadata {
-    authority: ReplicationSecretRef,
+    authority: Option<ReplicationSecretRef>,
     device: ReplicationSecretRef,
     historical: ReplicationHistoricalKeyIndex,
 }
@@ -174,14 +176,33 @@ impl ReplicationCustodyMetadata {
             return Err(ReplicationStoreError::InvalidCustodyMetadata);
         }
         Ok(Self {
-            authority,
+            authority: Some(authority),
             device,
             historical,
         })
     }
 
-    pub fn authority_reference(&self) -> &ReplicationSecretRef {
-        &self.authority
+    pub fn new_member(
+        device: ReplicationSecretRef,
+        historical: ReplicationHistoricalKeyIndex,
+    ) -> Result<Self, ReplicationStoreError> {
+        if device.kind() != ReplicationSecretKind::DevicePrivateKey || device.key_epoch().is_some()
+        {
+            return Err(ReplicationStoreError::InvalidCustodyMetadata);
+        }
+        Ok(Self {
+            authority: None,
+            device,
+            historical,
+        })
+    }
+
+    pub fn authority_reference(&self) -> Option<&ReplicationSecretRef> {
+        self.authority.as_ref()
+    }
+
+    pub fn is_authority_owner(&self) -> bool {
+        self.authority.is_some()
     }
 
     pub fn device_reference(&self) -> &ReplicationSecretRef {
@@ -193,7 +214,7 @@ impl ReplicationCustodyMetadata {
     }
 
     fn contains(&self, reference: &ReplicationSecretRef) -> bool {
-        &self.authority == reference
+        self.authority.as_ref() == Some(reference)
             || &self.device == reference
             || self.historical.references().any(|item| item == reference)
     }
@@ -203,7 +224,7 @@ impl fmt::Debug for ReplicationCustodyMetadata {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("ReplicationCustodyMetadata")
-            .field("authority", &"<opaque>")
+            .field("authority_owner", &self.is_authority_owner())
             .field("device", &"<opaque>")
             .field("historical", &self.historical)
             .finish()
@@ -213,8 +234,8 @@ impl fmt::Debug for ReplicationCustodyMetadata {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct StoredCustodyMetadata {
-    #[serde(deserialize_with = "deserialize_secret_reference")]
-    authority: Vec<u8>,
+    #[serde(default, deserialize_with = "deserialize_optional_secret_reference")]
+    authority: Option<Vec<u8>>,
     #[serde(deserialize_with = "deserialize_secret_reference")]
     device: Vec<u8>,
     historical_limit: usize,
@@ -225,7 +246,10 @@ struct StoredCustodyMetadata {
 impl StoredCustodyMetadata {
     fn from_metadata(metadata: &ReplicationCustodyMetadata) -> Self {
         Self {
-            authority: metadata.authority.to_bytes().to_vec(),
+            authority: metadata
+                .authority
+                .as_ref()
+                .map(|reference| reference.to_bytes().to_vec()),
             device: metadata.device.to_bytes().to_vec(),
             historical_limit: metadata.historical.limit().get(),
             epoch_references: metadata
@@ -237,7 +261,11 @@ impl StoredCustodyMetadata {
     }
 
     fn into_metadata(self) -> Result<ReplicationCustodyMetadata, ReplicationStoreError> {
-        let authority = ReplicationSecretRef::from_bytes(&self.authority)?;
+        let authority = self
+            .authority
+            .as_deref()
+            .map(ReplicationSecretRef::from_bytes)
+            .transpose()?;
         let device = ReplicationSecretRef::from_bytes(&self.device)?;
         let limit = ReplicationHistoricalKeyLimit::new(self.historical_limit)?;
         let references = self
@@ -246,7 +274,10 @@ impl StoredCustodyMetadata {
             .map(|bytes| ReplicationSecretRef::from_bytes(bytes))
             .collect::<Result<Vec<_>, _>>()?;
         let historical = ReplicationHistoricalKeyIndex::from_retained(limit, references)?;
-        ReplicationCustodyMetadata::new(authority, device, historical)
+        match authority {
+            Some(authority) => ReplicationCustodyMetadata::new(authority, device, historical),
+            None => ReplicationCustodyMetadata::new_member(device, historical),
+        }
     }
 }
 
@@ -493,6 +524,46 @@ where
     }
 
     deserializer.deserialize_seq(SecretReferenceVisitor)
+}
+
+fn deserialize_optional_secret_reference<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<u8>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct OptionalSecretReferenceVisitor;
+
+    impl<'de> Visitor<'de> for OptionalSecretReferenceVisitor {
+        type Value = Option<Vec<u8>>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("an optional bounded replication secret reference")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            deserialize_secret_reference(deserializer).map(Some)
+        }
+    }
+
+    deserializer.deserialize_option(OptionalSecretReferenceVisitor)
 }
 
 fn deserialize_secret_references<'de, D>(deserializer: D) -> Result<Vec<Vec<u8>>, D::Error>

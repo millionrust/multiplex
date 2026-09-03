@@ -10,7 +10,9 @@ use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 #[cfg(windows)]
 use std::os::windows::fs::OpenOptionsExt as _;
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
 use termirust_domain::{
     ReplicatedVersion, ReplicationDocument, ReplicationEntry, ReplicationOperation,
     ReplicationRecordKey, ReplicationReplicaId, ReplicationWorkspaceId, SealedReplicationPayload,
@@ -20,23 +22,25 @@ use termirust_replication_security::{
     MAX_REPLICATION_RETAINED_EPOCH_KEYS, OpenedReplicationOperation,
     ReplicationAuthorityDeviceStatus, ReplicationAuthorityError, ReplicationAuthorityState,
     ReplicationAuthorityTransition, ReplicationCryptoError, ReplicationDevicePublicKey,
-    ReplicationHistoricalKeyIndex, ReplicationHistoricalKeyLimit, ReplicationKeyWrappingError,
-    ReplicationOperationKind, ReplicationSealContext, ReplicationSecretBackend,
-    ReplicationSecretCustodyError, ReplicationSecretRef, ReplicationSecretVault,
-    WrappedReplicationEpochKey, bootstrap_replication_authority, enroll_replication_device,
-    generate_replication_authority_private_key, generate_replication_device_private_key,
-    open as open_envelope, revoke_replication_device, rotate_replication_epoch, seal_delete,
-    seal_put,
+    ReplicationHistoricalKeyIndex, ReplicationHistoricalKeyLimit, ReplicationKeyWrapContext,
+    ReplicationKeyWrappingError, ReplicationOperationKind, ReplicationSealContext,
+    ReplicationSecretBackend, ReplicationSecretCustodyError, ReplicationSecretRef,
+    ReplicationSecretVault, WrappedReplicationEpochKey, bootstrap_replication_authority,
+    enroll_replication_device, generate_replication_authority_private_key,
+    generate_replication_device_private_key, open as open_envelope,
+    open_wrapped_replication_epoch_key, revoke_replication_device, rotate_replication_epoch,
+    seal_delete, seal_put,
 };
 use uuid::Uuid;
 
 use crate::{AtomicWriter as _, SystemAtomicWriter};
 
 use super::{
-    ReplicationCustodyMetadata, ReplicationRecoveryOutcome, ReplicationRepository,
-    ReplicationRepositoryRevision, ReplicationStoreError, ReplicationSyncCoordinator,
-    ReplicationSyncOutcome, ReplicationSyncPlan, SharedFolderReplicationTransport,
-    SharedFolderSlot, io_error, read_bounded_regular_file, reject_unsafe_file_if_present,
+    ReplicationConflictResolution, ReplicationCustodyMetadata, ReplicationRecoveryOutcome,
+    ReplicationRepository, ReplicationRepositoryRevision, ReplicationStoreError,
+    ReplicationSyncCoordinator, ReplicationSyncOutcome, ReplicationSyncPlan,
+    SharedFolderReplicationTransport, SharedFolderSlot, io_error, read_bounded_regular_file,
+    reject_unsafe_file_if_present,
 };
 
 const PRODUCT_FORMAT_VERSION: u16 = 1;
@@ -44,9 +48,121 @@ const PRODUCT_PROFILE_FILE: &str = "profile.json";
 const PRODUCT_REPOSITORY_DIR: &str = "repository";
 const PRODUCT_TRANSACTION_FILE: &str = "authority.transaction.json";
 const PRODUCT_UPDATE_OUTBOX_FILE: &str = "authority-update.json";
+const PENDING_ENROLLMENT_FILE: &str = "pending-enrollment.json";
+const ENROLLMENT_TRANSACTION_FILE: &str = "enrollment.transaction.json";
+const DELETION_TRANSACTION_FILE: &str = "deletion.transaction.json";
 const PRODUCT_LOCK_FILE: &str = "product.lock";
 const MAX_PRODUCT_PROFILE_BYTES: u64 = 192 * 1024;
 const MAX_PRODUCT_TRANSACTION_BYTES: u64 = 256 * 1024;
+const MAX_ENROLLMENT_REQUEST_BYTES: usize = 4 * 1024;
+const MAX_ENROLLMENT_BUNDLE_BYTES: usize = 192 * 1024;
+const ENROLLMENT_CODE_DOMAIN: &[u8] = b"termirust-replication-enrollment-code-v1\0";
+const DELETION_PLAN_DOMAIN: &[u8] = b"termirust-replication-deletion-plan-v1\0";
+const DELETION_CONFIRMATION: &str = "DELETE REPLICATION";
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct ReplicationEnrollmentRequest {
+    replica_id: ReplicationReplicaId,
+    public_key: ReplicationDevicePublicKey,
+}
+
+impl ReplicationEnrollmentRequest {
+    pub fn replica_id(&self) -> &ReplicationReplicaId {
+        &self.replica_id
+    }
+
+    pub fn public_key(&self) -> &ReplicationDevicePublicKey {
+        &self.public_key
+    }
+
+    pub fn to_canonical_bytes(&self) -> Result<Vec<u8>, ReplicationProductError> {
+        canonical_json(
+            &StoredEnrollmentRequest::from_request(self),
+            MAX_ENROLLMENT_REQUEST_BYTES,
+        )
+    }
+
+    pub fn from_canonical_bytes(bytes: &[u8]) -> Result<Self, ReplicationProductError> {
+        let stored: StoredEnrollmentRequest =
+            decode_canonical_json(bytes, MAX_ENROLLMENT_REQUEST_BYTES)?;
+        stored.into_request()
+    }
+}
+
+impl fmt::Debug for ReplicationEnrollmentRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ReplicationEnrollmentRequest")
+            .field("replica_id", &"<redacted>")
+            .field("public_key", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct ReplicationEnrollmentBundle {
+    workspace_id: ReplicationWorkspaceId,
+    recipient: ReplicationReplicaId,
+    transport_slot: SharedFolderSlot,
+    authority_state: Vec<u8>,
+    package: Vec<u8>,
+}
+
+impl ReplicationEnrollmentBundle {
+    pub fn workspace_id(&self) -> &ReplicationWorkspaceId {
+        &self.workspace_id
+    }
+
+    pub fn recipient(&self) -> &ReplicationReplicaId {
+        &self.recipient
+    }
+
+    pub fn verification_code(
+        &self,
+        request: &ReplicationEnrollmentRequest,
+    ) -> Result<String, ReplicationProductError> {
+        if request.replica_id() != &self.recipient {
+            return Err(ReplicationProductError::EnrollmentMismatch);
+        }
+        let mut digest = Sha256::new();
+        digest.update(ENROLLMENT_CODE_DOMAIN);
+        digest.update(request.to_canonical_bytes()?);
+        digest.update(&self.authority_state);
+        digest.update(&self.package);
+        digest.update(self.transport_slot.file_component().as_bytes());
+        let digest = digest.finalize();
+        Ok(format!(
+            "{:02X}{:02X}{:02X}-{:02X}{:02X}{:02X}",
+            digest[0], digest[1], digest[2], digest[3], digest[4], digest[5]
+        ))
+    }
+
+    pub fn to_canonical_bytes(&self) -> Result<Vec<u8>, ReplicationProductError> {
+        canonical_json(
+            &StoredEnrollmentBundle::from_bundle(self),
+            MAX_ENROLLMENT_BUNDLE_BYTES,
+        )
+    }
+
+    pub fn from_canonical_bytes(bytes: &[u8]) -> Result<Self, ReplicationProductError> {
+        let stored: StoredEnrollmentBundle =
+            decode_canonical_json(bytes, MAX_ENROLLMENT_BUNDLE_BYTES)?;
+        stored.into_bundle()
+    }
+}
+
+impl fmt::Debug for ReplicationEnrollmentBundle {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ReplicationEnrollmentBundle")
+            .field("workspace_id", &"<redacted>")
+            .field("recipient", &"<redacted>")
+            .field("transport_slot", &"<redacted>")
+            .field("authority_state", &"<redacted>")
+            .field("package", &"<redacted>")
+            .finish()
+    }
+}
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct ReplicationDeviceKeyPackage {
@@ -99,6 +215,28 @@ impl ReplicationAuthorityUpdate {
             .iter()
             .find(|package| package.recipient() == replica_id)
     }
+
+    pub fn to_canonical_bytes(&self) -> Result<Vec<u8>, ReplicationProductError> {
+        canonical_json(
+            &StoredAuthorityUpdate {
+                format_version: PRODUCT_FORMAT_VERSION,
+                authority_state_hex: encode_hex(self.authority_state()),
+                packages: stored_packages(self),
+            },
+            MAX_PRODUCT_TRANSACTION_BYTES as usize,
+        )
+    }
+
+    pub fn from_canonical_bytes(bytes: &[u8]) -> Result<Self, ReplicationProductError> {
+        let stored: StoredAuthorityUpdate =
+            decode_canonical_json(bytes, MAX_PRODUCT_TRANSACTION_BYTES as usize)?;
+        if stored.format_version != PRODUCT_FORMAT_VERSION {
+            return Err(ReplicationProductError::InvalidProfile);
+        }
+        let authority_bytes = decode_hex(&stored.authority_state_hex)?;
+        let authority = ReplicationAuthorityState::from_canonical_bytes(&authority_bytes)?;
+        decode_authority_update(&authority, &stored.authority_state_hex, &stored.packages)
+    }
 }
 
 impl fmt::Debug for ReplicationAuthorityUpdate {
@@ -123,6 +261,114 @@ pub struct ReplicationProductStatus {
     pub record_count: usize,
     pub recovery_required: bool,
     pub secret_retirement_pending: bool,
+    pub authority_owner: bool,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct ReplicationDeletionPlan {
+    token: [u8; 32],
+    pub record_count: usize,
+    pub secret_count: usize,
+    pub authority_owner: bool,
+}
+
+impl ReplicationDeletionPlan {
+    pub fn confirmation_phrase() -> &'static str {
+        DELETION_CONFIRMATION
+    }
+}
+
+impl fmt::Debug for ReplicationDeletionPlan {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ReplicationDeletionPlan")
+            .field("token", &"<redacted>")
+            .field("record_count", &self.record_count)
+            .field("secret_count", &self.secret_count)
+            .field("authority_owner", &self.authority_owner)
+            .finish()
+    }
+}
+
+pub struct ReplicationConflictCandidate {
+    author: ReplicationReplicaId,
+    value: Option<Vec<u8>>,
+}
+
+impl ReplicationConflictCandidate {
+    pub fn author(&self) -> &ReplicationReplicaId {
+        &self.author
+    }
+
+    pub fn value(&self) -> Option<&[u8]> {
+        self.value.as_deref()
+    }
+}
+
+impl fmt::Debug for ReplicationConflictCandidate {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ReplicationConflictCandidate")
+            .field("author", &"<redacted>")
+            .field(
+                "operation",
+                &if self.value.is_some() {
+                    "put"
+                } else {
+                    "delete"
+                },
+            )
+            .field("value", &"<redacted>")
+            .finish()
+    }
+}
+
+pub struct ReplicationConflictChoice {
+    key: ReplicationRecordKey,
+    value: Option<Vec<u8>>,
+}
+
+impl ReplicationConflictChoice {
+    pub fn put(key: ReplicationRecordKey, value: Vec<u8>) -> Result<Self, ReplicationProductError> {
+        if value.is_empty() {
+            return Err(ReplicationProductError::EmptyPut);
+        }
+        if value.len() > MAX_REPLICATION_PLAINTEXT_BYTES {
+            return Err(ReplicationProductError::Crypto(
+                ReplicationCryptoError::PlaintextTooLarge,
+            ));
+        }
+        Ok(Self {
+            key,
+            value: Some(value),
+        })
+    }
+
+    pub fn delete(key: ReplicationRecordKey) -> Self {
+        Self { key, value: None }
+    }
+
+    pub fn key(&self) -> &ReplicationRecordKey {
+        &self.key
+    }
+}
+
+impl fmt::Debug for ReplicationConflictChoice {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ReplicationConflictChoice")
+            .field("key", &"<redacted>")
+            .field(
+                "operation",
+                &if self.value.is_some() {
+                    "put"
+                } else {
+                    "delete"
+                },
+            )
+            .field("value", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -143,6 +389,11 @@ pub enum ReplicationProductError {
     PendingAuthorityTransition,
     PendingAuthorityUpdate,
     StaleAuthorityUpdate,
+    AuthorityOwnerRequired,
+    EnrollmentMismatch,
+    VerificationCodeMismatch,
+    DeletionConfirmationRequired,
+    StaleDeletionPlan,
 }
 
 impl fmt::Display for ReplicationProductError {
@@ -177,6 +428,19 @@ impl fmt::Display for ReplicationProductError {
             Self::StaleAuthorityUpdate => {
                 formatter.write_str("replication authority update is stale")
             }
+            Self::AuthorityOwnerRequired => {
+                formatter.write_str("this replication action requires the owner device")
+            }
+            Self::EnrollmentMismatch => {
+                formatter.write_str("replication enrollment does not match this device")
+            }
+            Self::VerificationCodeMismatch => {
+                formatter.write_str("replication enrollment verification code does not match")
+            }
+            Self::DeletionConfirmationRequired => {
+                formatter.write_str("replication deletion requires exact confirmation")
+            }
+            Self::StaleDeletionPlan => formatter.write_str("replication deletion plan is stale"),
         }
     }
 }
@@ -231,6 +495,117 @@ struct ProductFormatProbe {
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+struct StoredEnrollmentRequest {
+    format_version: u16,
+    replica_id: String,
+    public_key_hex: String,
+}
+
+impl StoredEnrollmentRequest {
+    fn from_request(request: &ReplicationEnrollmentRequest) -> Self {
+        Self {
+            format_version: PRODUCT_FORMAT_VERSION,
+            replica_id: request.replica_id.as_str().to_string(),
+            public_key_hex: encode_hex(request.public_key.as_bytes()),
+        }
+    }
+
+    fn into_request(self) -> Result<ReplicationEnrollmentRequest, ReplicationProductError> {
+        if self.format_version != PRODUCT_FORMAT_VERSION {
+            return Err(ReplicationProductError::InvalidProfile);
+        }
+        let replica_id = ReplicationReplicaId::new(self.replica_id)
+            .map_err(|_| ReplicationProductError::InvalidProfile)?;
+        let public_key =
+            ReplicationDevicePublicKey::from_bytes(decode_hex_array(&self.public_key_hex)?)?;
+        Ok(ReplicationEnrollmentRequest {
+            replica_id,
+            public_key,
+        })
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct StoredEnrollmentBundle {
+    format_version: u16,
+    workspace_id: String,
+    recipient: String,
+    transport_slot: String,
+    authority_state_hex: String,
+    package_hex: String,
+}
+
+impl StoredEnrollmentBundle {
+    fn from_bundle(bundle: &ReplicationEnrollmentBundle) -> Self {
+        Self {
+            format_version: PRODUCT_FORMAT_VERSION,
+            workspace_id: bundle.workspace_id.as_str().to_string(),
+            recipient: bundle.recipient.as_str().to_string(),
+            transport_slot: bundle.transport_slot.file_component().to_string(),
+            authority_state_hex: encode_hex(&bundle.authority_state),
+            package_hex: encode_hex(&bundle.package),
+        }
+    }
+
+    fn into_bundle(self) -> Result<ReplicationEnrollmentBundle, ReplicationProductError> {
+        if self.format_version != PRODUCT_FORMAT_VERSION {
+            return Err(ReplicationProductError::InvalidProfile);
+        }
+        let workspace_id = ReplicationWorkspaceId::new(self.workspace_id)
+            .map_err(|_| ReplicationProductError::InvalidProfile)?;
+        let recipient = ReplicationReplicaId::new(self.recipient)
+            .map_err(|_| ReplicationProductError::InvalidProfile)?;
+        let transport_slot = SharedFolderSlot::new(self.transport_slot)
+            .map_err(|_| ReplicationProductError::InvalidProfile)?;
+        let authority_state = decode_hex(&self.authority_state_hex)?;
+        let authority = ReplicationAuthorityState::from_canonical_bytes(&authority_state)?;
+        if authority.workspace_id() != &workspace_id
+            || authority
+                .device(&recipient)
+                .is_none_or(|device| device.status() != ReplicationAuthorityDeviceStatus::Active)
+        {
+            return Err(ReplicationProductError::EnrollmentMismatch);
+        }
+        let package = decode_hex(&self.package_hex)?;
+        if WrappedReplicationEpochKey::from_bytes(&package)?.key_epoch() != authority.key_epoch() {
+            return Err(ReplicationProductError::EnrollmentMismatch);
+        }
+        Ok(ReplicationEnrollmentBundle {
+            workspace_id,
+            recipient,
+            transport_slot,
+            authority_state,
+            package,
+        })
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct StoredPendingEnrollment {
+    format_version: u16,
+    shared_folder: String,
+    request: StoredEnrollmentRequest,
+    device_reference_hex: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct StoredEnrollmentTransaction {
+    format_version: u16,
+    epoch_reference_hex: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct StoredDeletionTransaction {
+    format_version: u16,
+    references_hex: Vec<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct StoredAuthorityTransaction {
     format_version: u16,
     base_authority_revision: u64,
@@ -238,6 +613,7 @@ struct StoredAuthorityTransaction {
     next_authority_state_hex: String,
     new_epoch_reference_hex: String,
     packages: Vec<StoredDeviceKeyPackage>,
+    publish_update: bool,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -281,6 +657,76 @@ impl<B> fmt::Debug for ReplicationProductService<B> {
 }
 
 impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
+    pub fn prepare_enrollment(
+        root: impl Into<PathBuf>,
+        shared_folder: impl Into<PathBuf>,
+        backend: B,
+    ) -> Result<ReplicationEnrollmentRequest, ReplicationProductError> {
+        let root = root.into();
+        let shared_folder = shared_folder.into();
+        validate_existing_directory(&shared_folder)?;
+        match fs::symlink_metadata(&root) {
+            Ok(_) => return Err(ReplicationProductError::AlreadyConfigured),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(profile_io("inspect enrollment", error)),
+        }
+        let parent = root.parent().ok_or(ReplicationProductError::InvalidPath)?;
+        validate_existing_directory(parent)?;
+        let name = root
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or(ReplicationProductError::InvalidPath)?;
+        let shared_folder = shared_folder
+            .to_str()
+            .ok_or(ReplicationProductError::InvalidPath)?
+            .to_string();
+        let staging = parent.join(format!(".{name}.enrollment-{}", Uuid::new_v4()));
+        create_private_directory(&staging)?;
+        let vault = ReplicationSecretVault::new(backend);
+        let mut device_reference = None;
+        let result = (|| {
+            let device_private = generate_replication_device_private_key()?;
+            let request = ReplicationEnrollmentRequest {
+                replica_id: ReplicationReplicaId::new(format!("device-{}", Uuid::new_v4()))
+                    .map_err(ReplicationStoreError::from)?,
+                public_key: device_private.public_key(),
+            };
+            let reference = vault.store_device_key(&device_private)?;
+            device_reference = Some(reference.clone());
+            let pending = StoredPendingEnrollment {
+                format_version: PRODUCT_FORMAT_VERSION,
+                shared_folder,
+                request: StoredEnrollmentRequest::from_request(&request),
+                device_reference_hex: encode_hex(&reference.to_bytes()),
+            };
+            write_canonical_file(
+                &staging.join(PENDING_ENROLLMENT_FILE),
+                &pending,
+                MAX_PRODUCT_PROFILE_BYTES as usize,
+                "write pending enrollment",
+            )?;
+            fs::rename(&staging, &root)
+                .map_err(|error| profile_io("publish pending enrollment", error))?;
+            sync_directory(parent)?;
+            Ok(request)
+        })();
+        if result.is_err() && staging.exists() {
+            let _ = fs::remove_dir_all(&staging);
+            if let Some(reference) = &device_reference {
+                let _ = vault.delete(reference);
+            }
+        }
+        result
+    }
+
+    pub fn pending_enrollment_request(
+        root: impl AsRef<Path>,
+    ) -> Result<ReplicationEnrollmentRequest, ReplicationProductError> {
+        read_pending_enrollment(root.as_ref())?
+            .request
+            .into_request()
+    }
+
     pub fn bootstrap(
         root: impl Into<PathBuf>,
         shared_folder: impl Into<PathBuf>,
@@ -407,6 +853,11 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             }) => ReplicationProductError::NotConfigured,
             other => other,
         })?;
+        let vault = ReplicationSecretVault::new(backend);
+        if continue_pending_deletion(&root, &vault)? {
+            return Err(ReplicationProductError::NotConfigured);
+        }
+        recover_enrollment_activation(&root, &vault)?;
         let profile = read_profile(&root.join(PRODUCT_PROFILE_FILE))?;
         let workspace_id = ReplicationWorkspaceId::new(profile.workspace_id.clone())
             .map_err(|_| ReplicationProductError::InvalidProfile)?;
@@ -427,7 +878,6 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             return Err(ReplicationProductError::InvalidProfile);
         }
         let repository = ReplicationRepository::open(root.join(PRODUCT_REPOSITORY_DIR))?;
-        let vault = ReplicationSecretVault::new(backend);
         authority = recover_authority_transaction(
             &root,
             &profile,
@@ -441,7 +891,9 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
         if snapshot.custody.historical().current_epoch() != authority.key_epoch() {
             return Err(ReplicationProductError::InvalidProfile);
         }
-        vault.load_authority_key(snapshot.custody.authority_reference())?;
+        if let Some(reference) = snapshot.custody.authority_reference() {
+            vault.load_authority_key(reference)?;
+        }
         vault.load_device_key(snapshot.custody.device_reference())?;
         vault.load_epoch_key(
             snapshot
@@ -520,15 +972,18 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
     pub fn rotate_keys(&mut self) -> Result<ReplicationAuthorityUpdate, ReplicationProductError> {
         let policy = self.authority.replication_policy()?;
         let snapshot = self.repository.load(&self.workspace_id, &policy)?;
-        let authority_private = self
-            .vault
-            .load_authority_key(snapshot.custody.authority_reference())?;
+        let authority_private = self.vault.load_authority_key(
+            snapshot
+                .custody
+                .authority_reference()
+                .ok_or(ReplicationProductError::AuthorityOwnerRequired)?,
+        )?;
         let transition = rotate_replication_epoch(
             &self.authority,
             &authority_private,
             self.authority.revision(),
         )?;
-        self.commit_authority_transition(snapshot, transition)
+        self.commit_authority_transition(snapshot, transition, false)
     }
 
     pub fn enroll_device(
@@ -538,9 +993,12 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
     ) -> Result<ReplicationAuthorityUpdate, ReplicationProductError> {
         let policy = self.authority.replication_policy()?;
         let snapshot = self.repository.load(&self.workspace_id, &policy)?;
-        let authority_private = self
-            .vault
-            .load_authority_key(snapshot.custody.authority_reference())?;
+        let authority_private = self.vault.load_authority_key(
+            snapshot
+                .custody
+                .authority_reference()
+                .ok_or(ReplicationProductError::AuthorityOwnerRequired)?,
+        )?;
         let transition = enroll_replication_device(
             &self.authority,
             &authority_private,
@@ -548,7 +1006,138 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             replica_id,
             public_key,
         )?;
-        self.commit_authority_transition(snapshot, transition)
+        self.commit_authority_transition(snapshot, transition, true)
+    }
+
+    pub fn enroll_request(
+        &mut self,
+        request: &ReplicationEnrollmentRequest,
+    ) -> Result<ReplicationEnrollmentBundle, ReplicationProductError> {
+        let update = self.enroll_device(request.replica_id.clone(), request.public_key.clone())?;
+        let package = update
+            .package_for(&request.replica_id)
+            .ok_or(ReplicationProductError::EnrollmentMismatch)?
+            .package
+            .clone();
+        Ok(ReplicationEnrollmentBundle {
+            workspace_id: self.workspace_id.clone(),
+            recipient: request.replica_id.clone(),
+            transport_slot: self.transport_slot.clone(),
+            authority_state: update.authority_state,
+            package,
+        })
+    }
+
+    pub fn accept_enrollment(
+        root: impl Into<PathBuf>,
+        backend: B,
+        bundle: &ReplicationEnrollmentBundle,
+        expected_verification_code: &str,
+    ) -> Result<Self, ReplicationProductError> {
+        let root = root.into();
+        validate_existing_directory(&root)?;
+        let vault = ReplicationSecretVault::new(backend);
+        recover_enrollment_activation(&root, &vault)?;
+        let _lock = ProductAdvisoryLock::acquire(&root.join(PRODUCT_LOCK_FILE))?;
+        if reject_unsafe_file_if_present(&root.join(PRODUCT_PROFILE_FILE))? {
+            return Err(ReplicationProductError::AlreadyConfigured);
+        }
+        if reject_unsafe_file_if_present(&root.join(ENROLLMENT_TRANSACTION_FILE))?
+            || path_exists(&root.join(PRODUCT_REPOSITORY_DIR))?
+        {
+            return Err(ReplicationProductError::PendingAuthorityTransition);
+        }
+        let pending = read_pending_enrollment(&root)?;
+        let request = pending.request.into_request()?;
+        if request.replica_id() != bundle.recipient()
+            || bundle.verification_code(&request)? != expected_verification_code.trim()
+        {
+            return Err(ReplicationProductError::VerificationCodeMismatch);
+        }
+        let authority = ReplicationAuthorityState::from_canonical_bytes(&bundle.authority_state)?;
+        let enrolled_public = authority
+            .device(bundle.recipient())
+            .filter(|device| device.status() == ReplicationAuthorityDeviceStatus::Active)
+            .map(|device| device.public_key())
+            .ok_or(ReplicationProductError::EnrollmentMismatch)?;
+        if enrolled_public != request.public_key() {
+            return Err(ReplicationProductError::EnrollmentMismatch);
+        }
+        let device_reference =
+            ReplicationSecretRef::from_bytes(&decode_hex(&pending.device_reference_hex)?)?;
+        let device_private = vault.load_device_key(&device_reference)?;
+        if &device_private.public_key() != request.public_key() {
+            return Err(ReplicationProductError::EnrollmentMismatch);
+        }
+        let wrapped = WrappedReplicationEpochKey::from_bytes(&bundle.package)?;
+        let epoch_key = open_wrapped_replication_epoch_key(
+            ReplicationKeyWrapContext {
+                workspace_id: bundle.workspace_id(),
+                recipient: bundle.recipient(),
+            },
+            authority.authority_public_key(),
+            &device_private,
+            authority.key_epoch(),
+            &wrapped,
+        )?;
+        let epoch_reference = vault.store_epoch_key(&epoch_key)?;
+        let transaction = StoredEnrollmentTransaction {
+            format_version: PRODUCT_FORMAT_VERSION,
+            epoch_reference_hex: encode_hex(&epoch_reference.to_bytes()),
+        };
+        write_canonical_file(
+            &root.join(ENROLLMENT_TRANSACTION_FILE),
+            &transaction,
+            MAX_PRODUCT_TRANSACTION_BYTES as usize,
+            "write enrollment transaction",
+        )?;
+        let mut profile_written = false;
+        let activation = (|| {
+            let historical = ReplicationHistoricalKeyIndex::from_retained(
+                ReplicationHistoricalKeyLimit::new(MAX_REPLICATION_RETAINED_EPOCH_KEYS)?,
+                [epoch_reference.clone()],
+            )?;
+            let custody = ReplicationCustodyMetadata::new_member(device_reference, historical)?;
+            let policy = authority.replication_policy()?;
+            let document =
+                ReplicationDocument::new(bundle.workspace_id.clone(), Vec::new(), &policy)
+                    .map_err(ReplicationStoreError::from)?;
+            let repository = ReplicationRepository::open(root.join(PRODUCT_REPOSITORY_DIR))?;
+            repository.create(document, custody, &policy)?;
+            let profile = StoredProductProfile {
+                format_version: PRODUCT_FORMAT_VERSION,
+                workspace_id: bundle.workspace_id.as_str().to_string(),
+                local_replica_id: bundle.recipient.as_str().to_string(),
+                shared_folder: pending.shared_folder,
+                transport_slot: bundle.transport_slot.file_component().to_string(),
+                authority_state_hex: encode_hex(&bundle.authority_state),
+            };
+            write_profile(&root.join(PRODUCT_PROFILE_FILE), &profile)?;
+            profile_written = true;
+            remove_regular_file_if_present(
+                &root.join(PENDING_ENROLLMENT_FILE),
+                "remove pending enrollment",
+            )?;
+            remove_regular_file_if_present(
+                &root.join(ENROLLMENT_TRANSACTION_FILE),
+                "remove enrollment transaction",
+            )?;
+            sync_directory(&root)?;
+            Ok(())
+        })();
+        if let Err(error) = activation {
+            if !profile_written {
+                let _ = vault.delete(&epoch_reference);
+                let _ = remove_owned_directory(&root.join(PRODUCT_REPOSITORY_DIR));
+                let _ = remove_regular_file_if_present(
+                    &root.join(ENROLLMENT_TRANSACTION_FILE),
+                    "remove enrollment transaction",
+                );
+            }
+            return Err(error);
+        }
+        drop(_lock);
+        Self::open(root, vault.into_backend())
     }
 
     pub fn revoke_device(
@@ -568,9 +1157,12 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             .map(|candidate| candidate.vector.counter(replica_id))
             .max()
             .unwrap_or_default();
-        let authority_private = self
-            .vault
-            .load_authority_key(snapshot.custody.authority_reference())?;
+        let authority_private = self.vault.load_authority_key(
+            snapshot
+                .custody
+                .authority_reference()
+                .ok_or(ReplicationProductError::AuthorityOwnerRequired)?,
+        )?;
         let transition = revoke_replication_device(
             &self.authority,
             &authority_private,
@@ -578,7 +1170,113 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             replica_id,
             accepted_through,
         )?;
-        self.commit_authority_transition(snapshot, transition)
+        self.commit_authority_transition(snapshot, transition, false)
+    }
+
+    pub fn apply_authority_update(
+        &mut self,
+        update: &ReplicationAuthorityUpdate,
+    ) -> Result<(), ReplicationProductError> {
+        let _lock = ProductAdvisoryLock::acquire(&self.root.join(PRODUCT_LOCK_FILE))?;
+        if reject_unsafe_file_if_present(&self.root.join(PRODUCT_TRANSACTION_FILE))? {
+            return Err(ReplicationProductError::PendingAuthorityTransition);
+        }
+        let current_policy = self.authority.replication_policy()?;
+        let snapshot = self.repository.load(&self.workspace_id, &current_policy)?;
+        if snapshot.custody.is_authority_owner() {
+            return Err(ReplicationProductError::EnrollmentMismatch);
+        }
+        let next_authority =
+            ReplicationAuthorityState::from_canonical_bytes(update.authority_state())?;
+        if next_authority.workspace_id() != &self.workspace_id
+            || next_authority.authority_public_key() != self.authority.authority_public_key()
+            || next_authority.revision().get()
+                != self
+                    .authority
+                    .revision()
+                    .get()
+                    .checked_add(1)
+                    .ok_or(ReplicationProductError::InvalidProfile)?
+            || next_authority.key_epoch().get()
+                != self
+                    .authority
+                    .key_epoch()
+                    .get()
+                    .checked_add(1)
+                    .ok_or(ReplicationProductError::InvalidProfile)?
+        {
+            return Err(ReplicationProductError::StaleAuthorityUpdate);
+        }
+        let device = next_authority
+            .device(&self.local_replica_id)
+            .filter(|device| device.status() == ReplicationAuthorityDeviceStatus::Active)
+            .ok_or(ReplicationProductError::EnrollmentMismatch)?;
+        let package = update
+            .package_for(&self.local_replica_id)
+            .ok_or(ReplicationProductError::EnrollmentMismatch)?;
+        let wrapped = WrappedReplicationEpochKey::from_bytes(package.package())?;
+        let device_private = self
+            .vault
+            .load_device_key(snapshot.custody.device_reference())?;
+        if &device_private.public_key() != device.public_key() {
+            return Err(ReplicationProductError::EnrollmentMismatch);
+        }
+        let epoch_key = open_wrapped_replication_epoch_key(
+            ReplicationKeyWrapContext {
+                workspace_id: &self.workspace_id,
+                recipient: &self.local_replica_id,
+            },
+            self.authority.authority_public_key(),
+            &device_private,
+            next_authority.key_epoch(),
+            &wrapped,
+        )?;
+        let epoch_reference = self.vault.store_epoch_key(&epoch_key)?;
+        let historical_update = snapshot
+            .custody
+            .historical()
+            .append(epoch_reference.clone())?;
+        let (historical, retired) = historical_update.into_parts();
+        let next_custody = ReplicationCustodyMetadata::new_member(
+            snapshot.custody.device_reference().clone(),
+            historical,
+        )?;
+        let next_policy = next_authority.replication_policy()?;
+        let transaction = StoredAuthorityTransaction {
+            format_version: PRODUCT_FORMAT_VERSION,
+            base_authority_revision: self.authority.revision().get(),
+            base_repository_revision: snapshot.revision.get(),
+            next_authority_state_hex: encode_hex(update.authority_state()),
+            new_epoch_reference_hex: encode_hex(&epoch_reference.to_bytes()),
+            packages: stored_packages(update),
+            publish_update: false,
+        };
+        if let Err(error) = write_authority_transaction(&self.root, &transaction) {
+            let _ = self.vault.delete(&epoch_reference);
+            return Err(error);
+        }
+        if let Err(error) = self.repository.commit(
+            snapshot.revision,
+            snapshot.document,
+            next_custody,
+            &retired,
+            &next_policy,
+        ) {
+            let _ = self.repository.retire_pending(
+                self.vault.backend(),
+                &self.workspace_id,
+                &next_policy,
+            );
+            let _ = self.vault.delete(&epoch_reference);
+            let _ = remove_authority_transaction(&self.root);
+            return Err(error.into());
+        }
+        let profile = self.stored_profile(&next_authority)?;
+        write_profile(&self.root.join(PRODUCT_PROFILE_FILE), &profile)?;
+        self.authority = next_authority;
+        self.repository
+            .retire_pending(self.vault.backend(), &self.workspace_id, &next_policy)?;
+        remove_authority_transaction(&self.root)
     }
 
     pub fn status(&self) -> Result<ReplicationProductStatus, ReplicationProductError> {
@@ -593,7 +1291,66 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             record_count: snapshot.document.entries.len(),
             recovery_required: snapshot.source == super::ReplicationRepositorySource::LastGood,
             secret_retirement_pending: snapshot.retirement_pending,
+            authority_owner: snapshot.custody.is_authority_owner(),
         })
+    }
+
+    pub fn deletion_plan(&self) -> Result<ReplicationDeletionPlan, ReplicationProductError> {
+        let policy = self.authority.replication_policy()?;
+        let snapshot = self.repository.load(&self.workspace_id, &policy)?;
+        let references = custody_references(&snapshot.custody);
+        let mut digest = Sha256::new();
+        digest.update(DELETION_PLAN_DOMAIN);
+        digest.update(self.authority.to_canonical_bytes()?);
+        digest.update(snapshot.revision.get().to_be_bytes());
+        digest.update((snapshot.document.entries.len() as u64).to_be_bytes());
+        for reference in &references {
+            digest.update(reference.to_bytes());
+        }
+        Ok(ReplicationDeletionPlan {
+            token: digest.finalize().into(),
+            record_count: snapshot.document.entries.len(),
+            secret_count: references.len(),
+            authority_owner: snapshot.custody.is_authority_owner(),
+        })
+    }
+
+    pub fn delete_local_replica(
+        self,
+        plan: &ReplicationDeletionPlan,
+        confirmation: &str,
+    ) -> Result<(), ReplicationProductError> {
+        if confirmation != DELETION_CONFIRMATION {
+            return Err(ReplicationProductError::DeletionConfirmationRequired);
+        }
+        let root = self.root.clone();
+        {
+            let _lock = ProductAdvisoryLock::acquire(&root.join(PRODUCT_LOCK_FILE))?;
+            let current = self.deletion_plan()?;
+            if current.token != plan.token {
+                return Err(ReplicationProductError::StaleDeletionPlan);
+            }
+            let policy = self.authority.replication_policy()?;
+            let snapshot = self.repository.load(&self.workspace_id, &policy)?;
+            let references = custody_references(&snapshot.custody);
+            let transaction = StoredDeletionTransaction {
+                format_version: PRODUCT_FORMAT_VERSION,
+                references_hex: references
+                    .iter()
+                    .map(|reference| encode_hex(&reference.to_bytes()))
+                    .collect(),
+            };
+            write_canonical_file(
+                &root.join(DELETION_TRANSACTION_FILE),
+                &transaction,
+                MAX_PRODUCT_TRANSACTION_BYTES as usize,
+                "write deletion transaction",
+            )?;
+            for reference in &references {
+                self.vault.delete(reference)?;
+            }
+        }
+        remove_owned_directory(&root)
     }
 
     pub fn review_sync(&self) -> Result<ReplicationSyncPlan, ReplicationProductError> {
@@ -607,6 +1364,76 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
     ) -> Result<ReplicationSyncOutcome, ReplicationProductError> {
         let policy = self.authority.replication_policy()?;
         Ok(self.sync_coordinator().apply(plan, &policy)?)
+    }
+
+    pub fn conflict_candidates(
+        &self,
+        plan: &ReplicationSyncPlan,
+        key: &ReplicationRecordKey,
+    ) -> Result<Vec<ReplicationConflictCandidate>, ReplicationProductError> {
+        let policy = self.authority.replication_policy()?;
+        let snapshot = self.repository.load(&self.workspace_id, &policy)?;
+        let candidates = plan
+            .candidates_for(key)
+            .filter(|candidates| candidates.len() > 1)
+            .ok_or(ReplicationProductError::RecordConflict)?;
+        candidates
+            .iter()
+            .map(|candidate| {
+                Ok(ReplicationConflictCandidate {
+                    author: candidate.author.clone(),
+                    value: self.open_candidate(&snapshot, key, candidate)?,
+                })
+            })
+            .collect()
+    }
+
+    pub fn resolve_sync(
+        &self,
+        plan: &ReplicationSyncPlan,
+        choices: Vec<ReplicationConflictChoice>,
+    ) -> Result<ReplicationSyncOutcome, ReplicationProductError> {
+        let policy = self.authority.replication_policy()?;
+        let snapshot = self.repository.load(&self.workspace_id, &policy)?;
+        let epoch = snapshot.custody.historical().current_epoch();
+        let epoch_key = self
+            .vault
+            .load_epoch_key(snapshot.custody.historical().reference_for(epoch)?, epoch)?;
+        let mut resolutions = Vec::with_capacity(choices.len());
+        for choice in choices {
+            let context = plan.resolution_context(&choice.key, &self.local_replica_id, &policy)?;
+            let operation_kind = if choice.value.is_some() {
+                ReplicationOperationKind::Put
+            } else {
+                ReplicationOperationKind::Delete
+            };
+            let seal_context = ReplicationSealContext {
+                workspace_id: &self.workspace_id,
+                record_key: &choice.key,
+                author: context.author(),
+                vector: context.vector(),
+                operation: operation_kind,
+            };
+            let sealed_payload = match choice.value {
+                Some(value) => seal_put(seal_context, &epoch_key, &value)?.to_sealed_payload()?,
+                None => seal_delete(seal_context, &epoch_key)?.to_sealed_payload()?,
+            };
+            let operation = match operation_kind {
+                ReplicationOperationKind::Put => ReplicationOperation::Put { sealed_payload },
+                ReplicationOperationKind::Delete => ReplicationOperation::Delete { sealed_payload },
+            };
+            let version = ReplicatedVersion::new(
+                context.author().clone(),
+                context.vector().clone(),
+                operation,
+                &policy,
+            )
+            .map_err(ReplicationStoreError::from)?;
+            resolutions.push(ReplicationConflictResolution::new(choice.key, version));
+        }
+        Ok(self
+            .sync_coordinator()
+            .resolve(plan, &self.local_replica_id, resolutions, &policy)?)
     }
 
     pub fn recover_repository(
@@ -658,7 +1485,15 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
         if entry.candidates.len() != 1 {
             return Err(ReplicationProductError::RecordConflict);
         }
-        let candidate = &entry.candidates[0];
+        self.open_candidate(&snapshot, key, &entry.candidates[0])
+    }
+
+    fn open_candidate(
+        &self,
+        snapshot: &super::ReplicationRepositorySnapshot,
+        key: &ReplicationRecordKey,
+        candidate: &ReplicatedVersion,
+    ) -> Result<Option<Vec<u8>>, ReplicationProductError> {
         let (kind, payload) = match &candidate.operation {
             ReplicationOperation::Put { sealed_payload } => {
                 (ReplicationOperationKind::Put, sealed_payload)
@@ -785,6 +1620,7 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
         &mut self,
         snapshot: super::ReplicationRepositorySnapshot,
         transition: ReplicationAuthorityTransition,
+        rekey_for_new_member: bool,
     ) -> Result<ReplicationAuthorityUpdate, ReplicationProductError> {
         let _lock = ProductAdvisoryLock::acquire(&self.root.join(PRODUCT_LOCK_FILE))?;
         if reject_unsafe_file_if_present(&self.root.join(PRODUCT_TRANSACTION_FILE))? {
@@ -807,6 +1643,11 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
 
         let (next_authority, epoch_key, distribution) = transition.into_parts();
         let next_policy = next_authority.replication_policy()?;
+        let next_document = if rekey_for_new_member {
+            self.rekey_document(&snapshot, &epoch_key, &next_policy)?
+        } else {
+            snapshot.document.clone()
+        };
         let authority_update = ReplicationAuthorityUpdate {
             authority_revision: next_authority.revision().get(),
             key_epoch: next_authority.key_epoch().get(),
@@ -827,7 +1668,11 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             .append(epoch_reference.clone())?;
         let (historical, retired) = historical_update.into_parts();
         let next_custody = ReplicationCustodyMetadata::new(
-            snapshot.custody.authority_reference().clone(),
+            snapshot
+                .custody
+                .authority_reference()
+                .ok_or(ReplicationProductError::AuthorityOwnerRequired)?
+                .clone(),
             snapshot.custody.device_reference().clone(),
             historical,
         )?;
@@ -838,6 +1683,7 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             next_authority_state_hex: encode_hex(&next_authority.to_canonical_bytes()?),
             new_epoch_reference_hex: encode_hex(&epoch_reference.to_bytes()),
             packages: stored_packages(&authority_update),
+            publish_update: true,
         };
         if let Err(error) = write_authority_transaction(&self.root, &transaction) {
             let _ = self.vault.delete(&epoch_reference);
@@ -845,7 +1691,7 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
         }
         if let Err(error) = self.repository.commit(
             snapshot.revision,
-            snapshot.document,
+            next_document,
             next_custody,
             &retired,
             &next_policy,
@@ -870,6 +1716,101 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
         Ok(authority_update)
     }
 
+    fn rekey_document(
+        &self,
+        snapshot: &super::ReplicationRepositorySnapshot,
+        next_epoch_key: &termirust_replication_security::ReplicationEpochKey,
+        next_policy: &termirust_domain::ReplicationPolicy,
+    ) -> Result<ReplicationDocument, ReplicationProductError> {
+        let mut entries = Vec::with_capacity(snapshot.document.entries.len());
+        for entry in &snapshot.document.entries {
+            if entry.candidates.len() != 1 {
+                return Err(ReplicationProductError::Store(
+                    ReplicationStoreError::ConflictResolutionRequired,
+                ));
+            }
+            let candidate = &entry.candidates[0];
+            let (operation_kind, old_payload) = match &candidate.operation {
+                ReplicationOperation::Put { sealed_payload } => {
+                    (ReplicationOperationKind::Put, sealed_payload)
+                }
+                ReplicationOperation::Delete { sealed_payload } => {
+                    (ReplicationOperationKind::Delete, sealed_payload)
+                }
+            };
+            let old_envelope =
+                termirust_replication_security::ReplicationEnvelope::from_sealed_payload(
+                    old_payload,
+                )?;
+            let old_reference = snapshot
+                .custody
+                .historical()
+                .reference_for(old_envelope.key_epoch())?;
+            let old_epoch_key = self
+                .vault
+                .load_epoch_key(old_reference, old_envelope.key_epoch())?;
+            let opened = open_envelope(
+                ReplicationSealContext {
+                    workspace_id: &self.workspace_id,
+                    record_key: &entry.key,
+                    author: &candidate.author,
+                    vector: &candidate.vector,
+                    operation: operation_kind,
+                },
+                &old_epoch_key,
+                &old_envelope,
+            )?;
+            let placeholder =
+                SealedReplicationPayload::new(vec![1]).map_err(ReplicationStoreError::from)?;
+            let placeholder_operation = match operation_kind {
+                ReplicationOperationKind::Put => ReplicationOperation::Put {
+                    sealed_payload: placeholder,
+                },
+                ReplicationOperationKind::Delete => ReplicationOperation::Delete {
+                    sealed_payload: placeholder,
+                },
+            };
+            let observed = [candidate.vector.clone()];
+            let next = next_policy
+                .next_version(&self.local_replica_id, &observed, placeholder_operation)
+                .map_err(ReplicationStoreError::from)?;
+            let context = ReplicationSealContext {
+                workspace_id: &self.workspace_id,
+                record_key: &entry.key,
+                author: &self.local_replica_id,
+                vector: &next.vector,
+                operation: operation_kind,
+            };
+            let sealed_payload = match opened {
+                OpenedReplicationOperation::Put(plaintext) => {
+                    seal_put(context, next_epoch_key, plaintext.as_bytes())?.to_sealed_payload()?
+                }
+                OpenedReplicationOperation::Delete => {
+                    seal_delete(context, next_epoch_key)?.to_sealed_payload()?
+                }
+            };
+            let operation = match operation_kind {
+                ReplicationOperationKind::Put => ReplicationOperation::Put { sealed_payload },
+                ReplicationOperationKind::Delete => ReplicationOperation::Delete { sealed_payload },
+            };
+            entries.push(ReplicationEntry {
+                key: entry.key.clone(),
+                candidates: vec![
+                    ReplicatedVersion::new(
+                        self.local_replica_id.clone(),
+                        next.vector,
+                        operation,
+                        next_policy,
+                    )
+                    .map_err(ReplicationStoreError::from)?,
+                ],
+            });
+        }
+        ReplicationDocument::new(self.workspace_id.clone(), entries, next_policy)
+            .map_err(ReplicationStoreError::from)
+            .map_err(Into::into)
+    }
+
     fn stored_profile(
         &self,
         authority: &ReplicationAuthorityState,
@@ -888,6 +1829,174 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
     fn sync_coordinator(&self) -> ReplicationSyncCoordinator {
         ReplicationSyncCoordinator::new(self.repository.clone(), self.transport.clone())
     }
+}
+
+fn read_pending_enrollment(
+    root: &Path,
+) -> Result<StoredPendingEnrollment, ReplicationProductError> {
+    let path = root.join(PENDING_ENROLLMENT_FILE);
+    if !reject_unsafe_file_if_present(&path)? {
+        return Err(ReplicationProductError::NotConfigured);
+    }
+    let bytes = read_bounded_regular_file(&path, MAX_PRODUCT_PROFILE_BYTES, "read enrollment")?;
+    decode_canonical_json(&bytes, MAX_PRODUCT_PROFILE_BYTES as usize)
+}
+
+fn custody_references(custody: &ReplicationCustodyMetadata) -> Vec<ReplicationSecretRef> {
+    let mut references = Vec::with_capacity(custody.historical().len() + 2);
+    if let Some(authority) = custody.authority_reference() {
+        references.push(authority.clone());
+    }
+    references.push(custody.device_reference().clone());
+    references.extend(custody.historical().references().cloned());
+    references.sort();
+    references
+}
+
+fn continue_pending_deletion<B: ReplicationSecretBackend>(
+    root: &Path,
+    vault: &ReplicationSecretVault<B>,
+) -> Result<bool, ReplicationProductError> {
+    let path = root.join(DELETION_TRANSACTION_FILE);
+    if !reject_unsafe_file_if_present(&path)? {
+        return Ok(false);
+    }
+    {
+        let _lock = ProductAdvisoryLock::acquire(&root.join(PRODUCT_LOCK_FILE))?;
+        let bytes = read_bounded_regular_file(
+            &path,
+            MAX_PRODUCT_TRANSACTION_BYTES,
+            "read deletion transaction",
+        )?;
+        let transaction: StoredDeletionTransaction =
+            decode_canonical_json(&bytes, MAX_PRODUCT_TRANSACTION_BYTES as usize)?;
+        if transaction.format_version != PRODUCT_FORMAT_VERSION
+            || transaction.references_hex.len()
+                > MAX_REPLICATION_RETAINED_EPOCH_KEYS.saturating_add(2)
+        {
+            return Err(ReplicationProductError::InvalidProfile);
+        }
+        let mut unique = BTreeSet::new();
+        let mut references = Vec::with_capacity(transaction.references_hex.len());
+        for encoded in transaction.references_hex {
+            let reference = ReplicationSecretRef::from_bytes(&decode_hex(&encoded)?)?;
+            if !unique.insert(reference.clone()) {
+                return Err(ReplicationProductError::InvalidProfile);
+            }
+            references.push(reference);
+        }
+        for reference in &references {
+            vault.delete(reference)?;
+        }
+    }
+    remove_owned_directory(root)?;
+    Ok(true)
+}
+
+fn recover_enrollment_activation<B: ReplicationSecretBackend>(
+    root: &Path,
+    vault: &ReplicationSecretVault<B>,
+) -> Result<(), ReplicationProductError> {
+    let transaction_path = root.join(ENROLLMENT_TRANSACTION_FILE);
+    if !reject_unsafe_file_if_present(&transaction_path)? {
+        return Ok(());
+    }
+    let _lock = ProductAdvisoryLock::acquire(&root.join(PRODUCT_LOCK_FILE))?;
+    let bytes = read_bounded_regular_file(
+        &transaction_path,
+        MAX_PRODUCT_TRANSACTION_BYTES,
+        "read enrollment transaction",
+    )?;
+    let transaction: StoredEnrollmentTransaction =
+        decode_canonical_json(&bytes, MAX_PRODUCT_TRANSACTION_BYTES as usize)?;
+    if transaction.format_version != PRODUCT_FORMAT_VERSION {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    let epoch_reference =
+        ReplicationSecretRef::from_bytes(&decode_hex(&transaction.epoch_reference_hex)?)?;
+    if reject_unsafe_file_if_present(&root.join(PRODUCT_PROFILE_FILE))? {
+        remove_regular_file_if_present(
+            &root.join(PENDING_ENROLLMENT_FILE),
+            "remove pending enrollment",
+        )?;
+        remove_regular_file_if_present(&transaction_path, "remove enrollment transaction")?;
+        sync_directory(root)?;
+        return Ok(());
+    }
+
+    remove_owned_directory(&root.join(PRODUCT_REPOSITORY_DIR))?;
+    vault.delete(&epoch_reference)?;
+    remove_regular_file_if_present(&transaction_path, "remove enrollment transaction")?;
+    sync_directory(root)
+}
+
+fn path_exists(path: &Path) -> Result<bool, ReplicationProductError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(profile_io("inspect product entry", error)),
+    }
+}
+
+fn remove_owned_directory(path: &Path) -> Result<(), ReplicationProductError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => Err(
+            ReplicationProductError::Store(ReplicationStoreError::UnsafeEntry),
+        ),
+        Ok(_) => fs::remove_dir_all(path)
+            .map_err(|error| profile_io("remove enrollment repository", error)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(profile_io("inspect enrollment repository", error)),
+    }
+}
+
+fn remove_regular_file_if_present(
+    path: &Path,
+    operation: &'static str,
+) -> Result<(), ReplicationProductError> {
+    if reject_unsafe_file_if_present(path)? {
+        fs::remove_file(path).map_err(|error| profile_io(operation, error))?;
+    }
+    Ok(())
+}
+
+fn canonical_json<T: Serialize>(
+    value: &T,
+    maximum: usize,
+) -> Result<Vec<u8>, ReplicationProductError> {
+    let bytes = serde_json::to_vec(value).map_err(|_| ReplicationProductError::InvalidProfile)?;
+    if bytes.len() > maximum {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    Ok(bytes)
+}
+
+fn decode_canonical_json<T: DeserializeOwned + Serialize>(
+    bytes: &[u8],
+    maximum: usize,
+) -> Result<T, ReplicationProductError> {
+    if bytes.len() > maximum {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    let value: T =
+        serde_json::from_slice(bytes).map_err(|_| ReplicationProductError::InvalidProfile)?;
+    if canonical_json(&value, maximum)? != bytes {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    Ok(value)
+}
+
+fn write_canonical_file<T: Serialize>(
+    path: &Path,
+    value: &T,
+    maximum: usize,
+    operation: &'static str,
+) -> Result<(), ReplicationProductError> {
+    let bytes = canonical_json(value, maximum)?;
+    SystemAtomicWriter
+        .write(path, &bytes)
+        .map_err(|error| profile_io(operation, error))?;
+    Ok(())
 }
 
 fn recover_authority_transaction<B: ReplicationSecretBackend>(
@@ -967,7 +2076,9 @@ fn recover_authority_transaction<B: ReplicationSecretBackend>(
         write_profile(&root.join(PRODUCT_PROFILE_FILE), &next_profile)?;
     }
     repository.retire_pending(vault.backend(), workspace_id, &next_policy)?;
-    write_authority_update(root, &authority_update)?;
+    if transaction.publish_update {
+        write_authority_update(root, &authority_update)?;
+    }
     remove_authority_transaction(root)?;
     Ok(next_authority)
 }
@@ -1267,6 +2378,12 @@ fn decode_hex(value: &str) -> Result<Vec<u8>, ReplicationProductError> {
             Ok((high << 4) | low)
         })
         .collect()
+}
+
+fn decode_hex_array<const N: usize>(value: &str) -> Result<[u8; N], ReplicationProductError> {
+    decode_hex(value)?
+        .try_into()
+        .map_err(|_| ReplicationProductError::InvalidProfile)
 }
 
 fn decode_nibble(value: u8) -> Result<u8, ReplicationProductError> {

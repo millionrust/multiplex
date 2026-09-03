@@ -169,6 +169,17 @@ impl ReplicationSyncPlan {
         &self.conflicts
     }
 
+    pub(super) fn candidates_for(
+        &self,
+        key: &ReplicationRecordKey,
+    ) -> Option<&[ReplicatedVersion]> {
+        self.merged
+            .entries
+            .iter()
+            .find(|entry| &entry.key == key)
+            .map(|entry| entry.candidates.as_slice())
+    }
+
     pub fn provider_conflict_count(&self) -> usize {
         self.transport.conflicts.len()
     }
