@@ -60,7 +60,8 @@ pub use recovery::{
 pub use replication::{
     MAX_REPLICATION_CONFLICT_ARTIFACTS, ReplicationConflictOperationMix,
     ReplicationConflictResolution, ReplicationConflictReview, ReplicationContentRevision,
-    ReplicationCustodyMetadata, ReplicationRecoveryOutcome, ReplicationRepository,
+    ReplicationCustodyMetadata, ReplicationProductError, ReplicationProductService,
+    ReplicationProductStatus, ReplicationRecoveryOutcome, ReplicationRepository,
     ReplicationRepositoryRevision, ReplicationRepositorySnapshot, ReplicationRepositorySource,
     ReplicationResolutionContext, ReplicationRetirementOutcome, ReplicationStoreError,
     ReplicationSyncCoordinator, ReplicationSyncDisposition, ReplicationSyncOutcome,

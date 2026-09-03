@@ -1,3 +1,4 @@
+mod product;
 mod repository;
 mod sync;
 mod transport;
@@ -27,6 +28,7 @@ use termirust_replication_security::{
     ReplicationSecretKind, ReplicationSecretRef,
 };
 
+pub use product::{ReplicationProductError, ReplicationProductService, ReplicationProductStatus};
 pub use repository::{
     ReplicationRecoveryOutcome, ReplicationRepository, ReplicationRepositorySnapshot,
     ReplicationRepositorySource, ReplicationRetirementOutcome,
