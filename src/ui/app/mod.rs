@@ -24,6 +24,7 @@ mod project;
 mod project_coordinator;
 mod projects;
 mod remote_devices;
+mod replication_settings;
 mod runtimes;
 mod session_coordinator;
 mod session_library;
@@ -70,6 +71,7 @@ use project::CanvasProjectPanelState;
 use project_coordinator::ProjectCoordinator;
 use projects::ProjectLibraryState;
 use remote_devices::RemoteDevicesState;
+use replication_settings::{ReplicationLifecycleState, ReplicationSettingsInputs};
 use session_coordinator::{
     HostedDevUrlAction, HostedDevUrlStreamAction, HostedSelectionAction, HostedStatusInput,
     HostedStreamInput, HostedStreamProjection, HostedTerminalAction, SessionCoordinator,
@@ -1304,6 +1306,7 @@ pub struct TermiRustApp {
     shell_inputs: ShellInputs,
     snippet_inputs: SnippetInputs,
     settings_inputs: SettingsInputs,
+    replication_inputs: ReplicationSettingsInputs,
     vault_inputs: VaultInputs,
     vault_member_inputs: VaultMemberInputs,
     draft_auth_mode: AuthMode,
@@ -1448,6 +1451,7 @@ pub struct TermiRustApp {
     replication_conflicts: Vec<DesktopReplicationConflict>,
     replication_conflict_choices: Vec<Option<usize>>,
     replication_recovery_required: bool,
+    replication_lifecycle: ReplicationLifecycleState,
     settings_scroll: ScrollHandle,
     host_editor_scroll: ScrollHandle,
     hosts_list_scroll: ScrollHandle,
@@ -1462,6 +1466,7 @@ pub struct TermiRustApp {
     _canvas_note_editor_subscription: Subscription,
     _command_palette_subscription: Subscription,
     _settings_search_subscription: Subscription,
+    _replication_deletion_subscription: Subscription,
     _window_bounds_subscription: Option<Subscription>,
     _window_activation_subscription: Option<Subscription>,
     _window_bounds_save_task: Option<Task<()>>,
@@ -1484,6 +1489,15 @@ impl TermiRustApp {
         let shell_inputs = ShellInputs::new(window, cx);
         let snippet_inputs = SnippetInputs::new(window, cx);
         let settings_inputs = SettingsInputs::new(window, cx);
+        let replication_inputs = ReplicationSettingsInputs::new(window, cx);
+        let replication_deletion_subscription = cx.subscribe(
+            &replication_inputs.deletion_confirmation,
+            |_, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    cx.notify();
+                }
+            },
+        );
         let vault_inputs = VaultInputs::new(window, cx);
         let vault_member_inputs = VaultMemberInputs::new(window, cx);
         let key_lifecycle_inputs = KeyLifecycleInputs::new(window, cx);
@@ -1656,6 +1670,7 @@ impl TermiRustApp {
             shell_inputs,
             snippet_inputs,
             settings_inputs,
+            replication_inputs,
             vault_inputs,
             vault_member_inputs,
             draft_auth_mode,
@@ -1812,6 +1827,7 @@ impl TermiRustApp {
             replication_conflicts: Vec::new(),
             replication_conflict_choices: Vec::new(),
             replication_recovery_required: false,
+            replication_lifecycle: ReplicationLifecycleState::default(),
             settings_scroll: ScrollHandle::new(),
             host_editor_scroll: ScrollHandle::new(),
             hosts_list_scroll: ScrollHandle::new(),
@@ -1826,6 +1842,7 @@ impl TermiRustApp {
             _canvas_note_editor_subscription: canvas_note_editor_subscription,
             _command_palette_subscription: command_palette_subscription,
             _settings_search_subscription: settings_search_subscription,
+            _replication_deletion_subscription: replication_deletion_subscription,
             _window_bounds_subscription: None,
             _window_activation_subscription: None,
             _window_bounds_save_task: None,
@@ -4834,6 +4851,9 @@ impl TermiRustApp {
             }
             NavSection::Logs => localization::static_message(MessageId::SessionHistorySectionReady),
         };
+        if section == NavSection::Settings {
+            let _ = self.reload_replication_lifecycle();
+        }
         self.persist_runtime_state();
         cx.notify();
     }
@@ -5686,6 +5706,7 @@ impl TermiRustApp {
                     self.replication_conflicts.clear();
                     self.replication_conflict_choices.clear();
                     self.replication_recovery_required = false;
+                    let _ = self.reload_replication_lifecycle();
                     self.error_message.clear();
                     self.status_message = if changes.puts == 0 && changes.deletes == 0 {
                         localization::static_message(MessageId::SettingsSecureSyncUpToDate)

@@ -78,7 +78,8 @@ pub use sessions::{
 #[cfg(feature = "os-keyring")]
 pub use termirust_replication_security::OsReplicationSecretBackend;
 pub use termirust_replication_security::{
-    ReplicationSecretBackend, ReplicationSecretRef, ReplicationSecretStoreError,
+    ReplicationAuthorityDeviceStatus, ReplicationSecretBackend, ReplicationSecretRef,
+    ReplicationSecretStoreError,
 };
 pub use transcript::{
     TranscriptExportError, TranscriptExportLabels, TranscriptExportResult,

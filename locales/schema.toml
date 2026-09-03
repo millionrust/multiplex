@@ -7251,6 +7251,386 @@ name = "value2"
 type = "UserData"
 sensitivity = "sensitive"
 bidi = "isolate"
+
+[[messages]]
+id = "settings-secure-sync-enrollment-request-placeholder"
+context = "Placeholder for an enrollment request pasted on the owner device."
+description = "Enrollment request placeholder"
+
+[[messages]]
+id = "settings-secure-sync-enrollment-bundle-placeholder"
+context = "Placeholder for an enrollment bundle pasted on a joining device."
+description = "Enrollment bundle placeholder"
+
+[[messages]]
+id = "settings-secure-sync-verification-code-placeholder"
+context = "Placeholder for the enrollment comparison code."
+description = "Verification code placeholder"
+
+[[messages]]
+id = "settings-secure-sync-authority-update-placeholder"
+context = "Placeholder for a signed authority update pasted on a member device."
+description = "Authority update placeholder"
+
+[[messages]]
+id = "settings-secure-sync-devices-title"
+context = "Heading for encrypted sync device and key management."
+description = "Sync devices heading"
+
+[[messages]]
+id = "settings-secure-sync-refresh-action"
+context = "Action refreshing encrypted sync device status."
+description = "Refresh sync devices"
+
+[[messages]]
+id = "settings-secure-sync-join-description"
+context = "Instructions for joining an existing encrypted sync set."
+description = "Join encrypted sync description"
+
+[[messages]]
+id = "settings-secure-sync-prepare-enrollment-action"
+context = "Action creating a new device enrollment request."
+description = "Create join request"
+
+[[messages]]
+id = "settings-secure-sync-resume-enrollment-action"
+context = "Action restoring a pending enrollment request."
+description = "Resume join request"
+
+[[messages]]
+id = "settings-secure-sync-cancel-enrollment-action"
+context = "Action cancelling a pending device enrollment."
+description = "Cancel join request"
+
+[[messages]]
+id = "settings-secure-sync-enrollment-request-ready"
+context = "Status explaining that a join request is ready to transfer."
+description = "Join request ready"
+
+[[messages]]
+id = "settings-secure-sync-copy-request-action"
+context = "Action copying a device enrollment request."
+description = "Copy join request"
+
+[[messages]]
+id = "settings-secure-sync-accept-enrollment-action"
+context = "Action accepting an enrollment bundle on a joining device."
+description = "Complete enrollment"
+
+[[messages]]
+id = "settings-secure-sync-refresh-hint"
+context = "Hint to refresh encrypted sync device status."
+description = "Refresh device status hint"
+
+[[messages]]
+id = "settings-secure-sync-owner-role"
+context = "Encrypted sync owner role label."
+description = "Owner role"
+
+[[messages]]
+id = "settings-secure-sync-member-role"
+context = "Encrypted sync member role label."
+description = "Member role"
+
+[[messages]]
+id = "settings-secure-sync-device-summary"
+context = "Encrypted sync device count, key generation, and local role summary."
+description = "Device authority summary"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value3"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value4"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "settings-secure-sync-device-row"
+context = "Encrypted sync row with short device ID, location, and status."
+description = "Device row"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value3"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "settings-secure-sync-this-device"
+context = "Label identifying the current encrypted sync device."
+description = "This device label"
+
+[[messages]]
+id = "settings-secure-sync-other-device"
+context = "Label identifying another encrypted sync device."
+description = "Other device label"
+
+[[messages]]
+id = "settings-secure-sync-device-active"
+context = "Status for an active encrypted sync device."
+description = "Active device status"
+
+[[messages]]
+id = "settings-secure-sync-device-revoked-status"
+context = "Status for a revoked encrypted sync device."
+description = "Revoked device status"
+
+[[messages]]
+id = "settings-secure-sync-revoke-action"
+context = "Action staging encrypted sync device revocation."
+description = "Revoke device"
+
+[[messages]]
+id = "settings-secure-sync-confirm-revoke-action"
+context = "Action confirming device revocation and key rotation."
+description = "Confirm device revocation"
+
+[[messages]]
+id = "settings-secure-sync-cancel-action"
+context = "Generic cancel action within encrypted sync management."
+description = "Cancel encrypted sync action"
+
+[[messages]]
+id = "settings-secure-sync-add-device-action"
+context = "Owner action creating an enrollment bundle for a joining device."
+description = "Create enrollment bundle"
+
+[[messages]]
+id = "settings-secure-sync-rotate-keys-action"
+context = "Owner action rotating encrypted sync keys."
+description = "Rotate encryption keys"
+
+[[messages]]
+id = "settings-secure-sync-copy-bundle-action"
+context = "Action copying an enrollment bundle."
+description = "Copy enrollment bundle"
+
+[[messages]]
+id = "settings-secure-sync-copy-code-action"
+context = "Action copying an enrollment verification code."
+description = "Copy verification code"
+
+[[messages]]
+id = "settings-secure-sync-verification-code"
+context = "Visible enrollment verification code for comparison on both devices."
+description = "Enrollment verification code"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "settings-secure-sync-copy-authority-update-action"
+context = "Action copying a signed key and device authority update."
+description = "Copy authority update"
+
+[[messages]]
+id = "settings-secure-sync-acknowledge-delivery-action"
+context = "Owner acknowledgment that an authority update reached active devices."
+description = "Acknowledge authority update delivery"
+
+[[messages]]
+id = "settings-secure-sync-apply-authority-update-action"
+context = "Member action applying a signed owner authority update."
+description = "Apply authority update"
+
+[[messages]]
+id = "settings-secure-sync-delete-local-action"
+context = "Action starting local encrypted sync removal review."
+description = "Remove local sync"
+
+[[messages]]
+id = "settings-secure-sync-confirm-delete-action"
+context = "Action permanently deleting local encrypted sync state and keys."
+description = "Confirm local sync removal"
+
+[[messages]]
+id = "settings-secure-sync-deletion-warning"
+context = "Exact local encrypted sync deletion impact and confirmation instruction."
+description = "Local sync deletion warning"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value3"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+
+[[messages]]
+id = "settings-secure-sync-devices-refreshed"
+context = "Status after encrypted sync device metadata refreshes."
+description = "Devices refreshed status"
+
+[[messages]]
+id = "settings-secure-sync-refresh-failed"
+context = "Error heading when encrypted sync device refresh fails."
+description = "Device refresh failure"
+
+[[messages]]
+id = "settings-secure-sync-already-configured"
+context = "Error when attempting to join after encrypted sync is configured."
+description = "Already configured error"
+
+[[messages]]
+id = "settings-secure-sync-enrollment-prepared"
+context = "Status after a joining device creates its enrollment request."
+description = "Enrollment prepared status"
+
+[[messages]]
+id = "settings-secure-sync-enrollment-prepare-failed"
+context = "Error heading when enrollment request creation fails."
+description = "Enrollment preparation failure"
+
+[[messages]]
+id = "settings-secure-sync-enrollment-cancelled"
+context = "Status after a pending enrollment and key are removed."
+description = "Enrollment cancelled status"
+
+[[messages]]
+id = "settings-secure-sync-enrollment-cancel-failed"
+context = "Error heading when pending enrollment cancellation fails."
+description = "Enrollment cancellation failure"
+
+[[messages]]
+id = "settings-secure-sync-enrollment-request-required"
+context = "Validation error requiring a joining device request."
+description = "Enrollment request required"
+
+[[messages]]
+id = "settings-secure-sync-enrollment-bundle-ready"
+context = "Status after an owner creates an enrollment bundle."
+description = "Enrollment bundle ready"
+
+[[messages]]
+id = "settings-secure-sync-enroll-device-failed"
+context = "Error heading when owner device enrollment fails."
+description = "Device enrollment failure"
+
+[[messages]]
+id = "settings-secure-sync-bundle-and-code-required"
+context = "Validation error requiring enrollment bundle and verification code."
+description = "Bundle and code required"
+
+[[messages]]
+id = "settings-secure-sync-enrollment-accepted"
+context = "Status after a joining device accepts enrollment."
+description = "Enrollment accepted status"
+
+[[messages]]
+id = "settings-secure-sync-enrollment-accept-failed"
+context = "Error heading when enrollment acceptance fails."
+description = "Enrollment acceptance failure"
+
+[[messages]]
+id = "settings-secure-sync-authority-update-required"
+context = "Validation error requiring an owner authority update."
+description = "Authority update required"
+
+[[messages]]
+id = "settings-secure-sync-authority-update-applied"
+context = "Status after a member applies an authority update."
+description = "Authority update applied"
+
+[[messages]]
+id = "settings-secure-sync-authority-update-failed"
+context = "Error heading when authority update application fails."
+description = "Authority update failure"
+
+[[messages]]
+id = "settings-secure-sync-keys-rotated"
+context = "Status after owner rotates encrypted sync keys."
+description = "Keys rotated status"
+
+[[messages]]
+id = "settings-secure-sync-key-rotation-failed"
+context = "Error heading when encrypted sync key rotation fails."
+description = "Key rotation failure"
+
+[[messages]]
+id = "settings-secure-sync-device-revoked"
+context = "Status after owner revokes a device and rotates keys."
+description = "Device revoked status"
+
+[[messages]]
+id = "settings-secure-sync-device-revoke-failed"
+context = "Error heading when encrypted sync device revocation fails."
+description = "Device revocation failure"
+
+[[messages]]
+id = "settings-secure-sync-authority-update-acknowledged"
+context = "Status after owner acknowledges authority update delivery."
+description = "Authority update acknowledged"
+
+[[messages]]
+id = "settings-secure-sync-authority-acknowledge-failed"
+context = "Error heading when authority delivery acknowledgment fails."
+description = "Authority acknowledgment failure"
+
+[[messages]]
+id = "settings-secure-sync-deletion-review-failed"
+context = "Error heading when local sync deletion review fails."
+description = "Deletion review failure"
+
+[[messages]]
+id = "settings-secure-sync-local-data-deleted"
+context = "Status after local encrypted sync data and keys are removed."
+description = "Local sync deleted status"
+
+[[messages]]
+id = "settings-secure-sync-local-deletion-failed"
+context = "Error heading when local encrypted sync removal fails."
+description = "Local sync deletion failure"
+
+[[messages]]
+id = "settings-secure-sync-request-copied"
+context = "Status after enrollment request is copied."
+description = "Enrollment request copied"
+
+[[messages]]
+id = "settings-secure-sync-bundle-copied"
+context = "Status after enrollment bundle is copied."
+description = "Enrollment bundle copied"
+
+[[messages]]
+id = "settings-secure-sync-code-copied"
+context = "Status after enrollment verification code is copied."
+description = "Verification code copied"
+
+[[messages]]
+id = "settings-secure-sync-authority-update-copied"
+context = "Status after authority update is copied."
+description = "Authority update copied"
 [[messages]]
 id = "settings-value-on"
 context = "Generic enabled value in Settings."

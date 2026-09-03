@@ -216,6 +216,38 @@ fn existing_roots_are_never_repurposed() {
     ));
 }
 
+#[test]
+fn pending_enrollment_cancellation_is_exact_idempotent_and_crash_resumable() {
+    let parent = tempfile::tempdir().unwrap();
+    let shared = tempfile::tempdir().unwrap();
+    let root = parent.path().join("replication");
+    let backend = MemorySecrets::default();
+
+    assert!(!ReplicationProductService::cancel_pending_enrollment(&root, backend.clone()).unwrap());
+    ReplicationProductService::prepare_enrollment(&root, shared.path(), backend.clone()).unwrap();
+    assert_eq!(backend.count(), 1);
+    backend.set_delete_failure(true);
+    assert!(matches!(
+        ReplicationProductService::cancel_pending_enrollment(&root, backend.clone()),
+        Err(ReplicationProductError::Custody(_))
+    ));
+    assert!(root.join("deletion.transaction.json").exists());
+    backend.set_delete_failure(false);
+    assert!(ReplicationProductService::cancel_pending_enrollment(&root, backend.clone()).unwrap());
+    assert!(!root.exists());
+    assert_eq!(backend.count(), 0);
+    assert!(!ReplicationProductService::cancel_pending_enrollment(&root, backend.clone()).unwrap());
+
+    let configured =
+        ReplicationProductService::bootstrap(&root, shared.path(), backend.clone()).unwrap();
+    drop(configured);
+    assert!(matches!(
+        ReplicationProductService::cancel_pending_enrollment(&root, backend),
+        Err(ReplicationProductError::AlreadyConfigured)
+    ));
+    assert!(root.join("profile.json").is_file());
+}
+
 #[cfg(unix)]
 #[test]
 fn bootstrap_uses_user_only_local_permissions() {
@@ -426,6 +458,21 @@ fn real_two_device_enrollment_converges_with_member_only_custody() {
             .unwrap();
     let verification_code = bundle.verification_code(&request).unwrap();
     assert_eq!(verification_code.len(), 13);
+    let expected_bundle = bundle.to_canonical_bytes().unwrap();
+    drop(owner);
+    let mut owner = ReplicationProductService::open(&owner_root, owner_backend.clone()).unwrap();
+    let resumed_bundle = owner
+        .pending_enrollment_bundle(&request)
+        .unwrap()
+        .expect("pending enrollment bundle should survive restart");
+    assert_eq!(
+        resumed_bundle.to_canonical_bytes().unwrap(),
+        expected_bundle
+    );
+    assert_eq!(
+        resumed_bundle.verification_code(&request).unwrap(),
+        verification_code
+    );
 
     let rekey_publish = owner.review_sync().unwrap();
     assert_eq!(

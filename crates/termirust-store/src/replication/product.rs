@@ -760,6 +760,55 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             .into_request()
     }
 
+    pub fn cancel_pending_enrollment(
+        root: impl Into<PathBuf>,
+        backend: B,
+    ) -> Result<bool, ReplicationProductError> {
+        let root = root.into();
+        match fs::symlink_metadata(&root) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+                return Err(ReplicationProductError::Store(
+                    ReplicationStoreError::UnsafeEntry,
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(profile_io("inspect enrollment cancellation", error)),
+        }
+
+        let vault = ReplicationSecretVault::new(backend);
+        if continue_pending_deletion(&root, &vault)? {
+            return Ok(true);
+        }
+        recover_enrollment_activation(&root, &vault)?;
+        let _lock = ProductAdvisoryLock::acquire(&root.join(PRODUCT_LOCK_FILE))?;
+        if reject_unsafe_file_if_present(&root.join(PRODUCT_PROFILE_FILE))? {
+            return Err(ReplicationProductError::AlreadyConfigured);
+        }
+        if reject_unsafe_file_if_present(&root.join(ENROLLMENT_TRANSACTION_FILE))?
+            || path_exists(&root.join(PRODUCT_REPOSITORY_DIR))?
+        {
+            return Err(ReplicationProductError::PendingAuthorityTransition);
+        }
+        let pending = read_pending_enrollment(&root)?;
+        let device_reference =
+            ReplicationSecretRef::from_bytes(&decode_hex(&pending.device_reference_hex)?)?;
+        let transaction = StoredDeletionTransaction {
+            format_version: PRODUCT_FORMAT_VERSION,
+            references_hex: vec![encode_hex(&device_reference.to_bytes())],
+        };
+        write_canonical_file(
+            &root.join(DELETION_TRANSACTION_FILE),
+            &transaction,
+            MAX_PRODUCT_TRANSACTION_BYTES as usize,
+            "write enrollment cancellation",
+        )?;
+        vault.delete(&device_reference)?;
+        drop(_lock);
+        remove_owned_directory(&root)?;
+        Ok(true)
+    }
+
     pub fn bootstrap(
         root: impl Into<PathBuf>,
         shared_folder: impl Into<PathBuf>,
@@ -1059,6 +1108,35 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             authority_state: update.authority_state,
             package,
         })
+    }
+
+    pub fn pending_enrollment_bundle(
+        &self,
+        request: &ReplicationEnrollmentRequest,
+    ) -> Result<Option<ReplicationEnrollmentBundle>, ReplicationProductError> {
+        let Some(update) = self.pending_authority_update()? else {
+            return Ok(None);
+        };
+        let device = self
+            .authority
+            .device(request.replica_id())
+            .filter(|device| device.status() == ReplicationAuthorityDeviceStatus::Active)
+            .ok_or(ReplicationProductError::EnrollmentMismatch)?;
+        if device.public_key() != request.public_key() {
+            return Err(ReplicationProductError::EnrollmentMismatch);
+        }
+        let package = update
+            .package_for(request.replica_id())
+            .ok_or(ReplicationProductError::EnrollmentMismatch)?
+            .package()
+            .to_vec();
+        Ok(Some(ReplicationEnrollmentBundle {
+            workspace_id: self.workspace_id.clone(),
+            recipient: request.replica_id.clone(),
+            transport_slot: self.transport_slot.clone(),
+            authority_state: update.authority_state,
+            package,
+        }))
     }
 
     pub fn accept_enrollment(

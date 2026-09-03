@@ -6,11 +6,15 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
-use termirust_domain::{ReplicationCollectionId, ReplicationRecordId, ReplicationRecordKey};
+use termirust_domain::{
+    ReplicationCollectionId, ReplicationRecordId, ReplicationRecordKey, ReplicationReplicaId,
+};
 use termirust_store::{
-    ReplicationConflictChoice, ReplicationEnrollmentBundle, ReplicationEnrollmentRequest,
-    ReplicationProductRecord, ReplicationProductService, ReplicationSecretBackend,
-    ReplicationSyncDisposition, ReplicationSyncOutcome, ReplicationSyncPlan,
+    ReplicationAuthorityDeviceStatus, ReplicationAuthorityUpdate, ReplicationConflictChoice,
+    ReplicationDeletionPlan, ReplicationEnrollmentBundle, ReplicationEnrollmentRequest,
+    ReplicationProductRecord, ReplicationProductService, ReplicationProductStatus,
+    ReplicationSecretBackend, ReplicationSyncDisposition, ReplicationSyncOutcome,
+    ReplicationSyncPlan,
 };
 
 use crate::models::{
@@ -61,6 +65,31 @@ pub(crate) struct DesktopConflictSelection {
     candidate_index: usize,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct DesktopReplicationDevice {
+    pub id: String,
+    pub local: bool,
+    pub active: bool,
+}
+
+pub(crate) struct DesktopReplicationDeletionReview {
+    plan: ReplicationDeletionPlan,
+    pub record_count: usize,
+    pub secret_count: usize,
+    pub authority_owner: bool,
+}
+
+pub(crate) struct DesktopEnrollmentPackage {
+    pub bundle: String,
+    pub verification_code: String,
+    pub authority_revision: u64,
+}
+
+pub(crate) struct DesktopAuthorityPackage {
+    pub payload: String,
+    pub authority_revision: u64,
+}
+
 impl DesktopConflictSelection {
     pub fn new(conflict: &DesktopReplicationConflict, candidate_index: usize) -> Self {
         Self {
@@ -84,6 +113,19 @@ impl<B: ReplicationSecretBackend> DesktopReplication<B> {
             root,
             shared_folder,
             backend,
+        )?)
+    }
+
+    pub fn pending_enrollment_request(root: impl AsRef<Path>) -> Result<String> {
+        canonical_text(
+            ReplicationProductService::<B>::pending_enrollment_request(root)?
+                .to_canonical_bytes()?,
+        )
+    }
+
+    pub fn cancel_pending_enrollment(root: impl Into<PathBuf>, backend: B) -> Result<bool> {
+        Ok(ReplicationProductService::cancel_pending_enrollment(
+            root, backend,
         )?)
     }
 
@@ -124,6 +166,100 @@ impl<B: ReplicationSecretBackend> DesktopReplication<B> {
         request: &ReplicationEnrollmentRequest,
     ) -> Result<ReplicationEnrollmentBundle> {
         Ok(self.product.enroll_request(request)?)
+    }
+
+    pub fn enroll_text(&mut self, request: &str) -> Result<DesktopEnrollmentPackage> {
+        let request = ReplicationEnrollmentRequest::from_canonical_bytes(request.as_bytes())?;
+        let bundle = if let Some(bundle) = self.product.pending_enrollment_bundle(&request)? {
+            bundle
+        } else {
+            self.enroll(&request)?
+        };
+        let verification_code = bundle.verification_code(&request)?;
+        let authority_revision = self.product.status()?.authority_revision;
+        Ok(DesktopEnrollmentPackage {
+            bundle: canonical_text(bundle.to_canonical_bytes()?)?,
+            verification_code,
+            authority_revision,
+        })
+    }
+
+    pub fn accept_enrollment_text(
+        root: impl Into<PathBuf>,
+        backend: B,
+        bundle: &str,
+        verification_code: &str,
+    ) -> Result<Self> {
+        let bundle = ReplicationEnrollmentBundle::from_canonical_bytes(bundle.as_bytes())?;
+        Self::accept_enrollment(root, backend, &bundle, verification_code)
+    }
+
+    pub fn status(&self) -> Result<ReplicationProductStatus> {
+        Ok(self.product.status()?)
+    }
+
+    pub fn devices(&self) -> Vec<DesktopReplicationDevice> {
+        self.product
+            .authority()
+            .devices()
+            .map(|device| DesktopReplicationDevice {
+                id: device.replica_id().as_str().to_string(),
+                local: device.replica_id() == self.product.local_replica_id(),
+                active: device.status() == ReplicationAuthorityDeviceStatus::Active,
+            })
+            .collect()
+    }
+
+    pub fn pending_authority_package(&self) -> Result<Option<DesktopAuthorityPackage>> {
+        self.product
+            .pending_authority_update()?
+            .map(authority_package)
+            .transpose()
+    }
+
+    pub fn acknowledge_authority_package(&self, authority_revision: u64) -> Result<bool> {
+        Ok(self
+            .product
+            .acknowledge_authority_update(authority_revision)?)
+    }
+
+    pub fn rotate_keys(&mut self) -> Result<DesktopAuthorityPackage> {
+        authority_package(self.product.rotate_keys()?)
+    }
+
+    pub fn revoke_device(&mut self, device_id: &str) -> Result<DesktopAuthorityPackage> {
+        let replica_id = ReplicationReplicaId::new(device_id.to_string())?;
+        authority_package(self.product.revoke_device(&replica_id)?)
+    }
+
+    pub fn apply_authority_package(&mut self, payload: &str) -> Result<()> {
+        let update = ReplicationAuthorityUpdate::from_canonical_bytes(payload.as_bytes())?;
+        self.product.apply_authority_update(&update)?;
+        Ok(())
+    }
+
+    pub fn deletion_review(&self) -> Result<DesktopReplicationDeletionReview> {
+        let plan = self.product.deletion_plan()?;
+        Ok(DesktopReplicationDeletionReview {
+            record_count: plan.record_count,
+            secret_count: plan.secret_count,
+            authority_owner: plan.authority_owner,
+            plan,
+        })
+    }
+
+    pub fn delete_local_replica(
+        self,
+        review: &DesktopReplicationDeletionReview,
+        confirmation: &str,
+    ) -> Result<()> {
+        self.product
+            .delete_local_replica(&review.plan, confirmation)?;
+        Ok(())
+    }
+
+    pub fn deletion_confirmation_phrase() -> &'static str {
+        ReplicationDeletionPlan::confirmation_phrase()
     }
 
     pub fn review(
@@ -250,6 +386,17 @@ impl<B: ReplicationSecretBackend> DesktopReplication<B> {
     pub fn product(&self) -> &ReplicationProductService<B> {
         &self.product
     }
+}
+
+fn canonical_text(bytes: Vec<u8>) -> Result<String> {
+    String::from_utf8(bytes).context("replication package is not canonical UTF-8")
+}
+
+fn authority_package(update: ReplicationAuthorityUpdate) -> Result<DesktopAuthorityPackage> {
+    Ok(DesktopAuthorityPackage {
+        authority_revision: update.authority_revision,
+        payload: canonical_text(update.to_canonical_bytes()?)?,
+    })
 }
 
 pub(crate) fn desktop_replication_root() -> Result<PathBuf> {
@@ -486,6 +633,10 @@ pub(crate) fn replication_is_configured(root: &Path) -> bool {
     root.join("profile.json").is_file()
 }
 
+pub(crate) fn replication_has_pending_enrollment(root: &Path) -> bool {
+    root.join("pending-enrollment.json").is_file()
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
@@ -592,18 +743,32 @@ mod tests {
         let request =
             DesktopReplication::prepare_enrollment(&second_root, shared.path(), backend.clone())
                 .unwrap();
-        let bundle = first.enroll(&request).unwrap();
-        let verification_code = bundle.verification_code(&request).unwrap();
+        let request_text = String::from_utf8(request.to_canonical_bytes().unwrap()).unwrap();
+        assert_eq!(
+            DesktopReplication::<MemorySecrets>::pending_enrollment_request(&second_root).unwrap(),
+            request_text
+        );
+        let package = first.enroll_text(&request_text).unwrap();
+        assert_eq!(first.status().unwrap().active_devices, 2);
+        assert_eq!(
+            first
+                .devices()
+                .iter()
+                .filter(|device| device.active)
+                .count(),
+            2
+        );
+        assert!(first.pending_authority_package().unwrap().is_some());
         let review = first.review(&first_state, &first_known_hosts).unwrap();
         first
             .apply(review, &mut first_state, &first_known_hosts)
             .unwrap();
 
-        let second = DesktopReplication::accept_enrollment(
+        let second = DesktopReplication::accept_enrollment_text(
             &second_root,
             backend,
-            &bundle,
-            &verification_code,
+            &package.bundle,
+            &package.verification_code,
         )
         .unwrap();
         let second_known_hosts =

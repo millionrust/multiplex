@@ -3353,6 +3353,7 @@ impl TermiRustApp {
                             ),
                     )
                 })
+                .child(self.render_replication_lifecycle(cx))
                 .child(
                     h_flex()
                         .gap_2()
