@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
 use termirust_domain::{
     MAX_REPLICATION_REPLICAS, ReplicaAuthorization, ReplicationPolicy, ReplicationReplicaId,
     ReplicationWorkspaceId,
@@ -15,6 +16,7 @@ use crate::{
 };
 
 pub const REPLICATION_AUTHORITY_STATE_VERSION: u16 = 1;
+pub const MAX_REPLICATION_AUTHORITY_STATE_BYTES: usize = 64 * 1024;
 const INITIAL_AUTHORITY_REVISION: u64 = 1;
 const INITIAL_KEY_EPOCH: u64 = 1;
 const REPLICATION_EPOCH_KEY_BYTES: usize = 32;
@@ -160,6 +162,30 @@ impl ReplicationAuthorityState {
         .map_err(|_| ReplicationAuthorityError::InvalidState)
     }
 
+    pub fn to_canonical_bytes(&self) -> Result<Vec<u8>, ReplicationAuthorityError> {
+        self.validate()?;
+        let stored = StoredAuthorityState::from_state(self);
+        let bytes =
+            serde_json::to_vec(&stored).map_err(|_| ReplicationAuthorityError::InvalidState)?;
+        if bytes.len() > MAX_REPLICATION_AUTHORITY_STATE_BYTES {
+            return Err(ReplicationAuthorityError::StateTooLarge);
+        }
+        Ok(bytes)
+    }
+
+    pub fn from_canonical_bytes(bytes: &[u8]) -> Result<Self, ReplicationAuthorityError> {
+        if bytes.len() > MAX_REPLICATION_AUTHORITY_STATE_BYTES {
+            return Err(ReplicationAuthorityError::StateTooLarge);
+        }
+        let stored: StoredAuthorityState =
+            serde_json::from_slice(bytes).map_err(|_| ReplicationAuthorityError::InvalidState)?;
+        let state = stored.into_state()?;
+        if state.to_canonical_bytes()?.as_slice() != bytes {
+            return Err(ReplicationAuthorityError::NonCanonicalState);
+        }
+        Ok(state)
+    }
+
     pub fn validate(&self) -> Result<(), ReplicationAuthorityError> {
         if self.version != REPLICATION_AUTHORITY_STATE_VERSION {
             return Err(ReplicationAuthorityError::UnsupportedStateVersion);
@@ -200,6 +226,122 @@ impl ReplicationAuthorityState {
             return Err(ReplicationAuthorityError::LastActiveDevice);
         }
         Ok(())
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct StoredAuthorityState {
+    version: u16,
+    workspace_id: String,
+    authority_public_key: [u8; 32],
+    revision: u64,
+    key_epoch: u64,
+    devices: Vec<StoredAuthorityDevice>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct StoredAuthorityDevice {
+    replica_id: String,
+    public_key: [u8; 32],
+    status: StoredAuthorityDeviceStatus,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+enum StoredAuthorityDeviceStatus {
+    Active,
+    Revoked {
+        accepted_through: u64,
+        revoked_at_revision: u64,
+        revoked_at_epoch: u64,
+    },
+}
+
+impl StoredAuthorityState {
+    fn from_state(state: &ReplicationAuthorityState) -> Self {
+        Self {
+            version: state.version,
+            workspace_id: state.workspace_id.as_str().to_string(),
+            authority_public_key: *state.authority_public_key.as_bytes(),
+            revision: state.revision.get(),
+            key_epoch: state.key_epoch.get(),
+            devices: state
+                .devices
+                .values()
+                .map(|device| StoredAuthorityDevice {
+                    replica_id: device.replica_id.as_str().to_string(),
+                    public_key: *device.public_key.as_bytes(),
+                    status: match device.status {
+                        ReplicationAuthorityDeviceStatus::Active => {
+                            StoredAuthorityDeviceStatus::Active
+                        }
+                        ReplicationAuthorityDeviceStatus::Revoked {
+                            accepted_through,
+                            revoked_at_revision,
+                            revoked_at_epoch,
+                        } => StoredAuthorityDeviceStatus::Revoked {
+                            accepted_through,
+                            revoked_at_revision: revoked_at_revision.get(),
+                            revoked_at_epoch: revoked_at_epoch.get(),
+                        },
+                    },
+                })
+                .collect(),
+        }
+    }
+
+    fn into_state(self) -> Result<ReplicationAuthorityState, ReplicationAuthorityError> {
+        if self.version != REPLICATION_AUTHORITY_STATE_VERSION {
+            return Err(ReplicationAuthorityError::UnsupportedStateVersion);
+        }
+        let workspace_id = ReplicationWorkspaceId::new(self.workspace_id)
+            .map_err(|_| ReplicationAuthorityError::InvalidState)?;
+        let authority_public_key =
+            ReplicationAuthorityPublicKey::from_bytes(self.authority_public_key)
+                .map_err(|_| ReplicationAuthorityError::InvalidState)?;
+        let revision = ReplicationAuthorityRevision::new(self.revision)?;
+        let key_epoch = ReplicationKeyEpoch::new(self.key_epoch)
+            .map_err(|_| ReplicationAuthorityError::InvalidState)?;
+        let mut devices = BTreeMap::new();
+        for stored in self.devices {
+            let replica_id = ReplicationReplicaId::new(stored.replica_id)
+                .map_err(|_| ReplicationAuthorityError::InvalidState)?;
+            let public_key = ReplicationDevicePublicKey::from_bytes(stored.public_key)
+                .map_err(|_| ReplicationAuthorityError::InvalidState)?;
+            let status = match stored.status {
+                StoredAuthorityDeviceStatus::Active => ReplicationAuthorityDeviceStatus::Active,
+                StoredAuthorityDeviceStatus::Revoked {
+                    accepted_through,
+                    revoked_at_revision,
+                    revoked_at_epoch,
+                } => ReplicationAuthorityDeviceStatus::Revoked {
+                    accepted_through,
+                    revoked_at_revision: ReplicationAuthorityRevision::new(revoked_at_revision)?,
+                    revoked_at_epoch: ReplicationKeyEpoch::new(revoked_at_epoch)
+                        .map_err(|_| ReplicationAuthorityError::InvalidState)?,
+                },
+            };
+            let device = ReplicationAuthorityDevice {
+                replica_id: replica_id.clone(),
+                public_key,
+                status,
+            };
+            if devices.insert(replica_id, device).is_some() {
+                return Err(ReplicationAuthorityError::InvalidState);
+            }
+        }
+        let state = ReplicationAuthorityState {
+            version: self.version,
+            workspace_id,
+            authority_public_key,
+            revision,
+            key_epoch,
+            devices,
+        };
+        state.validate()?;
+        Ok(state)
     }
 }
 
@@ -610,6 +752,8 @@ pub enum ReplicationAuthorityError {
     InvalidRevision,
     UnsupportedStateVersion,
     InvalidState,
+    StateTooLarge,
+    NonCanonicalState,
     StaleRevision,
     RevisionOverflow,
     EpochOverflow,
@@ -630,6 +774,8 @@ impl fmt::Display for ReplicationAuthorityError {
             Self::InvalidRevision => "replication authority revision is invalid",
             Self::UnsupportedStateVersion => "replication authority state version is unsupported",
             Self::InvalidState => "replication authority state is invalid",
+            Self::StateTooLarge => "replication authority state exceeds its byte limit",
+            Self::NonCanonicalState => "replication authority state is not canonical",
             Self::StaleRevision => "replication authority revision is stale",
             Self::RevisionOverflow => "replication authority revision overflowed",
             Self::EpochOverflow => "replication key epoch overflowed",
@@ -652,6 +798,61 @@ impl std::error::Error for ReplicationAuthorityError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ReplicationDevicePrivateKey;
+
+    fn authority_state() -> ReplicationAuthorityState {
+        let workspace = ReplicationWorkspaceId::new("workspace-persistence").expect("workspace");
+        let replica = ReplicationReplicaId::new("desktop-primary").expect("replica");
+        let authority = ReplicationAuthorityPrivateKey::from_bytes([1; 32]).expect("authority key");
+        let device = ReplicationDevicePrivateKey::from_bytes([2; 32]).expect("device key");
+        bootstrap_replication_authority(workspace, &authority, replica, device.public_key())
+            .expect("bootstrap")
+            .into_parts()
+            .0
+    }
+
+    #[test]
+    fn authority_state_canonical_round_trip_rejects_ambiguous_or_hostile_documents() {
+        let state = authority_state();
+        let canonical = state.to_canonical_bytes().expect("canonical state");
+        let restored = ReplicationAuthorityState::from_canonical_bytes(&canonical)
+            .expect("restore canonical state");
+        assert_eq!(restored.to_canonical_bytes().unwrap(), canonical);
+        assert_eq!(restored.replication_policy(), state.replication_policy());
+
+        let mut noncanonical = canonical.clone();
+        noncanonical.push(b'\n');
+        assert_eq!(
+            ReplicationAuthorityState::from_canonical_bytes(&noncanonical),
+            Err(ReplicationAuthorityError::NonCanonicalState)
+        );
+
+        let mut unknown: serde_json::Value = serde_json::from_slice(&canonical).unwrap();
+        unknown["unexpected"] = serde_json::json!(true);
+        assert_eq!(
+            ReplicationAuthorityState::from_canonical_bytes(&serde_json::to_vec(&unknown).unwrap()),
+            Err(ReplicationAuthorityError::InvalidState)
+        );
+
+        let mut duplicate: serde_json::Value = serde_json::from_slice(&canonical).unwrap();
+        let first = duplicate["devices"][0].clone();
+        duplicate["devices"].as_array_mut().unwrap().push(first);
+        assert_eq!(
+            ReplicationAuthorityState::from_canonical_bytes(
+                &serde_json::to_vec(&duplicate).unwrap()
+            ),
+            Err(ReplicationAuthorityError::InvalidState)
+        );
+
+        assert_eq!(
+            ReplicationAuthorityState::from_canonical_bytes(&vec![
+                b'x';
+                MAX_REPLICATION_AUTHORITY_STATE_BYTES
+                    + 1
+            ]),
+            Err(ReplicationAuthorityError::StateTooLarge)
+        );
+    }
 
     #[test]
     fn authority_revision_and_epoch_overflow_fail_closed() {
