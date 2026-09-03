@@ -264,6 +264,39 @@ pub struct ReplicationProductStatus {
     pub authority_owner: bool,
 }
 
+pub struct ReplicationProductRecord {
+    key: ReplicationRecordKey,
+    value: Option<Vec<u8>>,
+}
+
+impl ReplicationProductRecord {
+    pub fn key(&self) -> &ReplicationRecordKey {
+        &self.key
+    }
+
+    pub fn value(&self) -> Option<&[u8]> {
+        self.value.as_deref()
+    }
+}
+
+impl fmt::Debug for ReplicationProductRecord {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ReplicationProductRecord")
+            .field("key", &"<redacted>")
+            .field(
+                "operation",
+                &if self.value.is_some() {
+                    "put"
+                } else {
+                    "delete"
+                },
+            )
+            .field("value", &"<redacted>")
+            .finish()
+    }
+}
+
 #[derive(Clone, Eq, PartialEq)]
 pub struct ReplicationDeletionPlan {
     token: [u8; 32],
@@ -1293,6 +1326,25 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             secret_retirement_pending: snapshot.retirement_pending,
             authority_owner: snapshot.custody.is_authority_owner(),
         })
+    }
+
+    pub fn records(&self) -> Result<Vec<ReplicationProductRecord>, ReplicationProductError> {
+        let policy = self.authority.replication_policy()?;
+        let snapshot = self.repository.load(&self.workspace_id, &policy)?;
+        snapshot
+            .document
+            .entries
+            .iter()
+            .map(|entry| {
+                if entry.candidates.len() != 1 {
+                    return Err(ReplicationProductError::RecordConflict);
+                }
+                Ok(ReplicationProductRecord {
+                    key: entry.key.clone(),
+                    value: self.open_candidate(&snapshot, &entry.key, &entry.candidates[0])?,
+                })
+            })
+            .collect()
     }
 
     pub fn deletion_plan(&self) -> Result<ReplicationDeletionPlan, ReplicationProductError> {

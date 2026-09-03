@@ -103,8 +103,9 @@ use termirust_client::{DevUrlProjection, HostReconciliationPlan};
 use termirust_domain::{HostedSessionId, SessionOrigin};
 use termirust_protocol::MobileDevicePairingRequest;
 use termirust_store::{
-    HealthReport, HealthRepository, IndexRepairKind, MetadataRecoveryService, RecoveryCancellation,
-    RecoveryPlan, RepairCancellation,
+    HealthReport, HealthRepository, IndexRepairKind, MetadataRecoveryService,
+    OsReplicationSecretBackend, RecoveryCancellation, RecoveryPlan, RepairCancellation,
+    ReplicationSyncDisposition,
 };
 use termirust_ui_contract::PalettePresentationState;
 use termirust_ui_contract::{
@@ -128,6 +129,10 @@ use crate::models::{
     SavedIdentity, SavedSnippet, SavedSplitNode, SavedState, SavedVault, SavedVaultMember,
     SavedWindowBounds, SavedWorkspace, SessionLogEntry, SplitAxis, ThemePreset, VaultKind,
     VaultMemberRole, WorkspaceLayoutMode, default_persistent_session_name_from_id,
+};
+use crate::replication::{
+    DesktopConflictSelection, DesktopReplication, DesktopReplicationConflict,
+    DesktopReplicationReview, desktop_replication_root, replication_is_configured,
 };
 use crate::sftp::{
     RemoteFileEntry, SftpConflictPolicy, SftpEvent, SftpTransferControl, SftpTransferDirection,
@@ -1439,6 +1444,10 @@ pub struct TermiRustApp {
     pending_snippet_insert: Option<PendingSnippetInsert>,
     sync_pull_force: bool,
     sync_pull_pending_warning: bool,
+    replication_review: Option<DesktopReplicationReview>,
+    replication_conflicts: Vec<DesktopReplicationConflict>,
+    replication_conflict_choices: Vec<Option<usize>>,
+    replication_recovery_required: bool,
     settings_scroll: ScrollHandle,
     host_editor_scroll: ScrollHandle,
     hosts_list_scroll: ScrollHandle,
@@ -1799,6 +1808,10 @@ impl TermiRustApp {
             pending_snippet_insert: None,
             sync_pull_force: false,
             sync_pull_pending_warning: false,
+            replication_review: None,
+            replication_conflicts: Vec::new(),
+            replication_conflict_choices: Vec::new(),
+            replication_recovery_required: false,
             settings_scroll: ScrollHandle::new(),
             host_editor_scroll: ScrollHandle::new(),
             hosts_list_scroll: ScrollHandle::new(),
@@ -5603,6 +5616,200 @@ impl TermiRustApp {
             .as_deref()
             .filter(|p| !p.trim().is_empty())
             .map(|p| std::path::Path::new(p).join("termirust-vault.encrypted.json"))
+    }
+
+    fn secure_replication_service(
+        &self,
+    ) -> anyhow::Result<DesktopReplication<OsReplicationSecretBackend>> {
+        let root = desktop_replication_root()?;
+        Ok(DesktopReplication::open(root, OsReplicationSecretBackend)?)
+    }
+
+    fn sync_secure_folder(&mut self, cx: &mut Context<Self>) {
+        let folder = self
+            .saved
+            .settings
+            .sync_folder_path
+            .as_deref()
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+            .map(std::path::PathBuf::from);
+        let Some(folder) = folder else {
+            self.error_message =
+                localization::static_message(MessageId::SettingsSecureSyncFolderRequired);
+            cx.notify();
+            return;
+        };
+
+        let result = (|| -> anyhow::Result<()> {
+            let root = desktop_replication_root()?;
+            let replication = if replication_is_configured(&root) {
+                let replication = self.secure_replication_service()?;
+                if replication.product().shared_folder() != folder {
+                    anyhow::bail!(localization::static_message(
+                        MessageId::SettingsSecureSyncFolderMismatch,
+                    ));
+                }
+                replication
+            } else {
+                DesktopReplication::bootstrap(&root, folder, OsReplicationSecretBackend)?
+            };
+            let review = replication.review(&self.saved, &self.known_hosts)?;
+            match review.disposition() {
+                ReplicationSyncDisposition::ConflictReviewRequired => {
+                    let conflicts = replication.conflicts(&review)?;
+                    self.replication_conflict_choices = vec![None; conflicts.len()];
+                    self.replication_conflicts = conflicts;
+                    self.replication_review = Some(review);
+                    self.replication_recovery_required = false;
+                    self.status_message.clear();
+                    self.error_message =
+                        localization::static_message(MessageId::SettingsSecureSyncConflictsFound);
+                }
+                ReplicationSyncDisposition::RecoveryRequired => {
+                    self.replication_review = None;
+                    self.replication_conflicts.clear();
+                    self.replication_conflict_choices.clear();
+                    self.replication_recovery_required = true;
+                    self.status_message.clear();
+                    self.error_message =
+                        localization::static_message(MessageId::SettingsSecureSyncRecoveryRequired);
+                }
+                _ => {
+                    let changes = review.changes;
+                    replication.apply(review, &mut self.saved, &self.known_hosts)?;
+                    let now = current_unix_millis();
+                    self.saved.settings.sync_last_pushed_at = Some(now);
+                    self.saved.settings.sync_last_pulled_at = Some(now);
+                    save_saved_state(&self.saved)?;
+                    self.replication_review = None;
+                    self.replication_conflicts.clear();
+                    self.replication_conflict_choices.clear();
+                    self.replication_recovery_required = false;
+                    self.error_message.clear();
+                    self.status_message = if changes.puts == 0 && changes.deletes == 0 {
+                        localization::static_message(MessageId::SettingsSecureSyncUpToDate)
+                    } else {
+                        localization::static_message(MessageId::SettingsSecureSyncCompleted)
+                    };
+                }
+            }
+            Ok(())
+        })();
+
+        if let Err(error) = result {
+            self.replication_review = None;
+            self.replication_conflicts.clear();
+            self.replication_conflict_choices.clear();
+            self.error_message = localization::dynamic_user_data_message(
+                MessageId::SettingsSecureSyncErrorDetail,
+                vec![
+                    localization::static_message(MessageId::SettingsSecureSyncFailed),
+                    error.to_string(),
+                ],
+            );
+            self.status_message.clear();
+        }
+        cx.notify();
+    }
+
+    fn select_replication_conflict(
+        &mut self,
+        conflict_index: usize,
+        candidate_index: usize,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(choice) = self.replication_conflict_choices.get_mut(conflict_index)
+            && self
+                .replication_conflicts
+                .get(conflict_index)
+                .is_some_and(|conflict| candidate_index < conflict.candidates.len())
+        {
+            *choice = Some(candidate_index);
+            self.error_message.clear();
+            cx.notify();
+        }
+    }
+
+    fn resolve_replication_conflicts(&mut self, cx: &mut Context<Self>) {
+        if self
+            .replication_conflict_choices
+            .iter()
+            .any(Option::is_none)
+        {
+            self.error_message =
+                localization::static_message(MessageId::SettingsSecureSyncSelectionRequired);
+            cx.notify();
+            return;
+        }
+        let Some(review) = self.replication_review.take() else {
+            self.error_message =
+                localization::static_message(MessageId::SettingsSecureSyncReviewExpired);
+            cx.notify();
+            return;
+        };
+        let selections = self
+            .replication_conflicts
+            .iter()
+            .zip(&self.replication_conflict_choices)
+            .filter_map(|(conflict, choice)| {
+                choice.map(|index| DesktopConflictSelection::new(conflict, index))
+            })
+            .collect::<Vec<_>>();
+        let result = (|| -> anyhow::Result<()> {
+            let replication = self.secure_replication_service()?;
+            replication.resolve(review, &selections, &mut self.saved, &self.known_hosts)?;
+            let now = current_unix_millis();
+            self.saved.settings.sync_last_pushed_at = Some(now);
+            self.saved.settings.sync_last_pulled_at = Some(now);
+            save_saved_state(&self.saved)?;
+            Ok(())
+        })();
+        self.replication_conflicts.clear();
+        self.replication_conflict_choices.clear();
+        match result {
+            Ok(()) => {
+                self.error_message.clear();
+                self.status_message =
+                    localization::static_message(MessageId::SettingsSecureSyncResolved);
+            }
+            Err(error) => {
+                self.status_message.clear();
+                self.error_message = localization::dynamic_user_data_message(
+                    MessageId::SettingsSecureSyncErrorDetail,
+                    vec![
+                        localization::static_message(MessageId::SettingsSecureSyncResolutionFailed),
+                        error.to_string(),
+                    ],
+                );
+            }
+        }
+        cx.notify();
+    }
+
+    fn recover_secure_replication(&mut self, cx: &mut Context<Self>) {
+        match self
+            .secure_replication_service()
+            .and_then(|replication| replication.recover())
+        {
+            Ok(()) => {
+                self.replication_recovery_required = false;
+                self.error_message.clear();
+                self.status_message =
+                    localization::static_message(MessageId::SettingsSecureSyncRecovered);
+            }
+            Err(error) => {
+                self.status_message.clear();
+                self.error_message = localization::dynamic_user_data_message(
+                    MessageId::SettingsSecureSyncErrorDetail,
+                    vec![
+                        localization::static_message(MessageId::SettingsSecureSyncRecoveryFailed),
+                        error.to_string(),
+                    ],
+                );
+            }
+        }
+        cx.notify();
     }
 
     fn push_to_sync_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {

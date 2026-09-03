@@ -31,8 +31,8 @@ use termirust_replication_security::{
 pub use product::{
     ReplicationAuthorityUpdate, ReplicationConflictCandidate, ReplicationConflictChoice,
     ReplicationDeletionPlan, ReplicationDeviceKeyPackage, ReplicationEnrollmentBundle,
-    ReplicationEnrollmentRequest, ReplicationProductError, ReplicationProductService,
-    ReplicationProductStatus,
+    ReplicationEnrollmentRequest, ReplicationProductError, ReplicationProductRecord,
+    ReplicationProductService, ReplicationProductStatus,
 };
 pub use repository::{
     ReplicationRecoveryOutcome, ReplicationRepository, ReplicationRepositorySnapshot,

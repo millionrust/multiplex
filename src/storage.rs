@@ -1061,7 +1061,10 @@ impl KnownHostStore {
     }
 
     pub fn load() -> Result<Self> {
-        let path = known_hosts_file()?;
+        Self::open(known_hosts_file()?)
+    }
+
+    pub(crate) fn open(path: PathBuf) -> Result<Self> {
         if !path.exists() {
             return Ok(Self {
                 path,
@@ -1159,6 +1162,19 @@ impl KnownHostStore {
             self.persist_entries(&entries)?;
         }
         Ok(added)
+    }
+
+    pub(crate) fn replace_entries(&self, replacement: HashMap<String, String>) -> Result<()> {
+        let mut entries = self
+            .entries
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Unable to lock known host store"))?;
+        if *entries == replacement {
+            return Ok(());
+        }
+        self.persist_entries(&replacement)?;
+        *entries = replacement;
+        Ok(())
     }
 }
 

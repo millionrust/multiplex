@@ -90,7 +90,7 @@ termirust-controller-listener = { version = "0.1.0", path = "crates/termirust-co
 termirust-host-protocol = { version = "0.1.0", path = "crates/termirust-host-protocol" }
 termirust-relay-client = { version = "0.1.0", path = "crates/termirust-relay-client" }
 termirust-session-host = { version = "0.1.0", path = "crates/termirust-session-host" }
-termirust-store = { version = "0.1.0", path = "crates/termirust-store" }
+termirust-store = { version = "0.1.0", path = "crates/termirust-store", features = ["os-keyring"] }
 termirust-ui-contract = { version = "0.1.0", path = "crates/termirust-ui-contract" }
 tokio = { version = "1", features = ["io-std", "io-util", "net", "rt", "signal", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }

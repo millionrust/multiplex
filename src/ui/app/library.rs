@@ -16,6 +16,7 @@ use crate::models::{
     AuthMode, DEFAULT_VAULT_ID, SessionLogEntry, SessionLogStatus, ThemePreset, VaultKind,
     VaultMemberRole,
 };
+use crate::replication::{desktop_replication_root, replication_is_configured};
 use crate::ui::app::{
     ICON_KEY, ICON_SHIELD_CHECK, KeychainTab, NavSection, TermiRustApp, app_icon,
     platform_shortcut_label,
@@ -3179,21 +3180,17 @@ impl TermiRustApp {
                 ),
         );
 
-        let last_pushed = self
-            .saved
-            .settings
-            .sync_last_pushed_at
-            .map(|_| library_copy(MessageId::SettingsSyncLastPushed))
-            .unwrap_or_else(|| library_copy(MessageId::SettingsSyncNeverPushed));
-        let last_pulled = self
+        let secure_sync_configured =
+            desktop_replication_root().is_ok_and(|root| replication_is_configured(&root));
+        let last_sync = self
             .saved
             .settings
             .sync_last_pulled_at
-            .map(|_| library_copy(MessageId::SettingsSyncLastPulled))
-            .unwrap_or_else(|| library_copy(MessageId::SettingsSyncNeverPulled));
+            .map(|_| library_copy(MessageId::SettingsSecureSyncLastCompleted))
+            .unwrap_or_else(|| library_copy(MessageId::SettingsSecureSyncNeverCompleted));
         let sync_card = self.settings_section_card(
-            library_copy(MessageId::SettingsSharedFolderSyncTitle),
-            library_copy(MessageId::SettingsSharedFolderSyncDescription),
+            library_copy(MessageId::SettingsSecureSyncTitle),
+            library_copy(MessageId::SettingsSecureSyncDescription),
             v_flex()
                 .gap_3()
                 .child(self.form_field(
@@ -3227,38 +3224,31 @@ impl TermiRustApp {
                     h_flex()
                         .gap_2()
                         .items_center()
+                        .flex_wrap()
                         .child(
-                            Button::new("settings-sync-push")
+                            Button::new("settings-secure-sync")
                                 .small()
                                 .custom(Self::action_button_style(theme::ActionTone::Accent, cx))
-                                .label(library_copy(MessageId::SettingsPushFolderAction))
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.push_to_sync_folder(window, cx);
+                                .label(if secure_sync_configured {
+                                    library_copy(MessageId::SettingsSecureSyncNowAction)
+                                } else {
+                                    library_copy(MessageId::SettingsSecureSyncEnableAction)
+                                })
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.sync_secure_folder(cx);
                                 })),
                         )
-                        .child(
-                            Button::new("settings-sync-pull")
-                                .small()
-                                .custom(Self::action_button_style(
-                                    theme::ActionTone::AccentSoft,
-                                    cx,
-                                ))
-                                .label(library_copy(MessageId::SettingsPullFolderAction))
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.pull_from_sync_folder(window, cx);
-                                })),
-                        )
-                        .when(self.sync_pull_pending_warning, |this| {
+                        .when(self.replication_recovery_required, |this| {
                             this.child(
-                                Button::new("settings-sync-pull-force")
+                                Button::new("settings-secure-sync-recover")
                                     .small()
                                     .custom(Self::action_button_style(
                                         theme::ActionTone::Danger,
                                         cx,
                                     ))
-                                    .label(library_copy(MessageId::SettingsForceOverwriteAction))
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.force_pull_from_sync_folder(window, cx);
+                                    .label(library_copy(MessageId::SettingsSecureSyncRecoverAction))
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.recover_secure_replication(cx);
                                     })),
                             )
                         })
@@ -3266,24 +3256,130 @@ impl TermiRustApp {
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child(library_copy(MessageId::SettingsSyncPassphraseHint)),
+                                .child(if secure_sync_configured {
+                                    library_copy(MessageId::SettingsSecureSyncConfigured)
+                                } else {
+                                    library_copy(MessageId::SettingsSecureSyncNotConfigured)
+                                }),
                         ),
                 )
+                .when(!self.replication_conflicts.is_empty(), |this| {
+                    this.child(
+                        v_flex()
+                            .gap_3()
+                            .p_3()
+                            .border_1()
+                            .border_color(theme::with_alpha(theme::warning(), 0.5))
+                            .rounded_md()
+                            .child(
+                                div()
+                                    .text_size(px(theme::TYPE_BODY_SIZE))
+                                    .text_color(theme::text_main())
+                                    .child(library_copy(
+                                        MessageId::SettingsSecureSyncConflictReview,
+                                    )),
+                            )
+                            .children(self.replication_conflicts.iter().enumerate().map(
+                                |(conflict_index, conflict)| {
+                                    let selected = self
+                                        .replication_conflict_choices
+                                        .get(conflict_index)
+                                        .copied()
+                                        .flatten();
+                                    v_flex()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .text_size(px(theme::TYPE_CAPTION_SIZE))
+                                                .text_color(theme::text_muted())
+                                                .child(conflict.title.clone()),
+                                        )
+                                        .child(h_flex().gap_2().flex_wrap().children(
+                                            conflict.candidates.iter().enumerate().map(
+                                                move |(candidate_index, candidate)| {
+                                                    let device = candidate
+                                                        .device_id
+                                                        .trim_start_matches("device-")
+                                                        .chars()
+                                                        .take(8)
+                                                        .collect::<String>();
+                                                    Button::new((
+                                                        "settings-sync-conflict",
+                                                        conflict_index * 16 + candidate_index,
+                                                    ))
+                                                    .small()
+                                                    .custom(Self::action_button_style(
+                                                        if selected == Some(candidate_index) {
+                                                            theme::ActionTone::AccentSoft
+                                                        } else {
+                                                            theme::ActionTone::Neutral
+                                                        },
+                                                        cx,
+                                                    ))
+                                                        .label(localization::dynamic_user_data_message(
+                                                            MessageId::SettingsSecureSyncCandidateAction,
+                                                            vec![candidate.summary.clone(), device],
+                                                        ))
+                                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                                        this.select_replication_conflict(
+                                                            conflict_index,
+                                                            candidate_index,
+                                                            cx,
+                                                        );
+                                                    }))
+                                                },
+                                            ),
+                                        ))
+                                },
+                            ))
+                            .child(
+                                Button::new("settings-sync-resolve")
+                                    .small()
+                                    .custom(Self::action_button_style(
+                                        theme::ActionTone::Accent,
+                                        cx,
+                                    ))
+                                    .label(library_copy(
+                                        MessageId::SettingsSecureSyncApplySelectionAction,
+                                    ))
+                                    .disabled(
+                                        self.replication_conflict_choices
+                                            .iter()
+                                            .any(Option::is_none),
+                                    )
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.resolve_replication_conflicts(cx);
+                                    })),
+                            ),
+                    )
+                })
                 .child(
                     h_flex()
-                        .gap_4()
+                        .gap_2()
+                        .items_center()
                         .child(
-                            div()
-                                .text_size(px(theme::TYPE_CAPTION_SIZE))
-                                .text_color(theme::text_muted())
-                                .child(last_pushed),
+                            Button::new("settings-sync-push")
+                                .small()
+                                .custom(Self::action_button_style(theme::ActionTone::Neutral, cx))
+                                .label(library_copy(
+                                    MessageId::SettingsSecureSyncLegacyExportAction,
+                                ))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.push_to_sync_folder(window, cx);
+                                })),
                         )
                         .child(
                             div()
                                 .text_size(px(theme::TYPE_CAPTION_SIZE))
                                 .text_color(theme::text_muted())
-                                .child(last_pulled),
+                                .child(library_copy(MessageId::SettingsSecureSyncLegacyHint)),
                         ),
+                )
+                .child(
+                    div()
+                        .text_size(px(theme::TYPE_CAPTION_SIZE))
+                        .text_color(theme::text_muted())
+                        .child(last_sync),
                 ),
         );
 

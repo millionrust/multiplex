@@ -7120,6 +7120,138 @@ id = "settings-sync-folder-description"
 context = "Shared-folder sync control help."
 description = "Sync folder description"
 [[messages]]
+id = "settings-secure-sync-title"
+context = "Encrypted device sync Settings card title."
+description = "Encrypted device sync title"
+[[messages]]
+id = "settings-secure-sync-description"
+context = "Encrypted device sync Settings card description."
+description = "Encrypted device sync description"
+[[messages]]
+id = "settings-secure-sync-enable-action"
+context = "Enable encrypted device sync action."
+description = "Enable encrypted sync action"
+[[messages]]
+id = "settings-secure-sync-now-action"
+context = "Run encrypted device sync action."
+description = "Sync now action"
+[[messages]]
+id = "settings-secure-sync-recover-action"
+context = "Recover encrypted device sync repository action."
+description = "Recover sync action"
+[[messages]]
+id = "settings-secure-sync-configured"
+context = "Encrypted device sync is configured on this device."
+description = "Sync configured status"
+[[messages]]
+id = "settings-secure-sync-not-configured"
+context = "Encrypted device sync is not configured on this device."
+description = "Sync not configured status"
+[[messages]]
+id = "settings-secure-sync-conflict-review"
+context = "Instruction above encrypted device sync conflict choices."
+description = "Conflict review instruction"
+[[messages]]
+id = "settings-secure-sync-apply-selection-action"
+context = "Apply reviewed encrypted sync conflict choices."
+description = "Apply conflict choices action"
+[[messages]]
+id = "settings-secure-sync-legacy-export-action"
+context = "Export the deprecated passphrase encrypted sync bundle."
+description = "Legacy sync export action"
+[[messages]]
+id = "settings-secure-sync-legacy-hint"
+context = "Explain why legacy encrypted bundle export remains available."
+description = "Legacy sync migration hint"
+[[messages]]
+id = "settings-secure-sync-last-completed"
+context = "Encrypted sync has completed on this device."
+description = "Last sync completed status"
+[[messages]]
+id = "settings-secure-sync-never-completed"
+context = "Encrypted sync has never completed on this device."
+description = "Sync never completed status"
+[[messages]]
+id = "settings-secure-sync-folder-required"
+context = "Encrypted sync requires a selected folder."
+description = "Secure sync folder required error"
+[[messages]]
+id = "settings-secure-sync-folder-mismatch"
+context = "Configured encrypted sync folder cannot be changed in place."
+description = "Secure sync folder mismatch error"
+[[messages]]
+id = "settings-secure-sync-conflicts-found"
+context = "Encrypted sync found concurrent item changes."
+description = "Secure sync conflicts found error"
+[[messages]]
+id = "settings-secure-sync-recovery-required"
+context = "Encrypted sync needs repository recovery."
+description = "Secure sync recovery required error"
+[[messages]]
+id = "settings-secure-sync-up-to-date"
+context = "Encrypted sync completed with no local changes."
+description = "Secure sync up to date status"
+[[messages]]
+id = "settings-secure-sync-completed"
+context = "Encrypted sync completed successfully."
+description = "Secure sync completed status"
+[[messages]]
+id = "settings-secure-sync-failed"
+context = "Encrypted sync operation failed."
+description = "Secure sync failed error"
+[[messages]]
+id = "settings-secure-sync-selection-required"
+context = "Every encrypted sync conflict needs a selected version."
+description = "Secure sync selection required error"
+[[messages]]
+id = "settings-secure-sync-review-expired"
+context = "Encrypted sync conflict review must be refreshed."
+description = "Secure sync review expired error"
+[[messages]]
+id = "settings-secure-sync-resolved"
+context = "Encrypted sync conflicts were resolved."
+description = "Secure sync resolved status"
+[[messages]]
+id = "settings-secure-sync-resolution-failed"
+context = "Encrypted sync conflict resolution failed."
+description = "Secure sync resolution failed error"
+[[messages]]
+id = "settings-secure-sync-recovered"
+context = "Encrypted sync repository recovery completed."
+description = "Secure sync recovered status"
+[[messages]]
+id = "settings-secure-sync-recovery-failed"
+context = "Encrypted sync repository recovery failed."
+description = "Secure sync recovery failed error"
+[[messages]]
+id = "settings-secure-sync-error-detail"
+context = "Localized encrypted sync error followed by a bounded implementation detail."
+description = "Secure sync error detail"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
+id = "settings-secure-sync-candidate-action"
+context = "Encrypted sync candidate choice with item summary and short device identifier."
+description = "Secure sync candidate action"
+[[messages.args]]
+name = "value1"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages.args]]
+name = "value2"
+type = "UserData"
+sensitivity = "sensitive"
+bidi = "isolate"
+[[messages]]
 id = "settings-value-on"
 context = "Generic enabled value in Settings."
 description = "On value"

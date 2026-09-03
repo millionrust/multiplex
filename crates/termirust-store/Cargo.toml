@@ -6,6 +6,10 @@ rust-version.workspace = true
 description = "Versioned atomic local metadata stores for TermiRust"
 license = "MIT OR Apache-2.0"
 
+[features]
+default = []
+os-keyring = ["termirust-replication-security/os-keyring"]
+
 [dependencies]
 crc32c = "0.6"
 fs2 = "0.4"

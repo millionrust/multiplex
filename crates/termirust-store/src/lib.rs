@@ -62,18 +62,23 @@ pub use replication::{
     ReplicationConflictChoice, ReplicationConflictOperationMix, ReplicationConflictResolution,
     ReplicationConflictReview, ReplicationContentRevision, ReplicationCustodyMetadata,
     ReplicationDeletionPlan, ReplicationDeviceKeyPackage, ReplicationEnrollmentBundle,
-    ReplicationEnrollmentRequest, ReplicationProductError, ReplicationProductService,
-    ReplicationProductStatus, ReplicationRecoveryOutcome, ReplicationRepository,
-    ReplicationRepositoryRevision, ReplicationRepositorySnapshot, ReplicationRepositorySource,
-    ReplicationResolutionContext, ReplicationRetirementOutcome, ReplicationStoreError,
-    ReplicationSyncCoordinator, ReplicationSyncDisposition, ReplicationSyncOutcome,
-    ReplicationSyncPlan, ReplicationSyncReviewToken, SharedFolderConflictArtifact,
-    SharedFolderReplicationInputs, SharedFolderReplicationTransport, SharedFolderSlot,
-    SharedFolderTransportSnapshot, SharedFolderTransportState,
+    ReplicationEnrollmentRequest, ReplicationProductError, ReplicationProductRecord,
+    ReplicationProductService, ReplicationProductStatus, ReplicationRecoveryOutcome,
+    ReplicationRepository, ReplicationRepositoryRevision, ReplicationRepositorySnapshot,
+    ReplicationRepositorySource, ReplicationResolutionContext, ReplicationRetirementOutcome,
+    ReplicationStoreError, ReplicationSyncCoordinator, ReplicationSyncDisposition,
+    ReplicationSyncOutcome, ReplicationSyncPlan, ReplicationSyncReviewToken,
+    SharedFolderConflictArtifact, SharedFolderReplicationInputs, SharedFolderReplicationTransport,
+    SharedFolderSlot, SharedFolderTransportSnapshot, SharedFolderTransportState,
 };
 pub use sessions::{
     QuarantinedSession, SessionRemovalManifest, SessionRemovalPlan, SessionRepository,
     SessionSnapshot,
+};
+#[cfg(feature = "os-keyring")]
+pub use termirust_replication_security::OsReplicationSecretBackend;
+pub use termirust_replication_security::{
+    ReplicationSecretBackend, ReplicationSecretRef, ReplicationSecretStoreError,
 };
 pub use transcript::{
     TranscriptExportError, TranscriptExportLabels, TranscriptExportResult,
