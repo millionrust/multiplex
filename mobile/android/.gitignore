@@ -1,0 +1,7 @@
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+app/src/test/.termirust-mobile-live-ssh.properties
+/app/src/test/native/

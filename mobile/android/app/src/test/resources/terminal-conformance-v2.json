@@ -1,0 +1,1238 @@
+{
+  "schema_version": 2,
+  "unicode_width_version": "0.2.2",
+  "styles": [
+    {
+      "foreground": {
+        "kind": "default"
+      },
+      "background": {
+        "kind": "default"
+      },
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    {
+      "foreground": {
+        "kind": "default"
+      },
+      "background": {
+        "kind": "default"
+      },
+      "bold": false,
+      "dim": true,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    {
+      "foreground": {
+        "kind": "default"
+      },
+      "background": {
+        "kind": "default"
+      },
+      "bold": false,
+      "dim": true,
+      "italic": false,
+      "underline": false,
+      "inverse": true
+    },
+    {
+      "foreground": {
+        "kind": "indexed",
+        "value": 1
+      },
+      "background": {
+        "kind": "indexed",
+        "value": 4
+      },
+      "bold": true,
+      "dim": false,
+      "italic": true,
+      "underline": true,
+      "inverse": false
+    },
+    {
+      "foreground": {
+        "kind": "indexed",
+        "value": 196
+      },
+      "background": {
+        "kind": "rgb",
+        "red": 1,
+        "green": 2,
+        "blue": 3
+      },
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    },
+    {
+      "foreground": {
+        "kind": "rgb",
+        "red": 12,
+        "green": 34,
+        "blue": 56
+      },
+      "background": {
+        "kind": "indexed",
+        "value": 17
+      },
+      "bold": false,
+      "dim": false,
+      "italic": false,
+      "underline": false,
+      "inverse": false
+    }
+  ],
+  "cases": [
+    {
+      "name": "sgr_attributes_and_resets",
+      "columns": 10,
+      "rows": 2,
+      "scrollback": 4,
+      "operations": [
+        {
+          "kind": "process",
+          "bytes": [
+            27,
+            91,
+            49,
+            59,
+            51,
+            59,
+            52,
+            59,
+            51,
+            49,
+            59,
+            52,
+            52,
+            109,
+            65
+          ]
+        },
+        {
+          "kind": "process",
+          "bytes": [
+            27,
+            91,
+            50,
+            50,
+            59,
+            50,
+            51,
+            59,
+            50,
+            52,
+            59,
+            51,
+            57,
+            59,
+            52,
+            57,
+            109,
+            66,
+            27,
+            91,
+            50,
+            59,
+            55,
+            109,
+            67,
+            27,
+            91,
+            50,
+            55,
+            109,
+            68,
+            27,
+            91,
+            48,
+            109,
+            69
+          ]
+        }
+      ],
+      "expected": {
+        "lines": [
+          "ABCDE",
+          ""
+        ],
+        "cells": [
+          [
+            {
+              "text": "A",
+              "width": 1,
+              "style": 3
+            },
+            {
+              "text": "B",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "C",
+              "width": 1,
+              "style": 2
+            },
+            {
+              "text": "D",
+              "width": 1,
+              "style": 1
+            },
+            {
+              "text": "E",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ],
+          [
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ]
+        ],
+        "cursor_row": 0,
+        "cursor_column": 5,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "alternate_screen": false,
+        "bracketed_paste": false,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 0
+      }
+    },
+    {
+      "name": "sgr_indexed_and_rgb",
+      "columns": 8,
+      "rows": 2,
+      "scrollback": 4,
+      "operations": [
+        {
+          "kind": "process",
+          "bytes": [
+            27,
+            91,
+            51,
+            56,
+            59,
+            53,
+            59,
+            49,
+            57,
+            54,
+            59,
+            52,
+            56,
+            59,
+            50,
+            59,
+            49,
+            59,
+            50,
+            59,
+            51,
+            109,
+            88
+          ]
+        },
+        {
+          "kind": "process",
+          "bytes": [
+            27,
+            91,
+            51,
+            56,
+            59,
+            50,
+            59,
+            49,
+            50,
+            59,
+            51,
+            52,
+            59,
+            53,
+            54,
+            59,
+            52,
+            56,
+            59,
+            53,
+            59,
+            49,
+            55,
+            109,
+            89,
+            27,
+            91,
+            48,
+            109,
+            90
+          ]
+        }
+      ],
+      "expected": {
+        "lines": [
+          "XYZ",
+          ""
+        ],
+        "cells": [
+          [
+            {
+              "text": "X",
+              "width": 1,
+              "style": 4
+            },
+            {
+              "text": "Y",
+              "width": 1,
+              "style": 5
+            },
+            {
+              "text": "Z",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ],
+          [
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ]
+        ],
+        "cursor_row": 0,
+        "cursor_column": 3,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "alternate_screen": false,
+        "bracketed_paste": false,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 0
+      }
+    },
+    {
+      "name": "unicode_zero_narrow_and_wide",
+      "columns": 10,
+      "rows": 2,
+      "scrollback": 4,
+      "operations": [
+        {
+          "kind": "process",
+          "bytes": [
+            101,
+            204,
+            129,
+            231,
+            149,
+            140,
+            206,
+            169,
+            240,
+            159,
+            153,
+            130,
+            88
+          ]
+        }
+      ],
+      "expected": {
+        "lines": [
+          "é界Ω🙂X",
+          ""
+        ],
+        "cells": [
+          [
+            {
+              "text": "é",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "界",
+              "width": 2,
+              "style": 0
+            },
+            {
+              "text": "",
+              "width": 0,
+              "style": 0
+            },
+            {
+              "text": "Ω",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "🙂",
+              "width": 2,
+              "style": 0
+            },
+            {
+              "text": "",
+              "width": 0,
+              "style": 0
+            },
+            {
+              "text": "X",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ],
+          [
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ]
+        ],
+        "cursor_row": 0,
+        "cursor_column": 7,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "alternate_screen": false,
+        "bracketed_paste": false,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 0
+      }
+    },
+    {
+      "name": "wide_wraps_at_occupied_margin",
+      "columns": 4,
+      "rows": 2,
+      "scrollback": 4,
+      "operations": [
+        {
+          "kind": "process",
+          "bytes": [
+            97,
+            98,
+            99,
+            231,
+            149,
+            140,
+            90
+          ]
+        }
+      ],
+      "expected": {
+        "lines": [
+          "abc",
+          "界Z"
+        ],
+        "cells": [
+          [
+            {
+              "text": "a",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "b",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "c",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ],
+          [
+            {
+              "text": "界",
+              "width": 2,
+              "style": 0
+            },
+            {
+              "text": "",
+              "width": 0,
+              "style": 0
+            },
+            {
+              "text": "Z",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ]
+        ],
+        "cursor_row": 1,
+        "cursor_column": 3,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "alternate_screen": false,
+        "bracketed_paste": false,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 0
+      }
+    },
+    {
+      "name": "overwrite_wide_continuation_repairs_pair",
+      "columns": 5,
+      "rows": 2,
+      "scrollback": 4,
+      "operations": [
+        {
+          "kind": "process",
+          "bytes": [
+            231,
+            149,
+            140,
+            27,
+            91,
+            49,
+            68,
+            88
+          ]
+        }
+      ],
+      "expected": {
+        "lines": [
+          " X",
+          ""
+        ],
+        "cells": [
+          [
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "X",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ],
+          [
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ]
+        ],
+        "cursor_row": 0,
+        "cursor_column": 2,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "alternate_screen": false,
+        "bracketed_paste": false,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 0
+      }
+    },
+    {
+      "name": "resize_shrink_columns_repairs_wide_cell",
+      "columns": 6,
+      "rows": 2,
+      "scrollback": 4,
+      "operations": [
+        {
+          "kind": "process",
+          "bytes": [
+            97,
+            98,
+            231,
+            149,
+            140,
+            99,
+            100
+          ]
+        },
+        {
+          "kind": "resize",
+          "columns": 3,
+          "rows": 2
+        }
+      ],
+      "expected": {
+        "lines": [
+          "ab界",
+          ""
+        ],
+        "cells": [
+          [
+            {
+              "text": "a",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "b",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "界",
+              "width": 2,
+              "style": 0
+            }
+          ],
+          [
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ]
+        ],
+        "cursor_row": 0,
+        "cursor_column": 2,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "alternate_screen": false,
+        "bracketed_paste": false,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 0
+      }
+    },
+    {
+      "name": "resize_grow_preserves_rows_without_reflow",
+      "columns": 4,
+      "rows": 2,
+      "scrollback": 4,
+      "operations": [
+        {
+          "kind": "process",
+          "bytes": [
+            97,
+            98,
+            99,
+            100,
+            13,
+            10,
+            120,
+            121
+          ]
+        },
+        {
+          "kind": "resize",
+          "columns": 6,
+          "rows": 3
+        }
+      ],
+      "expected": {
+        "lines": [
+          "abcd",
+          "xy",
+          ""
+        ],
+        "cells": [
+          [
+            {
+              "text": "a",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "b",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "c",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "d",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ],
+          [
+            {
+              "text": "x",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "y",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ],
+          [
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ]
+        ],
+        "cursor_row": 1,
+        "cursor_column": 2,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "alternate_screen": false,
+        "bracketed_paste": false,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 0
+      }
+    },
+    {
+      "name": "resize_shrink_rows_clamps_cursor",
+      "columns": 6,
+      "rows": 3,
+      "scrollback": 4,
+      "operations": [
+        {
+          "kind": "process",
+          "bytes": [
+            111,
+            110,
+            101,
+            13,
+            10,
+            116,
+            119,
+            111,
+            13,
+            10,
+            116,
+            104,
+            114,
+            101,
+            101
+          ]
+        },
+        {
+          "kind": "resize",
+          "columns": 6,
+          "rows": 2
+        }
+      ],
+      "expected": {
+        "lines": [
+          "one",
+          "two"
+        ],
+        "cells": [
+          [
+            {
+              "text": "o",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "n",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "e",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ],
+          [
+            {
+              "text": "t",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "w",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "o",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ]
+        ],
+        "cursor_row": 1,
+        "cursor_column": 5,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "alternate_screen": false,
+        "bracketed_paste": false,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 0
+      }
+    },
+    {
+      "name": "alternate_screen_resize_restores_resized_primary",
+      "columns": 6,
+      "rows": 2,
+      "scrollback": 4,
+      "operations": [
+        {
+          "kind": "process",
+          "bytes": [
+            109,
+            97,
+            105,
+            110,
+            27,
+            91,
+            63,
+            49,
+            48,
+            52,
+            57,
+            104,
+            97,
+            108,
+            116
+          ]
+        },
+        {
+          "kind": "resize",
+          "columns": 4,
+          "rows": 3
+        },
+        {
+          "kind": "process",
+          "bytes": [
+            27,
+            91,
+            63,
+            49,
+            48,
+            52,
+            57,
+            108
+          ]
+        }
+      ],
+      "expected": {
+        "lines": [
+          "main",
+          "",
+          ""
+        ],
+        "cells": [
+          [
+            {
+              "text": "m",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "a",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "i",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": "n",
+              "width": 1,
+              "style": 0
+            }
+          ],
+          [
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ],
+          [
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            },
+            {
+              "text": " ",
+              "width": 1,
+              "style": 0
+            }
+          ]
+        ],
+        "cursor_row": 0,
+        "cursor_column": 3,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "alternate_screen": false,
+        "bracketed_paste": false,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 0
+      }
+    }
+  ]
+}
