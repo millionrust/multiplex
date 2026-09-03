@@ -10,6 +10,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Base64
 import java.util.UUID
 
 class AndroidControllerRouteTests {
@@ -179,6 +180,7 @@ class AndroidControllerRouteTests {
             "deploy",
             "SHA256:host-key",
             sshRef,
+            ControllerSshAuthenticationKind.PRIVATE_KEY,
         ).also(ControllerRemoteRouteConfiguration::validate)
         assertFalse(Json.encodeToString(ssh).contains("private-key-material"))
 
@@ -189,9 +191,11 @@ class AndroidControllerRouteTests {
         )
         ControllerRemoteRouteConfiguration(
             ControllerRemoteRouteKind.SELF_HOSTED_RELAY,
-            "wss://relay.example/termirust",
-            trustPin = "sha256/relay-spki",
+            "wss://relay.example/relay/v1",
+            trustPin = "sha256/${Base64.getEncoder().encodeToString(ByteArray(32) { 0x11 })}",
             credential = relayRef,
+            relayRouteId = Base64.getEncoder().encodeToString(ByteArray(32) { 0x22 }),
+            relayRevocationEpoch = 7,
         ).validate()
 
         assertThrows(IllegalArgumentException::class.java) {
@@ -202,14 +206,77 @@ class AndroidControllerRouteTests {
                 "deploy",
                 "SHA256:host-key",
                 relayRef,
+                ControllerSshAuthenticationKind.PRIVATE_KEY,
             ).validate()
         }
         assertThrows(IllegalArgumentException::class.java) {
             ControllerRemoteRouteConfiguration(
                 ControllerRemoteRouteKind.SELF_HOSTED_RELAY,
                 "ws://relay.example/termirust",
-                trustPin = "sha256/relay-spki",
+                trustPin = "sha256/${Base64.getEncoder().encodeToString(ByteArray(32) { 0x11 })}",
                 credential = relayRef,
+                relayRouteId = Base64.getEncoder().encodeToString(ByteArray(32) { 0x22 }),
+                relayRevocationEpoch = 7,
+            ).validate()
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ControllerRemoteRouteConfiguration(
+                ControllerRemoteRouteKind.SELF_HOSTED_RELAY,
+                "wss://relay.example/relay/v1",
+                trustPin = "sha256/${Base64.getEncoder().encodeToString(ByteArray(32) { 0x11 })}",
+                credential = relayRef,
+                relayRouteId = "not-a-route",
+                relayRevocationEpoch = 7,
+            ).validate()
+        }
+    }
+
+    @Test
+    fun controllerRelayPackageImportsOnlyStrictControllerPackages() {
+        val routeId = Base64.getEncoder().encodeToString(ByteArray(32) { 0x22 })
+        val credential = Base64.getEncoder().encodeToString(ByteArray(32) { 0x33 })
+        val pin = Base64.getEncoder().encodeToString(ByteArray(32) { 0x44 })
+        val encoded = """
+            {
+              "schema": "termirust-relay-route",
+              "schema_version": 1,
+              "role": "controller",
+              "endpoint": "wss://relay.example/relay/v1",
+              "spki_pin": "sha256/$pin",
+              "relay_route_id": "$routeId",
+              "relay_revocation_epoch": 7,
+              "admission_credential": "$credential"
+            }
+        """.trimIndent()
+        val decoded = ControllerRelayRoutePackage.decode(encoded)
+        assertEquals("wss://relay.example/relay/v1", decoded.endpoint)
+        assertEquals(routeId, decoded.relayRouteId)
+        assertEquals(7, decoded.relayRevocationEpoch)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            ControllerRelayRoutePackage.decode(encoded.replace("\"controller\"", "\"host\""))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ControllerRelayRoutePackage.decode(encoded.replace("/relay/v1", "/wrong"))
+        }
+    }
+
+    @Test
+    fun sshControllerUsesFixedRemoteCommandAndRequiresTypedAuthentication() {
+        assertEquals("termirust controller-bridge --stdio", SshControllerTransportFactory.REMOTE_COMMAND)
+        val reference = ControllerRouteCredentialReference(
+            "ssh-key-1",
+            ControllerRemoteRouteKind.SSH,
+            ControllerRouteCredentialPurpose.SSH_AUTHENTICATION,
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            ControllerRemoteRouteConfiguration(
+                ControllerRemoteRouteKind.SSH,
+                "host.example",
+                22,
+                "deploy",
+                "SHA256:host-key",
+                reference,
             ).validate()
         }
     }

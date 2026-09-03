@@ -6,9 +6,15 @@ rust-version.workspace = true
 description = "Bounded outbound WSS client for the optional TermiRust ciphertext relay"
 license = "MIT OR Apache-2.0"
 
+[features]
+test-support = ["dep:base64", "dep:serde", "dep:serde_json"]
+
 [dependencies]
+base64 = { version = "=0.22.1", optional = true }
 futures-util = { version = "=0.3.32", features = ["sink"] }
 rand_core = { version = "=0.6.4", features = ["getrandom"] }
+serde = { version = "=1.0.228", features = ["derive"], optional = true }
+serde_json = { version = "=1.0.149", optional = true }
 rustls = { version = "=0.23.37", default-features = false, features = ["ring", "std"] }
 rustls-native-certs = "=0.8.3"
 sha2 = "=0.10.9"
@@ -29,3 +35,7 @@ termirust-controller-security = { version = "0.1.0", path = "../termirust-contro
 termirust-domain = { version = "0.1.0", path = "../termirust-domain" }
 termirust-relay-server = { version = "0.1.0", path = "../termirust-relay-server" }
 uuid = { version = "=1.22.0", features = ["v4"] }
+
+[[example]]
+name = "relay_echo_host"
+required-features = ["test-support"]

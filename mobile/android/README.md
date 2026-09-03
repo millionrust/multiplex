@@ -40,12 +40,11 @@ Implemented:
 - Device/emulator instrumentation golden run against the real Rust Session Host,
   including pairing, Keystore storage, capability refresh, terminal control,
   reconnect, resize, revocation, and cleanup.
+- Native Controller-over-SSH and self-hosted-relay adapters with pinned trust, fixed Controller
+  bridge semantics, strict operator-package import, and no silent route fallback.
 
-The production Device transport currently implements private LAN/VPN. Direct SSH is fully
-available under **Connections**, but it is not mislabeled as Controller over SSH. The
-Controller-over-SSH and self-hosted relay rows remain visibly unavailable until dedicated
-adapters preserving Controller authentication, capability negotiation, host-key/SPKI
-pinning, cancellation, and writer semantics are supplied.
+External-network relay qualification and signed Play distribution remain release-environment
+work; they are not implied by local unit/build coverage.
 
 ## Build
 

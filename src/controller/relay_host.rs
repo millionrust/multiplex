@@ -1,10 +1,12 @@
 use base64::Engine as _;
 use keyring::{Entry, Error as KeyringError};
+use std::path::PathBuf;
 use std::sync::Arc;
 use termirust_controller_listener::{
     ControllerAuthorityProvider, ControllerBackendFactory, ListenerError,
-    serve_authenticated_stdio_stream,
+    serve_authenticated_stdio_stream, serve_repository_stdio_bridge,
 };
+use termirust_controller_security::StaticPrivateKey;
 use termirust_relay_client::{
     RelayClientRole, RelayConnectionHandle, RelayCredentialRef, RelayCredentialSecret,
     RelayEndpointConfig, RelayRouteError, RelaySecretStore, RelaySecretStoreError,
@@ -121,6 +123,47 @@ impl RelayHostRouteOwner {
             .await
             .map_err(RelayHostError::Controller);
         drop(stream);
+        let shutdown = relay.shutdown().await.map_err(RelayHostError::Route);
+        result.and(shutdown)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn serve_repository(
+        &self,
+        controller_root: PathBuf,
+        project_root: PathBuf,
+        session_data_root: PathBuf,
+        runtime_parent: PathBuf,
+        pairing_broker_path: PathBuf,
+        host_private: StaticPrivateKey,
+        cancel: CancellationToken,
+    ) -> Result<(), RelayHostError> {
+        let mut relay = RelayConnectionHandle::connect(
+            self.endpoint.clone(),
+            RelayClientRole::Host,
+            self.secrets.clone(),
+        )
+        .await
+        .map_err(RelayHostError::Route)?;
+        let stream = relay.take_stream().ok_or_else(|| {
+            RelayHostError::Route(RelayRouteError::new(
+                termirust_relay_client::RelayRouteErrorCode::Internal,
+            ))
+        })?;
+        let (reader, writer) = tokio::io::split(stream);
+        let result = serve_repository_stdio_bridge(
+            reader,
+            writer,
+            controller_root,
+            project_root,
+            session_data_root,
+            runtime_parent,
+            pairing_broker_path,
+            host_private,
+            cancel,
+        )
+        .await
+        .map_err(RelayHostError::Controller);
         let shutdown = relay.shutdown().await.map_err(RelayHostError::Route);
         result.and(shutdown)
     }

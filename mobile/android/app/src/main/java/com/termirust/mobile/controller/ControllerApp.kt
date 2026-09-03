@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
@@ -45,6 +46,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -86,6 +88,8 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -102,6 +106,8 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
     var showScanner by remember { mutableStateOf(false) }
     var showHostDetails by remember { mutableStateOf(false) }
     var confirmForget by remember { mutableStateOf(false) }
+    var showSshConfiguration by remember { mutableStateOf(false) }
+    var showRelayConfiguration by remember { mutableStateOf(false) }
     var pendingRoute by remember { mutableStateOf<ControllerRemoteRouteKind?>(null) }
     val activeTerminal = state.activeTerminal
     val configuration = LocalConfiguration.current
@@ -188,7 +194,9 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                             viewModel::retry,
                             viewModel::attachSession,
                             onSelectRoute = { pendingRoute = it },
-                            Modifier.weight(1f),
+                            onConfigureSsh = { showSshConfiguration = true },
+                            onConfigureRelay = { showRelayConfiguration = true },
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 } else {
@@ -200,7 +208,9 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                             viewModel::retry,
                             viewModel::attachSession,
                             onSelectRoute = { pendingRoute = it },
-                            Modifier.weight(1f),
+                            onConfigureSsh = { showSshConfiguration = true },
+                            onConfigureRelay = { showRelayConfiguration = true },
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -261,6 +271,46 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
             dismissButton = {
                 TextButton(onClick = { confirmForget = false }) { Text(stringResource(com.termirust.mobile.R.string.cancel)) }
             },
+        )
+    }
+    if (showSshConfiguration) {
+        val selectedHost = state.hosts.firstOrNull { it.id == state.selectedHostId }
+        SshControllerConfigurationDialog(
+            configuration = viewModel.selectedSshConfiguration(),
+            suggestedEndpoint = selectedHost?.route?.address.orEmpty(),
+            onSave = { endpoint, port, username, pin, authentication, secret ->
+                if (viewModel.configureSshRoute(
+                        endpoint,
+                        port,
+                        username,
+                        pin,
+                        authentication,
+                        secret,
+                    )
+                ) {
+                    showSshConfiguration = false
+                }
+            },
+            onRemove = {
+                viewModel.removeSshRoute()
+                showSshConfiguration = false
+            },
+            onDismiss = { showSshConfiguration = false },
+        )
+    }
+    if (showRelayConfiguration) {
+        RelayControllerConfigurationDialog(
+            configuration = viewModel.selectedRelayConfiguration(),
+            onSave = { endpoint, pin, routeId, epoch, credential ->
+                if (viewModel.configureRelayRoute(endpoint, pin, routeId, epoch, credential)) {
+                    showRelayConfiguration = false
+                }
+            },
+            onRemove = {
+                viewModel.removeRelayRoute()
+                showRelayConfiguration = false
+            },
+            onDismiss = { showRelayConfiguration = false },
         )
     }
     pendingRoute?.let { target ->
@@ -428,13 +478,15 @@ private fun FleetDetail(
     onRetry: () -> Unit,
     onOpenSession: (String) -> Unit,
     onSelectRoute: (ControllerRemoteRouteKind) -> Unit,
+    onConfigureSsh: () -> Unit,
+    onConfigureRelay: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val openTerminals = state.sessions.filter(ControllerSessionSummary::isOpenTerminal)
     val previousSessions = state.sessions.filterNot(ControllerSessionSummary::isOpenTerminal)
     Column(modifier.fillMaxSize()) {
         ConnectionBanner(state, onRetry)
-        ControllerRouteSelector(state, onSelectRoute)
+        ControllerRouteSelector(state, onSelectRoute, onConfigureSsh, onConfigureRelay)
         LazyColumn(
             Modifier.fillMaxSize().padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -489,6 +541,8 @@ private fun SessionSectionHeader(title: String) {
 private fun ControllerRouteSelector(
     state: ControllerUiState,
     onSelect: (ControllerRemoteRouteKind) -> Unit,
+    onConfigureSsh: () -> Unit,
+    onConfigureRelay: () -> Unit,
 ) {
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
@@ -508,8 +562,8 @@ private fun ControllerRouteSelector(
                 )
             }
         }
-        state.routeProjections.filter { it.selected || it.available }.forEach { projection ->
-            ControllerRouteRow(projection, onSelect)
+        state.routeProjections.filter { it.route != ControllerRemoteRouteKind.LOCAL_IPC }.forEach { projection ->
+            ControllerRouteRow(projection, onSelect, onConfigureSsh, onConfigureRelay)
         }
         state.routeError?.let { error ->
             Text(
@@ -526,6 +580,8 @@ private fun ControllerRouteSelector(
 private fun ControllerRouteRow(
     projection: AndroidControllerRouteProjection,
     onSelect: (ControllerRemoteRouteKind) -> Unit,
+    onConfigureSsh: () -> Unit,
+    onConfigureRelay: () -> Unit,
 ) {
     Surface(
         color = if (projection.selected) {
@@ -559,21 +615,295 @@ private fun ControllerRouteRow(
                     },
                 )
             }
-            when {
-                projection.selected -> AssistChip(
-                    onClick = {},
-                    label = { Text(stringResource(com.termirust.mobile.R.string.controller_selected)) },
-                )
-                projection.available -> OutlinedButton(onClick = { onSelect(projection.route) }) {
-                    Text(stringResource(com.termirust.mobile.R.string.use_route))
+            Column(horizontalAlignment = Alignment.End) {
+                when {
+                    projection.selected -> AssistChip(
+                        onClick = {},
+                        label = { Text(stringResource(com.termirust.mobile.R.string.controller_selected)) },
+                    )
+                    projection.available -> OutlinedButton(onClick = { onSelect(projection.route) }) {
+                        Text(stringResource(com.termirust.mobile.R.string.use_route))
+                    }
+                    projection.route == ControllerRemoteRouteKind.SSH ||
+                        projection.route == ControllerRemoteRouteKind.SELF_HOSTED_RELAY ->
+                        OutlinedButton(onClick = if (projection.route == ControllerRemoteRouteKind.SSH) onConfigureSsh else onConfigureRelay) {
+                            Text(stringResource(com.termirust.mobile.R.string.configure))
+                        }
+                    else -> Text(
+                        stringResource(com.termirust.mobile.R.string.not_configured),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                else -> Text(
-                    stringResource(com.termirust.mobile.R.string.not_configured),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (projection.route == ControllerRemoteRouteKind.SSH && projection.available) {
+                    TextButton(onClick = onConfigureSsh) {
+                        Text(stringResource(com.termirust.mobile.R.string.edit))
+                    }
+                }
+                if (projection.route == ControllerRemoteRouteKind.SELF_HOSTED_RELAY && projection.available) {
+                    TextButton(onClick = onConfigureRelay) {
+                        Text(stringResource(com.termirust.mobile.R.string.edit))
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun RelayControllerConfigurationDialog(
+    configuration: ControllerRemoteRouteConfiguration?,
+    onSave: (String, String, String, Long, String) -> Unit,
+    onRemove: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val clipboard = LocalClipboardManager.current
+    var endpoint by remember(configuration) { mutableStateOf(configuration?.endpoint.orEmpty()) }
+    var pin by remember(configuration) { mutableStateOf(configuration?.trustPin.orEmpty()) }
+    var routeId by remember(configuration) { mutableStateOf(configuration?.relayRouteId.orEmpty()) }
+    var epoch by remember(configuration) { mutableStateOf(configuration?.relayRevocationEpoch?.toString() ?: "0") }
+    var credential by remember { mutableStateOf("") }
+    var packageError by remember { mutableStateOf<String?>(null) }
+    var confirmRemove by remember { mutableStateOf(false) }
+    val invalidPackageMessage = stringResource(com.termirust.mobile.R.string.invalid_relay_controller_package)
+    val parsedEpoch = epoch.toLongOrNull()
+    val canSave = endpoint.startsWith("wss://") && pin.startsWith("sha256/") &&
+        routeId.isNotBlank() && parsedEpoch != null && parsedEpoch >= 0 && credential.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(com.termirust.mobile.R.string.configure_relay_controller)) },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                item {
+                    Text(
+                        stringResource(com.termirust.mobile.R.string.relay_controller_configuration_help),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                item {
+                    OutlinedButton(
+                        onClick = {
+                            runCatching {
+                                ControllerRelayRoutePackage.decode(
+                                    clipboard.getText()?.text
+                                        ?: error("clipboard does not contain text"),
+                                )
+                            }.onSuccess { importedPackage ->
+                                endpoint = importedPackage.endpoint
+                                pin = importedPackage.spkiPin
+                                routeId = importedPackage.relayRouteId
+                                epoch = importedPackage.relayRevocationEpoch.toString()
+                                credential = importedPackage.admissionCredential
+                                packageError = null
+                            }.onFailure { packageError = invalidPackageMessage }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(com.termirust.mobile.R.string.paste_relay_controller_package))
+                    }
+                }
+                packageError?.let { message ->
+                    item {
+                        Text(
+                            message,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                item { OutlinedTextField(endpoint, { endpoint = it }, label = { Text(stringResource(com.termirust.mobile.R.string.relay_endpoint)) }, singleLine = true) }
+                item { OutlinedTextField(pin, { pin = it }, label = { Text(stringResource(com.termirust.mobile.R.string.relay_spki_pin)) }, singleLine = true) }
+                item { OutlinedTextField(routeId, { routeId = it }, label = { Text(stringResource(com.termirust.mobile.R.string.relay_route_id)) }, singleLine = true) }
+                item {
+                    OutlinedTextField(
+                        epoch,
+                        { epoch = it.filter(Char::isDigit) },
+                        label = { Text(stringResource(com.termirust.mobile.R.string.relay_epoch)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        credential,
+                        { credential = it },
+                        label = { Text(stringResource(com.termirust.mobile.R.string.relay_admission_credential)) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                    )
+                }
+                if (configuration != null) {
+                    item {
+                        TextButton(onClick = { confirmRemove = true }) {
+                            Text(stringResource(com.termirust.mobile.R.string.remove_relay_controller_route), color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(enabled = canSave, onClick = { onSave(endpoint, pin, routeId, checkNotNull(parsedEpoch), credential) }) {
+                Text(stringResource(com.termirust.mobile.R.string.save))
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(com.termirust.mobile.R.string.cancel)) } },
+    )
+    if (confirmRemove) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text(stringResource(com.termirust.mobile.R.string.remove_relay_controller_route)) },
+            text = { Text(stringResource(com.termirust.mobile.R.string.remove_relay_controller_route_help)) },
+            confirmButton = { TextButton(onClick = onRemove) { Text(stringResource(com.termirust.mobile.R.string.remove), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text(stringResource(com.termirust.mobile.R.string.cancel)) } },
+        )
+    }
+}
+
+@Composable
+private fun SshControllerConfigurationDialog(
+    configuration: ControllerRemoteRouteConfiguration?,
+    suggestedEndpoint: String,
+    onSave: (String, Int, String, String, ControllerSshAuthenticationKind, String) -> Unit,
+    onRemove: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var endpoint by remember(configuration, suggestedEndpoint) {
+        mutableStateOf(configuration?.endpoint ?: suggestedEndpoint)
+    }
+    var port by remember(configuration) { mutableStateOf(configuration?.port?.toString() ?: "22") }
+    var username by remember(configuration) { mutableStateOf(configuration?.username.orEmpty()) }
+    var pin by remember(configuration) { mutableStateOf(configuration?.trustPin.orEmpty()) }
+    var authentication by remember(configuration) {
+        mutableStateOf(configuration?.sshAuthentication ?: ControllerSshAuthenticationKind.PRIVATE_KEY)
+    }
+    var secret by remember { mutableStateOf("") }
+    var confirmRemove by remember { mutableStateOf(false) }
+    val parsedPort = port.toIntOrNull()
+    val canSave = endpoint.isNotBlank() && parsedPort in 1..65_535 && username.isNotBlank() &&
+        pin.isNotBlank() && secret.isNotEmpty()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(com.termirust.mobile.R.string.configure_ssh_controller)) },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                item {
+                    Text(
+                        stringResource(com.termirust.mobile.R.string.ssh_controller_configuration_help),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = endpoint,
+                        onValueChange = { endpoint = it },
+                        label = { Text(stringResource(com.termirust.mobile.R.string.ssh_host)) },
+                        singleLine = true,
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = port,
+                        onValueChange = { port = it.filter(Char::isDigit).take(5) },
+                        label = { Text(stringResource(com.termirust.mobile.R.string.ssh_port)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = { username = it },
+                        label = { Text(stringResource(com.termirust.mobile.R.string.ssh_username)) },
+                        singleLine = true,
+                    )
+                }
+                item {
+                    OutlinedTextField(
+                        value = pin,
+                        onValueChange = { pin = it },
+                        label = { Text(stringResource(com.termirust.mobile.R.string.ssh_host_key_pin)) },
+                        singleLine = true,
+                    )
+                }
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = authentication == ControllerSshAuthenticationKind.PRIVATE_KEY,
+                            onClick = { authentication = ControllerSshAuthenticationKind.PRIVATE_KEY },
+                            label = { Text(stringResource(com.termirust.mobile.R.string.private_key)) },
+                        )
+                        FilterChip(
+                            selected = authentication == ControllerSshAuthenticationKind.PASSWORD,
+                            onClick = { authentication = ControllerSshAuthenticationKind.PASSWORD },
+                            label = { Text(stringResource(com.termirust.mobile.R.string.password)) },
+                        )
+                    }
+                }
+                item {
+                    OutlinedTextField(
+                        value = secret,
+                        onValueChange = { secret = it },
+                        label = {
+                            Text(
+                                if (authentication == ControllerSshAuthenticationKind.PASSWORD) {
+                                    stringResource(com.termirust.mobile.R.string.password)
+                                } else {
+                                    stringResource(com.termirust.mobile.R.string.openssh_private_key)
+                                },
+                            )
+                        },
+                        visualTransformation = PasswordVisualTransformation(),
+                        minLines = if (authentication == ControllerSshAuthenticationKind.PRIVATE_KEY) 3 else 1,
+                        maxLines = 6,
+                    )
+                }
+                if (configuration != null) {
+                    item {
+                        TextButton(onClick = { confirmRemove = true }) {
+                            Text(
+                                stringResource(com.termirust.mobile.R.string.remove_ssh_controller_route),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = canSave,
+                onClick = {
+                    onSave(endpoint, checkNotNull(parsedPort), username, pin, authentication, secret)
+                },
+            ) { Text(stringResource(com.termirust.mobile.R.string.save)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(com.termirust.mobile.R.string.cancel)) }
+        },
+    )
+    if (confirmRemove) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text(stringResource(com.termirust.mobile.R.string.remove_ssh_controller_route)) },
+            text = { Text(stringResource(com.termirust.mobile.R.string.remove_ssh_controller_route_help)) },
+            confirmButton = {
+                TextButton(onClick = onRemove) {
+                    Text(
+                        stringResource(com.termirust.mobile.R.string.remove),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRemove = false }) {
+                    Text(stringResource(com.termirust.mobile.R.string.cancel))
+                }
+            },
+        )
     }
 }
 
@@ -595,7 +925,7 @@ private fun controllerRouteDescription(route: ControllerRemoteRouteKind): String
 
 @Composable
 private fun controllerRouteStatus(projection: AndroidControllerRouteProjection): String = when {
-    !projection.available -> stringResource(com.termirust.mobile.R.string.route_status_unavailable)
+    !projection.available -> stringResource(com.termirust.mobile.R.string.not_configured)
     projection.phase == ControllerRemoteRoutePhase.ONLINE -> stringResource(com.termirust.mobile.R.string.route_status_online)
     projection.phase == ControllerRemoteRoutePhase.DEGRADED -> stringResource(com.termirust.mobile.R.string.route_status_degraded)
     projection.phase == ControllerRemoteRoutePhase.RECONNECTING -> stringResource(com.termirust.mobile.R.string.route_status_reconnecting)
@@ -609,6 +939,7 @@ private fun controllerRouteError(error: String): String = when (error) {
     "route_unavailable" -> stringResource(com.termirust.mobile.R.string.route_error_unavailable)
     "route_already_selected" -> stringResource(com.termirust.mobile.R.string.route_error_selected)
     "route_degraded" -> stringResource(com.termirust.mobile.R.string.route_error_degraded)
+    "route_configuration_invalid" -> stringResource(com.termirust.mobile.R.string.route_error_configuration_invalid)
     else -> stringResource(com.termirust.mobile.R.string.route_error_generic)
 }
 
@@ -1146,7 +1477,7 @@ private fun ControllerTerminalScreen(
     }
 }
 
-private fun styledTerminalRow(
+internal fun styledTerminalRow(
     cells: List<BoundedTerminalCell>,
     cursorColumn: Int?,
 ): AnnotatedString =

@@ -51,9 +51,14 @@ interface ControllerConnecting : AutoCloseable {
 
 class AndroidControllerRouteConnections(
     val privateNetwork: ControllerConnecting?,
-    val ssh: ControllerConnecting?,
-    val selfHostedRelay: ControllerConnecting?,
+    ssh: ControllerConnecting?,
+    selfHostedRelay: ControllerConnecting?,
 ) : AutoCloseable {
+    var ssh: ControllerConnecting? = ssh
+        private set
+    var selfHostedRelay: ControllerConnecting? = selfHostedRelay
+        private set
+
     fun connection(route: ControllerRemoteRouteKind): ControllerConnecting? = when (route) {
         ControllerRemoteRouteKind.LOCAL_IPC -> null
         ControllerRemoteRouteKind.PRIVATE_NETWORK -> privateNetwork
@@ -69,6 +74,18 @@ class AndroidControllerRouteConnections(
 
     suspend fun disconnect(route: ControllerRemoteRouteKind) {
         connection(route)?.cancel()
+    }
+
+    fun replaceSsh(connection: ControllerConnecting?) {
+        if (ssh === connection) return
+        ssh?.close()
+        ssh = connection
+    }
+
+    fun replaceRelay(connection: ControllerConnecting?) {
+        if (selfHostedRelay === connection) return
+        selfHostedRelay?.close()
+        selfHostedRelay = connection
     }
 
     override fun close() {

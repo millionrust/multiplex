@@ -64,6 +64,7 @@ data class BoundedTerminalSnapshot(
     val truncation: TerminalTruncationReason?,
     val cursorVisible: Boolean,
     val applicationCursor: Boolean,
+    val applicationKeypad: Boolean,
     val alternateScreen: Boolean,
     val bracketedPaste: Boolean,
     val mouseMode: TerminalMouseMode,
@@ -107,14 +108,17 @@ class BoundedControllerTerminal(
     private var primaryScreen: StoredScreen? = null
     private var cursorVisible = true
     private var applicationCursor = false
+    private var applicationKeypad = false
     private var alternateScreen = false
     private var bracketedPaste = false
     private var mouseMode = TerminalMouseMode.NONE
     private var mouseEncoding = TerminalMouseEncoding.DEFAULT
+    private var nativeTerminal: NativeControllerTerminalSession? = null
 
     init {
         limits.validate(viewport)
         repeat(viewport.rows) { rows += mutableListOf<BoundedTerminalCell>() }
+        nativeTerminal = NativeControllerTerminalSession.openOrNull(viewport, limits)
     }
 
     fun reset(nextViewport: TerminalViewport = viewport) {
@@ -133,11 +137,14 @@ class BoundedControllerTerminal(
         primaryScreen = null
         cursorVisible = true
         applicationCursor = false
+        applicationKeypad = false
         alternateScreen = false
         bracketedPaste = false
         mouseMode = TerminalMouseMode.NONE
         mouseEncoding = TerminalMouseEncoding.DEFAULT
         recalculateAccounting()
+        nativeTerminal?.close()
+        nativeTerminal = NativeControllerTerminalSession.openOrNull(nextViewport, limits)
     }
 
     fun resize(nextViewport: TerminalViewport) {
@@ -158,6 +165,7 @@ class BoundedControllerTerminal(
         savedCursorColumn = savedCursorColumn.coerceIn(0, nextViewport.columns - 1)
         recalculateAccounting()
         enforceLimits()
+        updateNative { it.resize(nextViewport); Unit }
     }
 
     fun process(bytes: ByteArray) {
@@ -177,9 +185,12 @@ class BoundedControllerTerminal(
             }
         }
         enforceLimits()
+        updateNative { it.feed(bytes) }
     }
 
-    fun snapshot() = BoundedTerminalSnapshot(
+    fun snapshot() = runCatching { nativeTerminal?.snapshot() }.getOrNull()
+        ?.let { it.copy(truncation = truncation ?: it.truncation) }
+        ?: BoundedTerminalSnapshot(
         lines = rows.map(::renderLine),
         cells = rows.map(::paddedRow),
         contentCells = rows.map { it.toList() },
@@ -190,6 +201,7 @@ class BoundedControllerTerminal(
         truncation = truncation,
         cursorVisible = cursorVisible,
         applicationCursor = applicationCursor,
+        applicationKeypad = applicationKeypad,
         alternateScreen = alternateScreen,
         bracketedPaste = bracketedPaste,
         mouseMode = mouseMode,
@@ -197,12 +209,28 @@ class BoundedControllerTerminal(
         scrollbackRows = scrollbackRows,
     )
 
+    fun close() {
+        nativeTerminal?.close()
+        nativeTerminal = null
+    }
+
+    private fun updateNative(operation: (NativeControllerTerminalSession) -> Unit) {
+        val terminal = nativeTerminal ?: return
+        runCatching { operation(terminal) }
+            .onFailure {
+                terminal.close()
+                nativeTerminal = null
+            }
+    }
+
     private fun consume(byte: Int) {
         when (val current = mode) {
             ParserMode.Ground -> consumeGround(byte)
             ParserMode.Escape -> mode = when (byte) {
                 0x5b -> ParserMode.Csi(mutableListOf())
                 0x5d -> ParserMode.Osc(0, false)
+                0x3d -> { applicationKeypad = true; ParserMode.Ground }
+                0x3e -> { applicationKeypad = false; ParserMode.Ground }
                 else -> ParserMode.Ground
             }
             is ParserMode.Csi -> {

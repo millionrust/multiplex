@@ -63,6 +63,7 @@ struct BoundedTerminalSnapshot: Equatable, Sendable {
     let truncation: TerminalTruncationReason?
     let cursorVisible: Bool
     let applicationCursor: Bool
+    let applicationKeypad: Bool
     let alternateScreen: Bool
     let bracketedPaste: Bool
     let mouseMode: TerminalMouseMode
@@ -100,10 +101,14 @@ struct BoundedTerminalBuffer: Sendable {
     private var primaryScreen: StoredScreen?
     private var cursorVisible = true
     private var applicationCursor = false
+    private var applicationKeypad = false
     private var alternateScreen = false
     private var bracketedPaste = false
     private var mouseMode = TerminalMouseMode.none
     private var mouseEncoding = TerminalMouseEncoding.default
+    #if !TERMIRUST_TERMINAL_FALLBACK_ONLY
+    private var nativeTerminal: NativeControllerTerminalSession?
+    #endif
 
     init(
         viewport: TerminalViewportState,
@@ -113,6 +118,9 @@ struct BoundedTerminalBuffer: Sendable {
         self.limits = limits
         self.viewport = viewport
         rows = Array(repeating: [], count: viewport.rows)
+        #if !TERMIRUST_TERMINAL_FALLBACK_ONLY
+        nativeTerminal = NativeControllerTerminalSession(viewport: viewport, limits: limits)
+        #endif
     }
 
     mutating func reset(viewport: TerminalViewportState? = nil) throws {
@@ -130,11 +138,15 @@ struct BoundedTerminalBuffer: Sendable {
         primaryScreen = nil
         cursorVisible = true
         applicationCursor = false
+        applicationKeypad = false
         alternateScreen = false
         bracketedPaste = false
         mouseMode = .none
         mouseEncoding = .default
         recalculateAccounting()
+        #if !TERMIRUST_TERMINAL_FALLBACK_ONLY
+        nativeTerminal = NativeControllerTerminalSession(viewport: next, limits: limits)
+        #endif
     }
 
     mutating func resize(_ next: TerminalViewportState) throws {
@@ -156,6 +168,9 @@ struct BoundedTerminalBuffer: Sendable {
         savedCursor.column = min(savedCursor.column, next.columns - 1)
         recalculateAccounting()
         enforceLimits()
+        #if !TERMIRUST_TERMINAL_FALLBACK_ONLY
+        updateNative { _ = try $0.resize(next) }
+        #endif
     }
 
     mutating func process(_ data: Data) throws {
@@ -175,10 +190,35 @@ struct BoundedTerminalBuffer: Sendable {
             }
         }
         enforceLimits()
+        #if !TERMIRUST_TERMINAL_FALLBACK_ONLY
+        updateNative { try $0.feed(data) }
+        #endif
     }
 
     func snapshot() -> BoundedTerminalSnapshot {
-        BoundedTerminalSnapshot(
+        #if !TERMIRUST_TERMINAL_FALLBACK_ONLY
+        if let nativeSnapshot = try? nativeTerminal?.snapshot() {
+            return BoundedTerminalSnapshot(
+                lines: nativeSnapshot.lines,
+                cells: nativeSnapshot.cells,
+                contentCells: nativeSnapshot.contentCells,
+                cursorRow: nativeSnapshot.cursorRow,
+                cursorColumn: nativeSnapshot.cursorColumn,
+                retainedCells: nativeSnapshot.retainedCells,
+                accountedBytes: nativeSnapshot.accountedBytes,
+                truncation: truncation ?? nativeSnapshot.truncation,
+                cursorVisible: nativeSnapshot.cursorVisible,
+                applicationCursor: nativeSnapshot.applicationCursor,
+                applicationKeypad: nativeSnapshot.applicationKeypad,
+                alternateScreen: nativeSnapshot.alternateScreen,
+                bracketedPaste: nativeSnapshot.bracketedPaste,
+                mouseMode: nativeSnapshot.mouseMode,
+                mouseEncoding: nativeSnapshot.mouseEncoding,
+                scrollbackRows: nativeSnapshot.scrollbackRows
+            )
+        }
+        #endif
+        return BoundedTerminalSnapshot(
             lines: rows.map(renderLine),
             cells: rows.map(paddedRow),
             contentCells: rows,
@@ -189,6 +229,7 @@ struct BoundedTerminalBuffer: Sendable {
             truncation: truncation,
             cursorVisible: cursorVisible,
             applicationCursor: applicationCursor,
+            applicationKeypad: applicationKeypad,
             alternateScreen: alternateScreen,
             bracketedPaste: bracketedPaste,
             mouseMode: mouseMode,
@@ -196,6 +237,19 @@ struct BoundedTerminalBuffer: Sendable {
             scrollbackRows: scrollbackRows
         )
     }
+
+    #if !TERMIRUST_TERMINAL_FALLBACK_ONLY
+    private mutating func updateNative(
+        _ operation: (NativeControllerTerminalSession) throws -> Void
+    ) {
+        guard let nativeTerminal else { return }
+        do {
+            try operation(nativeTerminal)
+        } catch {
+            self.nativeTerminal = nil
+        }
+    }
+    #endif
 
     private mutating func consume(_ byte: UInt8) {
         switch mode {
@@ -205,6 +259,8 @@ struct BoundedTerminalBuffer: Sendable {
             switch byte {
             case 0x5B: mode = .csi([])
             case 0x5D: mode = .osc(count: 0, escapePending: false)
+            case 0x3D: applicationKeypad = true; mode = .ground
+            case 0x3E: applicationKeypad = false; mode = .ground
             default: mode = .ground
             }
         case .csi(var bytes):

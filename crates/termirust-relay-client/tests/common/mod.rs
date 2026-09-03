@@ -125,7 +125,9 @@ pub fn endpoint_with_pin(endpoint: &RelayEndpointConfig, pin: RelaySpkiPin) -> R
         endpoint.route_id,
         endpoint.credential_ref.clone(),
         pin,
-        endpoint.binding,
+        endpoint
+            .binding
+            .expect("test endpoints are controller-bound"),
     )
     .unwrap()
 }

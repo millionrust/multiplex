@@ -244,6 +244,12 @@ class MobileHostViewModel(
         _privacyCovered.value = false
     }
 
+    override fun onCleared() {
+        connectionJob?.cancel()
+        terminalBuffer.close()
+        super.onCleared()
+    }
+
     private companion object {
         val pairingJson = Json {
             prettyPrint = true

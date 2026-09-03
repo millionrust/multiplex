@@ -28,15 +28,19 @@ targets:
       - TermiRustMobile/Models/MobileRouteContract.swift
       - TermiRustMobile/Models/MobileCrossRouteAcceptance.swift
       - TermiRustMobile/Models/MobileVaultModels.swift
+      - TermiRustMobile/Relay/RelayControllerTransport.swift
       - TermiRustMobile/Security/ControllerKeychainBlobStore.swift
+      - TermiRustMobile/Security/ControllerRouteConfigurationStore.swift
       - TermiRustMobile/Security/ControllerRouteCredentialStore.swift
       - TermiRustMobile/Security/KeychainSecretStore.swift
       - TermiRustMobile/Security/MobileDeviceIdentityStore.swift
       - TermiRustMobile/SSH/MobileSSHSession.swift
       - TermiRustMobile/SSH/OpenSSHPrivateKeyParser.swift
+      - TermiRustMobile/SSH/SSHControllerTransport.swift
       - TermiRustMobile/SSH/TmuxBootstrap.swift
       - TermiRustMobile/Terminal/BoundedTerminalBuffer.swift
       - TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift
+      - TermiRustMobile/Terminal/NativeControllerTerminal.swift
       - TermiRustMobile/Terminal/TerminalInteraction.swift
       - TermiRustMobile/Terminal/TerminalAcceptance.swift
       - TermiRustMobile/Terminal/TerminalBuffer.swift
@@ -88,6 +92,8 @@ targets:
       - TermiRustMobileTests/BoundedTerminalBufferTests.swift
       - TermiRustMobileTests/AppleControllerRouteTests.swift
       - TermiRustMobileTests/AppleControllerRouteViewModelTests.swift
+      - TermiRustMobileTests/AppleSSHControllerTransportLiveTests.swift
+      - TermiRustMobileTests/AppleRelayControllerTransportLiveTests.swift
       - TermiRustMobileTests/ControllerBindingConformanceTests.swift
       - TermiRustMobileTests/ControllerFleetCacheTests.swift
       - TermiRustMobileTests/ControllerPairingFleetTests.swift

@@ -76,8 +76,11 @@ impl RelayDesktopRouteOwner {
         &self,
         auth: DesktopControllerAuth,
     ) -> Result<DesktopRelaySession, RelayDesktopError> {
-        if auth.host_identity_generation != self.endpoint.binding.host_identity_generation
-            || auth.device_id != self.endpoint.binding.device_id
+        let binding = self.endpoint.binding.ok_or_else(|| {
+            RelayDesktopError::Route(RelayRouteError::new(RelayRouteErrorCode::InvalidConfig))
+        })?;
+        if auth.host_identity_generation != binding.host_identity_generation
+            || auth.device_id != binding.device_id
         {
             return Err(RelayDesktopError::Route(RelayRouteError::new(
                 RelayRouteErrorCode::InvalidConfig,

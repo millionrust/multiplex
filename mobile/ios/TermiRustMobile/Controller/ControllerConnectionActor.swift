@@ -2,6 +2,93 @@ import Foundation
 @preconcurrency import Network
 import Security
 
+protocol ControllerDuplexConnection: AnyObject, Sendable {
+    func send(_ data: Data) async throws
+    func receive(maximumLength: Int) async throws -> Data
+    func cancel()
+}
+
+struct ControllerTransportFactory: Sendable {
+    let open: @Sendable (HostRoute) async throws -> any ControllerDuplexConnection
+
+    static let tcp = Self { route in
+        try await NWControllerDuplexConnection.open(route: route)
+    }
+}
+
+private final class NWControllerDuplexConnection: ControllerDuplexConnection, @unchecked Sendable {
+    private let connection: NWConnection
+
+    private init(_ connection: NWConnection) {
+        self.connection = connection
+    }
+
+    static func open(route: HostRoute) async throws -> NWControllerDuplexConnection {
+        let host = NWEndpoint.Host(route.address)
+        guard let port = NWEndpoint.Port(rawValue: route.port) else {
+            throw ControllerPairingError.invalidOffer
+        }
+        let connection = NWConnection(host: host, port: port, using: .tcp)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let gate = ConnectionStartGate()
+                connection.stateUpdateHandler = { state in
+                    switch state {
+                    case .ready:
+                        if gate.claim() {
+                            continuation.resume(returning: NWControllerDuplexConnection(connection))
+                        }
+                    case .failed(let error):
+                        if gate.claim() { continuation.resume(throwing: error) }
+                    case .cancelled:
+                        if gate.claim() { continuation.resume(throwing: CancellationError()) }
+                    default:
+                        break
+                    }
+                }
+                connection.start(queue: DispatchQueue(label: "com.termirust.controller.connection"))
+            }
+        } onCancel: {
+            connection.cancel()
+        }
+    }
+
+    func send(_ data: Data) async throws {
+        try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Void, Error>) in
+            connection.send(content: data, completion: .contentProcessed { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            })
+        }
+    }
+
+    func receive(maximumLength: Int) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            connection.receive(minimumIncompleteLength: 1, maximumLength: maximumLength) {
+                data, _, complete, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let data, !data.isEmpty {
+                    continuation.resume(returning: data)
+                } else if complete {
+                    continuation.resume(throwing: ControllerPairingError.connectionClosed)
+                } else {
+                    continuation.resume(throwing: ControllerPairingError.connectionClosed)
+                }
+            }
+        }
+    }
+
+    func cancel() {
+        connection.stateUpdateHandler = nil
+        connection.cancel()
+    }
+}
+
 protocol ControllerConnecting: Sendable {
     func beginPairing(
         offerText: String,
@@ -52,10 +139,11 @@ protocol ControllerConnecting: Sendable {
     func cancel() async
 }
 
-struct AppleControllerRouteConnections: Sendable {
+final class AppleControllerRouteConnections: @unchecked Sendable {
     let privateNetwork: (any ControllerConnecting)?
-    let ssh: (any ControllerConnecting)?
-    let selfHostedRelay: (any ControllerConnecting)?
+    private let lock = NSLock()
+    private var storedSSH: (any ControllerConnecting)?
+    private var storedRelay: (any ControllerConnecting)?
 
     init(
         privateNetwork: (any ControllerConnecting)?,
@@ -63,8 +151,16 @@ struct AppleControllerRouteConnections: Sendable {
         selfHostedRelay: (any ControllerConnecting)? = nil
     ) {
         self.privateNetwork = privateNetwork
-        self.ssh = ssh
-        self.selfHostedRelay = selfHostedRelay
+        self.storedSSH = ssh
+        self.storedRelay = selfHostedRelay
+    }
+
+    var ssh: (any ControllerConnecting)? {
+        lock.withLock { storedSSH }
+    }
+
+    var selfHostedRelay: (any ControllerConnecting)? {
+        lock.withLock { storedRelay }
     }
 
     var availability: AppleControllerRouteAvailability {
@@ -83,6 +179,28 @@ struct AppleControllerRouteConnections: Sendable {
         case .privateNetwork: privateNetwork
         case .ssh: ssh
         case .selfHostedRelay: selfHostedRelay
+        }
+    }
+
+    @discardableResult
+    func replaceSSH(
+        _ connection: (any ControllerConnecting)?
+    ) -> (any ControllerConnecting)? {
+        lock.withLock {
+            let previous = storedSSH
+            storedSSH = connection
+            return previous
+        }
+    }
+
+    @discardableResult
+    func replaceRelay(
+        _ connection: (any ControllerConnecting)?
+    ) -> (any ControllerConnecting)? {
+        lock.withLock {
+            let previous = storedRelay
+            storedRelay = connection
+            return previous
         }
     }
 }
@@ -334,12 +452,17 @@ actor ControllerConnectionActor: ControllerConnecting {
     private static let handshakeTimeout: Duration = .seconds(30)
 
     private let securityEngine: ControllerSecurityEngine
-    private var connection: NWConnection?
+    private let transportFactory: ControllerTransportFactory
+    private var connection: (any ControllerDuplexConnection)?
     private var pairing: PendingPairing?
     private var activeTerminal: ActiveTerminalConnection?
 
-    init(blobStore: SecureBlobStore) throws {
+    init(
+        blobStore: SecureBlobStore,
+        transportFactory: ControllerTransportFactory = .tcp
+    ) throws {
         self.securityEngine = try ControllerSecurityEngine(blobs: blobStore)
+        self.transportFactory = transportFactory
     }
 
     func beginPairing(
@@ -383,7 +506,7 @@ actor ControllerConnectionActor: ControllerConnecting {
 
         do {
             let network = try await withTimeout(Self.handshakeTimeout) {
-                try await Self.openConnection(route: route)
+                try await self.transportFactory.open(route)
             }
             connection = network
             try await withTimeout(Self.handshakeTimeout) {
@@ -564,7 +687,7 @@ actor ControllerConnectionActor: ControllerConnecting {
             throw ControllerConnectionError.capabilityDenied
         }
         let network = try await withTimeout(Self.handshakeTimeout) {
-            try await Self.openConnection(route: host.route)
+            try await self.transportFactory.open(host.route)
         }
         connection = network
         await progress(.authenticating)
@@ -608,7 +731,6 @@ actor ControllerConnectionActor: ControllerConnecting {
         let authenticatedSession = authentication.session
         defer {
             try? authenticatedSession.finish()
-            network.stateUpdateHandler = nil
             network.cancel()
             connection = nil
         }
@@ -648,7 +770,7 @@ actor ControllerConnectionActor: ControllerConnecting {
         try TerminalLimits.controllerDefault.validate(viewport: viewport)
 
         let network = try await withTimeout(Self.handshakeTimeout) {
-            try await Self.openConnection(route: host.route)
+            try await self.transportFactory.open(host.route)
         }
         connection = network
         let started = Self.uptimeMillis()
@@ -691,7 +813,6 @@ actor ControllerConnectionActor: ControllerConnecting {
         let authenticatedSession = authentication.session
         defer {
             try? authenticatedSession.finish()
-            network.stateUpdateHandler = nil
             network.cancel()
             if connection === network { connection = nil }
         }
@@ -786,7 +907,7 @@ actor ControllerConnectionActor: ControllerConnecting {
             & (Self.attachCapability | Self.inputCapability
                 | Self.resizeCapability | Self.approvalCapability)
         let network = try await withTimeout(Self.handshakeTimeout) {
-            try await Self.openConnection(route: host.route)
+            try await self.transportFactory.open(host.route)
         }
         connection = network
         let authentication = try await authenticate(
@@ -800,7 +921,6 @@ actor ControllerConnectionActor: ControllerConnecting {
         defer {
             if activeTerminal?.token == token { activeTerminal = nil }
             try? authenticatedSession.finish()
-            network.stateUpdateHandler = nil
             network.cancel()
             if connection === network { connection = nil }
         }
@@ -995,7 +1115,6 @@ actor ControllerConnectionActor: ControllerConnecting {
             try? activeTerminal.session.finish()
         }
         activeTerminal = nil
-        connection?.stateUpdateHandler = nil
         connection?.cancel()
         connection = nil
     }
@@ -1003,7 +1122,7 @@ actor ControllerConnectionActor: ControllerConnecting {
     private func authenticate(
         host: PairedHostRecord,
         requestedCapabilityBits: UInt16,
-        network: NWConnection
+        network: any ControllerDuplexConnection
     ) async throws -> AuthenticatedSessionResult {
         let started = Self.uptimeMillis()
         let request = ConnectionStartRequest(
@@ -1104,7 +1223,7 @@ actor ControllerConnectionActor: ControllerConnecting {
     private static func fetchStableSnapshot(
         host: PairedHostRecord,
         session: ControllerConnectionSession,
-        network: NWConnection,
+        network: any ControllerDuplexConnection,
         capabilityBits: UInt16
     ) async throws -> ControllerFleetSnapshot {
         for _ in 0..<3 {
@@ -1262,50 +1381,17 @@ actor ControllerConnectionActor: ControllerConnecting {
         UInt64(Date().timeIntervalSince1970 * 1_000)
     }
 
-    private static func openConnection(route: HostRoute) async throws -> NWConnection {
-        let host = NWEndpoint.Host(route.address)
-        guard let port = NWEndpoint.Port(rawValue: route.port) else {
-            throw ControllerPairingError.invalidOffer
-        }
-        let connection = NWConnection(host: host, port: port, using: .tcp)
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                let gate = ConnectionStartGate()
-                connection.stateUpdateHandler = { state in
-                    switch state {
-                    case .ready:
-                        if gate.claim() { continuation.resume(returning: connection) }
-                    case .failed(let error):
-                        if gate.claim() { continuation.resume(throwing: error) }
-                    case .cancelled:
-                        if gate.claim() { continuation.resume(throwing: CancellationError()) }
-                    default:
-                        break
-                    }
-                }
-                connection.start(queue: DispatchQueue(label: "com.termirust.controller.connection"))
-            }
-        } onCancel: {
-            connection.cancel()
-        }
-    }
-
-    private static func send(_ data: Data, over connection: NWConnection) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            connection.send(content: data, completion: .contentProcessed { error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume()
-                }
-            })
-        }
+    private static func send(
+        _ data: Data,
+        over connection: any ControllerDuplexConnection
+    ) async throws {
+        try await connection.send(data)
     }
 
     private static func sendFrame(
         _ payload: Data,
         maximum: Int,
-        over connection: NWConnection
+        over connection: any ControllerDuplexConnection
     ) async throws {
         guard !payload.isEmpty, payload.count <= maximum, payload.count <= Int(UInt32.max) else {
             throw ControllerPairingError.frameTooLarge
@@ -1316,7 +1402,10 @@ actor ControllerConnectionActor: ControllerConnecting {
         try await send(framed, over: connection)
     }
 
-    private static func receiveFrame(maximum: Int, over connection: NWConnection) async throws -> Data {
+    private static func receiveFrame(
+        maximum: Int,
+        over connection: any ControllerDuplexConnection
+    ) async throws -> Data {
         let prefix = try await receiveExactly(4, over: connection)
         let length = prefix.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
         guard length > 0, length <= UInt32(maximum) else {
@@ -1325,27 +1414,15 @@ actor ControllerConnectionActor: ControllerConnecting {
         return try await receiveExactly(Int(length), over: connection)
     }
 
-    private static func receiveExactly(_ count: Int, over connection: NWConnection) async throws -> Data {
+    private static func receiveExactly(
+        _ count: Int,
+        over connection: any ControllerDuplexConnection
+    ) async throws -> Data {
         var result = Data()
         result.reserveCapacity(count)
         while result.count < count {
             let remaining = count - result.count
-            let chunk: Data = try await withCheckedThrowingContinuation { continuation in
-                connection.receive(
-                    minimumIncompleteLength: 1,
-                    maximumLength: remaining
-                ) { data, _, complete, error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                    } else if let data, !data.isEmpty {
-                        continuation.resume(returning: data)
-                    } else if complete {
-                        continuation.resume(throwing: ControllerPairingError.connectionClosed)
-                    } else {
-                        continuation.resume(throwing: ControllerPairingError.connectionClosed)
-                    }
-                }
-            }
+            let chunk = try await connection.receive(maximumLength: remaining)
             result.append(chunk)
         }
         return result
@@ -1437,7 +1514,7 @@ private struct ActiveTerminalConnection: Sendable {
     let hostID: String
     let identity: ReadOnlyAttachIdentity
     let grantedCapabilityBits: UInt16
-    let network: NWConnection
+    let network: any ControllerDuplexConnection
     let session: ControllerConnectionSession
     let attachCommandID: UUID
     var pendingCapabilities: [UUID: ControllerCapability]

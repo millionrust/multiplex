@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "tmux_status_redraw_and_modes",
+      "columns": 20,
+      "rows": 5,
+      "scrollback": 8,
+      "input": "\u001b[?1049h\u001b[2J\u001b[H\u001b[?25l\u001b[?1hpane-1\u001b[5;1H\u001b[7m[0] shell\u001b[0m\u001b[?1002h\u001b[?1006h",
+      "expected": {
+        "lines": ["pane-1", "", "", "", "[0] shell"],
+        "cursor_row": 4,
+        "cursor_column": 9,
+        "cursor_visible": false,
+        "application_cursor": true,
+        "application_keypad": false,
+        "alternate_screen": true,
+        "bracketed_paste": false,
+        "mouse_mode": "button_motion",
+        "mouse_encoding": "sgr",
+        "scrollback_rows": 0
+      }
+    },
+    {
+      "name": "vim_incremental_line_and_character_edits",
+      "columns": 20,
+      "rows": 6,
+      "scrollback": 8,
+      "input": "\u001b[?1049h\u001b[2J\u001b[Halpha\r\nbeta\r\ngamma\u001b[2;1H\u001b[LINSERT\u001b[3;1H\u001b[2@>>\u001b[4;1H\u001b[M\u001b[?2004h",
+      "expected": {
+        "lines": ["alpha", "INSERT", ">>beta", "", "", ""],
+        "cursor_row": 3,
+        "cursor_column": 0,
+        "cursor_visible": true,
+        "application_cursor": false,
+        "application_keypad": false,
+        "alternate_screen": true,
+        "bracketed_paste": true,
+        "mouse_mode": "none",
+        "mouse_encoding": "default",
+        "scrollback_rows": 0
+      }
+    },
+    {
+      "name": "htop_colored_meter_in_place_update",
+      "columns": 24,
+      "rows": 5,
+      "scrollback": 8,
+      "input": "\u001b[?1049h\u001b[2J\u001b[H\u001b[?25l\u001b[1;36mCPU\u001b[0m: 10%\u001b[2;1H\u001b[1;32mMem\u001b[0m: 42%\u001b[1;6H99\u001b[?1000h\u001b[?1006h",
+      "expected": {
+        "lines": ["CPU: 99%", "Mem: 42%", "", "", ""],
+        "cursor_row": 0,
+        "cursor_column": 7,
+        "cursor_visible": false,
+        "application_cursor": false,
+        "application_keypad": false,
+        "alternate_screen": true,
+        "bracketed_paste": false,
+        "mouse_mode": "press_release",
+        "mouse_encoding": "sgr",
+        "scrollback_rows": 0
+      }
+    }
+  ]
+}

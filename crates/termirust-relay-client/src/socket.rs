@@ -291,7 +291,7 @@ fn validate_challenge(
     {
         return Err(RelayRouteError::new(RelayRouteErrorCode::AdmissionRejected));
     }
-    if challenge.revocation_epoch != endpoint.binding.relay_epoch {
+    if challenge.revocation_epoch != endpoint.relay_epoch {
         return Err(RelayRouteError::new(
             RelayRouteErrorCode::RelayEpochMismatch,
         ));

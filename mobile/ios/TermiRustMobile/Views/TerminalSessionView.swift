@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct TerminalSessionView: View {
     @ObservedObject var viewModel: HostListViewModel
+    @ObservedObject private var terminalBuffer: TerminalBuffer
     let host: MobileHost
     let framed: Bool
     let protectsTopSafeArea: Bool
@@ -24,6 +25,7 @@ struct TerminalSessionView: View {
         protectsTopSafeArea: Bool = true
     ) {
         self.viewModel = viewModel
+        self.terminalBuffer = viewModel.terminalBuffer
         self.host = host
         self.framed = framed
         self.protectsTopSafeArea = protectsTopSafeArea
@@ -225,22 +227,40 @@ struct TerminalSessionView: View {
 
     private var terminalSurface: some View {
         GeometryReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    if viewModel.terminalBuffer.lines.isEmpty {
-                        Text("Terminal output will appear here.")
-                            .foregroundStyle(Color.terminalMuted)
-                    } else {
-                        ForEach(Array(viewModel.terminalBuffer.lines.enumerated()), id: \.offset) { _, line in
-                            Text(line.isEmpty ? " " : line)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .textSelection(.enabled)
+            ScrollViewReader { reader in
+                ScrollView([.vertical, .horizontal]) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        if terminalBuffer.screen.lines.allSatisfy(\.isEmpty) {
+                            Text("Terminal output will appear here.")
+                                .foregroundStyle(Color.terminalMuted)
+                                .padding(12)
+                        } else {
+                            ForEach(
+                                Array(terminalBuffer.screen.contentCells.enumerated()),
+                                id: \.offset
+                            ) { index, row in
+                                Text(attributedTerminalRow(row, rowIndex: index))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .frame(minHeight: terminalFontSize * 1.35)
+                                    .id(index)
+                            }
                         }
                     }
+                    .textSelection(.enabled)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .font(.system(size: terminalFontSize, design: .monospaced))
-                .foregroundStyle(Color.terminalForeground)
-                .padding(12)
+                .onChange(of: terminalBuffer.screen.lines) { _, lines in
+                    guard let row = ControllerTerminalFollowTarget.row(
+                        lines: lines,
+                        cursorRow: terminalBuffer.screen.cursorRow,
+                        scrollbackRows: terminalBuffer.screen.scrollbackRows
+                    ) else { return }
+                    withAnimation(.none) {
+                        reader.scrollTo(row, anchor: .bottom)
+                    }
+                }
             }
             .background(Color.terminalBackground)
             .clipShape(RoundedRectangle(cornerRadius: framed ? 14 : 0, style: .continuous))
@@ -264,6 +284,81 @@ struct TerminalSessionView: View {
         .padding(.vertical, framed ? 8 : 0)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minHeight: 220)
+    }
+
+    private func attributedTerminalRow(
+        _ cells: [BoundedTerminalCell],
+        rowIndex: Int
+    ) -> AttributedString {
+        let cursor = ControllerTerminalCursor.column(
+            rowIndex: rowIndex,
+            cells: cells,
+            cursorRow: terminalBuffer.screen.cursorRow,
+            cursorColumn: terminalBuffer.screen.cursorColumn,
+            scrollbackRows: terminalBuffer.screen.scrollbackRows,
+            visible: terminalBuffer.screen.cursorVisible
+        )
+        var displayCells = cells
+        if let cursor {
+            while displayCells.count <= cursor { displayCells.append(.blank()) }
+        }
+        var output = AttributedString()
+        for (column, cell) in displayCells.enumerated() where cell.width != .continuation {
+            var segment = AttributedString(cell.text)
+            let colors = resolvedTerminalColors(cell.style)
+            segment.foregroundColor = column == cursor ? .black : colors.foreground
+            segment.backgroundColor = column == cursor ? Color.green.opacity(0.9) : colors.background
+            var font = Font.system(size: terminalFontSize, design: .monospaced)
+            if cell.style.bold { font = font.weight(.bold) }
+            if cell.style.italic { font = font.italic() }
+            segment.font = font
+            if cell.style.underline { segment.underlineStyle = .single }
+            output.append(segment)
+        }
+        return output
+    }
+
+    private func resolvedTerminalColors(
+        _ style: TerminalCellStyle
+    ) -> (foreground: Color, background: Color) {
+        let foreground = directTerminalColor(style.foreground, default: Color(white: 0.92))
+        let background = directTerminalColor(style.background, default: .black)
+        let resolvedForeground = style.inverse ? background : foreground
+        let resolvedBackground = style.inverse ? foreground : background
+        return (style.dim ? resolvedForeground.opacity(0.55) : resolvedForeground, resolvedBackground)
+    }
+
+    private func directTerminalColor(_ color: TerminalCellColor, default fallback: Color) -> Color {
+        switch color {
+        case .default: return fallback
+        case .indexed(let value): return directANSIColor(Int(value))
+        case .rgb(let red, let green, let blue):
+            return Color(red: Double(red) / 255, green: Double(green) / 255, blue: Double(blue) / 255)
+        }
+    }
+
+    private func directANSIColor(_ index: Int) -> Color {
+        let base: [(Double, Double, Double)] = [
+            (0, 0, 0), (0.8, 0, 0), (0, 0.8, 0), (0.8, 0.8, 0),
+            (0, 0, 0.8), (0.8, 0, 0.8), (0, 0.8, 0.8), (0.75, 0.75, 0.75),
+            (0.5, 0.5, 0.5), (1, 0, 0), (0, 1, 0), (1, 1, 0),
+            (0.35, 0.35, 1), (1, 0, 1), (0, 1, 1), (1, 1, 1)
+        ]
+        if base.indices.contains(index) {
+            let color = base[index]
+            return Color(red: color.0, green: color.1, blue: color.2)
+        }
+        if (16...231).contains(index) {
+            let cube = index - 16
+            let levels = [0, 95, 135, 175, 215, 255]
+            return Color(
+                red: Double(levels[cube / 36]) / 255,
+                green: Double(levels[(cube / 6) % 6]) / 255,
+                blue: Double(levels[cube % 6]) / 255
+            )
+        }
+        let gray = Double(8 + min(max(index - 232, 0), 23) * 10) / 255
+        return Color(red: gray, green: gray, blue: gray)
     }
 
     private var terminalControls: some View {
@@ -373,6 +468,19 @@ struct TerminalSessionView: View {
             viewModel.sendTerminalBytes(
                 encodeTerminalInput(input, control: controlModifierActive, option: optionModifierActive)
             )
+        } else if force && input.contains("\n") {
+            let normalized = TerminalInteraction.normalizePaste(input)
+            let maximum = TerminalInteraction.maximumPastePayload(
+                bracketed: terminalBuffer.screen.bracketedPaste
+            )
+            guard normalized.count <= maximum else {
+                pendingMultilinePaste = nil
+                return
+            }
+            viewModel.sendTerminalBytes(TerminalInteraction.preparePaste(
+                normalized,
+                bracketed: terminalBuffer.screen.bracketedPaste
+            ))
         } else {
             viewModel.sendTerminalInput(input)
         }
@@ -436,13 +544,14 @@ struct TerminalSessionView: View {
     }
 
     private var accessoryKeys: [(label: String, bytes: Data)] {
-        [
+        let applicationCursor = terminalBuffer.screen.applicationCursor
+        return [
             ("Esc", Data([0x1b])),
             ("Tab", Data([0x09])),
-            ("←", Data("\u{1b}[D".utf8)),
-            ("↓", Data("\u{1b}[B".utf8)),
-            ("↑", Data("\u{1b}[A".utf8)),
-            ("→", Data("\u{1b}[C".utf8)),
+            ("←", TerminalInteraction.encode(.left, applicationCursor: applicationCursor)!),
+            ("↓", TerminalInteraction.encode(.down, applicationCursor: applicationCursor)!),
+            ("↑", TerminalInteraction.encode(.up, applicationCursor: applicationCursor)!),
+            ("→", TerminalInteraction.encode(.right, applicationCursor: applicationCursor)!),
             ("/", Data("/".utf8)),
             ("|", Data("|".utf8)),
             ("-", Data("-".utf8))

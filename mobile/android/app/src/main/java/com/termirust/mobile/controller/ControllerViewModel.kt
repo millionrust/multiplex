@@ -15,14 +15,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.SocketException
 import java.net.SocketTimeoutException
+import java.io.IOException
 import java.security.SecureRandom
+import java.util.Base64
 import java.util.UUID
 import kotlin.math.min
+import com.termirust.mobile.security.KeystoreSecretStore
 
 class ControllerViewModel(application: Application) : AndroidViewModel(application) {
     private val hostStore = PairedHostStore(application)
     private val cacheStore = ControllerFleetCacheStore(application)
     private val secureBlobs = ControllerSecureBlobStore(application)
+    private val mobileSecrets = KeystoreSecretStore(application)
+    private val routeConfigurationStore = ControllerRouteConfigurationStore(application)
+    private val routeCredentialStore = ControllerRouteCredentialStore(mobileSecrets)
     private val routeConnections = AndroidControllerRouteConnections(
         privateNetwork = ControllerConnection(secureBlobs),
         ssh = null,
@@ -86,6 +92,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
             if (source != target) {
                 terminalRender?.cancel()
                 terminalRender = null
+                terminalRuntime?.terminal?.close()
                 terminalRuntime = null
                 _state.value = _state.value.copy(activeTerminal = null)
             }
@@ -171,8 +178,115 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         operation?.cancel()
         routePreferences.edit().putString(SELECTED_HOST_KEY, hostId).apply()
         _state.value = makeState(hostId, ControllerConnectionState.PairedOffline)
+        installStoredRoutes(hostId)
         operation = viewModelScope.launch { refreshSelected(retry = true) }
     }
+
+    fun configureSshRoute(
+        endpoint: String,
+        port: Int,
+        username: String,
+        hostKeyPin: String,
+        authentication: ControllerSshAuthenticationKind,
+        secret: String,
+    ): Boolean {
+        val host = selectedHost() ?: return false
+        return runCatching {
+            val reference = ControllerRouteCredentialReference(
+                id = "ssh-controller",
+                route = ControllerRemoteRouteKind.SSH,
+                purpose = ControllerRouteCredentialPurpose.SSH_AUTHENTICATION,
+            )
+            val configuration = ControllerRemoteRouteConfiguration(
+                kind = ControllerRemoteRouteKind.SSH,
+                endpoint = endpoint.trim(),
+                port = port,
+                username = username.trim(),
+                trustPin = hostKeyPin.trim(),
+                credential = reference,
+                sshAuthentication = authentication,
+            ).also(ControllerRemoteRouteConfiguration::validate)
+            routeCredentialStore.save(host.id, reference, secret)
+            try {
+                routeConfigurationStore.save(host.id, configuration)
+            } catch (error: Throwable) {
+                routeCredentialStore.delete(host.id, reference)
+                throw error
+            }
+            installSshRoute(host.id)
+            routeError = null
+            publishRouteState()
+        }.onFailure {
+            routeError = "route_configuration_invalid"
+            publishRouteState()
+        }.isSuccess
+    }
+
+    fun removeSshRoute() {
+        val host = selectedHost() ?: return
+        routeConfigurationStore.load(host.id, ControllerRemoteRouteKind.SSH)?.credential?.let {
+            routeCredentialStore.delete(host.id, it)
+        }
+        routeConfigurationStore.delete(host.id, ControllerRemoteRouteKind.SSH)
+        installSshRoute(host.id)
+        publishRouteState()
+    }
+
+    fun selectedSshConfiguration(): ControllerRemoteRouteConfiguration? =
+        selectedHost()?.let { routeConfigurationStore.load(it.id, ControllerRemoteRouteKind.SSH) }
+
+    fun configureRelayRoute(
+        endpoint: String,
+        spkiPin: String,
+        routeId: String,
+        revocationEpoch: Long,
+        admissionCredential: String,
+    ): Boolean {
+        val host = selectedHost() ?: return false
+        return runCatching {
+            require(Base64.getDecoder().decode(admissionCredential).size == 32)
+            val reference = ControllerRouteCredentialReference(
+                id = "relay-controller",
+                route = ControllerRemoteRouteKind.SELF_HOSTED_RELAY,
+                purpose = ControllerRouteCredentialPurpose.RELAY_ADMISSION,
+            )
+            val configuration = ControllerRemoteRouteConfiguration(
+                kind = ControllerRemoteRouteKind.SELF_HOSTED_RELAY,
+                endpoint = endpoint.trim(),
+                trustPin = spkiPin.trim(),
+                credential = reference,
+                relayRouteId = routeId.trim(),
+                relayRevocationEpoch = revocationEpoch,
+            ).also(ControllerRemoteRouteConfiguration::validate)
+            routeCredentialStore.save(host.id, reference, admissionCredential)
+            try {
+                routeConfigurationStore.save(host.id, configuration)
+            } catch (error: Throwable) {
+                routeCredentialStore.delete(host.id, reference)
+                throw error
+            }
+            installRelayRoute(host.id)
+            routeError = null
+            publishRouteState()
+        }.onFailure {
+            routeError = "route_configuration_invalid"
+            publishRouteState()
+        }.isSuccess
+    }
+
+    fun removeRelayRoute() {
+        val host = selectedHost() ?: return
+        routeConfigurationStore.load(host.id, ControllerRemoteRouteKind.SELF_HOSTED_RELAY)
+            ?.credential?.let { routeCredentialStore.delete(host.id, it) }
+        routeConfigurationStore.delete(host.id, ControllerRemoteRouteKind.SELF_HOSTED_RELAY)
+        installRelayRoute(host.id)
+        publishRouteState()
+    }
+
+    fun selectedRelayConfiguration(): ControllerRemoteRouteConfiguration? =
+        selectedHost()?.let {
+            routeConfigurationStore.load(it.id, ControllerRemoteRouteKind.SELF_HOSTED_RELAY)
+        }
 
     fun retry() {
         operation?.cancel()
@@ -243,6 +357,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
             viewport = viewport,
         )
         operation?.cancel()
+        terminalRuntime?.terminal?.close()
         terminalRuntime = runtime
         publishTerminal(runtime)
         operation = viewModelScope.launch {
@@ -347,6 +462,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         }
         runtime?.writer?.releaseLocally()
         runtime?.reducer?.detach()
+        runtime?.terminal?.close()
         terminalRuntime = null
         _state.value = _state.value.copy(activeTerminal = null)
     }
@@ -379,6 +495,13 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         operation = viewModelScope.launch {
             cancelSelectedRoute()
             runCatching { secureBlobs.delete(host.deviceStaticKeyId) }
+            routeConfigurationStore.load(host.id, ControllerRemoteRouteKind.SSH)?.credential?.let {
+                runCatching { routeCredentialStore.delete(host.id, it) }
+            }
+            routeConfigurationStore.delete(host.id, ControllerRemoteRouteKind.SSH)
+            routeConfigurationStore.load(host.id, ControllerRemoteRouteKind.SELF_HOSTED_RELAY)
+                ?.credential?.let { runCatching { routeCredentialStore.delete(host.id, it) } }
+            routeConfigurationStore.delete(host.id, ControllerRemoteRouteKind.SELF_HOSTED_RELAY)
             hosts = hostStore.remove(host.id)
             cache = cacheStore.remove(cache, host.id)
             val next = hosts.maxByOrNull(PairedHostRecord::pairedAtMillis)
@@ -393,6 +516,14 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
                     ControllerConnectionState.PairedOffline
                 },
             )
+            if (next == null) {
+                routeConnections.replaceSsh(null)
+                routeConnections.replaceRelay(null)
+                runCatching { routeCoordinator.setAvailable(ControllerRemoteRouteKind.SSH, false) }
+                publishRouteState()
+            } else {
+                installStoredRoutes(next.id)
+            }
         }
     }
 
@@ -400,6 +531,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         operation?.cancel()
         terminalRender?.cancel()
         terminalResize?.cancel()
+        terminalRuntime?.terminal?.close()
         routeConnections.close()
         super.onCleared()
     }
@@ -411,6 +543,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         val selected = hosts.firstOrNull { it.id == savedHostId }
             ?: hosts.maxByOrNull(PairedHostRecord::pairedAtMillis)
         selected?.let { routePreferences.edit().putString(SELECTED_HOST_KEY, it.id).apply() }
+        selected?.id?.let(::installStoredRoutes)
         _state.value = makeState(
             selectedHostId = selected?.id,
             connectionState = if (selected == null) {
@@ -782,6 +915,44 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     private fun selectedHost(): PairedHostRecord? =
         hosts.firstOrNull { it.id == _state.value.selectedHostId }
 
+    private fun installSshRoute(hostId: String) {
+        val configuration = routeConfigurationStore.load(hostId, ControllerRemoteRouteKind.SSH)
+        routeConnections.replaceSsh(configuration?.let {
+            SshControllerConnection(secureBlobs, hostId, it, mobileSecrets)
+        })
+        runCatching {
+            routeCoordinator.setAvailable(ControllerRemoteRouteKind.SSH, configuration != null)
+        }
+    }
+
+    private fun installRelayRoute(hostId: String) {
+        val configuration = routeConfigurationStore.load(
+            hostId,
+            ControllerRemoteRouteKind.SELF_HOSTED_RELAY,
+        )
+        routeConnections.replaceRelay(configuration?.let {
+            ControllerConnection(
+                secureBlobs,
+                transportFactory = RelayControllerTransportFactory.create(
+                    hostId,
+                    it,
+                    routeCredentialStore,
+                ),
+            )
+        })
+        runCatching {
+            routeCoordinator.setAvailable(
+                ControllerRemoteRouteKind.SELF_HOSTED_RELAY,
+                configuration != null,
+            )
+        }
+    }
+
+    private fun installStoredRoutes(hostId: String) {
+        installSshRoute(hostId)
+        installRelayRoute(hostId)
+    }
+
     private fun showFailure(error: Throwable) {
         if (error is CancellationException) return
         _state.value = _state.value.copy(connection = ControllerConnectionState.Failed(classify(error)))
@@ -797,12 +968,13 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         is ControllerConnectionException.HostError -> error.code
         is SocketTimeoutException -> "timeout"
         is SocketException -> "offline"
+        is IOException -> "offline"
         is IllegalArgumentException -> "invalid_data"
         else -> "operation_failed"
     }
 
     private fun isRetryable(error: Throwable): Boolean =
-        error is SocketTimeoutException || error is SocketException
+        error is SocketTimeoutException || error is SocketException || error is IOException
 
     private fun loadDeviceId(application: Application): UUID {
         val preferences = application.getSharedPreferences("controller-device", 0)

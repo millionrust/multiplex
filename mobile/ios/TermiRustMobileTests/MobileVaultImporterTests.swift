@@ -418,6 +418,22 @@ final class MobileVaultImporterTests: XCTestCase {
 
         XCTAssertEqual(buffer.lines, ["after"])
     }
+
+    @MainActor
+    func testDirectSSHTerminalUsesStatefulFullScreenModel() {
+        let buffer = TerminalBuffer()
+        buffer.resize(columns: 12, rows: 4)
+
+        buffer.append(
+            "one\r\ntwo\r\nthree\u{1B}[2;1H\u{1B}[L\u{1B}[1;31minsert" +
+            "\u{1B}[0m\u{1B}[3;1H\u{1B}[2@>>"
+        )
+
+        XCTAssertEqual(Array(buffer.lines.prefix(3)), ["one", "insert", ">>two"])
+        XCTAssertEqual(buffer.screen.cursorRow, 2)
+        XCTAssertEqual(buffer.screen.cursorColumn, 2)
+        XCTAssertEqual(buffer.screen.contentCells[1][0].style.foreground, .indexed(1))
+    }
 }
 
 private struct FixtureDecryptor: MobileVaultDecrypting {

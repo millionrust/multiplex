@@ -24,3 +24,4 @@ pub use reconnect::{
 };
 pub use socket::{RelaySocket, RelayTlsClientConfig, spki_pin_from_certificate};
 pub use stream::{RelayByteStream, RelayConnectionHandle};
+pub use termirust_relay_protocol::{RelayRevocationEpoch, RelayRouteId};

@@ -35,6 +35,7 @@ const CONTROLLER_LISTENER_MODE: &str = "--controller-listener";
 const ARTIFACT_PREVIEW_MODE: &str = "--artifact-preview-worker";
 const CONTROLLER_BRIDGE_COMMAND: &str = "controller-bridge";
 const CONTROLLER_BRIDGE_STDIO: &str = "--stdio";
+const RELAY_HOST_COMMAND: &str = "relay-host";
 const ACCESSIBILITY_HARNESS_MODE: &str = "--accessibility-harness";
 
 fn run_session_host_mode() -> Result<(), termirust_session_host::HostError> {
@@ -209,6 +210,19 @@ fn main() {
                 "error[{}]: remote Controller bridge failed",
                 error.code.stable_code()
             );
+            std::process::exit(1);
+        }
+        return;
+    }
+    if std::env::args().nth(1).as_deref() == Some(RELAY_HOST_COMMAND) {
+        let arguments: Vec<String> = std::env::args().skip(2).collect();
+        if let Err(error) = crate::controller::relay_host_service::run_command(&arguments) {
+            eprintln!(
+                "error[{}]: self-hosted relay Host command failed",
+                error.code()
+            );
+            eprintln!("usage: termirust relay-host install --package PATH");
+            eprintln!("       termirust relay-host status|run|remove");
             std::process::exit(1);
         }
         return;

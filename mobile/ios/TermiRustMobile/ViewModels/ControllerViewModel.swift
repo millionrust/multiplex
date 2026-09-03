@@ -12,8 +12,14 @@ final class ControllerViewModel: ObservableObject {
     @Published private(set) var activeTerminal: ControllerTerminalViewModel?
     @Published private(set) var routeProjections: [AppleControllerRouteProjection]
     @Published private(set) var routeSelectionError: AppleControllerRouteCoordinatorError?
+    @Published private(set) var routeConfigurationError: String?
 
-    private let routeConnections: AppleControllerRouteConnections
+    private var routeConnections: AppleControllerRouteConnections
+    private let controllerBlobStore: any SecureBlobStore
+    private let routeConfigurationStore: any ControllerRouteConfigurationStoring
+    private let routeCredentialStore: any ControllerRouteCredentialStoring
+    private let managesStoredSSHRoute: Bool
+    private let managesStoredRelayRoute: Bool
     private let hostStore: PairedHostStore?
     private let cacheStore: ControllerFleetCacheStore?
     private let retryPolicy: ControllerRetryPolicy
@@ -29,12 +35,23 @@ final class ControllerViewModel: ObservableObject {
         routeConnections: AppleControllerRouteConnections? = nil,
         hostStore: PairedHostStore? = nil,
         cacheStore: ControllerFleetCacheStore? = nil,
+        controllerBlobStore: (any SecureBlobStore)? = nil,
+        routeConfigurationStore: (any ControllerRouteConfigurationStoring)? = nil,
+        routeCredentialStore: (any ControllerRouteCredentialStoring)? = nil,
         defaults: UserDefaults = .standard,
         retryPolicy: ControllerRetryPolicy = .live
     ) {
+        let resolvedBlobStore = controllerBlobStore ?? ControllerKeychainBlobStore()
         self.deviceID = Self.loadDeviceID(defaults: defaults)
         self.retryPolicy = retryPolicy
         self.defaults = defaults
+        self.controllerBlobStore = resolvedBlobStore
+        self.routeConfigurationStore = routeConfigurationStore
+            ?? ControllerRouteConfigurationStore(defaults: defaults)
+        self.routeCredentialStore = routeCredentialStore
+            ?? ControllerRouteCredentialStore()
+        self.managesStoredSSHRoute = routeConnections == nil && connectionActor == nil
+        self.managesStoredRelayRoute = routeConnections == nil && connectionActor == nil
         if let routeConnections {
             self.routeConnections = routeConnections
         } else if let connectionActor {
@@ -42,9 +59,8 @@ final class ControllerViewModel: ObservableObject {
                 privateNetwork: connectionActor
             )
         } else {
-            let blobStore = ControllerKeychainBlobStore()
             self.routeConnections = AppleControllerRouteConnections(
-                privateNetwork: try? ControllerConnectionActor(blobStore: blobStore)
+                privateNetwork: try? ControllerConnectionActor(blobStore: resolvedBlobStore)
             )
         }
         self.hostStore = hostStore ?? (try? PairedHostStore())
@@ -62,6 +78,7 @@ final class ControllerViewModel: ObservableObject {
         self.routeCoordinator = coordinator
         self.routeProjections = coordinator.projections
         self.routeSelectionError = nil
+        self.routeConfigurationError = nil
         guard self.routeConnections.privateNetwork != nil,
               self.hostStore != nil,
               self.cacheStore != nil else {
@@ -88,6 +105,16 @@ final class ControllerViewModel: ObservableObject {
 
     var selectedRoute: ControllerRemoteRouteKind? {
         routeCoordinator.selected
+    }
+
+    var selectedSSHConfiguration: ControllerRemoteRouteConfiguration? {
+        guard let hostID = state.selectedHostID else { return nil }
+        return try? routeConfigurationStore.load(hostID: hostID, route: .ssh)
+    }
+
+    var selectedRelayConfiguration: ControllerRemoteRouteConfiguration? {
+        guard let hostID = state.selectedHostID else { return nil }
+        return try? routeConfigurationStore.load(hostID: hostID, route: .selfHostedRelay)
     }
 
     private var selectedConnection: (any ControllerConnecting)? {
@@ -175,6 +202,7 @@ final class ControllerViewModel: ObservableObject {
             defaults.removeObject(forKey: Self.selectedHostDefaultsKey)
         }
         let cached = id.flatMap { cache.hosts[$0] }
+        if let id { installStoredRoutes(hostID: id) }
         state = makeState(
             selectedHostID: id,
             sessions: cached?.sessions ?? [],
@@ -185,6 +213,120 @@ final class ControllerViewModel: ObservableObject {
         guard let id, let host = hostRecords.first(where: { $0.id == id }) else { return }
         cache.markViewed(hostFingerprint: id, at: .now)
         operation = Task { [weak self] in await self?.refresh(host: host) }
+    }
+
+    @discardableResult
+    func configureSSHRoute(
+        endpoint: String,
+        port: UInt16,
+        username: String,
+        hostKeyPin: String,
+        authentication: ControllerSSHAuthenticationKind,
+        secret: String
+    ) -> Bool {
+        guard let host = selectedHost else { return false }
+        do {
+            let reference = try ControllerRouteCredentialReference(
+                id: "ssh-controller",
+                route: .ssh,
+                purpose: .sshAuthentication
+            )
+            let configuration = try ControllerRemoteRouteConfiguration.ssh(
+                endpoint: endpoint.trimmingCharacters(in: .whitespacesAndNewlines),
+                port: port,
+                username: username.trimmingCharacters(in: .whitespacesAndNewlines),
+                hostKeyPin: hostKeyPin.trimmingCharacters(in: .whitespacesAndNewlines),
+                credential: reference,
+                authentication: authentication
+            )
+            var credential = Data(secret.utf8)
+            defer { credential.resetBytes(in: 0 ..< credential.count) }
+            try routeCredentialStore.store(
+                credential,
+                hostID: host.id,
+                reference: reference
+            )
+            do {
+                try routeConfigurationStore.save(
+                    hostID: host.id,
+                    configuration: configuration
+                )
+            } catch {
+                try? routeCredentialStore.delete(hostID: host.id, reference: reference)
+                throw error
+            }
+            routeConfigurationError = nil
+            installSSHRoute(hostID: host.id)
+            return true
+        } catch {
+            routeConfigurationError = "Check the endpoint, username, pinned host key, and credential."
+            return false
+        }
+    }
+
+    func removeSSHRoute() {
+        guard let host = selectedHost else { return }
+        do {
+            try deleteSSHRoute(hostID: host.id)
+            routeConfigurationError = nil
+            installSSHRoute(hostID: host.id)
+        } catch {
+            routeConfigurationError = "The SSH Controller route could not be removed from this device."
+        }
+    }
+
+    @discardableResult
+    func configureRelayRoute(
+        endpoint: String,
+        spkiPin: String,
+        routeID: String,
+        revocationEpoch: UInt64,
+        admissionCredential: String
+    ) -> Bool {
+        guard let host = selectedHost else { return false }
+        do {
+            let reference = try ControllerRouteCredentialReference(
+                id: "relay-controller",
+                route: .selfHostedRelay,
+                purpose: .relayAdmission
+            )
+            let configuration = try ControllerRemoteRouteConfiguration.selfHostedRelay(
+                endpoint: endpoint.trimmingCharacters(in: .whitespacesAndNewlines),
+                spkiPin: spkiPin.trimmingCharacters(in: .whitespacesAndNewlines),
+                credential: reference,
+                routeID: routeID.trimmingCharacters(in: .whitespacesAndNewlines),
+                revocationEpoch: revocationEpoch
+            )
+            guard let decoded = Data(base64Encoded: admissionCredential), decoded.count == 32 else {
+                throw ControllerRemoteRouteConfigurationError.invalidCredentialReference
+            }
+            var secret = Data(admissionCredential.utf8)
+            defer { secret.resetBytes(in: 0 ..< secret.count) }
+            try routeCredentialStore.store(secret, hostID: host.id, reference: reference)
+            do {
+                try routeConfigurationStore.save(hostID: host.id, configuration: configuration)
+            } catch {
+                try? routeCredentialStore.delete(hostID: host.id, reference: reference)
+                throw error
+            }
+            routeConfigurationError = nil
+            installRelayRoute(hostID: host.id)
+            return true
+        } catch {
+            routeConfigurationError = "Check the WSS endpoint, SPKI pin, route ID, epoch, and admission credential."
+            return false
+        }
+    }
+
+    func removeRelayRoute() {
+        guard let host = selectedHost else { return }
+        do {
+            try deleteRelayRoute(hostID: host.id)
+            routeConfigurationError = nil
+            installRelayRoute(hostID: host.id)
+        } catch {
+            routeConfigurationError = "The relay route could not be removed from this device."
+        }
     }
 
     func retry() {
@@ -298,6 +440,8 @@ final class ControllerViewModel: ObservableObject {
             guard let self else { return }
             do {
                 try await connectionActor.forgetDeviceSecret(host: host)
+                try deleteSSHRoute(hostID: host.id)
+                try deleteRelayRoute(hostID: host.id)
                 hostRecords = try await hostStore.remove(id: host.id)
                 cache.remove(hostFingerprint: host.id)
                 if let cacheStore { try await cacheStore.save(cache) }
@@ -314,6 +458,7 @@ final class ControllerViewModel: ObservableObject {
                     cacheUpdatedAt: next.flatMap { cache.hosts[$0.id]?.updatedAt },
                     isCached: next.flatMap { cache.hosts[$0.id] } != nil
                 )
+                if let next { installStoredRoutes(hostID: next.id) }
             } catch {
                 state = replacing(connection: .failed(Self.failure(error)), sessions: state.sessions)
             }
@@ -334,6 +479,7 @@ final class ControllerViewModel: ObservableObject {
                 defaults.set(selected.id, forKey: Self.selectedHostDefaultsKey)
             }
             let cached = selected.flatMap { cache.hosts[$0.id] }
+            if let selected { installStoredRoutes(hostID: selected.id) }
             state = makeState(
                 selectedHostID: selected?.id,
                 sessions: cached?.sessions ?? [],
@@ -448,6 +594,86 @@ final class ControllerViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private func installSSHRoute(hostID: String) {
+        guard managesStoredSSHRoute else { return }
+        let connection: (any ControllerConnecting)?
+        do {
+            if let configuration = try routeConfigurationStore.load(hostID: hostID, route: .ssh) {
+                let factory = try SSHControllerTransport.factory(
+                    hostID: hostID,
+                    configuration: configuration,
+                    credentials: routeCredentialStore
+                )
+                connection = try ControllerConnectionActor(
+                    blobStore: controllerBlobStore,
+                    transportFactory: factory
+                )
+            } else {
+                connection = nil
+            }
+        } catch {
+            connection = nil
+            routeConfigurationError = "The saved SSH Controller route is invalid. Configure it again."
+        }
+        let previous = routeConnections.replaceSSH(connection)
+        if let previous { Task { await previous.cancel() } }
+        _ = try? routeCoordinator.setAvailable(.ssh, available: connection != nil)
+        syncRouteProjections()
+    }
+
+    private func installRelayRoute(hostID: String) {
+        guard managesStoredRelayRoute else { return }
+        let connection: (any ControllerConnecting)?
+        do {
+            if let configuration = try routeConfigurationStore.load(
+                hostID: hostID,
+                route: .selfHostedRelay
+            ) {
+                let factory = try RelayControllerTransport.factory(
+                    hostID: hostID,
+                    configuration: configuration,
+                    credentials: routeCredentialStore
+                )
+                connection = try ControllerConnectionActor(
+                    blobStore: controllerBlobStore,
+                    transportFactory: factory
+                )
+            } else {
+                connection = nil
+            }
+        } catch {
+            connection = nil
+            routeConfigurationError = "The saved relay route is invalid. Configure it again."
+        }
+        let previous = routeConnections.replaceRelay(connection)
+        if let previous { Task { await previous.cancel() } }
+        _ = try? routeCoordinator.setAvailable(.selfHostedRelay, available: connection != nil)
+        syncRouteProjections()
+    }
+
+    private func installStoredRoutes(hostID: String) {
+        installSSHRoute(hostID: hostID)
+        installRelayRoute(hostID: hostID)
+    }
+
+    private func deleteSSHRoute(hostID: String) throws {
+        if let configuration = try routeConfigurationStore.load(hostID: hostID, route: .ssh),
+           let reference = configuration.credential {
+            try routeCredentialStore.delete(hostID: hostID, reference: reference)
+        }
+        try routeConfigurationStore.delete(hostID: hostID, route: .ssh)
+    }
+
+    private func deleteRelayRoute(hostID: String) throws {
+        if let configuration = try routeConfigurationStore.load(
+            hostID: hostID,
+            route: .selfHostedRelay
+        ), let reference = configuration.credential {
+            try routeCredentialStore.delete(hostID: hostID, reference: reference)
+        }
+        try routeConfigurationStore.delete(hostID: hostID, route: .selfHostedRelay)
     }
 
     private func apply(

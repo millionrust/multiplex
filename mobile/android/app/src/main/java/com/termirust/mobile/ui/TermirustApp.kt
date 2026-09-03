@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -45,6 +47,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -66,6 +69,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.isSystemInDarkTheme
 import com.termirust.mobile.MobileHostViewModel
+import com.termirust.mobile.controller.BoundedTerminalSnapshot
+import com.termirust.mobile.controller.ControllerTerminalCursor
+import com.termirust.mobile.controller.ControllerTerminalFollowTarget
+import com.termirust.mobile.controller.TerminalInteraction
+import com.termirust.mobile.controller.styledTerminalRow
 import com.termirust.mobile.data.MobileAuthKind
 import com.termirust.mobile.data.MobileHost
 import com.termirust.mobile.data.MobileKnownHost
@@ -367,8 +375,8 @@ private fun CompactTopBar(
 
 @Composable
 private fun ProductHeader(
-    subtitle: String = "Mobile terminal",
     modifier: Modifier = Modifier,
+    subtitle: String = "Mobile terminal",
 ) {
     Row(
         modifier = modifier,
@@ -582,15 +590,15 @@ private fun SessionPanel(
 ) {
     val selectedHost by viewModel.selectedHost.collectAsState()
     val vault by viewModel.vault.collectAsState()
-    val lines by viewModel.terminalBuffer.lines.collectAsState()
+    val screen by viewModel.terminalBuffer.screen.collectAsState()
     val state by viewModel.connectionState.collectAsState()
     val privacyCovered by viewModel.privacyCovered.collectAsState()
     var command by remember { mutableStateOf("") }
     var credential by remember(selectedHost?.id) { mutableStateOf("") }
-    var terminalFontSize by remember { mutableStateOf(14) }
+    var terminalFontSize by remember { mutableIntStateOf(14) }
     var pendingMultilinePaste by remember { mutableStateOf<String?>(null) }
-    var terminalWidthPx by remember { mutableStateOf(0) }
-    var terminalHeightPx by remember { mutableStateOf(0) }
+    var terminalWidthPx by remember { mutableIntStateOf(0) }
+    var terminalHeightPx by remember { mutableIntStateOf(0) }
     var controlModifierActive by remember { mutableStateOf(false) }
     var altModifierActive by remember { mutableStateOf(false) }
     val density = LocalDensity.current
@@ -632,6 +640,16 @@ private fun SessionPanel(
                     control = controlModifierActive,
                     alt = altModifierActive,
                 ),
+            )
+        } else if (force && value.lineSequence().take(2).count() > 1) {
+            val normalized = TerminalInteraction.normalizePaste(value)
+            val maximum = TerminalInteraction.maximumPastePayload(screen.bracketedPaste)
+            if (normalized.size > maximum) {
+                pendingMultilinePaste = null
+                return
+            }
+            viewModel.sendTerminalBytes(
+                TerminalInteraction.preparePaste(normalized, screen.bracketedPaste),
             )
         } else {
             viewModel.sendTerminalInput(value)
@@ -678,8 +696,9 @@ private fun SessionPanel(
                 )
             }
             TerminalSurface(
-                lines = lines,
+                screen = screen,
                 terminalFontSize = terminalFontSize,
+                visibleRows = terminalGrid?.rows ?: 24,
                 onSizeChanged = { width, height ->
                     terminalWidthPx = width
                     terminalHeightPx = height
@@ -689,6 +708,7 @@ private fun SessionPanel(
             )
             TerminalToolbar(
                 terminalFontSize = terminalFontSize,
+                applicationCursor = screen.applicationCursor,
                 onDecreaseFont = { terminalFontSize = (terminalFontSize - 1).coerceAtLeast(10) },
                 onIncreaseFont = { terminalFontSize = (terminalFontSize + 1).coerceAtMost(24) },
                 controlModifierActive = controlModifierActive,
@@ -1016,12 +1036,28 @@ private fun CredentialEditor(
 
 @Composable
 private fun TerminalSurface(
-    lines: List<String>,
+    screen: BoundedTerminalSnapshot,
     terminalFontSize: Int,
+    visibleRows: Int,
     onSizeChanged: (Int, Int) -> Unit,
     modifier: Modifier = Modifier,
     edgeToEdge: Boolean = false,
 ) {
+    val listState = rememberLazyListState()
+    val horizontalState = rememberScrollState()
+    val cells = screen.contentCells
+    LaunchedEffect(screen.lines, screen.cursorRow, screen.scrollbackRows, visibleRows) {
+        val target = ControllerTerminalFollowTarget.row(
+            screen.lines,
+            screen.cursorRow,
+            screen.scrollbackRows,
+        )
+        if (target != null) {
+            listState.scrollToItem(
+                ControllerTerminalFollowTarget.firstVisibleRow(target, visibleRows),
+            )
+        }
+    }
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -1034,29 +1070,46 @@ private fun TerminalSurface(
         shape = RoundedCornerShape(if (edgeToEdge) 0.dp else 14.dp),
     ) {
         SelectionContainer {
-            LazyColumn(
+            Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(12.dp),
+                    .horizontalScroll(horizontalState),
             ) {
-                if (lines.isEmpty()) {
-                    item {
-                        Text(
-                            "Terminal output will appear here.",
-                            color = TerminalMuted,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = terminalFontSize.sp,
-                        )
-                    }
-                } else {
-                    items(lines) { line ->
-                        Text(
-                            line.ifEmpty { " " },
-                            color = TerminalForeground,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = terminalFontSize.sp,
-                            lineHeight = (terminalFontSize + 4).sp,
-                        )
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .padding(12.dp),
+                ) {
+                    if (screen.lines.all(String::isEmpty)) {
+                        item {
+                            Text(
+                                "Terminal output will appear here.",
+                                color = TerminalMuted,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = terminalFontSize.sp,
+                            )
+                        }
+                    } else {
+                        items(cells.size) { index ->
+                            val cursorColumn = ControllerTerminalCursor.column(
+                                rowIndex = index,
+                                cells = cells[index],
+                                cursorRow = screen.cursorRow,
+                                cursorColumn = screen.cursorColumn,
+                                scrollbackRows = screen.scrollbackRows,
+                                visible = screen.cursorVisible,
+                            )
+                            Text(
+                                styledTerminalRow(cells[index], cursorColumn),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = terminalFontSize.sp,
+                                lineHeight = (terminalFontSize + 4).sp,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.heightIn(min = (terminalFontSize + 4).dp),
+                            )
+                        }
                     }
                 }
             }
@@ -1067,6 +1120,7 @@ private fun TerminalSurface(
 @Composable
 private fun TerminalToolbar(
     terminalFontSize: Int,
+    applicationCursor: Boolean,
     onDecreaseFont: () -> Unit,
     onIncreaseFont: () -> Unit,
     controlModifierActive: Boolean,
@@ -1098,7 +1152,8 @@ private fun TerminalToolbar(
                 AssistChip(
                     onClick = {
                         if (key.bytes.isNotEmpty()) {
-                            onSend(key.bytes.encodeToByteArray())
+                            val bytes = if (applicationCursor) key.applicationBytes else null
+                            onSend((bytes ?: key.bytes).encodeToByteArray())
                         }
                     },
                     label = { Text(key.label) },
@@ -1182,15 +1237,19 @@ private fun StatusPill(label: String, color: Color) {
     }
 }
 
-private data class AccessoryKey(val label: String, val bytes: String)
+private data class AccessoryKey(
+    val label: String,
+    val bytes: String,
+    val applicationBytes: String? = null,
+)
 
 private val accessoryKeys = listOf(
     AccessoryKey("Esc", "\u001B"),
     AccessoryKey("Tab", "\t"),
-    AccessoryKey("←", "\u001B[D"),
-    AccessoryKey("↓", "\u001B[B"),
-    AccessoryKey("↑", "\u001B[A"),
-    AccessoryKey("→", "\u001B[C"),
+    AccessoryKey("←", "\u001B[D", "\u001BOD"),
+    AccessoryKey("↓", "\u001B[B", "\u001BOB"),
+    AccessoryKey("↑", "\u001B[A", "\u001BOA"),
+    AccessoryKey("→", "\u001B[C", "\u001BOC"),
     AccessoryKey("/", "/"),
     AccessoryKey("|", "|"),
     AccessoryKey("-", "-"),

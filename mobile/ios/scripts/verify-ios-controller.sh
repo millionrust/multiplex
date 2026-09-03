@@ -50,9 +50,40 @@ xcodegen generate --spec project.yml >/dev/null
 
 SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
 FRAMEWORKS="Frameworks/TermiRustControllerSecurity.xcframework/ios-arm64"
+MOBILE_FRAMEWORKS="Frameworks/TermiRustMobileCrypto.xcframework/ios-arm64"
 PLATFORM="/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer"
 TEMP_MODULE="$(mktemp -d "${TMPDIR:-/tmp}/termirust-ios-controller.XXXXXX")"
 trap 'find "$TEMP_MODULE" -depth -delete 2>/dev/null || true' EXIT
+TRANSPORT_STUBS="$TEMP_MODULE/ControllerTransportTypecheckStubs.swift"
+cat >"$TRANSPORT_STUBS" <<'EOF'
+import Foundation
+
+private enum ControllerTransportTypecheckError: Error {
+  case unavailable
+}
+
+enum SSHControllerTransport {
+  static let remoteCommand = "termirust controller-bridge --stdio"
+
+  static func factory(
+    hostID: String,
+    configuration: ControllerRemoteRouteConfiguration,
+    credentials: any ControllerRouteCredentialStoring
+  ) throws -> ControllerTransportFactory {
+    throw ControllerTransportTypecheckError.unavailable
+  }
+}
+
+enum RelayControllerTransport {
+  static func factory(
+    hostID: String,
+    configuration: ControllerRemoteRouteConfiguration,
+    credentials: any ControllerRouteCredentialStoring
+  ) throws -> ControllerTransportFactory {
+    throw ControllerTransportTypecheckError.unavailable
+  }
+}
+EOF
 xcrun xcstringstool compile \
   TermiRustMobile/Localizable.xcstrings \
   --output-directory "$TEMP_MODULE/localization" \
@@ -69,11 +100,13 @@ CONTROLLER_SOURCES=(
   TermiRustMobile/Controller/AppleControllerRouteCoordinator.swift
   TermiRustMobile/Controller/PairedHostStore.swift
   TermiRustMobile/Security/ControllerKeychainBlobStore.swift
+  TermiRustMobile/Security/ControllerRouteConfigurationStore.swift
   TermiRustMobile/Security/ControllerRouteCredentialStore.swift
   TermiRustMobile/Controller/ControllerRetryPolicy.swift
   TermiRustMobile/Controller/ControllerReadOnlyAttach.swift
   TermiRustMobile/Controller/ControllerWriterControl.swift
   TermiRustMobile/Terminal/BoundedTerminalBuffer.swift
+  TermiRustMobile/Terminal/NativeControllerTerminal.swift
   TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift
   TermiRustMobile/Terminal/TerminalInteraction.swift
   TermiRustMobile/Terminal/TerminalAcceptance.swift
@@ -86,6 +119,7 @@ CONTROLLER_SOURCES=(
   TermiRustMobile/Views/ControllerTerminalInputView.swift
   TermiRustMobile/Views/ControllerQRCodeScanner.swift
 )
+CONTROLLER_SOURCES+=("$TRANSPORT_STUBS")
 TEST_SOURCES=(
   TermiRustMobileTests/ControllerFleetCacheTests.swift
   TermiRustMobileTests/ControllerPairingFleetTests.swift
@@ -113,6 +147,7 @@ if [[ "$STAGE" == "terminal-interaction" || "$STAGE" == "terminal-acceptance" ||
   xcrun swiftc \
     -swift-version 6 \
     -strict-concurrency=complete \
+    -D TERMIRUST_TERMINAL_FALLBACK_ONLY \
     TermiRustMobile/Controller/ControllerReadOnlyAttach.swift \
     TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift \
     TermiRustMobile/Terminal/BoundedTerminalBuffer.swift \
@@ -136,6 +171,7 @@ if [[ "$STAGE" == "terminal-acceptance" || "$STAGE" == "route-contract" ]]; then
   xcrun swiftc \
     -swift-version 6 \
     -strict-concurrency=complete \
+    -D TERMIRUST_TERMINAL_FALLBACK_ONLY \
     TermiRustMobile/Controller/ControllerReadOnlyAttach.swift \
     TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift \
     TermiRustMobile/Terminal/BoundedTerminalBuffer.swift \
@@ -179,6 +215,7 @@ xcrun swiftc \
   -target arm64-apple-ios17.0 \
   -sdk "$SDK" \
   -F "$FRAMEWORKS" \
+  -F "$MOBILE_FRAMEWORKS" \
   -emit-module-path "$TEMP_MODULE/TermiRustMobile.swiftmodule" \
   "${CONTROLLER_SOURCES[@]}"
 
@@ -192,6 +229,7 @@ xcrun swiftc \
   -I "$PLATFORM/usr/lib" \
   -I "$TEMP_MODULE" \
   -F "$FRAMEWORKS" \
+  -F "$MOBILE_FRAMEWORKS" \
   "${TEST_SOURCES[@]}"
 
 xcrun swiftc -frontend -parse $(find TermiRustMobile TermiRustMobileTests -name '*.swift' -print)
@@ -201,6 +239,7 @@ if [[ "$STAGE" == "terminal-conformance" || "$STAGE" == "terminal-interaction" |
   xcrun swiftc \
     -swift-version 6 \
     -strict-concurrency=complete \
+    -D TERMIRUST_TERMINAL_FALLBACK_ONLY \
     TermiRustMobile/Controller/ControllerReadOnlyAttach.swift \
     TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift \
     TermiRustMobile/Terminal/BoundedTerminalBuffer.swift \
@@ -212,6 +251,7 @@ if [[ "$STAGE" == "terminal-conformance" || "$STAGE" == "terminal-interaction" |
   xcrun swiftc \
     -swift-version 6 \
     -strict-concurrency=complete \
+    -D TERMIRUST_TERMINAL_FALLBACK_ONLY \
     TermiRustMobile/Controller/ControllerReadOnlyAttach.swift \
     TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift \
     TermiRustMobile/Terminal/BoundedTerminalBuffer.swift \

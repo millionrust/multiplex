@@ -6,6 +6,8 @@ struct ControllerRootView: View {
     @State private var showingPairing = false
     @State private var showingForgetConfirmation = false
     @State private var showingHostDetails = false
+    @State private var showingSSHConfiguration = false
+    @State private var showingRelayConfiguration = false
     @State private var pendingRoute: ControllerRemoteRouteKind?
 
     var body: some View {
@@ -50,7 +52,9 @@ struct ControllerRootView: View {
                 onForget: { showingForgetConfirmation = true },
                 onShowDetails: { showingHostDetails = true },
                 onOpenSession: viewModel.openReadOnlyTerminal,
-                onSelectRoute: { pendingRoute = $0 }
+                onSelectRoute: { pendingRoute = $0 },
+                onConfigureSSH: { showingSSHConfiguration = true },
+                onConfigureRelay: { showingRelayConfiguration = true }
             )
         }
         .navigationSplitViewStyle(.balanced)
@@ -73,6 +77,46 @@ struct ControllerRootView: View {
                     }
                 )
             }
+        }
+        .sheet(isPresented: $showingSSHConfiguration) {
+            SSHControllerConfigurationView(
+                configuration: viewModel.selectedSSHConfiguration,
+                suggestedEndpoint: viewModel.selectedHost?.route.address ?? "",
+                configurationError: viewModel.routeConfigurationError,
+                onSave: { endpoint, port, username, pin, authentication, secret in
+                    viewModel.configureSSHRoute(
+                        endpoint: endpoint,
+                        port: port,
+                        username: username,
+                        hostKeyPin: pin,
+                        authentication: authentication,
+                        secret: secret
+                    )
+                },
+                onRemove: {
+                    viewModel.removeSSHRoute()
+                    showingSSHConfiguration = false
+                }
+            )
+        }
+        .sheet(isPresented: $showingRelayConfiguration) {
+            RelayControllerConfigurationView(
+                configuration: viewModel.selectedRelayConfiguration,
+                configurationError: viewModel.routeConfigurationError,
+                onSave: { endpoint, pin, routeID, epoch, credential in
+                    viewModel.configureRelayRoute(
+                        endpoint: endpoint,
+                        spkiPin: pin,
+                        routeID: routeID,
+                        revocationEpoch: epoch,
+                        admissionCredential: credential
+                    )
+                },
+                onRemove: {
+                    viewModel.removeRelayRoute()
+                    showingRelayConfiguration = false
+                }
+            )
         }
         .confirmationDialog(
             "Forget this Host on this device?",
@@ -171,6 +215,8 @@ private struct ControllerSessionFleetView: View {
     let onShowDetails: () -> Void
     let onOpenSession: (ControllerSessionSummary) -> Void
     let onSelectRoute: (ControllerRemoteRouteKind) -> Void
+    let onConfigureSSH: () -> Void
+    let onConfigureRelay: () -> Void
 
     var body: some View {
         Group {
@@ -223,10 +269,12 @@ private struct ControllerSessionFleetView: View {
                         }
                     }
                     Section("Connection Route") {
-                        ForEach(routes.filter { $0.selected || $0.available }) { route in
+                        ForEach(routes) { route in
                             ControllerRouteRow(
                                 route: route,
-                                onSelect: { onSelectRoute(route.route) }
+                                onSelect: { onSelectRoute(route.route) },
+                                onConfigureSSH: onConfigureSSH,
+                                onConfigureRelay: onConfigureRelay
                             )
                         }
                         if routeSelectionError != nil {
@@ -270,6 +318,8 @@ private struct ControllerSessionFleetView: View {
 private struct ControllerRouteRow: View {
     let route: AppleControllerRouteProjection
     let onSelect: () -> Void
+    let onConfigureSSH: () -> Void
+    let onConfigureRelay: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -284,21 +334,319 @@ private struct ControllerRouteRow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
-            if route.selected {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(Color.accentColor)
-                    .accessibilityLabel("Selected route")
-            } else if route.available {
-                Button("Use", action: onSelect)
-                    .buttonStyle(.bordered)
-            } else {
-                Text("Not configured")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .trailing, spacing: 6) {
+                if route.selected {
+                    Label("Selected", systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
+                } else if route.available {
+                    Button("Use", action: onSelect)
+                        .buttonStyle(.bordered)
+                } else if route.route != .ssh && route.route != .selfHostedRelay {
+                    Text("Not configured")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+                if route.route == .ssh {
+                    Button(route.available ? "Edit" : "Configure", action: onConfigureSSH)
+                        .buttonStyle(.bordered)
+                }
+                if route.route == .selfHostedRelay {
+                    Button(route.available ? "Edit" : "Configure", action: onConfigureRelay)
+                        .buttonStyle(.bordered)
+                }
             }
         }
         .frame(minHeight: 48)
         .accessibilityElement(children: .contain)
+    }
+}
+
+private struct RelayControllerConfigurationView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var endpoint: String
+    @State private var spkiPin: String
+    @State private var routeID: String
+    @State private var epoch: String
+    @State private var credential = ""
+    @State private var localError: String?
+    @State private var showingRemoveConfirmation = false
+
+    let hasExistingConfiguration: Bool
+    let configurationError: String?
+    let onSave: (String, String, String, UInt64, String) -> Bool
+    let onRemove: () -> Void
+
+    init(
+        configuration: ControllerRemoteRouteConfiguration?,
+        configurationError: String?,
+        onSave: @escaping (String, String, String, UInt64, String) -> Bool,
+        onRemove: @escaping () -> Void
+    ) {
+        _endpoint = State(initialValue: configuration?.endpoint ?? "")
+        _spkiPin = State(initialValue: configuration?.trustPin ?? "")
+        _routeID = State(initialValue: configuration?.relayRouteID ?? "")
+        _epoch = State(initialValue: configuration?.relayRevocationEpoch.map(String.init) ?? "0")
+        self.hasExistingConfiguration = configuration != nil
+        self.configurationError = configurationError
+        self.onSave = onSave
+        self.onRemove = onRemove
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Paste the connection package created by your relay operator. The relay carries only encrypted Controller frames, and the admission credential stays in Keychain.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button {
+                        importPackageFromClipboard()
+                    } label: {
+                        Label("Paste Controller Package", systemImage: "doc.on.clipboard")
+                    }
+                }
+                Section("Relay") {
+                    TextField("WSS endpoint", text: $endpoint)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                    TextField("SPKI pin (sha256/...)", text: $spkiPin, axis: .vertical)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .fontDesign(.monospaced)
+                    TextField("Route ID (Base64)", text: $routeID, axis: .vertical)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .fontDesign(.monospaced)
+                    TextField("Revocation epoch", text: $epoch)
+                        .keyboardType(.numberPad)
+                    SecureField("Admission credential (Base64)", text: $credential)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                Section {
+                    Text("Saving an edit requires entering the admission credential again. TermiRust never switches routes automatically.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let message = localError ?? configurationError {
+                    Section {
+                        Label(message, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.red)
+                    }
+                }
+                if hasExistingConfiguration {
+                    Section {
+                        Button("Remove Self-hosted Relay Route", role: .destructive) {
+                            showingRemoveConfirmation = true
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Self-hosted Relay")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(!canSave)
+                }
+            }
+            .confirmationDialog(
+                "Remove this relay route?",
+                isPresented: $showingRemoveConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Remove Route", role: .destructive, action: onRemove)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This deletes the relay configuration and admission credential from this device. Paired Hosts, cached Sessions, and local Session history are kept.")
+            }
+        }
+    }
+
+    private var parsedEpoch: UInt64? { UInt64(epoch) }
+
+    private var canSave: Bool {
+        endpoint.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("wss://")
+            && spkiPin.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("sha256/")
+            && !routeID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && parsedEpoch != nil
+            && !credential.isEmpty
+    }
+
+    private func save() {
+        guard let parsedEpoch else { return }
+        if onSave(endpoint, spkiPin, routeID, parsedEpoch, credential) {
+            dismiss()
+        } else {
+            localError = "Check every field and make sure this device is unlocked."
+        }
+    }
+
+    private func importPackageFromClipboard() {
+        guard let text = UIPasteboard.general.string else {
+            localError = "Copy the controller-route.json contents, then try again."
+            return
+        }
+        do {
+            let package = try ControllerRelayRoutePackage.decode(text)
+            endpoint = package.endpoint
+            spkiPin = package.spkiPin
+            routeID = package.routeID
+            epoch = String(package.revocationEpoch)
+            credential = package.admissionCredential
+            localError = nil
+        } catch {
+            localError = "The clipboard does not contain a valid TermiRust controller relay package."
+        }
+    }
+}
+
+private struct SSHControllerConfigurationView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var endpoint: String
+    @State private var port: String
+    @State private var username: String
+    @State private var hostKeyPin: String
+    @State private var authentication: ControllerSSHAuthenticationKind
+    @State private var secret = ""
+    @State private var localError: String?
+    @State private var showingRemoveConfirmation = false
+
+    let hasExistingConfiguration: Bool
+    let configurationError: String?
+    let onSave: (
+        String,
+        UInt16,
+        String,
+        String,
+        ControllerSSHAuthenticationKind,
+        String
+    ) -> Bool
+    let onRemove: () -> Void
+
+    init(
+        configuration: ControllerRemoteRouteConfiguration?,
+        suggestedEndpoint: String,
+        configurationError: String?,
+        onSave: @escaping (
+            String,
+            UInt16,
+            String,
+            String,
+            ControllerSSHAuthenticationKind,
+            String
+        ) -> Bool,
+        onRemove: @escaping () -> Void
+    ) {
+        _endpoint = State(initialValue: configuration?.endpoint ?? suggestedEndpoint)
+        _port = State(initialValue: configuration?.port.map(String.init) ?? "22")
+        _username = State(initialValue: configuration?.username ?? "")
+        _hostKeyPin = State(initialValue: configuration?.trustPin ?? "")
+        _authentication = State(initialValue: configuration?.sshAuthentication ?? .privateKey)
+        self.hasExistingConfiguration = configuration != nil
+        self.configurationError = configurationError
+        self.onSave = onSave
+        self.onRemove = onRemove
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Use SSH only to carry the encrypted TermiRust Controller protocol. Pair on your private network first; routes never switch automatically.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Section("SSH Server") {
+                    TextField("Host or IP address", text: $endpoint)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Port", text: $port)
+                        .keyboardType(.numberPad)
+                    TextField("Username", text: $username)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Pinned host key or SHA256 fingerprint", text: $hostKeyPin, axis: .vertical)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .lineLimit(2...4)
+                }
+                Section("Authentication") {
+                    Picker("Method", selection: $authentication) {
+                        Text("Private Key").tag(ControllerSSHAuthenticationKind.privateKey)
+                        Text("Password").tag(ControllerSSHAuthenticationKind.password)
+                    }
+                    .pickerStyle(.segmented)
+                    SecureField(
+                        authentication == .password ? "SSH password" : "Paste OpenSSH private key",
+                        text: $secret
+                    )
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    Text("The credential is stored in Keychain on this device. Saving an edit requires entering it again.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let message = localError ?? configurationError {
+                    Section {
+                        Label(message, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.red)
+                    }
+                }
+                if hasExistingConfiguration {
+                    Section {
+                        Button("Remove SSH Controller Route", role: .destructive) {
+                            showingRemoveConfirmation = true
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Controller over SSH")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(!canSave)
+                }
+            }
+            .confirmationDialog(
+                "Remove this SSH Controller route?",
+                isPresented: $showingRemoveConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Remove Route", role: .destructive, action: onRemove)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Its credential and configuration will be deleted from this device. TermiRust will not switch to another route automatically.")
+            }
+        }
+    }
+
+    private var parsedPort: UInt16? { UInt16(port) }
+
+    private var canSave: Bool {
+        !endpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && parsedPort != nil
+            && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !hostKeyPin.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !secret.isEmpty
+    }
+
+    private func save() {
+        guard let parsedPort else { return }
+        if onSave(endpoint, parsedPort, username, hostKeyPin, authentication, secret) {
+            dismiss()
+        } else {
+            localError = "Check every field and make sure this device is unlocked."
+        }
     }
 }
 

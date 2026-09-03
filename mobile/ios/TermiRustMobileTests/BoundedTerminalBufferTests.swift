@@ -87,4 +87,107 @@ final class BoundedTerminalBufferTests: XCTestCase {
         XCTAssertEqual(terminal.snapshot().truncation, .parserCarryLimit)
         XCTAssertTrue(terminal.snapshot().lines.allSatisfy(\.isEmpty))
     }
+
+    func testProductionNativeEngineHandlesFullScreenEditing() throws {
+        var terminal = try BoundedTerminalBuffer(
+            viewport: TerminalViewportState(columns: 12, rows: 4)
+        )
+        try terminal.process(Data(
+            "one\r\ntwo\r\nthree\u{001B}[2;1H\u{001B}[Linsert\u{001B}[3;1H\u{001B}[2@>>".utf8
+        ))
+
+        let snapshot = terminal.snapshot()
+        XCTAssertEqual(Array(snapshot.lines.prefix(3)), ["one", "insert", ">>two"])
+        XCTAssertEqual(snapshot.cursorRow, 2)
+        XCTAssertEqual(snapshot.cursorColumn, 2)
+    }
+
+    func testProductionNativeEngineHandlesInteractiveFixtureAtEveryNetworkSplit() throws {
+        let fixture = try loadInteractiveFixture()
+        XCTAssertEqual(fixture.schemaVersion, 1)
+
+        for testCase in fixture.cases {
+            let input = Data(testCase.input.utf8)
+            for split in 0 ... input.count {
+                let terminal = try XCTUnwrap(NativeControllerTerminalSession(
+                    viewport: TerminalViewportState(
+                        columns: testCase.columns,
+                        rows: testCase.rows
+                    ),
+                    limits: TerminalLimits(maxScrollbackRows: testCase.scrollback)
+                ))
+                try terminal.feed(input.prefix(split))
+                try terminal.feed(input.dropFirst(split))
+
+                let snapshot = try terminal.snapshot()
+                let expected = testCase.expected
+                XCTAssertEqual(snapshot.lines, expected.lines, "\(testCase.name), split \(split)")
+                XCTAssertEqual(snapshot.cursorRow, expected.cursorRow, testCase.name)
+                XCTAssertEqual(snapshot.cursorColumn, expected.cursorColumn, testCase.name)
+                XCTAssertEqual(snapshot.cursorVisible, expected.cursorVisible, testCase.name)
+                XCTAssertEqual(snapshot.applicationCursor, expected.applicationCursor, testCase.name)
+                XCTAssertEqual(snapshot.applicationKeypad, expected.applicationKeypad, testCase.name)
+                XCTAssertEqual(snapshot.alternateScreen, expected.alternateScreen, testCase.name)
+                XCTAssertEqual(snapshot.bracketedPaste, expected.bracketedPaste, testCase.name)
+                XCTAssertEqual(snapshot.mouseMode.rawValue, expected.mouseMode, testCase.name)
+                XCTAssertEqual(snapshot.mouseEncoding.rawValue, expected.mouseEncoding, testCase.name)
+                XCTAssertEqual(snapshot.scrollbackRows, expected.scrollbackRows, testCase.name)
+            }
+        }
+    }
+
+    private func loadInteractiveFixture() throws -> InteractiveFixture {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(
+            forResource: "terminal-interactive-v1",
+            withExtension: "json"
+        ))
+        return try JSONDecoder().decode(InteractiveFixture.self, from: Data(contentsOf: url))
+    }
+}
+
+private struct InteractiveFixture: Decodable {
+    let schemaVersion: Int
+    let cases: [InteractiveCase]
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case cases
+    }
+}
+
+private struct InteractiveCase: Decodable {
+    let name: String
+    let columns: Int
+    let rows: Int
+    let scrollback: Int
+    let input: String
+    let expected: InteractiveExpected
+}
+
+private struct InteractiveExpected: Decodable {
+    let lines: [String]
+    let cursorRow: Int
+    let cursorColumn: Int
+    let cursorVisible: Bool
+    let applicationCursor: Bool
+    let applicationKeypad: Bool
+    let alternateScreen: Bool
+    let bracketedPaste: Bool
+    let mouseMode: String
+    let mouseEncoding: String
+    let scrollbackRows: Int
+
+    enum CodingKeys: String, CodingKey {
+        case lines
+        case cursorRow = "cursor_row"
+        case cursorColumn = "cursor_column"
+        case cursorVisible = "cursor_visible"
+        case applicationCursor = "application_cursor"
+        case applicationKeypad = "application_keypad"
+        case alternateScreen = "alternate_screen"
+        case bracketedPaste = "bracketed_paste"
+        case mouseMode = "mouse_mode"
+        case mouseEncoding = "mouse_encoding"
+        case scrollbackRows = "scrollback_rows"
+    }
 }

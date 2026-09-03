@@ -29,7 +29,7 @@ final class ControllerRouteCredentialStore: ControllerRouteCredentialStoring, @u
         hostID: String,
         reference: ControllerRouteCredentialReference
     ) throws {
-        guard !secret.isEmpty, secret.count <= 4 * 1_024 else {
+        guard !secret.isEmpty, secret.count <= 64 * 1_024 else {
             throw ControllerRouteCredentialStoreError.invalidSecret
         }
         let query = try baseQuery(hostID: hostID, reference: reference)

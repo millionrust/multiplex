@@ -1,7 +1,6 @@
 <resources>
     <string name="app_name">TermiRust</string>
     <string name="controller_fleet">Controller Fleet</string>
-    <string name="device_session">Device Session</string>
     <string name="pair_host">Pair Host</string>
     <string name="details">Details</string>
     <string name="forget_host_title">Forget this Host on this device?</string>
@@ -14,7 +13,6 @@
     <string name="host_accessibility">Host %1$s</string>
     <string name="controller_selected">Selected</string>
     <string name="loading_sessions">Loading sessions…</string>
-    <string name="no_durable_sessions">No durable sessions found.</string>
     <string name="open_terminals">Open Terminals</string>
     <string name="previous_sessions">Previous Sessions</string>
     <string name="no_open_terminals">Open a local or SSH terminal in TermiRust Desktop, then refresh.</string>
@@ -77,9 +75,7 @@
     <string name="detach">Detach</string>
     <string name="view_only">View only</string>
     <string name="follow_output">Follow output</string>
-    <string name="following_output">Following output</string>
     <string name="stop_following_output">Stop following output</string>
-    <string name="terminal_sequence">Seq %1$d</string>
     <string name="terminal_detached">Detached</string>
     <string name="terminal_authenticating">Authenticating</string>
     <string name="terminal_snapshot">Restoring retained screen</string>
@@ -102,7 +98,6 @@
     <string name="increase_terminal_text">Increase terminal text size</string>
     <string name="terminal_truncated">Older or oversized output was truncated at the local safety limit.</string>
     <string name="monitor_session">Monitor session %1$s</string>
-    <string name="request_control">Request Control</string>
     <string name="control">Control</string>
     <string name="release_control">Release</string>
     <string name="you_control">You control</string>
@@ -115,9 +110,8 @@
     <string name="phone_width">Phone width</string>
     <string name="desktop_width">Desktop width (80+ columns)</string>
     <string name="paste">Paste</string>
-    <string name="open_link">Open link</string>
     <string name="paste_confirmation_title">Send pasted text to this terminal?</string>
-    <string name="paste_confirmation_message">The paste contains multiple lines or is large (%1$d bytes). Review the destination before sending it.</string>
+    <string name="paste_confirmation_message">The paste contains multiple lines or is large (%1$d B). Review the destination before sending it.</string>
     <string name="send_paste">Send Paste</string>
     <string name="terminal_control_warning">Terminal control warning: %1$s</string>
     <string name="writer_error_control_unavailable">Control is not available for this session.</string>
@@ -138,7 +132,6 @@
     <string name="route_private_network_description">Direct connection to the paired Host on your LAN, Tailscale, or other private VPN.</string>
     <string name="route_ssh_description">Requires a dedicated Controller SSH route and pinned Host key. Direct SSH connections remain under Connections.</string>
     <string name="route_relay_description">Requires your own encrypted relay endpoint, SPKI pin, and admission credential.</string>
-    <string name="route_status_unavailable">Not available in this build</string>
     <string name="route_status_online">Online</string>
     <string name="route_status_degraded">Needs attention</string>
     <string name="route_status_reconnecting">Reconnecting</string>
@@ -146,6 +139,32 @@
     <string name="route_status_ready">Ready</string>
     <string name="use_route">Use</string>
     <string name="not_configured">Not configured</string>
+    <string name="configure">Configure</string>
+    <string name="edit">Edit</string>
+    <string name="save">Save</string>
+    <string name="configure_ssh_controller">Configure Controller over SSH</string>
+    <string name="ssh_controller_configuration_help">This route runs the fixed TermiRust Controller bridge on a host you already trust. Pair on your private network first. Secrets stay in Android Keystore.</string>
+    <string name="ssh_host">SSH host or IP</string>
+    <string name="ssh_port">SSH port</string>
+    <string name="ssh_username">SSH username</string>
+    <string name="ssh_host_key_pin">Pinned SSH host key or SHA256 fingerprint</string>
+    <string name="private_key">Private key</string>
+    <string name="password">Password</string>
+    <string name="openssh_private_key">OpenSSH private key</string>
+    <string name="remove_ssh_controller_route">Remove SSH Controller route</string>
+    <string name="remove_ssh_controller_route_help">Its credential and configuration will be deleted from this device. TermiRust will not switch to another route automatically.</string>
+    <string name="configure_relay_controller">Configure Self-hosted Relay</string>
+    <string name="relay_controller_configuration_help">Paste the connection package created by your relay operator. The relay carries only encrypted Controller frames, and the admission credential stays in Android Keystore.</string>
+    <string name="paste_relay_controller_package">Paste controller package</string>
+    <string name="invalid_relay_controller_package">The clipboard does not contain a valid TermiRust controller relay package.</string>
+    <string name="relay_endpoint">WSS endpoint</string>
+    <string name="relay_spki_pin">SPKI pin (sha256/&#8230;)</string>
+    <string name="relay_route_id">Route ID (Base64)</string>
+    <string name="relay_epoch">Revocation epoch</string>
+    <string name="relay_admission_credential">Admission credential (Base64)</string>
+    <string name="remove_relay_controller_route">Remove self-hosted relay route</string>
+    <string name="remove_relay_controller_route_help">This deletes the relay configuration and admission credential from this device. Paired Hosts, cached Sessions, and local Session history are kept.</string>
+    <string name="remove">Remove</string>
     <string name="switch_controller_route_title">Switch connection route?</string>
     <string name="switch_controller_route_message">Switch to %1$s? The current route will disconnect, pending input will be cleared, and nothing will be replayed.</string>
     <string name="switch_route">Switch</string>
@@ -153,5 +172,6 @@
     <string name="route_error_unavailable">That Controller route is not configured on this device.</string>
     <string name="route_error_selected">That route is already selected.</string>
     <string name="route_error_degraded">The selected route failed. Retry it explicitly; TermiRust did not switch routes.</string>
+    <string name="route_error_configuration_invalid">Check the SSH endpoint, port, username, host-key pin, and credential.</string>
     <string name="route_error_generic">The connection route could not be changed.</string>
 </resources>

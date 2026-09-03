@@ -24,22 +24,21 @@ import java.io.DataOutputStream
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
-import java.net.InetSocketAddress
-import java.net.Socket
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.UUID
 
-class ControllerConnection(
+class ControllerConnection internal constructor(
     blobStore: ControllerSecureBlobStore,
     private val clockMillis: () -> Long = System::currentTimeMillis,
+    private val transportFactory: ControllerTransportFactory = TcpControllerTransportFactory,
 ) : ControllerConnecting {
     private val engine = ControllerSecurityEngine(blobStore)
     private val mutex = Mutex()
     private val json = Json { ignoreUnknownKeys = false; encodeDefaults = true; explicitNulls = true }
     private val random = SecureRandom()
-    @Volatile private var activeSocket: Socket? = null
+    @Volatile private var activeTransport: ControllerDuplexTransport? = null
     @Volatile private var activeTerminal: ActiveTerminalConnection? = null
     private var pendingPairing: PendingPairing? = null
 
@@ -72,10 +71,10 @@ class ControllerConnection(
             val created = engine.secureBlobStatus(keyId).name == "MISSING"
             if (created) engine.storeSecureBlob(keyId, randomBytes(32))
             try {
-                val socket = open(route)
-                activeSocket = socket
-                val input = DataInputStream(socket.getInputStream())
-                val output = DataOutputStream(socket.getOutputStream())
+                val transport = transportFactory.open(route)
+                activeTransport = transport
+                val input = DataInputStream(transport.input)
+                val output = DataOutputStream(transport.output)
                 output.write(PAIRING_PREFACE)
                 writeFrame(
                     output,
@@ -106,7 +105,7 @@ class ControllerConnection(
                     keyId = keyId,
                     createdKey = created,
                     session = session,
-                    socket = socket,
+                    transport = transport,
                     input = input,
                     output = output,
                     sas = sas,
@@ -239,11 +238,11 @@ class ControllerConnection(
             TerminalLimits().validate(viewport)
             require(host.capabilityBits and ATTACH_CAPABILITY == ATTACH_CAPABILITY)
             require(cursor.identity.hostId == host.id)
-            val socket = open(host.route)
-            activeSocket = socket
+            val socket = transportFactory.open(host.route)
+            activeTransport = socket
             try {
-                val input = DataInputStream(socket.getInputStream())
-                val output = DataOutputStream(socket.getOutputStream())
+                val input = DataInputStream(socket.input)
+                val output = DataOutputStream(socket.output)
                 val hostKey = Base64.getDecoder().decode(host.hostStaticPublicKey)
                 val request = ConnectionStartRequest(
                     staticKeyId = host.deviceStaticKeyId,
@@ -322,7 +321,7 @@ class ControllerConnection(
                 }
             } finally {
                 socket.close()
-                if (activeSocket === socket) activeSocket = null
+                if (activeTransport === socket) activeTransport = null
             }
         }
     }
@@ -341,11 +340,11 @@ class ControllerConnection(
             val required = ATTACH_CAPABILITY or INPUT_CAPABILITY
             require(host.capabilityBits and required == required && cursor.identity.hostId == host.id)
             val requested = host.capabilityBits and ALL_INTERACTIVE_CAPABILITIES
-            val socket = open(host.route)
-            activeSocket = socket
+            val socket = transportFactory.open(host.route)
+            activeTransport = socket
             try {
-                val input = DataInputStream(socket.getInputStream())
-                val output = DataOutputStream(socket.getOutputStream())
+                val input = DataInputStream(socket.input)
+                val output = DataOutputStream(socket.output)
                 val hostKey = Base64.getDecoder().decode(host.hostStaticPublicKey)
                 val request = ConnectionStartRequest(
                     staticKeyId = host.deviceStaticKeyId,
@@ -448,7 +447,7 @@ class ControllerConnection(
                 }
             } finally {
                 socket.close()
-                if (activeSocket === socket) activeSocket = null
+                if (activeTransport === socket) activeTransport = null
             }
         }
     }
@@ -532,13 +531,13 @@ class ControllerConnection(
     override suspend fun cancel() {
         // Socket.close is thread-safe and unblocks a pending read before the operation
         // coroutine can reacquire the serialization mutex.
-        activeSocket?.close()
+        activeTransport?.close()
         mutex.withLock { withContext(Dispatchers.IO) { cancelUnlocked(true) } }
     }
 
     override fun close() {
-        activeSocket?.close()
-        activeSocket = null
+        activeTransport?.close()
+        activeTransport = null
         runCatching { pendingPairing?.session?.finish() }
         pendingPairing?.session?.close()
         pendingPairing = null
@@ -585,12 +584,12 @@ class ControllerConnection(
         host.validate()
         require(host.capabilityBits and OBSERVE_CAPABILITY == OBSERVE_CAPABILITY)
         progress(ControllerConnectionState.Connecting)
-        val socket = open(host.route)
-        activeSocket = socket
+        val socket = transportFactory.open(host.route)
+        activeTransport = socket
         try {
             progress(ControllerConnectionState.Authenticating)
-            val input = DataInputStream(socket.getInputStream())
-            val output = DataOutputStream(socket.getOutputStream())
+            val input = DataInputStream(socket.input)
+            val output = DataOutputStream(socket.output)
             val hostKey = Base64.getDecoder().decode(host.hostStaticPublicKey)
             val request = ConnectionStartRequest(
                 staticKeyId = host.deviceStaticKeyId,
@@ -627,7 +626,7 @@ class ControllerConnection(
             }
         } finally {
             socket.close()
-            if (activeSocket === socket) activeSocket = null
+            if (activeTransport === socket) activeTransport = null
         }
     }
 
@@ -722,14 +721,8 @@ class ControllerConnection(
         activeTerminal = null
         runCatching { terminal?.session?.finish() }
         terminal?.session?.close()
-        activeSocket?.close()
-        activeSocket = null
-    }
-
-    private fun open(route: HostRoute): Socket = Socket().apply {
-        connect(InetSocketAddress(route.address, route.port), CONNECT_TIMEOUT_MILLIS)
-        soTimeout = READ_TIMEOUT_MILLIS
-        tcpNoDelay = true
+        activeTransport?.close()
+        activeTransport = null
     }
 
     private fun writeFrame(output: DataOutputStream, payload: ByteArray, maximum: Int) {
@@ -766,7 +759,6 @@ class ControllerConnection(
         const val MAX_HANDSHAKE_BYTES = 1 * 1_024
         const val MAX_SECURE_FRAME_BYTES = 64 * 1_024
         const val MAX_TERMINAL_FRAME_BYTES = 1 * 1_024 * 1_024
-        const val CONNECT_TIMEOUT_MILLIS = 10_000
         const val READ_TIMEOUT_MILLIS = 30_000
         const val OBSERVE_CAPABILITY = 1
         const val ATTACH_CAPABILITY = 1 shl 1
@@ -790,7 +782,7 @@ private data class PendingPairing(
     val keyId: String,
     val createdKey: Boolean,
     val session: ControllerPairingSession,
-    val socket: Socket,
+    val transport: ControllerDuplexTransport,
     val input: DataInputStream,
     val output: DataOutputStream,
     val sas: String,

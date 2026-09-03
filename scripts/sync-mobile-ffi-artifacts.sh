@@ -69,9 +69,13 @@ sync_android() {
     exit 1
   fi
 
-  rm -rf "$destination"
-  mkdir -p "$(dirname "$destination")"
-  cp -R "$source" "$destination"
+  mkdir -p "$destination"
+  while IFS= read -r library; do
+    local abi
+    abi="$(basename "$(dirname "$library")")"
+    mkdir -p "$destination/$abi"
+    cp "$library" "$destination/$abi/libtermirust_mobile_ffi.so"
+  done < <(find "$source" -mindepth 2 -maxdepth 2 -name libtermirust_mobile_ffi.so -type f | sort)
   echo "Synced Android JNI libraries to $destination"
 }
 

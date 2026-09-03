@@ -151,7 +151,8 @@ final class AppleControllerRouteTests: XCTestCase {
             port: 22,
             username: "deploy",
             hostKeyPin: "SHA256:host-key",
-            credential: sshReference
+            credential: sshReference,
+            authentication: .privateKey
         )
         try ssh.validate()
         let encoded = try JSONEncoder().encode(ssh)
@@ -163,9 +164,11 @@ final class AppleControllerRouteTests: XCTestCase {
             purpose: .relayAdmission
         )
         let relay = try ControllerRemoteRouteConfiguration.selfHostedRelay(
-            endpoint: "wss://relay.example/termirust",
-            spkiPin: "sha256/relay-spki",
-            credential: relayReference
+            endpoint: "wss://relay.example/relay/v1",
+            spkiPin: "sha256/\(Data(repeating: 0x11, count: 32).base64EncodedString())",
+            credential: relayReference,
+            routeID: Data(repeating: 0x22, count: 32).base64EncodedString(),
+            revocationEpoch: 7
         )
         try relay.validate()
 
@@ -175,16 +178,100 @@ final class AppleControllerRouteTests: XCTestCase {
                 port: 22,
                 username: "deploy",
                 hostKeyPin: "SHA256:host-key",
-                credential: relayReference
+                credential: relayReference,
+                authentication: .privateKey
             )
         )
         XCTAssertThrowsError(
             try ControllerRemoteRouteConfiguration.selfHostedRelay(
                 endpoint: "ws://relay.example/termirust",
-                spkiPin: "sha256/relay-spki",
-                credential: relayReference
+                spkiPin: "sha256/\(Data(repeating: 0x11, count: 32).base64EncodedString())",
+                credential: relayReference,
+                routeID: Data(repeating: 0x22, count: 32).base64EncodedString(),
+                revocationEpoch: 7
             )
         )
+        XCTAssertThrowsError(
+            try ControllerRemoteRouteConfiguration.selfHostedRelay(
+                endpoint: "wss://relay.example/relay/v1",
+                spkiPin: "sha256/\(Data(repeating: 0x11, count: 32).base64EncodedString())",
+                credential: relayReference,
+                routeID: "not-a-route",
+                revocationEpoch: 7
+            )
+        )
+    }
+
+    func testControllerRelayPackageImportsOnlyStrictControllerPackages() throws {
+        let routeID = Data(repeating: 0x22, count: 32).base64EncodedString()
+        let credential = Data(repeating: 0x33, count: 32).base64EncodedString()
+        let pin = Data(repeating: 0x44, count: 32).base64EncodedString()
+        let package = """
+        {
+          "schema": "termirust-relay-route",
+          "schema_version": 1,
+          "role": "controller",
+          "endpoint": "wss://relay.example/relay/v1",
+          "spki_pin": "sha256/\(pin)",
+          "relay_route_id": "\(routeID)",
+          "relay_revocation_epoch": 7,
+          "admission_credential": "\(credential)"
+        }
+        """
+        let decoded = try ControllerRelayRoutePackage.decode(package)
+        XCTAssertEqual(decoded.endpoint, "wss://relay.example/relay/v1")
+        XCTAssertEqual(decoded.routeID, routeID)
+        XCTAssertEqual(decoded.revocationEpoch, 7)
+
+        XCTAssertThrowsError(
+            try ControllerRelayRoutePackage.decode(
+                package.replacingOccurrences(of: "\"controller\"", with: "\"host\"")
+            )
+        )
+        XCTAssertThrowsError(
+            try ControllerRelayRoutePackage.decode(
+                package.replacingOccurrences(of: "/relay/v1", with: "/wrong")
+            )
+        )
+    }
+
+    func testSSHControllerUsesFixedRemoteCommandAndTypedAuthentication() {
+        XCTAssertEqual(
+            SSHControllerTransport.remoteCommand,
+            "termirust controller-bridge --stdio"
+        )
+    }
+
+    func testSSHRouteMetadataIsPerHostAndContainsNoCredentialMaterial() throws {
+        let suite = "controller-route-tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ControllerRouteConfigurationStore(defaults: defaults)
+        let reference = try ControllerRouteCredentialReference(
+            id: "ssh-controller",
+            route: .ssh,
+            purpose: .sshAuthentication
+        )
+        let configuration = try ControllerRemoteRouteConfiguration.ssh(
+            endpoint: "controller.example",
+            port: 2222,
+            username: "operator",
+            hostKeyPin: "SHA256:fixed-host-key",
+            credential: reference,
+            authentication: .privateKey
+        )
+
+        try store.save(hostID: "host-a", configuration: configuration)
+
+        XCTAssertEqual(try store.load(hostID: "host-a", route: .ssh), configuration)
+        XCTAssertNil(try store.load(hostID: "host-b", route: .ssh))
+        let persisted = defaults.dictionaryRepresentation().values
+            .compactMap { $0 as? Data }
+            .reduce(into: Data()) { $0.append($1) }
+        XCTAssertFalse(String(decoding: persisted, as: UTF8.self).contains("PRIVATE KEY"))
+
+        try store.delete(hostID: "host-a", route: .ssh)
+        XCTAssertNil(try store.load(hostID: "host-a", route: .ssh))
     }
 
     private func connectOnline(

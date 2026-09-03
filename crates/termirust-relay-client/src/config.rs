@@ -48,6 +48,7 @@ impl RelayWssUrl {
             .map_err(|_| RelayRouteError::new(RelayRouteErrorCode::InvalidConfig))?;
         if url.scheme() != "wss"
             || url.host_str().is_none()
+            || url.path() != "/relay/v1"
             || !url.username().is_empty()
             || url.password().is_some()
             || url.query().is_some()
@@ -105,7 +106,8 @@ pub struct RelayEndpointConfig {
     pub route_id: RelayRouteId,
     pub credential_ref: RelayCredentialRef,
     pub expected_spki_pin: RelaySpkiPin,
-    pub binding: RelayRouteBinding,
+    pub binding: Option<RelayRouteBinding>,
+    pub relay_epoch: RelayRevocationEpoch,
 }
 
 impl RelayEndpointConfig {
@@ -126,7 +128,30 @@ impl RelayEndpointConfig {
             route_id,
             credential_ref,
             expected_spki_pin,
-            binding: binding.validate()?,
+            binding: Some(binding.validate()?),
+            relay_epoch: binding.relay_epoch,
+        })
+    }
+
+    pub fn new_host(
+        endpoint_id: RelayEndpointId,
+        wss_url: RelayWssUrl,
+        route_id: RelayRouteId,
+        credential_ref: RelayCredentialRef,
+        expected_spki_pin: RelaySpkiPin,
+        relay_epoch: RelayRevocationEpoch,
+    ) -> Result<Self, RelayRouteError> {
+        if route_id.0 == [0; 32] {
+            return Err(RelayRouteError::new(RelayRouteErrorCode::InvalidConfig));
+        }
+        Ok(Self {
+            endpoint_id,
+            wss_url,
+            route_id,
+            credential_ref,
+            expected_spki_pin,
+            binding: None,
+            relay_epoch,
         })
     }
 }

@@ -281,28 +281,42 @@ async fn serve_loop(
                 let tls = tls.clone();
                 connections.spawn(async move {
                     if let Some(acceptor) = tls {
-                        if let Ok(Ok(stream)) = timeout(
+                        match timeout(
                             Duration::from_secs(ADMISSION_LIFETIME_SECONDS),
                             acceptor.accept(stream),
                         ).await {
-                            let _ = handle_connection(
-                                stream,
-                                peer,
-                                connection_shared,
-                                connection_shutdown,
-                                origin,
-                                permit,
-                            ).await;
+                            Ok(Ok(stream)) => {
+                                if let Err(error) = handle_connection(
+                                    stream,
+                                    peer,
+                                    connection_shared,
+                                    connection_shutdown,
+                                    origin,
+                                    permit,
+                                ).await {
+                                    emit_test_diagnostic("connection", error.code());
+                                }
+                            }
+                            Ok(Err(_)) => emit_test_diagnostic(
+                                "tls",
+                                RelayDiagnosticCode::TransportFailed,
+                            ),
+                            Err(_) => emit_test_diagnostic(
+                                "tls",
+                                RelayDiagnosticCode::ExpiredProof,
+                            ),
                         }
                     } else {
-                        let _ = handle_connection(
+                        if let Err(error) = handle_connection(
                             stream,
                             peer,
                             connection_shared,
                             connection_shutdown,
                             origin,
                             permit,
-                        ).await;
+                        ).await {
+                            emit_test_diagnostic("connection", error.code());
+                        }
                     }
                 });
             }
@@ -321,6 +335,37 @@ async fn serve_loop(
     shared
         .state
         .store(state_to_u8(RelayServerState::Stopped), Ordering::Release);
+}
+
+fn emit_test_diagnostic(stage: &str, code: RelayDiagnosticCode) {
+    if std::env::var_os("TERMIRUST_RELAY_TEST_DIAGNOSTICS").is_some() {
+        eprintln!(
+            "relay test diagnostic: stage={stage} code={}",
+            code.as_str()
+        );
+    }
+}
+
+fn emit_endpoint_test_diagnostic(
+    event: &str,
+    role: termirust_relay_protocol::RelayEndpointRole,
+    code: Option<RelayDiagnosticCode>,
+) {
+    if std::env::var_os("TERMIRUST_RELAY_TEST_DIAGNOSTICS").is_none() {
+        return;
+    }
+    let role = match role {
+        termirust_relay_protocol::RelayEndpointRole::Host => "host",
+        termirust_relay_protocol::RelayEndpointRole::Controller => "controller",
+    };
+    if let Some(code) = code {
+        eprintln!(
+            "relay test diagnostic: event={event} role={role} code={}",
+            code.as_str()
+        );
+    } else {
+        eprintln!("relay test diagnostic: event={event} role={role}");
+    }
 }
 
 async fn handle_connection<S>(
@@ -366,7 +411,13 @@ where
     .map_err(|_| RelayServerError::new(RelayDiagnosticCode::ExpiredProof))??;
     drop(handshake_permit);
 
+    emit_endpoint_test_diagnostic("admitted", admitted.role, None);
     let result = run_forwarding(websocket, outgoing_rx, &shared, &admitted, endpoint_cancel).await;
+    emit_endpoint_test_diagnostic(
+        "forwarding-ended",
+        admitted.role,
+        result.as_ref().err().map(RelayServerError::code),
+    );
     shared.core.lock().await.disconnect(&admitted);
     result
 }
@@ -454,12 +505,14 @@ where
             }
             maybe_outgoing = outgoing_rx.recv() => {
                 let Some(encoded) = maybe_outgoing else {
+                    emit_endpoint_test_diagnostic("outgoing-closed", endpoint.role, None);
                     return Ok(());
                 };
                 let encoded_len = encoded.len();
                 sink.send(Message::Binary(encoded.into())).await.map_err(|error| {
                     RelayServerError::with_source(RelayDiagnosticCode::TransportFailed, error)
                 })?;
+                emit_endpoint_test_diagnostic("outgoing-sent", endpoint.role, None);
                 shared.core.lock().await.delivered(endpoint, encoded_len);
             }
             maybe_message = source.next() => {
@@ -475,6 +528,7 @@ where
                             let _ = sink.send(close_message(error.code())).await;
                             return Err(error);
                         }
+                        emit_endpoint_test_diagnostic("incoming-forwarded", endpoint.role, None);
                     }
                     Message::Ping(payload) => {
                         sink.send(Message::Pong(payload)).await.map_err(|error| {
@@ -482,7 +536,10 @@ where
                         })?;
                     }
                     Message::Pong(_) => {}
-                    Message::Close(_) => return Ok(()),
+                    Message::Close(_) => {
+                        emit_endpoint_test_diagnostic("peer-close", endpoint.role, None);
+                        return Ok(());
+                    }
                     Message::Text(_) | Message::Frame(_) => {
                         let error = RelayServerError::new(RelayDiagnosticCode::MalformedEnvelope);
                         let _ = sink.send(close_message(error.code())).await;

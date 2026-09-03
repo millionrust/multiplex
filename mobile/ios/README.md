@@ -31,14 +31,13 @@ Implemented:
 - Canonical route, terminal, schema, tmux, and lifecycle verification.
 - Shared Controller route phases, trust/capability projection, persisted explicit selection,
   route-scoped Keychain credential references, bounded same-route retry, and visible recovery.
+- Native Controller-over-SSH and self-hosted-relay adapters with pinned trust, fixed Controller
+  bridge semantics, strict operator-package import, and no silent route fallback.
 
 Not finished yet:
 
 - Encrypted private-key passphrase prompts and RSA/ECDSA private-key parsing.
-- Full terminal emulator integration. SwiftTerm is the right candidate, but this Xcode install is missing the Metal Toolchain needed to build SwiftTerm. Re-enable SwiftTerm after installing it with `xcodebuild -downloadComponent MetalToolchain` or through Xcode Settings > Components.
-- The production Device transport set currently installs private LAN/VPN only. Direct SSH
-  remains available under Connections; SSH Controller and self-hosted relay stay visibly
-  unconfigured until their dedicated native transport adapters are supplied.
+- Signed App Store/TestFlight distribution and external-network relay qualification.
 
 ## Build
 
