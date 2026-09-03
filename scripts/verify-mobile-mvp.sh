@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IOS_DIR="${TERMIRUST_IOS_DIR:-/Users/jacob/Projects/terminal_app/terminal_swift}"
-ANDROID_DIR="${TERMIRUST_ANDROID_DIR:-/Users/jacob/Projects/terminal_app/terminal_kotlin}"
+IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/mobile/ios}"
+ANDROID_DIR="${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/mobile/android}"
 IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-platform=iOS Simulator,name=iPhone 17 Pro}"
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 
@@ -70,6 +70,28 @@ run_step() {
   "$@"
 }
 
+prepare_android_test_native() {
+  local host_os host_arch resource_dir library_name
+  host_os="$(uname -s)"
+  host_arch="$(uname -m)"
+
+  case "$host_os-$host_arch" in
+    Darwin-arm64) resource_dir="darwin-aarch64"; library_name="libtermirust_controller_bindings.dylib" ;;
+    Darwin-x86_64) resource_dir="darwin-x86-64"; library_name="libtermirust_controller_bindings.dylib" ;;
+    Linux-aarch64|Linux-arm64) resource_dir="linux-aarch64"; library_name="libtermirust_controller_bindings.so" ;;
+    Linux-x86_64) resource_dir="linux-x86-64"; library_name="libtermirust_controller_bindings.so" ;;
+    *)
+      echo "Unsupported Android unit-test host: $host_os $host_arch" >&2
+      return 1
+      ;;
+  esac
+
+  cargo build --locked -p termirust-controller-bindings --release
+  mkdir -p "$ANDROID_DIR/app/src/test/native/$resource_dir"
+  cp "$ROOT_DIR/target/release/$library_name" \
+    "$ANDROID_DIR/app/src/test/native/$resource_dir/$library_name"
+}
+
 require_path "$IOS_DIR/TermiRustMobile.xcodeproj" "iOS project"
 require_path "$ANDROID_DIR/gradlew" "Android Gradle wrapper"
 
@@ -77,6 +99,7 @@ cd "$ROOT_DIR"
 
 run_step "Rust shared protocol tests" cargo test -p termirust-protocol
 run_step "Rust mobile FFI tests" cargo test -p termirust-mobile-ffi
+run_step "Android host Controller binding" prepare_android_test_native
 run_step "Mobile helper script syntax" bash -n \
   scripts/sync-mobile-ffi-artifacts.sh \
   scripts/test-mobile-ios-direct-ssh.sh \

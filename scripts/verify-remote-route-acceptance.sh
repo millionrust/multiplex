@@ -2,8 +2,8 @@
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-swift_root="$root/../terminal_app/terminal_swift"
-kotlin_root="$root/../terminal_app/terminal_kotlin"
+swift_root="$root/mobile/ios"
+kotlin_root="$root/mobile/android"
 
 case "${1:-}" in
   "") full=1 ;;

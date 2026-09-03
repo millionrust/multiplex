@@ -25,14 +25,14 @@ files, context links, or dependency orchestration. Those capabilities require
 an authenticated shared canvas protocol and gateway with explicit authorization,
 conflict handling, and audit semantics.
 
-The current companion mobile app roots are:
+The native mobile applications are versioned in this monorepo:
 
-- `/Users/jacob/Projects/terminal_app/terminal_swift`
-- `/Users/jacob/Projects/terminal_app/terminal_kotlin`
+- `mobile/ios`
+- `mobile/android`
 
-Desktop source remains in the current repository for this phase. Shared schema
-and protocol code should be added to the desktop repo first, then consumed by
-the companion apps through a stable exported schema or generated bindings.
+Shared schema and protocol changes should be made at the repository root first,
+then consumed by both native applications through a stable exported schema or
+generated bindings.
 
 ## MVP Data Flow
 

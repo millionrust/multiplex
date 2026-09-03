@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ANDROID_DIR="${TERMIRUST_ANDROID_DIR:-/Users/jacob/Projects/terminal_app/terminal_kotlin}"
+ANDROID_DIR="${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/mobile/android}"
 SSH_IMAGE="${TERMIRUST_MOBILE_TEST_SSH_IMAGE:-termirust-e2e-sshd:local}"
 CONFIG_PATH="$ANDROID_DIR/app/src/test/.termirust-mobile-live-ssh.properties"
 

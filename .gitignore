@@ -3,6 +3,8 @@
 /dist/mobile/controller/
 /tools/browser-engine-spike/target
 .DS_Store
+__pycache__/
+*.py[cod]
 .antigravitycli/
 experiment.md
 mobile_terminal_access_implementation_prompt.md

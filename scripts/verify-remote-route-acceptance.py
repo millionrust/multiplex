@@ -5,8 +5,8 @@ import sys
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SWIFT = ROOT.parent / "terminal_app" / "terminal_swift"
-KOTLIN = ROOT.parent / "terminal_app" / "terminal_kotlin"
+SWIFT = ROOT / "mobile" / "ios"
+KOTLIN = ROOT / "mobile" / "android"
 ROUTE_FIXTURE = ROOT / "tests/fixtures/controller-routes/route-selection-v1.json"
 ACCEPTANCE_FIXTURE = ROOT / "tests/fixtures/controller-routes/remote-route-acceptance-v1.json"
 ROUTES = ["private_network", "ssh", "self_hosted_relay"]

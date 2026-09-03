@@ -2,15 +2,15 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IOS_DIR="${TERMIRUST_IOS_DIR:-/Users/jacob/Projects/terminal_app/terminal_swift}"
-ANDROID_DIR="${TERMIRUST_ANDROID_DIR:-/Users/jacob/Projects/terminal_app/terminal_kotlin}"
+IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/mobile/ios}"
+ANDROID_DIR="${TERMIRUST_ANDROID_DIR:-$ROOT_DIR/mobile/android}"
 
 usage() {
   cat <<'USAGE'
 Usage: scripts/sync-mobile-ffi-artifacts.sh [ios|android|all]
 
 Builds TermiRust's shared Rust mobile FFI artifacts and copies them into the
-companion mobile app repositories.
+mobile application directories in this repository.
 
 Environment overrides:
   TERMIRUST_IOS_DIR       iOS app repo path

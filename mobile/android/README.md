@@ -56,10 +56,10 @@ scripts/sync-mobile-ffi-artifacts.sh android
 Use the checked-in Gradle wrapper:
 
 ```bash
-echo "sdk.dir=/Users/jacob/Library/Android/sdk" > local.properties
-./gradlew testDebugUnitTest
-./gradlew assembleDebug
-./scripts/verify-android-unified-routes.sh
+cd /Users/jacob/Projects/terminal
+ANDROID_HOME="$HOME/Library/Android/sdk" ./mobile/android/gradlew \
+  -p mobile/android testDebugUnitTest assembleDebug
+mobile/android/scripts/verify-android-unified-routes.sh
 ```
 
 If Android Studio installed the SDK somewhere else, replace the `sdk.dir` path

@@ -46,7 +46,7 @@ Not finished yet:
 cd /Users/jacob/Projects/terminal
 scripts/sync-mobile-ffi-artifacts.sh ios
 
-cd /Users/jacob/Projects/terminal_app/terminal_swift
+cd mobile/ios
 ./scripts/verify-ios-unified-routes.sh
 ./scripts/verify-ios-controller.sh --stage route-contract
 ```

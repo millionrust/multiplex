@@ -76,6 +76,12 @@ Other things worth knowing about:
 
 The app is being built as a native Rust desktop client for Windows, macOS, and Linux. Secure credentials use each platform's native credential backend through `keyring`, and config/state storage already uses cross-platform user directories.
 
+The native mobile clients are part of the same repository: the Swift iOS/iPadOS
+application lives in [`mobile/ios`](mobile/ios), and the Kotlin Android
+application lives in [`mobile/android`](mobile/android). Run
+`scripts/verify-mobile-mvp.sh` from the repository root to validate the shared
+Rust protocol and both mobile projects together.
+
 Cross-platform parity work is still in progress in the UI and packaging layers, so expect rough edges outside the primary development environment.
 
 The tracked parity target is documented in [docs/termius-parity.md](docs/termius-parity.md).

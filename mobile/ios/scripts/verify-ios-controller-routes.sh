@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FIXTURE="${CONTROLLER_ROUTE_FIXTURE:-$ROOT_DIR/../../terminal/tests/fixtures/controller-routes/route-selection-v1.json}"
+FIXTURE="${CONTROLLER_ROUTE_FIXTURE:-$ROOT_DIR/../../tests/fixtures/controller-routes/route-selection-v1.json}"
 ACCEPTANCE_FIXTURE="${CONTROLLER_ROUTE_ACCEPTANCE_FIXTURE:-$ROOT_DIR/TermiRustMobileTests/Fixtures/remote-route-acceptance-v1.json}"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/termirust-ios-routes.XXXXXX")"
 trap 'find "$TEMP_DIR" -depth -delete 2>/dev/null || true' EXIT

@@ -7,10 +7,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "tests/fixtures/mobile/mobile-cross-route-acceptance-v1.json"
 SWIFT_ROOT = Path(
-    os.environ.get("TERMIRUST_IOS_DIR", ROOT.parent / "terminal_app/terminal_swift")
+    os.environ.get("TERMIRUST_IOS_DIR", ROOT / "mobile/ios")
 )
 KOTLIN_ROOT = Path(
-    os.environ.get("TERMIRUST_ANDROID_DIR", ROOT.parent / "terminal_app/terminal_kotlin")
+    os.environ.get("TERMIRUST_ANDROID_DIR", ROOT / "mobile/android")
 )
 NATIVE_COPIES = [
     SWIFT_ROOT / "TermiRustMobileTests/Fixtures/mobile-cross-route-acceptance-v1.json",

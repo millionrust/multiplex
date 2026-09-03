@@ -2,8 +2,8 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-SWIFT_ROOT="$ROOT/../terminal_app/terminal_swift"
-KOTLIN_ROOT="$ROOT/../terminal_app/terminal_kotlin"
+SWIFT_ROOT="$ROOT/mobile/ios"
+KOTLIN_ROOT="$ROOT/mobile/android"
 
 FILES="
 tests/fixtures/terminal/terminal-conformance-v1.json|TermiRustMobileTests/Fixtures/terminal-conformance-v1.json|app/src/test/resources/terminal-conformance-v1.json

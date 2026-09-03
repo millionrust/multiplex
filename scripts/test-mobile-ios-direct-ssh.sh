@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IOS_DIR="${TERMIRUST_IOS_DIR:-/Users/jacob/Projects/terminal_app/terminal_swift}"
+IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/mobile/ios}"
 IOS_DESTINATION="${TERMIRUST_IOS_DESTINATION:-}"
 SSH_IMAGE="${TERMIRUST_MOBILE_TEST_SSH_IMAGE:-termirust-e2e-sshd:local}"
 CONFIG_PATH="$IOS_DIR/TermiRustMobileTests/.termirust-mobile-live-ssh.properties"

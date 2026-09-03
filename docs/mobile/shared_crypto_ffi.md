@@ -38,7 +38,7 @@ after copying the returned buffer.
 
 ## Sync Helper
 
-Build and copy the shared crypto artifacts into the companion app repos with:
+Build and copy the shared crypto artifacts into the native mobile applications with:
 
 ```bash
 cd /Users/jacob/Projects/terminal
@@ -54,7 +54,7 @@ TERMIRUST_IOS_DIR
 TERMIRUST_ANDROID_DIR
 ```
 
-when the companion repos are not in their default locations.
+when the mobile source directories are not in their default monorepo locations.
 
 ## iOS Integration Path
 
@@ -73,14 +73,14 @@ The script installs missing Rust iOS targets, builds the device and simulator st
 dist/mobile/ios/TermiRustMobileCrypto.xcframework
 ```
 
-Copy or sync that generated framework into the companion iOS repo before
+Copy or sync that generated framework into the iOS application before
 opening Xcode. Prefer the sync helper above, or run:
 
 ```bash
-rm -rf /Users/jacob/Projects/terminal_app/terminal_swift/Frameworks/TermiRustMobileCrypto.xcframework
+rm -rf mobile/ios/Frameworks/TermiRustMobileCrypto.xcframework
 cp -R \
-  /Users/jacob/Projects/terminal/dist/mobile/ios/TermiRustMobileCrypto.xcframework \
-  /Users/jacob/Projects/terminal_app/terminal_swift/Frameworks/
+  dist/mobile/ios/TermiRustMobileCrypto.xcframework \
+  mobile/ios/Frameworks/
 ```
 
 If Xcode reports `There is no XCFramework found`, rerun the build script and
@@ -108,14 +108,14 @@ The script installs missing Rust Android targets, finds the local Android NDK, a
 dist/mobile/android/jniLibs/
 ```
 
-Copy or sync those ABI folders into `terminal_kotlin/app/src/main/jniLibs/`.
+Copy or sync those ABI folders into `mobile/android/app/src/main/jniLibs/`.
 Prefer the sync helper above, or run:
 
 ```bash
-rm -rf /Users/jacob/Projects/terminal_app/terminal_kotlin/app/src/main/jniLibs
+rm -rf mobile/android/app/src/main/jniLibs
 cp -R \
-  /Users/jacob/Projects/terminal/dist/mobile/android/jniLibs \
-  /Users/jacob/Projects/terminal_app/terminal_kotlin/app/src/main/
+  dist/mobile/android/jniLibs \
+  mobile/android/app/src/main/
 ```
 
 ## Verification

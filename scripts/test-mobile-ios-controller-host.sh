@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-IOS_DIR="${TERMIRUST_IOS_DIR:-/Users/jacob/Projects/terminal_app/terminal_swift}"
+IOS_DIR="${TERMIRUST_IOS_DIR:-$ROOT_DIR/mobile/ios}"
 RESOURCE_PATH="$IOS_DIR/TermiRustMobileTests/Fixtures/controller-v1.json"
 FIXTURE_BINARY="$ROOT_DIR/target/debug/examples/mobile_controller_fixture"
 HOST_BINARY="$ROOT_DIR/target/debug/termirust-session-host"

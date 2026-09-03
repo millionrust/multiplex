@@ -8,9 +8,8 @@ Use this checklist before a client demo or release candidate. The goal is to pro
 - `tmux` installed on the SSH host.
 - A saved TermiRust desktop host with persistent tmux enabled.
 - A known-host pin for that SSH endpoint in desktop TermiRust.
-- iOS and Android companion apps built from:
-  - `/Users/jacob/Projects/terminal_app/terminal_swift`
-  - `/Users/jacob/Projects/terminal_app/terminal_kotlin`
+- iOS and Android applications checked out under `mobile/ios` and
+  `mobile/android` in the TermiRust repository.
 - A mobile vault exported from desktop TermiRust after approving each test device.
 - The same current mobile vault imported on iOS and Android.
 - The host credential saved in iOS Keychain or Android Keystore-backed storage.
@@ -20,16 +19,19 @@ Use this checklist before a client demo or release candidate. The goal is to pro
 Run these before manual SSH testing:
 
 ```bash
-cd /Users/jacob/Projects/terminal_app/terminal_swift
+cd /Users/jacob/Projects/terminal/mobile/ios
 xcodebuild test -project TermiRustMobile.xcodeproj -scheme TermiRustMobile -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 
-cd /Users/jacob/Projects/terminal_app/terminal_kotlin
-echo "sdk.dir=/Users/jacob/Library/Android/sdk" > local.properties
-./gradlew testDebugUnitTest
-./gradlew assembleDebug
+cd /Users/jacob/Projects/terminal
+ANDROID_HOME="$HOME/Library/Android/sdk" ./mobile/android/gradlew \
+  -p mobile/android testDebugUnitTest assembleDebug
 ```
 
 Pass: all commands complete successfully.
+
+For the complete reproducible gate, including generation of the host-native
+Controller test library, run `scripts/verify-mobile-mvp.sh` from the repository
+root.
 
 Fail: fix build or test failures before starting device verification.
 

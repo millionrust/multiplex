@@ -64,6 +64,18 @@ dependencies {
     testRuntimeOnly("net.java.dev.jna:jna-jpms:5.17.0")
 }
 
+val controllerTestNativeDirectory = run {
+    val os = System.getProperty("os.name").lowercase()
+    val arch = System.getProperty("os.arch").lowercase()
+    when {
+        os.contains("mac") && (arch == "aarch64" || arch == "arm64") -> "darwin-aarch64"
+        os.contains("mac") && (arch == "x86_64" || arch == "amd64") -> "darwin-x86-64"
+        os.contains("linux") && (arch == "aarch64" || arch == "arm64") -> "linux-aarch64"
+        os.contains("linux") && (arch == "x86_64" || arch == "amd64") -> "linux-x86-64"
+        else -> error("Unsupported Controller unit-test host: $os $arch")
+    }
+}
+
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
-    systemProperty("jna.library.path", file("src/test/native/darwin-aarch64").absolutePath)
+    systemProperty("jna.library.path", file("src/test/native/$controllerTestNativeDirectory").absolutePath)
 }
