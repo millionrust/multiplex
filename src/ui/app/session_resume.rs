@@ -432,6 +432,7 @@ impl TermiRustApp {
             runtime,
             terminal_chrome_focus,
             terminal_focus,
+            cx,
         );
         self.open_spawned_pane_workspace(&request, pane_id);
         if let Some(pane) = self.pane_mut(pane_id) {

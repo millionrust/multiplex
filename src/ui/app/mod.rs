@@ -1,6 +1,7 @@
 mod activity_center;
 mod artifact_gallery;
 mod canvas;
+mod canvas_agent_runtime;
 mod canvas_coordinator;
 mod chrome;
 mod cli_status;
@@ -30,6 +31,7 @@ mod session_resume;
 mod session_sidebar;
 mod settings_surface;
 mod sftp;
+mod terminal_grid;
 mod transcript_export;
 mod types;
 mod vault_key_snippet;
@@ -45,8 +47,9 @@ use activity_center::ActivityCenterState;
 use canvas::{
     AgentCreationState, CANVAS_NODE_HEADER_HEIGHT, CANVAS_TOOLBAR_HEIGHT, CanvasInteraction,
     CanvasWorkspaceState, ContextHandoffReview, PendingCanvasNodeDelete, PendingCanvasPaneClose,
-    PendingTmuxClose, SplitPaneChooser, StructuredAgentRuntime,
+    PendingTmuxClose, SplitPaneChooser,
 };
+use canvas_agent_runtime::StructuredAgentRuntime;
 use canvas_coordinator::CanvasCoordinator;
 use connection_coordinator::{
     ConnectionCoordinator, ReconnectScheduleDecision, ReconnectScheduleInput,
@@ -74,6 +77,7 @@ use session_coordinator::{
 };
 use session_library::{SessionLibraryFilter, SessionLibraryState, SessionLibraryView};
 use session_resume::SessionResumeState;
+use terminal_grid::TerminalGridView;
 use worktree_launch::WorktreeLaunchUiState;
 
 use std::collections::{HashMap, HashSet};
@@ -165,6 +169,7 @@ const PANE_GAP: f32 = 12.0;
 const TERMINAL_INNER_PADDING_X: f32 = 20.0;
 const TERMINAL_INNER_PADDING_Y: f32 = 14.0;
 const MAX_SPLIT_PANES: usize = 4;
+const MAX_COALESCED_TERMINAL_OUTPUT_BYTES: usize = 256 * 1024;
 const HOST_CARD_WIDTH: f32 = 300.0;
 const ICON_KEY: &str = "icons/key.svg";
 const ICON_SHIELD_CHECK: &str = "icons/shield-check.svg";
@@ -216,6 +221,29 @@ fn ssh_config_path_label() -> &'static str {
     {
         "~/.ssh/config"
     }
+}
+
+fn drain_coalesced_ssh_events(receiver: &Receiver<SshEvent>) -> Vec<SshEvent> {
+    let mut events = Vec::new();
+    while let Ok(event) = receiver.try_recv() {
+        if let SshEvent::Output { session_id, data } = event {
+            if let Some(SshEvent::Output {
+                session_id: previous_session_id,
+                data: previous_data,
+            }) = events.last_mut()
+                && *previous_session_id == session_id
+                && previous_data.len().saturating_add(data.len())
+                    <= MAX_COALESCED_TERMINAL_OUTPUT_BYTES
+            {
+                previous_data.extend_from_slice(&data);
+                continue;
+            }
+            events.push(SshEvent::Output { session_id, data });
+        } else {
+            events.push(event);
+        }
+    }
+    events
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -701,6 +729,7 @@ struct SessionPane {
     title: String,
     endpoint: String,
     terminal: TerminalState,
+    terminal_grid: Entity<TerminalGridView>,
     terminal_accessibility: TerminalAccessibilityBuffer,
     terminal_announcements: TerminalAnnouncementCoalescer,
     terminal_announcement: Option<TerminalAnnouncement>,
@@ -1416,6 +1445,10 @@ pub struct TermiRustApp {
     tab_strip_scroll: ScrollHandle,
     tab_strip_scrolled_to: Option<u64>,
     launched_at: Instant,
+    #[cfg(test)]
+    event_root_notification_count: u64,
+    #[cfg(test)]
+    event_root_notification_causes: Vec<&'static str>,
     _canvas_project_editor_subscription: Subscription,
     _canvas_note_editor_subscription: Subscription,
     _command_palette_subscription: Subscription,
@@ -1772,6 +1805,10 @@ impl TermiRustApp {
             tab_strip_scroll: ScrollHandle::new(),
             tab_strip_scrolled_to: None,
             launched_at: Instant::now(),
+            #[cfg(test)]
+            event_root_notification_count: 0,
+            #[cfg(test)]
+            event_root_notification_causes: Vec::new(),
             _canvas_project_editor_subscription: canvas_project_editor_subscription,
             _canvas_note_editor_subscription: canvas_note_editor_subscription,
             _command_palette_subscription: command_palette_subscription,
@@ -5358,6 +5395,7 @@ impl TermiRustApp {
         self.saved.settings.terminal_font_size = font_size;
         self.save_settings();
         self.sync_terminal_layout(window, cx);
+        self.sync_all_terminal_grids(cx);
         self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
@@ -5405,6 +5443,7 @@ impl TermiRustApp {
         self.saved.settings.terminal_font_family = (!family.is_empty()).then(|| family.clone());
         self.save_settings();
         self.sync_terminal_layout(window, cx);
+        self.sync_all_terminal_grids(cx);
         self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
@@ -5420,6 +5459,7 @@ impl TermiRustApp {
             cx,
         );
         self.sync_terminal_layout(window, cx);
+        self.sync_all_terminal_grids(cx);
         self.status_message = localization::static_message(MessageId::SettingsOperationUpdated);
         self.error_message.clear();
         cx.notify();
@@ -7010,6 +7050,7 @@ impl TermiRustApp {
             runtime,
             terminal_chrome_focus,
             terminal_focus,
+            cx,
         )
     }
 
@@ -7047,7 +7088,7 @@ impl TermiRustApp {
         ));
         let terminal_chrome_focus = cx.focus_handle().tab_stop(true);
         let terminal_focus = cx.focus_handle().tab_stop(true);
-        self.register_pane(request, runtime, terminal_chrome_focus, terminal_focus);
+        self.register_pane(request, runtime, terminal_chrome_focus, terminal_focus, cx);
         if let Some(pane) = self.pane_mut(pane_id) {
             pane.app_attached = Some(AppAttachedPaneState {
                 hosted_session_id: saved_session.id,
@@ -7213,6 +7254,7 @@ impl TermiRustApp {
             }
             pane.terminal_chrome_focus.focus(window);
         }
+        self.sync_terminal_grid(pane_id, cx);
         self.mutate_session(
             session_id,
             termirust_domain::SessionMutation::SetLifecycle(
@@ -7230,6 +7272,7 @@ impl TermiRustApp {
         runtime: SessionRuntimeHandle,
         terminal_chrome_focus: FocusHandle,
         terminal_focus: FocusHandle,
+        cx: &mut Context<Self>,
     ) -> u64 {
         let pane_id = request.session_id;
         let endpoint = request.endpoint_label();
@@ -7241,13 +7284,21 @@ impl TermiRustApp {
         let log_id = log_entry.id.clone();
         self.saved.record_session_log(log_entry);
         let _ = save_saved_state(&self.saved);
+        let terminal = TerminalState::new(TerminalSize::default(), terminal_scrollback_rows);
+        let snapshot = terminal.snapshot().clone();
+        let font_family = self.terminal_font_family(cx);
+        let font_size = self.terminal_font_size();
+        let terminal_grid = cx.new(move |_| {
+            TerminalGridView::new(snapshot, None, Vec::new(), font_family, font_size)
+        });
 
         self.panes.push(SessionPane {
             id: pane_id,
             request,
             title: title.clone(),
             endpoint,
-            terminal: TerminalState::new(TerminalSize::default(), terminal_scrollback_rows),
+            terminal,
+            terminal_grid,
             terminal_accessibility: TerminalAccessibilityBuffer::new(pane_id, title.clone()),
             terminal_announcements: TerminalAnnouncementCoalescer::new(),
             terminal_announcement: None,
@@ -8048,14 +8099,36 @@ impl TermiRustApp {
     }
 
     fn process_events(&mut self, cx: &mut Context<Self>) {
-        let mut changed = self.process_structured_agent_events();
-        changed |= self.process_connection_diagnostic_events();
-        changed |= self.process_project_undo_expiry();
+        #[cfg(test)]
+        self.event_root_notification_causes.clear();
+        let structured_agents_changed = self.process_structured_agent_events();
+        let connection_diagnostics_changed = self.process_connection_diagnostic_events();
+        let project_undo_changed = self.process_project_undo_expiry();
+        #[cfg(test)]
+        {
+            if structured_agents_changed {
+                self.event_root_notification_causes.push("structured-agent");
+            }
+            if connection_diagnostics_changed {
+                self.event_root_notification_causes
+                    .push("connection-diagnostic");
+            }
+            if project_undo_changed {
+                self.event_root_notification_causes.push("project-undo");
+            }
+        }
+        let mut changed =
+            structured_agents_changed || connection_diagnostics_changed || project_undo_changed;
         let mut panes_to_refresh = Vec::new();
         let mut sftp_directories_to_refresh = HashSet::new();
 
-        while let Ok(event) = self.event_rx.try_recv() {
-            changed = true;
+        for event in drain_coalesced_ssh_events(&self.event_rx) {
+            let plain_terminal_output = matches!(&event, SshEvent::Output { .. });
+            if !plain_terminal_output {
+                changed = true;
+                #[cfg(test)]
+                self.event_root_notification_causes.push("non-output-event");
+            }
 
             match event {
                 SshEvent::Connected {
@@ -8136,6 +8209,11 @@ impl TermiRustApp {
                 }
                 SshEvent::Output { session_id, data } => {
                     if let Some(workspace_id) = self.pane_workspace_id(session_id) {
+                        if self.active_workspace_id != Some(workspace_id) {
+                            changed = true;
+                            #[cfg(test)]
+                            self.event_root_notification_causes.push("inactive-output");
+                        }
                         self.record_workspace_activity(workspace_id);
                     }
                     let desktop_panes = self.desktop_panes.clone();
@@ -8726,6 +8804,9 @@ impl TermiRustApp {
             {
                 pane.terminal_announcement = Some(announcement);
                 changed = true;
+                #[cfg(test)]
+                self.event_root_notification_causes
+                    .push("accessibility-announcement");
             }
         }
 
@@ -8744,14 +8825,30 @@ impl TermiRustApp {
                 .iter()
                 .copied()
                 .any(|pane_id| self.pane_workspace_id(pane_id) == Some(active_workspace_id));
+            let search_visible = self
+                .workspace(active_workspace_id)
+                .is_some_and(|workspace| workspace.search_visible);
 
-            if search_changed || output_changed {
+            if search_changed || (output_changed && search_visible) {
                 self.refresh_workspace_search(active_workspace_id, cx);
                 changed = true;
+                #[cfg(test)]
+                self.event_root_notification_causes.push("terminal-search");
             }
         }
 
+        panes_to_refresh.sort_unstable();
+        panes_to_refresh.dedup();
+        for pane_id in panes_to_refresh {
+            self.sync_terminal_grid(pane_id, cx);
+        }
+
         if changed {
+            #[cfg(test)]
+            {
+                self.event_root_notification_count =
+                    self.event_root_notification_count.saturating_add(1);
+            }
             cx.notify();
         }
     }
@@ -8889,6 +8986,7 @@ impl TermiRustApp {
         let layouts = self.pane_layouts(window, cx);
         let desktop_panes = self.desktop_panes.clone();
         let mut changed = false;
+        let mut resized_panes = Vec::new();
 
         for layout in layouts {
             let size = TerminalSize::new(
@@ -8910,6 +9008,7 @@ impl TermiRustApp {
                     );
                     if pane.terminal.size() != controller_size {
                         pane.terminal.resize(controller_size);
+                        resized_panes.push(layout.pane_id);
                         changed = true;
                     }
                     if pane.last_size != Some(size) {
@@ -8927,6 +9026,7 @@ impl TermiRustApp {
                 }
 
                 pane.terminal.resize(size);
+                resized_panes.push(layout.pane_id);
                 pane.last_size = Some(size);
                 desktop_panes.update_size(
                     pane.controller_session_id,
@@ -8938,6 +9038,10 @@ impl TermiRustApp {
                 }
                 changed = true;
             }
+        }
+
+        for pane_id in resized_panes {
+            self.sync_terminal_grid(pane_id, cx);
         }
 
         if changed {
@@ -9829,6 +9933,12 @@ impl TermiRustApp {
             }
         }
         self.sync_terminal_layout(window, cx);
+        if let Some(pane_id) = self
+            .workspace(workspace_id)
+            .map(|workspace| workspace.active_pane_id)
+        {
+            self.sync_terminal_grid(pane_id, cx);
+        }
         cx.notify();
     }
 
@@ -9865,6 +9975,7 @@ impl TermiRustApp {
                 )
             };
         }
+        self.sync_terminal_grid(active_pane_id, cx);
     }
 
     fn jump_workspace_search(&mut self, delta: i32, cx: &mut Context<Self>) {
@@ -9906,20 +10017,26 @@ impl TermiRustApp {
         pane.terminal.set_scrollback(scrollback);
         pane.selection = None;
         pane.dragging_selection = false;
-        let _ = cx;
+        self.sync_terminal_grid(pane_id, cx);
     }
 
     fn scroll_active_pane_top(&mut self, cx: &mut Context<Self>) {
-        if let Some(pane) = self.active_pane_mut() {
-            let max_scrollback = pane.terminal.max_scrollback();
-            pane.terminal.set_scrollback(max_scrollback);
+        if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
+            if let Some(pane) = self.pane_mut(pane_id) {
+                let max_scrollback = pane.terminal.max_scrollback();
+                pane.terminal.set_scrollback(max_scrollback);
+            }
+            self.sync_terminal_grid(pane_id, cx);
             cx.notify();
         }
     }
 
     fn scroll_active_pane_bottom(&mut self, cx: &mut Context<Self>) {
-        if let Some(pane) = self.active_pane_mut() {
-            pane.terminal.reset_scrollback();
+        if let Some(pane_id) = self.active_pane().map(|pane| pane.id) {
+            if let Some(pane) = self.pane_mut(pane_id) {
+                pane.terminal.reset_scrollback();
+            }
+            self.sync_terminal_grid(pane_id, cx);
             cx.notify();
         }
     }
@@ -10119,6 +10236,7 @@ impl TermiRustApp {
                     if let Some(pane) = self.pane_mut(pane_id) {
                         pane.terminal.scroll_scrollback(rows);
                     }
+                    self.sync_terminal_grid(pane_id, cx);
                     cx.notify();
                     return true;
                 }
@@ -10126,6 +10244,7 @@ impl TermiRustApp {
                     if let Some(pane) = self.pane_mut(pane_id) {
                         pane.terminal.scroll_scrollback(-rows);
                     }
+                    self.sync_terminal_grid(pane_id, cx);
                     cx.notify();
                     return true;
                 }
@@ -10149,6 +10268,9 @@ impl TermiRustApp {
     }
 
     fn activate_pane(&mut self, pane_id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let previous_active_pane = self
+            .active_workspace()
+            .map(|workspace| workspace.active_pane_id);
         if let Some(workspace_id) = self.pane_workspace_id(pane_id) {
             if let Some(workspace) = self.workspace_mut(workspace_id) {
                 workspace.active_pane_id = pane_id;
@@ -10164,6 +10286,12 @@ impl TermiRustApp {
                 pane.terminal_chrome_focus.focus(window);
             }
         }
+        if let Some(previous_active_pane) = previous_active_pane
+            && previous_active_pane != pane_id
+        {
+            self.sync_terminal_grid(previous_active_pane, cx);
+        }
+        self.sync_terminal_grid(pane_id, cx);
         self.persist_runtime_state();
         cx.notify();
     }
@@ -10297,6 +10425,7 @@ impl TermiRustApp {
             });
             pane.dragging_selection = true;
         }
+        self.sync_terminal_grid(pane_id, cx);
         cx.notify();
     }
 
@@ -10333,12 +10462,17 @@ impl TermiRustApp {
         let Some(pos) = self.mouse_cell_position(pane_id, event.position, window, cx) else {
             return;
         };
-        if let Some(pane) = self.pane_mut(pane_id) {
-            if let Some(selection) = pane.selection.as_mut() {
-                selection.head = pos;
-                pane.dragging_selection = true;
-                cx.notify();
-            }
+        let mut selection_changed = false;
+        if let Some(pane) = self.pane_mut(pane_id)
+            && let Some(selection) = pane.selection.as_mut()
+        {
+            selection.head = pos;
+            pane.dragging_selection = true;
+            selection_changed = true;
+        }
+        if selection_changed {
+            self.sync_terminal_grid(pane_id, cx);
+            cx.notify();
         }
     }
 
@@ -10389,6 +10523,7 @@ impl TermiRustApp {
         if let Some(text) = copy_text {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
         }
+        self.sync_terminal_grid(pane_id, cx);
         cx.notify();
     }
 
@@ -10422,6 +10557,7 @@ impl TermiRustApp {
             if let Some(pane) = self.pane_mut(pane_id) {
                 pane.terminal.scroll_scrollback(lines);
             }
+            self.sync_terminal_grid(pane_id, cx);
         }
         cx.notify();
     }
@@ -10478,6 +10614,7 @@ impl TermiRustApp {
             });
             pane.dragging_selection = false;
         }
+        self.sync_terminal_grid(pane_id, cx);
         cx.notify();
     }
 
@@ -10506,6 +10643,33 @@ impl TermiRustApp {
                 }
             })
             .collect()
+    }
+
+    fn sync_terminal_grid(&self, pane_id: u64, cx: &mut Context<Self>) {
+        let Some(pane) = self.pane(pane_id) else {
+            return;
+        };
+        let snapshot = pane.terminal.snapshot().clone();
+        let selection = pane.selection;
+        let visible_matches = self
+            .active_workspace()
+            .filter(|workspace| workspace.active_pane_id == pane_id)
+            .map(|workspace| self.workspace_visible_matches(workspace, pane))
+            .unwrap_or_default();
+        let font_family = self.terminal_font_family(cx);
+        let font_size = self.terminal_font_size();
+        let terminal_grid = pane.terminal_grid.clone();
+        terminal_grid.update(cx, move |grid, cx| {
+            grid.replace(snapshot, selection, visible_matches, font_family, font_size);
+            cx.notify();
+        });
+    }
+
+    fn sync_all_terminal_grids(&self, cx: &mut Context<Self>) {
+        let pane_ids = self.panes.iter().map(|pane| pane.id).collect::<Vec<_>>();
+        for pane_id in pane_ids {
+            self.sync_terminal_grid(pane_id, cx);
+        }
     }
 
     fn render_saved_group_cards(&self, cx: &Context<Self>) -> Option<Div> {
@@ -13382,11 +13546,12 @@ fn apply_group_defaults_to_draft(
 mod tests {
     use super::{
         AutocompleteSource, ConnectDialogMode, ConnectionDiagnosticRow, ConnectionDiagnosticStatus,
-        DropZone, HostsSort, HostsViewMode, KeyLifecycleDialog, KeychainTab, MAX_SPLIT_PANES,
-        NavSection, OutputSuggestionContext, PathSuggestionContext, SessionLibraryView, SplitNode,
-        TermiRustApp, WorkspaceIndicators, WorkspaceRuntimeTone, WorkspaceViewMode,
-        apply_group_defaults_to_draft, collect_autocomplete_candidates,
-        collect_command_palette_candidates, extract_snippet_prompt_names,
+        DropZone, HostsSort, HostsViewMode, KeyLifecycleDialog, KeychainTab,
+        MAX_COALESCED_TERMINAL_OUTPUT_BYTES, MAX_SPLIT_PANES, NavSection, OutputSuggestionContext,
+        PathSuggestionContext, SessionLibraryView, SplitNode, TermiRustApp, WorkspaceIndicators,
+        WorkspaceRuntimeTone, WorkspaceViewMode, apply_group_defaults_to_draft,
+        collect_autocomplete_candidates, collect_command_palette_candidates,
+        drain_coalesced_ssh_events, extract_snippet_prompt_names,
         shell_command_requires_continuation, startup_bytes_for_request,
         substitute_snippet_placeholders, substitute_snippet_prompts, workspace_runtime_summary,
     };
@@ -13403,7 +13568,7 @@ mod tests {
         WorkspaceLayoutMode,
     };
     use crate::sftp::RemoteFileEntry;
-    use crate::ssh::SessionCommand;
+    use crate::ssh::{SessionCommand, SessionRuntimeHandle, SshEvent};
     use crate::storage::load_saved_state;
     #[cfg(unix)]
     use crate::test_support::TestSshAgent;
@@ -13423,10 +13588,350 @@ mod tests {
     use gpui_component::Root;
     use std::fs;
     use std::path::Path;
+    use std::sync::mpsc;
     use std::time::{Duration, Instant};
     use termirust_domain::HostedSessionId;
     use termirust_ui_contract::MessageId;
     use vt100::MouseProtocolMode;
+
+    #[cfg(unix)]
+    #[derive(Clone, Copy)]
+    struct ProcessUsageSample {
+        cpu_micros: u64,
+        max_rss_bytes: u64,
+    }
+
+    #[cfg(unix)]
+    fn process_usage_sample() -> Option<ProcessUsageSample> {
+        let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+        // SAFETY: getrusage initializes the supplied rusage when it succeeds.
+        if unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) } != 0 {
+            return None;
+        }
+        // SAFETY: the successful call above initialized usage.
+        let usage = unsafe { usage.assume_init() };
+        let timeval_micros = |value: libc::timeval| {
+            u64::try_from(value.tv_sec)
+                .unwrap_or_default()
+                .saturating_mul(1_000_000)
+                .saturating_add(u64::try_from(value.tv_usec).unwrap_or_default())
+        };
+        #[cfg(target_os = "macos")]
+        let max_rss_bytes = u64::try_from(usage.ru_maxrss).unwrap_or_default();
+        #[cfg(not(target_os = "macos"))]
+        let max_rss_bytes = u64::try_from(usage.ru_maxrss)
+            .unwrap_or_default()
+            .saturating_mul(1_024);
+        Some(ProcessUsageSample {
+            cpu_micros: timeval_micros(usage.ru_utime)
+                .saturating_add(timeval_micros(usage.ru_stime)),
+            max_rss_bytes,
+        })
+    }
+
+    #[cfg(not(unix))]
+    fn process_usage_sample() -> Option<()> {
+        None
+    }
+
+    fn duration_percentile(samples: &mut [Duration], percentile: usize) -> Duration {
+        samples.sort_unstable();
+        samples[(samples.len().saturating_sub(1)).saturating_mul(percentile) / 100]
+    }
+
+    #[test]
+    fn terminal_output_drain_coalesces_only_adjacent_bounded_chunks() {
+        let (sender, receiver) = mpsc::channel();
+        sender
+            .send(SshEvent::Output {
+                session_id: 7,
+                data: b"one".to_vec(),
+            })
+            .expect("fixture receiver remains open");
+        sender
+            .send(SshEvent::Output {
+                session_id: 7,
+                data: b"two".to_vec(),
+            })
+            .expect("fixture receiver remains open");
+        sender
+            .send(SshEvent::Connected {
+                session_id: 7,
+                trusted_new_host: false,
+            })
+            .expect("fixture receiver remains open");
+        sender
+            .send(SshEvent::Output {
+                session_id: 7,
+                data: b"three".to_vec(),
+            })
+            .expect("fixture receiver remains open");
+        sender
+            .send(SshEvent::Output {
+                session_id: 8,
+                data: b"other".to_vec(),
+            })
+            .expect("fixture receiver remains open");
+
+        let events = drain_coalesced_ssh_events(&receiver);
+        assert_eq!(events.len(), 4);
+        assert!(matches!(
+            &events[0],
+            SshEvent::Output { session_id: 7, data } if data == b"onetwo"
+        ));
+        assert!(matches!(
+            events[1],
+            SshEvent::Connected { session_id: 7, .. }
+        ));
+        assert!(matches!(
+            &events[2],
+            SshEvent::Output { session_id: 7, data } if data == b"three"
+        ));
+        assert!(matches!(
+            &events[3],
+            SshEvent::Output { session_id: 8, data } if data == b"other"
+        ));
+    }
+
+    #[test]
+    fn terminal_output_drain_never_exceeds_its_coalescing_cap() {
+        let (sender, receiver) = mpsc::channel();
+        let first_len = MAX_COALESCED_TERMINAL_OUTPUT_BYTES - 1;
+        sender
+            .send(SshEvent::Output {
+                session_id: 9,
+                data: vec![b'a'; first_len],
+            })
+            .expect("fixture receiver remains open");
+        sender
+            .send(SshEvent::Output {
+                session_id: 9,
+                data: vec![b'b'; 2],
+            })
+            .expect("fixture receiver remains open");
+
+        let events = drain_coalesced_ssh_events(&receiver);
+        assert_eq!(events.len(), 2);
+        assert!(matches!(
+            &events[0],
+            SshEvent::Output { data, .. } if data.len() == first_len
+        ));
+        assert!(matches!(
+            &events[1],
+            SshEvent::Output { data, .. } if data == b"bb"
+        ));
+    }
+
+    #[gpui::test]
+    fn active_terminal_output_invalidates_only_the_terminal_grid(cx: &mut TestAppContext) {
+        let (app, window) = open_test_app(cx);
+        let pane_id = window
+            .update(cx, |_, _window, cx| {
+                app.update(cx, |app, cx| {
+                    let pane_id = app.next_session_id();
+                    let request = ConnectRequest::local_shell_with_config(
+                        pane_id,
+                        LocalShellConfig::default(),
+                    );
+                    let (command_tx, _command_rx) = tokio::sync::mpsc::unbounded_channel();
+                    app.register_pane(
+                        request.clone(),
+                        SessionRuntimeHandle { command_tx },
+                        cx.focus_handle().tab_stop(true),
+                        cx.focus_handle().tab_stop(true),
+                        cx,
+                    );
+                    app.open_spawned_pane_workspace(&request, pane_id);
+                    if let Some(pane) = app.pane_mut(pane_id) {
+                        pane.connected = true;
+                    }
+                    cx.notify();
+                    pane_id
+                })
+            })
+            .expect("test window should remain open");
+
+        let visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        app.update(cx, |app, cx| app.process_events(cx));
+        visual.run_until_parked();
+        let (root_notifications_before, grid) = app.read_with(cx, |app, _| {
+            (
+                app.event_root_notification_count,
+                app.pane(pane_id)
+                    .expect("fixture pane should exist")
+                    .terminal_grid
+                    .clone(),
+            )
+        });
+        let grid_before = grid.read_with(cx, |grid, _| grid.render_count());
+        app.update(cx, |app, _| {
+            if let Some(pane) = app.pane_mut(pane_id) {
+                // Keep accessibility announcement state stable so this test isolates
+                // ordinary terminal rendering invalidation.
+                pane.terminal_announcement =
+                    Some(termirust_ui_contract::terminal_surface::TerminalAnnouncement::Attention);
+            }
+        });
+        let event_tx = app.read_with(cx, |app, _| app.event_tx.clone());
+        event_tx
+            .send(SshEvent::Output {
+                session_id: pane_id,
+                data: b"incremental-output".to_vec(),
+            })
+            .expect("app event receiver should remain open");
+        app.update(cx, |app, cx| app.process_events(cx));
+        visual.run_until_parked();
+
+        let (root_notifications_after, root_notification_causes) = app.read_with(cx, |app, _| {
+            (
+                app.event_root_notification_count,
+                app.event_root_notification_causes.clone(),
+            )
+        });
+        let grid_after = grid.read_with(cx, |grid, _| grid.render_count());
+        assert_eq!(
+            root_notifications_after, root_notifications_before,
+            "plain output notified the app root: {root_notification_causes:?}"
+        );
+        assert!(grid_after > grid_before, "terminal grid did not repaint");
+        app.read_with(cx, |app, _| {
+            assert!(app.pane(pane_id).is_some_and(|pane| {
+                pane.terminal
+                    .all_rows_text()
+                    .join("\n")
+                    .contains("incremental-output")
+            }));
+        });
+    }
+
+    #[gpui::test]
+    fn desktop_terminal_entity_performance_profile(cx: &mut TestAppContext) {
+        const INPUT_SAMPLES: usize = 64;
+        const OUTPUT_SAMPLES: usize = 64;
+        const OUTPUT_BATCH_BYTES: usize = 4 * 1024;
+
+        let startup_started = Instant::now();
+        let (app, window) = open_test_app(cx);
+        let pane_id = window
+            .update(cx, |_, _window, cx| {
+                app.update(cx, |app, cx| {
+                    let pane_id = app.next_session_id();
+                    let request = ConnectRequest::local_shell_with_config(
+                        pane_id,
+                        LocalShellConfig::default(),
+                    );
+                    let (command_tx, _command_rx) = tokio::sync::mpsc::unbounded_channel();
+                    app.register_pane(
+                        request.clone(),
+                        SessionRuntimeHandle { command_tx },
+                        cx.focus_handle().tab_stop(true),
+                        cx.focus_handle().tab_stop(true),
+                        cx,
+                    );
+                    app.open_spawned_pane_workspace(&request, pane_id);
+                    if let Some(pane) = app.pane_mut(pane_id) {
+                        pane.connected = true;
+                    }
+                    cx.notify();
+                    pane_id
+                })
+            })
+            .expect("test window should remain open");
+        let visual = VisualTestContext::from_window(window.into(), cx);
+        visual.run_until_parked();
+        let startup = startup_started.elapsed();
+        let (event_tx, grid) = app.read_with(cx, |app, _| {
+            let pane = app.pane(pane_id).expect("fixture pane should exist");
+            (app.event_tx.clone(), pane.terminal_grid.clone())
+        });
+        let renders_before = grid.read_with(cx, |grid, _| grid.render_count());
+
+        let mut input_latencies = Vec::with_capacity(INPUT_SAMPLES);
+        for sample in 0..INPUT_SAMPLES {
+            let started = Instant::now();
+            event_tx
+                .send(SshEvent::Output {
+                    session_id: pane_id,
+                    data: vec![b'a' + u8::try_from(sample % 26).unwrap_or_default()],
+                })
+                .expect("app event receiver should remain open");
+            app.update(cx, |app, cx| app.process_events(cx));
+            visual.run_until_parked();
+            input_latencies.push(started.elapsed());
+        }
+
+        let mut output_batch = Vec::with_capacity(OUTPUT_BATCH_BYTES);
+        while output_batch.len() < OUTPUT_BATCH_BYTES {
+            output_batch.extend_from_slice(b"fixed sustained terminal output fixture\r\n");
+        }
+        output_batch.truncate(OUTPUT_BATCH_BYTES);
+        let usage_before = process_usage_sample();
+        let output_started = Instant::now();
+        let mut output_latencies = Vec::with_capacity(OUTPUT_SAMPLES);
+        for _ in 0..OUTPUT_SAMPLES {
+            let started = Instant::now();
+            event_tx
+                .send(SshEvent::Output {
+                    session_id: pane_id,
+                    data: output_batch.clone(),
+                })
+                .expect("app event receiver should remain open");
+            app.update(cx, |app, cx| app.process_events(cx));
+            visual.run_until_parked();
+            output_latencies.push(started.elapsed());
+        }
+        let output_elapsed = output_started.elapsed();
+        let usage_after = process_usage_sample();
+        let renders_after = grid.read_with(cx, |grid, _| grid.render_count());
+
+        let input_p50 = duration_percentile(&mut input_latencies.clone(), 50);
+        let input_p95 = duration_percentile(&mut input_latencies.clone(), 95);
+        let input_p99 = duration_percentile(&mut input_latencies, 99);
+        let frame_p50 = duration_percentile(&mut output_latencies.clone(), 50);
+        let frame_p95 = duration_percentile(&mut output_latencies.clone(), 95);
+        let frame_p99 = duration_percentile(&mut output_latencies, 99);
+        let output_bytes = OUTPUT_SAMPLES.saturating_mul(OUTPUT_BATCH_BYTES);
+        let throughput_mib = output_bytes as f64 / output_elapsed.as_secs_f64() / (1024.0 * 1024.0);
+
+        #[cfg(unix)]
+        let (cpu_percent, max_rss_bytes, rss_growth_bytes) = match (usage_before, usage_after) {
+            (Some(before), Some(after)) => {
+                let cpu_micros = after.cpu_micros.saturating_sub(before.cpu_micros);
+                let wall_micros = output_elapsed.as_micros().max(1) as f64;
+                (
+                    cpu_micros as f64 * 100.0 / wall_micros,
+                    after.max_rss_bytes,
+                    after.max_rss_bytes.saturating_sub(before.max_rss_bytes),
+                )
+            }
+            _ => (0.0, 0, 0),
+        };
+        #[cfg(not(unix))]
+        let (cpu_percent, max_rss_bytes, rss_growth_bytes) = (0.0, 0, 0);
+
+        println!(
+            "terminal entity profile: startup={}ms; input-to-settled p50={}us p95={}us p99={}us; output-frame p50={}us p95={}us p99={}us; sustained={throughput_mib:.2}MiB/s cpu={cpu_percent:.1}% peak-rss={:.1}MiB rss-growth={:.1}MiB renders={}",
+            startup.as_millis(),
+            input_p50.as_micros(),
+            input_p95.as_micros(),
+            input_p99.as_micros(),
+            frame_p50.as_micros(),
+            frame_p95.as_micros(),
+            frame_p99.as_micros(),
+            max_rss_bytes as f64 / (1024.0 * 1024.0),
+            rss_growth_bytes as f64 / (1024.0 * 1024.0),
+            renders_after.saturating_sub(renders_before),
+        );
+
+        assert!(startup < Duration::from_secs(5));
+        assert!(input_p99 < Duration::from_millis(100));
+        assert!(frame_p99 < Duration::from_millis(100));
+        assert!(throughput_mib >= 0.5);
+        assert!(rss_growth_bytes < 128 * 1024 * 1024);
+        assert!(max_rss_bytes < 2 * 1024 * 1024 * 1024);
+        assert!(renders_after.saturating_sub(renders_before) >= INPUT_SAMPLES as u64);
+    }
 
     fn keyboard_palette_result(
         id: termirust_domain::SearchDocumentId,

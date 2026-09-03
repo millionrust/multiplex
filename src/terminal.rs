@@ -1,4 +1,6 @@
+use std::cell::{Cell, Ref, RefCell};
 use std::mem;
+use std::sync::Arc;
 
 use gpui::Hsla;
 use vt100::{Color, MouseProtocolEncoding, MouseProtocolMode, Parser};
@@ -53,12 +55,33 @@ pub struct TerminalRow {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TerminalSnapshot {
-    pub rows: Vec<TerminalRow>,
+    pub rows: Vec<Arc<TerminalRow>>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TerminalRenderMetrics {
+    pub parser_batches: u64,
+    pub parser_bytes: u64,
+    pub snapshot_requests: u64,
+    pub snapshot_cache_hits: u64,
+    pub rows_scanned: u64,
+    pub rows_rebuilt: u64,
+}
+
+#[derive(Default)]
+struct TerminalSnapshotCache {
+    revision: u64,
+    theme_key: Option<(Hsla, Hsla)>,
+    initialized: bool,
+    snapshot: TerminalSnapshot,
 }
 
 pub struct TerminalState {
     parser: Parser,
     size: TerminalSize,
+    revision: u64,
+    snapshot_cache: RefCell<TerminalSnapshotCache>,
+    render_metrics: Cell<TerminalRenderMetrics>,
 }
 
 impl TerminalState {
@@ -66,6 +89,9 @@ impl TerminalState {
         Self {
             parser: Parser::new(size.rows, size.cols, scrollback),
             size,
+            revision: 0,
+            snapshot_cache: RefCell::new(TerminalSnapshotCache::default()),
+            render_metrics: Cell::new(TerminalRenderMetrics::default()),
         }
     }
 
@@ -79,6 +105,13 @@ impl TerminalState {
         }
 
         self.parser.process(data);
+        self.mark_dirty();
+        let mut metrics = self.render_metrics.get();
+        metrics.parser_batches = metrics.parser_batches.saturating_add(1);
+        metrics.parser_bytes = metrics
+            .parser_bytes
+            .saturating_add(u64::try_from(data.len()).unwrap_or(u64::MAX));
+        self.render_metrics.set(metrics);
     }
 
     pub fn controller_snapshot_bytes(&self) -> Vec<u8> {
@@ -93,6 +126,7 @@ impl TerminalState {
 
         self.size = size;
         self.parser.screen_mut().set_size(size.rows, size.cols);
+        self.mark_dirty();
     }
 
     pub fn application_cursor(&self) -> bool {
@@ -136,17 +170,21 @@ impl TerminalState {
     }
 
     pub fn set_scrollback(&mut self, rows: usize) {
+        let previous = self.parser.screen().scrollback();
         self.parser.screen_mut().set_scrollback(rows);
+        if self.parser.screen().scrollback() != previous {
+            self.mark_dirty();
+        }
     }
 
     pub fn reset_scrollback(&mut self) {
-        self.parser.screen_mut().set_scrollback(0);
+        self.set_scrollback(0);
     }
 
     pub fn scroll_scrollback(&mut self, delta: i32) {
         let current = self.scrollback() as i32;
         let next = (current + delta).max(0) as usize;
-        self.parser.screen_mut().set_scrollback(next);
+        self.set_scrollback(next);
     }
 
     pub fn visible_row_text(&self, row: u16) -> Option<String> {
@@ -212,41 +250,140 @@ impl TerminalState {
             .contents_between(start_row, start_col, end_row, end_col)
     }
 
-    pub fn snapshot(&self) -> TerminalSnapshot {
-        let screen = self.parser.screen();
-        let (rows, cols) = screen.size();
-        let (cursor_row, cursor_col) = screen.cursor_position();
-        let show_cursor = !screen.hide_cursor() && screen.scrollback() == 0;
-        let mut rendered_rows = Vec::with_capacity(rows as usize);
-
-        for row in 0..rows {
-            let mut cells = Vec::with_capacity(cols as usize);
-            let mut text = String::new();
-
-            for col in 0..cols {
-                let Some(cell) = screen.cell(row, col) else {
-                    continue;
-                };
-                if cell.is_wide_continuation() {
-                    continue;
-                }
-
-                let cursor_here = show_cursor && row == cursor_row && col == cursor_col;
-                let cell_text = cell_text(cell);
-                text.push_str(&cell_text);
-                cells.push(TerminalCell {
-                    text: cell_text,
-                    style: style_for_cell(cell, cursor_here),
-                });
-            }
-
-            rendered_rows.push(TerminalRow { cells, text });
+    pub fn snapshot(&self) -> Ref<'_, TerminalSnapshot> {
+        let theme_key = (theme::terminal_default_fg(), theme::terminal_default_bg());
+        let requires_scan = {
+            let cache = self.snapshot_cache.borrow();
+            !cache.initialized
+                || cache.revision != self.revision
+                || cache.theme_key != Some(theme_key)
+        };
+        let mut metrics = self.render_metrics.get();
+        metrics.snapshot_requests = metrics.snapshot_requests.saturating_add(1);
+        if requires_scan {
+            let mut cache = self.snapshot_cache.borrow_mut();
+            let (rows_scanned, rows_rebuilt) = refresh_snapshot(&self.parser, &mut cache.snapshot);
+            cache.revision = self.revision;
+            cache.theme_key = Some(theme_key);
+            cache.initialized = true;
+            metrics.rows_scanned = metrics.rows_scanned.saturating_add(u64::from(rows_scanned));
+            metrics.rows_rebuilt = metrics.rows_rebuilt.saturating_add(u64::from(rows_rebuilt));
+        } else {
+            metrics.snapshot_cache_hits = metrics.snapshot_cache_hits.saturating_add(1);
         }
-
-        TerminalSnapshot {
-            rows: rendered_rows,
-        }
+        self.render_metrics.set(metrics);
+        Ref::map(self.snapshot_cache.borrow(), |cache| &cache.snapshot)
     }
+
+    #[cfg(test)]
+    pub fn render_metrics(&self) -> TerminalRenderMetrics {
+        self.render_metrics.get()
+    }
+
+    #[cfg(test)]
+    pub fn reset_render_metrics(&self) {
+        self.render_metrics.set(TerminalRenderMetrics::default());
+    }
+
+    fn mark_dirty(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
+    }
+}
+
+fn refresh_snapshot(parser: &Parser, snapshot: &mut TerminalSnapshot) -> (u16, u16) {
+    let screen = parser.screen();
+    let (rows, cols) = screen.size();
+    let (cursor_row, cursor_col) = screen.cursor_position();
+    let show_cursor = !screen.hide_cursor() && screen.scrollback() == 0;
+    snapshot.rows.resize_with(usize::from(rows), Arc::default);
+
+    let mut rebuilt = 0_u16;
+    for row in 0..rows {
+        let cached = &snapshot.rows[usize::from(row)];
+        if terminal_row_matches(
+            screen,
+            row,
+            cols,
+            cursor_row,
+            cursor_col,
+            show_cursor,
+            cached,
+        ) {
+            continue;
+        }
+        snapshot.rows[usize::from(row)] = Arc::new(render_terminal_row(
+            screen,
+            row,
+            cols,
+            cursor_row,
+            cursor_col,
+            show_cursor,
+        ));
+        rebuilt = rebuilt.saturating_add(1);
+    }
+    (rows, rebuilt)
+}
+
+fn terminal_row_matches(
+    screen: &vt100::Screen,
+    row: u16,
+    cols: u16,
+    cursor_row: u16,
+    cursor_col: u16,
+    show_cursor: bool,
+    cached: &TerminalRow,
+) -> bool {
+    let mut cached_index = 0_usize;
+    for col in 0..cols {
+        let Some(cell) = screen.cell(row, col) else {
+            continue;
+        };
+        if cell.is_wide_continuation() {
+            continue;
+        }
+        let Some(cached_cell) = cached.cells.get(cached_index) else {
+            return false;
+        };
+        let text_matches = if cell.has_contents() {
+            cached_cell.text == cell.contents()
+        } else {
+            cached_cell.text == " "
+        };
+        let cursor_here = show_cursor && row == cursor_row && col == cursor_col;
+        if !text_matches || cached_cell.style != style_for_cell(cell, cursor_here) {
+            return false;
+        }
+        cached_index += 1;
+    }
+    cached_index == cached.cells.len()
+}
+
+fn render_terminal_row(
+    screen: &vt100::Screen,
+    row: u16,
+    cols: u16,
+    cursor_row: u16,
+    cursor_col: u16,
+    show_cursor: bool,
+) -> TerminalRow {
+    let mut cells = Vec::with_capacity(usize::from(cols));
+    let mut text = String::new();
+    for col in 0..cols {
+        let Some(cell) = screen.cell(row, col) else {
+            continue;
+        };
+        if cell.is_wide_continuation() {
+            continue;
+        }
+        let cursor_here = show_cursor && row == cursor_row && col == cursor_col;
+        let cell_text = cell_text(cell);
+        text.push_str(&cell_text);
+        cells.push(TerminalCell {
+            text: cell_text,
+            style: style_for_cell(cell, cursor_here),
+        });
+    }
+    TerminalRow { cells, text }
 }
 
 fn cell_text(cell: &vt100::Cell) -> String {
@@ -349,6 +486,8 @@ fn rgb_color(r: u8, g: u8, b: u8) -> Hsla {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
     use serde::Deserialize;
 
     use super::*;
@@ -460,6 +599,175 @@ mod tests {
         mouse_mode: String,
         mouse_encoding: String,
         scrollback_rows: usize,
+    }
+
+    #[test]
+    fn unchanged_terminal_snapshot_is_a_zero_scan_cache_hit() {
+        let terminal = TerminalState::new(TerminalSize::new(80, 24, 0, 0), 10_000);
+
+        let first = terminal.snapshot();
+        assert_eq!(first.rows.len(), 24);
+        drop(first);
+        assert_eq!(
+            terminal.render_metrics(),
+            TerminalRenderMetrics {
+                snapshot_requests: 1,
+                rows_scanned: 24,
+                rows_rebuilt: 24,
+                ..TerminalRenderMetrics::default()
+            }
+        );
+
+        let second = terminal.snapshot();
+        assert_eq!(second.rows.len(), 24);
+        drop(second);
+        assert_eq!(
+            terminal.render_metrics(),
+            TerminalRenderMetrics {
+                snapshot_requests: 2,
+                snapshot_cache_hits: 1,
+                rows_scanned: 24,
+                rows_rebuilt: 24,
+                ..TerminalRenderMetrics::default()
+            }
+        );
+    }
+
+    #[test]
+    fn terminal_snapshot_rebuilds_only_rows_changed_by_output() {
+        let mut terminal = TerminalState::new(TerminalSize::new(80, 24, 0, 0), 10_000);
+        drop(terminal.snapshot());
+        terminal.reset_render_metrics();
+
+        terminal.process_bytes(b"hello");
+        drop(terminal.snapshot());
+
+        assert_eq!(
+            terminal.render_metrics(),
+            TerminalRenderMetrics {
+                parser_batches: 1,
+                parser_bytes: 5,
+                snapshot_requests: 1,
+                rows_scanned: 24,
+                rows_rebuilt: 1,
+                ..TerminalRenderMetrics::default()
+            }
+        );
+
+        terminal.reset_render_metrics();
+        terminal.process_bytes(b"\r\nworld");
+        drop(terminal.snapshot());
+        let metrics = terminal.render_metrics();
+        assert_eq!(metrics.rows_scanned, 24);
+        assert!(
+            metrics.rows_rebuilt <= 2,
+            "cursor movement and one new line rebuilt {} rows",
+            metrics.rows_rebuilt
+        );
+    }
+
+    #[test]
+    fn terminal_snapshot_memory_work_is_bounded_by_the_viewport() {
+        let mut terminal = TerminalState::new(TerminalSize::new(40, 8, 0, 0), 10_000);
+        for line in 0..2_000 {
+            terminal.process_bytes(format!("line-{line:04}\r\n").as_bytes());
+        }
+        assert!(terminal.max_scrollback() > 1_000);
+
+        terminal.reset_render_metrics();
+        let snapshot = terminal.snapshot();
+        assert_eq!(snapshot.rows.len(), 8);
+        assert!(snapshot.rows.iter().all(|row| row.cells.len() <= 40));
+        drop(snapshot);
+
+        let metrics = terminal.render_metrics();
+        assert_eq!(metrics.rows_scanned, 8);
+        assert!(metrics.rows_rebuilt <= 8);
+    }
+
+    #[test]
+    #[ignore = "manual fixed-fixture performance profile"]
+    fn desktop_terminal_performance_profile() {
+        const RUNS: usize = 1_000;
+        let mut startup_samples = Vec::with_capacity(RUNS);
+        for _ in 0..RUNS {
+            let started = Instant::now();
+            let terminal = TerminalState::new(TerminalSize::new(120, 40, 0, 0), 10_000);
+            drop(terminal.snapshot());
+            startup_samples.push(started.elapsed());
+        }
+
+        let mut terminal = TerminalState::new(TerminalSize::new(120, 40, 0, 0), 10_000);
+        drop(terminal.snapshot());
+        terminal.reset_render_metrics();
+        let mut input_samples = Vec::with_capacity(RUNS);
+        for index in 0..RUNS {
+            let byte = b'a' + u8::try_from(index % 26).expect("bounded fixture index");
+            let started = Instant::now();
+            terminal.process_bytes(&[byte]);
+            drop(terminal.snapshot());
+            input_samples.push(started.elapsed());
+        }
+        let interactive_metrics = terminal.render_metrics();
+        assert_eq!(interactive_metrics.snapshot_requests, RUNS as u64);
+        assert!(interactive_metrics.rows_rebuilt <= (RUNS * 2) as u64);
+
+        let line = b"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\r\n";
+        let output_bytes = line.repeat(32_768);
+        let mut output_terminal = TerminalState::new(TerminalSize::new(120, 40, 0, 0), 10_000);
+        let output_started = Instant::now();
+        for chunk in output_bytes.chunks(64 * 1024) {
+            output_terminal.process_bytes(chunk);
+            drop(output_terminal.snapshot());
+        }
+        let output_elapsed = output_started.elapsed();
+        let output_metrics = output_terminal.render_metrics();
+        let throughput_mib_s =
+            output_bytes.len() as f64 / output_elapsed.as_secs_f64() / (1024.0 * 1024.0);
+
+        let (startup_p50, startup_p95, startup_p99) = percentiles(&mut startup_samples);
+        let (input_p50, input_p95, input_p99) = percentiles(&mut input_samples);
+        assert!(
+            startup_p99 < Duration::from_millis(20),
+            "terminal component startup p99 regressed to {startup_p99:?}"
+        );
+        assert!(
+            input_p99 < Duration::from_millis(10),
+            "terminal input plus snapshot p99 regressed to {input_p99:?}"
+        );
+        assert!(
+            throughput_mib_s >= 10.0,
+            "terminal sustained-output throughput regressed to {throughput_mib_s:.2} MiB/s"
+        );
+        println!(
+            "terminal component profile: startup p50={}us p95={}us p99={}us; input+snapshot p50={}us p95={}us p99={}us; sustained={throughput_mib_s:.2}MiB/s bytes={} batches={} rows_scanned={} rows_rebuilt={}",
+            startup_p50.as_micros(),
+            startup_p95.as_micros(),
+            startup_p99.as_micros(),
+            input_p50.as_micros(),
+            input_p95.as_micros(),
+            input_p99.as_micros(),
+            output_bytes.len(),
+            output_metrics.parser_batches,
+            output_metrics.rows_scanned,
+            output_metrics.rows_rebuilt,
+        );
+    }
+
+    fn percentiles(samples: &mut [Duration]) -> (Duration, Duration, Duration) {
+        samples.sort_unstable();
+        (
+            samples[percentile_index(samples.len(), 50)],
+            samples[percentile_index(samples.len(), 95)],
+            samples[percentile_index(samples.len(), 99)],
+        )
+    }
+
+    fn percentile_index(len: usize, percentile: usize) -> usize {
+        len.saturating_mul(percentile)
+            .div_ceil(100)
+            .saturating_sub(1)
+            .min(len.saturating_sub(1))
     }
 
     #[test]

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, Context, CursorStyle, Div, DragMoveEvent, FontWeight,
+    Animation, AnimationExt as _, Context, CursorStyle, Div, DragMoveEvent,
     InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, ParentElement, ScrollWheelEvent, SharedString, Stateful,
     StatefulInteractiveElement as _, Styled, Window, div, px, relative,
@@ -17,18 +17,13 @@ use gpui_component::scroll::ScrollableElement as _;
 use gpui_component::{Disableable as _, Icon, IconName, Sizable, StyledExt as _, h_flex, v_flex};
 
 use crate::models::{ConnectionKind, WorkspaceLayoutMode};
-use crate::terminal::{TerminalRow, TerminalStyle};
 use crate::ui::app::{
-    ConnectDialogMode, DividerRect, DropZone, SearchMatch, SessionPane, SplitAxis,
-    TERMINAL_INNER_PADDING_X, TERMINAL_INNER_PADDING_Y, TERMINAL_LINE_HEIGHT, TermiRustApp,
-    WORKSPACE_PADDING, WORKSPACE_SEARCH_ROW_HEIGHT, WorkspaceTabDrag, WorkspaceViewMode,
+    ConnectDialogMode, DividerRect, DropZone, SessionPane, SplitAxis, TERMINAL_INNER_PADDING_X,
+    TERMINAL_INNER_PADDING_Y, TermiRustApp, WORKSPACE_PADDING, WORKSPACE_SEARCH_ROW_HEIGHT,
+    WorkspaceTabDrag, WorkspaceViewMode,
 };
 use crate::ui::localization;
 use crate::ui::path::{format_file_size, remote_parent_path};
-use crate::ui::render_terminal::{
-    SelectionRange, default_terminal_style, display_terminal_text, selection_contains,
-    style_for_render,
-};
 use crate::ui::theme;
 use gpui_component::ActiveTheme as _;
 use termirust_domain::{HostedSessionState, SessionLaunchRoute};
@@ -745,99 +740,6 @@ impl TermiRustApp {
             .unwrap_or_else(|| cx.theme().mono_font_family.clone())
     }
 
-    fn render_terminal_cell_group(
-        &self,
-        text: String,
-        style: TerminalStyle,
-        cx: &Context<Self>,
-    ) -> AnyElement {
-        let mut node = div()
-            .whitespace_nowrap()
-            .font_family(self.terminal_font_family(cx))
-            .text_size(px(self.terminal_font_size()))
-            .line_height(relative(TERMINAL_LINE_HEIGHT))
-            .text_color(style.fg)
-            .text_bg(style.bg)
-            .child(display_terminal_text(&text));
-
-        if style.bold {
-            node = node.font_weight(FontWeight::BOLD);
-        }
-        if style.italic {
-            node = node.italic();
-        }
-        if style.underline {
-            node = node.underline().text_decoration_color(style.fg);
-        }
-
-        node.into_any_element()
-    }
-
-    fn render_terminal_row(
-        &self,
-        row_ix: usize,
-        row: &TerminalRow,
-        selection: Option<SelectionRange>,
-        visible_matches: &[(usize, SearchMatch, bool)],
-        cx: &Context<Self>,
-    ) -> AnyElement {
-        let mut groups = Vec::new();
-        let mut pending_text = String::new();
-        let mut pending_style: Option<TerminalStyle> = None;
-
-        for (col_ix, cell) in row.cells.iter().enumerate() {
-            let selected = selection_contains(selection, row_ix, col_ix);
-            let (matched, active_match) = visible_matches.iter().fold(
-                (false, false),
-                |acc, (visible_row, search_match, current)| {
-                    if *visible_row != row_ix {
-                        return acc;
-                    }
-                    if (search_match.start_col..search_match.end_col).contains(&col_ix) {
-                        (true, acc.1 || *current)
-                    } else {
-                        acc
-                    }
-                },
-            );
-            let style = style_for_render(cell, selected, matched, active_match);
-
-            match pending_style {
-                Some(current) if current == style => pending_text.push_str(&cell.text),
-                Some(current) => {
-                    groups.push(self.render_terminal_cell_group(
-                        std::mem::take(&mut pending_text),
-                        current,
-                        cx,
-                    ));
-                    pending_text.push_str(&cell.text);
-                    pending_style = Some(style);
-                }
-                None => {
-                    pending_text.push_str(&cell.text);
-                    pending_style = Some(style);
-                }
-            }
-        }
-
-        if let Some(style) = pending_style {
-            groups.push(self.render_terminal_cell_group(pending_text, style, cx));
-        } else {
-            groups.push(self.render_terminal_cell_group(
-                " ".to_string(),
-                default_terminal_style(),
-                cx,
-            ));
-        }
-
-        h_flex()
-            .w_full()
-            .gap_0()
-            .whitespace_nowrap()
-            .children(groups)
-            .into_any_element()
-    }
-
     pub(super) fn render_terminal_pane(
         &self,
         pane: &SessionPane,
@@ -846,12 +748,6 @@ impl TermiRustApp {
     ) -> Stateful<Div> {
         let pane_id = pane.id;
         let terminal_selector = format!("terminal-surface-{pane_id}");
-        let snapshot = pane.terminal.snapshot();
-        let selection = pane.selection;
-        let visible_matches = self
-            .active_workspace()
-            .map(|workspace| self.workspace_visible_matches(workspace, pane))
-            .unwrap_or_default();
         let drop_zone = self
             .split_drop_target
             .and_then(|(pid, zone)| (pid == pane.id).then_some(zone));
@@ -1100,21 +996,13 @@ impl TermiRustApp {
                         }
                     }))
                     .child(
-                        v_flex()
+                        div()
                             .size_full()
                             .overflow_hidden()
                             .px(px(TERMINAL_INNER_PADDING_X))
                             .pt(px(TERMINAL_INNER_PADDING_Y))
                             .pb(px(TERMINAL_INNER_PADDING_Y))
-                            .children(snapshot.rows.iter().enumerate().map(|(row_ix, row)| {
-                                self.render_terminal_row(
-                                    row_ix,
-                                    row,
-                                    selection,
-                                    &visible_matches,
-                                    cx,
-                                )
-                            })),
+                            .child(pane.terminal_grid.clone()),
                     ),
             )
             .when(pane.request.persistent_session, |this| {
