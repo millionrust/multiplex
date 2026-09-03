@@ -418,6 +418,52 @@ pub enum ManagementCommand {
     },
 }
 
+#[derive(Clone, Eq, PartialEq)]
+pub enum AutomationCommand {
+    Wait {
+        session_id: HostedSessionId,
+        condition: crate::SessionWaitCondition,
+        timeout_ms: u64,
+    },
+    Attach {
+        session_id: HostedSessionId,
+        from_sequence: OutputSequence,
+        columns: u16,
+        rows: u16,
+    },
+    Input {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        input: SessionInput,
+    },
+    Resume {
+        command_id: CommandId,
+        session_id: HostedSessionId,
+        expected_revision: Option<Revision>,
+        confirmed: bool,
+    },
+}
+
+impl fmt::Debug for AutomationCommand {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let kind = match self {
+            Self::Wait { .. } => "wait",
+            Self::Attach { .. } => "attach",
+            Self::Input { .. } => "input",
+            Self::Resume {
+                confirmed: false, ..
+            } => "resume-review",
+            Self::Resume {
+                confirmed: true, ..
+            } => "resume",
+        };
+        formatter
+            .debug_struct("AutomationCommand")
+            .field("kind", &kind)
+            .finish_non_exhaustive()
+    }
+}
+
 impl fmt::Debug for ManagementCommand {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let kind = match self {
@@ -655,6 +701,56 @@ impl LocalCommandService {
                 expected_revision,
                 expected_manifest,
                 title_confirmation.as_deref(),
+                cancellation,
+            ),
+        }
+    }
+
+    pub fn execute_automation(
+        &self,
+        command: AutomationCommand,
+        cancellation: &Cancellation,
+    ) -> Result<CliData, CliError> {
+        match command {
+            AutomationCommand::Wait {
+                session_id,
+                condition,
+                timeout_ms,
+            } => self.session_wait(session_id, condition, timeout_ms, cancellation),
+            AutomationCommand::Attach {
+                session_id,
+                from_sequence,
+                columns,
+                rows,
+            } => self.session_attach(
+                session_id,
+                from_sequence,
+                columns,
+                rows,
+                false,
+                cancellation,
+            ),
+            AutomationCommand::Input {
+                command_id,
+                session_id,
+                input,
+            } => self.session_input(
+                session_id,
+                true,
+                Some(input),
+                Some(command_id),
+                cancellation,
+            ),
+            AutomationCommand::Resume {
+                command_id,
+                session_id,
+                expected_revision,
+                confirmed,
+            } => self.session_resume(
+                session_id,
+                expected_revision,
+                confirmed,
+                Some(command_id),
                 cancellation,
             ),
         }
@@ -1121,6 +1217,7 @@ impl LocalCommandService {
         session_id: HostedSessionId,
         input_stdin: bool,
         input: Option<SessionInput>,
+        command_id: Option<CommandId>,
         cancellation: &Cancellation,
     ) -> Result<CliData, CliError> {
         if !input_stdin {
@@ -1165,7 +1262,7 @@ impl LocalCommandService {
             &self.paths.runtime_root(session_id),
             session_id,
             metadata.host_instance_id,
-            self.ids.command_id(),
+            command_id.unwrap_or_else(|| self.ids.command_id()),
             input.into_bytes(),
             cancellation,
         )?;
@@ -1273,6 +1370,7 @@ impl LocalCommandService {
         session_id: HostedSessionId,
         expected_revision: Option<Revision>,
         confirmed: bool,
+        supplied_command_id: Option<CommandId>,
         cancellation: &Cancellation,
     ) -> Result<CliData, CliError> {
         if confirmed != expected_revision.is_some() {
@@ -1282,8 +1380,10 @@ impl LocalCommandService {
                 "Run session resume <id> first, then repeat with --expected-revision N --yes.",
             ));
         }
-        let command_id = self.ids.command_id();
-        let replacement_session_id = self.ids.session_id();
+        let replacement_session_id = supplied_command_id
+            .map(|value| HostedSessionId::from_uuid(value.as_uuid()))
+            .unwrap_or_else(|| self.ids.session_id());
+        let command_id = supplied_command_id.unwrap_or_else(|| self.ids.command_id());
         let prepared = self.prepare_session_resume(
             session_id,
             expected_revision,
@@ -2207,7 +2307,7 @@ impl CommandService for LocalCommandService {
                 session_id,
                 input_stdin,
                 input,
-            } => self.session_input(session_id, input_stdin, input, cancellation),
+            } => self.session_input(session_id, input_stdin, input, None, cancellation),
             CliCommand::SessionResize {
                 session_id,
                 columns,
@@ -2231,7 +2331,7 @@ impl CommandService for LocalCommandService {
                 session_id,
                 expected_revision,
                 confirmed,
-            } => self.session_resume(session_id, expected_revision, confirmed, cancellation),
+            } => self.session_resume(session_id, expected_revision, confirmed, None, cancellation),
             CliCommand::SessionLaunch {
                 project_id,
                 preset_id,

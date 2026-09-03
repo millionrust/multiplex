@@ -9,14 +9,15 @@ use std::sync::{Arc, Mutex};
 
 use common::*;
 use termirust_cli::{
-    Cancellation, CliCommand, CliData, CommandService, ErrorCode, MAX_SESSION_INPUT_BYTES,
-    SessionInput, read_session_input, run_parsed,
+    AutomationCommand, Cancellation, CliCommand, CliData, CommandService, ErrorCode,
+    MAX_SESSION_INPUT_BYTES, SessionInput, read_session_input, run_parsed,
 };
 use termirust_client::{ConnectOptions, HostClient, LocalEndpoint};
-use termirust_domain::{HostInstanceId, HostedSessionState, OutputSequence};
+use termirust_domain::{CommandId, HostInstanceId, HostedSessionState, OutputSequence};
 use termirust_session_host::{LaunchDescriptor, StopDeadlines, start};
 use termirust_store::JournalLimits;
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 const INPUT_CANARY: &[u8] = b"PRIVATE-SESSION-INPUT-CANARY\n";
 static REAL_HOST_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -103,6 +104,35 @@ fn local_service_validates_session_then_sends_once_without_disclosing_payload() 
             .windows(INPUT_CANARY.len())
             .any(|w| w == INPUT_CANARY)
     );
+}
+
+#[test]
+fn automation_input_preserves_the_caller_command_id_and_redacts_debug() {
+    let seed = seed_store();
+    insert_session(&seed, HostedSessionState::Live, false);
+    let host_id = HostInstanceId::new();
+    let _lease = write_ready_host_metadata(&seed, host_id);
+    let controller = Arc::new(Mutex::new(FakeControllerState::default()));
+    let service = service(
+        &seed,
+        Arc::new(Mutex::new(FakeLauncherState::default())),
+        controller.clone(),
+    );
+    let command_id = CommandId::from_uuid(Uuid::from_u128(44));
+    let command = AutomationCommand::Input {
+        command_id,
+        session_id: SESSION_ID,
+        input: SessionInput::new(INPUT_CANARY.to_vec()).unwrap(),
+    };
+    assert!(!format!("{command:?}").contains("PRIVATE-SESSION-INPUT-CANARY"));
+    let data = service
+        .execute_automation(command, &Cancellation::default())
+        .unwrap();
+    assert!(matches!(data, CliData::Input(_)));
+    let state = controller.lock().unwrap();
+    assert_eq!(state.input_calls, 1);
+    assert_eq!(state.command_ids, vec![command_id]);
+    assert_eq!(state.inputs, vec![INPUT_CANARY]);
 }
 
 #[test]

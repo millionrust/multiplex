@@ -19,10 +19,10 @@ pub use args::{
 };
 pub use contract::*;
 pub use local::{
-    CliClock, CliIds, CliInstallationStatus, CliPaths, CliWaiter, HostAttachRequest,
-    HostAttachSummary, HostController, HostLaunchOutcome, HostLauncher, HostResizeRequest,
-    LocalCommandService, ManagementCommand, ManagementRemovalManifest, ManagementRemovalPreview,
-    SshControllerCommandExecutor, cli_installation_status,
+    AutomationCommand, CliClock, CliIds, CliInstallationStatus, CliPaths, CliWaiter,
+    HostAttachRequest, HostAttachSummary, HostController, HostLaunchOutcome, HostLauncher,
+    HostResizeRequest, LocalCommandService, ManagementCommand, ManagementRemovalManifest,
+    ManagementRemovalPreview, SshControllerCommandExecutor, cli_installation_status,
 };
 pub use local_attach::LocalSessionAttachExecutor;
 pub use remote_ssh::SystemSshControllerExecutor;

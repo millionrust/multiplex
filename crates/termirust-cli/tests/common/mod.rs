@@ -257,6 +257,7 @@ pub struct FakeControllerState {
     pub inputs: Vec<Vec<u8>>,
     pub resize_requests: Vec<(u16, u16)>,
     pub attach_requests: Vec<HostAttachRequest>,
+    pub command_ids: Vec<CommandId>,
     pub expected_hosts: Vec<Option<HostInstanceId>>,
     pub result: Option<Result<(), CliError>>,
     pub input_result: Option<Result<bool, CliError>>,
@@ -297,12 +298,13 @@ impl HostController for FakeController {
         _runtime_root: &Path,
         _session_id: HostedSessionId,
         expected_host_instance_id: HostInstanceId,
-        _command_id: CommandId,
+        command_id: CommandId,
         bytes: Vec<u8>,
         _cancellation: &Cancellation,
     ) -> Result<bool, CliError> {
         let mut state = self.state.lock().unwrap();
         state.input_calls += 1;
+        state.command_ids.push(command_id);
         state.inputs.push(bytes);
         state.expected_hosts.push(Some(expected_host_instance_id));
         state.input_result.clone().unwrap_or(Ok(true))
@@ -329,11 +331,12 @@ impl HostController for FakeController {
         _runtime_root: &Path,
         _session_id: HostedSessionId,
         expected_host_instance_id: Option<HostInstanceId>,
-        _command_id: CommandId,
+        command_id: CommandId,
         _cancellation: &Cancellation,
     ) -> Result<(), CliError> {
         let mut state = self.state.lock().unwrap();
         state.calls += 1;
+        state.command_ids.push(command_id);
         state.expected_hosts.push(expected_host_instance_id);
         state.result.clone().unwrap_or(Ok(()))
     }

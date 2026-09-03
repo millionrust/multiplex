@@ -1,5 +1,9 @@
 # Browser Engine Feasibility Decision
 
+> Historical spike decision. The later, narrower N13 MCP artifact route is governed by
+> `docs/decisions/isolated-browser-capability.md`; this record remains the evidence for why an
+> embedded, bundled, general-purpose browser was rejected.
+
 - Decision: **No-Go**
 - Scope: Goal 19.1 research and synthetic local spike only
 - Owner: TermiRust desktop maintainers

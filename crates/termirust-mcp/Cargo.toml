@@ -1,0 +1,22 @@
+[package]
+name = "termirust-mcp"
+version = "0.1.0"
+edition = "2024"
+rust-version.workspace = true
+description = "Capability-scoped local MCP server for TermiRust"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+base64 = "0.22"
+fs2 = "0.4"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+termirust-cli = { version = "0.1.0", path = "../termirust-cli" }
+termirust-browser = { version = "0.1.0", path = "../termirust-browser" }
+termirust-domain = { version = "0.1.0", path = "../termirust-domain" }
+termirust-store = { version = "0.1.0", path = "../termirust-store" }
+
+[dev-dependencies]
+tempfile = "3.27"
