@@ -36,7 +36,9 @@ fi
 grep -q 'MobileRootDestination.CONNECTIONS' app/src/main/java/com/termirust/mobile/ui/UnifiedMobileApp.kt
 grep -q 'MobileRootDestination.DEVICES' app/src/main/java/com/termirust/mobile/ui/UnifiedMobileApp.kt
 grep -q 'Direct SSH' app/src/main/java/com/termirust/mobile/ui/TermirustApp.kt
-grep -q 'device_session' app/src/main/java/com/termirust/mobile/controller/ControllerApp.kt
+grep -q 'DEVICE_SESSION("device_session")' \
+  app/src/main/java/com/termirust/mobile/controller/MobileCrossRouteAcceptance.kt
+grep -q '<string name="device_session">' app/src/main/res/values/strings.xml
 grep -q 'implementation("com.hierynomus:sshj:0.39.0")' app/build.gradle.kts
 grep -q 'termirust-mobile-secrets' app/src/main/java/com/termirust/mobile/security/KeystoreSecretStore.kt
 grep -q 'termirust-controller-device-v1' app/src/main/java/com/termirust/mobile/controller/ControllerSecureBlobStore.kt

@@ -40,6 +40,7 @@ restore_resource() {
 }
 
 cleanup() {
+  local exit_code=$?
   set +e
   restore_resource
   shutdown_fixture
@@ -66,6 +67,7 @@ cleanup() {
   if [[ -n "$FIXTURE_LOG" && "$FIXTURE_LOG" == /tmp/tri.*.log ]]; then
     rm -f "$FIXTURE_LOG"
   fi
+  return "$exit_code"
 }
 trap cleanup EXIT INT TERM
 
@@ -149,20 +151,35 @@ cp "$CONFIG_PATH" "$RESOURCE_PATH"
 
 status_line RUN "building iOS tests for $IOS_DESTINATION"
 cd "$IOS_DIR"
-xcodebuild build-for-testing -quiet \
-  -project TermiRustMobile.xcodeproj \
-  -scheme TermiRustMobile \
-  -destination "$IOS_DESTINATION" \
-  "${XCODEBUILD_SIGNING_ARGS[@]}"
+if [[ -n "$IOS_DEVELOPMENT_TEAM" ]]; then
+  xcodebuild build-for-testing -quiet \
+    -project TermiRustMobile.xcodeproj \
+    -scheme TermiRustMobile \
+    -destination "$IOS_DESTINATION" \
+    "${XCODEBUILD_SIGNING_ARGS[@]}"
+else
+  xcodebuild build-for-testing -quiet \
+    -project TermiRustMobile.xcodeproj \
+    -scheme TermiRustMobile \
+    -destination "$IOS_DESTINATION"
+fi
 restore_resource
 
 status_line RUN "pairing iOS with the real Rust Host and exercising terminal lifecycle"
-xcodebuild test-without-building -quiet \
-  -project TermiRustMobile.xcodeproj \
-  -scheme TermiRustMobile \
-  -destination "$IOS_DESTINATION" \
-  "${XCODEBUILD_SIGNING_ARGS[@]}" \
-  -only-testing:TermiRustMobileTests/ControllerPairingFleetTests/testLiveRustControllerPairingTerminalLifecycleAndRevocation
+if [[ -n "$IOS_DEVELOPMENT_TEAM" ]]; then
+  xcodebuild test-without-building -quiet \
+    -project TermiRustMobile.xcodeproj \
+    -scheme TermiRustMobile \
+    -destination "$IOS_DESTINATION" \
+    "${XCODEBUILD_SIGNING_ARGS[@]}" \
+    -only-testing:TermiRustMobileTests/ControllerPairingFleetTests/testLiveRustControllerPairingTerminalLifecycleAndRevocation
+else
+  xcodebuild test-without-building -quiet \
+    -project TermiRustMobile.xcodeproj \
+    -scheme TermiRustMobile \
+    -destination "$IOS_DESTINATION" \
+    -only-testing:TermiRustMobileTests/ControllerPairingFleetTests/testLiveRustControllerPairingTerminalLifecycleAndRevocation
+fi
 
 shutdown_fixture
 for _ in {1..50}; do

@@ -19319,7 +19319,12 @@ sleep 1
         });
         wait_for_poll_result(
             Duration::from_secs(10),
-            || output_path.exists().then_some(()),
+            || {
+                std::fs::read_to_string(&output_path)
+                    .ok()
+                    .filter(|contents| contents == "snippet-e2e\n")
+                    .map(|_| ())
+            },
             "explicit Enter did not execute the inserted Snippet",
         );
         assert_eq!(

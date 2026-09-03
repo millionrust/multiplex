@@ -457,8 +457,22 @@ async fn attach_from(
                 sequence,
                 bytes,
             } if actual == session_id => outputs.push((sequence, bytes)),
-            ControllerResponse::Snapshot { .. } => {
-                panic!("small golden run should not require a compacted snapshot")
+            ControllerResponse::Snapshot {
+                command_id: actual,
+                session_id: actual_session,
+                boundary_sequence,
+                chunk_index,
+                chunk_count,
+                bytes,
+                ..
+            } if actual == command_id && actual_session == session_id => {
+                assert_eq!(boundary_sequence, OutputSequence::ZERO);
+                assert_eq!(chunk_index, 0);
+                assert_eq!(chunk_count, 1);
+                assert!(
+                    bytes.is_empty(),
+                    "small golden run should not compact output"
+                );
             }
             response => panic!("unexpected Controller attach response: {response:?}"),
         }
