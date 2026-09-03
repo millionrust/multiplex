@@ -28,7 +28,10 @@ use termirust_replication_security::{
     ReplicationSecretKind, ReplicationSecretRef,
 };
 
-pub use product::{ReplicationProductError, ReplicationProductService, ReplicationProductStatus};
+pub use product::{
+    ReplicationAuthorityUpdate, ReplicationDeviceKeyPackage, ReplicationProductError,
+    ReplicationProductService, ReplicationProductStatus,
+};
 pub use repository::{
     ReplicationRecoveryOutcome, ReplicationRepository, ReplicationRepositorySnapshot,
     ReplicationRepositorySource, ReplicationRetirementOutcome,
@@ -139,7 +142,7 @@ impl SharedFolderSlot {
         Ok(Self(value))
     }
 
-    fn file_component(&self) -> &str {
+    pub(crate) fn file_component(&self) -> &str {
         &self.0
     }
 }

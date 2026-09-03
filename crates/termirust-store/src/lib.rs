@@ -58,16 +58,17 @@ pub use recovery::{
     RecoveryReceipt, RecoveryResult, RecoveryState, RecoveryStep,
 };
 pub use replication::{
-    MAX_REPLICATION_CONFLICT_ARTIFACTS, ReplicationConflictOperationMix,
-    ReplicationConflictResolution, ReplicationConflictReview, ReplicationContentRevision,
-    ReplicationCustodyMetadata, ReplicationProductError, ReplicationProductService,
-    ReplicationProductStatus, ReplicationRecoveryOutcome, ReplicationRepository,
-    ReplicationRepositoryRevision, ReplicationRepositorySnapshot, ReplicationRepositorySource,
-    ReplicationResolutionContext, ReplicationRetirementOutcome, ReplicationStoreError,
-    ReplicationSyncCoordinator, ReplicationSyncDisposition, ReplicationSyncOutcome,
-    ReplicationSyncPlan, ReplicationSyncReviewToken, SharedFolderConflictArtifact,
-    SharedFolderReplicationInputs, SharedFolderReplicationTransport, SharedFolderSlot,
-    SharedFolderTransportSnapshot, SharedFolderTransportState,
+    MAX_REPLICATION_CONFLICT_ARTIFACTS, ReplicationAuthorityUpdate,
+    ReplicationConflictOperationMix, ReplicationConflictResolution, ReplicationConflictReview,
+    ReplicationContentRevision, ReplicationCustodyMetadata, ReplicationDeviceKeyPackage,
+    ReplicationProductError, ReplicationProductService, ReplicationProductStatus,
+    ReplicationRecoveryOutcome, ReplicationRepository, ReplicationRepositoryRevision,
+    ReplicationRepositorySnapshot, ReplicationRepositorySource, ReplicationResolutionContext,
+    ReplicationRetirementOutcome, ReplicationStoreError, ReplicationSyncCoordinator,
+    ReplicationSyncDisposition, ReplicationSyncOutcome, ReplicationSyncPlan,
+    ReplicationSyncReviewToken, SharedFolderConflictArtifact, SharedFolderReplicationInputs,
+    SharedFolderReplicationTransport, SharedFolderSlot, SharedFolderTransportSnapshot,
+    SharedFolderTransportState,
 };
 pub use sessions::{
     QuarantinedSession, SessionRemovalManifest, SessionRemovalPlan, SessionRepository,

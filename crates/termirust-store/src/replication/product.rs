@@ -1,7 +1,14 @@
+use std::collections::BTreeSet;
 use std::fmt;
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
+
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+#[cfg(windows)]
+use std::os::windows::fs::OpenOptionsExt as _;
 
 use serde::{Deserialize, Serialize};
 use termirust_domain::{
@@ -10,13 +17,16 @@ use termirust_domain::{
 };
 use termirust_replication_security::{
     MAX_REPLICATION_AUTHORITY_STATE_BYTES, MAX_REPLICATION_PLAINTEXT_BYTES,
-    MAX_REPLICATION_RETAINED_EPOCH_KEYS, OpenedReplicationOperation, ReplicationAuthorityError,
-    ReplicationAuthorityState, ReplicationCryptoError, ReplicationHistoricalKeyIndex,
-    ReplicationHistoricalKeyLimit, ReplicationKeyWrappingError, ReplicationOperationKind,
-    ReplicationSealContext, ReplicationSecretBackend, ReplicationSecretCustodyError,
-    ReplicationSecretVault, bootstrap_replication_authority,
+    MAX_REPLICATION_RETAINED_EPOCH_KEYS, OpenedReplicationOperation,
+    ReplicationAuthorityDeviceStatus, ReplicationAuthorityError, ReplicationAuthorityState,
+    ReplicationAuthorityTransition, ReplicationCryptoError, ReplicationDevicePublicKey,
+    ReplicationHistoricalKeyIndex, ReplicationHistoricalKeyLimit, ReplicationKeyWrappingError,
+    ReplicationOperationKind, ReplicationSealContext, ReplicationSecretBackend,
+    ReplicationSecretCustodyError, ReplicationSecretRef, ReplicationSecretVault,
+    WrappedReplicationEpochKey, bootstrap_replication_authority, enroll_replication_device,
     generate_replication_authority_private_key, generate_replication_device_private_key,
-    open as open_envelope, seal_delete, seal_put,
+    open as open_envelope, revoke_replication_device, rotate_replication_epoch, seal_delete,
+    seal_put,
 };
 use uuid::Uuid;
 
@@ -32,7 +42,76 @@ use super::{
 const PRODUCT_FORMAT_VERSION: u16 = 1;
 const PRODUCT_PROFILE_FILE: &str = "profile.json";
 const PRODUCT_REPOSITORY_DIR: &str = "repository";
+const PRODUCT_TRANSACTION_FILE: &str = "authority.transaction.json";
+const PRODUCT_UPDATE_OUTBOX_FILE: &str = "authority-update.json";
+const PRODUCT_LOCK_FILE: &str = "product.lock";
 const MAX_PRODUCT_PROFILE_BYTES: u64 = 192 * 1024;
+const MAX_PRODUCT_TRANSACTION_BYTES: u64 = 256 * 1024;
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct ReplicationDeviceKeyPackage {
+    recipient: ReplicationReplicaId,
+    package: Vec<u8>,
+}
+
+impl ReplicationDeviceKeyPackage {
+    pub fn recipient(&self) -> &ReplicationReplicaId {
+        &self.recipient
+    }
+
+    pub fn package(&self) -> &[u8] {
+        &self.package
+    }
+}
+
+impl fmt::Debug for ReplicationDeviceKeyPackage {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ReplicationDeviceKeyPackage")
+            .field("recipient", &"<redacted>")
+            .field("package", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub struct ReplicationAuthorityUpdate {
+    pub authority_revision: u64,
+    pub key_epoch: u64,
+    authority_state: Vec<u8>,
+    packages: Vec<ReplicationDeviceKeyPackage>,
+}
+
+impl ReplicationAuthorityUpdate {
+    pub fn authority_state(&self) -> &[u8] {
+        &self.authority_state
+    }
+
+    pub fn packages(&self) -> &[ReplicationDeviceKeyPackage] {
+        &self.packages
+    }
+
+    pub fn package_for(
+        &self,
+        replica_id: &ReplicationReplicaId,
+    ) -> Option<&ReplicationDeviceKeyPackage> {
+        self.packages
+            .iter()
+            .find(|package| package.recipient() == replica_id)
+    }
+}
+
+impl fmt::Debug for ReplicationAuthorityUpdate {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ReplicationAuthorityUpdate")
+            .field("authority_revision", &self.authority_revision)
+            .field("key_epoch", &self.key_epoch)
+            .field("authority_state", &"<redacted>")
+            .field("package_count", &self.packages.len())
+            .finish()
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReplicationProductStatus {
@@ -60,6 +139,10 @@ pub enum ReplicationProductError {
     InvalidPath,
     RecordConflict,
     EmptyPut,
+    LocalDeviceRevocation,
+    PendingAuthorityTransition,
+    PendingAuthorityUpdate,
+    StaleAuthorityUpdate,
 }
 
 impl fmt::Display for ReplicationProductError {
@@ -82,6 +165,18 @@ impl fmt::Display for ReplicationProductError {
                 formatter.write_str("replication record requires conflict review")
             }
             Self::EmptyPut => formatter.write_str("replication record payload cannot be empty"),
+            Self::LocalDeviceRevocation => {
+                formatter.write_str("this device cannot revoke its own replication access")
+            }
+            Self::PendingAuthorityTransition => {
+                formatter.write_str("replication authority transition requires recovery")
+            }
+            Self::PendingAuthorityUpdate => {
+                formatter.write_str("replication authority update must be delivered first")
+            }
+            Self::StaleAuthorityUpdate => {
+                formatter.write_str("replication authority update is stale")
+            }
         }
     }
 }
@@ -118,7 +213,7 @@ impl From<ReplicationSecretCustodyError> for ReplicationProductError {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct StoredProductProfile {
     format_version: u16,
@@ -134,12 +229,39 @@ struct ProductFormatProbe {
     format_version: u16,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct StoredAuthorityTransaction {
+    format_version: u16,
+    base_authority_revision: u64,
+    base_repository_revision: u64,
+    next_authority_state_hex: String,
+    new_epoch_reference_hex: String,
+    packages: Vec<StoredDeviceKeyPackage>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct StoredDeviceKeyPackage {
+    recipient: String,
+    package_hex: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct StoredAuthorityUpdate {
+    format_version: u16,
+    authority_state_hex: String,
+    packages: Vec<StoredDeviceKeyPackage>,
+}
+
 pub struct ReplicationProductService<B> {
     root: PathBuf,
     shared_folder: PathBuf,
     workspace_id: ReplicationWorkspaceId,
     local_replica_id: ReplicationReplicaId,
     authority: ReplicationAuthorityState,
+    transport_slot: SharedFolderSlot,
     repository: ReplicationRepository,
     transport: SharedFolderReplicationTransport,
     vault: ReplicationSecretVault<B>,
@@ -258,14 +380,18 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
         };
 
         let repository = ReplicationRepository::open(root.join(PRODUCT_REPOSITORY_DIR))?;
-        let transport =
-            SharedFolderReplicationTransport::open(&shared_folder, workspace_id.clone(), slot)?;
+        let transport = SharedFolderReplicationTransport::open(
+            &shared_folder,
+            workspace_id.clone(),
+            slot.clone(),
+        )?;
         Ok(Self {
             root,
             shared_folder,
             workspace_id,
             local_replica_id,
             authority,
+            transport_slot: slot,
             repository,
             transport,
             vault,
@@ -282,31 +408,39 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
             other => other,
         })?;
         let profile = read_profile(&root.join(PRODUCT_PROFILE_FILE))?;
-        let workspace_id = ReplicationWorkspaceId::new(profile.workspace_id)
+        let workspace_id = ReplicationWorkspaceId::new(profile.workspace_id.clone())
             .map_err(|_| ReplicationProductError::InvalidProfile)?;
-        let local_replica_id = ReplicationReplicaId::new(profile.local_replica_id)
+        let local_replica_id = ReplicationReplicaId::new(profile.local_replica_id.clone())
             .map_err(|_| ReplicationProductError::InvalidProfile)?;
-        let shared_folder = PathBuf::from(profile.shared_folder);
+        let shared_folder = PathBuf::from(&profile.shared_folder);
         validate_existing_directory(&shared_folder)?;
-        let slot = SharedFolderSlot::new(profile.transport_slot)
+        let slot = SharedFolderSlot::new(profile.transport_slot.clone())
             .map_err(|_| ReplicationProductError::InvalidProfile)?;
         let authority_bytes = decode_hex(&profile.authority_state_hex)?;
         if authority_bytes.len() > MAX_REPLICATION_AUTHORITY_STATE_BYTES {
             return Err(ReplicationProductError::InvalidProfile);
         }
-        let authority = ReplicationAuthorityState::from_canonical_bytes(&authority_bytes)?;
+        let mut authority = ReplicationAuthorityState::from_canonical_bytes(&authority_bytes)?;
         if authority.workspace_id() != &workspace_id
             || authority.device(&local_replica_id).is_none()
         {
             return Err(ReplicationProductError::InvalidProfile);
         }
-        let policy = authority.replication_policy()?;
         let repository = ReplicationRepository::open(root.join(PRODUCT_REPOSITORY_DIR))?;
+        let vault = ReplicationSecretVault::new(backend);
+        authority = recover_authority_transaction(
+            &root,
+            &profile,
+            authority,
+            &workspace_id,
+            &repository,
+            &vault,
+        )?;
+        let policy = authority.replication_policy()?;
         let snapshot = repository.load(&workspace_id, &policy)?;
         if snapshot.custody.historical().current_epoch() != authority.key_epoch() {
             return Err(ReplicationProductError::InvalidProfile);
         }
-        let vault = ReplicationSecretVault::new(backend);
         vault.load_authority_key(snapshot.custody.authority_reference())?;
         vault.load_device_key(snapshot.custody.device_reference())?;
         vault.load_epoch_key(
@@ -316,14 +450,18 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
                 .reference_for(authority.key_epoch())?,
             authority.key_epoch(),
         )?;
-        let transport =
-            SharedFolderReplicationTransport::open(&shared_folder, workspace_id.clone(), slot)?;
+        let transport = SharedFolderReplicationTransport::open(
+            &shared_folder,
+            workspace_id.clone(),
+            slot.clone(),
+        )?;
         Ok(Self {
             root,
             shared_folder,
             workspace_id,
             local_replica_id,
             authority,
+            transport_slot: slot,
             repository,
             transport,
             vault,
@@ -348,6 +486,99 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
 
     pub fn authority(&self) -> &ReplicationAuthorityState {
         &self.authority
+    }
+
+    pub fn pending_authority_update(
+        &self,
+    ) -> Result<Option<ReplicationAuthorityUpdate>, ReplicationProductError> {
+        let update = read_authority_update(&self.root)?;
+        if let Some(update) = &update
+            && update.authority_state() != self.authority.to_canonical_bytes()?.as_slice()
+        {
+            return Err(ReplicationProductError::InvalidProfile);
+        }
+        Ok(update)
+    }
+
+    pub fn acknowledge_authority_update(
+        &self,
+        authority_revision: u64,
+    ) -> Result<bool, ReplicationProductError> {
+        let _lock = ProductAdvisoryLock::acquire(&self.root.join(PRODUCT_LOCK_FILE))?;
+        let Some(update) = self.pending_authority_update()? else {
+            return Ok(false);
+        };
+        if update.authority_revision != authority_revision {
+            return Err(ReplicationProductError::StaleAuthorityUpdate);
+        }
+        fs::remove_file(self.root.join(PRODUCT_UPDATE_OUTBOX_FILE))
+            .map_err(|error| profile_io("remove authority update", error))?;
+        sync_directory(&self.root)?;
+        Ok(true)
+    }
+
+    pub fn rotate_keys(&mut self) -> Result<ReplicationAuthorityUpdate, ReplicationProductError> {
+        let policy = self.authority.replication_policy()?;
+        let snapshot = self.repository.load(&self.workspace_id, &policy)?;
+        let authority_private = self
+            .vault
+            .load_authority_key(snapshot.custody.authority_reference())?;
+        let transition = rotate_replication_epoch(
+            &self.authority,
+            &authority_private,
+            self.authority.revision(),
+        )?;
+        self.commit_authority_transition(snapshot, transition)
+    }
+
+    pub fn enroll_device(
+        &mut self,
+        replica_id: ReplicationReplicaId,
+        public_key: ReplicationDevicePublicKey,
+    ) -> Result<ReplicationAuthorityUpdate, ReplicationProductError> {
+        let policy = self.authority.replication_policy()?;
+        let snapshot = self.repository.load(&self.workspace_id, &policy)?;
+        let authority_private = self
+            .vault
+            .load_authority_key(snapshot.custody.authority_reference())?;
+        let transition = enroll_replication_device(
+            &self.authority,
+            &authority_private,
+            self.authority.revision(),
+            replica_id,
+            public_key,
+        )?;
+        self.commit_authority_transition(snapshot, transition)
+    }
+
+    pub fn revoke_device(
+        &mut self,
+        replica_id: &ReplicationReplicaId,
+    ) -> Result<ReplicationAuthorityUpdate, ReplicationProductError> {
+        if replica_id == &self.local_replica_id {
+            return Err(ReplicationProductError::LocalDeviceRevocation);
+        }
+        let policy = self.authority.replication_policy()?;
+        let snapshot = self.repository.load(&self.workspace_id, &policy)?;
+        let accepted_through = snapshot
+            .document
+            .entries
+            .iter()
+            .flat_map(|entry| &entry.candidates)
+            .map(|candidate| candidate.vector.counter(replica_id))
+            .max()
+            .unwrap_or_default();
+        let authority_private = self
+            .vault
+            .load_authority_key(snapshot.custody.authority_reference())?;
+        let transition = revoke_replication_device(
+            &self.authority,
+            &authority_private,
+            self.authority.revision(),
+            replica_id,
+            accepted_through,
+        )?;
+        self.commit_authority_transition(snapshot, transition)
     }
 
     pub fn status(&self) -> Result<ReplicationProductStatus, ReplicationProductError> {
@@ -550,8 +781,373 @@ impl<B: ReplicationSecretBackend> ReplicationProductService<B> {
         Ok(committed.revision)
     }
 
+    fn commit_authority_transition(
+        &mut self,
+        snapshot: super::ReplicationRepositorySnapshot,
+        transition: ReplicationAuthorityTransition,
+    ) -> Result<ReplicationAuthorityUpdate, ReplicationProductError> {
+        let _lock = ProductAdvisoryLock::acquire(&self.root.join(PRODUCT_LOCK_FILE))?;
+        if reject_unsafe_file_if_present(&self.root.join(PRODUCT_TRANSACTION_FILE))? {
+            return Err(ReplicationProductError::PendingAuthorityTransition);
+        }
+        if reject_unsafe_file_if_present(&self.root.join(PRODUCT_UPDATE_OUTBOX_FILE))? {
+            return Err(ReplicationProductError::PendingAuthorityUpdate);
+        }
+        let current = self
+            .repository
+            .load(&self.workspace_id, &self.authority.replication_policy()?)?;
+        if current.revision != snapshot.revision {
+            return Err(ReplicationProductError::Store(
+                ReplicationStoreError::StaleRepositoryRevision {
+                    expected: snapshot.revision,
+                    actual: current.revision,
+                },
+            ));
+        }
+
+        let (next_authority, epoch_key, distribution) = transition.into_parts();
+        let next_policy = next_authority.replication_policy()?;
+        let authority_update = ReplicationAuthorityUpdate {
+            authority_revision: next_authority.revision().get(),
+            key_epoch: next_authority.key_epoch().get(),
+            authority_state: next_authority.to_canonical_bytes()?,
+            packages: distribution
+                .packages()
+                .iter()
+                .map(|package| ReplicationDeviceKeyPackage {
+                    recipient: package.recipient().clone(),
+                    package: package.package().to_bytes(),
+                })
+                .collect(),
+        };
+        let epoch_reference = self.vault.store_epoch_key(&epoch_key)?;
+        let historical_update = snapshot
+            .custody
+            .historical()
+            .append(epoch_reference.clone())?;
+        let (historical, retired) = historical_update.into_parts();
+        let next_custody = ReplicationCustodyMetadata::new(
+            snapshot.custody.authority_reference().clone(),
+            snapshot.custody.device_reference().clone(),
+            historical,
+        )?;
+        let transaction = StoredAuthorityTransaction {
+            format_version: PRODUCT_FORMAT_VERSION,
+            base_authority_revision: self.authority.revision().get(),
+            base_repository_revision: snapshot.revision.get(),
+            next_authority_state_hex: encode_hex(&next_authority.to_canonical_bytes()?),
+            new_epoch_reference_hex: encode_hex(&epoch_reference.to_bytes()),
+            packages: stored_packages(&authority_update),
+        };
+        if let Err(error) = write_authority_transaction(&self.root, &transaction) {
+            let _ = self.vault.delete(&epoch_reference);
+            return Err(error);
+        }
+        if let Err(error) = self.repository.commit(
+            snapshot.revision,
+            snapshot.document,
+            next_custody,
+            &retired,
+            &next_policy,
+        ) {
+            let _ = self.repository.retire_pending(
+                self.vault.backend(),
+                &self.workspace_id,
+                &next_policy,
+            );
+            let _ = self.vault.delete(&epoch_reference);
+            let _ = remove_authority_transaction(&self.root);
+            return Err(error.into());
+        }
+
+        let profile = self.stored_profile(&next_authority)?;
+        write_profile(&self.root.join(PRODUCT_PROFILE_FILE), &profile)?;
+        self.authority = next_authority;
+        self.repository
+            .retire_pending(self.vault.backend(), &self.workspace_id, &next_policy)?;
+        write_authority_update(&self.root, &authority_update)?;
+        remove_authority_transaction(&self.root)?;
+        Ok(authority_update)
+    }
+
+    fn stored_profile(
+        &self,
+        authority: &ReplicationAuthorityState,
+    ) -> Result<StoredProductProfile, ReplicationProductError> {
+        let mut profile = read_profile(&self.root.join(PRODUCT_PROFILE_FILE))?;
+        if profile.workspace_id != self.workspace_id.as_str()
+            || profile.local_replica_id != self.local_replica_id.as_str()
+            || profile.transport_slot != self.transport_slot.file_component()
+        {
+            return Err(ReplicationProductError::InvalidProfile);
+        }
+        profile.authority_state_hex = encode_hex(&authority.to_canonical_bytes()?);
+        Ok(profile)
+    }
+
     fn sync_coordinator(&self) -> ReplicationSyncCoordinator {
         ReplicationSyncCoordinator::new(self.repository.clone(), self.transport.clone())
+    }
+}
+
+fn recover_authority_transaction<B: ReplicationSecretBackend>(
+    root: &Path,
+    profile: &StoredProductProfile,
+    current_authority: ReplicationAuthorityState,
+    workspace_id: &ReplicationWorkspaceId,
+    repository: &ReplicationRepository,
+    vault: &ReplicationSecretVault<B>,
+) -> Result<ReplicationAuthorityState, ReplicationProductError> {
+    let transaction_path = root.join(PRODUCT_TRANSACTION_FILE);
+    if !reject_unsafe_file_if_present(&transaction_path)? {
+        return Ok(current_authority);
+    }
+    let _lock = ProductAdvisoryLock::acquire(&root.join(PRODUCT_LOCK_FILE))?;
+    let transaction = read_authority_transaction(root)?;
+    if transaction.base_authority_revision == u64::MAX {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    let next_authority_bytes = decode_hex(&transaction.next_authority_state_hex)?;
+    let next_authority = ReplicationAuthorityState::from_canonical_bytes(&next_authority_bytes)?;
+    let current_is_base = current_authority.revision().get() == transaction.base_authority_revision;
+    let current_is_next = current_authority == next_authority;
+    if next_authority.workspace_id() != workspace_id
+        || next_authority.revision().get()
+            != transaction
+                .base_authority_revision
+                .checked_add(1)
+                .ok_or(ReplicationProductError::InvalidProfile)?
+        || (!current_is_base && !current_is_next)
+        || (current_is_base
+            && next_authority.key_epoch().get()
+                != current_authority
+                    .key_epoch()
+                    .get()
+                    .checked_add(1)
+                    .ok_or(ReplicationProductError::InvalidProfile)?)
+    {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    let authority_update = decode_authority_update(
+        &next_authority,
+        &transaction.next_authority_state_hex,
+        &transaction.packages,
+    )?;
+    let reference_bytes = decode_hex(&transaction.new_epoch_reference_hex)?;
+    let epoch_reference = ReplicationSecretRef::from_bytes(&reference_bytes)?;
+    if epoch_reference.key_epoch() != Some(next_authority.key_epoch()) {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    let next_policy = next_authority.replication_policy()?;
+    let snapshot = repository.load(workspace_id, &next_policy)?;
+    let base_revision = ReplicationRepositoryRevision::new(transaction.base_repository_revision)?;
+    let next_repository_revision = ReplicationRepositoryRevision::new(
+        transaction
+            .base_repository_revision
+            .checked_add(1)
+            .ok_or(ReplicationProductError::InvalidProfile)?,
+    )?;
+
+    if snapshot.revision == base_revision {
+        if current_authority.revision().get() != transaction.base_authority_revision {
+            return Err(ReplicationProductError::InvalidProfile);
+        }
+        repository.retire_pending(vault.backend(), workspace_id, &next_policy)?;
+        vault.delete(&epoch_reference)?;
+        remove_authority_transaction(root)?;
+        return Ok(current_authority);
+    }
+    if snapshot.revision != next_repository_revision {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+
+    if current_authority.revision().get() == transaction.base_authority_revision {
+        let mut next_profile = profile.clone();
+        next_profile.authority_state_hex = transaction.next_authority_state_hex.clone();
+        write_profile(&root.join(PRODUCT_PROFILE_FILE), &next_profile)?;
+    }
+    repository.retire_pending(vault.backend(), workspace_id, &next_policy)?;
+    write_authority_update(root, &authority_update)?;
+    remove_authority_transaction(root)?;
+    Ok(next_authority)
+}
+
+fn write_authority_transaction(
+    root: &Path,
+    transaction: &StoredAuthorityTransaction,
+) -> Result<(), ReplicationProductError> {
+    let bytes =
+        serde_json::to_vec(transaction).map_err(|_| ReplicationProductError::InvalidProfile)?;
+    if bytes.len() as u64 > MAX_PRODUCT_TRANSACTION_BYTES {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    SystemAtomicWriter
+        .write(&root.join(PRODUCT_TRANSACTION_FILE), &bytes)
+        .map_err(|error| profile_io("write authority transaction", error))?;
+    Ok(())
+}
+
+fn stored_packages(update: &ReplicationAuthorityUpdate) -> Vec<StoredDeviceKeyPackage> {
+    update
+        .packages()
+        .iter()
+        .map(|package| StoredDeviceKeyPackage {
+            recipient: package.recipient().as_str().to_string(),
+            package_hex: encode_hex(package.package()),
+        })
+        .collect()
+}
+
+fn decode_authority_update(
+    authority: &ReplicationAuthorityState,
+    authority_state_hex: &str,
+    stored: &[StoredDeviceKeyPackage],
+) -> Result<ReplicationAuthorityUpdate, ReplicationProductError> {
+    if stored.len() != authority.active_device_count() {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    let mut recipients = BTreeSet::new();
+    let mut packages = Vec::with_capacity(stored.len());
+    for item in stored {
+        let recipient = ReplicationReplicaId::new(item.recipient.clone())
+            .map_err(|_| ReplicationProductError::InvalidProfile)?;
+        if !recipients.insert(recipient.clone())
+            || authority
+                .device(&recipient)
+                .is_none_or(|device| device.status() != ReplicationAuthorityDeviceStatus::Active)
+        {
+            return Err(ReplicationProductError::InvalidProfile);
+        }
+        let package = decode_hex(&item.package_hex)?;
+        let parsed = WrappedReplicationEpochKey::from_bytes(&package)?;
+        if parsed.key_epoch() != authority.key_epoch() {
+            return Err(ReplicationProductError::InvalidProfile);
+        }
+        packages.push(ReplicationDeviceKeyPackage { recipient, package });
+    }
+    Ok(ReplicationAuthorityUpdate {
+        authority_revision: authority.revision().get(),
+        key_epoch: authority.key_epoch().get(),
+        authority_state: decode_hex(authority_state_hex)?,
+        packages,
+    })
+}
+
+fn write_authority_update(
+    root: &Path,
+    update: &ReplicationAuthorityUpdate,
+) -> Result<(), ReplicationProductError> {
+    let stored = StoredAuthorityUpdate {
+        format_version: PRODUCT_FORMAT_VERSION,
+        authority_state_hex: encode_hex(update.authority_state()),
+        packages: stored_packages(update),
+    };
+    let bytes = serde_json::to_vec(&stored).map_err(|_| ReplicationProductError::InvalidProfile)?;
+    if bytes.len() as u64 > MAX_PRODUCT_TRANSACTION_BYTES {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    SystemAtomicWriter
+        .write(&root.join(PRODUCT_UPDATE_OUTBOX_FILE), &bytes)
+        .map_err(|error| profile_io("write authority update", error))?;
+    Ok(())
+}
+
+fn read_authority_update(
+    root: &Path,
+) -> Result<Option<ReplicationAuthorityUpdate>, ReplicationProductError> {
+    let path = root.join(PRODUCT_UPDATE_OUTBOX_FILE);
+    if !reject_unsafe_file_if_present(&path)? {
+        return Ok(None);
+    }
+    let bytes = read_bounded_regular_file(
+        &path,
+        MAX_PRODUCT_TRANSACTION_BYTES,
+        "read authority update",
+    )?;
+    let stored: StoredAuthorityUpdate =
+        serde_json::from_slice(&bytes).map_err(|_| ReplicationProductError::InvalidProfile)?;
+    if stored.format_version != PRODUCT_FORMAT_VERSION
+        || serde_json::to_vec(&stored).map_err(|_| ReplicationProductError::InvalidProfile)?
+            != bytes
+    {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    let authority_bytes = decode_hex(&stored.authority_state_hex)?;
+    let authority = ReplicationAuthorityState::from_canonical_bytes(&authority_bytes)?;
+    decode_authority_update(&authority, &stored.authority_state_hex, &stored.packages).map(Some)
+}
+
+fn read_authority_transaction(
+    root: &Path,
+) -> Result<StoredAuthorityTransaction, ReplicationProductError> {
+    let path = root.join(PRODUCT_TRANSACTION_FILE);
+    let bytes = read_bounded_regular_file(
+        &path,
+        MAX_PRODUCT_TRANSACTION_BYTES,
+        "read authority transaction",
+    )?;
+    let transaction: StoredAuthorityTransaction =
+        serde_json::from_slice(&bytes).map_err(|_| ReplicationProductError::InvalidProfile)?;
+    if transaction.format_version != PRODUCT_FORMAT_VERSION
+        || serde_json::to_vec(&transaction).map_err(|_| ReplicationProductError::InvalidProfile)?
+            != bytes
+    {
+        return Err(ReplicationProductError::InvalidProfile);
+    }
+    Ok(transaction)
+}
+
+fn remove_authority_transaction(root: &Path) -> Result<(), ReplicationProductError> {
+    fs::remove_file(root.join(PRODUCT_TRANSACTION_FILE))
+        .map_err(|error| profile_io("remove authority transaction", error))?;
+    sync_directory(root)
+}
+
+struct ProductAdvisoryLock {
+    _process_guard: MutexGuard<'static, ()>,
+    file: File,
+}
+
+static PRODUCT_PROCESS_LOCK: Mutex<()> = Mutex::new(());
+
+impl ProductAdvisoryLock {
+    fn acquire(path: &Path) -> Result<Self, ReplicationProductError> {
+        let process_guard = PRODUCT_PROCESS_LOCK
+            .lock()
+            .map_err(|_| ReplicationProductError::InvalidProfile)?;
+        reject_unsafe_file_if_present(path)?;
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create(true);
+        #[cfg(unix)]
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+        #[cfg(windows)]
+        options.custom_flags(0x0020_0000);
+        let file = options
+            .open(path)
+            .map_err(|error| profile_io("open product lock", error))?;
+        if !file
+            .metadata()
+            .map_err(|error| profile_io("inspect product lock", error))?
+            .is_file()
+        {
+            return Err(ReplicationProductError::Store(
+                ReplicationStoreError::UnsafeEntry,
+            ));
+        }
+        #[cfg(unix)]
+        file.set_permissions(fs::Permissions::from_mode(0o600))
+            .map_err(|error| profile_io("set product lock permissions", error))?;
+        crate::file_lock::exclusive(&file).map_err(|error| profile_io("lock product", error))?;
+        Ok(Self {
+            _process_guard: process_guard,
+            file,
+        })
+    }
+}
+
+impl Drop for ProductAdvisoryLock {
+    fn drop(&mut self) {
+        crate::file_lock::release(&self.file);
     }
 }
 
