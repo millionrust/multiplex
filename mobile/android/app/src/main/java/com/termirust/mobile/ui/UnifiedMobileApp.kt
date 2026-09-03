@@ -18,6 +18,7 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +42,9 @@ fun UnifiedMobileApp(
 ) {
     var destination by remember { mutableStateOf(MobileRootDestination.CONNECTIONS) }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val controllerState by controller.state.collectAsState()
+    val controllerTerminalOpen = destination == MobileRootDestination.DEVICES &&
+        controllerState.activeTerminal != null
 
     DisposableEffect(lifecycleOwner, destination) {
         var foregrounded = false
@@ -77,7 +81,7 @@ fun UnifiedMobileApp(
 
     MaterialTheme {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            if (maxWidth >= 840.dp) {
+            if (maxWidth >= 840.dp && !controllerTerminalOpen) {
                 Row(Modifier.fillMaxSize()) {
                     RouteRail(destination, onSelect = { destination = it })
                     RouteContent(
@@ -99,7 +103,9 @@ fun UnifiedMobileApp(
                         onImportCredentialFile,
                         Modifier.weight(1f),
                     )
-                    RouteBar(destination, onSelect = { destination = it })
+                    if (!controllerTerminalOpen) {
+                        RouteBar(destination, onSelect = { destination = it })
+                    }
                 }
             }
         }

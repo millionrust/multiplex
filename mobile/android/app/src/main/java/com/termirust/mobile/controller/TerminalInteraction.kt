@@ -15,6 +15,49 @@ data class TerminalInputModifiers(
 
 data class TerminalSelectionPoint(val row: Int, val column: Int)
 
+object ControllerTerminalFollowTarget {
+    fun row(lines: List<String>, cursorRow: Int, scrollbackRows: Int): Int? {
+        if (lines.isEmpty()) return null
+        val cursor = (scrollbackRows + cursorRow).coerceIn(0, lines.lastIndex)
+        val lastContent = lines.indexOfLast { it.isNotBlank() }.coerceAtLeast(0)
+        return maxOf(cursor, lastContent)
+    }
+
+    fun firstVisibleRow(targetRow: Int, visibleRows: Int): Int =
+        (targetRow - visibleRows.coerceAtLeast(1) + 1).coerceAtLeast(0)
+}
+
+object ControllerTerminalCursor {
+    fun column(
+        rowIndex: Int,
+        cells: List<BoundedTerminalCell>,
+        cursorRow: Int,
+        cursorColumn: Int,
+        scrollbackRows: Int,
+        visible: Boolean,
+    ): Int? {
+        if (!visible || rowIndex != (scrollbackRows + cursorRow).coerceAtLeast(0)) return null
+        val column = cursorColumn.coerceAtLeast(0)
+        return if (cells.getOrNull(column)?.width == TerminalCellWidth.CONTINUATION) {
+            (column - 1).coerceAtLeast(0)
+        } else {
+            column
+        }
+    }
+}
+
+object ControllerTerminalLayout {
+    fun usesFocusedLandscape(isLandscape: Boolean, keyboardPresented: Boolean): Boolean =
+        isLandscape && keyboardPresented
+}
+
+object ControllerTerminalWidth {
+    const val DESKTOP_COLUMNS = 80
+
+    fun columns(fitting: Int, usesDesktopWidth: Boolean): Int =
+        if (usesDesktopWidth) maxOf(fitting, DESKTOP_COLUMNS) else fitting
+}
+
 object TerminalInteraction {
     const val MAX_PASTE_BYTES = 256 * 1_024
     const val PASTE_CONFIRMATION_BYTES = 4 * 1_024

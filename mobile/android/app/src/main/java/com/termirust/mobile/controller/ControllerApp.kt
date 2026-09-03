@@ -1,5 +1,6 @@
 package com.termirust.mobile.controller
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -10,10 +11,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,8 +27,15 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Keyboard
+import androidx.compose.material.icons.outlined.KeyboardHide
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -36,6 +46,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -50,12 +62,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
@@ -76,6 +92,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,6 +104,14 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
     var confirmForget by remember { mutableStateOf(false) }
     var pendingRoute by remember { mutableStateOf<ControllerRemoteRouteKind?>(null) }
     val activeTerminal = state.activeTerminal
+    val configuration = LocalConfiguration.current
+    val windowDensity = LocalDensity.current
+    val keyboardPresented = WindowInsets.ime.getBottom(windowDensity) > 0
+    val focusedLandscapeTerminal = activeTerminal != null &&
+        ControllerTerminalLayout.usesFocusedLandscape(
+            configuration.orientation == Configuration.ORIENTATION_LANDSCAPE,
+            keyboardPresented,
+        )
 
     BackHandler(enabled = activeTerminal != null) { viewModel.detachTerminal() }
 
@@ -94,17 +119,27 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
         Scaffold(
             modifier = modifier.fillMaxSize(),
             topBar = {
-                TopAppBar(
+                if (!focusedLandscapeTerminal) TopAppBar(
                     title = {
-                        Column {
+                        if (activeTerminal != null) {
+                            Text(
+                                isolated(activeTerminal.sessionTitle),
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        } else Column {
                             Text(stringResource(com.termirust.mobile.R.string.app_name), fontWeight = FontWeight.Bold)
                             Text(stringResource(com.termirust.mobile.R.string.controller_fleet), style = MaterialTheme.typography.labelMedium)
                         }
                     },
                     actions = {
                         if (activeTerminal != null) {
-                            TextButton(onClick = viewModel::detachTerminal) {
-                                Text(stringResource(com.termirust.mobile.R.string.detach))
+                            IconButton(onClick = viewModel::detachTerminal) {
+                                Icon(
+                                    Icons.Outlined.Close,
+                                    contentDescription = stringResource(com.termirust.mobile.R.string.detach),
+                                )
                             }
                         } else {
                             TextButton(onClick = { showPairing = true }) { Text(stringResource(com.termirust.mobile.R.string.pair_host)) }
@@ -670,26 +705,40 @@ private fun ControllerTerminalScreen(
     onViewportChanged: (Int, Int) -> Unit,
 ) {
     var followOutput by remember { mutableStateOf(true) }
-    var focusRequest by remember { mutableStateOf(0L) }
+    var keyboardRequest by remember { mutableLongStateOf(0L) }
+    var showKeyboard by remember { mutableStateOf(false) }
     var controlModifier by remember { mutableStateOf(false) }
     var altModifier by remember { mutableStateOf(false) }
-    var showLinks by remember { mutableStateOf(false) }
+    var showOptions by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val density = LocalDensity.current
     val terminalPreferences = remember(context) {
         context.getSharedPreferences("controller_terminal", android.content.Context.MODE_PRIVATE)
     }
     var terminalFontSize by remember {
-        mutableStateOf(
+        mutableDoubleStateOf(
             terminalPreferences.getFloat("font_size", 14f).toDouble().coerceIn(
                 TerminalAcceptance.MINIMUM_FONT_SIZE,
                 TerminalAcceptance.MAXIMUM_FONT_SIZE,
             ),
         )
     }
+    var usesDesktopWidth by remember {
+        mutableStateOf(terminalPreferences.getBoolean("desktop_width", false))
+    }
+    var displayedFontSize by remember { mutableDoubleStateOf(terminalFontSize) }
+    var displayedColumns by remember { mutableIntStateOf(40) }
+    var displayedRows by remember { mutableIntStateOf(24) }
     val clipboard = LocalClipboardManager.current
     val uriHandler = LocalUriHandler.current
     val listState = rememberLazyListState()
+    val horizontalState = rememberScrollState()
+    val configuration = LocalConfiguration.current
+    val keyboardPresented = WindowInsets.ime.getBottom(density) > 0
+    val focusedLandscape = ControllerTerminalLayout.usesFocusedLandscape(
+        configuration.orientation == Configuration.ORIENTATION_LANDSCAPE,
+        keyboardPresented,
+    )
     val lines = terminal.screen.lines
     val cells = terminal.screen.contentCells
     val urls = remember(lines) { TerminalInteraction.visibleHttpUrls(lines.joinToString("\n")) }
@@ -702,12 +751,28 @@ private fun ControllerTerminalScreen(
     )
     val canInput = terminal.writerLease == WriterLeaseState.Held &&
         terminal.attachState == ReadOnlyAttachState.Live && !terminal.privacyCovered
+    val statusColor = when (terminal.attachState) {
+        ReadOnlyAttachState.Live -> androidx.compose.ui.graphics.Color(0xff22c55e)
+        is ReadOnlyAttachState.Gap, is ReadOnlyAttachState.Failed ->
+            androidx.compose.ui.graphics.Color(0xfff59e0b)
+        ReadOnlyAttachState.Offline, ReadOnlyAttachState.Exited ->
+            MaterialTheme.colorScheme.onSurfaceVariant
+        else -> MaterialTheme.colorScheme.primary
+    }
     fun setTerminalFontSize(value: Double) {
         terminalFontSize = value.coerceIn(
             TerminalAcceptance.MINIMUM_FONT_SIZE,
             TerminalAcceptance.MAXIMUM_FONT_SIZE,
         )
         terminalPreferences.edit().putFloat("font_size", terminalFontSize.toFloat()).apply()
+    }
+    fun setDesktopWidth(enabled: Boolean) {
+        usesDesktopWidth = enabled
+        terminalPreferences.edit().putBoolean("desktop_width", enabled).apply()
+    }
+    fun setKeyboardPresented(presented: Boolean) {
+        showKeyboard = presented
+        keyboardRequest += 1
     }
     val submitKey: (TerminalInputKey) -> Unit = { key ->
         TerminalInteraction.encode(
@@ -718,10 +783,26 @@ private fun ControllerTerminalScreen(
         controlModifier = false
         altModifier = false
     }
-    LaunchedEffect(terminal.outputSequence, followOutput, lines.size) {
-        if (followOutput && lines.isNotEmpty()) listState.scrollToItem(lines.lastIndex)
+    LaunchedEffect(
+        terminal.outputSequence,
+        followOutput,
+        lines,
+        terminal.screen.cursorRow,
+        terminal.screen.scrollbackRows,
+        displayedRows,
+    ) {
+        val target = ControllerTerminalFollowTarget.row(
+            lines,
+            terminal.screen.cursorRow,
+            terminal.screen.scrollbackRows,
+        )
+        if (followOutput && target != null) {
+            listState.scrollToItem(
+                ControllerTerminalFollowTarget.firstVisibleRow(target, displayedRows),
+            )
+        }
     }
-    LaunchedEffect(terminalSurfaceSize, terminalFontSize, density.fontScale) {
+    LaunchedEffect(terminalSurfaceSize, terminalFontSize, density.fontScale, usesDesktopWidth) {
         if (terminalSurfaceSize == IntSize.Zero) return@LaunchedEffect
         val layout = TerminalAcceptance.layout(
             width = with(density) { terminalSurfaceSize.width.toDp().value.toDouble() },
@@ -729,112 +810,166 @@ private fun ControllerTerminalScreen(
             requestedFontSize = terminalFontSize,
             textScale = density.fontScale.toDouble(),
         )
-        onViewportChanged(layout.columns, layout.rows)
+        displayedFontSize = layout.displayedFontSize
+        displayedColumns = ControllerTerminalWidth.columns(layout.columns, usesDesktopWidth)
+        displayedRows = layout.rows
+        onViewportChanged(displayedColumns, displayedRows)
+    }
+    LaunchedEffect(
+        terminal.outputSequence,
+        followOutput,
+        usesDesktopWidth,
+        terminal.screen.cursorColumn,
+        terminal.screen.cursorVisible,
+        displayedFontSize,
+        terminalSurfaceSize,
+    ) {
+        if (!followOutput || !usesDesktopWidth || !terminal.screen.cursorVisible ||
+            terminalSurfaceSize == IntSize.Zero
+        ) return@LaunchedEffect
+        val cellWidth = with(density) { (displayedFontSize * 0.62).dp.toPx() }
+        val padding = with(density) { 12.dp.toPx() }
+        val cursorStart = padding + terminal.screen.cursorColumn * cellWidth
+        val cursorEnd = cursorStart + cellWidth
+        val visibleStart = horizontalState.value.toFloat()
+        val visibleEnd = visibleStart + terminalSurfaceSize.width
+        val next = when {
+            cursorStart < visibleStart + padding -> cursorStart - padding
+            cursorEnd > visibleEnd - padding -> cursorEnd - terminalSurfaceSize.width + padding
+            else -> null
+        }
+        if (next != null) {
+            horizontalState.scrollTo(next.roundToInt().coerceIn(0, horizontalState.maxValue))
+        }
     }
     Column(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
-        Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+        if (!focusedLandscape) Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
             BoxWithConstraints {
                 val compactStatus = maxWidth < 600.dp || density.fontScale >= 1.6f
-                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    if (compactStatus) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            AssistChip(onClick = {}, label = { Text(stringResource(com.termirust.mobile.R.string.device_session)) })
-                            Text(
-                                stringResource(com.termirust.mobile.R.string.terminal_sequence, terminal.outputSequence),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontFamily = FontFamily.Monospace,
-                            )
-                        }
-                        AssistChip(onClick = {}, label = { Text(writerLabel(terminal)) })
-                        Text(isolated(terminal.sessionTitle), fontWeight = FontWeight.SemiBold, maxLines = 1)
-                        Text(
-                            "${isolated(terminal.hostTitle)} · ${terminalStatus(terminal)}",
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    } else {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            AssistChip(onClick = {}, label = { Text(stringResource(com.termirust.mobile.R.string.device_session)) })
-                            AssistChip(onClick = {}, label = { Text(writerLabel(terminal)) })
-                            Column(Modifier.weight(1f)) {
-                                Text(isolated(terminal.sessionTitle), fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                Text(
-                                    "${isolated(terminal.hostTitle)} · ${terminalStatus(terminal)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                )
-                            }
-                            Text(
-                                stringResource(com.termirust.mobile.R.string.terminal_sequence, terminal.outputSequence),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontFamily = FontFamily.Monospace,
-                            )
-                        }
-                    }
+                Column(Modifier.fillMaxWidth()) {
                     Row(
-                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
                     ) {
-                        TextButton(onClick = { followOutput = !followOutput }) {
+                        Box(
+                            Modifier
+                                .size(7.dp)
+                                .background(statusColor, CircleShape),
+                        )
+                        Text(
+                            isolated(terminal.hostTitle),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (!compactStatus) {
                             Text(
-                                stringResource(
-                                    if (followOutput) com.termirust.mobile.R.string.following_output
-                                    else com.termirust.mobile.R.string.follow_output,
-                                ),
+                                terminalStatus(terminal),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = statusColor,
+                                maxLines = 1,
                             )
                         }
-                        if (urls.isNotEmpty()) {
-                            Box {
-                                TextButton(onClick = { showLinks = true }) {
-                                    Text(stringResource(com.termirust.mobile.R.string.open_link))
-                                }
-                                DropdownMenu(
-                                    expanded = showLinks,
-                                    onDismissRequest = { showLinks = false },
-                                ) {
-                                    urls.forEach { url ->
-                                        DropdownMenuItem(
-                                            text = { Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                            onClick = {
-                                                showLinks = false
-                                                uriHandler.openUri(url)
-                                            },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        TerminalKey(
-                            "A-",
-                            accessibilityLabel = stringResource(com.termirust.mobile.R.string.decrease_terminal_text),
-                        ) { setTerminalFontSize(terminalFontSize - 1) }
-                        TerminalKey(
-                            "A+",
-                            accessibilityLabel = stringResource(com.termirust.mobile.R.string.increase_terminal_text),
-                        ) { setTerminalFontSize(terminalFontSize + 1) }
+                        Text(
+                            writerLabel(terminal),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (terminal.writerLease == WriterLeaseState.Held) {
+                                androidx.compose.ui.graphics.Color(0xff22c55e)
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            maxLines = 1,
+                        )
                         when {
                             terminal.writerLease == WriterLeaseState.Held ->
-                                OutlinedButton(onClick = onReleaseControl) {
+                                TextButton(onClick = onReleaseControl) {
                                     Text(stringResource(com.termirust.mobile.R.string.release_control))
                                 }
                             terminal.supportsWriter && terminal.attachState == ReadOnlyAttachState.Live &&
                                 terminal.writerLease !is WriterLeaseState.Requesting ->
-                                Button(onClick = onRequestControl) {
-                                    Text(stringResource(com.termirust.mobile.R.string.request_control))
+                                TextButton(onClick = onRequestControl) {
+                                    Text(stringResource(com.termirust.mobile.R.string.control))
                                 }
                         }
                         if (terminal.attachState is ReadOnlyAttachState.Offline ||
                             terminal.attachState is ReadOnlyAttachState.Gap ||
                             terminal.attachState is ReadOnlyAttachState.Failed
                         ) {
-                            OutlinedButton(onClick = onRetry) {
+                            TextButton(onClick = onRetry) {
                                 Text(stringResource(com.termirust.mobile.R.string.retry))
+                            }
+                        }
+                        Box {
+                            IconButton(onClick = { showOptions = true }) {
+                                Icon(
+                                    Icons.Outlined.MoreVert,
+                                    contentDescription = stringResource(com.termirust.mobile.R.string.terminal_options),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showOptions,
+                                onDismissRequest = { showOptions = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(
+                                                if (followOutput) com.termirust.mobile.R.string.stop_following_output
+                                                else com.termirust.mobile.R.string.follow_output,
+                                            ),
+                                        )
+                                    },
+                                    onClick = {
+                                        followOutput = !followOutput
+                                        showOptions = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(com.termirust.mobile.R.string.phone_width)) },
+                                    onClick = {
+                                        setDesktopWidth(false)
+                                        showOptions = false
+                                    },
+                                    trailingIcon = {
+                                        if (!usesDesktopWidth) Icon(Icons.Outlined.Check, contentDescription = null)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(com.termirust.mobile.R.string.desktop_width)) },
+                                    onClick = {
+                                        setDesktopWidth(true)
+                                        showOptions = false
+                                    },
+                                    trailingIcon = {
+                                        if (usesDesktopWidth) Icon(Icons.Outlined.Check, contentDescription = null)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(com.termirust.mobile.R.string.decrease_terminal_text)) },
+                                    onClick = {
+                                        setTerminalFontSize(terminalFontSize - 1)
+                                        showOptions = false
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(com.termirust.mobile.R.string.increase_terminal_text)) },
+                                    onClick = {
+                                        setTerminalFontSize(terminalFontSize + 1)
+                                        showOptions = false
+                                    },
+                                )
+                                urls.forEach { url ->
+                                    DropdownMenuItem(
+                                        text = { Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                        onClick = {
+                                            showOptions = false
+                                            uriHandler.openUri(url)
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
@@ -858,12 +993,17 @@ private fun ControllerTerminalScreen(
                 }
             }
         }
-        Box(
+        BoxWithConstraints(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .onSizeChanged { terminalSurfaceSize = it },
         ) {
+            val terminalContentWidth = if (usesDesktopWidth) {
+                maxOf(maxWidth, (displayedColumns * displayedFontSize * 0.62 + 24).dp)
+            } else {
+                maxWidth
+            }
             if (terminal.privacyCovered) {
                 Box(
                     Modifier
@@ -893,21 +1033,38 @@ private fun ControllerTerminalScreen(
                     },
                 ) {
                     SelectionContainer {
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize().padding(12.dp),
+                        Row(
+                            Modifier
+                                .fillMaxSize()
+                                .horizontalScroll(horizontalState, enabled = usesDesktopWidth),
                         ) {
-                            items(cells.size) { index ->
-                                Text(
-                                    styledTerminalRow(cells[index]),
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = terminalFontSize.sp,
-                                    maxLines = 1,
-                                    softWrap = false,
-                                    modifier = Modifier.heightIn(
-                                        min = (terminalFontSize * density.fontScale * 1.35).dp,
-                                    ),
-                                )
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier
+                                    .width(terminalContentWidth)
+                                    .fillMaxHeight()
+                                    .padding(12.dp),
+                            ) {
+                                items(cells.size) { index ->
+                                    val cursorColumn = ControllerTerminalCursor.column(
+                                        rowIndex = index,
+                                        cells = cells[index],
+                                        cursorRow = terminal.screen.cursorRow,
+                                        cursorColumn = terminal.screen.cursorColumn,
+                                        scrollbackRows = terminal.screen.scrollbackRows,
+                                        visible = terminal.screen.cursorVisible,
+                                    )
+                                    Text(
+                                        styledTerminalRow(cells[index], cursorColumn),
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = terminalFontSize.sp,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.heightIn(
+                                            min = (displayedFontSize * 1.35).dp,
+                                        ),
+                                    )
+                                }
                             }
                         }
                     }
@@ -916,7 +1073,8 @@ private fun ControllerTerminalScreen(
             if (!terminal.privacyCovered) {
                 ControllerTerminalInputView(
                     enabled = canInput,
-                    focusRequest = focusRequest,
+                    keyboardRequest = keyboardRequest,
+                    showKeyboard = showKeyboard,
                     applicationCursor = terminal.screen.applicationCursor,
                     onBytes = onBytes,
                     modifier = Modifier.size(2.dp),
@@ -933,6 +1091,16 @@ private fun ControllerTerminalScreen(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (focusedLandscape) {
+                        Text(
+                            stringResource(com.termirust.mobile.R.string.you_control),
+                            color = androidx.compose.ui.graphics.Color(0xff22c55e),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        TextButton(onClick = onReleaseControl) {
+                            Text(stringResource(com.termirust.mobile.R.string.release_control))
+                        }
+                    }
                     TerminalKey("Esc") { submitKey(TerminalInputKey.ESCAPE) }
                     TerminalKey("Ctrl", selected = controlModifier) { controlModifier = !controlModifier }
                     TerminalKey("Alt", selected = altModifier) { altModifier = !altModifier }
@@ -944,8 +1112,18 @@ private fun ControllerTerminalScreen(
                     TextButton(onClick = { clipboard.getText()?.text?.let(onPaste) }) {
                         Text(stringResource(com.termirust.mobile.R.string.paste))
                     }
-                    Button(onClick = { focusRequest += 1 }) {
-                        Text(stringResource(com.termirust.mobile.R.string.show_keyboard))
+                    Button(onClick = { setKeyboardPresented(!keyboardPresented) }) {
+                        Icon(
+                            if (keyboardPresented) Icons.Outlined.KeyboardHide else Icons.Outlined.Keyboard,
+                            contentDescription = null,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            stringResource(
+                                if (keyboardPresented) com.termirust.mobile.R.string.hide_keyboard
+                                else com.termirust.mobile.R.string.show_keyboard,
+                            ),
+                        )
                     }
                 }
             }
@@ -968,15 +1146,30 @@ private fun ControllerTerminalScreen(
     }
 }
 
-private fun styledTerminalRow(cells: List<BoundedTerminalCell>): AnnotatedString =
+private fun styledTerminalRow(
+    cells: List<BoundedTerminalCell>,
+    cursorColumn: Int?,
+): AnnotatedString =
     buildAnnotatedString {
-        for (cell in cells) {
+        val displayCells = cells.toMutableList()
+        if (cursorColumn != null) {
+            while (displayCells.size <= cursorColumn) displayCells += BoundedTerminalCell.blank()
+        }
+        for ((column, cell) in displayCells.withIndex()) {
             if (cell.width == TerminalCellWidth.CONTINUATION) continue
             val colors = resolvedTerminalColors(cell.style)
             withStyle(
                 SpanStyle(
-                    color = colors.first,
-                    background = colors.second,
+                    color = if (column == cursorColumn) {
+                        androidx.compose.ui.graphics.Color.Black
+                    } else {
+                        colors.first
+                    },
+                    background = if (column == cursorColumn) {
+                        androidx.compose.ui.graphics.Color(0xff22c55e)
+                    } else {
+                        colors.second
+                    },
                     fontWeight = if (cell.style.bold) FontWeight.Bold else FontWeight.Normal,
                     fontStyle = if (cell.style.italic) FontStyle.Italic else FontStyle.Normal,
                     textDecoration = if (cell.style.underline) {
@@ -1117,6 +1310,8 @@ private fun terminalEmptyText(state: ReadOnlyAttachState): String = when (state)
     else -> stringResource(com.termirust.mobile.R.string.terminal_no_output)
 }
 
+private enum class PairingOfferPasteError { Empty, TooLarge }
+
 @Composable
 private fun PairHostDialog(
     viewModel: ControllerViewModel,
@@ -1128,7 +1323,23 @@ private fun PairHostDialog(
     val offer by viewModel.pairingOffer.collectAsState()
     val hostName by viewModel.pairingHostName.collectAsState()
     val deviceName by viewModel.pairingDeviceName.collectAsState()
-    val sas = connection as? ControllerConnectionState.SasReady
+    val clipboard = LocalClipboardManager.current
+    val liveSas = connection as? ControllerConnectionState.SasReady
+    var retainedSas by remember { mutableStateOf<ControllerConnectionState.SasReady?>(null) }
+    var awaitingCompletion by remember { mutableStateOf(false) }
+    var pairingOfferPasteError by remember { mutableStateOf<PairingOfferPasteError?>(null) }
+    LaunchedEffect(liveSas) {
+        if (liveSas != null) retainedSas = liveSas
+    }
+    LaunchedEffect(connection, awaitingCompletion) {
+        if (!awaitingCompletion || connection is ControllerConnectionState.Pairing ||
+            connection is ControllerConnectionState.SasReady
+        ) return@LaunchedEffect
+        awaitingCompletion = false
+        retainedSas = null
+        if (connection !is ControllerConnectionState.Failed) onComplete()
+    }
+    val sas = liveSas ?: retainedSas?.takeIf { awaitingCompletion }
     val spokenSas = sas?.sas?.toCharArray()?.joinToString(" ")
     val sasDescription = spokenSas?.let {
         stringResource(com.termirust.mobile.R.string.security_code_accessibility, it)
@@ -1139,9 +1350,44 @@ private fun PairHostDialog(
         text = {
             if (sas == null) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (connection is ControllerConnectionState.Failed && offer.isBlank()) {
+                        Text(
+                            stringResource(com.termirust.mobile.R.string.pairing_new_offer_required),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
                     Text(stringResource(com.termirust.mobile.R.string.pairing_offer_hint))
-                    OutlinedButton(onClick = onScan, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(com.termirust.mobile.R.string.scan_qr_code))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedButton(
+                            onClick = onScan,
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Text(stringResource(com.termirust.mobile.R.string.scan_qr_code))
+                        }
+                        Button(
+                            onClick = {
+                                val clipboardOffer = clipboard.getText()?.text
+                                    ?.trim()
+                                    .orEmpty()
+                                if (clipboardOffer.isEmpty()) {
+                                    pairingOfferPasteError = PairingOfferPasteError.Empty
+                                } else if (clipboardOffer.toByteArray().size > 4 * 1_024) {
+                                    pairingOfferPasteError = PairingOfferPasteError.TooLarge
+                                } else {
+                                    viewModel.pairingOffer.value = clipboardOffer
+                                    pairingOfferPasteError = null
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Text(stringResource(com.termirust.mobile.R.string.paste_offer))
+                        }
                     }
                     OutlinedTextField(
                         value = offer,
@@ -1149,7 +1395,42 @@ private fun PairHostDialog(
                         label = { Text(stringResource(com.termirust.mobile.R.string.pairing_offer)) },
                         minLines = 4,
                         maxLines = 8,
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = if (offer.isNotEmpty()) {
+                            {
+                                IconButton(
+                                    onClick = {
+                                        viewModel.pairingOffer.value = ""
+                                        pairingOfferPasteError = null
+                                    },
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.Close,
+                                        contentDescription = stringResource(com.termirust.mobile.R.string.clear),
+                                    )
+                                }
+                            }
+                        } else {
+                            null
+                        },
                     )
+                    pairingOfferPasteError?.let { error ->
+                        Text(
+                            stringResource(
+                                if (error == PairingOfferPasteError.TooLarge) com.termirust.mobile.R.string.pairing_offer_too_large
+                                else com.termirust.mobile.R.string.pairing_clipboard_empty,
+                            ),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    if (offer.isNotBlank()) {
+                        Text(
+                            stringResource(com.termirust.mobile.R.string.pairing_offer_ready),
+                            color = androidx.compose.ui.graphics.Color(0xff22c55e),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
                     OutlinedTextField(
                         value = hostName,
                         onValueChange = { viewModel.pairingHostName.value = it.take(256) },
@@ -1186,13 +1467,17 @@ private fun PairHostDialog(
             if (sas == null) {
                 Button(
                     onClick = viewModel::beginPairing,
-                    enabled = offer.isNotBlank() && connection !is ControllerConnectionState.Pairing,
+                    enabled = offer.isNotBlank() && hostName.isNotBlank() && deviceName.isNotBlank() &&
+                        connection !is ControllerConnectionState.Pairing,
                 ) { Text(stringResource(com.termirust.mobile.R.string.continue_action)) }
             } else {
                 Button(onClick = {
+                    retainedSas = sas
+                    awaitingCompletion = true
                     viewModel.finishPairing(true)
-                    onComplete()
-                }) { Text(stringResource(com.termirust.mobile.R.string.codes_match)) }
+                }, enabled = connection !is ControllerConnectionState.Pairing) {
+                    Text(stringResource(com.termirust.mobile.R.string.codes_match))
+                }
             }
         },
         dismissButton = {

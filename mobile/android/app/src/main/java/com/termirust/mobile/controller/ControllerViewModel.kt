@@ -113,7 +113,10 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
                         challenge.fingerprintSuffix,
                     ),
                 )
-            }.onFailure(::showFailure)
+            }.onFailure { error ->
+                pairingOffer.value = ""
+                showFailure(error)
+            }
         }
     }
 
@@ -143,7 +146,10 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
                     )
                     refreshSelected(retry = true)
                 }
-                .onFailure(::showFailure)
+                .onFailure { error ->
+                    pairingOffer.value = ""
+                    showFailure(error)
+                }
         }
     }
 
@@ -350,10 +356,14 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         val viewport = TerminalViewport(columns, rows)
         if (runCatching { TerminalLimits().validate(viewport) }.isFailure) return
         if (runtime.viewport == viewport) return
+        if (runtime.reducer.cursor.outputSequence == 0L) {
+            runtime.terminal.resize(viewport)
+        }
         runtime.viewport = viewport
-        runtime.terminal.resize(viewport)
+        runtime.pendingResize = viewport
         if (runtime.supportsResize && runtime.writer.lease == WriterLeaseState.Held) {
-            runtime.pendingResize = viewport
+            runtime.writerViewportReady = false
+            runtime.inputBlockedForResize = true
             terminalResize?.cancel()
             terminalResize = viewModelScope.launch {
                 delay(50)
@@ -549,7 +559,6 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
                 if (event.chunk.chunkIndex == 0) {
                     runtime.reducer.beginSnapshot()
                     runtime.terminal.reset(event.chunk.viewport)
-                    runtime.viewport = event.chunk.viewport
                 }
                 runtime.terminal.process(event.chunk.bytes)
                 runtime.reducer.observeSnapshot(event.chunk)
@@ -622,6 +631,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
         runtime.pendingMutations[commandId] = TerminalMutation.ACQUIRE
+        runtime.writerViewportReady = false
         publishTerminal(runtime)
         viewModelScope.launch {
             runCatching { connectionFor(runtime.route).requestWriter(runtime.host, runtime.writer.identity, commandId) }
@@ -648,7 +658,9 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun drainInput(runtime: ActiveTerminalRuntime) {
-        if (runtime.inputInFlight != null || runtime.writer.lease != WriterLeaseState.Held) return
+        if (runtime.inputInFlight != null || runtime.writer.lease != WriterLeaseState.Held ||
+            runtime.inputBlockedForResize || !runtime.writerViewportReady
+        ) return
         val pending = runtime.writer.removeFirstOrNull() ?: return
         runtime.inputInFlight = pending.commandId
         runtime.pendingMutations[pending.commandId] = TerminalMutation.INPUT
@@ -661,10 +673,13 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun sendPendingResize(runtime: ActiveTerminalRuntime) {
         val viewport = runtime.pendingResize ?: return
-        if (runtime.writer.lease != WriterLeaseState.Held) return
+        if (runtime.writer.lease != WriterLeaseState.Held ||
+            runtime.reducer.state != ReadOnlyAttachState.Live ||
+            runtime.pendingMutations.values.any { it is TerminalMutation.Resize }
+        ) return
         runtime.pendingResize = null
         val commandId = UUID.randomUUID()
-        runtime.pendingMutations[commandId] = TerminalMutation.RESIZE
+        runtime.pendingMutations[commandId] = TerminalMutation.Resize(viewport)
         viewModelScope.launch {
             runCatching {
                 connectionFor(runtime.route).sendResize(runtime.host, runtime.writer.identity, commandId, viewport)
@@ -673,23 +688,46 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun completeMutation(runtime: ActiveTerminalRuntime, commandId: UUID, applied: Boolean) {
-        when (runtime.pendingMutations.remove(commandId) ?: return loseWriter(runtime, "stale_response")) {
+        var sendNextResize = false
+        var drainQueuedInput = false
+        when (val mutation = runtime.pendingMutations.remove(commandId)
+            ?: return loseWriter(runtime, "stale_response")) {
             TerminalMutation.ACQUIRE -> {
                 runCatching { runtime.writer.finishAcquire(commandId, applied) }
                     .onFailure { return loseWriter(runtime, "stale_response") }
                 runtime.hasWriterElsewhere = !applied
                 runtime.writerMessage = if (applied) null else "controlled_elsewhere"
+                if (applied) {
+                    sendNextResize = runtime.supportsResize && runtime.pendingResize != null
+                    runtime.writerViewportReady = !sendNextResize
+                    runtime.inputBlockedForResize = sendNextResize
+                    drainQueuedInput = !sendNextResize
+                }
             }
             TerminalMutation.RELEASE -> Unit
             TerminalMutation.INPUT -> {
                 if (runtime.inputInFlight != commandId || !applied) return loseWriter(runtime, "input_rejected")
                 runtime.inputInFlight = null
-                drainInput(runtime)
+                drainQueuedInput = true
             }
-            TerminalMutation.RESIZE -> if (!applied) runtime.writerMessage = "resize_rejected"
+            is TerminalMutation.Resize -> {
+                if (applied) {
+                    runCatching { runtime.terminal.resize(mutation.viewport) }
+                        .onFailure { return loseWriter(runtime, "resize_rejected") }
+                    sendNextResize = runtime.pendingResize != null
+                    runtime.writerViewportReady = !sendNextResize
+                    runtime.inputBlockedForResize = sendNextResize
+                    drainQueuedInput = !sendNextResize
+                } else {
+                    runtime.pendingResize = mutation.viewport
+                    runtime.writerMessage = "resize_rejected"
+                }
+            }
         }
         syncRouteWriter(runtime)
         publishTerminal(runtime)
+        if (sendNextResize) sendPendingResize(runtime)
+        if (drainQueuedInput) drainInput(runtime)
     }
 
     private fun failMutation(
@@ -699,6 +737,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         completionUnknown: Boolean,
     ) {
         val mutation = runtime.pendingMutations.remove(commandId) ?: return loseWriter(runtime, "unmatched_error")
+        if (mutation is TerminalMutation.Resize) runtime.pendingResize = mutation.viewport
         if (runtime.inputInFlight == commandId) runtime.inputInFlight = null
         if (mutation == TerminalMutation.ACQUIRE && !completionUnknown) {
             runCatching { runtime.writer.finishAcquire(commandId, false) }
@@ -711,7 +750,8 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun mutationSendFailed(runtime: ActiveTerminalRuntime, commandId: UUID) {
-        if (runtime.pendingMutations.remove(commandId) == null) return
+        val mutation = runtime.pendingMutations.remove(commandId) ?: return
+        if (mutation is TerminalMutation.Resize) runtime.pendingResize = mutation.viewport
         if (runtime.inputInFlight == commandId) runtime.inputInFlight = null
         loseWriter(runtime, "connection_failed_no_replay")
     }
@@ -719,6 +759,8 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     private fun loseWriter(runtime: ActiveTerminalRuntime, message: String) {
         runtime.writer.markLeaseLost()
         syncRouteWriter(runtime)
+        runtime.writerViewportReady = false
+        runtime.inputBlockedForResize = false
         runtime.pendingMutations.clear()
         runtime.inputInFlight = null
         runtime.writerMessage = message
@@ -890,6 +932,8 @@ private data class ActiveTerminalRuntime(
     var writerMessage: String? = null,
     var pendingPaste: ByteArray? = null,
     var pendingResize: TerminalViewport? = null,
+    var writerViewportReady: Boolean = false,
+    var inputBlockedForResize: Boolean = false,
     var inputInFlight: UUID? = null,
     val pendingMutations: MutableMap<UUID, TerminalMutation> = mutableMapOf(),
 )
@@ -897,7 +941,12 @@ private data class ActiveTerminalRuntime(
 private class ControllerRouteUnavailableException(route: ControllerRemoteRouteKind) :
     IllegalStateException("Controller route unavailable: ${route.name.lowercase()}")
 
-private enum class TerminalMutation { ACQUIRE, RELEASE, INPUT, RESIZE }
+private sealed interface TerminalMutation {
+    data object ACQUIRE : TerminalMutation
+    data object RELEASE : TerminalMutation
+    data object INPUT : TerminalMutation
+    data class Resize(val viewport: TerminalViewport) : TerminalMutation
+}
 
 private val ActiveTerminalRuntime.supportsWriter: Boolean
     get() {

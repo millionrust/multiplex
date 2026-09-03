@@ -49,8 +49,13 @@ private class ControllerTerminalInputBridge(context: Context) : View(context) {
             }
 
             override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
-                if (beforeLength > 0) sendKey(TerminalInputKey.BACKSPACE)
+                repeat(beforeLength.coerceIn(0, 64)) { sendKey(TerminalInputKey.BACKSPACE) }
                 return true
+            }
+
+            override fun closeConnection() {
+                ime.cancel()
+                super.closeConnection()
             }
 
             override fun sendKeyEvent(event: KeyEvent): Boolean = handleKey(event) || super.sendKeyEvent(event)
@@ -64,6 +69,13 @@ private class ControllerTerminalInputBridge(context: Context) : View(context) {
         requestFocus()
         (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
             .showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    fun hideKeyboard() {
+        ime.cancel()
+        (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+            .hideSoftInputFromWindow(windowToken, 0)
+        clearFocus()
     }
 
     private fun handleKey(event: KeyEvent): Boolean {
@@ -127,7 +139,8 @@ private class ControllerTerminalInputBridge(context: Context) : View(context) {
 @Composable
 fun ControllerTerminalInputView(
     enabled: Boolean,
-    focusRequest: Long,
+    keyboardRequest: Long,
+    showKeyboard: Boolean,
     applicationCursor: Boolean,
     onBytes: (ByteArray) -> Unit,
     modifier: Modifier = Modifier,
@@ -141,10 +154,15 @@ fun ControllerTerminalInputView(
             it.acceptsInput = enabled
             it.applicationCursor = applicationCursor
             it.onBytes = onBytes
-            if (!enabled) it.clearFocus()
+            if (!enabled) it.hideKeyboard()
         },
     )
-    LaunchedEffect(focusRequest, enabled) {
-        if (enabled && focusRequest > 0) bridge[0]?.showKeyboard()
+    LaunchedEffect(keyboardRequest, enabled) {
+        if (keyboardRequest <= 0) return@LaunchedEffect
+        if (enabled && showKeyboard) {
+            bridge[0]?.showKeyboard()
+        } else {
+            bridge[0]?.hideKeyboard()
+        }
     }
 }

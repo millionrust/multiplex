@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -165,6 +166,42 @@ class TerminalInteractionTest {
             listOf("https://example.com"),
             TerminalInteraction.visibleHttpUrls(snapshot.lines.joinToString("\n")),
         )
+    }
+
+    @Test
+    fun controllerFollowTargetStopsAtCursorOrLatestContentNotBlankPadding() {
+        assertEquals(0, ControllerTerminalFollowTarget.row(listOf("prompt", "", "", ""), 0, 0))
+        assertEquals(2, ControllerTerminalFollowTarget.row(listOf("old", "new", "", ""), 1, 1))
+        assertEquals(1, ControllerTerminalFollowTarget.row(listOf("prompt", "later output", "", ""), 0, 0))
+        assertEquals(null, ControllerTerminalFollowTarget.row(emptyList(), 0, 0))
+        assertEquals(6, ControllerTerminalFollowTarget.firstVisibleRow(targetRow = 9, visibleRows = 4))
+        assertEquals(0, ControllerTerminalFollowTarget.firstVisibleRow(targetRow = 1, visibleRows = 10))
+    }
+
+    @Test
+    fun controllerCursorMapsViewportRowAndWideCellContinuation() {
+        val cells = listOf(
+            BoundedTerminalCell("界", TerminalCellWidth.WIDE, TerminalCellStyle()),
+            BoundedTerminalCell.continuation(TerminalCellStyle()),
+        )
+        assertEquals(0, ControllerTerminalCursor.column(4, cells, 2, 1, 2, true))
+        assertEquals(5, ControllerTerminalCursor.column(4, cells, 2, 5, 2, true))
+        assertEquals(null, ControllerTerminalCursor.column(3, cells, 2, 1, 2, true))
+        assertEquals(null, ControllerTerminalCursor.column(4, cells, 2, 1, 2, false))
+    }
+
+    @Test
+    fun controllerTerminalUsesCompactChromeOnlyForFocusedLandscape() {
+        assertTrue(ControllerTerminalLayout.usesFocusedLandscape(true, true))
+        assertFalse(ControllerTerminalLayout.usesFocusedLandscape(false, true))
+        assertFalse(ControllerTerminalLayout.usesFocusedLandscape(true, false))
+    }
+
+    @Test
+    fun controllerTerminalDesktopWidthPreservesAtLeastEightyColumns() {
+        assertEquals(39, ControllerTerminalWidth.columns(39, usesDesktopWidth = false))
+        assertEquals(80, ControllerTerminalWidth.columns(39, usesDesktopWidth = true))
+        assertEquals(96, ControllerTerminalWidth.columns(96, usesDesktopWidth = true))
     }
 
     private fun fixture(): Fixture {
