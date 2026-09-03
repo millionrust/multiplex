@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "capability_vocabulary": [
+    "list_device_sessions",
+    "terminal_output",
+    "terminal_input",
+    "terminal_resize",
+    "persistent_tmux",
+    "durable_replay",
+    "authoritative_activity",
+    "single_writer"
+  ],
+  "routes": [
+    {
+      "id": "direct_ssh_connection",
+      "item_kind": "saved_connection",
+      "section": "connections",
+      "display_kind": "Connection",
+      "terminal_badge": "Direct SSH",
+      "credential_owner": "ssh_credential",
+      "continuity_owner": "remote_tmux_if_enabled",
+      "capabilities": [
+        "terminal_output",
+        "terminal_input",
+        "terminal_resize",
+        "persistent_tmux"
+      ],
+      "can_open_terminal": true
+    },
+    {
+      "id": "paired_device",
+      "item_kind": "paired_device",
+      "section": "devices",
+      "display_kind": "Device",
+      "terminal_badge": null,
+      "credential_owner": "device_pairing_identity",
+      "continuity_owner": "none",
+      "capabilities": ["list_device_sessions"],
+      "can_open_terminal": false
+    },
+    {
+      "id": "device_session",
+      "item_kind": "durable_device_session",
+      "section": "devices",
+      "display_kind": "Session",
+      "terminal_badge": "Device Session",
+      "credential_owner": "device_pairing_identity",
+      "continuity_owner": "host_service",
+      "capabilities": [
+        "terminal_output",
+        "terminal_input",
+        "terminal_resize",
+        "durable_replay",
+        "authoritative_activity",
+        "single_writer"
+      ],
+      "can_open_terminal": true
+    }
+  ],
+  "invalid_cases": [
+    {
+      "name": "direct SSH cannot claim Host replay",
+      "item_kind": "saved_connection",
+      "credential_owner": "ssh_credential",
+      "continuity_owner": "host_service",
+      "capabilities": ["terminal_output", "durable_replay"],
+      "can_open_terminal": true,
+      "expected_error": "continuity_owner_mismatch"
+    },
+    {
+      "name": "direct SSH cannot claim a writer lease",
+      "item_kind": "saved_connection",
+      "credential_owner": "ssh_credential",
+      "continuity_owner": "remote_tmux_if_enabled",
+      "capabilities": ["terminal_output", "single_writer"],
+      "can_open_terminal": true,
+      "expected_error": "capability_mismatch"
+    },
+    {
+      "name": "Device Session cannot read SSH credentials",
+      "item_kind": "durable_device_session",
+      "credential_owner": "ssh_credential",
+      "continuity_owner": "host_service",
+      "capabilities": ["terminal_output", "durable_replay"],
+      "can_open_terminal": true,
+      "expected_error": "credential_owner_mismatch"
+    },
+    {
+      "name": "Device Session cannot claim tmux continuity",
+      "item_kind": "durable_device_session",
+      "credential_owner": "device_pairing_identity",
+      "continuity_owner": "remote_tmux_if_enabled",
+      "capabilities": ["terminal_output"],
+      "can_open_terminal": true,
+      "expected_error": "continuity_owner_mismatch"
+    },
+    {
+      "name": "Device rows do not open terminals",
+      "item_kind": "paired_device",
+      "credential_owner": "device_pairing_identity",
+      "continuity_owner": "none",
+      "capabilities": ["list_device_sessions"],
+      "can_open_terminal": true,
+      "expected_error": "terminal_ownership_mismatch"
+    },
+    {
+      "name": "Unknown capability fails closed",
+      "item_kind": "saved_connection",
+      "credential_owner": "ssh_credential",
+      "continuity_owner": "remote_tmux_if_enabled",
+      "capabilities": ["terminal_output", "cloud_magic"],
+      "can_open_terminal": true,
+      "expected_error": "unknown_capability"
+    }
+  ]
+}

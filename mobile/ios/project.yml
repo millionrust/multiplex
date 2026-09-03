@@ -1,0 +1,118 @@
+name: TermiRustMobile
+options:
+  minimumXcodeGenVersion: 2.42.0
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  swift-nio:
+    url: https://github.com/apple/swift-nio.git
+    from: 2.101.2
+  swift-nio-ssh:
+    url: https://github.com/apple/swift-nio-ssh.git
+    from: 0.13.0
+  swift-crypto:
+    url: https://github.com/apple/swift-crypto.git
+    from: 4.5.0
+targets:
+  TermiRustMobile:
+    type: application
+    platform: iOS
+    sources:
+      - TermiRustMobile/App/TermiRustMobileApp.swift
+      - TermiRustMobile/Assets.xcassets
+      - TermiRustMobile/Controller
+      - TermiRustMobile/Generated/TermiRustControllerSecurity.swift
+      - TermiRustMobile/Models/ControllerModels.swift
+      - TermiRustMobile/Models/ControllerRemoteRoute.swift
+      - TermiRustMobile/Models/ControllerRemoteRouteConfiguration.swift
+      - TermiRustMobile/Models/MobileRouteContract.swift
+      - TermiRustMobile/Models/MobileCrossRouteAcceptance.swift
+      - TermiRustMobile/Models/MobileVaultModels.swift
+      - TermiRustMobile/Security/ControllerKeychainBlobStore.swift
+      - TermiRustMobile/Security/ControllerRouteCredentialStore.swift
+      - TermiRustMobile/Security/KeychainSecretStore.swift
+      - TermiRustMobile/Security/MobileDeviceIdentityStore.swift
+      - TermiRustMobile/SSH/MobileSSHSession.swift
+      - TermiRustMobile/SSH/OpenSSHPrivateKeyParser.swift
+      - TermiRustMobile/SSH/TmuxBootstrap.swift
+      - TermiRustMobile/Terminal/BoundedTerminalBuffer.swift
+      - TermiRustMobile/Terminal/GeneratedTerminalCellWidth.swift
+      - TermiRustMobile/Terminal/TerminalInteraction.swift
+      - TermiRustMobile/Terminal/TerminalAcceptance.swift
+      - TermiRustMobile/Terminal/TerminalBuffer.swift
+      - TermiRustMobile/Terminal/TerminalGrid.swift
+      - TermiRustMobile/Terminal/TerminalInputEncoding.swift
+      - TermiRustMobile/ViewModels/ControllerTerminalViewModel.swift
+      - TermiRustMobile/ViewModels/ControllerViewModel.swift
+      - TermiRustMobile/ViewModels/HostListViewModel.swift
+      - TermiRustMobile/Vault
+      - TermiRustMobile/Views/ContentView.swift
+      - TermiRustMobile/Views/ControllerPresentation.swift
+      - TermiRustMobile/Views/ControllerQRCodeScanner.swift
+      - TermiRustMobile/Views/ControllerReadOnlyTerminalView.swift
+      - TermiRustMobile/Views/ControllerRootView.swift
+      - TermiRustMobile/Views/ControllerTerminalInputView.swift
+      - TermiRustMobile/Views/HostListView.swift
+      - TermiRustMobile/Views/TerminalSessionView.swift
+      - TermiRustMobile/Localizable.xcstrings
+    dependencies:
+      - package: swift-nio-ssh
+        product: NIOSSH
+      - package: swift-nio
+        product: NIOCore
+      - package: swift-nio
+        product: NIOPosix
+      - package: swift-crypto
+        product: Crypto
+      - framework: Frameworks/TermiRustMobileCrypto.xcframework
+        embed: false
+      - framework: Frameworks/TermiRustControllerSecurity.xcframework
+        embed: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.termirust.mobile
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: TermiRust connects directly to a paired TermiRust desktop on your local network.
+        INFOPLIST_KEY_NSCameraUsageDescription: Scan a TermiRust Desktop pairing code without saving camera images.
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        SWIFT_VERSION: 6.0
+        IPHONEOS_DEPLOYMENT_TARGET: 17.0
+        UNIFIED_MOBILE_ROUTES: 1
+  TermiRustMobileTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - TermiRustMobileTests/BoundedTerminalBufferTests.swift
+      - TermiRustMobileTests/AppleControllerRouteTests.swift
+      - TermiRustMobileTests/AppleControllerRouteViewModelTests.swift
+      - TermiRustMobileTests/ControllerBindingConformanceTests.swift
+      - TermiRustMobileTests/ControllerFleetCacheTests.swift
+      - TermiRustMobileTests/ControllerPairingFleetTests.swift
+      - TermiRustMobileTests/ControllerReadOnlyTerminalTests.swift
+      - TermiRustMobileTests/ControllerTerminalViewModelTests.swift
+      - TermiRustMobileTests/ControllerWriterTests.swift
+      - TermiRustMobileTests/TerminalConformanceV1Tests.swift
+      - TermiRustMobileTests/TerminalConformanceV2Tests.swift
+      - TermiRustMobileTests/TerminalInteractionTests.swift
+      - TermiRustMobileTests/TerminalAcceptanceTests.swift
+      - TermiRustMobileTests/MobileRouteContractTests.swift
+      - TermiRustMobileTests/MobileCrossRouteAcceptanceTests.swift
+      - TermiRustMobileTests/MobileVaultImporterTests.swift
+      - TermiRustMobileTests/UnifiedRouteLifecycleTests.swift
+      - TermiRustMobileTests/DirectSSHIntegrationTests.swift
+      - TermiRustMobileTests/UniversalSessionGoldenPathTests.swift
+      - path: TermiRustMobileTests/Fixtures
+        buildPhase: resources
+    dependencies:
+      - target: TermiRustMobile
+      - package: swift-nio-ssh
+        product: NIOSSH
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.termirust.mobile.tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: 6.0
+        IPHONEOS_DEPLOYMENT_TARGET: 17.0
