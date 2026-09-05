@@ -28,7 +28,7 @@ independent local approval policy without widening these defaults.
 Run:
 
 ```text
-./scripts/verify-mcp-readonly.sh
+./scripts/verify/mcp-readonly.sh
 ```
 
 The package tests exercise initialization ordering, read-only tool annotations, default-denied
@@ -44,10 +44,10 @@ payload reads, runs package Clippy with warnings denied, and checks diff hygiene
 Final verification on 2026-09-02:
 
 ```text
-./scripts/verify-mcp-readonly.sh
+./scripts/verify/mcp-readonly.sh
 PASS: 16 tests passed, 0 failed; package Clippy passed with warnings denied
 
-./scripts/verify-controller-security-vectors.sh --check
+./scripts/verify/controller-security-vectors.sh --check
 PASS: 3 golden-vector tests passed, 0 failed
 
 cargo test --workspace --all-targets --locked

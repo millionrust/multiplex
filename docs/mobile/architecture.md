@@ -27,8 +27,8 @@ conflict handling, and audit semantics.
 
 The native mobile applications are versioned in this monorepo:
 
-- `mobile/ios`
-- `mobile/android`
+- `apps/ios`
+- `apps/android`
 
 Shared schema and protocol changes should be made at the repository root first,
 then consumed by both native applications through a stable exported schema or

@@ -29,7 +29,7 @@ This is a product No-Go, not a claim that browser automation is technically impo
 
 ## Mandatory Gates
 
-The generated report contains all 15 gates for every route. `scripts/verify-browser-spike-report.sh` rejects an incomplete gate set and forbids `Go` unless every selected-candidate status is `pass`.
+The generated report contains all 15 gates for every route. `scripts/verify/browser-spike-report.sh` rejects an incomplete gate set and forbids `Go` unless every selected-candidate status is `pass`.
 
 | Mandatory gate | Fixture-only result | Evidence needed to close |
 |---|---|---|

@@ -53,8 +53,8 @@ All listed commands exited `0` on their final run:
 | stalled-handshake cancellation test, 50 consecutive exact runs | PASS, 50/50 |
 | SFTP module tests | PASS, 23/23; Docker cases explicitly self-skipped |
 | discovery cache-cancellation test, 20 consecutive exact runs | PASS, 20/20 |
-| `./scripts/auto-test.sh` | PASS; tests and Clippy reached |
-| `./scripts/verify-product-model.sh --local` | PASS |
+| `./scripts/test/auto.sh` | PASS; tests and Clippy reached |
+| `./scripts/verify/product-model.sh --local` | PASS |
 | Swift `./scripts/verify-ios-unified-routes.sh` | PASS source/lifecycle type-check; runtime SKIPPED |
 | Kotlin `./scripts/verify-android-unified-routes.sh` | PASS unit tests and debug APK |
 | `git diff --check` in Rust, Swift, and Kotlin repositories | PASS |
@@ -92,7 +92,7 @@ Warnings remain visible and are not suppressed by N01:
 - future-incompatibility notices: `block 0.1.6` and `proc-macro-error2 2.0.1`
 
 No warning introduced on the changed Rust lines was reported by
-`scripts/clippy-changed.py`.
+`scripts/dev/clippy-changed.py`.
 
 ## Repository And Cleanup State
 

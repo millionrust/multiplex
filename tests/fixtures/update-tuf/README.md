@@ -19,7 +19,7 @@ Use `generate_delegated_fixture` as the exact test name for the delegated fixtur
 The test-only generator refuses to overwrite an existing fixture. RSA-PSS signatures use fresh
 salt, so checked-in fixture hashes are the review boundary; the verifier is deterministic,
 not the raw signature bytes. `MANIFEST.sha256` is validated by
-`scripts/verify-update-trust-adr.sh`.
+`scripts/verify/update-trust-adr.sh`.
 
 The target entry describes an inert byte string and no target payload is committed or
 fetched by `termirust-update-trust`.

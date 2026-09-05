@@ -77,16 +77,16 @@ Other things worth knowing about:
 The app is being built as a native Rust desktop client for Windows, macOS, and Linux. Secure credentials use each platform's native credential backend through `keyring`, and config/state storage already uses cross-platform user directories.
 
 The native mobile clients are part of the same repository: the Swift iOS/iPadOS
-application lives in [`mobile/ios`](mobile/ios), and the Kotlin Android
-application lives in [`mobile/android`](mobile/android). Run
-`scripts/verify-mobile-mvp.sh` from the repository root to validate the shared
+application lives in [`apps/ios`](apps/ios), and the Kotlin Android
+application lives in [`apps/android`](apps/android). Run
+`scripts/verify/mobile-mvp.sh` from the repository root to validate the shared
 Rust protocol and both mobile projects together.
 
 Cross-platform parity work is still in progress in the UI and packaging layers, so expect rough edges outside the primary development environment.
 
 The tracked parity target is documented in [docs/termius-parity.md](docs/termius-parity.md).
 The working backlog for the remaining parity push is tracked in [docs/parity-todo.md](docs/parity-todo.md).
-Automated smoke testing is documented in [docs/testing.md](docs/testing.md); run `./scripts/auto-test.sh` before release checks or larger manual QA passes.
+Automated smoke testing is documented in [docs/testing.md](docs/testing.md); run `./scripts/test/auto.sh` before release checks or larger manual QA passes.
 
 ## Not built yet
 
@@ -96,6 +96,23 @@ This is early alpha. The following are on the radar but don't exist yet:
 - Vault sync / remote team features
 - Deeper library/layout polish across all major screens
 - Platform-specific packaging polish
+
+## Repository layout
+
+```
+crates/            Cargo workspace members; crates/termirust-desktop is the GPUI desktop app
+apps/              Native iOS/iPadOS (apps/ios, Swift) and Android (apps/android, Kotlin) applications
+tools/             Standalone spike workspaces with their own lockfiles
+scripts/           Automation grouped by verb: verify/, test/, build/, sync/, bench/, run/, dev/
+tests/             Shared cross-crate test assets: fixtures/, support/, ui/ audits, swift/ runners
+design/, locales/  Design tokens and localization catalogs consumed by termirust-ui-contract
+docs/              Guides, ADRs (decisions/), and completion/engineering evidence
+dist/              Ignored build output for mobile FFI artifacts (see scripts/build/)
+```
+
+The root `Cargo.toml` is a virtual workspace manifest whose default member is the
+desktop crate, so `cargo run`, `cargo check`, and `cargo test` from the root still
+target the app; add `--workspace` to cover every crate.
 
 ## License
 

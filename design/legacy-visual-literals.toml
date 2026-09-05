@@ -2,7 +2,7 @@
 version = 1
 
 [[exceptions]]
-file = "src/ui/app/library.rs"
+file = "crates/termirust-desktop/src/ui/app/library.rs"
 line = 1114
 category = "font"
 fingerprint = "sha256:281fbd7488952eeb8bc47a5be7084b267ae54357ce70575340f3e3d990f55d42"
@@ -10,7 +10,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/library.rs"
+file = "crates/termirust-desktop/src/ui/app/library.rs"
 line = 1134
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -18,7 +18,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/library.rs"
+file = "crates/termirust-desktop/src/ui/app/library.rs"
 line = 1167
 category = "dimension"
 fingerprint = "sha256:04fd0a2886e42552d2e58b4f73726be231fc05660840670e5ad9cef7eb7b433f"
@@ -26,7 +26,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/library.rs"
+file = "crates/termirust-desktop/src/ui/app/library.rs"
 line = 1172
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -34,7 +34,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/library.rs"
+file = "crates/termirust-desktop/src/ui/app/library.rs"
 line = 1219
 category = "dimension"
 fingerprint = "sha256:6ff0e9c4cdbaff52f6cbf8c859c8f49bed164f88ecccfac94176dfadb8f26274"
@@ -42,7 +42,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/library.rs"
+file = "crates/termirust-desktop/src/ui/app/library.rs"
 line = 1264
 category = "font"
 fingerprint = "sha256:281fbd7488952eeb8bc47a5be7084b267ae54357ce70575340f3e3d990f55d42"
@@ -50,7 +50,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/library.rs"
+file = "crates/termirust-desktop/src/ui/app/library.rs"
 line = 1300
 category = "radius"
 fingerprint = "sha256:af6a38d2629d86604d219dec68da85871f4a284d263fa68ba9c24fc12a224965"
@@ -58,7 +58,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/library.rs"
+file = "crates/termirust-desktop/src/ui/app/library.rs"
 line = 1304
 category = "spacing"
 fingerprint = "sha256:246d7a1390ad36e3c5eb0f6b74db1a46ef8469da3704d0c383e0946370a96b67"
@@ -66,7 +66,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/library.rs"
+file = "crates/termirust-desktop/src/ui/app/library.rs"
 line = 1307
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -74,7 +74,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/library.rs"
+file = "crates/termirust-desktop/src/ui/app/library.rs"
 line = 1349
 category = "dimension"
 fingerprint = "sha256:d0a2ddbec5c7c498fb3ec77856586fa3f88d4db9b72cd2f93e4e29d8073d7602"
@@ -82,7 +82,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/library.rs"
+file = "crates/termirust-desktop/src/ui/app/library.rs"
 line = 1350
 category = "radius"
 fingerprint = "sha256:3c300db576835443d868a42f2b7c54d2688736d5fc340e2ad19560b49c1cab0f"
@@ -90,7 +90,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/library.rs"
+file = "crates/termirust-desktop/src/ui/app/library.rs"
 line = 1355
 category = "spacing"
 fingerprint = "sha256:246d7a1390ad36e3c5eb0f6b74db1a46ef8469da3704d0c383e0946370a96b67"
@@ -98,7 +98,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/library.rs"
+file = "crates/termirust-desktop/src/ui/app/library.rs"
 line = 1362
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -106,7 +106,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/library.rs"
+file = "crates/termirust-desktop/src/ui/app/library.rs"
 line = 1421
 category = "dimension"
 fingerprint = "sha256:6ff0e9c4cdbaff52f6cbf8c859c8f49bed164f88ecccfac94176dfadb8f26274"
@@ -114,7 +114,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 151
 category = "dimension"
 fingerprint = "sha256:e289c614c6c40547668f71f4e4a061036b8d280e8d51b740fd29a0d9f148f6a1"
@@ -122,7 +122,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 152
 category = "dimension"
 fingerprint = "sha256:60ce7214b156bb07bf1454b3ebe3e1efa82a9cb6413c3e64e7c6b01037ab7c6c"
@@ -130,7 +130,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 153
 category = "spacing"
 fingerprint = "sha256:cbcf14acbb55f23b76452c2590cfe50b395e79626eaa8c44fa69501088917fcd"
@@ -138,7 +138,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 154
 category = "spacing"
 fingerprint = "sha256:619eec41e90aee446c3dea55c7c8d5c2dd4033ff8809c05771c797f3bdc5c604"
@@ -146,7 +146,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 155
 category = "spacing"
 fingerprint = "sha256:436bf55da7961ffb2210a34bfa7c99d16567bf0ce74019c396b6dd8da71c5dbf"
@@ -154,7 +154,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 156
 category = "spacing"
 fingerprint = "sha256:6b87b9b1f023305ae8af81bfec63848bca18ae35f16a80e1760d82c7fc368900"
@@ -162,7 +162,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 158
 category = "dimension"
 fingerprint = "sha256:bc32c538b0e4f6f4f2de8669f7e59554b6ebadc05282dd03ce82cefc15e19530"
@@ -170,7 +170,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 1058
 category = "spacing"
 fingerprint = "sha256:4e107bec39f257b9443d504a6df163a5af7ca4cafcd298bbd940c1a6b953bd30"
@@ -178,7 +178,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 1060
 category = "spacing"
 fingerprint = "sha256:71a08b6403e9d8b3b3b5d4f5f89a6f57d640fe7043667abac6c6ca3a4a647177"
@@ -186,7 +186,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 1061
 category = "spacing"
 fingerprint = "sha256:224bd7561f2393b02687f38cfe9b4b67bb16ef358a34236175ba5a1b13ae4bfd"
@@ -194,7 +194,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 1062
 category = "spacing"
 fingerprint = "sha256:5c3f35367492914a14dc8e7893c80a63b47d5ed30ca1e721810b88918e54e1d4"
@@ -202,7 +202,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 1063
 category = "radius"
 fingerprint = "sha256:b7450dea7075cf6b686ff3073de435be9f485993cb1474be7567f2d52f630c1c"
@@ -210,7 +210,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 1070
 category = "dimension"
 fingerprint = "sha256:04fd0a2886e42552d2e58b4f73726be231fc05660840670e5ad9cef7eb7b433f"
@@ -218,7 +218,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 1638
 category = "motion"
 fingerprint = "sha256:7f81b814b1066abc3656045062de59ce31e07891108ce085fb9a54d03b1008db"
@@ -226,7 +226,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 1664
 category = "motion"
 fingerprint = "sha256:9d7e5c3aa1bd3d3d34434793dd2551d8eaea34b6dafe880157943678b7d129fd"
@@ -234,7 +234,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 5872
 category = "motion"
 fingerprint = "sha256:081a817c8e399f49c437cfa9a9b231e18938fb2f1154e08a53d12befebad41d5"
@@ -242,7 +242,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 5889
 category = "motion"
 fingerprint = "sha256:48b39b8d55ba77b85ab1d468ca26add977ae0d3b8c5e34a9a3de70847745aa57"
@@ -250,7 +250,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10005
 category = "font"
 fingerprint = "sha256:59928e8224f4eac2b948d1fecf2e0a7d11888282c1b879d12f7d127c0239e0aa"
@@ -258,7 +258,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10131
 category = "font"
 fingerprint = "sha256:59928e8224f4eac2b948d1fecf2e0a7d11888282c1b879d12f7d127c0239e0aa"
@@ -266,7 +266,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10226
 category = "radius"
 fingerprint = "sha256:805a2cda9d805ae6a58add656c87779e73bb726f8dec2753b1305011b1070f14"
@@ -274,7 +274,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10238
 category = "dimension"
 fingerprint = "sha256:1b898adaa76a0f6a7974ced52783e015bf5fa32e7b42ff90f467aaf7f452de4d"
@@ -282,7 +282,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10254
 category = "radius"
 fingerprint = "sha256:805a2cda9d805ae6a58add656c87779e73bb726f8dec2753b1305011b1070f14"
@@ -290,7 +290,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10273
 category = "spacing"
 fingerprint = "sha256:97164bd9a469c384d9ad80014e081939cd53235376eebc01a8bd111daed76ac6"
@@ -298,7 +298,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10319
 category = "font"
 fingerprint = "sha256:132c1a8dbcb6c03903fe13f75d6375228a386ee2d8c11b84107238aabbf14b52"
@@ -306,7 +306,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10361
 category = "spacing"
 fingerprint = "sha256:5c3f35367492914a14dc8e7893c80a63b47d5ed30ca1e721810b88918e54e1d4"
@@ -314,7 +314,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10362
 category = "radius"
 fingerprint = "sha256:3c300db576835443d868a42f2b7c54d2688736d5fc340e2ad19560b49c1cab0f"
@@ -322,7 +322,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10434
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -330,7 +330,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10637
 category = "spacing"
 fingerprint = "sha256:1b947e65247064e11f26aacc3f71392485f4a4027c4280ea4935751a27889b1c"
@@ -338,7 +338,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10638
 category = "radius"
 fingerprint = "sha256:3c300db576835443d868a42f2b7c54d2688736d5fc340e2ad19560b49c1cab0f"
@@ -346,7 +346,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10666
 category = "dimension"
 fingerprint = "sha256:463260380f6c57a8efad7c141b5d9c50a7e3b95b3e445e045716c34f9436ebc3"
@@ -354,7 +354,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10671
 category = "radius"
 fingerprint = "sha256:3c300db576835443d868a42f2b7c54d2688736d5fc340e2ad19560b49c1cab0f"
@@ -362,7 +362,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10682
 category = "radius"
 fingerprint = "sha256:cb6ac2924a085fc14c7284d7b155dfe8e169f48879b1e9468319bb7f545c2a37"
@@ -370,7 +370,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10712
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -378,7 +378,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10940
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -386,7 +386,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 10993
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -394,7 +394,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11007
 category = "dimension"
 fingerprint = "sha256:463260380f6c57a8efad7c141b5d9c50a7e3b95b3e445e045716c34f9436ebc3"
@@ -402,7 +402,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11012
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -410,7 +410,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11032
 category = "dimension"
 fingerprint = "sha256:463260380f6c57a8efad7c141b5d9c50a7e3b95b3e445e045716c34f9436ebc3"
@@ -418,7 +418,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11037
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -426,7 +426,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11101
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -434,7 +434,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11108
 category = "spacing"
 fingerprint = "sha256:565de1473e3b6b44d76a09e6e9049280b5458c9d43d1183ec22574105b38f47c"
@@ -442,7 +442,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11176
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -450,7 +450,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11189
 category = "spacing"
 fingerprint = "sha256:565de1473e3b6b44d76a09e6e9049280b5458c9d43d1183ec22574105b38f47c"
@@ -458,7 +458,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11230
 category = "spacing"
 fingerprint = "sha256:d38c336cb354f1a97474e2ce83791c3696a6c915c1288d503f2657660c80a24a"
@@ -466,7 +466,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11231
 category = "radius"
 fingerprint = "sha256:b7450dea7075cf6b686ff3073de435be9f485993cb1474be7567f2d52f630c1c"
@@ -474,7 +474,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11356
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -482,7 +482,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11363
 category = "spacing"
 fingerprint = "sha256:565de1473e3b6b44d76a09e6e9049280b5458c9d43d1183ec22574105b38f47c"
@@ -490,7 +490,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11370
 category = "dimension"
 fingerprint = "sha256:463260380f6c57a8efad7c141b5d9c50a7e3b95b3e445e045716c34f9436ebc3"
@@ -498,7 +498,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11375
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -506,7 +506,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11395
 category = "dimension"
 fingerprint = "sha256:463260380f6c57a8efad7c141b5d9c50a7e3b95b3e445e045716c34f9436ebc3"
@@ -514,7 +514,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11400
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -522,7 +522,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11421
 category = "dimension"
 fingerprint = "sha256:463260380f6c57a8efad7c141b5d9c50a7e3b95b3e445e045716c34f9436ebc3"
@@ -530,7 +530,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11426
 category = "font"
 fingerprint = "sha256:a59810ab0e1207b27201a5d4798f99d271e1e6bb59f9d0343d478eb6c937d16d"
@@ -538,7 +538,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11605
 category = "dimension"
 fingerprint = "sha256:7220d93b0978a529d89fb8a9526dcba624985525a13772f8333e7d73c7b96b2b"
@@ -546,7 +546,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11615
 category = "dimension"
 fingerprint = "sha256:0c290b67c29b35a2cc042e421a85338ae3e9683f5e316fd023b2999a40dd277a"
@@ -554,7 +554,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11616
 category = "radius"
 fingerprint = "sha256:215de26fad78a456f8602dd612dbd58d022f2a817f2237ddc60dd7b616463851"
@@ -562,7 +562,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11627
 category = "font"
 fingerprint = "sha256:47e8b2f9020d085378d8d29da7f3d2eb9e4d46bb1bf283fe68a71e985df65a0f"
@@ -570,7 +570,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11634
 category = "dimension"
 fingerprint = "sha256:7141de1a6c85b6f34842e965f29c86f7db55de68679f7b2f6be12d60584b183d"
@@ -578,7 +578,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11654
 category = "dimension"
 fingerprint = "sha256:7220d93b0978a529d89fb8a9526dcba624985525a13772f8333e7d73c7b96b2b"
@@ -586,7 +586,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11664
 category = "dimension"
 fingerprint = "sha256:0c290b67c29b35a2cc042e421a85338ae3e9683f5e316fd023b2999a40dd277a"
@@ -594,7 +594,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11665
 category = "radius"
 fingerprint = "sha256:215de26fad78a456f8602dd612dbd58d022f2a817f2237ddc60dd7b616463851"
@@ -602,7 +602,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11676
 category = "font"
 fingerprint = "sha256:47e8b2f9020d085378d8d29da7f3d2eb9e4d46bb1bf283fe68a71e985df65a0f"
@@ -610,7 +610,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11683
 category = "dimension"
 fingerprint = "sha256:7141de1a6c85b6f34842e965f29c86f7db55de68679f7b2f6be12d60584b183d"
@@ -618,7 +618,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11743
 category = "dimension"
 fingerprint = "sha256:f7d0fa0a4bd0045d639c6fcb8a30bf752dbdaf945208837e88641569d59cb5ce"
@@ -626,7 +626,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11748
 category = "font"
 fingerprint = "sha256:3ca31d5f15b9eb4e868670786de0528d85b6b5b3c4e9219a83f632845d4ea9c0"
@@ -634,7 +634,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11756
 category = "dimension"
 fingerprint = "sha256:7823f8fd7cf20d7170239814a2c60bf706da6ba7feca23e6332d7fd431685594"
@@ -642,7 +642,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11959
 category = "spacing"
 fingerprint = "sha256:4e554a94732adac9430bf0d72ad8fd9bf0d5af836ea58b506356b9df2bcd6104"
@@ -650,7 +650,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 11969
 category = "radius"
 fingerprint = "sha256:27742f3e9d81ca92e0d73181fea4dce7acabec73f9505996ab6ef55728ce8cc1"
@@ -658,7 +658,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 12026
 category = "radius"
 fingerprint = "sha256:3c300db576835443d868a42f2b7c54d2688736d5fc340e2ad19560b49c1cab0f"
@@ -666,7 +666,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 12530
 category = "dimension"
 fingerprint = "sha256:74c27c80633b95a0d3029c8f89ff27dc1699a97b4a7fe56eda2309c0c74d13ac"
@@ -674,7 +674,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 12531
 category = "dimension"
 fingerprint = "sha256:710b0b0531872e390d2b7e3eaf279f0b99c69f8907a296e142789192ac48a6cb"
@@ -682,7 +682,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 12544
 category = "dimension"
 fingerprint = "sha256:92f13cfbfb0492fd761dd4c4a591060325001746771ebb0d076ec19eae8dcf40"
@@ -690,7 +690,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 12545
 category = "dimension"
 fingerprint = "sha256:a737aed4761e2fa70935020b0d1811ef076b463fad65cf1aeef37bda06e77890"
@@ -698,7 +698,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 12547
 category = "dimension"
 fingerprint = "sha256:e7d6304751295f22b9995a2e8e0022992f4ab3778614075169f8165b226671f2"
@@ -706,7 +706,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 12562
 category = "dimension"
 fingerprint = "sha256:04fd0a2886e42552d2e58b4f73726be231fc05660840670e5ad9cef7eb7b433f"
@@ -714,7 +714,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 12569
 category = "font"
 fingerprint = "sha256:3ca31d5f15b9eb4e868670786de0528d85b6b5b3c4e9219a83f632845d4ea9c0"
@@ -722,7 +722,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 13110
 category = "motion"
 fingerprint = "sha256:0a9fed97aef9cc9cea077beaaac181c372cf660e01d06b26139bebd1982d364c"
@@ -730,7 +730,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 13162
 category = "dimension"
 fingerprint = "sha256:305e5ff73ca4dfb97aa0c20b4ed5db8ef14b1e9d0314d9e8c64c53edc9a7d0f1"
@@ -738,7 +738,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 13280
 category = "motion"
 fingerprint = "sha256:f744dcf73af1f3e55eab8dd85e9e59ccbb859930b2a34c29303c78048c22b0a6"
@@ -746,7 +746,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 13325
 category = "motion"
 fingerprint = "sha256:f744dcf73af1f3e55eab8dd85e9e59ccbb859930b2a34c29303c78048c22b0a6"
@@ -754,7 +754,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 13342
 category = "motion"
 fingerprint = "sha256:f744dcf73af1f3e55eab8dd85e9e59ccbb859930b2a34c29303c78048c22b0a6"
@@ -762,7 +762,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 13359
 category = "motion"
 fingerprint = "sha256:f744dcf73af1f3e55eab8dd85e9e59ccbb859930b2a34c29303c78048c22b0a6"
@@ -770,7 +770,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 14837
 category = "dimension"
 fingerprint = "sha256:abd37bfac7f7325348281969bea21c901940b3a95ec80dca57964d7093a65371"
@@ -778,7 +778,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 15010
 category = "dimension"
 fingerprint = "sha256:5a114eaccd7b065ab20d24398012538252b871b13f09995f7944804ed3ed2980"
@@ -786,7 +786,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 15160
 category = "dimension"
 fingerprint = "sha256:af11115a43a018d3f95aff6631fdb263b727add63d0dfa3d0c7994f38e6bc228"
@@ -794,7 +794,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 15182
 category = "dimension"
 fingerprint = "sha256:36991e1f652d62e73ad54769304a46baea909d553c12f3c42c572a04a379a352"
@@ -802,7 +802,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 15183
 category = "dimension"
 fingerprint = "sha256:930c3e8d32c58f92a4b7bbd27208340572e29ac39e7a606a4a5ded4c0beb1868"
@@ -810,7 +810,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 15184
 category = "dimension"
 fingerprint = "sha256:5219d64c95af1c20ae62bd950dbebf0e112552426fceed0442b2e88745cb25d7"
@@ -818,7 +818,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 15185
 category = "dimension"
 fingerprint = "sha256:ec9bd2051c36ea4aa82fdc8f4387272b246537ed8cd7e3e37f7865c534cc775e"
@@ -826,7 +826,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 15203
 category = "dimension"
 fingerprint = "sha256:abd37bfac7f7325348281969bea21c901940b3a95ec80dca57964d7093a65371"
@@ -834,7 +834,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 15247
 category = "dimension"
 fingerprint = "sha256:af11115a43a018d3f95aff6631fdb263b727add63d0dfa3d0c7994f38e6bc228"
@@ -842,7 +842,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 15252
 category = "dimension"
 fingerprint = "sha256:ba5e7fa1f2b948465ed1f5b8f49704e3c95e973fe3b5e4b7b9acf2c0ee66e7c8"
@@ -850,7 +850,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 15253
 category = "dimension"
 fingerprint = "sha256:49b197baed9d4a850a9a0b6fac590e3336281ab87e259ad3df7904b561d030ad"
@@ -858,7 +858,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 15254
 category = "dimension"
 fingerprint = "sha256:ddd4e54efd39633a1a06cc25c11c2abf2b1f19e3fce07f2ddbbccd0a452016da"
@@ -866,7 +866,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 15255
 category = "dimension"
 fingerprint = "sha256:9137cd5a916865fcd4ca1884e3e56a804c43c36a1de3d91318ff92a00493afa0"
@@ -874,7 +874,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 15256
 category = "dimension"
 fingerprint = "sha256:abd37bfac7f7325348281969bea21c901940b3a95ec80dca57964d7093a65371"
@@ -882,7 +882,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 15544
 category = "dimension"
 fingerprint = "sha256:20dc7865b89a31af2f7a22fc026cd29a851398840541508a18dca4202ae2d293"
@@ -890,7 +890,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 16418
 category = "dimension"
 fingerprint = "sha256:73bd483b5b28862b5aa6d79de47ad1b48caef533b27874f2d8aaab004fa14dd5"
@@ -898,7 +898,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 16422
 category = "dimension"
 fingerprint = "sha256:a7d99f5f710889ef78335856606e31498d56fa63c6cf85edc4b92b9dd746d973"
@@ -906,7 +906,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 16456
 category = "dimension"
 fingerprint = "sha256:792964922b2b1d66d67a4f8359165314fd4adfbf4b54a2e588495e2218a20544"
@@ -914,7 +914,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 16460
 category = "dimension"
 fingerprint = "sha256:711d5dfaf9fd02cfaea29487b82a2b4d4fb6ccaafe71b6b9368eb6d9f86dda96"
@@ -922,7 +922,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 17997
 category = "motion"
 fingerprint = "sha256:6f836483a42d64133a530b7c6ad335d2bdc638e5349e77e094e96a5b26599061"
@@ -930,7 +930,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 18076
 category = "motion"
 fingerprint = "sha256:6f836483a42d64133a530b7c6ad335d2bdc638e5349e77e094e96a5b26599061"
@@ -938,7 +938,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 18185
 category = "motion"
 fingerprint = "sha256:6f836483a42d64133a530b7c6ad335d2bdc638e5349e77e094e96a5b26599061"
@@ -946,7 +946,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 20138
 category = "dimension"
 fingerprint = "sha256:f6ee17533087a1948e8f94da46127c4b1fdb29811a2a117ee7666a175c28b229"
@@ -954,7 +954,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 20726
 category = "dimension"
 fingerprint = "sha256:aaf1d84de33402885e2f8979f640ea2b7b0b7d8ab53068511a782cdd80da3a94"
@@ -962,7 +962,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 20750
 category = "dimension"
 fingerprint = "sha256:d91cc57b31c52699b4359fa615c1b9798023c9d612eb33a84d14591f79b493a1"
@@ -970,7 +970,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 20819
 category = "dimension"
 fingerprint = "sha256:aaf1d84de33402885e2f8979f640ea2b7b0b7d8ab53068511a782cdd80da3a94"
@@ -978,7 +978,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 20847
 category = "dimension"
 fingerprint = "sha256:e3684461ab0895be4044f51276385c5452751d393e7328ef64b117f1d421ac12"
@@ -986,7 +986,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 20878
 category = "dimension"
 fingerprint = "sha256:b67829653a191001fa3ab060e1e820a05fc828bc6f4965b117aa6308c95f5d3a"
@@ -994,7 +994,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 20897
 category = "dimension"
 fingerprint = "sha256:143f53fccd611657629dc162bc26ae6d4741f7e068cfbbfbbae91ba0e86035fd"
@@ -1002,7 +1002,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 21882
 category = "dimension"
 fingerprint = "sha256:de7b76f42fd7cfb95485e53e1285a6c25cda68830e86122cf49dc74d9c5bb146"
@@ -1010,7 +1010,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 21934
 category = "dimension"
 fingerprint = "sha256:aaf1d84de33402885e2f8979f640ea2b7b0b7d8ab53068511a782cdd80da3a94"
@@ -1018,7 +1018,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 21949
 category = "dimension"
 fingerprint = "sha256:e3684461ab0895be4044f51276385c5452751d393e7328ef64b117f1d421ac12"
@@ -1026,7 +1026,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 22037
 category = "dimension"
 fingerprint = "sha256:9bb6e4757ec8d1ff982df01411f4b35ddbb3b13a7a44e98b2cf6470e27f4695b"
@@ -1034,7 +1034,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 24556
 category = "dimension"
 fingerprint = "sha256:a7ea7d7cb6f086179fb27b69b99c80be7462c60dc0e88b9744eb1284719186b2"
@@ -1042,7 +1042,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 27068
 category = "dimension"
 fingerprint = "sha256:9bb6e4757ec8d1ff982df01411f4b35ddbb3b13a7a44e98b2cf6470e27f4695b"
@@ -1050,7 +1050,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 27358
 category = "dimension"
 fingerprint = "sha256:5d4fb1935b1ca40a9aeeac84a149863118525025548ce14b23485f1f661323a6"
@@ -1058,7 +1058,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 27368
 category = "dimension"
 fingerprint = "sha256:581174401721a66c17aa5c0e45e2ec80e8222dd235cc3c6ae8c8d27a65ecbffd"
@@ -1066,7 +1066,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 27370
 category = "dimension"
 fingerprint = "sha256:2fa7dc327986625f7c89f1429c4375878ea8a4aa99f8fab20742773ee5dc4116"
@@ -1074,7 +1074,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 28032
 category = "dimension"
 fingerprint = "sha256:9d3e0a498aadd6f2101d99433c9d458b8b6c35c3895adc77d4d6cc24b5ca4dff"
@@ -1082,7 +1082,7 @@ reason = "Pre-token UI literal scheduled for semantic-token migration under G21.
 owner = "G21.1"
 
 [[exceptions]]
-file = "src/ui/app/mod.rs"
+file = "crates/termirust-desktop/src/ui/app/mod.rs"
 line = 28034
 category = "motion"
 fingerprint = "sha256:1e03f8eee42d4bd1c408d0dca56a994d6085c459032ea35d3ea7bda9f5c828a8"

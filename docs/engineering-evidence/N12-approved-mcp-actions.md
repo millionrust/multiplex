@@ -16,8 +16,8 @@ bounded redacted receipts, and produce content-free audit metadata.
 ## Automated Evidence
 
 ```text
-./scripts/verify-mcp-readonly.sh
-./scripts/verify-mcp-actions.sh
+./scripts/verify/mcp-readonly.sh
+./scripts/verify/mcp-actions.sh
 ```
 
 The focused suites cover default denial, exact capability advertisement, strict JSON schemas,
@@ -29,24 +29,24 @@ under writer-lease contention.
 Final verification:
 
 ```text
-./scripts/verify-mcp-readonly.sh
+./scripts/verify/mcp-readonly.sh
 PASS: 21 MCP tests passed, 0 failed; strict package Clippy passed
 
-./scripts/verify-mcp-actions.sh
+./scripts/verify/mcp-actions.sh
 PASS: 21 MCP tests and 7 CLI/real-Host input tests passed; strict Clippy passed
 
-./scripts/verify-controller-security-vectors.sh --check
+./scripts/verify/controller-security-vectors.sh --check
 PASS: 3 golden-vector tests passed, 0 failed
 
 cargo test --workspace --all-targets --locked
 PASS: exit 0; 1,511 tests passed, 0 failed, 10 explicitly ignored
 
-python3 scripts/clippy-changed.py
+python3 scripts/dev/clippy-changed.py
 PASS: changed Rust lines are Clippy-clean
 
 cargo fmt --all -- --check
 git diff --check
-python3 scripts/verify-gpui-boundaries.py
+python3 scripts/verify/gpui-boundaries.py
 PASS: formatting, diff hygiene, and GPUI dependency boundaries passed
 ```
 

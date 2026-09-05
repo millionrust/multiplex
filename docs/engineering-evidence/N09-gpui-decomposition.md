@@ -15,7 +15,7 @@ and rendering behavior. No rewrite or new dependency was introduced.
 
 ## Enforced Dependency Direction
 
-`scripts/verify-gpui-boundaries.py` reads locked Cargo metadata with all features enabled and walks
+`scripts/verify/gpui-boundaries.py` reads locked Cargo metadata with all features enabled and walks
 the complete dependency closure of:
 
 - `termirust-domain`
@@ -25,8 +25,8 @@ the complete dependency closure of:
 - `termirust-relay-protocol`
 
 The gate fails with the exact dependency path if `gpui` or `gpui-component` becomes reachable.
-It is invoked by `scripts/auto-test.sh` and both `focused` and `workspace` modes of
-`scripts/verify-rust.sh`, so local baseline and CI verification enforce the same boundary.
+It is invoked by `scripts/test/auto.sh` and both `focused` and `workspace` modes of
+`scripts/verify/rust.sh`, so local baseline and CI verification enforce the same boundary.
 
 Observed result:
 
@@ -37,7 +37,7 @@ termirust-protocol, termirust-relay-protocol, termirust-store
 
 ## Size And Ownership
 
-Before this extraction, `src/ui/app/canvas.rs` was 11,814 lines and mixed provider-handle dispatch
+Before this extraction, `crates/termirust-desktop/src/ui/app/canvas.rs` was 11,814 lines and mixed provider-handle dispatch
 and bounded transcript ownership with Canvas interaction/rendering. The moved runtime is now a
 separate sibling module. N08 also removed terminal-row rendering from `workspace.rs` and made it a
 dedicated entity, reducing output-driven coupling to `TermiRustApp`.
@@ -52,9 +52,9 @@ parallel architecture.
 Passed:
 
 ```text
-python3 scripts/verify-gpui-boundaries.py
+python3 scripts/verify/gpui-boundaries.py
 cargo check -p termirust --all-targets --all-features --locked
-python3 scripts/clippy-changed.py
+python3 scripts/dev/clippy-changed.py
 cargo test ui::app::canvas::tests:: --bin termirust -- --test-threads=1
 ```
 

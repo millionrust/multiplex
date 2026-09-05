@@ -32,7 +32,7 @@ PASS: bans, licenses, and sources
 cargo test --workspace --all-targets --locked
 PASS: the complete Rust workspace, including Docker-backed SSH/tmux coverage
 
-./scripts/verify-rust.sh focused
+./scripts/verify/rust.sh focused
 PASS: GPUI boundaries, MCP capabilities, browser containment, all-feature compilation,
 changed-line Clippy, and tmux regressions
 ```

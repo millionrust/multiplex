@@ -25,7 +25,7 @@ application state, terminal content, or private environment values.
 The single command below builds and runs the complete fixture:
 
 ```bash
-./scripts/verify-desktop-host-golden-run.sh
+./scripts/verify/desktop-host-golden-run.sh
 ```
 
 The separate-process integration starts three real
@@ -65,7 +65,7 @@ The final golden command passed three consecutive complete executions:
 | Writer acquire/release/transfer and post-revocation denial | PASS, 3/3 runs |
 | Real release app restores local PTY and SSH | PASS, 3/3 runs |
 | Owned process, container, credential, and state cleanup | PASS, 3/3 runs |
-| `./scripts/verify-product-model.sh --local` | PASS |
+| `./scripts/verify/product-model.sh --local` | PASS |
 | Changed Rust lines are Clippy-clean | PASS |
 | Rust, Swift, and Kotlin repository diff hygiene | PASS |
 

@@ -1,11 +1,13 @@
-.claude/settings.local.json
+# Build output
 /target
-/dist/mobile/controller/
-/tools/browser-engine-spike/target
+/tools/*/target
+
+# Generated mobile FFI and binding artifacts (rebuilt by scripts/build/*, copied
+# into apps/ by scripts/sync/*)
+/dist/
+
+# Local tooling state
+.claude/settings.local.json
 .DS_Store
 __pycache__/
 *.py[cod]
-.antigravitycli/
-experiment.md
-mobile_terminal_access_implementation_prompt.md
-tmux_persistence_implementation_prompt.md

@@ -52,7 +52,7 @@ and published indexes are mode `0600`. Symlinked or unexpected entries fail clos
 Run the bounded repair suite with:
 
 ```sh
-./scripts/test-index-repair.sh --fixtures tests/fixtures/health-index --crash-matrix
+./scripts/test/index-repair.sh --fixtures tests/fixtures/health-index --crash-matrix
 ```
 
 The suite checks deterministic output, authoritative-byte preservation, cancellation,

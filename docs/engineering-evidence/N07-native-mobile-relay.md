@@ -33,12 +33,12 @@ Passing during the N07 implementation:
 - Rust relay Host/Controller end-to-end, hostile TLS/limit, revocation, crash-recovery, replay,
   sequence, queue, and reconnect suites
 
-`./scripts/test-mobile-controller-relay-transport.sh` executes one non-skipped native iOS XCTest
+`./scripts/test/mobile-controller-relay-transport.sh` executes one non-skipped native iOS XCTest
 against a disposable TLS relay. Two fresh Swift transports send distinct payloads through the
 canonical Rust relay to a reconnecting Rust Host and receive exact echoes. The harness rejects
 zero-test and XCTest-skip results and removes its CA, packages, cloned simulator, and processes.
 
-`./scripts/test-mobile-android-relay-transport.sh --avd Pixel_9` executes the corresponding
+`./scripts/test/mobile-android-relay-transport.sh --avd Pixel_9` executes the corresponding
 non-skipped Android instrumentation test against the same Rust relay and echo Host. Two fresh
 OkHttp transports use the production JNI admission/envelope implementation, exact SPKI pin, and
 bounded duplex stream. The disposable CA is trusted only by the instrumentation HTTP client;

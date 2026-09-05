@@ -67,7 +67,7 @@ No browser executable redistribution or automatic browser download is part of th
 ## Verify
 
 ```bash
-./scripts/verify-browser-capability.sh
+./scripts/verify/browser-capability.sh
 ```
 
 The script always runs unit, policy, MCP, strict Clippy, and static security checks. It runs the

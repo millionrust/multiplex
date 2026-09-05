@@ -28,7 +28,7 @@ provider as bad credentials and may not silently fall back to another method.
 
 - `HostProfile`, `DraftProfile`, `ConnectRequest`, `RestorableConnection`, and jump-host
   records currently preserve password/private-key configuration.
-- `src/ssh.rs` and `src/sftp.rs` contain duplicated password/private-key authentication
+- `crates/termirust-desktop/src/ssh.rs` and `crates/termirust-desktop/src/sftp.rs` contain duplicated password/private-key authentication
   branches. E07.2 must extract one authentication adapter used by both before adding
   certificate support.
 - SSH config import currently understands the first `IdentityFile` and `ProxyJump`, rejects

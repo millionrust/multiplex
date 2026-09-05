@@ -9,9 +9,9 @@ binaries to users.
 - Rust toolchain matching `rust-toolchain.toml` (or stable if absent).
 - `cargo install cargo-bundle` for the macOS app bundle and Linux
   packages. `cargo-bundle` reads the `[package.metadata.bundle]`
-  section in `Cargo.toml`.
-- App-icon vector master at `assets/icons/app.svg`, with bundle exports at
-  `assets/icons/app.png` (512×512) and `assets/icons/app@2x.png`
+  section in `crates/termirust-desktop/Cargo.toml`.
+- App-icon vector master at `crates/termirust-desktop/assets/icons/app.svg`, with bundle exports at
+  `crates/termirust-desktop/assets/icons/app.png` (512×512) and `crates/termirust-desktop/assets/icons/app@2x.png`
   (1024×1024 retina).
 
 Build the command-line sidecars that release packages install beside the desktop app:
@@ -32,10 +32,14 @@ capability and security contracts are documented in [`mcp.md`](mcp.md).
 
 ## macOS
 
+`cargo bundle` reads the package manifest in the current directory, so run the
+bundle commands below from `crates/termirust-desktop`; output still lands in the
+workspace `target/` directory.
+
 ### Unsigned `.app` (testing)
 
 ```bash
-cargo bundle --release
+(cd crates/termirust-desktop && cargo bundle --release)
 open target/release/bundle/osx/TermiRust.app
 ```
 
@@ -45,7 +49,7 @@ You need an active Apple Developer Program membership ($99/yr) and a
 Developer ID Application certificate in your login keychain.
 
 ```bash
-cargo bundle --release
+(cd crates/termirust-desktop && cargo bundle --release)
 codesign --deep --force --options runtime \
   --sign "Developer ID Application: <Your Name> (TEAMID)" \
   target/release/bundle/osx/TermiRust.app
@@ -63,7 +67,7 @@ xcrun notarytool submit TermiRust.zip \
 xcrun stapler staple target/release/bundle/osx/TermiRust.app
 ```
 
-The minimum supported macOS version is set in `Cargo.toml`
+The minimum supported macOS version is set in `crates/termirust-desktop/Cargo.toml`
 (`osx_minimum_system_version`).
 
 ## Windows
@@ -98,8 +102,8 @@ signtool sign /tr http://timestamp.digicert.com /td sha256 ^
 ### `.deb` and `.rpm`
 
 ```bash
-cargo bundle --release --format deb
-cargo bundle --release --format rpm
+(cd crates/termirust-desktop && cargo bundle --release --format deb)
+(cd crates/termirust-desktop && cargo bundle --release --format rpm)
 ```
 
 Outputs land in `target/release/bundle/{deb,rpm}/`.
@@ -107,7 +111,7 @@ Outputs land in `target/release/bundle/{deb,rpm}/`.
 The automated release workflow builds its `.deb` explicitly so `/usr/bin` contains the desktop
 executable and all required sidecars. It also publishes a portable `.tar.gz`. The generic
 `cargo bundle` commands above are developer-only until their contents pass
-`scripts/verify-release-package.sh`.
+`scripts/verify/release-package.sh`.
 
 ### AppImage
 

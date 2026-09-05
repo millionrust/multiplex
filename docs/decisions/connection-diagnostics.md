@@ -57,7 +57,7 @@ retry, automatic trust, mass terminal launch, remote repair, or cross-device syn
 
 ## Verification
 
-Run `./scripts/verify-connection-diagnostics.sh`. The live fixture proves strict non-mutating trust,
+Run `./scripts/verify/connection-diagnostics.sh`. The live fixture proves strict non-mutating trust,
 direct/proxy/jump routing, credential denial, key mismatch, session/SFTP checks, timeout,
 cancellation, SFTP loss and recovery, and absence of startup/tmux/forwarding side effects. The
 rendered GPUI test drives the actual batch-toolbar action and verifies no workspace opens.

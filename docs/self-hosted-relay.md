@@ -165,9 +165,9 @@ packages. Filesystem snapshots or backups may retain deleted package bytes.
 Repository maintainers can run the disposable loopback gate:
 
 ```bash
-./scripts/test-mobile-controller-relay-transport.sh
+./scripts/test/mobile-controller-relay-transport.sh
 cargo test -p termirust-relay-server -p termirust-relay-client --all-targets
-./scripts/verify-relay-v1-vectors.sh
+./scripts/verify/relay-v1-vectors.sh
 ```
 
 The mobile gate creates a temporary CA, TLS relay, route pair, Rust echo Host, and cloned iOS

@@ -80,14 +80,14 @@ jobs:
       - name: Bundle macOS .app
         if: matrix.target.bundle == 'macos'
         run: |
-          cargo bundle --release --target ${{ matrix.target.triple }}
+          (cd crates/termirust-desktop && cargo bundle --release --target ${{ matrix.target.triple }})
           mkdir -p dist
           APP="target/${{ matrix.target.triple }}/release/bundle/osx/TermiRust.app"
           test -d "$APP/Contents/MacOS"
           for name in termirust-cli termirust-session-host termirust-mcp termirust-mcp-authorize termirust-relay; do
             install -m 755 "target/${{ matrix.target.triple }}/release/$name" "$APP/Contents/MacOS/$name"
           done
-          ./scripts/verify-release-package.sh "$APP/Contents/MacOS"
+          ./scripts/verify/release-package.sh "$APP/Contents/MacOS"
           ditto -c -k --keepParent "$APP" "dist/TermiRust-${{ matrix.target.name }}.zip"
           shasum -a 256 "dist/TermiRust-${{ matrix.target.name }}.zip" > "dist/TermiRust-${{ matrix.target.name }}.zip.sha256"
 
@@ -101,14 +101,14 @@ jobs:
           for name in termirust termirust-cli termirust-session-host termirust-mcp termirust-mcp-authorize termirust-relay; do
             install -m 755 "$BIN/$name" "$PORTABLE/$name"
           done
-          ./scripts/verify-release-package.sh "$PORTABLE"
+          ./scripts/verify/release-package.sh "$PORTABLE"
           tar -C dist -czf "dist/TermiRust-${{ matrix.target.name }}.tar.gz" "TermiRust-${{ matrix.target.name }}"
 
           VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)
           ROOT="dist/deb-root"
           mkdir -p "$ROOT/DEBIAN" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/icons/hicolor/512x512/apps"
           install -m 755 "$PORTABLE"/* "$ROOT/usr/bin/"
-          install -m 644 assets/icons/app.png "$ROOT/usr/share/icons/hicolor/512x512/apps/termirust.png"
+          install -m 644 crates/termirust-desktop/assets/icons/app.png "$ROOT/usr/share/icons/hicolor/512x512/apps/termirust.png"
           printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=TermiRust' 'Exec=termirust' 'Icon=termirust' 'Categories=Development;Utility;' 'Terminal=false' > "$ROOT/usr/share/applications/termirust.desktop"
           printf 'Package: termirust\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: amd64\nMaintainer: TermiRust contributors\nDepends: libssl3, libxkbcommon0\nDescription: Native desktop SSH client\n' "$VERSION" > "$ROOT/DEBIAN/control"
           dpkg-deb --root-owner-group --build "$ROOT" "dist/termirust_${VERSION}_amd64.deb"

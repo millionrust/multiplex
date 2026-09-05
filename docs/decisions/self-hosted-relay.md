@@ -106,7 +106,7 @@ Every unchecked item is a release blocker for an operated public endpoint.
 The reproducible command runs 10 release-build samples for every combination of 1/10/100/1,000 pairs and idle/interactive/burst workloads:
 
 ```sh
-./scripts/run-relay-spike.sh --local-only --pairs 1,10,100,1000 --runs 10 --output target/relay-spike
+./scripts/run/relay-spike.sh --local-only --pairs 1,10,100,1000 --runs 10 --output target/relay-spike
 ```
 
 Detailed machine, workload, p50/p95/p99 admission/forward latency, throughput, RSS/CPU, queue/drop, logical endpoint, ingress/egress, storage and log-volume evidence is in `docs/benchmarks/relay-spike-2026-08-29.md`. At 1,000 pairs, admission p99 was 163–169 ms across workloads, interactive forwarding p50/p95/p99 was 235/256/256 µs, burst forwarding was 1,559/1,627/1,627 µs, peak RSS was 4,456,448 bytes and drops/persistent bytes/per-route log bytes were zero.

@@ -18,7 +18,7 @@ Status: Complete for the explicit user-configured SSH Controller route.
 
 ## Native transport evidence
 
-`./scripts/test-mobile-controller-ssh-transports.sh` starts a disposable pinned OpenSSH fixture
+`./scripts/test/mobile-controller-ssh-transports.sh` starts a disposable pinned OpenSSH fixture
 and executes the real Swift NIOSSH and Kotlin SSHJ adapters. Both clients pass:
 
 1. OpenSSH private-key authentication and bidirectional bridge bytes.
@@ -31,7 +31,7 @@ to replace the Rust Controller authority tests.
 
 ## Controller authority evidence
 
-`./scripts/test-controller-ssh.sh` passes the Rust SSH Controller suites for JSON behavior, strict
+`./scripts/test/controller-ssh.sh` passes the Rust SSH Controller suites for JSON behavior, strict
 SSH argv construction, reconnect/cancellation ownership, pairing, and authority revalidation at
 the remote bridge. The focused iOS route/coordinator suites and Android unit suite also pass.
 

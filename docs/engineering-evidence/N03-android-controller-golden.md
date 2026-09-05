@@ -30,7 +30,7 @@ state, or private network addresses.
 The reproducible command is:
 
 ```bash
-./scripts/test-mobile-android-controller-host.sh --avd Pixel_9
+./scripts/test/mobile-android-controller-host.sh --avd Pixel_9
 ```
 
 The runner starts an owned headless emulator when required, builds the real
@@ -76,8 +76,8 @@ The final strengthened workflow passed three consecutive complete executions:
 | Revoked stale mutation and reauthentication denial | PASS, 3/3 |
 | Owned fixture, emulator, resource, and secret cleanup | PASS, 3/3 |
 | Real iOS Controller/Host regression after fixture change | PASS, 1/1 |
-| `./scripts/verify-mobile-mvp.sh` | PASS |
-| `./scripts/verify-product-model.sh --local` | PASS |
+| `./scripts/verify/mobile-mvp.sh` | PASS |
+| `./scripts/verify/product-model.sh --local` | PASS |
 
 Android unit tests, production APK assembly, instrumentation APK assembly, and
 `lintDebug` also passed before the live run. The focused snippet and desktop-pane

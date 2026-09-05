@@ -3,7 +3,7 @@
 Date: 2026-07-17
 
 This audit compares the current `test` branch with the Definition of Done in
-`goal.md`. It is intentionally stricter than a test summary. `Proved` means the
+`docs/goal.md`. It is intentionally stricter than a test summary. `Proved` means the
 current source and a directly relevant test or runtime check support the claim.
 `Partial` means implementation exists but the required verification scope has
 not been completed.
@@ -65,7 +65,7 @@ not complete in this branch.
 
 ## Completion decision
 
-The implementation is not yet eligible for `complete` status under `goal.md`.
+The implementation is not yet eligible for `complete` status under `docs/goal.md`.
 The mandatory human matrix, successful live Claude/Gemini verification, native
 screen-reader semantics, and the documented provider approval deviations remain
 unresolved. No automated result should be used to claim those items passed.

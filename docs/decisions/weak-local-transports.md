@@ -89,6 +89,6 @@ normal local terminal, but TermiRust does not claim ownership or lifecycle manag
 
 ## Verification
 
-Run `./scripts/verify-weak-local-transport-decision.sh`. The gate verifies the accepted decision,
+Run `./scripts/verify/weak-local-transport-decision.sh`. The gate verifies the accepted decision,
 primary-source inventory, absence of Telnet/serial product surfaces, access-policy tests, and the
 rendered SSH connection-settings flow.
