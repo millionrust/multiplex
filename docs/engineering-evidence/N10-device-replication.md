@@ -28,9 +28,16 @@ Regression coverage exercises edits made after review, host-key additions made
 after review, rejection without publication, and successful fresh review/application.
 Existing tests exercise two enrolled replicas converging and exact remote deletion.
 
+Review preparation now captures sync-eligible records once and uses that same
+snapshot for reconciliation and fingerprinting. A deterministic regression models
+an SSH host pin being added after capture but before review preparation finishes;
+applying that review is rejected without publication, the pin survives, and a fresh
+review succeeds. This covers the preparation window, not a general cross-store
+transaction or all concurrent mutations during application.
+
 ## Verification
 
-- `cargo test replication::tests --bin termirust`: 3 passed.
+- `cargo test replication::tests --bin termirust`: 4 passed.
 - `cargo test -p termirust-store --test replication_product`: 11 passed, including
   enrollment cancellation, restart recovery, rotation, revocation, and deletion.
 - `python3 scripts/clippy-changed.py`: changed Rust lines passed.

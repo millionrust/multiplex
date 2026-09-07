@@ -268,15 +268,24 @@ impl<B: ReplicationSecretBackend> DesktopReplication<B> {
         state: &SavedState,
         known_hosts: &KnownHostStore,
     ) -> Result<DesktopReplicationReview> {
+        self.review_records(desired_records(state, known_hosts)?)
+    }
+
+    fn review_records(
+        &self,
+        desired: BTreeMap<ReplicationRecordKey, Vec<u8>>,
+    ) -> Result<DesktopReplicationReview> {
+        // Bind freshness to the same snapshot that is reconciled, including host pins.
+        let local_fingerprint = records_fingerprint(&desired)?;
         let status = self.product.status()?;
         let changes = if status.recovery_required {
             DesktopReplicationChanges::default()
         } else {
-            reconcile_local_records(&self.product, state, known_hosts)?
+            reconcile_local_records(&self.product, &desired)?
         };
         Ok(DesktopReplicationReview {
             plan: self.product.review_sync()?,
-            local_fingerprint: local_records_fingerprint(state, known_hosts)?,
+            local_fingerprint,
             changes,
         })
     }
@@ -417,10 +426,8 @@ struct DesktopRecord<T> {
 
 fn reconcile_local_records<B: ReplicationSecretBackend>(
     product: &ReplicationProductService<B>,
-    state: &SavedState,
-    known_hosts: &KnownHostStore,
+    desired: &BTreeMap<ReplicationRecordKey, Vec<u8>>,
 ) -> Result<DesktopReplicationChanges> {
-    let desired = desired_records(state, known_hosts)?;
     let current = product
         .records()?
         .into_iter()
@@ -429,7 +436,7 @@ fn reconcile_local_records<B: ReplicationSecretBackend>(
         .collect::<BTreeMap<_, _>>();
     let mut changes = DesktopReplicationChanges::default();
 
-    for (key, value) in &desired {
+    for (key, value) in desired {
         if current.get(key).and_then(|value| value.as_deref()) != Some(value.as_slice()) {
             product.put_record(key.clone(), value)?;
             changes.puts += 1;
@@ -482,11 +489,15 @@ fn desired_records(
 }
 
 fn local_records_fingerprint(state: &SavedState, known_hosts: &KnownHostStore) -> Result<[u8; 32]> {
+    records_fingerprint(&desired_records(state, known_hosts)?)
+}
+
+fn records_fingerprint(records: &BTreeMap<ReplicationRecordKey, Vec<u8>>) -> Result<[u8; 32]> {
     let mut digest = Sha256::new();
     digest.update(b"termirust.desktop-replication-review.v1\0");
-    for (key, value) in desired_records(state, known_hosts)? {
+    for (key, value) in records {
         // Length-delimited records bind both their identity and reviewed contents.
-        let key = serde_json::to_vec(&key)?;
+        let key = serde_json::to_vec(key)?;
         digest.update((key.len() as u64).to_be_bytes());
         digest.update(key);
         digest.update((value.len() as u64).to_be_bytes());
@@ -888,6 +899,47 @@ mod tests {
         let review = replica.review(&state, &known_hosts).unwrap();
         replica.apply(review, &mut state, &known_hosts).unwrap();
         assert_eq!(state.profiles[0].label, "Edited after review");
+        assert_eq!(known_hosts.entries().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn review_rejects_host_pins_added_after_its_snapshot() {
+        let temp = tempfile::tempdir().unwrap();
+        let shared = temp.path().join("shared");
+        std::fs::create_dir(&shared).unwrap();
+        let replica = DesktopReplication::bootstrap(
+            temp.path().join("replica"),
+            &shared,
+            MemorySecrets::default(),
+        )
+        .unwrap();
+        let known_hosts = KnownHostStore::open(temp.path().join("known-hosts.json")).unwrap();
+        let mut state = SavedState::default();
+        state.profiles.push(profile("host-one", "Reviewed"));
+        let snapshot = desired_records(&state, &known_hosts).unwrap();
+
+        // Model an SSH runtime pinning a key while sync is preparing its review.
+        known_hosts
+            .verify_or_trust("new.example.test:22", "ssh-ed25519 AAAA")
+            .unwrap();
+        let review = replica.review_records(snapshot).unwrap();
+        assert_eq!(review.changes.puts, 1);
+        let shared_entries_before = std::fs::read_dir(&shared).unwrap().count();
+        assert!(
+            replica
+                .apply(review, &mut state, &known_hosts)
+                .unwrap_err()
+                .to_string()
+                .contains("local records changed")
+        );
+        assert_eq!(known_hosts.entries().unwrap().len(), 1);
+        assert_eq!(
+            std::fs::read_dir(&shared).unwrap().count(),
+            shared_entries_before
+        );
+
+        let review = replica.review(&state, &known_hosts).unwrap();
+        replica.apply(review, &mut state, &known_hosts).unwrap();
         assert_eq!(known_hosts.entries().unwrap().len(), 1);
     }
 
