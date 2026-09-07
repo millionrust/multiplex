@@ -40,5 +40,18 @@ On macOS, `bash scripts/test-swift-replication-bindings.sh` generates Swift and 
 bindings and compiles/runs a Swift callback round trip against the native Rust
 library. It uses in-memory storage, not Keychain, and does not compile or run Kotlin.
 
-Remaining: native secure-store implementations, artifact packaging, mobile product
+Add `--keychain` to run the native Apple adapter against the real macOS Keychain.
+That test uses a unique test service and deletes its entries afterward. It exercises
+atomic collision rejection across store instances, reopening identities, exact and
+idempotent deletion, invalid accounts, and corrupt envelope lengths. Access-failure
+mapping is tested with status constants, not by locking the user's device.
+
+The Apple source lives at
+`mobile/ios/TermiRustMobile/Security/ReplicationKeychainStore.swift`. It is compiled
+by this conformance runner but is not yet in the iOS app target; that requires the
+replication framework packaging. It uses a replication-only service, disables
+synchronization, and selects `WhenUnlockedThisDeviceOnly`. iPhone lifecycle and
+backup/restore behavior require separate device qualification.
+
+Remaining: Android secure-store implementation, artifact packaging, mobile product
 service/transport adapters, enrollment/conflict/recovery UI, and real-device tests.

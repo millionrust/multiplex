@@ -99,3 +99,32 @@ The new boundary is not yet packaged into either app. Swift conformance uses an
 in-memory store; neither native Keychain/Keystore implementations nor Android
 runtime coverage are established by it. Mobile product service, transport, and UI
 integration remain open. The Controller binding/API is unchanged.
+
+## Apple Native Custody Adapter
+
+`ReplicationKeychainStore.swift` implements the new callback contract using a
+replication-only Keychain service. `SecItemAdd` rejects collisions without replacing
+an existing secret. Reads validate the typed envelope length; deletion targets only
+the supplied service/account and distinguishes already absent from access failure.
+
+`bash scripts/test-swift-replication-bindings.sh --keychain` passed on macOS using
+Swift 6 language mode:
+
+- existing in-memory Swift/Rust conformance;
+- real Keychain duplicate creation preserves the original value;
+- recreated store/engine loads the same device public key;
+- exact and idempotent deletion leaves the other identity and fixture record intact;
+- deletion leaves an identically named account in a different service untouched;
+- invalid account/secret lengths and corrupt stored values are rejected;
+- access-error status mapping retains Locked rather than Missing.
+
+Fixtures use a random test service, with cleanup confined to that service. The run
+does not lock the user's device; access-error coverage is mapping-only. This does
+not establish iPhone background, lock, or backup/restore behavior. The adapter is
+compiled through the conformance runner, not yet included in the iOS app target.
+
+The implementation follows Apple's
+[duplicate-item semantics](https://developer.apple.com/documentation/security/errsecduplicateitem)
+and [device-local unlocked accessibility](https://developer.apple.com/documentation/security/ksecattraccessiblewhenunlockedthisdeviceonly).
+This accessibility prevents migration to another device; it is not evidence that
+all same-device backup/restore routes have been excluded or tested.
