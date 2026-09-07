@@ -12,6 +12,16 @@ esac
 cd "$ROOT"
 export ANDROID_HOME=${ANDROID_HOME:-"$HOME/Library/Android/sdk"}
 
+require_pattern() {
+  pattern=$1
+  path=$2
+  label=$3
+  grep -q "$pattern" "$path" || {
+    echo "$label is missing from $path" >&2
+    exit 1
+  }
+}
+
 for path in \
   app/src/main/java/com/termirust/mobile/MainActivity.kt \
   app/src/main/java/com/termirust/mobile/ui/UnifiedMobileApp.kt \
@@ -33,18 +43,33 @@ if [ -d app/src/controller ] || [ -d app/src/legacyDirectSsh ] || \
   echo "flavor-specific source sets remain" >&2
   exit 1
 fi
-grep -q 'MobileRootDestination.CONNECTIONS' app/src/main/java/com/termirust/mobile/ui/UnifiedMobileApp.kt
-grep -q 'MobileRootDestination.DEVICES' app/src/main/java/com/termirust/mobile/ui/UnifiedMobileApp.kt
-grep -q 'Direct SSH' app/src/main/java/com/termirust/mobile/ui/TermirustApp.kt
-grep -q 'DEVICE_SESSION("device_session")' \
-  app/src/main/java/com/termirust/mobile/controller/MobileCrossRouteAcceptance.kt
-grep -q '<string name="device_session">' app/src/main/res/values/strings.xml
-grep -q 'implementation("com.hierynomus:sshj:0.39.0")' app/build.gradle.kts
-grep -q 'termirust-mobile-secrets' app/src/main/java/com/termirust/mobile/security/KeystoreSecretStore.kt
-grep -q 'termirust-controller-device-v1' app/src/main/java/com/termirust/mobile/controller/ControllerSecureBlobStore.kt
-grep -q 'Routes never switch automatically' app/src/main/res/values/strings.xml
-grep -q 'ControllerRouteCredentialStore' app/src/main/java/com/termirust/mobile/controller/ControllerRemoteRouteConfiguration.kt
-grep -q 'routeConnections.disconnect' app/src/main/java/com/termirust/mobile/controller/ControllerViewModel.kt
+require_pattern 'MobileRootDestination.CONNECTIONS' \
+  app/src/main/java/com/termirust/mobile/ui/UnifiedMobileApp.kt "Connections destination"
+require_pattern 'MobileRootDestination.DEVICES' \
+  app/src/main/java/com/termirust/mobile/ui/UnifiedMobileApp.kt "Devices destination"
+require_pattern 'Direct SSH' app/src/main/java/com/termirust/mobile/ui/TermirustApp.kt \
+  "direct SSH route"
+require_pattern 'DEVICE_SESSION("device_session")' \
+  app/src/main/java/com/termirust/mobile/controller/MobileCrossRouteAcceptance.kt \
+  "Device Session acceptance route"
+require_pattern '<string name="previous_sessions">' app/src/main/res/values/strings.xml \
+  "Sessions UI resource"
+require_pattern 'implementation("com.hierynomus:sshj:0.39.0")' app/build.gradle.kts \
+  "SSHJ runtime dependency"
+require_pattern 'termirust-mobile-secrets' \
+  app/src/main/java/com/termirust/mobile/security/KeystoreSecretStore.kt \
+  "mobile secret-store namespace"
+require_pattern 'termirust-controller-device-v1' \
+  app/src/main/java/com/termirust/mobile/controller/ControllerSecureBlobStore.kt \
+  "Controller secure-blob namespace"
+require_pattern 'Routes never switch automatically' app/src/main/res/values/strings.xml \
+  "explicit route-switching guidance"
+require_pattern 'ControllerRouteCredentialStore' \
+  app/src/main/java/com/termirust/mobile/controller/ControllerRemoteRouteConfiguration.kt \
+  "Controller route credential store"
+require_pattern 'routeConnections.disconnect' \
+  app/src/main/java/com/termirust/mobile/controller/ControllerViewModel.kt \
+  "Controller route disconnect lifecycle"
 
 for abi in arm64-v8a armeabi-v7a x86 x86_64; do
   [ -f "app/src/main/jniLibs/$abi/libtermirust_controller_bindings.so" ] || {
