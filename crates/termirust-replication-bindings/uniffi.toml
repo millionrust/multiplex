@@ -1,0 +1,11 @@
+[bindings.swift]
+module_name = "TermiRustReplicationSecurity"
+ffi_module_name = "TermiRustReplicationSecurityFFI"
+generate_module_map = true
+
+[bindings.kotlin]
+package_name = "com.termirust.replication.security"
+cdylib_name = "termirust_replication_bindings"
+generate_immutable_records = true
+android = true
+kotlin_target_version = "2.1.0"

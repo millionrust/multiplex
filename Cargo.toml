@@ -30,6 +30,7 @@ members = [
     "crates/termirust-relay-client",
     "crates/termirust-relay-server",
     "crates/termirust-replication-security",
+    "crates/termirust-replication-bindings",
     "crates/termirust-store",
     "crates/termirust-tui",
     "crates/termirust-ui-contract",

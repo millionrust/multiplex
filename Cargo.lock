@@ -8846,6 +8846,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "termirust-replication-bindings"
+version = "0.1.0"
+dependencies = [
+ "termirust-replication-security",
+ "uniffi",
+ "zeroize",
+]
+
+[[package]]
 name = "termirust-replication-security"
 version = "0.1.0"
 dependencies = [

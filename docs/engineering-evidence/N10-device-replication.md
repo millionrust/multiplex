@@ -78,3 +78,24 @@ and Gradle daemon were stopped after verification.
 
 The recovery/deletion behavior follows the Android
 [AtomicFile API](https://developer.android.com/reference/android/util/AtomicFile).
+
+## Native Replication Custody Boundary
+
+`termirust-replication-bindings` now exposes a separate UniFFI secure-store contract
+for replication. Its adapter implements the existing `ReplicationSecretBackend`,
+requires durable create-only writes with collision errors, retains distinct storage
+failures, bounds accepted secret envelopes, and keeps Rust loaded buffers zeroizing.
+Device identity operations return opaque references and public keys, not private
+keys. They validate key roles before accessing or deleting native storage.
+
+- Five Rust callback contract tests passed (recreation, exact deletion, collision,
+  error propagation, malformed/wrong-role references, corrupt data).
+- Package Clippy with `-D warnings` passed.
+- Swift and Kotlin bindings generated successfully.
+- `bash scripts/test-swift-replication-bindings.sh` passed a compiled Swift callback
+  round trip against the Rust library.
+
+The new boundary is not yet packaged into either app. Swift conformance uses an
+in-memory store; neither native Keychain/Keystore implementations nor Android
+runtime coverage are established by it. Mobile product service, transport, and UI
+integration remain open. The Controller binding/API is unchanged.
