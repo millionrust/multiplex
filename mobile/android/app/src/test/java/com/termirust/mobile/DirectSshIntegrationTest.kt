@@ -55,12 +55,17 @@ class DirectSshIntegrationTest {
         val firstClient = clientWithKey(secretRef, config.privateKey)
         try {
             firstClient.connect(host, knownHost) { firstOutput += it.copyOf() }
-            firstClient.send("tmux display-message -p '#S'\n".encodeToByteArray())
-            firstClient.send("echo android-smoke-first > ~/termirust-android-smoke\n".encodeToByteArray())
+            // Split acknowledgement tokens so echoed input cannot satisfy the assertion.
+            firstClient.send(
+                ("[ \"\$(tmux display-message -p '#S')\" = '$sessionName' ] && " +
+                    "export TERMIRUST_SMOKE_VALUE=android-smoke-first && " +
+                    "printf '%s\\n' \"\$TERMIRUST_SMOKE_VALUE\" > ~/termirust-android-smoke && " +
+                    "printf '%s%s\\n' WRITE_ CONFIRMED\n").encodeToByteArray(),
+            )
 
             assertTrue(
-                "first connection did not attach to the expected tmux session",
-                waitForOutput(firstOutput, sessionName),
+                "first connection did not confirm its tmux session and marker write",
+                waitForOutput(firstOutput, "WRITE_CONFIRMED"),
             )
         } finally {
             firstClient.disconnect()
@@ -71,11 +76,15 @@ class DirectSshIntegrationTest {
         val secondClient = clientWithKey(secretRef, config.privateKey)
         try {
             secondClient.connect(host, knownHost) { secondOutput += it.copyOf() }
-            secondClient.send("cat ~/termirust-android-smoke\n".encodeToByteArray())
+            secondClient.send(
+                ("[ \"\$TERMIRUST_SMOKE_VALUE\" = android-smoke-first ] && " +
+                    "[ \"\$(cat ~/termirust-android-smoke)\" = \"\$TERMIRUST_SMOKE_VALUE\" ] && " +
+                    "printf '%s%s\\n' RECONNECT_ CONFIRMED\n").encodeToByteArray(),
+            )
 
             assertTrue(
-                "reconnect did not see marker created inside the persistent tmux session",
-                waitForOutput(secondOutput, "android-smoke-first"),
+                "reconnect did not preserve both the shell environment and marker file",
+                waitForOutput(secondOutput, "RECONNECT_CONFIRMED"),
             )
         } finally {
             secondClient.disconnect()
