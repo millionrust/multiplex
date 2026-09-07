@@ -46,3 +46,28 @@ Existing tests exercise two enrolled replicas converging and exact remote deleti
 
 The desktop convergence fixture uses independent local replica directories and an
 in-memory secret backend. It does not establish mobile UI or OS key-store coverage.
+
+## Mobile Storage Prerequisite
+
+The Android Controller secret store now lets `AtomicFile.openRead` recover committed
+backups, deletes the base and recovery files together, bounds encrypted reads before
+allocation, and refuses to create a replacement encryption key while reading an
+existing secret. This fixes existing pairing storage and is prerequisite work for
+mobile replication; replication is not yet wired to this store.
+
+On 2026-09-07, `ControllerSecureBlobStoreInstrumentedTest` passed all four tests on
+the Pixel 9 emulator using the real Android Keystore and file APIs:
+
+- recover a committed backup when the base file is absent;
+- delete base/backup/pending files without removing an unrelated secret;
+- reject a missing encryption key without creating another one;
+- reject oversized encrypted input.
+
+Android unit tests, debug APK, and instrumentation APK builds passed. The tests use
+unique secret identifiers and encryption-key aliases and remove them afterward.
+The real Android Controller/Host golden test also passed after this change,
+covering pairing, terminal control, reconnect, and revocation. The fixture emulator
+and Gradle daemon were stopped after verification.
+
+The recovery/deletion behavior follows the Android
+[AtomicFile API](https://developer.android.com/reference/android/util/AtomicFile).
