@@ -1,5 +1,5 @@
-//! Replication secret custody only. Native clients own secure storage and UI;
-//! this boundary owns no filesystem, transport, or application lifecycle.
+//! Native replication custody and a separate local enrollment facade.
+//! Clients own secure storage and UI; the shared product service owns persistence.
 
 use std::fmt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -11,6 +11,13 @@ use termirust_replication_security::{
     ReplicationSecretVault, generate_replication_device_private_key,
 };
 use zeroize::Zeroizing;
+
+mod product;
+pub use product::{
+    MobileEnrollmentRequest, MobileEnrollmentReview, MobileHostTransferReview,
+    MobileRecordTransferReview, MobileReplicatedHost, MobileReplicationError,
+    MobileReplicationProduct,
+};
 
 uniffi::setup_scaffolding!();
 

@@ -162,6 +162,40 @@ fn epoch_reference(value: u64, marker: u8) -> ReplicationSecretRef {
 }
 
 #[test]
+fn prepared_epoch_references_do_not_create_or_overwrite_custody() {
+    let vault = ReplicationSecretVault::new(MemoryBackend::default());
+    let key = ReplicationEpochKey::from_bytes(epoch(1), [7; 32]).unwrap();
+    let reference = vault.prepare_epoch_reference(epoch(1)).unwrap();
+    assert!(vault.backend().entries.lock().unwrap().is_empty());
+    vault.store_epoch_key_at(&reference, &key).unwrap();
+    let original = vault.backend().bytes(&reference);
+    assert_eq!(
+        vault.store_epoch_key_at(&reference, &key),
+        Err(ReplicationSecretCustodyError::Store(
+            ReplicationSecretStoreError::Collision
+        ))
+    );
+    let other_epoch = vault.prepare_epoch_reference(epoch(2)).unwrap();
+    assert_eq!(
+        vault.store_epoch_key_at(&other_epoch, &key),
+        Err(ReplicationSecretCustodyError::KeyEpochMismatch)
+    );
+    let device = ReplicationSecretRef::from_identifier(
+        ReplicationSecretKind::DevicePrivateKey,
+        None,
+        [9; 32],
+    )
+    .unwrap();
+    assert_eq!(
+        vault.store_epoch_key_at(&device, &key),
+        Err(ReplicationSecretCustodyError::SecretKindMismatch)
+    );
+    assert_eq!(vault.backend().entries.lock().unwrap().len(), 1);
+    assert_eq!(vault.backend().bytes(&reference), original);
+    vault.load_epoch_key(&reference, epoch(1)).unwrap();
+}
+
+#[test]
 fn opaque_secret_references_have_a_fixed_private_metadata_encoding() {
     let references = [
         ReplicationSecretRef::from_identifier(

@@ -32,7 +32,7 @@ pub use product::{
     ReplicationAuthorityUpdate, ReplicationConflictCandidate, ReplicationConflictChoice,
     ReplicationDeletionPlan, ReplicationDeviceKeyPackage, ReplicationEnrollmentBundle,
     ReplicationEnrollmentRequest, ReplicationProductError, ReplicationProductRecord,
-    ReplicationProductService, ReplicationProductStatus,
+    ReplicationProductService, ReplicationProductStatus, ReplicationTransferReview,
 };
 pub use repository::{
     ReplicationRecoveryOutcome, ReplicationRepository, ReplicationRepositorySnapshot,
