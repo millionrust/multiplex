@@ -4,8 +4,9 @@ use std::sync::Mutex;
 
 use serde::Deserialize;
 use termirust_replication_security::{
-    MAX_REPLICATION_RETAINED_EPOCH_KEYS, REPLICATION_STORED_SECRET_BYTES,
-    REPLICATION_STORED_SECRET_VERSION, ReplicationAuthorityPrivateKey, ReplicationDevicePrivateKey,
+    MAX_REPLICATION_RETAINED_EPOCH_KEYS, REPLICATION_OWNED_SECRET_BYTES,
+    REPLICATION_STORED_SECRET_BYTES, REPLICATION_STORED_SECRET_VERSION,
+    ReplicationAuthorityPrivateKey, ReplicationCustodyOwner, ReplicationDevicePrivateKey,
     ReplicationEntropy, ReplicationEntropyError, ReplicationEpochKey,
     ReplicationHistoricalKeyIndex, ReplicationHistoricalKeyLimit, ReplicationKeyEpoch,
     ReplicationSecretBackend, ReplicationSecretCustodyError, ReplicationSecretKind,
@@ -159,6 +160,193 @@ fn epoch_reference(value: u64, marker: u8) -> ReplicationSecretRef {
         [marker; 32],
     )
     .expect("epoch reference")
+}
+
+#[test]
+fn owned_epoch_receipts_distinguish_attempts_without_adopting_legacy_custody() {
+    let vault = ReplicationSecretVault::new(MemoryBackend::default());
+    let key = ReplicationEpochKey::from_bytes(epoch(1), [7; 32]).unwrap();
+    let owner = ReplicationCustodyOwner::from_bytes([3; 32]).unwrap();
+    let other = ReplicationCustodyOwner::from_bytes([4; 32]).unwrap();
+    assert!(ReplicationCustodyOwner::from_bytes([0; 32]).is_err());
+    assert_eq!(format!("{owner:?}"), "ReplicationCustodyOwner(<redacted>)");
+    assert_eq!(
+        ReplicationCustodyOwner::from_bytes(owner.to_bytes()).unwrap(),
+        owner
+    );
+    assert_ne!(ReplicationCustodyOwner::generate().unwrap(), owner);
+
+    let reference = vault.prepare_epoch_reference(epoch(1)).unwrap();
+    vault
+        .store_owned_epoch_key_at(&reference, &key, &owner)
+        .unwrap();
+    let original = vault.backend().bytes(&reference);
+    assert_eq!(original.len(), REPLICATION_OWNED_SECRET_BYTES);
+    assert_eq!(&original[4..6], &2_u16.to_be_bytes());
+    assert_eq!(&original[15..47], &[7; 32]);
+    assert_eq!(&original[47..], &owner.to_bytes());
+    vault.load_epoch_key(&reference, epoch(1)).unwrap();
+    let recovered = vault
+        .load_owned_epoch_key(&reference, epoch(1), &owner)
+        .unwrap();
+    let recovered_reference = vault.prepare_epoch_reference(epoch(1)).unwrap();
+    vault
+        .store_owned_epoch_key_at(&recovered_reference, &recovered, &owner)
+        .unwrap();
+    assert_eq!(vault.backend().bytes(&recovered_reference), original);
+    assert!(matches!(
+        vault.load_owned_epoch_key(&reference, epoch(1), &other),
+        Err(ReplicationSecretCustodyError::CustodyOwnerMismatch)
+    ));
+    assert_eq!(
+        vault.store_owned_epoch_key_at(&reference, &key, &other),
+        Err(ReplicationSecretCustodyError::Store(
+            ReplicationSecretStoreError::Collision
+        ))
+    );
+    assert!(matches!(
+        vault.load_owned_epoch_key(&reference, epoch(2), &owner),
+        Err(ReplicationSecretCustodyError::KeyEpochMismatch)
+    ));
+    assert_eq!(vault.backend().bytes(&reference), original);
+
+    let legacy = vault.store_epoch_key(&key).unwrap();
+    assert_eq!(
+        vault.backend().bytes(&legacy).len(),
+        REPLICATION_STORED_SECRET_BYTES
+    );
+    assert!(matches!(
+        vault.load_owned_epoch_key(&legacy, epoch(1), &owner),
+        Err(ReplicationSecretCustodyError::CustodyOwnerMismatch)
+    ));
+    assert_eq!(
+        vault.store_owned_epoch_key_at(&legacy, &key, &owner),
+        Err(ReplicationSecretCustodyError::Store(
+            ReplicationSecretStoreError::Collision
+        ))
+    );
+    vault.load_epoch_key(&legacy, epoch(1)).unwrap();
+    let device = vault
+        .store_device_key(&ReplicationDevicePrivateKey::from_bytes([5; 32]).unwrap())
+        .unwrap();
+    assert_eq!(
+        vault.store_owned_epoch_key_at(&device, &key, &owner),
+        Err(ReplicationSecretCustodyError::SecretKindMismatch)
+    );
+}
+
+#[test]
+fn owned_epoch_records_reject_malformed_versions_lengths_roles_and_empty_receipts() {
+    let vault = ReplicationSecretVault::new(MemoryBackend::default());
+    let key = ReplicationEpochKey::from_bytes(epoch(1), [7; 32]).unwrap();
+    let owner = ReplicationCustodyOwner::from_bytes([3; 32]).unwrap();
+    let reference = vault.prepare_epoch_reference(epoch(1)).unwrap();
+    vault
+        .store_owned_epoch_key_at(&reference, &key, &owner)
+        .unwrap();
+    let original = vault.backend().bytes(&reference);
+    for length in 0..=REPLICATION_OWNED_SECRET_BYTES + 2 {
+        if length == REPLICATION_OWNED_SECRET_BYTES {
+            continue;
+        }
+        let mut malformed = original.clone();
+        malformed.resize(length, 1);
+        vault.backend().replace(&reference, malformed.clone());
+        assert!(
+            vault
+                .load_owned_epoch_key(&reference, epoch(1), &owner)
+                .is_err(),
+            "length {length}"
+        );
+        assert!(
+            vault.load_epoch_key(&reference, epoch(1)).is_err(),
+            "length {length}"
+        );
+        assert_eq!(vault.backend().bytes(&reference), malformed);
+    }
+    let mut wrong_version = original.clone();
+    wrong_version[4..6].copy_from_slice(&REPLICATION_STORED_SECRET_VERSION.to_be_bytes());
+    vault.backend().replace(&reference, wrong_version);
+    assert!(vault.load_epoch_key(&reference, epoch(1)).is_err());
+    for (range, value) in [
+        (4..6, 0),
+        (4..6, 1),
+        (6..7, 1),
+        (6..7, 2),
+        (7..15, 0),
+        (15..47, 0),
+        (47..79, 0),
+    ] {
+        let mut malformed = original.clone();
+        malformed[range.clone()].fill(value);
+        vault.backend().replace(&reference, malformed.clone());
+        assert!(
+            vault.load_epoch_key(&reference, epoch(1)).is_err(),
+            "{range:?}"
+        );
+        assert!(
+            vault
+                .load_owned_epoch_key(&reference, epoch(1), &owner)
+                .is_err()
+        );
+        assert_eq!(vault.backend().bytes(&reference), malformed);
+    }
+    vault.backend().replace(&reference, original);
+    for error in [
+        ReplicationSecretStoreError::Missing,
+        ReplicationSecretStoreError::AccessDeniedOrLocked,
+        ReplicationSecretStoreError::Invalid,
+        ReplicationSecretStoreError::Unavailable,
+    ] {
+        vault.backend().fail_with(error);
+        assert!(
+            matches!(vault.load_owned_epoch_key(&reference, epoch(1), &owner),
+            Err(ReplicationSecretCustodyError::Store(actual)) if actual == error)
+        );
+    }
+    vault.backend().clear_failure();
+    vault
+        .load_owned_epoch_key(&reference, epoch(1), &owner)
+        .unwrap();
+}
+
+#[test]
+fn owned_receipt_can_be_read_after_create_commits_but_reports_failure() {
+    struct AmbiguousBackend(MemoryBackend);
+    impl ReplicationSecretBackend for AmbiguousBackend {
+        fn put(
+            &self,
+            reference: &ReplicationSecretRef,
+            secret: &[u8],
+        ) -> Result<(), ReplicationSecretStoreError> {
+            self.0.put(reference, secret)?;
+            Err(ReplicationSecretStoreError::Unavailable)
+        }
+        fn get(
+            &self,
+            reference: &ReplicationSecretRef,
+        ) -> Result<Zeroizing<Vec<u8>>, ReplicationSecretStoreError> {
+            self.0.get(reference)
+        }
+        fn delete(&self, _: &ReplicationSecretRef) -> Result<bool, ReplicationSecretStoreError> {
+            panic!("receipt validation must not delete custody")
+        }
+    }
+    let vault = ReplicationSecretVault::new(AmbiguousBackend(MemoryBackend::default()));
+    let key = ReplicationEpochKey::from_bytes(epoch(1), [7; 32]).unwrap();
+    let reference = vault.prepare_epoch_reference(epoch(1)).unwrap();
+    let owner = ReplicationCustodyOwner::generate().unwrap();
+    assert_eq!(
+        vault.store_owned_epoch_key_at(&reference, &key, &owner),
+        Err(ReplicationSecretCustodyError::Store(
+            ReplicationSecretStoreError::Unavailable
+        ))
+    );
+    let reopened = ReplicationSecretVault::new(vault.into_backend());
+    reopened
+        .load_owned_epoch_key(&reference, epoch(1), &owner)
+        .unwrap();
+    assert_eq!(reopened.backend().0.entries.lock().unwrap().len(), 1);
 }
 
 #[test]

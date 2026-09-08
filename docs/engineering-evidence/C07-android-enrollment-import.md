@@ -774,3 +774,31 @@ Verification on 2026-09-08:
 
 These checks validate safe handling of an unused intent, not ownership-safe recovery
 of a present ambiguous key. The remaining product gate above is unchanged.
+
+## Ownership Receipt Prerequisite
+
+Shared Rust custody now has an opt-in versioned epoch record with an independent
+per-attempt ownership receipt. It preserves the v1 record/reference contract, rejects
+adoption of an untagged legacy key, and can validate its own tagged record after a
+create commits but reports failure. This is only a read/create primitive: no product
+recovery path has been enabled and no existing ambiguous journal is migrated.
+
+The format, trust boundary and ordered integration gates are recorded in
+[`replication-custody-ownership.md`](../mobile/replication-custody-ownership.md).
+The native callback and Android/iOS stores still intentionally reject the new record
+size until their support and real platform verification are implemented together.
+Enrollment continues to emit v1 records. Mobile artifacts are unchanged in this step.
+
+Verification on 2026-09-08: the complete replication-security suite passed 25 tests,
+including 11 custody tests; the product and native-facade Rust contracts passed another
+36 tests (23 product, 13 binding). Total: 61 passed, zero failed or skipped. New checks
+cover receipt mismatch, legacy rejection, collision preservation, exact recovered-key
+bytes, malformed sizes/versions/roles, locked/missing/invalid storage and uncertain
+write readback. No Android or iOS device rerun is claimed for this shared-only step.
+Security all-targets Clippy and store/binding library Clippy passed with `-D warnings`;
+`git diff --check` passed. Final free space was approximately 19.6 GiB.
+
+Next: extend and qualify bounded native custody record support before integrating
+receipts with request-bound enrollment journals and explicit recovery. Legacy ambiguous
+prepared journals remain an open product gate; a new receipt cannot retroactively
+prove their ownership.

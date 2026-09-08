@@ -11,13 +11,53 @@ use crate::{
 pub const REPLICATION_STORED_SECRET_VERSION: u16 = 1;
 pub const REPLICATION_STORED_SECRET_BYTES: usize = 47;
 pub const REPLICATION_SECRET_REFERENCE_BYTES: usize = 47;
+pub const REPLICATION_CUSTODY_OWNER_BYTES: usize = 32;
+pub const REPLICATION_OWNED_SECRET_BYTES: usize =
+    REPLICATION_STORED_SECRET_BYTES + REPLICATION_CUSTODY_OWNER_BYTES;
 pub const MAX_REPLICATION_RETAINED_EPOCH_KEYS: usize = 64;
 
 const SECRET_MAGIC: &[u8; 4] = b"TRSC";
 const SECRET_REFERENCE_MAGIC: &[u8; 4] = b"TRRF";
 const SECRET_REFERENCE_BYTES: usize = 32;
 const SECRET_KEY_BYTES: usize = 32;
+const OWNED_SECRET_VERSION: u16 = 2;
 const SECRET_HEADER_BYTES: usize = SECRET_MAGIC.len() + 2 + 1 + 8;
+
+/// Per-attempt random receipt, independent of the secret reference and key.
+/// Persist in private write-ahead metadata before creating owned custody. This is
+/// association metadata, not authentication against a compromised local store.
+#[derive(Clone, Eq, PartialEq)]
+pub struct ReplicationCustodyOwner([u8; REPLICATION_CUSTODY_OWNER_BYTES]);
+
+impl ReplicationCustodyOwner {
+    pub fn generate() -> Result<Self, ReplicationSecretCustodyError> {
+        let mut bytes = [0; REPLICATION_CUSTODY_OWNER_BYTES];
+        OsReplicationEntropy
+            .fill(&mut bytes)
+            .map_err(|_| ReplicationSecretCustodyError::EntropyUnavailable)?;
+        Self::from_bytes(bytes)
+    }
+
+    pub fn from_bytes(
+        bytes: [u8; REPLICATION_CUSTODY_OWNER_BYTES],
+    ) -> Result<Self, ReplicationSecretCustodyError> {
+        if bytes.iter().all(|byte| *byte == 0) {
+            return Err(ReplicationSecretCustodyError::InvalidEnvelope);
+        }
+        Ok(Self(bytes))
+    }
+
+    /// Private journal encoding; never include this association in logs or exports.
+    pub fn to_bytes(&self) -> [u8; REPLICATION_CUSTODY_OWNER_BYTES] {
+        self.0
+    }
+}
+
+impl fmt::Debug for ReplicationCustodyOwner {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("ReplicationCustodyOwner(<redacted>)")
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
@@ -219,6 +259,7 @@ pub enum ReplicationSecretCustodyError {
     InvalidEnvelope,
     SecretKindMismatch,
     KeyEpochMismatch,
+    CustodyOwnerMismatch,
     InvalidHistoricalLimit,
     EmptyHistory,
     NonContiguousHistory,
@@ -240,6 +281,9 @@ impl fmt::Display for ReplicationSecretCustodyError {
             }
             Self::KeyEpochMismatch => {
                 formatter.write_str("stored replication secret has the wrong key epoch")
+            }
+            Self::CustodyOwnerMismatch => {
+                formatter.write_str("stored replication secret has no matching ownership receipt")
             }
             Self::InvalidHistoricalLimit => {
                 formatter.write_str("invalid historical replication key limit")
@@ -368,6 +412,55 @@ impl<B: ReplicationSecretBackend> ReplicationSecretVault<B> {
             key.copy_for_secret_storage(),
             entropy,
         )
+    }
+
+    /// Opt-in v2 record. Native adapters must support the bounded v2 size before
+    /// using this method. Never upgrades, overwrites, or adopts an existing item.
+    pub fn store_owned_epoch_key_at(
+        &self,
+        reference: &ReplicationSecretRef,
+        key: &ReplicationEpochKey,
+        owner: &ReplicationCustodyOwner,
+    ) -> Result<(), ReplicationSecretCustodyError> {
+        require_reference(
+            reference,
+            ReplicationSecretKind::EpochKey,
+            Some(key.epoch()),
+        )?;
+        let bytes = Zeroizing::new(key.copy_for_secret_storage());
+        let mut encoded = encode_secret(ReplicationSecretKind::EpochKey, Some(key.epoch()), &bytes);
+        encoded[4..6].copy_from_slice(&OWNED_SECRET_VERSION.to_be_bytes());
+        encoded.extend_from_slice(&owner.0);
+        self.backend.put(reference, &encoded)?;
+        Ok(())
+    }
+
+    /// Validates an observed record only. This does not delete or finalize custody;
+    /// callers must serialize recovery and validate the associated journal/request.
+    pub fn load_owned_epoch_key(
+        &self,
+        reference: &ReplicationSecretRef,
+        expected_epoch: ReplicationKeyEpoch,
+        owner: &ReplicationCustodyOwner,
+    ) -> Result<ReplicationEpochKey, ReplicationSecretCustodyError> {
+        require_reference(
+            reference,
+            ReplicationSecretKind::EpochKey,
+            Some(expected_epoch),
+        )?;
+        let encoded = self.backend.get(reference)?;
+        let bytes = Zeroizing::new(decode_secret(
+            &encoded,
+            ReplicationSecretKind::EpochKey,
+            Some(expected_epoch),
+        )?);
+        if encoded.len() != REPLICATION_OWNED_SECRET_BYTES
+            || encoded[REPLICATION_STORED_SECRET_BYTES..] != owner.0
+        {
+            return Err(ReplicationSecretCustodyError::CustodyOwnerMismatch);
+        }
+        ReplicationEpochKey::from_bytes(expected_epoch, *bytes)
+            .map_err(|_| ReplicationSecretCustodyError::InvalidEnvelope)
     }
 
     pub fn load_authority_key(
@@ -667,13 +760,25 @@ fn decode_secret(
     expected_kind: ReplicationSecretKind,
     expected_epoch: Option<ReplicationKeyEpoch>,
 ) -> Result<[u8; SECRET_KEY_BYTES], ReplicationSecretCustodyError> {
-    if encoded.len() != REPLICATION_STORED_SECRET_BYTES
-        || encoded.get(..SECRET_MAGIC.len()) != Some(SECRET_MAGIC)
+    if !matches!(
+        encoded.len(),
+        REPLICATION_STORED_SECRET_BYTES | REPLICATION_OWNED_SECRET_BYTES
+    ) || encoded.get(..SECRET_MAGIC.len()) != Some(SECRET_MAGIC)
     {
         return Err(ReplicationSecretCustodyError::InvalidEnvelope);
     }
     let version = u16::from_be_bytes([encoded[4], encoded[5]]);
-    if version != REPLICATION_STORED_SECRET_VERSION {
+    let owned = match (version, encoded.len()) {
+        (REPLICATION_STORED_SECRET_VERSION, REPLICATION_STORED_SECRET_BYTES) => false,
+        (OWNED_SECRET_VERSION, REPLICATION_OWNED_SECRET_BYTES) => true,
+        _ => return Err(ReplicationSecretCustodyError::InvalidEnvelope),
+    };
+    if owned
+        && (encoded[6] != ReplicationSecretKind::EpochKey as u8
+            || encoded[REPLICATION_STORED_SECRET_BYTES..]
+                .iter()
+                .all(|byte| *byte == 0))
+    {
         return Err(ReplicationSecretCustodyError::InvalidEnvelope);
     }
     let kind = ReplicationSecretKind::from_id(encoded[6])?;
@@ -697,7 +802,7 @@ fn decode_secret(
         return Err(ReplicationSecretCustodyError::KeyEpochMismatch);
     }
     let mut key_bytes = [0_u8; SECRET_KEY_BYTES];
-    key_bytes.copy_from_slice(&encoded[SECRET_HEADER_BYTES..]);
+    key_bytes.copy_from_slice(&encoded[SECRET_HEADER_BYTES..REPLICATION_STORED_SECRET_BYTES]);
     if key_bytes.iter().all(|byte| *byte == 0) {
         key_bytes.zeroize();
         return Err(ReplicationSecretCustodyError::InvalidEnvelope);
