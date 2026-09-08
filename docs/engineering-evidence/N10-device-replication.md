@@ -95,10 +95,57 @@ keys. They validate key roles before accessing or deleting native storage.
 - `bash scripts/test-swift-replication-bindings.sh` passed a compiled Swift callback
   round trip against the Rust library.
 
-The new boundary is not yet packaged into either app. Swift conformance uses an
-in-memory store; neither native Keychain/Keystore implementations nor Android
-runtime coverage are established by it. Mobile product service, transport, and UI
-integration remain open. The Controller binding/API is unchanged.
+The boundary is now packaged on Android through C01, with four verified ABI
+libraries and real Rust/Keystore instrumentation: 13 tests passed, including
+second-process races and app-process restart. See
+[C01 custody evidence](C01-android-replication-custody.md) for exact checks, cleanup,
+and the pre-existing canonical Controller lockfile-checksum failure. Swift's
+in-memory conformance alone does not establish native custody. The Apple adapter
+is now packaged in the production iOS target through C02, with a production device
+build and five real-framework simulator Keychain tests passed. See
+[C02 custody evidence](C02-ios-replication-custody.md) for regression status and limits.
+A separate mobile preparation facade now delegates prepare/reload/request-bound
+cancellation to `ReplicationProductService`. C03 records 21 iOS and 14 Android
+native regression tests, including real platform storage for the new flow. See
+[C03 facade evidence](C03-mobile-enrollment-facade.md). This accepts real local
+filesystem directories only, not provider URIs. Android request UI is now integrated
+through C04: Devices > menu > Enrollment supports preparation, pending reload,
+copy/export, and reviewed cancellation with recoverable deletion. Its 26 emulator
+test invocations include real JNI/Keystore, Compose interactions at three viewport
+sizes, and a process-restart request round trip. See
+[C04 Android UI evidence](C04-android-enrollment-ui.md) for exact counts and the
+unqualified provider-picker/physical accessibility paths. iOS request UI is integrated
+through C05 with preparation, pending reload, native copy/share/JSON export, reviewed
+cancellation and Keychain deletion recovery. Final iPhone and iPad simulator runs each
+passed ten tests with zero skips; the production device build and 21 custody/Controller
+regressions also passed. See [C05 iOS UI evidence](C05-ios-enrollment-ui.md) for screenshot
+coverage and the still-open native-picker keyboard/physical accessibility qualification.
+The initial C06 provider boundary now supports bounded native document reads and
+explicitly rejects automatic publication without distributed revision guarantees.
+Seven Android DocumentsProvider tests and seven iOS coordinated-local-file/error tests passed,
+including real temporary URI grants/revocation across UIDs, partial-transfer rejection,
+and local filesystem permission denial/recovery with corrected iOS error mapping;
+A separate iOS local Files picker workflow also passed: external security-scoped
+read, exact bytes, cancellation and restart/reselection. Ten existing iPhone
+enrollment regressions passed afterward, with zero skips. Third-party cloud-provider
+hydration, persisted grants and incoming Rust service integration remain open.
+See [C06 transport evidence](C06-mobile-provider-transport.md). Enrollment acceptance
+and bidirectional provider transport are not complete. The Controller binding/API
+is unchanged; request export does not establish encrypted record synchronization.
+
+## Android Reviewed Acceptance
+
+[C07](C07-android-enrollment-import.md) now records a successful desktop-service-to-
+Android enrollment and encrypted-host import fixture: packaged Rust, real Android
+Keystore, bounded document-provider reads, explicit Compose confirmation, duplicate
+import, process reopening and missing wrapping-key refusal. The dedicated runner
+passed 18 executions including write-ahead custody intent safety, real system-picker selection/cancellation, recovery
+after a journaled activation failure, and finalization of reconstructed committed cleanup
+state across process stops. It uses a disposable
+desktop authority and synthetic host data, not desktop UI automation or a third-party
+provider. Ambiguous prepared-custody resolution, exact-instruction crash timing and cold-start reliability
+remain open. Imported records remain inert; this is
+not bidirectional sync or automatic SSH credential/connection provisioning.
 
 ## Apple Native Custody Adapter
 
@@ -121,7 +168,8 @@ Swift 6 language mode:
 Fixtures use a random test service, with cleanup confined to that service. The run
 does not lock the user's device; access-error coverage is mapping-only. This does
 not establish iPhone background, lock, or backup/restore behavior. The adapter is
-compiled through the conformance runner, not yet included in the iOS app target.
+also included in the iOS app target; C02 adds simulator proof without claiming
+physical-device lock, background, or backup/restore qualification.
 
 The implementation follows Apple's
 [duplicate-item semantics](https://developer.apple.com/documentation/security/errsecduplicateitem)

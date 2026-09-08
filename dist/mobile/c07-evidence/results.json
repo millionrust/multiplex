@@ -1,0 +1,34 @@
+{
+  "api": "37",
+  "abi": "arm64-v8a",
+  "page_size": "16384",
+  "owned_emulator": true,
+  "runs": [
+    {
+      "class": "com.termirust.mobile.replication.ReplicationDocumentReaderTest",
+      "tests": 7
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentAcceptanceTest#prepare",
+      "tests": 1
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentAcceptanceTest#accept",
+      "tests": 1
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentAcceptanceTest#importHost",
+      "tests": 1
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentAcceptanceTest#reopen",
+      "tests": 1
+    },
+    {
+      "class": "com.termirust.mobile.replication.EnrollmentAcceptanceTest#cleanup",
+      "tests": 1
+    }
+  ],
+  "passed": 12,
+  "skipped": 0
+}
