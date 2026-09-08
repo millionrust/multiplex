@@ -740,4 +740,37 @@ custody. Intent tracking, system-picker acceptance, confirmed-activation rollbac
 reconstructed post-profile finalization now have native evidence. Exact-instruction
 interruption and cold-start reliability still need qualification; this is not complete
 mobile sync. Never resolve ambiguity by blindly deleting or adopting the referenced key.
-No commit, push, publication or deployment is authorized by the current brief.
+The owner subsequently authorized clean commits without co-author trailers. Push,
+publication and deployment are not part of this verification step.
+
+## Unused Intent Identity Validation
+
+The next recovery review found that a missing epoch key alone was insufficient to
+clear a prepared journal: the surviving pending identity could itself be unusable.
+Recovery now validates the pending format version, typed request and device reference,
+then loads the original device key and compares its public key before removing an
+unused intent. Missing, locked, corrupt or mismatched identity custody preserves both
+the journal and pending request. A present unconfirmed epoch remains untouched.
+
+Verification on 2026-09-08:
+
+- Focused Rust suites: 44 passed (23 product, 8 custody, 13 binding tests). The new
+  product regression covers missing, locked, corrupt, different-key and unsupported
+  pending-version states, asserting unchanged evidence and no custody mutations.
+- Focused Rust library Clippy with `-D warnings`: passed.
+- Android `lintDebug`: passed, including analysis of the modified instrumentation
+  source. No JVM unit-test rerun is claimed for this scoped change.
+- All four Android ABI libraries rebuilt, verified and synchronized. The generated
+  FFI contract is unchanged; iOS artifacts were not rebuilt for this change.
+- Real packaged JNI on an owned read-only Pixel_9, API 37, arm64-v8a, 16 KiB pages:
+  18 executions passed, zero skipped. The existing prepared-creation stage now also
+  injects locked, missing and invalid identity reads, checks unchanged journal,
+  request and ciphertext digests, then verifies recovery with restored access.
+- System picker acceptance, import and process reopening passed again. Evidence in
+  `dist/mobile/c07-picker-evidence` was refreshed. Fixture cleanup passed and the
+  owned emulator stopped without app-data clearing or uninstalling.
+- Final free space was approximately 18.6 GiB. Builds and native tests were serial
+  and guarded above the user's 15 GiB floor. `git diff --check` passed.
+
+These checks validate safe handling of an unused intent, not ownership-safe recovery
+of a present ambiguous key. The remaining product gate above is unchanged.

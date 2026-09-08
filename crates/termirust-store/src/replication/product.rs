@@ -2083,9 +2083,20 @@ fn recover_enrollment_activation<B: ReplicationSecretBackend>(
         {
             return Err(ReplicationStoreError::RecoveryRequired.into());
         }
-        read_pending_enrollment(root)?;
+        let pending = read_pending_enrollment(root)?;
+        if pending.format_version != PRODUCT_FORMAT_VERSION {
+            return Err(ReplicationProductError::InvalidProfile);
+        }
+        let request = pending.request.into_request()?;
+        let device_reference =
+            ReplicationSecretRef::from_bytes(&decode_hex(&pending.device_reference_hex)?)?;
         match vault.backend().get(&epoch_reference) {
             Err(ReplicationSecretStoreError::Missing) => {
+                // Removing the intent must not hide an unusable or changed identity.
+                let device = vault.load_device_key(&device_reference)?;
+                if &device.public_key() != request.public_key() {
+                    return Err(ReplicationProductError::EnrollmentMismatch);
+                }
                 remove_regular_file_if_present(
                     &transaction_path,
                     "remove unused enrollment intent",

@@ -175,6 +175,139 @@ fn enrollment_intent_precedes_custody_and_preserves_uncertain_creation() {
 }
 
 #[test]
+fn unused_enrollment_intent_requires_the_original_accessible_identity() {
+    use termirust_replication_security::{ReplicationKeyEpoch, ReplicationSecretVault};
+
+    struct ReadOnlyRecovery {
+        secrets: MemorySecrets,
+        locked: bool,
+    }
+    impl ReplicationSecretBackend for ReadOnlyRecovery {
+        fn put(
+            &self,
+            _: &ReplicationSecretRef,
+            _: &[u8],
+        ) -> Result<(), ReplicationSecretStoreError> {
+            panic!("recovery must not create replacement custody")
+        }
+        fn delete(&self, _: &ReplicationSecretRef) -> Result<bool, ReplicationSecretStoreError> {
+            panic!("an unused intent has no custody to delete")
+        }
+        fn get(
+            &self,
+            reference: &ReplicationSecretRef,
+        ) -> Result<Zeroizing<Vec<u8>>, ReplicationSecretStoreError> {
+            if self.locked && reference.key_epoch().is_none() {
+                return Err(ReplicationSecretStoreError::AccessDeniedOrLocked);
+            }
+            self.secrets.get(reference)
+        }
+    }
+
+    for fault in ["missing", "locked", "corrupt", "different", "version"] {
+        let directory = tempfile::tempdir().unwrap();
+        let shared = tempfile::tempdir().unwrap();
+        let root = directory.path().join("member");
+        let secrets = MemorySecrets::default();
+        let request =
+            ReplicationProductService::prepare_enrollment(&root, shared.path(), secrets.clone())
+                .unwrap();
+        let pending_path = root.join("pending-enrollment.json");
+        let pending = std::fs::read(&pending_path).unwrap();
+        let original = secrets.inner.lock().unwrap().values.clone();
+        let device_reference = original.keys().next().unwrap().clone();
+        let vault = ReplicationSecretVault::new(secrets.clone());
+        let epoch = vault
+            .prepare_epoch_reference(ReplicationKeyEpoch::new(1).unwrap())
+            .unwrap();
+        let journal_path = root.join("enrollment.transaction.json");
+        let journal = format!(
+            "{{\"format_version\":1,\"epoch_reference_hex\":\"{}\",\"custody_prepared\":true}}",
+            hex_bytes(&epoch.to_bytes()),
+        );
+        std::fs::write(&journal_path, &journal).unwrap();
+        match fault {
+            "missing" => {
+                secrets.inner.lock().unwrap().values.clear();
+            }
+            "corrupt" => {
+                secrets
+                    .inner
+                    .lock()
+                    .unwrap()
+                    .values
+                    .insert(device_reference, vec![0; 47]);
+            }
+            "different" => {
+                let other = vault
+                    .store_device_key(&generate_replication_device_private_key().unwrap())
+                    .unwrap();
+                let other_bytes = secrets.get(&other).unwrap();
+                secrets
+                    .inner
+                    .lock()
+                    .unwrap()
+                    .values
+                    .insert(device_reference, other_bytes.to_vec());
+            }
+            "version" => {
+                let text = std::str::from_utf8(&pending).unwrap();
+                std::fs::write(
+                    &pending_path,
+                    text.replacen("\"format_version\":1", "\"format_version\":2", 1),
+                )
+                .unwrap();
+            }
+            "locked" => {}
+            _ => unreachable!(),
+        }
+        let retained = secrets.inner.lock().unwrap().values.clone();
+        let pending_before = std::fs::read(&pending_path).unwrap();
+        assert!(
+            ReplicationProductService::recover_pending_enrollment(
+                &root,
+                ReadOnlyRecovery {
+                    secrets: secrets.clone(),
+                    locked: fault == "locked"
+                },
+            )
+            .is_err(),
+            "{fault}"
+        );
+        assert_eq!(
+            std::fs::read(&journal_path).unwrap(),
+            journal.as_bytes(),
+            "{fault}"
+        );
+        assert_eq!(
+            std::fs::read(&pending_path).unwrap(),
+            pending_before,
+            "{fault}"
+        );
+        assert_eq!(secrets.inner.lock().unwrap().values, retained, "{fault}");
+
+        // Only the fixture restores the original evidence; recovery itself cannot repair keys.
+        secrets.inner.lock().unwrap().values = original;
+        std::fs::write(&pending_path, &pending).unwrap();
+        ReplicationProductService::recover_pending_enrollment(
+            &root,
+            ReadOnlyRecovery {
+                secrets: secrets.clone(),
+                locked: false,
+            },
+        )
+        .unwrap();
+        assert!(!journal_path.exists());
+        assert_eq!(std::fs::read(&pending_path).unwrap(), pending);
+        assert_eq!(secrets.count(), 1);
+        assert_eq!(
+            ReplicationProductService::<MemorySecrets>::pending_enrollment_request(&root).unwrap(),
+            request
+        );
+    }
+}
+
+#[test]
 fn failed_activation_retains_journal_when_cleanup_cannot_delete_key() {
     struct BlockProfilePublication {
         secrets: MemorySecrets,

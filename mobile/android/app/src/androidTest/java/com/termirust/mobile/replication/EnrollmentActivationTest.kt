@@ -64,6 +64,38 @@ class EnrollmentActivationTest {
                 File(root, "uncertain-pending-before").writeBytes(originalPending)
             } else {
                 assertThrows(ReplicationStorageException.Missing::class.java) { store.load(account) }
+                val originalJournal = journal.readBytes()
+                val originalCustody = custodyDigests()
+                for (failure in listOf(
+                    ReplicationStorageException.Locked(),
+                    ReplicationStorageException.Missing(),
+                    ReplicationStorageException.Invalid(),
+                )) {
+                    var deniedLoads = 0
+                    val inaccessibleIdentity = object : ReplicationSecureStore by store {
+                        override fun load(candidate: String): ByteArray {
+                            if (candidate == account) return store.load(candidate)
+                            deniedLoads++
+                            throw failure
+                        }
+                        override fun create(candidate: String, value: ByteArray) {
+                            value.fill(0)
+                            fail("Recovery must not replace identity custody")
+                        }
+                        override fun delete(candidate: String): Boolean {
+                            fail("An unused intent has no custody to delete")
+                            return false
+                        }
+                    }
+                    try {
+                        repository(inaccessibleIdentity).recover()
+                        fail("Unavailable identity must preserve the unused intent")
+                    } catch (_: MobileReplicationException) { }
+                    assertTrue(deniedLoads > 0)
+                    assertArrayEquals(originalJournal, journal.readBytes())
+                    assertArrayEquals(originalPending, pending.readBytes())
+                    assertEquals(originalCustody, custodyDigests())
+                }
                 assertArrayEquals(request, repository().recover().request)
                 assertFalse(journal.exists())
                 assertArrayEquals(originalPending, pending.readBytes())
