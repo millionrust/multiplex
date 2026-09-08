@@ -14,6 +14,19 @@ packages:
     url: https://github.com/apple/swift-crypto.git
     from: 4.5.0
 targets:
+  TermiRustMobileUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - TermiRustMobileUITests
+    dependencies:
+      - target: TermiRustMobile
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.termirust.mobile.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: 6.0
+        IPHONEOS_DEPLOYMENT_TARGET: 17.0
   TermiRustMobile:
     type: application
     platform: iOS
@@ -21,7 +34,11 @@ targets:
       - TermiRustMobile/App/TermiRustMobileApp.swift
       - TermiRustMobile/Assets.xcassets
       - TermiRustMobile/Controller
+      - TermiRustMobile/Enrollment
+      - TermiRustMobile/ReplicationTransport
       - TermiRustMobile/Generated/TermiRustControllerSecurity.swift
+      - Replication/Sources/TermiRustReplicationSecurity.swift
+      - TermiRustMobile/Security/ReplicationKeychainStore.swift
       - TermiRustMobile/Models/ControllerModels.swift
       - TermiRustMobile/Models/ControllerRemoteRoute.swift
       - TermiRustMobile/Models/ControllerRemoteRouteConfiguration.swift
@@ -72,6 +89,8 @@ targets:
         embed: false
       - framework: Frameworks/TermiRustControllerSecurity.xcframework
         embed: false
+      - framework: Replication/TermiRustReplicationSecurity.xcframework
+        embed: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.termirust.mobile
@@ -95,6 +114,9 @@ targets:
       - TermiRustMobileTests/AppleSSHControllerTransportLiveTests.swift
       - TermiRustMobileTests/AppleRelayControllerTransportLiveTests.swift
       - TermiRustMobileTests/ControllerBindingConformanceTests.swift
+      - TermiRustMobileTests/ReplicationCustodyTests.swift
+      - TermiRustMobileTests/EnrollmentWorkflowTests.swift
+      - TermiRustMobileTests/ReplicationDocumentReaderTests.swift
       - TermiRustMobileTests/ControllerFleetCacheTests.swift
       - TermiRustMobileTests/ControllerPairingFleetTests.swift
       - TermiRustMobileTests/ControllerReadOnlyTerminalTests.swift

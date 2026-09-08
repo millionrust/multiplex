@@ -1,0 +1,13 @@
+{
+  "Sources/TermiRustReplicationSecurity.swift": "a54f721a006aa19a40007eab7f26e80d9586bdd1e905baaa5a5957db16a783be",
+  "TermiRustReplicationSecurity.xcframework/Info.plist": "68d25013aaad3c27722786a5398fe9c0dfc4ea3d6dcb02465ee690d5aa0e8f24",
+  "TermiRustReplicationSecurity.xcframework/ios-arm64/TermiRustReplicationSecurityFFI.framework/Headers/TermiRustReplicationSecurityFFI.h": "274f39b9c4991f4e1266c37b1ca69e95c409326c58777e16c4b531b29aefc717",
+  "TermiRustReplicationSecurity.xcframework/ios-arm64/TermiRustReplicationSecurityFFI.framework/Info.plist": "9ab9fad5542836c95aacfdc9b53b3b4717a35971e5d7ebd0ae604b18db57b9b2",
+  "TermiRustReplicationSecurity.xcframework/ios-arm64/TermiRustReplicationSecurityFFI.framework/Modules/module.modulemap": "26d24c2be896384555488e28aa8315e7da4104df88f5b05382cfe2352f063ec0",
+  "TermiRustReplicationSecurity.xcframework/ios-arm64/TermiRustReplicationSecurityFFI.framework/TermiRustReplicationSecurityFFI": "938fd7a29276b4ea9adfc8d8f250c75f68cd88b06b60d320235a800811811805",
+  "TermiRustReplicationSecurity.xcframework/ios-arm64_x86_64-simulator/TermiRustReplicationSecurityFFI.framework/Headers/TermiRustReplicationSecurityFFI.h": "274f39b9c4991f4e1266c37b1ca69e95c409326c58777e16c4b531b29aefc717",
+  "TermiRustReplicationSecurity.xcframework/ios-arm64_x86_64-simulator/TermiRustReplicationSecurityFFI.framework/Info.plist": "e22e2cf636f624c29c2f4bc5d20590f2d143d6ae5d59ee76a7fc9c971ae09b87",
+  "TermiRustReplicationSecurity.xcframework/ios-arm64_x86_64-simulator/TermiRustReplicationSecurityFFI.framework/Modules/module.modulemap": "26d24c2be896384555488e28aa8315e7da4104df88f5b05382cfe2352f063ec0",
+  "TermiRustReplicationSecurity.xcframework/ios-arm64_x86_64-simulator/TermiRustReplicationSecurityFFI.framework/TermiRustReplicationSecurityFFI": "bfd1d9eb5b688b9b0f1d330c4f56d2c940dcab1dc101bb25493c4d0dc93b0cb3",
+  "provenance.json": "e10b17a48df986427318c3b4cad78a8d25edca439d0666f57e68c8435deb3a43"
+}
