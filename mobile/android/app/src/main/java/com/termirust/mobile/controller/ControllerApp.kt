@@ -101,6 +101,12 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier) {
+    var showEnrollment by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    var showEnrollmentMenu by remember { mutableStateOf(false) }
+    if (showEnrollment) {
+        com.termirust.mobile.replication.EnrollmentScreen(onBack = { showEnrollment = false }, modifier = modifier)
+        return
+    }
     val state by viewModel.state.collectAsState()
     var showPairing by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
@@ -148,6 +154,15 @@ fun ControllerApp(viewModel: ControllerViewModel, modifier: Modifier = Modifier)
                                 )
                             }
                         } else {
+                            Box {
+                                IconButton(onClick = { showEnrollmentMenu = true }) {
+                                    Icon(Icons.Outlined.MoreVert, stringResource(com.termirust.mobile.R.string.enrollment_title))
+                                }
+                                DropdownMenu(expanded = showEnrollmentMenu, onDismissRequest = { showEnrollmentMenu = false }) {
+                                    DropdownMenuItem(text = { Text(stringResource(com.termirust.mobile.R.string.enrollment_title)) },
+                                        onClick = { showEnrollmentMenu = false; showEnrollment = true })
+                                }
+                            }
                             TextButton(onClick = { showPairing = true }) { Text(stringResource(com.termirust.mobile.R.string.pair_host)) }
                         }
                         if (activeTerminal == null && state.selectedHostId != null) {

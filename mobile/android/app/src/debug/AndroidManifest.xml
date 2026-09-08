@@ -1,0 +1,18 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <provider
+            android:name="com.termirust.mobile.replication.ReplicationTransferTestProvider"
+            android:authorities="${applicationId}.replication-transfer-fixture"
+            android:exported="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS"
+            android:grantUriPermissions="true">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+        <service
+            android:name="com.termirust.mobile.replication.ReplicationCustodyTestService"
+            android:exported="false"
+            android:process=":replicationCustodyTest" />
+    </application>
+</manifest>

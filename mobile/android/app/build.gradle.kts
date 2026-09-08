@@ -24,12 +24,19 @@ android {
         compose = true
     }
 
+    sourceSets.getByName("main") {
+        java.srcDir("src/main/replication/kotlin")
+        jniLibs.srcDir("src/main/replication/jniLibs")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
     packaging {
+        // Rust release artifacts are already stripped; retain their verified bytes.
+        jniLibs.keepDebugSymbols += "**/libtermirust_replication_bindings.so"
         resources {
             excludes += "META-INF/versions/**/OSGI-INF/MANIFEST.MF"
         }
@@ -59,13 +66,17 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")
     testRuntimeOnly("net.java.dev.jna:jna-jpms:5.17.0")
 
-    androidTestImplementation("androidx.test:runner:1.6.2")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }
 
 val controllerTestNativeDirectory = run {
