@@ -1,6 +1,12 @@
 .claude/settings.local.json
 /target
 /dist/mobile/controller/
+/dist/mobile/replication/
+/dist/mobile/replication-ios/
+/dist/mobile/c04-evidence/
+/dist/mobile/c05-evidence/
+/dist/mobile/c06-picker/
+/mobile/ios/ProviderAccessFixture/*.xcodeproj/
 /tools/browser-engine-spike/target
 .DS_Store
 __pycache__/
